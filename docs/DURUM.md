@@ -415,6 +415,43 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
        - Seçim Işıklar sayfasında **taslak** olarak açılır: `useLighting` `setTab` / `setEffect` / `setPerKey`. Canlı önizleme tuşlarda (RAM) görünür; flash'a yazım yalnızca kullanıcı orada kaydedince olur, mevcut akış ve kapatma uyarısı korunur.
        - Not: kullanıcının kayıtlı ışığı şu an mod 0 (Kapalı).
      - **Sıra:** yeniden düzenleme → B1 → B2 → B3. Her biri ayrı PR olabilir. Donanım testi yalnızca kullanıcının onayıyla ya da kullanıcının kendi yüklemesiyle yapılır.
+   - **Faz C planı** (Faz B'den sonra; henüz kod yok). Ayrıntılı araştırma `research/ekran-ve-veri-kaynaklari.md`'de: tasarım §3.4, Windows veri kaynakları §5, plan "Faz 2".
+     - **İlke:**
+       - Ekran = olay tabanlı bağlam: bir sonraki olaya kadar doğru kalan içerik.
+       - LED = gerçek zamanlı veri (`04 20`, RAM, flash'a yazmaz; 30–70 fps).
+       - Saat = firmware'in ana sayfası.
+       - Saat, pil yüzdesi, CPU yüzdesi gibi hızla eskiyen değerler görsele basılmaz.
+     - **Yükleme bütçesi (her şeyden önce kurulur)**
+       - Token bucket. Varsayılan "Dengeli": 24 yükleme/gün, anlık en çok 6. Ayrıca "Tasarruf" 8/gün ve "Yoğun" 48/gün (uyarılı).
+       - Elle yapılan yüklemeler bütçeden düşer ama engellenmez. Sayaç zaten var (`library.json`: günlük ve toplam).
+       - Tek bir "bekleyen kare" tutulur: en son gelen kazanır.
+       - Aynı içerik (aynı içerik özeti) yeniden yüklenmez.
+       - Bekleme kuralları kaynak başına (aşağıda).
+       - Canlı kartlar yalnızca kullanıcı "Canlı mod"u açınca çalışır. Kapanışta iki seçenek: son görseli bırakmak ya da saat sayfasına dönmek (saat senkronuyla, yükleme gerekmez).
+       - 2.4G ve Bluetooth'ta ekran güncellenemez: son durum kuyrukta bekler, kabloya dönünce bütçe izin verirse tek yükleme yapılır.
+     - **Kartlar** (Faz B'nin şablon çizicisiyle çizilir; Türkçe fontlu):
+       - **Çalan şarkı:**
+         - Kaynak: Windows GSMTC (`GlobalSystemMediaTransportControlsSessionManager`): başlık, sanatçı, kapak.
+         - Şarkı ≥10–15 s çaldıktan sonra yüklenir; duraklatılmışsa yüklenmez.
+         - Seçenekler: her şarkı / albüm değişince / kısayolla sabitle.
+       - **Pomodoro:** faz değişince "Odak 25:00" ya da "Mola" kartı; ilerleme LED barıyla.
+       - **Takvim:** ICS'den "Sıradaki: 14:00 Standup". Göreli zaman ("5 dk sonra") yazılmaz, mutlak saat yazılır. Sıradaki etkinlik değişince yüklenir.
+       - **Hatırlatıcı:** kısa kart. Sonra önceki görsele dönmek iki yükleme eder, bu yüzden bütçeye sayılır.
+       - **Oyun oturumu (sonra):** ön plandaki uygulama algılanır; açılınca oyun kartı, kapanınca özet (süre, ortalama GPU, en yüksek sıcaklık).
+     - **LED canlı katmanı** (flash'sız, sürekli):
+       - CPU ve GPU barı rakam sırasında.
+       - Ses düzeyi barı F sırasında, topuz çevrilince 1,5 s.
+       - Ses spektrumu (WASAPI loopback, `cpal`).
+       - Mikrofon kapalıyken bir tuş kırmızı.
+       - Pomodoro ilerlemesi; bildirimde çift yanıp sönme.
+       - Akış ana bilgisayarda birleştirilir. Uygulama kapanınca klavye kayıtlı efektine kendisi döner (doğrulandı).
+     - **Deneysel "odak kronometresi":** Odak başında klavye saati 00:00:00'a ayarlanır; ana sayfa geçen süreyi yükleme yapmadan canlı gösterir (saniyeler zaten görünüyor). Bitince gerçek saat geri yüklenir. Yalnızca ileri sayar. Saat paketinin flash'a yazıp yazmadığı ölçülmeli.
+     - **Arka plan:** Canlı mod uygulama açıkken çalışır. Tepsi simgesi ve Windows açılışında başlama, P2'deki "tuşla uygulama başlatma" ile birlikte tasarlanır (aynı arka plan servisi).
+     - **Önce ölçülecekler:**
+       - E3: panelin gerçek kare hızı.
+       - Saat paketi flash'a yazıyor mu?
+       - `04 20` sonrası kayıt yazmadan efekte dönüş (bilinen: akış durunca klavye kendi efektine dönüyor).
+     - **Sıra önerisi:** bütçe altyapısı → çalan şarkı → Pomodoro (kart + LED) → LED canlı katmanı (CPU/GPU, ses) → takvim → hatırlatıcı → oyun oturumu.
    - **Güvenlik kuralları koda girecek** (§6):
      - kare ≤140, sayfa ≤2215, gecikme 1–254 (`FF` yasak);
      - `04 F0`, `04 38`, `1F`, güncelleme modu ve FF68'de GET_FEATURE asla gönderilmez;
