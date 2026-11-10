@@ -25,6 +25,7 @@ import { useScreen } from "./lib/screen";
 import { useActiveKeyboard, useApp } from "./lib/store";
 import { Keymap } from "./pages/Keymap";
 import { Macros } from "./pages/Macros";
+import { Focus } from "./pages/Focus";
 import { Lighting } from "./pages/Lighting";
 import { Overview } from "./pages/Overview";
 import { Screen, ScreenUploadToast } from "./pages/Screen";
@@ -189,6 +190,8 @@ export default function App() {
         return <Macros kb={kb} />;
       case "screen":
         return <Screen kb={kb} />;
+      case "focus":
+        return <Focus kb={kb} />;
     }
   };
 
