@@ -12,6 +12,7 @@ import type { PomodoroSettings } from "../bindings/PomodoroSettings";
 import type { PomodoroState } from "../bindings/PomodoroState";
 import { inTauri } from "./ipc";
 import { mockLiveHeld, submitLive, useLive } from "./live";
+import { TRY_MS, phaseRgb, toHex } from "./pomodoroLights";
 import type { Prepared } from "./screenImport";
 
 export const POMODORO_SOURCE = "pomodoro";
@@ -23,6 +24,14 @@ export const DEFAULT_SETTINGS: PomodoroSettings = {
   rounds: 4,
   lights: true,
   screen: true,
+  motion: "rightToLeft",
+  focusColor: [255, 80, 20],
+  shortColor: [30, 220, 100],
+  longColor: [40, 140, 255],
+  brightness: 4,
+  pulse: true,
+  transition: "blink",
+  sound: false,
 };
 
 export const LIMITS = {
@@ -32,12 +41,10 @@ export const LIMITS = {
   rounds: [1, 8],
 } as const;
 
-/** Phase colours, as on the keys. */
-export const PHASE_COLOR: Record<PomodoroPhase, string> = {
-  focus: "#ff5014",
-  shortBreak: "#1edc64",
-  longBreak: "#288cff",
-};
+/** A phase's colour (the user's choice) as CSS hex. */
+export function phaseColor(s: PomodoroSettings, p: PomodoroPhase) {
+  return toHex(phaseRgb(s, p));
+}
 
 export function minutesOf(s: PomodoroSettings, p: PomodoroPhase) {
   return p === "focus" ? s.focusMin : p === "shortBreak" ? s.shortMin : s.longMin;
@@ -76,6 +83,7 @@ const mock = {
   emit: null as ((s: PomodoroState) => void) | null,
   onCard: null as ((c: PomodoroCard) => void) | null,
   cardShown: false,
+  trying: 0,
 };
 
 function mockElapsed(now = Date.now()) {
@@ -96,6 +104,7 @@ function mockState(): PomodoroState {
     atMs: now,
     focusDone: mock.focusDone,
     last: mock.last,
+    trying: mock.trying > 0,
   };
 }
 
@@ -175,7 +184,18 @@ function mockTick() {
 }
 
 function mockControl(action: PomodoroAction): PomodoroState {
-  if (action === "start") {
+  if (action !== "try" && mock.trying) {
+    window.clearTimeout(mock.trying);
+    mock.trying = 0;
+  }
+  if (action === "try") {
+    if (mock.status === "idle" && !mock.trying) {
+      mock.trying = window.setTimeout(() => {
+        mock.trying = 0;
+        mockSync();
+      }, TRY_MS);
+    }
+  } else if (action === "start") {
     if (mock.status === "idle") {
       Object.assign(mock, { round: 1, focusDone: 0, focusMs: 0 });
       mockBegin("focus");

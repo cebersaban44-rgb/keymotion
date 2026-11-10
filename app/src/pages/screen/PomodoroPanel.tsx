@@ -1,16 +1,53 @@
-// "Pomodoro": the focus timer (phase C, second source). The backend runs it,
-// lights the keys and asks for screen cards; this shows it and sets it.
+// "Odak zamanlayıcısı": the focus timer (phase C, second source). The
+// backend runs it, lights the keys and asks for screen cards; this shows it
+// and sets it. The keyboard drawn here shows what the keys show.
 
-import { Lightbulb, Minus, MonitorUp, Pause, Play, Plus, SkipForward, Square, Timer } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  ArrowDownToLine,
+  ArrowLeftToLine,
+  ArrowRightToLine,
+  FoldHorizontal,
+  Lightbulb,
+  Loader2,
+  Minus,
+  MonitorUp,
+  Pause,
+  Play,
+  Plus,
+  SkipForward,
+  Square,
+  SunDim,
+  Timer,
+  Volume2,
+  type LucideIcon,
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { KeyboardInfo } from "../../bindings/KeyboardInfo";
+import type { PomodoroMotion } from "../../bindings/PomodoroMotion";
 import type { PomodoroPhase } from "../../bindings/PomodoroPhase";
 import type { PomodoroSettings } from "../../bindings/PomodoroSettings";
 import type { PomodoroState } from "../../bindings/PomodoroState";
-import { Toggle } from "../../components/controls";
+import type { PomodoroTransition } from "../../bindings/PomodoroTransition";
+import { ColorPicker, Segmented, Slider, Toggle } from "../../components/controls";
 import { useT, type MessageKey } from "../../lib/i18n";
 import { useLive } from "../../lib/live";
-import { LIMITS, PHASE_COLOR, fmtClock, remainingNow, usePomodoro } from "../../lib/pomodoro";
+import { LIMITS, fmtClock, phaseColor, remainingNow, usePomodoro } from "../../lib/pomodoro";
+import { TRY_MS, fromHex, keyPositions, lightColors, tryColors, viewOf } from "../../lib/pomodoroLights";
 import { Hint } from "./common";
+
+const MOTIONS: { id: PomodoroMotion; label: MessageKey; icon: LucideIcon }[] = [
+  { id: "rightToLeft", label: "pomo.motion.rightToLeft", icon: ArrowLeftToLine },
+  { id: "leftToRight", label: "pomo.motion.leftToRight", icon: ArrowRightToLine },
+  { id: "topToBottom", label: "pomo.motion.topToBottom", icon: ArrowDownToLine },
+  { id: "toCenter", label: "pomo.motion.toCenter", icon: FoldHorizontal },
+  { id: "fade", label: "pomo.motion.fade", icon: SunDim },
+];
+
+const COLOR_KEYS: { phase: PomodoroPhase; field: "focusColor" | "shortColor" | "longColor"; label: MessageKey }[] = [
+  { phase: "focus", field: "focusColor", label: "pomo.color.focus" },
+  { phase: "shortBreak", field: "shortColor", label: "pomo.color.shortBreak" },
+  { phase: "longBreak", field: "longColor", label: "pomo.color.longBreak" },
+];
 
 const PHASE_KEY: Record<PomodoroPhase, MessageKey> = {
   focus: "pomo.phase.focus",
@@ -28,7 +65,7 @@ function useTicking(on: boolean, ms = 250) {
   }, [on, ms]);
 }
 
-export function PomodoroPanel({ usb }: { usb: boolean }) {
+export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
   const t = useT();
   const s = usePomodoro((x) => x.state);
   const drawError = usePomodoro((x) => x.drawError);
@@ -56,7 +93,6 @@ export function PomodoroPanel({ usb }: { usb: boolean }) {
       <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6">
         <div className="flex min-w-0 flex-col items-center gap-4 rounded-2xl border border-line bg-bg-raise/50 px-4 py-6">
           <Dial s={s} />
-          <KeyRow s={s} />
           <div className="flex flex-wrap items-center justify-center gap-2">
             <button
               type="button"
@@ -106,13 +142,6 @@ export function PomodoroPanel({ usb }: { usb: boolean }) {
           </div>
 
           <SwitchRow
-            icon={<Lightbulb size={16} className="mt-0.5 shrink-0 text-signal" />}
-            title={t("pomo.lights")}
-            body={t("pomo.lights.body")}
-            checked={s.settings.lights}
-            onChange={(lights) => set({ lights })}
-          />
-          <SwitchRow
             icon={<MonitorUp size={16} className="mt-0.5 shrink-0 text-signal" />}
             title={t("pomo.screen")}
             body={t("pomo.screen.body")}
@@ -121,8 +150,17 @@ export function PomodoroPanel({ usb }: { usb: boolean }) {
           >
             {s.settings.screen && (live?.enabled ? <CostLine s={s} /> : <p className="text-[11.5px] text-ink-3">{t("pomo.screen.liveOff")}</p>)}
           </SwitchRow>
+          <SwitchRow
+            icon={<Volume2 size={16} className="mt-0.5 shrink-0 text-signal" />}
+            title={t("pomo.sound")}
+            body={t("pomo.sound.body")}
+            checked={s.settings.sound}
+            onChange={(sound) => set({ sound })}
+          />
         </div>
       </div>
+
+      <LightBlock kb={kb} usb={usb} s={s} set={set} onTry={() => act("try")} />
 
       {!usb && <Hint tone="usb">{t("pomo.noUsb")}</Hint>}
       {drawError && <Hint tone="error">{drawError}</Hint>}
@@ -135,8 +173,9 @@ function Dial({ s }: { s: PomodoroState }) {
   const t = useT();
   const idle = s.status === "idle";
   const left = idle ? s.settings.focusMin * 60_000 : remainingNow(s);
-  const progress = idle || s.phaseMs <= 0 ? 0 : 1 - left / s.phaseMs;
-  const color = PHASE_COLOR[s.phase];
+  // The ring is the time left, like the keys: full at the start.
+  const share = idle || s.phaseMs <= 0 ? 1 : left / s.phaseMs;
+  const color = phaseColor(s.settings, s.phase);
   const r = 78;
   const len = 2 * Math.PI * r;
   return (
@@ -151,9 +190,9 @@ function Dial({ s }: { s: PomodoroState }) {
           stroke={color}
           strokeWidth="9"
           strokeLinecap="round"
-          strokeDasharray={`${len * progress} ${len}`}
+          strokeDasharray={`${len * share} ${len}`}
           style={{ filter: `drop-shadow(0 0 6px ${color}88)`, transition: "stroke-dasharray 250ms linear" }}
-          opacity={progress > 0 ? 1 : 0}
+          opacity={idle ? 0.3 : share > 0 ? 1 : 0}
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5">
@@ -173,46 +212,239 @@ function Dial({ s }: { s: PomodoroState }) {
   );
 }
 
-/** What the keys show: Esc in the phase colour, F1–F12 filling up, the
- *  digit keys counting finished rounds (same rules as the backend). */
-function KeyRow({ s }: { s: PomodoroState }) {
+/** "Tuş ışıkları": the switch, a keyboard showing the light, and its settings. */
+function LightBlock({
+  kb,
+  usb,
+  s,
+  set,
+  onTry,
+}: {
+  kb: KeyboardInfo;
+  usb: boolean;
+  s: PomodoroState;
+  set: (patch: Partial<PomodoroSettings>) => void;
+  onTry: () => void;
+}) {
+  const t = useT();
+  const st = s.settings;
   const idle = s.status === "idle";
-  const color = PHASE_COLOR[s.phase];
-  const progress = idle || s.phaseMs <= 0 ? 0 : 1 - remainingNow(s) / s.phaseMs;
-  const filled = progress * 12;
-  const cap = (key: string, level: number, c: string, label: string, size = "h-6 min-w-0 flex-1") => (
-    <span
-      key={key}
-      className={`flex ${size} items-center justify-center rounded-[5px] border border-line text-[8px] text-ink-3`}
-      style={
-        idle
-          ? undefined
-          : {
-              background: `color-mix(in srgb, ${c} ${Math.round(level * 100)}%, transparent)`,
-              borderColor: level > 0.3 ? c : undefined,
-              color: level > 0.5 ? "#fff" : undefined,
-            }
-      }
-    >
-      {label}
-    </span>
-  );
+  const [editing, setEditing] = useState<PomodoroPhase | null>(null);
+  // The idle preview loops the same run "Klavyede dene" plays; trying
+  // restarts it so the drawing and the keys move together.
+  const loopStart = useRef(Date.now());
+  // Colour drags fire many changes: keep the latest and send it shortly after.
+  const [draft, setDraft] = useState<Partial<PomodoroSettings>>({});
+  const setRef = useRef(set);
+  setRef.current = set;
+  useEffect(() => {
+    if (!Object.keys(draft).length) return;
+    const id = window.setTimeout(() => {
+      setRef.current(draft);
+      setDraft({});
+    }, 150);
+    return () => window.clearTimeout(id);
+  }, [draft]);
+  const shown = { ...st, ...draft };
+  const field = COLOR_KEYS.find((c) => c.phase === editing);
+
   return (
-    <div className="flex w-full max-w-[400px] flex-col items-center gap-1.5" aria-hidden data-keyrow>
-      <div className="flex w-full gap-[3px]">
-        {cap("esc", 1, color, "Esc", "h-6 min-w-0 flex-[1.3]")}
-        <span className="w-1 shrink-0" />
-        {Array.from({ length: 12 }, (_, i) => {
-          const part = Math.max(0, Math.min(1, filled - i));
-          return cap(`f${i + 1}`, 0.1 + 0.9 * part, color, `F${i + 1}`);
-        })}
+    <div className="flex flex-col gap-4 rounded-2xl border border-line p-4" data-pomo-lights>
+      <div className="flex items-start justify-between gap-3">
+        <span className="flex items-start gap-2.5">
+          <Lightbulb size={16} className="mt-0.5 shrink-0 text-signal" />
+          <span className="flex max-w-[78ch] flex-col">
+            <span className="text-[13px] font-semibold">{t("pomo.lights")}</span>
+            <span className="text-[11.5px] text-ink-3">{t("pomo.lights.body")}</span>
+          </span>
+        </span>
+        <Toggle checked={st.lights} onChange={(lights) => set({ lights })} label={t("pomo.lights")} />
       </div>
-      <div className="flex gap-[3px]">
-        {Array.from({ length: s.settings.rounds }, (_, i) =>
-          cap(`r${i}`, i < s.focusDone ? 0.55 : 0.1, PHASE_COLOR.focus, String(i + 1), "h-6 w-6"),
-        )}
-      </div>
+
+      {st.lights && (
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-2.5">
+            <span className="text-[11.5px] text-ink-3">
+              {idle ? t("pomo.preview.idle") : t("pomo.preview.live")}
+            </span>
+            {kb.geometry && <LightPreview kb={kb} s={s} settings={shown} loopStart={loopStart} />}
+            {idle &&
+              (usb ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (s.trying) return;
+                      loopStart.current = Date.now();
+                      onTry();
+                    }}
+                    className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[12.5px] font-semibold text-signal hover:bg-signal/10"
+                    data-pomo-try
+                  >
+                    {s.trying ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                    {s.trying ? t("pomo.trying") : t("pomo.try")}
+                  </button>
+                  <span className="text-[11.5px] text-ink-3">{t("pomo.try.body")}</span>
+                </div>
+              ) : (
+                <p className="text-[11.5px] text-ink-3">{t("pomo.preview.noUsb")}</p>
+              ))}
+          </div>
+
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6">
+            <div className="flex min-w-0 flex-col gap-2">
+              <span className="text-[12.5px] font-medium">{t("pomo.motion")}</span>
+              <div className="flex flex-col gap-1.5" role="radiogroup" aria-label={t("pomo.motion")}>
+                {MOTIONS.map((m) => {
+                  const on = st.motion === m.id;
+                  const Icon = m.icon;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      onClick={() => set({ motion: m.id })}
+                      className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-[12.5px] transition-colors ${
+                        on ? "border-signal bg-signal/10 text-ink" : "border-line text-ink-2 hover:bg-surface-2 hover:text-ink"
+                      }`}
+                    >
+                      <Icon size={15} className={on ? "text-signal" : "text-ink-3"} />
+                      {t(m.label)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex min-w-0 flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <span className="text-[12.5px] font-medium">{t("pomo.colors")}</span>
+              <div className="flex flex-wrap gap-1.5">
+                {COLOR_KEYS.map((c) => {
+                  const hex = phaseColor(shown, c.phase);
+                  const on = editing === c.phase;
+                  return (
+                    <button
+                      key={c.phase}
+                      type="button"
+                      aria-expanded={on}
+                      onClick={() => setEditing(on ? null : c.phase)}
+                      className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12.5px] ${
+                        on ? "border-signal bg-signal/10 text-ink" : "border-line text-ink-2 hover:bg-surface-2"
+                      }`}
+                      data-pomo-color={c.phase}
+                    >
+                      <span className="h-4 w-4 rounded-[5px] border border-black/20" style={{ background: hex }} />
+                      {t(c.label)}
+                    </button>
+                  );
+                })}
+              </div>
+              {field && (
+                <ColorPicker
+                  label={t(field.label)}
+                  value={phaseColor(shown, field.phase)}
+                  onChange={(hex) => setDraft((d) => ({ ...d, [field.field]: fromHex(hex) }))}
+                />
+              )}
+            </div>
+
+            <Slider
+              label={t("pomo.brightness")}
+              value={st.brightness}
+              min={1}
+              max={5}
+              step={1}
+              format={(v) => `${v}/5`}
+              onChange={(brightness) => set({ brightness })}
+            />
+
+            <div className="flex flex-col gap-2">
+              <span className="text-[12.5px] font-medium">{t("pomo.transition")}</span>
+              <Segmented<PomodoroTransition>
+                label={t("pomo.transition")}
+                value={st.transition}
+                onChange={(transition) => set({ transition })}
+                options={[
+                  { value: "blink", label: t("pomo.transition.blink") },
+                  { value: "wave", label: t("pomo.transition.wave") },
+                ]}
+              />
+            </div>
+
+            <div className="flex items-start justify-between gap-3">
+              <span className="flex flex-col">
+                <span className="text-[12.5px] font-medium">{t("pomo.pulse")}</span>
+                <span className="text-[11.5px] text-ink-3">{t("pomo.pulse.body")}</span>
+              </span>
+              <Toggle checked={st.pulse} onChange={(pulse) => set({ pulse })} label={t("pomo.pulse")} />
+            </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+/** The keyboard as the timer lights it: the running phase, or (idle) the
+ *  short run "Klavyede dene" plays, on a loop. */
+function LightPreview({
+  kb,
+  s,
+  settings,
+  loopStart,
+}: {
+  kb: KeyboardInfo;
+  s: PomodoroState;
+  settings: PomodoroSettings;
+  loopStart: { current: number };
+}) {
+  const t = useT();
+  const keys = useMemo(() => (kb.geometry ? keyPositions(kb.geometry) : []), [kb.geometry]);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 50);
+    return () => window.clearInterval(id);
+  }, []);
+  const view = viewOf(s, now);
+  let colors: Record<number, string>;
+  if (view) {
+    colors = lightColors(keys, settings, view, now);
+  } else {
+    // The run, then a short dark pause before it starts again.
+    const t = (now - loopStart.current) % (TRY_MS + 1_200);
+    colors = t < TRY_MS ? tryColors(keys, settings, t, now) : Object.fromEntries(keys.map((k) => [k.led, "rgb(0,0,0)"]));
+  }
+  const g = kb.geometry!;
+  const pad = 0.25;
+  return (
+    <svg
+      viewBox={`${-pad} ${-pad} ${g.width + 2 * pad} ${g.height + 2 * pad}`}
+      className="w-full max-w-[720px] rounded-xl"
+      role="img"
+      aria-label={t("pomo.preview.idle")}
+      data-pomo-preview
+    >
+      <rect x={-pad} y={-pad} width={g.width + 2 * pad} height={g.height + 2 * pad} rx={0.35} fill="#111214" />
+      {g.screen && (
+        <rect x={g.screen.x + 0.06} y={g.screen.y + 0.06} width={g.screen.w - 0.12} height={g.screen.h - 0.12} rx={0.08} fill="#26282c" />
+      )}
+      {g.keys.map((k) => (
+        <rect
+          key={k.id}
+          x={k.x + 0.06}
+          y={k.y + 0.06}
+          width={k.w - 0.12}
+          height={k.h - 0.12}
+          rx={0.12}
+          fill={colors[k.led] ?? "#000"}
+          stroke="rgba(255,255,255,0.06)"
+          strokeWidth={0.03}
+        />
+      ))}
+    </svg>
   );
 }
 

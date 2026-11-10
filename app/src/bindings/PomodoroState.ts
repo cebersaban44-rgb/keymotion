@@ -24,4 +24,8 @@ remainingMs: number, atMs: number, focusDone: number,
 /**
  * The last series, once the timer is idle again.
  */
-last: PomodoroSummary | null, };
+last: PomodoroSummary | null, 
+/**
+ * "Klavyede dene" is showing a short run on the keys.
+ */
+trying: boolean, };

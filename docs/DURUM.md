@@ -47,7 +47,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | **Ekran Stüdyosu**: dosyadan (resim, GIF, video; kırpma, süre), yazı kartları (5 şablon), slayt; önizleme, onay, kütüphane, fabrika animasyonuna dönüş | ✅ Kullanıcı klavyede hepsini denedi (maddeler 23–25). |
 | Ekran → **Işıkları uydur**: görselin paletinden tuş tasarımı (degrade, tek renk, görsel), Işıklar'da taslak | ✅ Kullanıcı mor kartta klavyede doğruladı (madde 26). |
 | Ekran → **Canlı ekran**: canlı mod, günlük yükleme bütçesi, "Çalan şarkı" kartı, kapatınca önceki görseli geri yükleme | ✅ Kullanıcı klavyede denedi (madde 27). |
-| Ekran → **Odak zamanlayıcısı** (Pomodoro tekniği): odak ve mola süreleri, tuş ışıklarında ilerleme (F1–F12, flash'sız), faz başında ekran kartı, kenar çubuğunda kalan süre | ⏳ Zamanlayıcı ve ışık katmanı gerçek uygulamada ve klavyede denendi (CDP, günlük). Kullanıcının gözle denemesi ve ekran kartının klavyede yüklenmesi bekliyor (madde 28). |
+| Ekran → **Odak zamanlayıcısı** (Pomodoro tekniği): odak ve mola süreleri; bütün klavye fazın rengiyle dolu başlar ve süre azaldıkça seçilen yönde boşalır (flash'sız; yön, renkler, parlaklık, nabız, faz geçişi, ses seçilebilir; "Klavyede dene"); faz başında ekran kartı; kenar çubuğunda kalan süre | ⏳ Zamanlayıcı ve ışık katmanı gerçek uygulamada ve klavyede denendi (CDP, günlük). Kullanıcının gözle denemesi ve ekran kartının klavyede yüklenmesi bekliyor (madde 28). |
 
 ## 3. Kronoloji: ne yaptık, neden
 
@@ -387,6 +387,24 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
         - Ayrıntı: `donanim-dogrulama.md`, "Pomodoro ışık katmanı".
       - Tek tek reddedilen `04 20` kareleri (yaklaşık %1) artık `debug` düzeyinde. Yalnız art arda 20 kare (1 sn) giderse uyarı yazılır. Yoksa 25 dakikalık bir odakta yüzlerce uyarı satırı birikirdi.
     - **Bekleyen:** Kullanıcının ışıkları gözle görmesi ve canlı mod açıkken faz kartlarının klavyeye yüklenmesi (flash yazar; kullanıcının kendi denemesiyle). Pencere küçükken kart çiziminin gecikip gecikmediği de o denemede görülecek.
+    - **Kullanıcının ışık tasarımı (aynı gün, ilk denemeden sonra):**
+      - Geri bildirim: "Yalnız en üst sıra yanınca odaklanma hissi vermiyor." Bütün klavye fazın rengiyle dolu başlamalı ve süre azaldıkça bir yöne doğru boşalmalı. Kalan ışık kalan zamandır; dolu klavye "çalış", azalan ışık "molaya az kaldı" der. Yön ve renkler seçilebilmeli: kırmızı uzun sürede rahatsız edebilir.
+      - Önce sohbette etkileşimli bir önizleme gösterildi (gerçek tuş dizilimiyle). Kullanıcı "O zaman uygula" dedi.
+      - **Yapılan** (F1–F12 çubuğu, Esc ve tur tuşları kalktı):
+        - Bütün 97 tuş. Işığın bittiği kenar yumuşak (klavye genişliğinin %4'ü), yani hareket akıyor.
+        - Boşalan kısım soluk (%8).
+        - Hareket: sağdan sola (varsayılan; ışık solda kalır), soldan sağa, yukarıdan aşağı (üst sıralar önce söner), ortaya doğru (iki yan önce söner), yavaşça söner (yön yok).
+        - Odak, kısa mola ve uzun mola renkleri seçilir (paletten ya da serbest renk). Parlaklık klavyenin kendi basamaklarıyla 1–5 (varsayılan 4).
+        - Son dakikada nabız (açılıp kapatılır): bütün klavye birlikte nefes alır. Kalan ışık biraz söner, sönük kısım biraz parlar; son dakikada yalnızca birkaç tuş yanık kaldığı için ilk denemede yalnız yanık tuşların nefes alması fark edilmiyordu (testte yakalandı).
+        - Duraklatınca bütün klavye kısılır ve yavaş nefes alır.
+        - Faz başında: iki kez yanıp sönme ya da dalga (yeni renk, en uzun yanık kalan taraftan akar).
+        - Faz bitince ses (varsayılan kapalı): Windows'un bildirim sesi (`%SystemRoot%\Media\Windows Notify System Generic.wav`). Çalan, WinRT `MediaPlayer`; kodda `unsafe` yasak olduğu için Win32 ses çağrısı kullanılmadı. Yalnızca süre kendiliğinden bitince çalar, düğmelerde çalmaz.
+        - **"Klavyede dene":** seçilenleri klavyede 12 sn'lik bir turla gösterir (8 sn odak, 3 sn mola, bitiş). Yalnızca zamanlayıcı dururken.
+        - Uygulamadaki önizleme klavyenin tuş dizilimiyle, tuşlar düz renkle çizilir. Arka uçla aynı kurallar `lib/pomodoroLights.ts`'te; ikisi birlikte değiştirilmeli. Gerçekçi "alttan parlama" çizimi bu boyutta etkiyi göstermedi (ders §6, 42).
+        - Halka da artık kalan süreyi gösteriyor (dolu başlar, azalır). Renkler kenar çubuğuna, karta ve halkaya da uygulanıyor.
+        - Eski `pomodoro.json` dosyaları yeni alanları varsayılanla alıyor (testli).
+      - **Doğrulama:** 16 birim testi (yönler, renkler, nabız, duraklama, geçişler, deneme turu, eski ayar dosyası). Tarayıcıda sahte arka uçla bütün seçenekler. Gerçek uygulamada iki "Klavyede dene" turu klavyede çalıştı: önce varsayılanlarla ve ses açık, sonra soldan sağa, dalga ve mor odakla. Ayrıntı: `donanim-dogrulama.md`.
+      - **Bekleyen:** Kullanıcının gözle denemesi ve sesi duyması.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -537,6 +555,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 39 | Uygulama penceresi boş kaldı ("crash oldu herhalde") | Uygulama yeniden başlatıldıktan hemen sonra `git stash` + `switch` yapıldı; arayüz Vite'tan yüklenirken dosyalar geçici olarak eksikti | Önce dalı hazırla, uygulamayı en son başlat. Başlattıktan sonra çalışma ağacını değiştirme; şüphede CDP ile sayfanın çizildiğini doğrula (bkz. #25). |
 | 40 | `npx eslint` bir paketi indirip çalıştırdı | Projede ESLint (ve Prettier) yok; `npx` eksik aracı sormadan indiriyor | Bir aracı çalıştırmadan önce `app/node_modules/.bin`'de olduğuna bak ya da `npx --no-install` kullan. Projenin denetimleri: `tsc` (`pnpm build`), rustfmt, clippy. İndirilen paket önbellekten silindi. |
 | 41 | Türkçe arayüze "Pomodoro" ve "flash" girdi | Tekniğin yabancı adı ve teknik terim, Türkçe metne olduğu gibi yazıldı | Türkçe sayfada yalnız Türkçe içerik: yabancı adın Türkçe karşılığını kullan ("Odak zamanlayıcısı", "kalıcı bellek"). Emin değilsen TDK sözlüğüne bak (`sozluk.gov.tr/gts?ara=…`). Yabancı ad gerekiyorsa yalnız belgelerde, parantez içinde. |
+| 42 | Uygulamadaki odak önizlemesinde renk neredeyse görünmedi | Klavye çizimi ışığı gerçekteki gibi tuşun altından hafif bir parlama olarak gösteriyor; küçük boyutta bu sönük kalıyor | Amaç bir hareketi anlatmaksa tuşları düz renkle çiz (sohbetteki önizlemenin onaylanan hâli). Gerçekçi çizim, ışığın tasarımına bakılan yerde kalsın. |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 
