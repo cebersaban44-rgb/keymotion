@@ -14,9 +14,11 @@ import {
   setWindowTheme,
 } from "./lib/ipc";
 import { useUnsaved } from "./lib/unsaved";
-import { useT } from "./lib/i18n";
+import { tNow, useT } from "./lib/i18n";
 import { useKeymap } from "./lib/keymap";
 import { useLayout } from "./lib/layout";
+import { startLive } from "./lib/live";
+import { nowPlayingCard } from "./lib/liveCards";
 import { useMacros } from "./lib/macros";
 import { useScreen } from "./lib/screen";
 import { useActiveKeyboard, useApp } from "./lib/store";
@@ -84,6 +86,11 @@ function useKeyboardRecords() {
   }, [modelId]);
 }
 
+/** The live screen runs for the whole session, whatever page is open. */
+function useLiveScreen() {
+  useEffect(() => startLive((track, cover) => nowPlayingCard(track, cover, tNow("sc.live.card.np"))), []);
+}
+
 /**
  * Ask before closing while changes are not on the keyboard. The backend
  * only intercepts the close when told something is unsaved.
@@ -133,6 +140,7 @@ export default function App() {
   useBootstrap();
   useThemeSync();
   useKeyboardRecords();
+  useLiveScreen();
   const guard = useCloseGuard();
   const page = useApp((s) => s.page);
   const loaded = useApp((s) => s.loaded);
