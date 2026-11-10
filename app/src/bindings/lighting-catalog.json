@@ -7,6 +7,7 @@
     "color": true,
     "rainbow": true,
     "directions": 0,
+    "motion": null,
     "factoryDefault": false
   },
   {
@@ -17,6 +18,7 @@
     "color": true,
     "rainbow": true,
     "directions": 0,
+    "motion": null,
     "factoryDefault": false
   },
   {
@@ -27,6 +29,7 @@
     "color": true,
     "rainbow": true,
     "directions": 0,
+    "motion": null,
     "factoryDefault": false
   },
   {
@@ -37,6 +40,7 @@
     "color": true,
     "rainbow": true,
     "directions": 0,
+    "motion": null,
     "factoryDefault": false
   },
   {
@@ -47,6 +51,7 @@
     "color": true,
     "rainbow": true,
     "directions": 0,
+    "motion": null,
     "factoryDefault": false
   },
   {
@@ -57,6 +62,7 @@
     "color": false,
     "rainbow": false,
     "directions": 0,
+    "motion": null,
     "factoryDefault": false
   },
   {
@@ -67,6 +73,7 @@
     "color": true,
     "rainbow": true,
     "directions": 0,
+    "motion": null,
     "factoryDefault": false
   },
   {
@@ -77,6 +84,7 @@
     "color": false,
     "rainbow": false,
     "directions": 0,
+    "motion": null,
     "factoryDefault": false
   },
   {
@@ -87,6 +95,7 @@
     "color": true,
     "rainbow": true,
     "directions": 0,
+    "motion": null,
     "factoryDefault": false
   },
   {
@@ -96,7 +105,8 @@
     "speed": true,
     "color": true,
     "rainbow": true,
-    "directions": 4,
+    "directions": 2,
+    "motion": "vertical",
     "factoryDefault": false
   },
   {
@@ -107,6 +117,7 @@
     "color": true,
     "rainbow": true,
     "directions": 2,
+    "motion": "horizontal",
     "factoryDefault": true
   },
   {
@@ -117,6 +128,7 @@
     "color": true,
     "rainbow": true,
     "directions": 2,
+    "motion": "rotation",
     "factoryDefault": false
   },
   {
@@ -127,6 +139,7 @@
     "color": true,
     "rainbow": true,
     "directions": 0,
+    "motion": null,
     "factoryDefault": false
   },
   {
@@ -137,6 +150,7 @@
     "color": true,
     "rainbow": true,
     "directions": 0,
+    "motion": null,
     "factoryDefault": false
   },
   {
@@ -147,6 +161,7 @@
     "color": true,
     "rainbow": true,
     "directions": 0,
+    "motion": null,
     "factoryDefault": false
   },
   {
@@ -157,6 +172,7 @@
     "color": true,
     "rainbow": true,
     "directions": 2,
+    "motion": "path",
     "factoryDefault": false
   },
   {
@@ -167,6 +183,7 @@
     "color": true,
     "rainbow": true,
     "directions": 0,
+    "motion": null,
     "factoryDefault": false
   },
   {
@@ -177,6 +194,7 @@
     "color": true,
     "rainbow": true,
     "directions": 2,
+    "motion": "diagonal",
     "factoryDefault": false
   },
   {
@@ -187,6 +205,7 @@
     "color": true,
     "rainbow": true,
     "directions": 0,
+    "motion": null,
     "factoryDefault": false
   },
   {
@@ -197,6 +216,7 @@
     "color": false,
     "rainbow": false,
     "directions": 0,
+    "motion": null,
     "factoryDefault": false
   }
 ]
