@@ -9,6 +9,7 @@ import {
   Paintbrush,
   RotateCcw,
   Usb,
+  Gauge,
   X,
 } from "lucide-react";
 import { motion } from "motion/react";
@@ -28,7 +29,9 @@ import {
   type ColorMap,
   type PaintTool,
 } from "../lib/lighting";
+import { useGauges } from "../lib/gauges";
 import { useMirror } from "../lib/mirror";
+import { useApp } from "../lib/store";
 
 const VARIANT: Record<number, SwatchVariant> = {
   0: "off",
@@ -77,6 +80,9 @@ export function Lighting({ kb }: { kb: KeyboardInfo }) {
   const usb = kb.connection === "usb" && kb.hasCommandChannel;
   const mirror = useMirror(usb && tab === "effects");
   const perKey = useLighting((s) => s.perKey);
+  // The gauges draw the keys while on: the saved lighting does not show.
+  const gaugesOn = useGauges((s) => !!s.state?.settings.enabled);
+  const setPage = useApp((s) => s.setPage);
 
   return (
     <div className="flex flex-col gap-6">
@@ -107,6 +113,19 @@ export function Lighting({ kb }: { kb: KeyboardInfo }) {
         <div className="flex items-center gap-3 rounded-2xl border border-signal/30 bg-signal/10 px-4 py-3 text-[13px]">
           <Usb size={16} className="text-signal" />
           {t("light.needsUsb")}
+        </div>
+      )}
+      {usb && gaugesOn && (
+        <div className="flex items-center gap-3 rounded-2xl border border-line bg-bg-raise/60 px-4 py-3 text-[13px]" data-light-gauges>
+          <Gauge size={16} className="shrink-0 text-signal" />
+          <span className="flex-1 text-ink-2">{t("light.gaugesOn")}</span>
+          <button
+            type="button"
+            onClick={() => setPage("gauges")}
+            className="shrink-0 rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+          >
+            {t("light.gaugesGo")}
+          </button>
         </div>
       )}
 

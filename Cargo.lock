@@ -1783,6 +1783,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "kb-winsys"
+version = "0.1.0"
+dependencies = [
+ "tracing",
+ "windows",
+]
+
+[[package]]
 name = "keyboard-types"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1802,6 +1810,7 @@ dependencies = [
  "kb-devices",
  "kb-protocol",
  "kb-transport",
+ "kb-winsys",
  "serde",
  "serde_json",
  "tauri",

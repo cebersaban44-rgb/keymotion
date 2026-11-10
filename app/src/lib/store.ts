@@ -4,7 +4,7 @@ import type { ThemePreference } from "../bindings/ThemePreference";
 import type { UiEnvironment } from "../bindings/UiEnvironment";
 import type { Locale } from "./i18n";
 
-export type PageId = "overview" | "lighting" | "keymap" | "macros" | "screen" | "connection" | "focus" | "settings";
+export type PageId = "overview" | "lighting" | "keymap" | "macros" | "screen" | "connection" | "focus" | "gauges" | "settings";
 /** Tabs of the Screen page. */
 export type ScreenTab = "visuals" | "live";
 
