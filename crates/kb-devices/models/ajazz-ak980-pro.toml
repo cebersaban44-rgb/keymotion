@@ -45,6 +45,22 @@ ble_name_prefix = "AK980 PRO"
 capabilities = ["battery"]
 verified = true
 
+# Firmware status lights. Read back with `04 F5` on 2026-11-10: Num Lock
+# white (`FE FF FF`) while Num Lock is on, Fn red (`FE 00 00`) in every
+# mode, both at full value whatever the brightness level. What the Fn light
+# reports is still an open question (docs/DURUM.md §8).
+[[indicators]]
+led = 32
+name = "Num Lock"
+color = [255, 255, 255]
+verified = true
+
+[[indicators]]
+led = 96
+name = "Fn"
+color = [255, 0, 0]
+verified = true
+
 # Physical geometry in key units (1u = one standard key).
 # Positions: measured from a top-down photo of the user's board (2026-11-10,
 # ~89.6 px/u). LED indices: vendor rgb-keyboard.xml map as documented in

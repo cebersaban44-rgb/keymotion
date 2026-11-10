@@ -124,17 +124,26 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - [#1](https://github.com/cebersaban44-rgb/klavye-studio/pull/1): ışık işleri (madde 10–13)
       - [#2](https://github.com/cebersaban44-rgb/klavye-studio/pull/2) ve [#3](https://github.com/cebersaban44-rgb/klavye-studio/pull/3): dal rehberi ve varsayılan dal
       - [#4](https://github.com/cebersaban44-rgb/klavye-studio/pull/4): CI
+15. **Efekt rengi, parlaklık ölçeği ve ayna kırmızısı.** P1'deki "efekt rengine gamma gerekiyor mu?" sorusu göz yerine ölçümle cevaplandı. Ayrıntı: `donanim-dogrulama.md`, "Efekt rengi, parlaklık ölçeği ve F5'in kırmızı baytı".
+    - **Efekt rengi:** Firmware gamma uygulamıyor. Uygulamanın kalibrasyonu artık efekt rengine de uygulanıyor.
+    - **Parlaklık:** Firmware ölçeği ölçüldü (`m = [0, 48, 96, 143, 191, 254] / 256`). Canlı önizleme `n/5` yerine bunu kullanıyor.
+    - **Ayna:** `04 F5` kırmızıyı `2·r mod 256` bildiriyor. Ayna artık kırmızıyı uygulamanın kayıtlı durumuna göre çözüyor (`kb-core/src/readback.rs`). Model dosyasına firmware göstergeleri (Num Lock, Fn) eklendi.
+    - **Yan hata:** Tuş başına sekmesi açıldıktan sonraki 40 ms içinde başka sekmeye geçilirse bekleyen canlı kare akışı yeniden başlatıyordu ve akış bir daha durmuyordu. Kapanışta zamanlayıcı artık temizleniyor.
+    - **Ölçülemeyen:** Tuş başına tablonun parlaklık ölçeği. CLI ile art arda flash yazma izin sınıflandırıcısına takıldı; P1'de açık.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
 ```
 crates/
-  kb-devices/   Model veri dosyaları (models/*.toml): kimlikler, yetenekler, ölçülmüş geometri ve LED indeksleri. G/Ç yok.
+  kb-devices/   Model veri dosyaları (models/*.toml): kimlikler, yetenekler, ölçülmüş geometri, LED indeksleri ve
+                firmware göstergeleri (Num Lock, Fn). G/Ç yok.
   kb-protocol/  Saf paket kodlama. sonix.rs: başlık/yankı, guard (izin listesi ve bootloader engeli),
-                efekt kataloğu, ışık paketi, tuş başına tablo, gerçek zamanlı tablo. WASM'a derlenebilir.
+                efekt kataloğu, ışık paketi, tuş başına tablo, gerçek zamanlı tablo, ölçülmüş parlaklık
+                ölçeği, F5 kırmızı baytının iki adayı. WASM'a derlenebilir.
   kb-transport/ hidapi (feature/output/input raporları) ve WinRT BLE (yalnızca okuma: pil).
   kb-core/      detect.rs (arayüzleri klavyelere gruplar), sonix.rs (sürücü: akışlar, zamanlama, yeniden deneme,
-                sağlama toplamı), color.rs (sRGB→LED gamma/kazanç, ters dönüşüm, doğrusal parlaklık).
+                sağlama toplamı), color.rs (sRGB→LED gamma/kazanç, ters dönüşüm, doğrusal parlaklık),
+                readback.rs (F5 okumasında kırmızıyı beklenen renge göre çözer).
   kb-cli/       `kb` geliştirici aracı (bkz. §5).
 app/
   src-tauri/    İnce kabuk. device.rs: TEK cihaz aktörü (HID'e dokunan tek yer; istek kuyruğu, canlı akış
@@ -159,7 +168,7 @@ rustfmt.toml, .gitattributes   120 sütun biçim; LF satır sonu.
 ## 5. Nasıl çalıştırılır ve test edilir
 
 ```bash
-cargo test --workspace            # 57 test; TS tiplerini ve mock JSON'ları da üretir
+cargo test --workspace            # 68 test; TS tiplerini ve mock JSON'ları da üretir
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check        # rustfmt.toml: 120 sütun
 cd app && pnpm typecheck
@@ -177,7 +186,7 @@ kb list | kb hid-all | kb descriptors | kb battery | kb models | kb effects
 kb peek                                    # pasif okuma
 kb read-colors [--repeat N --interval ms]  # 04 F5
 kb live --pattern wave|solid|test|gamma    # 04 20, yalnızca RAM
-kb live-probe                              # 04 20 + 04 F5: canlı katman ve eksik tuş davranışı
+kb live-probe                              # 04 20 + 04 F5: canlı katman, eksik tuşlar, kırmızı baytı (yalnızca RAM)
 kb effect --mode 11 --rainbow --yes        # FLASH
 kb per-key w=FF8A3D a=FF8A3D --yes         # FLASH
 ```
@@ -225,6 +234,8 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 23 | Kapatma uyarısı nasıl test edilir? | CDP pencerenin X düğmesine basamıyor | `(Get-Process klavye-studio).CloseMainWindow()` gerçek WM_CLOSE gönderir; tarayıcı tarafını CDP ile sür. |
 | 24 | Bindings kontrolü içerik aynıyken "değişti" dedi | Windows'ta git dosyaları CRLF açıyor, ts-rs LF yazıyor | `.gitattributes` (`* text=auto eol=lf`). Kontrol `git status` yerine içerik farkına (`git diff --quiet`) ve commit'lenmemiş dosyalara bakıyor. |
 | 25 | Çalışan uygulamanın arayüzü dal değişince değişti | Debug exe arayüzü Vite'tan yüklüyor; Vite o anki çalışma ağacını sunuyor | Kullanıcı uygulamayı kullanırken başka dala geçme; geçtiysen işi bitirince güncel dala dön. |
+| 26 | Ayna mor rengi lacivert gösterdi; FF "FA" okununca "6 bit çözünürlük" sanıldı | `F5` kırmızıyı `2·r mod 256` bildiriyor. FF→FA tesadüfen "yakın" göründü. | Okumayı tek değerle değil, **birkaç ara tonla ve her kanal için ayrı** doğrula. "Yaklaşık tuttu" sistematik bir hatayı gizleyebilir. |
+| 27 | Sekme değişince canlı önizleme durmadı | Bekleyen 40 ms'lik kare zamanlayıcısı bileşen kapandıktan sonra tetiklendi ve akışı yeniden başlattı | Kapanışta (unmount) zamanlayıcıları temizle. Sayfa geçiş animasyonu açılışı geciktirdiği için hızlı tıklama bunu tetikleyebilir. |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 
@@ -232,11 +243,10 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 
 1. `git switch develop && git pull`, sonra yeni iş için dal aç (örneğin `feature/clock-sync`).
 2. Önerilen sıra:
-   - Firmware efekt renginde gamma göz testi (P1).
    - Saat senkronu (P2, kolay).
    - Yön kodları (P1).
    - Tuş atama (P2, büyük iş).
-3. **Kullanıcının kalibrasyonu:** Ayarlar'da gamma **1.0 (ham)** kayıtlı; kullanıcı kalibrasyonu denerken kendisi seçti. İlk göz testinde paletle en uyumlu değer 2.2 çıkmıştı. Efekt gamma testinde bu değeri de birlikte netleştir; kullanıcının ayarını sormadan değiştirme.
+3. **Kullanıcının kalibrasyonu:** Ayarlar'da gamma **1.0 (ham)** kayıtlı; kullanıcı kalibrasyonu denerken kendisi seçti. Ölçüm, firmware'in hiçbir yolda gamma uygulamadığını gösterdi (madde 15). Yani gamma tamamen algı tercihi. İlk göz testinde paletle en uyumlu değer 2.2 çıkmıştı. Kullanıcıyla bir kez daha birlikte bakılabilir; ayarını sormadan değiştirme.
 
 ### P0 — Hemen
 - [x] Kullanıcı tuş başına renk akışını yeniden denedi: Fırça ve Seç araçları, kaydetme ve kapatma uyarısı.
@@ -245,13 +255,15 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 - [ ] Açık kaynak hazırlığı: lisans seçimi (henüz LICENSE yok, yani varsayılan olarak "tüm hakları saklı"). Geri kalanı P3'teki ilk sürüm gözden geçirmesinde.
 - [x] Geliştirme log'larını sadeleştir: IPC `info` log'ları `debug`'a çekildi.
 - [x] Kullanıcı Ayarlar → Renk kalibrasyonu'nu gözle denedi: gri basamaklar ve beyaz doğru.
-- [ ] Fn tuşunun sürekli kırmızı yanmasının nedenini öğren (gösterge mi, hangi durum?). Num Lock beyazı muhtemelen Num Lock göstergesi.
+- [ ] Fn tuşunun sürekli kırmızı yanmasının nedenini öğren (hangi durumu gösteriyor?). İkisi de firmware göstergesi; model dosyasında `indicators` olarak kayıtlı.
 
 ### P1 — Işıklar tamamlama
-- [ ] Firmware efekt rengine (`04 13`) gamma gerekiyor mu? Ara ton renkle göz testi yap.
+- [x] Firmware efekt rengine (`04 13`) gamma gerekiyor mu? Hayır, firmware doğrusal. Uygulamanın kalibrasyonu efekt rengine de uygulanıyor (madde 15).
+- [x] Ayna kırmızıyı doğru gösteriyor (`F5` kırmızıyı `2·r mod 256` bildiriyor; madde 15).
 - [x] Ayarlar'a **renk kalibrasyonu**: kanal başına gamma ve kazanç, beyaz dengesi, klavyede test desenleri, kalıcı ayar.
 - [x] Ayna ters kalibrasyonla gösteriyor.
-- [ ] Firmware'in parlaklık eğrisi doğrusal mı? Canlı önizleme doğrusal varsayıyor. Aynı tasarımı 3/5 parlaklıkta canlı ve kayıtlı olarak karşılaştır.
+- [x] Firmware'in parlaklık eğrisi: efektte ölçüldü (`v·m[n] >> 8`, `m = [0, 48, 96, 143, 191, 254]`). Canlı önizleme bu tabloyu kullanıyor.
+- [ ] Tuş başına tablonun parlaklık ölçeğini de ölç: aynı tasarımı 3 ve 1 parlaklıkta kaydedip `F5` ile oku. Flash yazdığı için kullanıcıyla yap.
 - [ ] Yön kodlarını doğrula (özellikle mod 10). "Kapalı" (mod 0) sonrası Fn+X davranışını doğrula.
 - [ ] Host tarafı canlı efektler (RAM, 20–40 fps): dalga, nefes, ses tepkili (WASAPI loopback, `cpal`), sistem metrikleri.
 - [ ] Profiller (kaydet/yükle) ve uygulamaya göre otomatik profil (ön plandaki pencere).
@@ -291,9 +303,10 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 ## 8. Açık sorular
 
 - Yüklenen ekran görüntüsünün yeri ve tek kare için gecikme baytı (`00` mı `01` mi).
-- Firmware efektleri rengi kendisi gamma'lıyor mu?
+- ~~Firmware efektleri rengi kendisi gamma'lıyor mu?~~ Hayır (madde 15).
+- `F5`'te kaybolan kırmızı üst bit başka bir yerden okunabilir mi? Okunabilirse aynadaki son belirsizlik de kalkar.
 - ~~`04 02` sağlama toplamı 16 bitte taşınca nasıl davranıyor?~~ Firmware 16 bitte sarıyor (97 beyaz tuşluk tabloyla doğrulandı).
-- Fn tuşu (LED 96) neden her modda kırmızı? Num Lock (LED 32) beyazı Num Lock göstergesi mi?
+- Fn tuşu (LED 96) neden her modda kırmızı? Num Lock (LED 32) beyazı Num Lock açıkken yanıyor.
 - Yan ışık şeridi gerçekten var mı, yoksa yalnızca Fn+Z ile açılan logo ışığı mı?
 - Topuz yeniden atanabilir mi?
 - Okuma opcode'ları (`04 10/12/16/22/26`): ayarları geri okumak için çok değerli, ama denenmeden önce risk değerlendirmesi ve yedek planı gerekli.

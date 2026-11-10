@@ -11,9 +11,10 @@
 use crate::dto::{Battery, KeyboardInfo, LedColor};
 use kb_core::color::LedCalibration;
 use kb_core::detect::BlePeer;
+use kb_core::readback;
 use kb_core::sonix::SonixFf13;
 use kb_devices::ConnectionKind;
-use kb_protocol::sonix::{EffectSettings, Rgb};
+use kb_protocol::sonix::{scale_to_level, EffectSettings, Rgb, MAX_LEVEL};
 use kb_transport::hid::{Hid, HidChannel};
 use std::collections::HashMap;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
@@ -45,7 +46,8 @@ pub enum Request {
     },
     /// `Some` starts/updates the live frame, `None` stops streaming.
     SetLive(Option<LiveFrame>),
-    SetMirror(bool),
+    /// Start (`Some`, with what the keys should show) or stop the mirror.
+    SetMirror(Option<MirrorExpect>),
     /// New colour calibration; re-sends the live frame at once so sliders
     /// give immediate feedback on the keys.
     SetCalibration(LedCalibration),
@@ -57,6 +59,26 @@ pub enum Request {
 pub struct LiveFrame {
     pub colors: Vec<(u8, Rgb)>,
     pub level: f32,
+}
+
+/// What the keyboard should be showing, in UI colours (sRGB). The mirror
+/// uses it to pick the right red value from each read-back.
+#[derive(Debug, Clone, Default)]
+pub struct MirrorExpect {
+    /// Brightness level (0–5) the keyboard runs at.
+    pub level: u8,
+    pub colors: Expected,
+}
+
+#[derive(Debug, Clone, Default)]
+pub enum Expected {
+    /// Rainbow effects, or a state the app did not set.
+    #[default]
+    Unknown,
+    /// One colour on every key (single-colour firmware effects).
+    Uniform(Rgb),
+    /// A per-key design; keys not listed are off.
+    PerKey(HashMap<u8, Rgb>),
 }
 
 #[derive(Default)]
@@ -110,12 +132,15 @@ struct Actor {
     command_path: Option<String>,
     command: Option<Command>,
     live: Option<LiveFrame>,
-    mirror: bool,
+    /// `Some` while the UI shows the mirror.
+    mirror: Option<MirrorExpect>,
+    /// Firmware status lights of the USB keyboard: (LED, colour when lit).
+    indicators: Vec<(u8, Rgb)>,
     /// UI colours are monitor sRGB; LEDs are linear. Applied to every
-    /// host-provided colour (live frames, per-key tables) and inverted for
-    /// the mirror. Verified by eye on 2026-11-10: gamma 2.2 matches the UI
-    /// palette, raw values wash out. Firmware effect colours (`04 13`) are
-    /// sent unchanged until an eye test shows whether they need it too.
+    /// host-provided colour (live frames, per-key tables, effect colours)
+    /// and inverted for the mirror. The firmware drives all three linearly:
+    /// a Static effect in #8B5CF6 reads back 137/91/244 at level 5, the
+    /// value-for-value scale a per-key table gets (measured 2026-11-10).
     calibration: LedCalibration,
     next_enumerate: Instant,
     next_live: Instant,
@@ -136,7 +161,8 @@ impl Actor {
             command_path: None,
             command: None,
             live: None,
-            mirror: false,
+            mirror: None,
+            indicators: Vec::new(),
             calibration,
             next_enumerate: now,
             next_live: now,
@@ -154,7 +180,7 @@ impl Actor {
             if self.live.is_some() && now >= self.next_live {
                 self.send_live();
                 self.next_live = Instant::now() + LIVE_EVERY;
-            } else if self.mirror && self.live.is_none() && now >= self.next_mirror {
+            } else if self.mirror.is_some() && self.live.is_none() && now >= self.next_mirror {
                 self.send_mirror();
                 self.next_mirror = Instant::now() + MIRROR_EVERY;
             }
@@ -162,7 +188,7 @@ impl Actor {
             let mut wake = self.next_enumerate;
             if self.live.is_some() {
                 wake = wake.min(self.next_live);
-            } else if self.mirror {
+            } else if self.mirror.is_some() {
                 wake = wake.min(self.next_mirror);
             }
             let timeout = wake.saturating_duration_since(Instant::now());
@@ -181,7 +207,8 @@ impl Actor {
                 self.batteries.clear();
                 self.next_enumerate = Instant::now();
             }
-            Request::ApplyEffect(settings, reply) => {
+            Request::ApplyEffect(mut settings, reply) => {
+                settings.color = self.calibration.apply(settings.color);
                 let r = self.with_command(|d| d.apply_effect(&settings));
                 let _ = reply.send(r);
             }
@@ -211,8 +238,8 @@ impl Actor {
                 self.live = frame;
                 self.next_live = Instant::now();
             }
-            Request::SetMirror(on) => {
-                self.mirror = on;
+            Request::SetMirror(expect) => {
+                self.mirror = expect;
                 self.next_mirror = Instant::now();
             }
             Request::SetCalibration(cal) => {
@@ -269,9 +296,25 @@ impl Actor {
             return;
         }
         match self.with_command(|d| d.read_colors()) {
-            Ok(colors) => {
-                // Show what the keys look like, in monitor colours.
+            Ok(raw) => {
                 let cal = self.calibration;
+                let expect = self.mirror.clone().unwrap_or_default();
+                let level = expect.level.min(MAX_LEVEL);
+                // The LED value a UI colour is driven with at this level.
+                let driven = |c: Rgb| cal.apply(c).map(|v| scale_to_level(v, level));
+                let expected = |led: u8| {
+                    if let Some((_, c)) = self.indicators.iter().find(|(l, _)| *l == led) {
+                        return Some(*c);
+                    }
+                    match &expect.colors {
+                        Expected::Unknown => None,
+                        Expected::Uniform(c) => Some(driven(*c)),
+                        Expected::PerKey(keys) => Some(keys.get(&led).map_or([0, 0, 0], |c| driven(*c))),
+                    }
+                };
+                let peak = scale_to_level(255, if level == 0 { MAX_LEVEL } else { level });
+                let colors = readback::decode_frame(&raw, expected, peak);
+                // Show what the keys look like, in monitor colours.
                 let payload: Vec<LedColor> = colors
                     .into_iter()
                     .map(|(led, c)| {
@@ -287,7 +330,7 @@ impl Actor {
 
     fn enumerate(&mut self) {
         // BLE enumeration is slow; skip it while streaming so frames stay smooth.
-        let busy = self.live.is_some() || self.mirror;
+        let busy = self.live.is_some() || self.mirror.is_some();
         if !busy && self.last_ble_scan.is_none_or(|t| t.elapsed() >= BLE_RESCAN) {
             self.peers = scan_ble();
             self.last_ble_scan = Some(Instant::now());
@@ -304,11 +347,10 @@ impl Actor {
         };
         let detected = kb_core::detect(&interfaces, &self.peers);
 
-        self.command_path = detected
-            .iter()
-            .find(|k| k.connection == ConnectionKind::Usb)
-            .and_then(|k| k.command.as_ref())
-            .map(|i| i.path.clone());
+        let usb = detected.iter().find(|k| k.connection == ConnectionKind::Usb);
+        self.command_path = usb.and_then(|k| k.command.as_ref()).map(|i| i.path.clone());
+        self.indicators =
+            usb.map(|k| k.model.indicators.iter().map(|i| (i.led, i.color)).collect()).unwrap_or_default();
         if self.command_path.is_none() {
             self.command = None;
         }

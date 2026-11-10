@@ -79,7 +79,7 @@ Araçlar: `kb effect`, `kb per-key`, `kb read-colors`. Tüm komutlar `kb-protoco
 
 - **Sağlama toplamı:** `04 02` cevabındaki toplam, veri bütünlüğü kontrolü olarak kullanılabilir. Sürücü artık uyuşmazlıkta hata veriyor ve `04 F0` göndermiyor.
 - **`F5` animasyonları izliyor:** Bu ürün yazılımında `F5` animasyonlu efektlerin o anki karesini de döndürüyor. S2 bunun tersini söylüyordu. Uygulamadaki "Klavyeden canlı okunuyor" aynası bu davranışa dayanıyor (saniyede yaklaşık 4 okuma).
-- **Renk hassasiyeti:** Klavye kanal başına yaklaşık 6 bitlik çözünürlükle saklıyor (FF → FA/FD).
+- ~~**Renk hassasiyeti:** Klavye kanal başına yaklaşık 6 bitlik çözünürlükle saklıyor (FF → FA/FD).~~ **Yanlış yorum** (düzeltme 2026-11-10, aşağıda "Efekt rengi, parlaklık ölçeği ve F5'in kırmızı baytı"): FD, 5. parlaklık seviyesinin ölçeği (`255·254 >> 8`). FA ise `F5`'in kırmızıyı `2·r mod 256` diye bildirmesinden geliyor (`2·253 mod 256 = 250`). Renkler 8 bit saklanıyor.
 
 ### Uygulamada tekrarlanan okuma hatası ve çözümü — 2026-11-10
 
@@ -119,7 +119,7 @@ Kullanıcıya gözle yaptırılan testler:
 
 **Neden:** Monitör renkleri sRGB gamma eğrisiyle gösterir; LED PWM ise doğrusaldır. Ara değerler (örneğin #8B5CF6'daki 0x5C) klavyede çok parlak yanıyor ve renk soluk, beyazımsı çıkıyor. Saf renkler (kanal başına 0 ya da 255) gamma'dan etkilenmediği için ilk testler bu hatayı yakalayamadı.
 
-**Çözüm:** `kb-core::color::LedCalibration`. Varsayılan gamma 2.2; kanal başına kazanç ayarlanabilir. Cihaz aktörü canlı karelere ve tuş başına tablolara bu dönüşümü uyguluyor. Firmware efektlerinin rengine (`04 13`) henüz uygulanmıyor; ayrıca doğrulanacak.
+**Çözüm:** `kb-core::color::LedCalibration`. Varsayılan gamma 2.2; kanal başına kazanç ayarlanabilir. Cihaz aktörü canlı karelere, tuş başına tablolara ve (2026-11-10'dan beri) firmware efektlerinin rengine (`04 13`) bu dönüşümü uyguluyor. Firmware efekt rengini kendisi gamma'lamıyor; ölçüm aşağıda.
 
 ### Kalibrasyon arayüzü, uçtan uca — 2026-11-10
 
@@ -162,6 +162,29 @@ CDP ile gerçek uygulamada, klavye USB modundayken denendi:
 - Num Lock'un beyazı muhtemelen Num Lock'un açık olduğunu gösteriyor. Fn'in kırmızısının neyi gösterdiği henüz bilinmiyor.
 
 **Arayüz hatası (ayrıca):** Fırça rengi değiştikten hemen sonra tıklanan tuş, React yeniden çizmeden önce eski rengi alıyordu. Boyama artık rengi tıklama anında durum deposundan okuyor.
+
+### Efekt rengi, parlaklık ölçeği ve F5'in kırmızı baytı — 2026-11-10
+
+**Soru:** Firmware efekt rengine (`04 13`) kendisi gamma uyguluyor mu? Uygulamanın kalibrasyonu efekt rengine de uygulanmalı mı?
+
+**Yöntem:** Uygulama kapalıyken CLI ile Static efekti (mod 1) farklı renk ve parlaklıklarda kaydedildi. Her seferinde `04 F5` ile geri okundu. Statik efektte bütün tuşlar aynı değeri döndürüyor. Testten sonra kullanıcının kayıtlı durumu (tuş başına mod, bütün tuşlar siyah, parlaklık 5) geri yazıldı ve `F5` ile eşleştiği görüldü.
+
+| Kaydedilen (Static) | `F5` (R G B) | Yorum |
+|---|---|---|
+| #8B5CF6, parlaklık 5 | `12 5B F4` | G ve B: `v·254 >> 8` (5C→5B, F6→F4). Gamma yok. |
+| #404040, 5 | `7E 3F 3F` | R = 2·63 |
+| #808080, 5 | `FE 7F 7F` | R = 2·127 |
+| #FFFFFF, 1 / 2 / 3 / 4 / 5 | `5E 2F 2F` / `BE 5F 5F` / `1C 8E 8E` / `7C BE BE` / `FA FD FD` | G = B = 47, 95, 142, 190, 253. R = 2·G mod 256. |
+
+**Canlı kare (`kb live-probe`, D ve E aşamaları, yalnızca RAM):** #808080 → `00 80 80`; #8B5CF6 → `16 5C F6`; #FF0000 → `FE 00 00`. Canlı kareye parlaklık ölçeği uygulanmıyor; kırmızı yine `2·r mod 256`. Kullanıcı canlı gri basamakları daha önce gözle gri görmüştü (§ Kalibrasyon arayüzü). Demek ki ışığın kendisi doğru; tuhaflık yalnızca okumada.
+
+**Sonuçlar:**
+1. **Efekt rengi doğrusal:** Firmware efekt rengini gamma'lamıyor; tuş başına tablo ve canlı kareyle aynı biçimde sürüyor. Uygulama artık kullanıcının kalibrasyonunu efekt rengine de uyguluyor. Böylece aynı palet rengi her modda aynı görünüyor.
+2. **Parlaklık ölçeği:** Seviye `n`'de değer `v·m[n] >> 8`, `m = [0, 48, 96, 143, 191, 254]`. Doğrusala yakın ama `n/5` değil (3. seviye %55,9, %60 değil). Canlı önizleme artık bu tabloyu kullanıyor. **Tuş başına tablonun** aynı ölçeği kullandığı varsayıldı; ölçülmedi (P1).
+3. **`F5` kırmızıyı `2·r mod 256` bildiriyor:** Kırmızının üst biti kayboluyor; her bayt iki değere karşılık geliyor (`b/2` ya da `b/2 + 128`). Yeşil ve mavi olduğu gibi geliyor. Göstergeler de aynı: Num Lock `FE FF FF` (beyaz), Fn `FE 00 00` (kırmızı).
+   - **Etkisi:** Ayna kırmızı ara tonları yanlış gösteriyordu. Örneğin mor #8B5CF6 lacivert (#125BF4) görünüyordu. Daha önceki "Nefes mavi #3A5BFF → ayna mor" gözlemi de bu.
+   - **Çözüm:** `kb_protocol::sonix::readback_red_candidates` iki adayı veriyor. `kb_core::readback` uygulamanın beklediği renge göre birini seçiyor. Beklenen renk, kayıtlı tasarım, efekt rengi ya da modeldeki gösterge rengi olabilir. Beklenti yoksa (gökkuşağı efektleri) karedeki en parlak kanala göre tahmin ediyor. Gökkuşağında yeşil ya da mavi zaten tepedeyken kırmızı belirsiz kalıyor; bu bilinen bir sınır.
+   - **Uygulamada doğrulandı (CDP):** Static #8B5CF6 uygulandı. Ayna tuşları `#895BF4` (137, 91, 244) gösterdi, göstergeleri `#FFFFFF` ve `#FF0000`. Sonra kullanıcının durumu geri yüklendi.
 
 ### Ekran: stok ana sayfa (fotoğraf, 2026-11-10 08:29)
 
