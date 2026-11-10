@@ -270,6 +270,29 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Vazgeç.
       - Geliştirme sırasında bir hata bulunup düzeltildi: HMR sonrası slayt anahtarları çakışıp yanlış küçük resim gösteriyordu. Anahtarlar artık düzenleyici başına sayaçla üretiliyor.
       - Klavyeye gerçek yükleme henüz yapılmadı.
+    - **PR:** [#22](https://github.com/cebersaban44-rgb/klavye-studio/pull/22).
+26. **Ekran Stüdyosu Faz B3: ışıkları ekrana uydur.**
+    - **Nereden:** "Bitti" bandındaki "Işıkları uydur" düğmesi ve kütüphanedeki her öğenin palet simgesi (fabrika animasyonu dahil).
+    - **Palet** (`lib/screenPalette.ts`):
+      - En çok 6 kareden örnek alınır, median cut ile 10 kutuya bölünür.
+      - Kutular "pay × (0,25 + doygunluk) × (0,35 + parlaklık)" ile sıralanır; LED'de aynı görünecek renkler elenir, en çok 5 renk kalır.
+      - Siyaha yakın pikseller (LED'de "sönük") palete alınmaz.
+      - LED'in parlaklığı klavyenin kendi ayarı olduğu için her renk tam değere çıkarılır. Pencere iki hâli yan yana gösterir: görseldeki renk ve tuştaki hâli.
+    - **Üç tasarım:**
+      - **Degrade:** palet, renklerin görseldeki yatay sırasıyla soldan sağa.
+      - **Tek renk:** en baskın renk bütün tuşlarda.
+      - **Görsel:** her tuş, görselde kapladığı alanın ortalamasını alır. Bütün tuşlara tek kazanç uygulanır; siyah yerler sönük kalır.
+    - **Yazma yok:**
+      - "Işıklar'da aç" tasarımı Işıklar sayfasında "Tuş başına renk" sekmesinde kaydedilmemiş taslak olarak açar (`useLighting` `setPerKey` + `setTab`).
+      - Canlı önizleme tuşlarda RAM'den görünür. Flash'a yazım yalnızca kullanıcı orada "Klavyeye kaydet"e basınca olur.
+      - Kaydedilmemiş değişiklik uyarısı her zamanki gibi çalışır.
+      - Vazgeç ve Esc hiçbir şeyi değiştirmez.
+    - **Doğrulama:** Tarayıcıda sahte arka uçla denendi:
+      - "Gün batımı" dağ kartından 5 renklik palet;
+      - üç seçeneğin önizlemesi;
+      - Işıklar'da açınca 97 tuşluk taslak ve canlı önizleme göstergesi;
+      - kütüphaneden açma, Vazgeç, Esc.
+      - Klavyede henüz denenmedi.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -301,8 +324,9 @@ app/
                 lib/hidCodes.ts (e.code ↔ HID), lib/layout.ts (Windows düzenine göre tuş adları),
                 lib/screen.ts (ekran kütüphanesi ve yükleme durumu), lib/screenImport.ts (dosya → RGB565),
                 lib/screenText.ts (yazı kartı çizicisi), pages/{Overview,Lighting,Keymap,Macros,Screen,Settings}.tsx,
-                lib/screenSlides.ts (slayt kare bütçesi ve geçişler),
-                pages/screen/ (Ekran Stüdyosu: common.tsx ortak adımlar, FileFlow.tsx, TextFlow.tsx, SlideFlow.tsx).
+                lib/screenSlides.ts (slayt kare bütçesi ve geçişler), lib/screenPalette.ts (ekrana uygun ışık),
+                pages/screen/ (Ekran Stüdyosu: common.tsx ortak adımlar, FileFlow.tsx, TextFlow.tsx, SlideFlow.tsx,
+                MatchLights.tsx).
   src/bindings/ `cargo test` ile ÜRETİLİR (TS tipleri, geometri JSON'u, efekt kataloğu). Elle düzenlenmez.
 tools/cdp.mjs   Çalışan uygulamanın WebView2'sine CDP ile JS çalıştırır ya da ekran görüntüsü alır (uçtan uca test).
 .github/workflows/ci.yml   PR ve birleştirmelerde Windows'ta kontroller (bkz. gelistirme-akisi.md).
@@ -430,10 +454,11 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
    - **Kullanıcının ilkesi (2026-11-10):** "Her ne yüklenirse yüklensin" dosya olduğu gibi gönderilmez. Uygulama onu klavyenin biçimine çevirir, önizletir, kullanıcı onaylarsa yükler. Ayrıntı: `research/ekran-derin-arastirma.md` §3.1.
    - **Sıradaki adımlar:**
      1. **Faz A bitti** (madde 23): Ekran Stüdyosu sayfası; kullanıcı kendi resim ve GIF'iyle denedi, E2 (kalıcılık) geçti.
-     2. **Faz B sürüyor** (kullanıcı 2026-11-10'da seçti; plan aşağıda, "Faz B planı"). Yeniden düzenleme, B1 (madde 24) ve B2 (madde 25) bitti; sırada B3 (ekranla uyumlu ışık).
-     3. Sonra: Faz C (olay tabanlı canlı kartlar), E3 (panelin gerçek kare hızı).
+     2. **Faz B bitti** (maddeler 24–26): kaynak seçici, yazı kartları, slayt, ışıkları ekrana uydurma. Tarayıcıda sahte arka uçla doğrulandı.
+        - Klavyede denenmesi gerekiyor: bir yazı kartı, bir slayt ve "Işıkları uydur". Kullanıcının onayıyla ya da kendi yüklemesiyle yapılır.
+     3. Sonra: Faz C (olay tabanlı canlı kartlar; plan aşağıda), E3 (panelin gerçek kare hızı).
      4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar 4 yükleme: E1, E4 ve kullanıcının 2 yüklemesi.
-   - **Faz B planı** (yeniden düzenleme, B1 ve B2 yapıldı, maddeler 24–25; B3 bekliyor):
+   - **Faz B planı** (hepsi yapıldı, maddeler 24–26; plan kayıt için duruyor):
      - **Kullanıcının arayüz kuralı** (2026-11-10, Faz A geri bildirimi):
        - adımlar görünür olsun;
        - her adımda belirgin bir "Vazgeç" bulunsun;
