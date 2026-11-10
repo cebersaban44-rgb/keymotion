@@ -32,8 +32,8 @@ export interface KeymapStore {
   load: (modelId: string) => Promise<void>;
   setLayer: (layer: KeymapLayer) => void;
   select: (led: number | null) => void;
-  /** Assign `action` in the current layer; `default` removes the entry. */
-  assign: (led: number, action: KeyActionInfo) => void;
+  /** Assign `action` in `layer` (default: the current one); `default` removes the entry. */
+  assign: (led: number, action: KeyActionInfo, layer?: KeymapLayer) => void;
   /** Every key of `layer` back to the firmware default (in the draft). */
   resetLayer: (layer: KeymapLayer) => void;
   /** Write every layer that differs from the record (flash writes). */
@@ -111,8 +111,9 @@ export const useKeymap = create<KeymapStore>((set, get) => {
     },
     setLayer: (layer) => update({ layer }),
     select: (selected) => set({ selected }),
-    assign: (led, action) => {
-      const { draft, layer } = get();
+    assign: (led, action, target) => {
+      const { draft } = get();
+      const layer = target ?? get().layer;
       const next = { ...draft[layer] };
       if (action.kind === "default") delete next[led];
       else next[led] = action;

@@ -1,10 +1,11 @@
 //! Types shared with the UI. `cargo test` exports them to
 //! `app/src/bindings/*.ts` through ts-rs, so the UI never re-declares them.
 
-use crate::settings::{StoredKeymap, StoredLayer};
+use crate::settings::{StoredKeymap, StoredLayer, StoredMacro, StoredMacros, StoredStep};
 use kb_core::DetectedKeyboard;
 use kb_devices::{Capability, ConnectionKind, Model};
 use kb_protocol::sonix::keymap::{KeyAction, Layer, MacroPlay, MouseButton, UsageGroup};
+use kb_protocol::sonix::macros::{MacroStep, StepKind};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -708,6 +709,110 @@ impl KeymapCatalog {
                 .collect(),
             media: CONSUMER.iter().map(|c| MediaUsageInfo { usage: c.code, id: c.id.into() }).collect(),
             mouse: MouseButton::ALL.into_iter().map(MouseButtonName::from).collect(),
+        }
+    }
+}
+
+// ------------------------------------------------------------------ macros
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum MacroStepKind {
+    KeyDown,
+    KeyUp,
+    MouseDown,
+    MouseUp,
+}
+
+/// One macro step: press or release, then wait.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct MacroStepInfo {
+    pub kind: MacroStepKind,
+    /// Keyboard usage (modifiers as 0xE0–0xE7) or mouse mask (1 left, 2 right, 4 middle).
+    pub code: u8,
+    /// Pause after the step, in ms.
+    pub delay_ms: u16,
+}
+
+impl From<MacroStep> for MacroStepInfo {
+    fn from(s: MacroStep) -> Self {
+        let kind = match s.kind {
+            StepKind::KeyDown => MacroStepKind::KeyDown,
+            StepKind::KeyUp => MacroStepKind::KeyUp,
+            StepKind::MouseDown => MacroStepKind::MouseDown,
+            StepKind::MouseUp => MacroStepKind::MouseUp,
+        };
+        Self { kind, code: s.code, delay_ms: s.delay_ms }
+    }
+}
+
+impl From<MacroStepInfo> for MacroStep {
+    fn from(s: MacroStepInfo) -> Self {
+        let kind = match s.kind {
+            MacroStepKind::KeyDown => StepKind::KeyDown,
+            MacroStepKind::KeyUp => StepKind::KeyUp,
+            MacroStepKind::MouseDown => StepKind::MouseDown,
+            MacroStepKind::MouseUp => StepKind::MouseUp,
+        };
+        MacroStep { kind, code: s.code, delay_ms: s.delay_ms }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, Serialize, TS)]
+#[ts(export)]
+pub struct MacroInfo {
+    /// The app's own name; the keyboard stores none.
+    pub name: String,
+    pub steps: Vec<MacroStepInfo>,
+}
+
+impl From<&StoredMacro> for MacroInfo {
+    fn from(m: &StoredMacro) -> Self {
+        Self { name: m.name.clone(), steps: m.steps.iter().map(|s| s.0.into()).collect() }
+    }
+}
+
+impl From<MacroInfo> for StoredMacro {
+    fn from(m: MacroInfo) -> Self {
+        Self {
+            name: m.name.trim().chars().take(MACRO_NAME_MAX).collect(),
+            steps: m.steps.into_iter().map(|s| StoredStep(s.into())).collect(),
+        }
+    }
+}
+
+/// Longest macro name the app keeps.
+pub const MACRO_NAME_MAX: usize = 40;
+
+/// What the app last wrote to a model's macro memory, plus its limits.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct MacrosState {
+    /// Slot `i` is macro `i`; `null` marks an unused slot.
+    pub slots: Vec<Option<MacroInfo>>,
+    /// Unix ms of the last write; `null` when the app never wrote macros.
+    pub written_ms: Option<f64>,
+    /// Memory limit: `(steps + slots) × 8` bytes may not exceed this.
+    pub budget: u32,
+    pub max_slots: u32,
+    pub min_delay_ms: u16,
+    pub max_name: u32,
+}
+
+impl From<&StoredMacros> for MacrosState {
+    fn from(m: &StoredMacros) -> Self {
+        use kb_protocol::sonix::macros::{BUDGET, MAX_MACROS, MIN_DELAY_MS};
+        Self {
+            slots: m.slots.iter().map(|s| s.as_ref().map(MacroInfo::from)).collect(),
+            written_ms: m.written_ms.map(|ms| ms as f64),
+            budget: BUDGET as u32,
+            max_slots: MAX_MACROS as u32,
+            min_delay_ms: MIN_DELAY_MS,
+            max_name: MACRO_NAME_MAX as u32,
         }
     }
 }

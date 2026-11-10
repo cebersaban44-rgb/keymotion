@@ -11,10 +11,20 @@ import { KeyboardView, type Legend } from "../components/KeyboardView";
 import { getKeymapCatalog } from "../lib/ipc";
 import { useAgo, useT, type MessageKey } from "../lib/i18n";
 import { dirtyLayers, FN_USAGE, normalize, sameAction, usageAction, useKeymap, type LayerMap } from "../lib/keymap";
-import { actionShort, actionText, MEDIA_ICONS, MOD_TOGGLES, usageShort } from "../lib/keymapLabels";
+import { actionShort, actionText, MEDIA_ICONS, MOD_TOGGLES, usageShort, type MacroNames } from "../lib/keymapLabels";
+import { dirtySlots, useMacros } from "../lib/macros";
+import { layoutLabel, useLayout, useLayoutLabel } from "../lib/layout";
+import { useApp } from "../lib/store";
+import type { MacroPlayMode } from "../bindings/MacroPlayMode";
 
 type Status = { kind: "idle" } | { kind: "busy" } | { kind: "ok"; ms: number } | { kind: "error"; message: string };
-type Category = "keys" | "media" | "mouse" | "special";
+type Category = "keys" | "media" | "mouse" | "macro" | "special";
+
+/** Names of the macros being edited, for key legends and the panel. */
+function useMacroNames(): MacroNames {
+  const draft = useMacros((s) => s.draft);
+  return useMemo(() => (slot: number) => draft[slot]?.name || undefined, [draft]);
+}
 
 const GROUPS: KeyUsageGroup[] = ["letter", "digit", "function", "editing", "navigation", "symbol", "keypad", "modifier"];
 
@@ -111,15 +121,22 @@ function Plate({
   const draft = useKeymap((s) => s.draft[layer]);
   const saved = useKeymap((s) => s.saved?.[layer] ?? null);
   const keys = kb.geometry?.keys ?? [];
+  const names = useMacroNames();
+  const layoutMap = useLayout((s) => s.map);
 
   const { legends, colors, classes } = useMemo(() => {
+    const layout = (hid: number) => layoutLabel(layoutMap, hid);
     const legends: Record<number, Legend> = {};
     const colors: Record<number, string> = {};
     const classes: Record<number, string> = {};
     for (const k of keys) {
       const a = draft[k.led];
       if (a) {
-        legends[k.led] = { main: actionShort(a, catalog), text: actionText(a, catalog, t), sub: k.label };
+        legends[k.led] = {
+          main: actionShort(a, catalog, layout),
+          text: actionText(a, catalog, t, names, layout),
+          sub: k.label,
+        };
         colors[k.led] = a.kind === "disabled" ? "var(--danger)" : "var(--signal)";
       } else {
         colors[k.led] = "transparent";
@@ -129,7 +146,7 @@ function Plate({
       else if (pending) classes[k.led] = "is-pending";
     }
     return { legends, colors, classes };
-  }, [keys, draft, saved, catalog, t]);
+  }, [keys, draft, saved, catalog, t, names, layoutMap]);
 
   const pendingCount = Object.values(classes).filter((c) => c === "is-pending").length;
   const selectedSet = useMemo(() => new Set(selected === null ? [] : [selected]), [selected]);
@@ -197,6 +214,7 @@ function Picker({
 }) {
   const t = useT();
   const [category, setCategory] = useState<Category>("keys");
+  const layout = useLayoutLabel();
   const [mods, setMods] = useState(0);
   const current = useKeymap((s) => (keyGeo ? s.draft[layer][keyGeo.led] : undefined));
   const assignRaw = useAssign(layer, keyGeo);
@@ -232,6 +250,7 @@ function Picker({
             { value: "keys", label: t("km.cat.keys") },
             { value: "media", label: t("km.cat.media") },
             { value: "mouse", label: t("km.cat.mouse") },
+            { value: "macro", label: t("km.cat.macro") },
             { value: "special", label: t("km.cat.special") },
           ]}
         />
@@ -282,7 +301,7 @@ function Picker({
                         onClick={() => assign(a)}
                         className={`${chip(isCurrent(a))} num`}
                       >
-                        {g === "keypad" ? usageShort(u) : u.label}
+                        {g === "keypad" ? usageShort(u) : (layout(u.code) ?? u.label)}
                       </button>
                     );
                   })}
@@ -337,6 +356,10 @@ function Picker({
         </div>
       )}
 
+      {category === "macro" && (
+        <MacroPicker off={off} current={current} assign={assign} isCurrent={isCurrent} chip={chip} keyLed={keyGeo?.led} />
+      )}
+
       {category === "special" && (
         <div className="grid grid-cols-2 gap-2">
           {(
@@ -366,6 +389,130 @@ function Picker({
   );
 }
 
+const PLAY_MODES: { value: MacroPlayMode; label: MessageKey }[] = [
+  { value: "once", label: "km.play.once" },
+  { value: "times", label: "km.play.times" },
+  { value: "toggle", label: "km.play.toggle" },
+  { value: "hold", label: "km.play.hold" },
+];
+
+/** Pick a macro and how the key plays it. */
+function MacroPicker({
+  off,
+  current,
+  assign,
+  isCurrent,
+  chip,
+  keyLed,
+}: {
+  off: boolean;
+  current: KeyActionInfo | undefined;
+  assign: (a: KeyActionInfo) => void;
+  isCurrent: (a: KeyActionInfo) => boolean;
+  chip: (active: boolean) => string;
+  keyLed: number | undefined;
+}) {
+  const t = useT();
+  const draft = useMacros((s) => s.draft);
+  const dirtyKey = useMacros((s) => dirtySlots(s).join(","));
+  const dirty = new Set(dirtyKey ? dirtyKey.split(",").map(Number) : []);
+  const setPage = useApp((s) => s.setPage);
+  const [mode, setMode] = useState<MacroPlayMode>("once");
+  const [count, setCount] = useState(2);
+
+  // Show how the selected key plays its macro now.
+  useEffect(() => {
+    if (current?.kind === "macro") {
+      setMode(current.mode);
+      if (current.mode === "times") setCount(current.count);
+    } else {
+      setMode("once");
+    }
+    // Only when another key is selected.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyLed]);
+
+  const action = (slot: number): KeyActionInfo => ({
+    kind: "macro",
+    slot,
+    mode,
+    count: mode === "times" ? Math.min(255, Math.max(1, count)) : 1,
+  });
+  const macros = draft.map((m, slot) => ({ m, slot })).filter((x) => x.m !== null);
+
+  if (macros.length === 0) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-bg-raise px-4 py-3 text-[12.5px] text-ink-2">
+        {t("km.macro.none")}
+        <button
+          type="button"
+          onClick={() => setPage("macros")}
+          className="shrink-0 rounded-lg border border-line px-2.5 py-1 text-[12px] text-ink-2 hover:text-ink"
+        >
+          {t("km.macro.go")}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-[12px] font-medium">{t("km.play")}</span>
+        <Segmented
+          label={t("km.play")}
+          value={mode}
+          onChange={(m) => {
+            setMode(m);
+            // Re-assign with the new mode when the key already plays a macro.
+            if (current?.kind === "macro" && !off)
+              assign({ ...current, mode: m, count: m === "times" ? Math.min(255, Math.max(1, count)) : 1 });
+          }}
+          disabled={off}
+          options={PLAY_MODES.map((p) => ({ value: p.value, label: t(p.label) }))}
+        />
+        {mode === "times" && (
+          <label className="flex items-center gap-1.5 text-[12px] text-ink-2">
+            <input
+              type="number"
+              min={1}
+              max={255}
+              value={count}
+              disabled={off}
+              onChange={(e) => {
+                const n = Math.min(255, Math.max(1, Number(e.target.value) || 1));
+                setCount(n);
+                if (current?.kind === "macro" && current.mode === "times" && !off) assign({ ...current, count: n });
+              }}
+              className="num h-8 w-16 rounded-lg border border-line bg-surface px-2 text-right outline-none focus:border-signal"
+            />
+            {t("km.play.count")}
+          </label>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {macros.map(({ m, slot }) => {
+          const a = action(slot);
+          return (
+            <button
+              key={slot}
+              type="button"
+              disabled={off}
+              aria-pressed={isCurrent(a)}
+              onClick={() => assign(a)}
+              className={`${chip(isCurrent(a))} h-10 justify-start`}
+            >
+              <span className="num rounded-md bg-bg-raise px-1.5 text-[11px] text-ink-3">M{slot + 1}</span>
+              <span className="truncate">{m?.name || t("mc.unnamed")}</span>
+              {dirty.has(slot) && <span className="ml-auto text-[11px] text-signal">{t("km.macro.unsaved")}</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function SelectedCard({
   layer,
   catalog,
@@ -378,6 +525,8 @@ function SelectedCard({
   const t = useT();
   const action = useKeymap((s) => (keyGeo ? s.draft[layer][keyGeo.led] : undefined));
   const assign = useAssign(layer, keyGeo);
+  const names = useMacroNames();
+  const layout = useLayoutLabel();
   if (!keyGeo) return null;
   const locked = keyGeo.hid === FN_USAGE;
   const own = layer === "base" ? t("km.ownFunction") : t("km.fnDefault");
@@ -390,7 +539,7 @@ function SelectedCard({
         </span>
         <span className="text-ink-3">→</span>
         <span className="font-display text-[17px] font-semibold">
-          {locked ? "Fn" : action ? actionText(action, catalog, t) : own}
+          {locked ? "Fn" : action ? actionText(action, catalog, t, names, layout) : own}
         </span>
       </div>
       {locked ? (
@@ -562,7 +711,7 @@ const MOUSE_BUTTONS = ["left", "middle", "right", "back", "forward"] as const;
 function KeyTester() {
   const t = useT();
   const [events, setEvents] = useState<{ id: number; text: string }[]>([]);
-  const push = (text: string) => setEvents((list) => [{ id: performance.now(), text }, ...list].slice(0, 10));
+  const push = (text: string) => setEvents((list) => [{ id: performance.now(), text }, ...list].slice(0, 24));
   const keyText = (e: KeyboardEvent) => {
     const media = BROWSER_MEDIA[e.key];
     if (media) return t(`km.media.${media}` as MessageKey);
