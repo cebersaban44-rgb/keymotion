@@ -12,7 +12,7 @@ export type LightingDraft = "effect" | "per-key" | null;
 /** led index → "#rrggbb" */
 export type ColorMap = Record<number, string>;
 
-interface LightingState {
+export interface LightingState {
   tab: LightingTab;
   effect: EffectRequest;
   /** Last effect successfully stored on the keyboard. */

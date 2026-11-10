@@ -428,17 +428,27 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!live) {
+      window.clearTimeout(timer.current);
       setLiveFrame(null).catch(console.error);
       return;
     }
     window.clearTimeout(timer.current);
-    // Brightness is applied by the backend after calibration (linear, like
-    // the firmware), so the preview matches the stored design.
+    // Brightness is applied by the backend after calibration, with the
+    // firmware's own scale, so the preview matches the stored design.
     timer.current = window.setTimeout(() => {
       setLiveFrame(toLedColors(perKey), perKeyBrightness).catch(console.error);
     }, 40);
   }, [live, perKey, perKeyBrightness]);
-  useEffect(() => () => void setLiveFrame(null).catch(console.error), []);
+  // A frame still waiting on the timer would restart the stream after the
+  // stop and keep it running on another tab (seen when switching tabs
+  // within 40 ms of opening this one).
+  useEffect(
+    () => () => {
+      window.clearTimeout(timer.current);
+      void setLiveFrame(null).catch(console.error);
+    },
+    [],
+  );
 
   const byId = useMemo(() => new Map(keys.map((k) => [k.id, k.led])), [keys]);
   const preset = (name: "wasd" | "rainbow" | "home") => {
