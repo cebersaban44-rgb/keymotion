@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import type { Feature } from "../bindings/Feature";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import { BatteryGauge } from "../components/BatteryGauge";
+import { ClockCard } from "../components/ClockCard";
 import { KeyboardView } from "../components/KeyboardView";
 import { ModeSwitch } from "../components/ModeSwitch";
 import { connectionKey, featureKey, useAgo, useT } from "../lib/i18n";
@@ -157,9 +158,15 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
         </motion.section>
       </div>
 
+      {(kb.features.includes("clock") || usbFeatures.includes("clock")) && (
+        <motion.section {...rise(5)}>
+          <ClockCard usb={kb.features.includes("clock")} />
+        </motion.section>
+      )}
+
       {!full && (
         <motion.section
-          {...rise(5)}
+          {...rise(6)}
           className="relative flex gap-6 overflow-hidden rounded-[20px] border border-signal/30 p-6"
           style={{ background: "linear-gradient(100deg, color-mix(in oklch, var(--signal) 12%, var(--surface)), var(--surface) 55%)" }}
         >

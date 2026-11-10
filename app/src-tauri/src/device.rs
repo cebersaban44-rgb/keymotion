@@ -6,9 +6,11 @@
 //!
 //! * re-enumerates devices and emits `keyboards-changed`,
 //! * streams the live (RAM-only) LED frame while one is set,
-//! * mirrors the colours currently shown (`04 F5`) while the UI asks for it.
+//! * mirrors the colours currently shown (`04 F5`) while the UI asks for it,
+//! * sets the keyboard clock when it connects over USB (at most once a day).
 
 use crate::dto::{Battery, KeyboardInfo, LedColor};
+use crate::settings::{self, ClockSettings};
 use kb_core::color::LedCalibration;
 use kb_core::detect::BlePeer;
 use kb_core::readback;
@@ -17,6 +19,7 @@ use kb_devices::ConnectionKind;
 use kb_protocol::sonix::{scale_to_level, EffectSettings, Rgb, MAX_LEVEL};
 use kb_transport::hid::{Hid, HidChannel};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -24,6 +27,7 @@ use tauri::{AppHandle, Emitter};
 
 pub const EVENT_KEYBOARDS_CHANGED: &str = "keyboards-changed";
 pub const EVENT_MIRROR: &str = "lighting-mirror";
+pub const EVENT_CLOCK: &str = "clock-changed";
 
 const ENUMERATE_EVERY: Duration = Duration::from_secs(2);
 const BLE_RESCAN: Duration = Duration::from_secs(10);
@@ -33,6 +37,15 @@ const BATTERY_REFRESH: Duration = Duration::from_secs(60);
 const LIVE_EVERY: Duration = Duration::from_millis(50);
 /// `04 F5` polling rate for the on-screen mirror.
 const MIRROR_EVERY: Duration = Duration::from_millis(250);
+/// Wait after the keyboard appears before talking to it: all its interfaces
+/// need to be ready (S2, docs/research/protokol-ff13.md §10.4).
+const CLOCK_SETTLE: Duration = Duration::from_secs(2);
+/// Automatic clock sync runs at most this often. Every clock packet also
+/// switches the screen to its clock page, so it should not run on every
+/// reconnect.
+const CLOCK_SYNC_EVERY: Duration = Duration::from_secs(24 * 60 * 60);
+const CLOCK_RETRY: Duration = Duration::from_secs(5);
+const CLOCK_ATTEMPTS: u8 = 3;
 
 pub type Reply<T> = Sender<Result<T, String>>;
 
@@ -51,6 +64,10 @@ pub enum Request {
     /// New colour calibration; re-sends the live frame at once so sliders
     /// give immediate feedback on the keys.
     SetCalibration(LedCalibration),
+    /// Set the keyboard clock to the PC's local time now.
+    SyncClock(Reply<ClockSettings>),
+    /// Turn automatic clock sync on or off (persisted).
+    SetClockAuto(bool, Reply<ClockSettings>),
 }
 
 /// A RAM-only frame in UI colours (sRGB). Calibration and the linear
@@ -85,6 +102,7 @@ pub enum Expected {
 pub struct Snapshot {
     pub keyboards: Vec<KeyboardInfo>,
     pub calibration: LedCalibration,
+    pub clock: ClockSettings,
 }
 
 pub struct DeviceHandle {
@@ -105,13 +123,16 @@ impl DeviceHandle {
     }
 }
 
-pub fn spawn(app: AppHandle, calibration: LedCalibration) -> DeviceHandle {
-    let snapshot = Arc::new(Mutex::new(Snapshot { keyboards: Vec::new(), calibration }));
+/// Start the actor. `config_dir` is where clock sync history is saved;
+/// without it the history lasts only for this run.
+pub fn spawn(app: AppHandle, calibration: LedCalibration, config_dir: Option<PathBuf>) -> DeviceHandle {
+    let clock = config_dir.as_deref().map(settings::load_clock).unwrap_or_default();
+    let snapshot = Arc::new(Mutex::new(Snapshot { keyboards: Vec::new(), calibration, clock }));
     let (tx, rx) = mpsc::channel();
     let shared = snapshot.clone();
     std::thread::Builder::new()
         .name("device-actor".into())
-        .spawn(move || Actor::new(app, shared, calibration).run(rx))
+        .spawn(move || Actor::new(app, shared, calibration, clock, config_dir).run(rx))
         .expect("spawn device actor");
     DeviceHandle { snapshot, tx }
 }
@@ -142,13 +163,23 @@ struct Actor {
     /// a Static effect in #8B5CF6 reads back 137/91/244 at level 5, the
     /// value-for-value scale a per-key table gets (measured 2026-11-10).
     calibration: LedCalibration,
+    clock: ClockSettings,
+    config_dir: Option<PathBuf>,
+    /// When the next automatic clock sync is due, and attempts left.
+    clock_due: Option<(Instant, u8)>,
     next_enumerate: Instant,
     next_live: Instant,
     next_mirror: Instant,
 }
 
 impl Actor {
-    fn new(app: AppHandle, shared: Arc<Mutex<Snapshot>>, calibration: LedCalibration) -> Self {
+    fn new(
+        app: AppHandle,
+        shared: Arc<Mutex<Snapshot>>,
+        calibration: LedCalibration,
+        clock: ClockSettings,
+        config_dir: Option<PathBuf>,
+    ) -> Self {
         let hid = Hid::new().map_err(|e| tracing::error!("HID init failed: {e}")).ok();
         let now = Instant::now();
         Self {
@@ -164,6 +195,9 @@ impl Actor {
             mirror: None,
             indicators: Vec::new(),
             calibration,
+            clock,
+            config_dir,
+            clock_due: None,
             next_enumerate: now,
             next_live: now,
             next_mirror: now,
@@ -184,12 +218,26 @@ impl Actor {
                 self.send_mirror();
                 self.next_mirror = Instant::now() + MIRROR_EVERY;
             }
+            if let Some((due, attempts)) = self.clock_due {
+                if now >= due {
+                    self.clock_due = None;
+                    if let Err(e) = self.sync_clock() {
+                        tracing::warn!(attempts_left = attempts - 1, "automatic clock sync failed: {e}");
+                        if attempts > 1 && self.command_path.is_some() {
+                            self.clock_due = Some((Instant::now() + CLOCK_RETRY, attempts - 1));
+                        }
+                    }
+                }
+            }
 
             let mut wake = self.next_enumerate;
             if self.live.is_some() {
                 wake = wake.min(self.next_live);
             } else if self.mirror.is_some() {
                 wake = wake.min(self.next_mirror);
+            }
+            if let Some((due, _)) = self.clock_due {
+                wake = wake.min(due);
             }
             let timeout = wake.saturating_duration_since(Instant::now());
             match rx.recv_timeout(timeout) {
@@ -247,7 +295,55 @@ impl Actor {
                 self.calibration = cal.sanitized();
                 self.next_live = Instant::now();
             }
+            Request::SyncClock(reply) => {
+                let r = self.sync_clock().map(|_| self.clock);
+                let _ = reply.send(r);
+            }
+            Request::SetClockAuto(on, reply) => {
+                self.clock.auto_sync = on;
+                if !on {
+                    self.clock_due = None;
+                }
+                let _ = reply.send(self.store_clock().map(|_| self.clock));
+            }
         }
+    }
+
+    /// Set the keyboard clock to the PC's local time, then record it.
+    fn sync_clock(&mut self) -> Result<(), String> {
+        let time = kb_core::clock::now();
+        self.with_command(|d| d.set_clock(&time))?;
+        tracing::info!(?time, "keyboard clock set");
+        let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+        self.clock.last_sync_ms = Some(now_ms);
+        if let Err(e) = self.store_clock() {
+            // The clock is set; only the history is lost.
+            tracing::warn!("{e}");
+        }
+        Ok(())
+    }
+
+    /// Persist the clock settings and tell the UI.
+    fn store_clock(&mut self) -> Result<(), String> {
+        if let Ok(mut s) = self.shared.lock() {
+            s.clock = self.clock;
+        }
+        let _ = self.app.emit(EVENT_CLOCK, crate::dto::ClockStatus::from(self.clock));
+        match &self.config_dir {
+            Some(dir) => settings::save_clock(dir, self.clock).map_err(|e| format!("clock settings not saved: {e}")),
+            None => Ok(()),
+        }
+    }
+
+    /// Whether an automatic sync is due when the keyboard connects.
+    fn clock_sync_due(&self) -> bool {
+        if !self.clock.auto_sync {
+            return false;
+        }
+        let Some(last) = self.clock.last_sync_ms else { return true };
+        let last = UNIX_EPOCH + Duration::from_millis(last);
+        // A clock set in the future (wrong PC time earlier) also counts as due.
+        SystemTime::now().duration_since(last).map_or(true, |age| age >= CLOCK_SYNC_EVERY)
     }
 
     /// Run `f` against the wired command channel, opening it on demand.
@@ -348,7 +444,15 @@ impl Actor {
         let detected = kb_core::detect(&interfaces, &self.peers);
 
         let usb = detected.iter().find(|k| k.connection == ConnectionKind::Usb);
+        let was_connected = self.command_path.is_some();
         self.command_path = usb.and_then(|k| k.command.as_ref()).map(|i| i.path.clone());
+        let clock_capable = usb.is_some_and(|k| k.capabilities().contains(&kb_devices::Capability::Clock));
+        if !was_connected && self.command_path.is_some() && clock_capable && self.clock_sync_due() {
+            tracing::debug!("keyboard connected; clock sync due");
+            self.clock_due = Some((Instant::now() + CLOCK_SETTLE, CLOCK_ATTEMPTS));
+        } else if self.command_path.is_none() {
+            self.clock_due = None;
+        }
         self.indicators =
             usb.map(|k| k.model.indicators.iter().map(|i| (i.led, i.color)).collect()).unwrap_or_default();
         if self.command_path.is_none() {

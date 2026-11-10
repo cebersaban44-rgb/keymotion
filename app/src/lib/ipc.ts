@@ -12,6 +12,7 @@ import type { EffectInfo } from "../bindings/EffectInfo";
 import type { EffectRequest } from "../bindings/EffectRequest";
 import type { LedColor } from "../bindings/LedColor";
 import type { MirrorHint } from "../bindings/MirrorHint";
+import type { ClockStatus } from "../bindings/ClockStatus";
 import type { Calibration } from "../bindings/Calibration";
 import type { CalibrationInfo } from "../bindings/CalibrationInfo";
 // Generated from Rust by `cargo test` (dto.rs export_mock_geometry).
@@ -141,6 +142,36 @@ export function setMirror(enabled: boolean, hint: MirrorHint | null = null): Pro
 export async function onMirror(cb: (colors: LedColor[]) => void): Promise<UnlistenFn> {
   if (!inTauri) return () => {};
   return listen<LedColor[]>("lighting-mirror", (e) => cb(e.payload));
+}
+
+// Browser-only stand-in for the keyboard clock state.
+let mockClock: ClockStatus = { autoSync: true, lastSyncMs: Date.now() - 3 * 60_000 };
+
+/** Keyboard clock sync state. */
+export function getClockStatus(): Promise<ClockStatus> {
+  if (!inTauri) return Promise.resolve(mockClock);
+  return invoke<ClockStatus>("clock_status");
+}
+
+/** Set the keyboard clock to the PC's local time now (USB only). */
+export async function syncClock(): Promise<ClockStatus> {
+  if (!inTauri) {
+    await mockDelay(300);
+    return (mockClock = { ...mockClock, lastSyncMs: Date.now() });
+  }
+  return serial(() => invoke<ClockStatus>("sync_clock"));
+}
+
+/** Turn automatic clock sync (on USB connect, at most once a day) on or off. */
+export function setClockAuto(enabled: boolean): Promise<ClockStatus> {
+  if (!inTauri) return Promise.resolve((mockClock = { ...mockClock, autoSync: enabled }));
+  return serial(() => invoke<ClockStatus>("set_clock_auto", { enabled }));
+}
+
+/** Clock state changes, including automatic syncs in the background. */
+export async function onClockChanged(cb: (status: ClockStatus) => void): Promise<UnlistenFn> {
+  if (!inTauri) return () => {};
+  return listen<ClockStatus>("clock-changed", (e) => cb(e.payload));
 }
 
 // ------------------------------------------------------------- calibration
