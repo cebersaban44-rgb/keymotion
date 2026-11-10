@@ -84,7 +84,7 @@ export function errorKey(e: unknown): MessageKey {
 }
 
 /** What the last finished flow did, shown above the source picker. */
-export type Done = { kind: "uploaded" | "saved"; name: string; seconds?: number };
+export type Done = { kind: "uploaded" | "saved"; name: string; seconds?: number; /** library item */ id?: string };
 
 /** Plays RGB565 frames on a 240×135 canvas, scaled with sharp pixels. */
 export function FramePlayer({
@@ -328,8 +328,8 @@ export function PreviewPanel({
   const saveOnly = async () => {
     setError(null);
     try {
-      await store();
-      onFinished({ kind: "saved", name: finalName });
+      const item = await store();
+      onFinished({ kind: "saved", name: finalName, id: item.id });
     } catch (e) {
       setError(String(e));
     }
@@ -345,7 +345,7 @@ export function PreviewPanel({
       const item = await store();
       await useScreen.getState().uploadToKeyboard(item, "editor");
       onBusy(false);
-      onFinished({ kind: "uploaded", name: finalName, seconds: (performance.now() - started) / 1000 });
+      onFinished({ kind: "uploaded", name: finalName, seconds: (performance.now() - started) / 1000, id: item.id });
     } catch (e) {
       setError(`${t("sc.uploadFailed")}: ${String(e)}`);
       setUploading(false);
