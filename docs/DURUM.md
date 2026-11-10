@@ -47,7 +47,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | **Ekran Stüdyosu**: dosyadan (resim, GIF, video; kırpma, süre), yazı kartları (5 şablon), slayt; önizleme, onay, kütüphane, fabrika animasyonuna dönüş | ✅ Kullanıcı klavyede hepsini denedi (maddeler 23–25). |
 | Ekran → **Işıkları uydur**: görselin paletinden tuş tasarımı (degrade, tek renk, görsel), Işıklar'da taslak | ✅ Kullanıcı mor kartta klavyede doğruladı (madde 26). |
 | Ekran → **Canlı ekran**: canlı mod, günlük yükleme bütçesi, "Çalan şarkı" kartı, kapatınca önceki görseli geri yükleme | ✅ Kullanıcı klavyede denedi (madde 27). |
-| Araçlar → **Odak zamanlayıcısı** (Pomodoro tekniği): odak ve mola süreleri; bütün klavye fazın rengiyle dolu başlar ve süre azaldıkça seçilen yönde boşalır (flash'sız; yön, renkler, parlaklık, nabız, faz geçişi, ses seçilebilir; "Klavyede dene"); faz başında ekran kartı; kenar çubuğunda kalan süre | ⏳ Zamanlayıcı ve ışık katmanı gerçek uygulamada ve klavyede denendi (CDP, günlük). Kullanıcının gözle denemesi ve ekran kartının klavyede yüklenmesi bekliyor (madde 28). |
+| Araçlar → **Odak zamanlayıcısı** (Pomodoro tekniği): odak ve mola süreleri; bütün klavye fazın rengiyle dolu başlar ve süre azaldıkça seçilen yönde boşalır (flash'sız; yön, renkler, parlaklık, nabız, faz geçişi, ses seçilebilir; "Klavyede dene"); faz başında ekran kartı; kenar çubuğunda kalan süre | ⏳ Zamanlayıcı ve ışık katmanı gerçek uygulamada ve klavyede denendi (CDP, günlük). Kullanıcının gözle denemesi, sesi duyması ve ekran kartının klavyede yüklenmesi bekliyor (maddeler 28–30). |
 
 ## 3. Kronoloji: ne yaptık, neden
 
@@ -448,6 +448,12 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Zamanlayıcı sayfasında canlı mod kapalıyken "Canlı ekrana git" Ekran sayfasını Canlı ekran sekmesinde açar.
       - Kenar çubuğundaki kalan süre kutusu zamanlayıcının kendi sayfasında gizlenir (aynı bilgi sayfada var). Kutuya tıklayınca zamanlayıcı sayfası açılır.
     - **Doğrulama:** Tarayıcıda sahte arka uçla bütün bağlantılar ve kenar çubuğu. Gerçek uygulamada (CDP) zamanlayıcı sayfası, Ekran'ın iki sekmesi ve kaynak satırı.
+    - **Maddeler 28–30'un PR'ları:**
+      - [#28](https://github.com/cebersaban44-rgb/klavye-studio/pull/28): zamanlayıcı, F1–F12 ilerlemesi, faz kartları.
+      - [#29](https://github.com/cebersaban44-rgb/klavye-studio/pull/29): Türkçe ad ("Odak zamanlayıcısı").
+      - [#30](https://github.com/cebersaban44-rgb/klavye-studio/pull/30): bütün klavyede boşalan ışık ve seçenekleri.
+      - [#31](https://github.com/cebersaban44-rgb/klavye-studio/pull/31): Ekran sekmeleri, tek kart, sayfalı kütüphane.
+      - [#32](https://github.com/cebersaban44-rgb/klavye-studio/pull/32): kendi sayfası (Araçlar), Canlı ekrandaki satırın kaldırılması.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -473,7 +479,7 @@ app/
                 atamanın ve makroların tek kaydıdır. screen_lib.rs: ekran kütüphanesi (screen/library.json,
                 library/<id>.bin, live.bin). live.rs: canlı mod, yükleme bütçesi, bekleyen kart işçisi.
                 now_playing.rs: Windows medya oturumlarından "Çalan şarkı".
-                pomodoro.rs: Pomodoro zamanlayıcısı, tuş ışığı katmanı, faz kartı isteği.
+                pomodoro.rs: odak zamanlayıcısı (süre, bütün klavyede boşalan ışık katmanı, "Klavyede dene", Windows bildirim sesi, faz kartı isteği).
   src/          React 19 + TS 7 + Tailwind 4 + motion. lib/ipc.ts (tipli köprü, seri kuyruk), lib/lighting.ts
                 (Işıklar durumu), lib/mirror.ts, components/KeyboardView.tsx (geometriden çizim, boyama),
                 components/CalibrationCard.tsx, components/UnsavedDialog.tsx, lib/unsaved.ts (kaydedilmemiş
@@ -481,12 +487,13 @@ app/
                 lib/keymapLabels.tsx (tuş üstü ve uzun adlar), lib/macros.ts (makro taslağı ve kayıt),
                 lib/hidCodes.ts (e.code ↔ HID), lib/layout.ts (Windows düzenine göre tuş adları),
                 lib/screen.ts (ekran kütüphanesi ve yükleme durumu), lib/screenImport.ts (dosya → RGB565),
-                lib/screenText.ts (yazı kartı çizicisi), pages/{Overview,Lighting,Keymap,Macros,Screen,Settings}.tsx,
+                lib/screenText.ts (yazı kartı çizicisi), pages/{Overview,Lighting,Keymap,Macros,Screen,Focus,Settings}.tsx,
                 lib/screenSlides.ts (slayt kare bütçesi ve geçişler), lib/screenPalette.ts (ekrana uygun ışık),
                 lib/live.ts (canlı mod durumu ve kaynaklar), lib/liveCards.ts (canlı kartlar),
-                lib/pomodoro.ts (Pomodoro durumu, sahte arka uç),
+                lib/pomodoro.ts (odak zamanlayıcısı durumu, sahte arka uç; `?pomofast` ile dakika 2 sn),
+                lib/pomodoroLights.ts (tuş ışığı kuralları, pomodoro.rs ile aynı; ikisi birlikte değişir),
                 pages/screen/ (Ekran Stüdyosu: common.tsx ortak adımlar, FileFlow.tsx, TextFlow.tsx, SlideFlow.tsx,
-                MatchLights.tsx, LivePanel.tsx, PomodoroPanel.tsx).
+                MatchLights.tsx, LivePanel.tsx; PomodoroPanel.tsx odak zamanlayıcısının kartı, Focus.tsx'te).
   src/bindings/ `cargo test` ile ÜRETİLİR (TS tipleri, geometri JSON'u, efekt kataloğu). Elle düzenlenmez.
 tools/cdp.mjs   Çalışan uygulamanın WebView2'sine CDP ile JS çalıştırır ya da ekran görüntüsü alır (uçtan uca test).
 .github/workflows/ci.yml   PR ve birleştirmelerde Windows'ta kontroller (bkz. gelistirme-akisi.md).
@@ -503,7 +510,7 @@ rustfmt.toml, .gitattributes   120 sütun biçim; LF satır sonu.
 ## 5. Nasıl çalıştırılır ve test edilir
 
 ```bash
-cargo test --workspace            # 121 test; TS tiplerini ve mock JSON'ları da üretir
+cargo test --workspace            # 182 test; TS tiplerini ve mock JSON'ları da üretir
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check        # rustfmt.toml: 120 sütun
 cd app && pnpm typecheck
@@ -546,6 +553,12 @@ node tools/cdp.mjs --shot ekran.png            # pencerenin ekran görüntüsü
 ```
 
 Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust log'unu (`RUST_LOG=klavye_studio=debug`) karşılaştırabilirsin. Hata ayıklama portunu kullanıcının normal çalıştırmasında açık bırakma.
+
+**Arayüz testinde işe yarayanlar:**
+- **Sahte arka uç:** `http://127.0.0.1:1420/?mock=usb`. `&pomofast` eklenirse odak zamanlayıcısında bir dakika 2 sn sürer.
+- **Ekran görüntüsü:** Uygulamanın içindeki tarayıcı paneli geniş sayfalarda yalnızca görünen kısmı yakalıyor. Tam görüntü için Playwright (`browser_resize` + `browser_take_screenshot`, dosya adı vermeden) daha güvenilir.
+- **Sayfanın kendi modülleri:** Test için bir modülü `import()` ile alırken, uygulamanın yüklediği adresi kullan (`performance.getEntriesByType('resource')`). Oturumda değişen dosyaları Vite `?t=…` ile yükler; düz adres ayrı bir kopya açar (ders 43).
+- **Kullanıcının uygulaması** Vite'tan, yani çalışma ağacından yüklenir. Önce dalı hazırla, uygulamayı en son başlat (ders 39). Rust değişince uygulamayı durdur, `cargo build -p klavye-studio`, yeniden başlat.
 
 **Klavyeye yazan testler:** Kullanıcının kayıtlı tasarımını ve uygulama durumunu (`localStorage` içindeki `ks.lighting.v1`, `ks.keymap.v1`) önce yedekle, testten sonra geri yükle. Yalnızca gereken kadar flash yazımı yap.
 - **Tuş atama** klavyeden okunamaz: yazmadan önce kullanıcıya mevcut atamasını sor. Testten sonra katmanı fabrika ayarına döndür. CLI yazımı uygulamanın `keymap.json` kaydına girmez; uygulamayla çalışırken atamayı uygulamadan yaz.
@@ -608,7 +621,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 
 1. `git switch develop && git pull`, sonra yeni iş için dal aç. PR açınca auto-merge ve auto-fix'i aç (`gelistirme-akisi.md`).
 2. **Tuş atama ve makrolar bitti** (madde 19–21). Klavye fabrika durumunda: atama varsayılan, makro yok; `keymap.json` ve `macros.json` kayıtları da öyle.
-3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Pomodoro yapıldı (madde 28), kullanıcı denemesi bekliyor; sıradaki iş LED canlı katmanı** (aşağıda).
+3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Odak zamanlayıcısı yapıldı (maddeler 28–30), kullanıcının denemesi bekliyor; sıradaki iş LED canlı katmanı** (aşağıda).
    - **Kullanıcının isteği:** "Ürünün farkı burada ortaya çıkacak." Ayrıca: "Buradaki görüntüyü de kaybetmeyelim" (stok ana sayfa) ve "birden fazla ekran görüntüsü veya başka ne yapabiliriz".
    - **Kısa sonuçlar:**
      - Resim ve GIF: evet, en çok 140 kare.
@@ -626,8 +639,14 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
      1. **Faz A bitti** (madde 23): Ekran Stüdyosu sayfası; kullanıcı kendi resim ve GIF'iyle denedi, E2 (kalıcılık) geçti.
      2. **Faz B bitti** (maddeler 24–26): kaynak seçici, yazı kartları, slayt, ışıkları ekrana uydurma. Kullanıcı klavyede denedi; "Işıkları uydur"un renkleri düzeltildi ve onaylandı.
      3. **Faz C sürüyor:** ilk adım bitti ve kullanıcı klavyede denedi (madde 27): canlı mod, bütçe, "Çalan şarkı", kapatınca önceki görseli geri yükleme.
-        - **Pomodoro yapıldı** (madde 28). Kullanıcının klavyede denemesi bekliyor: ışıklar ve canlı mod açıkken faz kartları.
-        - Sıradaki: LED canlı katmanı (CPU/GPU barı, ses düzeyi, mikrofon kapalı uyarısı), takvim, hatırlatıcı, oyun oturumu.
+        - **Odak zamanlayıcısı yapıldı** (maddeler 28–30). Kenar çubuğunda Araçlar → Odak zamanlayıcısı.
+          - Kullanıcının klavyede denemesi bekliyor: ışıklar (yönler, renkler, nabız, dalga), "Klavyede dene", ses, ve canlı mod açıkken faz kartları. Faz kartları flash'a yazar, kullanıcının kendi denemesiyle olur.
+          - Kullanıcı ilk sürümde süreleri kendisi 1/1/1 dk ve 2 tur yapmıştı; bu ayar `pomodoro.json`'da duruyor (testlerde aynen geri yazıldı).
+        - **Ekran sayfası düzeni** (maddeler 29–30): Görseller ve Canlı ekran sekmeleri; kütüphane sayfalı; Odak zamanlayıcısı kendi sayfasında.
+        - **Sıradaki: LED canlı katmanı** (CPU/GPU barı, ses düzeyi, mikrofon kapalı uyarısı). Sonra takvim, hatırlatıcı, oyun oturumu.
+          - Yer: Araçlar grubunda yeni bir sayfa (zamanlayıcı gibi). Çıktısı tuş ışıkları; canlı moda bağlı değil.
+          - Aynı arka plan ışık katmanını (`SetAmbient`) kullanacak. **Karar gerekiyor:** odak zamanlayıcısı ile aynı anda çalışırsa tuşları hangisi kullanır? Seçenekler: sırayla öncelik (zamanlayıcı üstte), ya da tuş bölgelerini paylaşmak. Işıklar sayfası önizlemesi her zaman en üstte kalır.
+          - Tasarımı önce kullanıcıya etkileşimli bir önizlemeyle göster. Odak zamanlayıcısında bu yol işe yaradı (sohbette gerçek tuş dizilimiyle).
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.
      4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar **13** yükleme: uygulamanın kaydında 11 (elle, canlı ve geri yükleme), CLI ile E1 ve E4.
@@ -775,13 +794,14 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
   - [ ] Oynatma biçimleri "tekrar basana kadar" ve "basılı tuttukça" klavyede denenmedi.
   - [ ] Metinden makro (yazı yaz) sunulmuyor: HID kodları konuma göre; düzene göre karakter → tuş eşlemesi gerekir (Keyboard Map API'nin tersi).
   - [ ] Kayıt sırasında fare tıklamaları yakalanmıyor (yalnızca "+ tık" düğmeleri). Windows tuşu ve Alt+Tab gibi sistem kısayolları tarayıcıda yakalanamıyor.
-- [ ] **Ekran** (`04 72` + FF68). Faz A, Faz B ve Faz C'nin ilk adımı bitti, kullanıcı klavyede denedi (maddeler 22–27). Pomodoro yapıldı (madde 28). **Sıradaki: LED canlı katmanı** ("Sıradaki oturum için", madde 3).
+- [ ] **Ekran** (`04 72` + FF68). Faz A, Faz B ve Faz C'nin ilk adımı bitti, kullanıcı klavyede denedi (maddeler 22–27). Odak zamanlayıcısı yapıldı (maddeler 28–30; Araçlar'da kendi sayfası). **Sıradaki: LED canlı katmanı** ("Sıradaki oturum için", madde 3).
   - Paketler **WriteFile** ile gönderilir, SET_REPORT ile değil (kardeş kartı çökertmiş). `04 F0` asla gönderilmez.
   - En fazla 140 kare ve 2215 sayfa; gecikme 1–254.
   - [x] Yüklenen görüntü ayrı, tam ekran GIF sayfasında görünüyor (E1).
   - [x] Ekran Stüdyosu: resim/GIF/video, yazı kartları, slayt, kütüphane, fabrika yedeği, ışıkları ekrana uydurma.
   - [x] Canlı mod: günlük bütçe (varsayılan 24), "Çalan şarkı", kapatınca önceki görsele dönüş.
-  - [x] Pomodoro (madde 28; kullanıcı denemesi bekliyor).
+  - [x] Odak zamanlayıcısı (maddeler 28–30; kullanıcının gözle denemesi bekliyor).
+  - [x] Ekran sayfası sekmeleri ve sayfalı kütüphane (madde 29).
   - [ ] Faz C'nin geri kalanı: LED canlı katmanı, takvim, hatırlatıcı, oyun oturumu.
 - [ ] **Kendi firmware katmanımız** (kullanıcının fikri, 2026-11-10; araştırma hattı, şimdilik yapılmıyor). Stok firmware'de olmayan canlı ekranı (RAM'den çizim) kendi firmware'imizle ya da stok firmware'e yamayla eklemek.
   - Emsal: kardeş AK820 Pro'da QMK portu ve Jackrabbit firmware'i; panoyu firmware çiziyor, flash aşınması yok.
