@@ -44,7 +44,7 @@ gh pr create --base develop
 ```
 
 **PR açmadan önce:**
-1. Dört kontrol geçmeli: fmt, clippy, testler ve typecheck.
+1. Dört kontrol geçmeli: fmt, clippy, testler ve typecheck. CI bunları her PR'da yeniden çalıştırır (aşağıda); yerelde çalıştırmak beklemeyi kısaltır.
 2. Davranışı değiştiren her iş **gerçek uygulamada** denenmeli (DURUM.md §5, CDP).
 3. Klavyeye yazan bir akış değiştiyse cihazda doğrulanmalı ve sonucu `docs/donanim-dogrulama.md`'ye tarihli yazılmalı.
 
@@ -103,7 +103,17 @@ Yayındaki bir sürümde, bir sonraki sürümü bekleyemeyecek bir hata çıkars
 | `main` | PR zorunlu (tek geliştirici olduğu için onay sayısı 0). Force-push ve silme yasak. Kural yöneticiler için de geçerli. |
 | `develop` | PR zorunlu. Force-push ve silme yasak. Depo sahibi gerekirse kuralı atlayabilir. |
 
-CI eklendiğinde fmt, clippy, test ve typecheck kontrolleri iki dalda da birleştirme şartı olacak.
+### CI (otomatik kontroller)
+
+`.github/workflows/ci.yml`, `develop` ve `main`'e açılan her PR'da ve bu dallara yapılan her birleştirmede Windows üzerinde çalışır. Adımları:
+
+1. Arayüz: bağımlılıkları kurar, typecheck ve derleme (`pnpm build`) yapar.
+2. Rust: rustfmt, clippy (`-D warnings`) ve `cargo test --workspace` çalıştırır.
+3. Bindings kontrolü: `cargo test` TypeScript tiplerini Rust'tan yeniden üretir. `app/src/bindings` commit'lenmiş halinden farklıysa ya da commit'lenmemiş yeni dosya varsa kontrol kırmızı olur.
+
+"Build and test" kontrolü iki dalda da **birleştirme şartıdır**: kırmızı PR birleştirilemez.
+
+Depodaki `.gitattributes` bütün metin dosyalarını LF satır sonuyla tutar. Böylece Windows'ta da rustfmt, üretilen tipler ve CI aynı baytları görür.
 
 ## Varsayılan dal
 

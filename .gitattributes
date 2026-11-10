@@ -1,0 +1,3 @@
+# Store and check out text files with LF on every platform, so rustfmt,
+# generated TypeScript bindings and CI all see the same bytes.
+* text=auto eol=lf
