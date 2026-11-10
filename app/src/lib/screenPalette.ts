@@ -18,6 +18,8 @@ export interface Swatch {
   share: number;
   /** Where in the picture it sits, 0 (left) – 1 (right). */
   x: number;
+  /** Hue in degrees, for ordering. */
+  hue: number;
 }
 
 type Rgb = [number, number, number];
@@ -117,18 +119,53 @@ export function extractPalette(frames: Uint16Array[], delaysMs?: number[], size 
     const min = Math.min(...c);
     const sat = max ? (max - min) / max : 0;
     const val = max / 255;
-    return { c, n, x: x / n, score: n * (0.25 + sat) * (0.35 + val) };
+    // Colour matters more than size: a small vivid accent beats a large
+    // grey, but a large coloured background still leads.
+    return { c, n, x: x / n, sat, score: n * (0.15 + sat) ** 2 * (0.3 + val) };
   });
-  scored.sort((a, b) => b.score - a.score);
+  // Whites, greys and near-blacks (text, outlines) say little about the
+  // picture's colour; leave them out when it has real colours.
+  const chromatic = scored.filter((s) => s.sat >= 0.2 && s.n / samples.length >= 0.01);
+  const pool2 = chromatic.length ? chromatic : scored;
+  pool2.sort((a, b) => b.score - a.score);
   const out: Swatch[] = [];
-  for (const s of scored) {
+  for (const s of pool2) {
     if (out.length >= size) break;
     const led = toLed(s.c) ?? [255, 255, 255];
     // Skip colours the LEDs would show the same as one already picked.
     if (out.some((o) => distance(hexRgb(o.led), led) < 60)) continue;
-    out.push({ hex: hexOf(s.c), led: hexOf(led), share: s.n / samples.length, x: s.x });
+    out.push({ hex: hexOf(s.c), led: hexOf(led), share: s.n / samples.length, x: s.x, hue: hueOf(s.c) });
   }
   return out;
+}
+
+function hueOf([r, g, b]: Rgb) {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max === min) return 0;
+  const d = max - min;
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+}
+
+/** Order for a gradient: left to right as in the picture when its colours
+ *  sit apart; otherwise (centred text, a single background) by hue, starting
+ *  after the widest hue gap so neighbours blend smoothly. */
+function gradientOrder(palette: Swatch[]): Swatch[] {
+  const xs = palette.map((s) => s.x);
+  if (Math.max(...xs) - Math.min(...xs) >= 0.25) return [...palette].sort((a, b) => a.x - b.x);
+  const byHue = [...palette].sort((a, b) => a.hue - b.hue);
+  let start = 0;
+  let widest = -1;
+  byHue.forEach((s, i) => {
+    const prev = byHue[(i - 1 + byHue.length) % byHue.length]!;
+    const gap = (s.hue - prev.hue + 360) % 360 || 360;
+    if (gap > widest) {
+      widest = gap;
+      start = i;
+    }
+  });
+  return [...byHue.slice(start), ...byHue.slice(0, start)];
 }
 
 function hexRgb(hex: string): Rgb {
@@ -152,7 +189,7 @@ function single(g: GeometryInfo, palette: Swatch[]): ColorMap {
 
 /** The palette from left to right, in the order the picture has it. */
 function gradient(g: GeometryInfo, palette: Swatch[]): ColorMap {
-  const stops = [...palette].sort((a, b) => a.x - b.x).map((s) => hexRgb(s.led));
+  const stops = gradientOrder(palette).map((s) => hexRgb(s.led));
   const map: ColorMap = {};
   if (stops.length === 0) return map;
   for (const k of g.keys) {
@@ -176,8 +213,9 @@ function gradient(g: GeometryInfo, palette: Swatch[]): ColorMap {
 }
 
 /** The picture itself spread over the keys: each key takes the average of
- *  the area it covers. One gain for all keys keeps light and dark apart;
- *  keys over black stay off. */
+ *  the area it covers. Brightness is lifted on a curve against the 90th
+ *  percentile, so a dark coloured background still shows its colour next to
+ *  bright text; keys over black stay off. */
 function image(g: GeometryInfo, frames: Uint16Array[]): ColorMap {
   const f = brightestFrame(frames);
   const map: ColorMap = {};
@@ -202,11 +240,14 @@ function image(g: GeometryInfo, frames: Uint16Array[]): ColorMap {
     }
     return { led: k.led, c: [r / n, gg / n, b / n] as Rgb };
   });
-  const peak = Math.max(1, ...avg.map((a) => Math.max(...a.c)));
-  const gain = Math.min(4, 255 / peak);
+  const values = avg.map((a) => Math.max(...a.c)).sort((x, y) => x - y);
+  const peak = Math.max(8, values[Math.floor(values.length * 0.9)] ?? 0);
   for (const a of avg) {
-    const c = a.c.map((v) => Math.min(255, Math.round(v * gain))) as Rgb;
-    if (Math.max(...c) >= 24) map[a.led] = hexOf(c);
+    const v = Math.max(...a.c);
+    const rel = Math.min(1, v / peak);
+    if (rel < 0.06 || v < 4) continue;
+    const k = (Math.sqrt(rel) * 255) / v;
+    map[a.led] = hexOf(a.c.map((x) => Math.min(255, Math.round(x * k))) as Rgb);
   }
   return map;
 }
