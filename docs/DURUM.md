@@ -41,7 +41,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | Ayarlar: tema (sistem/koyu/açık), dil (TR/EN), Mica | ✅ |
 | **Kaydedilmemiş değişiklik koruması**: kapatırken "Kaydet ve çık / Kaydetmeden çık / Vazgeç", kenar çubuğunda nokta | ✅ Uygulamada dört yol da denendi |
 | Ayarlar → **Renk kalibrasyonu**: gamma (bağlı ya da kanal başına), beyaz dengesi, eğri grafiği, klavyede canlı test deseni (beyaz, gri basamaklar, palet), kalıcı ayar | ✅ Kullanıcı gri basamakları ve beyazı onayladı. |
-| Genel Bakış → **Klavye saati**: bağlanınca otomatik eşitleme (günde en fazla bir kez, kapatılabilir), "Şimdi eşitle", son eşitleme zamanı | ✅ Uygulamada uçtan uca denendi; ekranın gözle kontrolü bekleniyor. |
+| Genel Bakış → **Klavye saati**: bağlanınca otomatik eşitleme (günde en fazla bir kez, kapatılabilir), "Şimdi eşitle", son eşitleme zamanı | ✅ Uygulamada uçtan uca denendi; kullanıcı ekrandaki saatin doğru olduğunu onayladı. |
 | Tuş atama, Makrolar, Ekran sayfaları | ⏳ "Yapım aşamasında" yer tutucu |
 
 ## 3. Kronoloji: ne yaptık, neden
@@ -282,7 +282,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 - [ ] Profiller (kaydet/yükle) ve uygulamaya göre otomatik profil (ön plandaki pencere).
 
 ### P2 — Diğer özellikler
-- [x] **Saat senkronu** (`04 28`): bağlanınca günde en fazla bir kez ve elle (madde 17). Ekranın gözle kontrolü kullanıcıda.
+- [x] **Saat senkronu** (`04 28`): bağlanınca günde en fazla bir kez ve elle (madde 17). Kullanıcı ekrandaki saatin doğru olduğunu onayladı.
 - [ ] **Seçenekler** (`04 17`): uyku süresi, Win kilidi, Alt+Tab ve Alt+F4 kilidi, tepki süresi. Bayt sırası yakalamayla doğrulanmalı.
 - [ ] **Tuş atama** (`04 11` temel, `04 27` Fn; 9 paket, 576 bayt): HID kodları, medya, fare, makro bağlama; varsayılana dönme; yazmadan önce yedek.
 - [ ] **Makrolar** (`04 19` → `04 15`): `04 19` makro tablosunu siler, dikkat.
@@ -291,7 +291,33 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
   - En fazla 140 kare ve 2215 sayfa.
   - Önce test deseniyle yüklenen 240×135 görüntünün **nerede** gösterildiğini netleştir (ana sayfa sağ paneli mi, Fn+Home ile açılan sayfa mı).
   - GIF stüdyosu; flash yazma bütçesi (günde 24 yükleme varsayılan) ve olay tabanlı kartlar.
-- [ ] **2.4G alıcı** (`0C45:FEFE`, FF60, 33 bayt ve sağlama toplamı): pil `20 01`, saat `0C 10`, ışık.
+- [ ] **2.4G alıcı** ve Bluetooth: aşağıdaki "Sona bırakılan" bölümüne taşındı.
+
+### Sona bırakılan — Bağlantı modlarına göre özellikler
+
+Kullanıcıyla kararlaştırıldı (2026-11-10): Şu an her özellik yalnızca **USB**'de geliştiriliyor ve deneniyor. Bütün özellikler bitince **2.4G** ve **Bluetooth** modları için de tek tek kontrol edilip uygulanacak. O zamana kadar bu konuda kod yazılmaz; yalnızca bu liste güncel tutulur.
+
+**Bugün bilinenler** (ayrıntı: `research/protokol-ff13.md` §1.1, §3, §11; ölçümler: `donanim-dogrulama.md`):
+
+| Özellik | USB (FF13) | 2.4G alıcı (`0C45:FEFE`, MI_03 FF60, 33 bayt + toplam) | Bluetooth |
+|---|---|---|---|
+| Pil | Yok (USB'de pil kodu yok; `20 01` gönderilmez) | `20 01` (AK980 kaynaklarında doğrulanmış) | ✅ GATT 0x180F (ölçüldü) |
+| Saat | ✅ `04 28` | `0C 10` (AK980 V2 yakalaması) | Bilinen yol yok |
+| Firmware efekti | ✅ `04 13` | `05 10` (kardeş klavyelerde), flash | Yok |
+| Tuş başına renk | ✅ `04 23` | `05 10 80` + `14` × 21 (yalnızca statik analiz) | Yok |
+| Canlı ışık (RAM) | ✅ `04 20` | Per-key canlı kare **yok**; yalnızca `0B` müzik çubuğu | Yok |
+| Ayna (`04 F5`) | ✅ | Bilinen okuma yok | Yok |
+| Tuş atama / makro / seçenekler | Henüz yok | `10`/`12`, `09`, `07 10` (kardeşlerde; akış sınırları tehlikeli) | Yok |
+| Ekran | Henüz yok | `7F 03` (kardeşte, ~62 s) | Yok |
+
+- **Bluetooth:** Ölçüm, üreticiye özel HID kanalı olmadığını gösterdi. Ayar yapılamıyor; `FEE0/FEE1` (OTA) asla yazılmaz. Uygulama BT'de pil ve "ayar için USB'ye geçin" yönlendirmesi gösteriyor.
+- **2.4G:** Modelde `dongle` modu `lighting, clock, battery` olarak duruyor ama `verified = false`. Uygulamada dongle sürücüsü yok. Ölçüm için kullanıcının anahtarı 2.4G'ye alması ve alıcıyı takması gerekiyor.
+- **Yapılacaklar (sırayla):**
+  1. Kullanıcıyla 2.4G ölçümü: alıcının arayüzleri, `02 00` bilgi, `20 01` pil (yalnızca okuma).
+  2. Dongle sürücüsü (`kb-core`): 33 baytlık çerçeve, toplam, eşleşen yankı, uykudan uyandırma için çift gönderim.
+  3. Özellik özellik ölçüp açmak: saat, efekt, gerekirse diğerleri. Flash yazanları sınırla ve SEQ sınırlarına uy.
+  4. Arayüz: her özelliğin hangi modda çalıştığını açıkça göster; modele göre kilitli/açık durumları doğrula.
+  5. Model dosyasındaki mod yeteneklerini ölçüme göre güncelle (`verified`).
 
 ### P3 — Ürünleştirme
 - [ ] Arka plan servisi:

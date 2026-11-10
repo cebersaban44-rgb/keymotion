@@ -214,7 +214,7 @@ Kırmızı değerler `2·r mod 256` baytından çözüldü. 40 değerin hepsi `v
 **Uygulamada (CDP):**
 - `clock.json` yokken uygulama açıldı. Klavye bağlandıktan 2,3 sn sonra saat kendiliğinden ayarlandı ve `clock.json` yazıldı.
 - Genel Bakış → "Klavye saati" → "Şimdi eşitle": 250 ms, "Saat eşitlendi". "Bağlanınca eşitle" anahtarı dosyaya kaydedildi.
-- Ekranın gerçekten saat sayfasına geçtiğini ve doğru saati gösterdiğini kullanıcının gözle doğrulaması bekleniyor. S3 aynı paketi bu modelde tekrar oynatıp TFT saatinin değiştiğini görmüştü.
+- **Gözle doğrulama:** Kullanıcı klavyenin ekranındaki saatin bilgisayarla aynı olduğunu onayladı (2026-11-10).
 
 ### Ekran: stok ana sayfa (fotoğraf, 2026-11-10 08:29)
 
