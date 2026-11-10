@@ -4,6 +4,7 @@
 //! written. Only flows documented in docs/research/protokol-ff13.md §2.3
 //! are implemented, and each one follows the official driver's sequence.
 
+use kb_protocol::sonix::keymap::{keymap_table, KeyAction, Layer};
 use kb_protocol::sonix::{
     self as proto, guard, header, parse_ack, payload_of, report, Ack, Blocked, ClockTime, EffectSettings, Invalid, Op,
     PacketKind, Rgb, PAYLOAD, REPORT_LEN,
@@ -298,15 +299,33 @@ impl<P: FeaturePort> SonixFf13<P> {
         let mode = proto::per_key_mode_data(brightness)?;
         let table = proto::per_key_table(colors)?;
         self.write_lighting(&mode)?;
+        self.write_table(Op::PerKeyColors, &table)?;
+        self.apply()
+    }
+
+    /// Store one keymap layer: `04 18` → `04 11` (base) or `04 27` (Fn)
+    /// announcing 9 packets → the table → `04 02` → `04 F0`. **Writes
+    /// flash** and replaces the whole layer: keys not in `entries` go back
+    /// to the firmware default. The keyboard cannot report its keymap, so
+    /// the caller has to remember what it wrote.
+    pub fn apply_keymap(&mut self, layer: Layer, entries: impl IntoIterator<Item = (u8, KeyAction)>) -> Result<()> {
+        let table = keymap_table(entries)?;
+        self.write_table(layer.op(), &table)?;
+        // The official driver reads the APPLY echo in this flow (S1 :300-315).
+        self.acked(Op::Apply, 0, 0).map(|_| ())
+    }
+
+    /// `04 18` → `op` announcing the table's packets → the table → `04 02`
+    /// with its byte sum checked.
+    fn write_table(&mut self, op: Op, table: &[u8]) -> Result<()> {
         self.begin()?;
-        self.acked(Op::PerKeyColors, 0, proto::PER_KEY_PACKETS)?;
+        self.acked(op, 0, (table.len() / PAYLOAD) as u16)?;
         for chunk in table.chunks_exact(PAYLOAD) {
             let mut p = [0u8; PAYLOAD];
             p.copy_from_slice(chunk);
             self.data(&p)?;
         }
-        self.commit_verified(&table)?;
-        self.apply()
+        self.commit_verified(table)
     }
 
     /// Set the keyboard clock: `04 18` → `04 28` (1) → data → `04 02`, no
@@ -448,6 +467,35 @@ mod tests {
         assert_eq!(&w[7][5..9], &[1, 0, 255, 0]);
         assert_eq!(&w[15][63..65], &[0xAA, 0x55]);
         assert_eq!(w.last().unwrap()[2], 0xF0);
+    }
+
+    #[test]
+    fn keymap_sequence_matches_official_flow() {
+        let mut d = SonixFf13::new(Fake::default());
+        d.apply_keymap(Layer::Fn, [(33, KeyAction::key(0x04))]).unwrap();
+        let w = d.into_inner().writes;
+        // START + header + 9 data + COMMIT + APPLY
+        assert_eq!(w.len(), 1 + 1 + 9 + 1 + 1);
+        assert_eq!(w[0][2], 0x18);
+        assert_eq!((w[1][2], w[1][9]), (0x27, 9), "Fn layer header announces 9 packets");
+        // Entry 33 at byte 132: packet 2 (bytes 128..192), offset 4.
+        assert_eq!(&w[4][5..9], &[0x02, 0x00, 0x04, 0x00]);
+        assert_eq!(&w[10][63..65], &[0xAA, 0x55]);
+        assert_eq!(w[11][2], 0x02);
+        assert_eq!(w[12][2], 0xF0);
+
+        let mut d = SonixFf13::new(Fake::default());
+        d.apply_keymap(Layer::Base, []).unwrap();
+        let w = d.into_inner().writes;
+        assert_eq!(w[1][2], 0x11, "base layer");
+        assert!(w[2..10].iter().all(|r| r[1..].iter().all(|&b| b == 0)), "reset = all default");
+    }
+
+    #[test]
+    fn keymap_checksum_mismatch_skips_apply() {
+        let mut d = SonixFf13::new(Fake { corrupt: true, ..Fake::default() });
+        assert!(matches!(d.apply_keymap(Layer::Base, []), Err(DriverError::Checksum { .. })));
+        assert!(d.into_inner().writes.iter().all(|r| r[2] != 0xF0));
     }
 
     #[test]

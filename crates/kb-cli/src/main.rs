@@ -1,7 +1,7 @@
 //! `kb` — developer and QA tool.
 //!
-//! Only `effect` and `per-key` write the keyboard's flash, and both need
-//! `--yes`. `live` and `live-probe` stream RAM-only real-time LED frames;
+//! `effect`, `per-key`, `keymap` and `direction-probe` write the keyboard's
+//! flash, and all need `--yes`. `live` and `live-probe` stream RAM-only real-time LED frames;
 //! `clock` sets the keyboard clock; everything else only reads. Flash-writing commands are added only after
 //! they are verified on the hardware.
 
@@ -103,6 +103,25 @@ enum Cmd {
         #[arg(long)]
         yes: bool,
     },
+    /// Store one keymap layer from KEY=ACTION pairs (key ids from the
+    /// model). The whole layer is replaced: unlisted keys go back to the
+    /// firmware default, and no pairs resets the layer. WRITES FLASH; needs
+    /// --yes. The app does not see this write: it keeps its own copy.
+    ///
+    /// ACTION: default | off | keys joined with + (a, f13, ctrl+shift+a,
+    /// lctrl) | media:ID | mouse:left|right|middle|back|forward|double |
+    /// wheel:up|down. `kb keymap-targets` lists the ids.
+    Keymap {
+        /// `base` or `fn`.
+        #[arg(long, default_value = "base")]
+        layer: String,
+        /// e.g. kp-slash=a kp-star=media:volume-up caps=esc
+        keys: Vec<String>,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// List what a key can be assigned (key, media and mouse ids).
+    KeymapTargets,
     /// Store a firmware lighting effect. WRITES FLASH; needs --yes.
     Effect {
         /// Effect id (see `kb effects`). Default: factory "Rolling".
@@ -211,6 +230,14 @@ fn main() -> Result<()> {
             );
             Ok(())
         }
+        Cmd::Keymap { layer, keys, yes } => {
+            anyhow::ensure!(yes, "Bu komut klavyenin flash belleğine yazar. Onaylamak için --yes ekleyin.");
+            keymap(&layer, &keys)
+        }
+        Cmd::KeymapTargets => {
+            keymap_targets();
+            Ok(())
+        }
         Cmd::Effect { mode, color, rainbow, brightness, speed, direction, yes } => {
             anyhow::ensure!(yes, "Bu komut klavyenin flash belleğine yazar. Onaylamak için --yes ekleyin.");
             let settings = kb_protocol::sonix::EffectSettings {
@@ -229,6 +256,116 @@ fn main() -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn keymap(layer: &str, pairs: &[String]) -> Result<()> {
+    use kb_protocol::sonix::keymap::Layer;
+    let layer = match layer {
+        "base" => Layer::Base,
+        "fn" => Layer::Fn,
+        other => anyhow::bail!("katman `base` ya da `fn` olmalı, `{other}` değil"),
+    };
+    let (mut drv, model) = open_command()?;
+    let geo = model.geometry.as_ref().context("modelde geometri yok")?;
+    let mut entries = Vec::new();
+    for pair in pairs {
+        let (id, action) = pair.split_once('=').context("KEY=ACTION biçimi bekleniyor")?;
+        let key = geo.keys.iter().find(|k| k.id == id).with_context(|| format!("bilinmeyen tuş `{id}`"))?;
+        entries.push((key.led, parse_key_action(action)?));
+    }
+    let map = kb_core::keymap::canonical(model, layer, entries)?;
+    let started = std::time::Instant::now();
+    drv.apply_keymap(layer, map.iter().map(|(&l, &a)| (l, a)))?;
+    let name = |led: u8| geo.keys.iter().find(|k| k.led == led).map_or("?", |k| k.id.as_str());
+    println!(
+        "{}: {:?} katmanı yazıldı (sağlama toplamı doğrulandı), {} ms",
+        model.name,
+        layer,
+        started.elapsed().as_millis()
+    );
+    if map.is_empty() {
+        println!("  bütün tuşlar varsayılan");
+    }
+    for (led, action) in &map {
+        println!("  {:<10} → {action:?}", name(*led));
+    }
+    Ok(())
+}
+
+/// `default`, `off`, `media:ID`, `mouse:BUTTON`, `wheel:up|down`, or keys
+/// joined with `+` (at most one non-modifier).
+fn parse_key_action(s: &str) -> Result<kb_protocol::sonix::keymap::KeyAction> {
+    use kb_protocol::sonix::keymap::{consumer_by_id, mods, usage_by_id, KeyAction, MouseButton};
+    let s = s.trim().to_ascii_lowercase();
+    if s == "default" {
+        return Ok(KeyAction::Default);
+    }
+    if s == "off" {
+        return Ok(KeyAction::Disabled);
+    }
+    if let Some(id) = s.strip_prefix("media:") {
+        let c = consumer_by_id(id).with_context(|| format!("bilinmeyen medya işlevi `{id}`"))?;
+        return Ok(KeyAction::Consumer(c.code));
+    }
+    if let Some(id) = s.strip_prefix("mouse:") {
+        let b = match id {
+            "left" => MouseButton::Left,
+            "right" => MouseButton::Right,
+            "middle" => MouseButton::Middle,
+            "back" => MouseButton::Back,
+            "forward" => MouseButton::Forward,
+            "double" => MouseButton::DoubleClick,
+            _ => anyhow::bail!("bilinmeyen fare tuşu `{id}`"),
+        };
+        return Ok(KeyAction::Mouse(b));
+    }
+    if let Some(dir) = s.strip_prefix("wheel:") {
+        return match dir {
+            "up" => Ok(KeyAction::Wheel { up: true }),
+            "down" => Ok(KeyAction::Wheel { up: false }),
+            _ => anyhow::bail!("tekerlek yönü `up` ya da `down` olmalı"),
+        };
+    }
+    let mut m = 0u8;
+    let mut code = None;
+    for token in s.split('+') {
+        let bit = match token {
+            "ctrl" => Some(mods::LEFT_CTRL),
+            "shift" => Some(mods::LEFT_SHIFT),
+            "alt" => Some(mods::LEFT_ALT),
+            "win" => Some(mods::LEFT_GUI),
+            _ => None,
+        };
+        if let Some(bit) = bit {
+            m |= bit;
+            continue;
+        }
+        let u = usage_by_id(token).with_context(|| format!("bilinmeyen tuş `{token}` (kb keymap-targets)"))?;
+        match KeyAction::key(u.code) {
+            KeyAction::Key { mods: bit, code: 0 } => m |= bit,
+            _ => {
+                anyhow::ensure!(code.is_none(), "bir atamada en fazla bir normal tuş olabilir");
+                code = Some(u.code);
+            }
+        }
+    }
+    let action = KeyAction::Key { mods: m, code: code.unwrap_or(0) };
+    action.encode()?;
+    Ok(action)
+}
+
+fn keymap_targets() {
+    use kb_protocol::sonix::keymap::{CONSUMER, USAGES};
+    println!("Tuşlar (KEY ya da ctrl/shift/alt/win+KEY):");
+    for u in USAGES {
+        println!("  {:<14} {:<12} 0x{:02X}", u.id, u.label, u.code);
+    }
+    println!("Medya (media:ID):");
+    for c in CONSUMER {
+        println!("  {:<18} 0x{:04X}", c.id, c.code);
+    }
+    println!("Fare: mouse:left|right|middle|back|forward|double, wheel:up|down");
+    println!("Diğer: default (firmware varsayılanı), off (devre dışı)");
 }
 
 /// Open the wired command channel of the first supported keyboard.
@@ -648,4 +785,30 @@ fn models() -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_key_action;
+    use kb_protocol::sonix::keymap::{mods, KeyAction, MouseButton};
+
+    #[test]
+    fn key_actions_parse() {
+        assert_eq!(parse_key_action("A").unwrap(), KeyAction::key(0x04));
+        assert_eq!(parse_key_action("f13").unwrap(), KeyAction::key(0x68));
+        assert_eq!(
+            parse_key_action("ctrl+shift+a").unwrap(),
+            KeyAction::Key { mods: mods::LEFT_CTRL | mods::LEFT_SHIFT, code: 0x04 }
+        );
+        assert_eq!(parse_key_action("lctrl").unwrap(), KeyAction::Key { mods: mods::LEFT_CTRL, code: 0 });
+        assert_eq!(parse_key_action("rshift+esc").unwrap(), KeyAction::Key { mods: mods::RIGHT_SHIFT, code: 0x29 });
+        assert_eq!(parse_key_action("media:volume-up").unwrap(), KeyAction::Consumer(0xE9));
+        assert_eq!(parse_key_action("mouse:back").unwrap(), KeyAction::Mouse(MouseButton::Back));
+        assert_eq!(parse_key_action("wheel:down").unwrap(), KeyAction::Wheel { up: false });
+        assert_eq!(parse_key_action("off").unwrap(), KeyAction::Disabled);
+        assert_eq!(parse_key_action("default").unwrap(), KeyAction::Default);
+        assert!(parse_key_action("a+b").is_err(), "two normal keys");
+        assert!(parse_key_action("fn").is_err());
+        assert!(parse_key_action("media:nope").is_err());
+    }
 }

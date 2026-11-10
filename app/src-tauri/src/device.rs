@@ -8,14 +8,19 @@
 //! * streams the live (RAM-only) LED frame while one is set,
 //! * mirrors the colours currently shown (`04 F5`) while the UI asks for it,
 //! * sets the keyboard clock when it connects over USB (at most once a day).
+//!
+//! It also keeps the app's record of each model's keymap (`keymap.json`):
+//! the keyboard cannot report its keymap, so the record is updated only
+//! after a write the keyboard confirmed.
 
 use crate::dto::{Battery, KeyboardInfo, LedColor};
-use crate::settings::{self, ClockSettings};
+use crate::settings::{self, ClockSettings, Keymaps, StoredKeymap, StoredLayer};
 use kb_core::color::LedCalibration;
 use kb_core::detect::BlePeer;
 use kb_core::readback;
 use kb_core::sonix::SonixFf13;
-use kb_devices::ConnectionKind;
+use kb_devices::{ConnectionKind, Model};
+use kb_protocol::sonix::keymap::{KeyAction, Layer};
 use kb_protocol::sonix::{scale_to_level, EffectSettings, Rgb, MAX_LEVEL};
 use kb_transport::hid::{Hid, HidChannel};
 use std::collections::HashMap;
@@ -49,6 +54,11 @@ const CLOCK_ATTEMPTS: u8 = 3;
 
 pub type Reply<T> = Sender<Result<T, String>>;
 
+/// Now as Unix time in milliseconds.
+fn now_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
 pub enum Request {
     Refresh,
     ApplyEffect(EffectSettings, Reply<()>),
@@ -68,6 +78,13 @@ pub enum Request {
     SyncClock(Reply<ClockSettings>),
     /// Turn automatic clock sync on or off (persisted).
     SetClockAuto(bool, Reply<ClockSettings>),
+    /// Write one keymap layer of the USB keyboard (flash) and record it.
+    /// Replies with the model's updated record.
+    ApplyKeymap {
+        layer: Layer,
+        entries: Vec<(u8, KeyAction)>,
+        reply: Reply<StoredKeymap>,
+    },
 }
 
 /// A RAM-only frame in UI colours (sRGB). Calibration and the linear
@@ -103,6 +120,8 @@ pub struct Snapshot {
     pub keyboards: Vec<KeyboardInfo>,
     pub calibration: LedCalibration,
     pub clock: ClockSettings,
+    /// What the app last wrote to each model's keymap.
+    pub keymaps: Keymaps,
 }
 
 pub struct DeviceHandle {
@@ -123,16 +142,18 @@ impl DeviceHandle {
     }
 }
 
-/// Start the actor. `config_dir` is where clock sync history is saved;
-/// without it the history lasts only for this run.
+/// Start the actor. `config_dir` is where clock sync history and the keymap
+/// record are saved; without it they last only for this run.
 pub fn spawn(app: AppHandle, calibration: LedCalibration, config_dir: Option<PathBuf>) -> DeviceHandle {
     let clock = config_dir.as_deref().map(settings::load_clock).unwrap_or_default();
-    let snapshot = Arc::new(Mutex::new(Snapshot { keyboards: Vec::new(), calibration, clock }));
+    let keymaps = config_dir.as_deref().map(settings::load_keymaps).unwrap_or_default();
+    let snapshot =
+        Arc::new(Mutex::new(Snapshot { keyboards: Vec::new(), calibration, clock, keymaps: keymaps.clone() }));
     let (tx, rx) = mpsc::channel();
     let shared = snapshot.clone();
     std::thread::Builder::new()
         .name("device-actor".into())
-        .spawn(move || Actor::new(app, shared, calibration, clock, config_dir).run(rx))
+        .spawn(move || Actor::new(app, shared, calibration, clock, keymaps, config_dir).run(rx))
         .expect("spawn device actor");
     DeviceHandle { snapshot, tx }
 }
@@ -151,6 +172,8 @@ struct Actor {
     batteries: HashMap<u64, (Battery, Instant)>,
     /// Path of the wired command interface of the active keyboard, if any.
     command_path: Option<String>,
+    /// Model of the keyboard behind `command_path`.
+    usb_model: Option<&'static Model>,
     command: Option<Command>,
     live: Option<LiveFrame>,
     /// `Some` while the UI shows the mirror.
@@ -164,6 +187,7 @@ struct Actor {
     /// value-for-value scale a per-key table gets (measured 2026-11-10).
     calibration: LedCalibration,
     clock: ClockSettings,
+    keymaps: Keymaps,
     config_dir: Option<PathBuf>,
     /// When the next automatic clock sync is due, and attempts left.
     clock_due: Option<(Instant, u8)>,
@@ -178,6 +202,7 @@ impl Actor {
         shared: Arc<Mutex<Snapshot>>,
         calibration: LedCalibration,
         clock: ClockSettings,
+        keymaps: Keymaps,
         config_dir: Option<PathBuf>,
     ) -> Self {
         let hid = Hid::new().map_err(|e| tracing::error!("HID init failed: {e}")).ok();
@@ -190,12 +215,14 @@ impl Actor {
             last_ble_scan: None,
             batteries: HashMap::new(),
             command_path: None,
+            usb_model: None,
             command: None,
             live: None,
             mirror: None,
             indicators: Vec::new(),
             calibration,
             clock,
+            keymaps,
             config_dir,
             clock_due: None,
             next_enumerate: now,
@@ -306,7 +333,35 @@ impl Actor {
                 }
                 let _ = reply.send(self.store_clock().map(|_| self.clock));
             }
+            Request::ApplyKeymap { layer, entries, reply } => {
+                let _ = reply.send(self.apply_keymap(layer, entries));
+            }
         }
+    }
+
+    /// Write a keymap layer, then record it. The record changes only after
+    /// the keyboard confirmed the data (checksum), so it never claims a
+    /// layout the keyboard did not get.
+    fn apply_keymap(&mut self, layer: Layer, entries: Vec<(u8, KeyAction)>) -> Result<StoredKeymap, String> {
+        let model = self
+            .usb_model
+            .ok_or_else(|| "Klavye USB modunda değil. Kabloyu takıp anahtarı ortaya (USB) alın.".to_string())?;
+        let map = kb_core::keymap::canonical(model, layer, entries).map_err(|e| e.to_string())?;
+        self.with_command(|d| d.apply_keymap(layer, map.iter().map(|(&l, &a)| (l, a))))?;
+        tracing::info!(?layer, keys = map.len(), model = %model.id, "keymap layer written");
+        let stored = self.keymaps.models.entry(model.id.clone()).or_default();
+        *stored.layer_mut(layer) = StoredLayer::new(&map, now_ms());
+        let result = stored.clone();
+        if let Ok(mut s) = self.shared.lock() {
+            s.keymaps = self.keymaps.clone();
+        }
+        if let Some(dir) = &self.config_dir {
+            if let Err(e) = settings::save_keymaps(dir, &self.keymaps) {
+                // The keyboard has the layer; only the record on disk is stale.
+                tracing::warn!("keymap record not saved: {e}");
+            }
+        }
+        Ok(result)
     }
 
     /// Set the keyboard clock to the PC's local time, then record it.
@@ -314,8 +369,7 @@ impl Actor {
         let time = kb_core::clock::now();
         self.with_command(|d| d.set_clock(&time))?;
         tracing::info!(?time, "keyboard clock set");
-        let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
-        self.clock.last_sync_ms = Some(now_ms);
+        self.clock.last_sync_ms = Some(now_ms());
         if let Err(e) = self.store_clock() {
             // The clock is set; only the history is lost.
             tracing::warn!("{e}");
@@ -453,6 +507,7 @@ impl Actor {
         } else if self.command_path.is_none() {
             self.clock_due = None;
         }
+        self.usb_model = usb.filter(|k| k.command.is_some()).map(|k| k.model);
         self.indicators =
             usb.map(|k| k.model.indicators.iter().map(|i| (i.led, i.color)).collect()).unwrap_or_default();
         if self.command_path.is_none() {
