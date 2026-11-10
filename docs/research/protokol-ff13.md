@@ -266,6 +266,7 @@ Firmware sırası, AK980 build `language/1033.lan` 521..540 (S1 Lighting.cs:22-4
   - S4: modlar 11, 12, 16 ve 18 için {0,1}; mod 10 için {0,2,3}.
   - S8: yalnızca 0/1 (0 = soldan sağa/aşağı, 1 = ters).
   - **Yakalama gerekiyor** (özellikle mod 10).
+  - [AK980 PRO-HW: bu proje, 2026-11-10] Ölçüldü (`kb direction-probe`, F5 kareleri): her yönlü efektte iki yön; kod 2 = 1, kod 3 = 0. Mod 10 dikey (0 aşağı), 11 yatay (0 sağa), 12 dönme (0 saatin tersi), 16 LED sırasıyla akan katar (0 ileri), 18 çapraz (0 sağ yukarı). Ayrıntı: `docs/donanim-dogrulama.md`, "Efekt yönleri".
 - **Varsayılanlar**: mod 11, rainbow 1, parlaklık 5, hız 3, yön 0. Sürücü rengi kırmızı (S3 config.xml; S4:152).
 - **Beyaz dengesi**: (255,255,255) pembe görünüyor. Bir birimde R %78, G %100, B %95 beyaz verdi. Bu host tarafında yapılan bir düzeltme (S2 PROTOCOL.md:217).
 

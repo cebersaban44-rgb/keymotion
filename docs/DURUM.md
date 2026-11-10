@@ -141,6 +141,10 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Ayar ve son eşitleme zamanı `clock.json`'da (`settings.rs`, kalibrasyonla ortak sürümlü dosya yardımcıları).
       - Genel Bakış'ta "Klavye saati" kartı var. Yerel saat `chrono` ile alınıyor (zaten bağımlılık ağacındaydı).
     - **CLI:** `kb clock [--at "YYYY-MM-DD HH:MM:SS"]`.
+18. **Efekt yönleri ölçüldü.** Kaynaklar çelişkiliydi; göz testi yerine `kb direction-probe` ile ölçüldü. Ayrıntı: `donanim-dogrulama.md`, "Efekt yönleri".
+    - Beş yönlü efektin (10, 11, 12, 16, 18) her birinde yalnızca iki yön var; kod 2 ve 3, 1 ve 0'ı tekrarlıyor. Mod 10'un "4 yön"ü bu firmware'de yok.
+    - Katalog her efektin hareketini taşıyor (`Motion`: dikey, yatay, dönme, yol, çapraz). Arayüz yön düğmelerini buna göre adlandırıyor; eski kayıtlardaki 2/3 değerleri doğru düğmede görünüyor.
+    - Ölçüm aracı: F5 karelerinden desen kaymasını hesaplayan `kb-cli/src/motion.rs` (eksen izdüşümü ve iki boyutlu eşleştirme, birim testli).
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -179,7 +183,7 @@ rustfmt.toml, .gitattributes   120 sütun biçim; LF satır sonu.
 ## 5. Nasıl çalıştırılır ve test edilir
 
 ```bash
-cargo test --workspace            # 76 test; TS tiplerini ve mock JSON'ları da üretir
+cargo test --workspace            # 82 test; TS tiplerini ve mock JSON'ları da üretir
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check        # rustfmt.toml: 120 sütun
 cd app && pnpm typecheck
@@ -201,6 +205,7 @@ kb live-probe                              # 04 20 + 04 F5: canlı katman, eksik
 kb effect --mode 11 --rainbow --yes        # FLASH
 kb per-key w=FF8A3D a=FF8A3D --yes         # FLASH
 kb clock [--at "2026-11-10 12:34:56"]      # 04 28: klavye saati (RTC); ekran saat sayfasına geçer
+kb direction-probe [--modes 10,11 --dirs 0,1 --speed 1] --yes   # FLASH: efekt yönlerini F5 ile ölçer
 ```
 
 **Gerçek uygulamada uçtan uca test** (tarayıcı panelinde değil):
@@ -277,7 +282,8 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 - [x] Ayarlar'a **renk kalibrasyonu**: kanal başına gamma ve kazanç, beyaz dengesi, klavyede test desenleri, kalıcı ayar.
 - [x] Ayna ters kalibrasyonla gösteriyor.
 - [x] Firmware'in parlaklık eğrisi: efektte ve tuş başına tabloda ölçüldü (`v·m[n] >> 10`, `m = [0, 191, 382, 573, 764, 1016]`). Canlı önizleme bu tabloyu kullanıyor.
-- [ ] Yön kodlarını doğrula (özellikle mod 10). "Kapalı" (mod 0) sonrası Fn+X davranışını doğrula.
+- [x] Yön kodlarını doğrula: her yönlü efektte iki yön; arayüz hareketi adlandırıyor (madde 18).
+- [ ] "Kapalı" (mod 0) sonrası Fn+X davranışını doğrula (kardeş klavyede ışık geri açılamıyordu). Kullanıcıyla, klavyede.
 - [ ] Host tarafı canlı efektler (RAM, 20–40 fps): dalga, nefes, ses tepkili (WASAPI loopback, `cpal`), sistem metrikleri.
 - [ ] Profiller (kaydet/yükle) ve uygulamaya göre otomatik profil (ön plandaki pencere).
 
@@ -351,7 +357,7 @@ Kullanıcıyla kararlaştırıldı (2026-11-10): Şu an her özellik yalnızca *
 - `F5`'te kaybolan kırmızı üst bit başka bir yerden okunabilir mi? Okunabilirse aynadaki son belirsizlik de kalkar.
 - ~~`04 02` sağlama toplamı 16 bitte taşınca nasıl davranıyor?~~ Firmware 16 bitte sarıyor (97 beyaz tuşluk tabloyla doğrulandı).
 - Fn tuşu (LED 96) neden her modda kırmızı? Num Lock (LED 32) beyazı Num Lock açıkken yanıyor.
-- Yan ışık şeridi gerçekten var mı, yoksa yalnızca Fn+Z ile açılan logo ışığı mı?
+- Yan ışık şeridi gerçekten var mı, yoksa yalnızca Fn+Z ile açılan logo ışığı mı? İpucu: Akış efektinde `F5`, tuşu olmayan yaklaşık 45 LED indeksini yanık döndürdü (`donanim-dogrulama.md`, "Efekt yönleri").
 - Topuz yeniden atanabilir mi?
 - Okuma opcode'ları (`04 10/12/16/22/26`): ayarları geri okumak için çok değerli, ama denenmeden önce risk değerlendirmesi ve yedek planı gerekli.
 - Flash çipinin modeli (yazma ömrü hesabı için).

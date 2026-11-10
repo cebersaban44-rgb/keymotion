@@ -14,6 +14,7 @@ import {
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EffectInfo } from "../bindings/EffectInfo";
+import type { EffectMotion } from "../bindings/EffectMotion";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import { ColorPicker, EffectSwatch, Field, Segmented, Steps, Toggle, type SwatchVariant } from "../components/controls";
 import { KeyboardView, type KeyAction } from "../components/KeyboardView";
@@ -53,6 +54,22 @@ const VARIANT: Record<number, SwatchVariant> = {
 };
 
 type Status = { kind: "idle" } | { kind: "busy" } | { kind: "ok"; ms: number } | { kind: "error"; message: string };
+
+/**
+ * Labels for direction codes 0 and 1, by how the effect moves. Measured on
+ * the AK980 PRO (fw 0x0106) with `kb direction-probe`; codes 2 and 3 repeat
+ * 1 and 0, so only two are offered.
+ */
+const DIRECTION_LABELS: Record<EffectMotion, [MessageKey, MessageKey]> = {
+  vertical: ["light.dir.down", "light.dir.up"],
+  horizontal: ["light.dir.right", "light.dir.left"],
+  rotation: ["light.dir.ccw", "light.dir.cw"],
+  path: ["light.dir.forward", "light.dir.reverse"],
+  diagonal: ["light.dir.upRight", "light.dir.downLeft"],
+};
+
+/** Direction code → 0 or 1 (2 behaves like 1, 3 like 0). */
+const directionGroup = (d: number) => (d === 1 || d === 2 ? 1 : 0);
 
 export function Lighting({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
@@ -281,31 +298,23 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
           {current && current.directions > 0 && (
             <Field label={t("light.direction")}>
               <div role="radiogroup" className="grid grid-flow-col gap-1.5">
-                {(current.directions === 4
-                  ? [
-                      [0, "←"],
-                      [1, "↓"],
-                      [2, "↑"],
-                      [3, "→"],
-                    ]
-                  : [
-                      [0, t("light.dir.forward")],
-                      [1, t("light.dir.reverse")],
-                    ]
-                ).map(([v, label]) => (
-                  <button
-                    key={v}
-                    type="button"
-                    role="radio"
-                    aria-checked={effect.direction === v}
-                    onClick={() => setEffect({ direction: v as number })}
-                    className={`h-8 rounded-lg border text-[12.5px] transition-colors ${
-                      effect.direction === v ? "border-signal bg-signal/15 text-ink" : "border-line bg-bg-raise text-ink-2 hover:text-ink"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
+                {DIRECTION_LABELS[current.motion ?? "path"].map((label, v) => {
+                  const on = directionGroup(effect.direction) === v;
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      onClick={() => setEffect({ direction: v })}
+                      className={`h-8 rounded-lg border text-[12.5px] transition-colors ${
+                        on ? "border-signal bg-signal/15 text-ink" : "border-line bg-bg-raise text-ink-2 hover:text-ink"
+                      }`}
+                    >
+                      {t(label)}
+                    </button>
+                  );
+                })}
               </div>
             </Field>
           )}
