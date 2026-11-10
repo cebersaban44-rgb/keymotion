@@ -453,7 +453,9 @@ Uygulamanın Ekran sayfası; kullanıcı kendi dosyalarıyla denedi.
   - Birinci tur: varsayılanlar (sağdan sola, iki kez yanıp sönme, turuncu), ses açık. Katman 97 LED'le başladı, 12 sn sonra durdu. Ses çalarken hata yok (duyulup duyulmadığını kullanıcı söyleyecek).
   - İkinci tur: soldan sağa, dalga, mor odak. Katman yine 97 LED'le başladı ve 12 sn sonra durdu; klavye kendi ışığına döndü.
   - Art arda kare hatası uyarısı yok.
-- **Bekleyen:** Kullanıcının gözle denemesi.
+- **Kullanıcının denemesi (2026-11-10):** Kullanıcı odak zamanlayıcısını klavyede denedi: ışıklar (boşalma, renkler), Windows bildirim sesi, geçiş efektleri ve süreler çalışıyor ("oldukça güzel çalışıyor").
+  - Tek istek: boşalan tuşlarda kalan soluk iz %8 "beklemede kalıyor" gibi görünüyordu, %3'e indi. Değişiklikten sonra bir "Klavyede dene" turu klavyede çalıştı (97 LED, 12 sn, sonra kendi ışığına döndü).
+  - Canlı mod denemede kapalıydı, yani faz kartları klavyeye yüklenmedi. Uygulamanın kaydındaki son canlı kart 11:50'deki "Çalan şarkı" kartı.
 
 ### Sonuçlar
 

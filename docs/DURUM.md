@@ -47,7 +47,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | **Ekran Stüdyosu**: dosyadan (resim, GIF, video; kırpma, süre), yazı kartları (5 şablon), slayt; önizleme, onay, kütüphane, fabrika animasyonuna dönüş | ✅ Kullanıcı klavyede hepsini denedi (maddeler 23–25). |
 | Ekran → **Işıkları uydur**: görselin paletinden tuş tasarımı (degrade, tek renk, görsel), Işıklar'da taslak | ✅ Kullanıcı mor kartta klavyede doğruladı (madde 26). |
 | Ekran → **Canlı ekran**: canlı mod, günlük yükleme bütçesi, "Çalan şarkı" kartı, kapatınca önceki görseli geri yükleme | ✅ Kullanıcı klavyede denedi (madde 27). |
-| Araçlar → **Odak zamanlayıcısı** (Pomodoro tekniği): odak ve mola süreleri; bütün klavye fazın rengiyle dolu başlar ve süre azaldıkça seçilen yönde boşalır (flash'sız; yön, renkler, parlaklık, nabız, faz geçişi, ses seçilebilir; "Klavyede dene"); faz başında ekran kartı; kenar çubuğunda kalan süre | ⏳ Zamanlayıcı ve ışık katmanı gerçek uygulamada ve klavyede denendi (CDP, günlük). Kullanıcının gözle denemesi, sesi duyması ve ekran kartının klavyede yüklenmesi bekliyor (maddeler 28–30). |
+| Araçlar → **Odak zamanlayıcısı** (Pomodoro tekniği): odak ve mola süreleri; bütün klavye fazın rengiyle dolu başlar ve süre azaldıkça seçilen yönde boşalır (flash'sız; yön, renkler, parlaklık, nabız, faz geçişi, ses seçilebilir; "Klavyede dene"); faz başında ekran kartı; kenar çubuğunda kalan süre | ✅ Kullanıcı klavyede denedi: ışıklar, bildirim sesi, geçiş efektleri ve süreler çalışıyor (maddeler 28–30). Faz kartları yalnız sahte arka uçta denendi; canlı mod açıkken klavyede henüz yüklenmedi. |
 
 ## 3. Kronoloji: ne yaptık, neden
 
@@ -386,13 +386,13 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
         - Işıklar sayfası önizlemesi Pomodoro'nun üstüne geldi, kapanınca çubuk geri geldi.
         - Ayrıntı: `donanim-dogrulama.md`, "Pomodoro ışık katmanı".
       - Tek tek reddedilen `04 20` kareleri (yaklaşık %1) artık `debug` düzeyinde. Yalnız art arda 20 kare (1 sn) giderse uyarı yazılır. Yoksa 25 dakikalık bir odakta yüzlerce uyarı satırı birikirdi.
-    - **Bekleyen:** Kullanıcının ışıkları gözle görmesi ve canlı mod açıkken faz kartlarının klavyeye yüklenmesi (flash yazar; kullanıcının kendi denemesiyle). Pencere küçükken kart çiziminin gecikip gecikmediği de o denemede görülecek.
+    - **Sonra (aynı gün):** Işıklar maddenin altındaki tasarımla değişti. Kullanıcı denedi (aşağıda). Canlı mod açıkken faz kartları klavyede henüz denenmedi; pencere küçükken kart çiziminin gecikip gecikmediği de o zaman görülecek.
     - **Kullanıcının ışık tasarımı (aynı gün, ilk denemeden sonra):**
       - Geri bildirim: "Yalnız en üst sıra yanınca odaklanma hissi vermiyor." Bütün klavye fazın rengiyle dolu başlamalı ve süre azaldıkça bir yöne doğru boşalmalı. Kalan ışık kalan zamandır; dolu klavye "çalış", azalan ışık "molaya az kaldı" der. Yön ve renkler seçilebilmeli: kırmızı uzun sürede rahatsız edebilir.
       - Önce sohbette etkileşimli bir önizleme gösterildi (gerçek tuş dizilimiyle). Kullanıcı "O zaman uygula" dedi.
       - **Yapılan** (F1–F12 çubuğu, Esc ve tur tuşları kalktı):
         - Bütün 97 tuş. Işığın bittiği kenar yumuşak (klavye genişliğinin %4'ü), yani hareket akıyor.
-        - Boşalan kısım soluk (%8).
+        - Boşalan kısım soluk: önce %8 idi, kullanıcının denemesinden sonra %3 (aşağıda).
         - Hareket: sağdan sola (varsayılan; ışık solda kalır), soldan sağa, yukarıdan aşağı (üst sıralar önce söner), ortaya doğru (iki yan önce söner), yavaşça söner (yön yok).
         - Odak, kısa mola ve uzun mola renkleri seçilir (paletten ya da serbest renk). Parlaklık klavyenin kendi basamaklarıyla 1–5 (varsayılan 4).
         - Son dakikada nabız (açılıp kapatılır): bütün klavye birlikte nefes alır. Kalan ışık biraz söner, sönük kısım biraz parlar; son dakikada yalnızca birkaç tuş yanık kaldığı için ilk denemede yalnız yanık tuşların nefes alması fark edilmiyordu (testte yakalandı).
@@ -404,7 +404,8 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
         - Halka da artık kalan süreyi gösteriyor (dolu başlar, azalır). Renkler kenar çubuğuna, karta ve halkaya da uygulanıyor.
         - Eski `pomodoro.json` dosyaları yeni alanları varsayılanla alıyor (testli).
       - **Doğrulama:** 16 birim testi (yönler, renkler, nabız, duraklama, geçişler, deneme turu, eski ayar dosyası). Tarayıcıda sahte arka uçla bütün seçenekler. Gerçek uygulamada iki "Klavyede dene" turu klavyede çalıştı: önce varsayılanlarla ve ses açık, sonra soldan sağa, dalga ve mor odakla. Ayrıntı: `donanim-dogrulama.md`.
-      - **Bekleyen:** Kullanıcının gözle denemesi ve sesi duyması.
+      - **Kullanıcının denemesi (2026-11-10, klavyede):** "Oldukça güzel çalışıyor." Işıklar, Windows bildirim sesi, geçiş efektleri ve süreler çalışıyor; kullanıcı ayarını 1/1/1 dk, 2 tur, ses açık olarak bıraktı.
+        - Tek istek: ışığın çekildiği tuşlarda kalan soluk iz (%8) "o alan beklemede kalıyor" hissi veriyordu. %3'e indi (`TRACK`, `pomodoro.rs` ve `pomodoroLights.ts`). Testler geçti; gerçek uygulamada bir "Klavyede dene" turu klavyede çalıştı.
 
 29. **Ekran sayfasının düzeni: sekmeler, birleşik odak zamanlayıcısı, büyüyen kütüphane.**
     - **Kullanıcının geri bildirimi (2026-11-10):**
@@ -621,7 +622,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 
 1. `git switch develop && git pull`, sonra yeni iş için dal aç. PR açınca auto-merge ve auto-fix'i aç (`gelistirme-akisi.md`).
 2. **Tuş atama ve makrolar bitti** (madde 19–21). Klavye fabrika durumunda: atama varsayılan, makro yok; `keymap.json` ve `macros.json` kayıtları da öyle.
-3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Odak zamanlayıcısı yapıldı (maddeler 28–30), kullanıcının denemesi bekliyor; sıradaki iş LED canlı katmanı** (aşağıda).
+3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Odak zamanlayıcısı yapıldı ve kullanıcı denedi (maddeler 28–30); sıradaki iş LED canlı katmanı** (aşağıda).
    - **Kullanıcının isteği:** "Ürünün farkı burada ortaya çıkacak." Ayrıca: "Buradaki görüntüyü de kaybetmeyelim" (stok ana sayfa) ve "birden fazla ekran görüntüsü veya başka ne yapabiliriz".
    - **Kısa sonuçlar:**
      - Resim ve GIF: evet, en çok 140 kare.
@@ -640,8 +641,9 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
      2. **Faz B bitti** (maddeler 24–26): kaynak seçici, yazı kartları, slayt, ışıkları ekrana uydurma. Kullanıcı klavyede denedi; "Işıkları uydur"un renkleri düzeltildi ve onaylandı.
      3. **Faz C sürüyor:** ilk adım bitti ve kullanıcı klavyede denedi (madde 27): canlı mod, bütçe, "Çalan şarkı", kapatınca önceki görseli geri yükleme.
         - **Odak zamanlayıcısı yapıldı** (maddeler 28–30). Kenar çubuğunda Araçlar → Odak zamanlayıcısı.
-          - Kullanıcının klavyede denemesi bekliyor: ışıklar (yönler, renkler, nabız, dalga), "Klavyede dene", ses, ve canlı mod açıkken faz kartları. Faz kartları flash'a yazar, kullanıcının kendi denemesiyle olur.
-          - Kullanıcı ilk sürümde süreleri kendisi 1/1/1 dk ve 2 tur yapmıştı; bu ayar `pomodoro.json`'da duruyor (testlerde aynen geri yazıldı).
+          - **Kullanıcı klavyede denedi (2026-11-10):** ışıklar, ses, geçiş efektleri, süreler çalışıyor. Soluk iz isteğiyle %8'den %3'e indi. Konu kapandı.
+          - Küçük açık: canlı mod açıkken faz kartları klavyede henüz yüklenmedi (flash yazar; kullanıcının kendi denemesiyle, ihtiyaç olunca).
+          - Kullanıcının ayarı `pomodoro.json`'da: 1/1/1 dk, 2 tur, ses açık. Testler bu ayarı okuyup aynen geri yazar.
         - **Ekran sayfası düzeni** (maddeler 29–30): Görseller ve Canlı ekran sekmeleri; kütüphane sayfalı; Odak zamanlayıcısı kendi sayfasında.
         - **Sıradaki: LED canlı katmanı** (CPU/GPU barı, ses düzeyi, mikrofon kapalı uyarısı). Sonra takvim, hatırlatıcı, oyun oturumu.
           - Yer: Araçlar grubunda yeni bir sayfa (zamanlayıcı gibi). Çıktısı tuş ışıkları; canlı moda bağlı değil.
@@ -800,7 +802,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
   - [x] Yüklenen görüntü ayrı, tam ekran GIF sayfasında görünüyor (E1).
   - [x] Ekran Stüdyosu: resim/GIF/video, yazı kartları, slayt, kütüphane, fabrika yedeği, ışıkları ekrana uydurma.
   - [x] Canlı mod: günlük bütçe (varsayılan 24), "Çalan şarkı", kapatınca önceki görsele dönüş.
-  - [x] Odak zamanlayıcısı (maddeler 28–30; kullanıcının gözle denemesi bekliyor).
+  - [x] Odak zamanlayıcısı (maddeler 28–30; kullanıcı klavyede denedi). Açık: faz kartları canlı mod açıkken klavyede denenmedi.
   - [x] Ekran sayfası sekmeleri ve sayfalı kütüphane (madde 29).
   - [ ] Faz C'nin geri kalanı: LED canlı katmanı, takvim, hatırlatıcı, oyun oturumu.
 - [ ] **Kendi firmware katmanımız** (kullanıcının fikri, 2026-11-10; araştırma hattı, şimdilik yapılmıyor). Stok firmware'de olmayan canlı ekranı (RAM'den çizim) kendi firmware'imizle ya da stok firmware'e yamayla eklemek.
