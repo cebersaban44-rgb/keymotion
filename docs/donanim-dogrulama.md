@@ -404,6 +404,36 @@ Uygulamanın Ekran sayfası; kullanıcı kendi dosyalarıyla denedi.
   - Onay penceresi Esc ile kapanıyor; açılınca odak Vazgeç'te.
   - Tarayıcıda sahte arka uçla (`?mock=usb`) bütün yollar denendi: yükleme, yüklemeden kaydetme, düzenlemeye dönme, Vazgeç, Esc ve kütüphaneden yükleme.
 
+### Ekran Faz B ve C, klavyede — 2026-11-10
+
+- **Faz B (kullanıcı):** Yazı kartları, slayt ve "Işıkları uydur" klavyede denendi.
+  - Yükleme tarafı sorunsuz.
+  - "Işıkları uydur"da tuşlar yandı ama renkler görsele benzemedi (aşağıda).
+- **Canlı kare kayıtlı ışık "Kapalı" iken (`kb live-probe`, yalnızca RAM, uygulama kapalıyken):**
+  - Klavyenin kayıtlı ışığı mod 0 (Kapalı) iken canlı kareler kabul edildi ve `F5` ile okundu:
+    - A: 97 tuş mavi;
+    - B ve C: yalnızca Esc kırmızı, diğerleri siyah;
+    - D: gri `#008080` (kırmızı `2·r mod 256`);
+    - E: mor `#165CF6`.
+  - Yani canlı önizleme ışık kapalıyken de çalışıyor. Uygulama günlüğündeki birkaç `04 20` reddi (11 sn'de 3) bilinen ara sıra `FF`.
+- **"Işıkları uydur" renkleri:**
+  - Mor "Günaydın" kartının (Neon) ilk paleti mor + beyaz + pembeydi; beyaz yazı palete girmişti.
+  - Düzeltmeden sonra palet mor `#791BFF`, pembe `#FF3FD7`, açık pembe `#FA8CFF`. Degrade tona göre dizildi.
+  - Kullanıcı klavyede gözle "karta benziyor" dedi.
+  - "cat" görselinin soluk şeftali tonunu (#FFCABF) da doğru buldu.
+- **Windows medya oturumu (GSMTC), salt okuma:** Chrome'da duraklatılmış bir YouTube videosu okundu: başlık, kanal, 24 KB kapak, "çalmıyor".
+- **Canlı yükleme (kullanıcı, uygulama günlüğü):**
+  - Chrome'da çalan videonun kartı, şarkı "hazır" sayıldıktan sonra 55 ms'de çizildi ve 16 sayfada 2,8 sn'de yüklendi.
+  - Kullanıcı kartı "çok güzel" buldu.
+  - İlk sürümde hazır sayılma süresi 12 sn idi; kullanıcının isteğiyle 4 sn'ye indi. Yeni sürümde kart 2,7 sn'de yüklendi.
+- **Canlı mod kapanınca geri yükleme (kullanıcı):**
+  - Kullanıcı önce "cat"i (16 kare, 254 sayfa) elle yükledi (37 sn).
+  - Canlı modda bir kart geldi.
+  - Canlı modu kapatıp "Önceki görseli geri yükle"yi seçti. "cat" 254 sayfada 37 sn'de geri yüklendi (sayfa başına ~146 ms). Kullanıcı başarılı olduğunu doğruladı.
+- **Yükleme sayısı:**
+  - Uygulamanın kaydında bugün **11** yükleme var. Bunlara kullanıcının elle yüklemeleri, canlı kartlar ve geri yüklemeler dahil.
+  - CLI ile yapılan E1 ve E4 de eklenince toplam **13**.
+
 ### Sonuçlar
 
 1. **Durum baytı kuralı:** Yalnızca `FF` ret demektir. `00` ve `01` kabul olarak sayılır.
