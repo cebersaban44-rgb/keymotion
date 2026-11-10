@@ -151,7 +151,8 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 
 ### P0 — Hemen
 - [ ] Kullanıcı tuş başına rengi gamma düzeltmesiyle uygulamada yeniden denesin.
-- [ ] Değişiklikleri commit et. **Şu ana kadar hiçbir şey commit edilmedi.**
+- [x] Repo oluşturuldu: https://github.com/cebersaban44-rgb/klavye-studio (public, `main`). Commit'ler GitHub noreply e-postasıyla atılıyor (repo-yerel `user.email`).
+- [ ] Açık kaynak hazırlığı: lisans seçimi (henüz LICENSE yok, yani varsayılan olarak "tüm hakları saklı"), CONTRIBUTING, kaynak teşekkürleri.
 - [ ] Geliştirme log'larını sadeleştir: IPC `info` log'larını `debug`'a çek.
 
 ### P1 — Işıklar tamamlama
