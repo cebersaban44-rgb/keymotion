@@ -31,7 +31,7 @@ struct Versioned<T> {
 
 /// Read `file` if it exists, has `version` and parses. Anything else is
 /// logged and gives `None`, so a damaged file cannot break the app.
-fn load<T: DeserializeOwned>(dir: &Path, file: &str, version: u32) -> Option<T> {
+pub(crate) fn load<T: DeserializeOwned>(dir: &Path, file: &str, version: u32) -> Option<T> {
     let path = dir.join(file);
     let text = match fs::read_to_string(&path) {
         Ok(t) => t,
@@ -55,7 +55,7 @@ fn load<T: DeserializeOwned>(dir: &Path, file: &str, version: u32) -> Option<T> 
 }
 
 /// Write `value` atomically (temp file, then rename).
-fn save<T: Serialize>(dir: &Path, file: &str, version: u32, value: T) -> io::Result<()> {
+pub(crate) fn save<T: Serialize>(dir: &Path, file: &str, version: u32, value: T) -> io::Result<()> {
     fs::create_dir_all(dir)?;
     let json = serde_json::to_string_pretty(&Versioned { version, value }).map_err(io::Error::other)?;
     let tmp = dir.join(format!("{file}.tmp"));
