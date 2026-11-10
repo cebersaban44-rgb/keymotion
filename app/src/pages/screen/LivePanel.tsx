@@ -1,7 +1,7 @@
 // "Canlı ekran": the live mode switch, its upload budget and the sources
 // (phase C). The backend runs the live mode; this only shows and sets it.
 
-import { AlertTriangle, ChevronRight, Clock3, Loader2, Music2, Radio, RotateCcw, Timer, Upload, X } from "lucide-react";
+import { AlertTriangle, Clock3, Loader2, Music2, Radio, RotateCcw, Upload, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import type { LivePlan } from "../../bindings/LivePlan";
@@ -10,8 +10,6 @@ import type { LiveState } from "../../bindings/LiveState";
 import { Segmented, Toggle } from "../../components/controls";
 import { useT, type MessageKey } from "../../lib/i18n";
 import { fmtWait, useLive } from "../../lib/live";
-import { useApp } from "../../lib/store";
-import { fmtClock, phaseColor, remainingNow, usePomodoro } from "../../lib/pomodoro";
 import { uploadSeconds } from "../../lib/screenImport";
 import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useNow } from "./common";
 
@@ -86,7 +84,6 @@ export function LivePanel({ usb }: { usb: boolean }) {
             </div>
             {s.enabled && s.nowPlaying && <TrackLine s={s} />}
           </div>
-          <PomodoroSource />
         </div>
       </div>
 
@@ -267,63 +264,6 @@ function TrackLine({ s }: { s: LiveState }) {
         {tr.app ? `${tr.app} · ` : ""}
         {state}
       </span>
-    </div>
-  );
-}
-
-/** The focus timer as a source: whether it sends cards and where it is.
- *  Its settings (the card switch too) are on its own page, so there is one
- *  place to set them. */
-function PomodoroSource() {
-  const t = useT();
-  const p = usePomodoro((x) => x.state);
-  const setPage = useApp((x) => x.setPage);
-  if (!p) return null;
-  const idle = p.status === "idle";
-  const cards = p.settings.screen;
-  const phase =
-    p.phase === "focus" ? t("pomo.phase.focus") : p.phase === "shortBreak" ? t("pomo.phase.shortBreak") : t("pomo.phase.longBreak");
-  return (
-    <div className="flex flex-col gap-2 rounded-xl border border-line p-3" data-live-pomodoro>
-      <div className="flex items-start justify-between gap-3">
-        <span className="flex items-start gap-2.5">
-          <Timer size={16} className="mt-0.5 shrink-0 text-signal" />
-          <span className="flex flex-col">
-            <span className="text-[13px] font-semibold">{t("sc.live.pomo")}</span>
-            <span className="text-[11.5px] text-ink-3">{t("sc.live.pomo.body")}</span>
-          </span>
-        </span>
-        <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${cards ? "bg-ok/15 text-ok" : "bg-surface-2 text-ink-3"}`}
-          data-live-pomodoro-cards={cards ? "on" : "off"}
-        >
-          {cards ? t("sc.live.pomo.on") : t("sc.live.pomo.off")}
-        </span>
-      </div>
-      <button
-        type="button"
-        onClick={() => setPage("focus")}
-        className="flex items-center justify-between gap-2 rounded-lg bg-surface-2/60 px-2.5 py-2 text-left text-[12.5px] hover:bg-surface-2"
-      >
-        <span className="flex items-center gap-2">
-          <span
-            className="h-2 w-2 rounded-full"
-            style={{ background: idle ? "var(--ink-3)" : phaseColor(p.settings, p.phase) }}
-            aria-hidden
-          />
-          {idle ? (
-            <span className="text-ink-3">{t("pomo.idle")}</span>
-          ) : (
-            <span className="num">
-              {phase} · {fmtClock(remainingNow(p))}
-              {p.status === "paused" && <span className="text-ink-3"> · {t("pomo.paused")}</span>}
-            </span>
-          )}
-        </span>
-        <span className="flex items-center gap-1 text-[12px] font-medium text-signal">
-          {t("sc.live.pomo.open")} <ChevronRight size={14} />
-        </span>
-      </button>
     </div>
   );
 }
