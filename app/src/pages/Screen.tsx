@@ -10,7 +10,6 @@ import {
   Loader2,
   Pencil,
   Play,
-  Sparkles,
   Trash2,
   Upload,
   Usb,
@@ -31,6 +30,7 @@ import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { ScreenItem } from "../bindings/ScreenItem";
 import { Field, Segmented, Slider, Toggle } from "../components/controls";
 import { useT, type MessageKey } from "../lib/i18n";
+import { useApp } from "../lib/store";
 import { itemData, useScreen } from "../lib/screen";
 import {
   DEFAULT_FRAMING,
@@ -312,8 +312,19 @@ function KeyboardScreens() {
 }
 
 // ------------------------------------------------------------- the studio
+//
+// One flow, four steps (owner's review, 2026-11-10):
+//   1 File     pick or drop a file
+//   2 Edit     framing and timing on the live canvas      → "Önizle"
+//   3 Preview  the exact bytes play; confirm               → "Klavyeye yükle"
+//   4 Upload   progress in place; on success the studio returns to step 1
+//              and says what was done.
+// "Vazgeç" leaves the file at any step before the upload; nothing is kept.
 
 type Phase = { kind: "idle" } | { kind: "opening"; progress: number } | { kind: "error"; message: string };
+
+/** What the last finished flow did, shown above the file picker. */
+type Done = { kind: "uploaded" | "saved"; name: string; seconds?: number };
 
 function errorKey(e: unknown): MessageKey {
   if (e instanceof ImportError) {
@@ -334,10 +345,12 @@ function Studio({ usb, loaded }: { usb: boolean; loaded: boolean }) {
   const t = useT();
   const [source, setSource] = useState<Source | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
+  const [done, setDone] = useState<Done | null>(null);
 
   useEffect(() => () => source?.dispose(), [source]);
 
   const open = async (file: File) => {
+    setDone(null);
     setPhase({ kind: "opening", progress: 0 });
     try {
       const s = await openSource(file, (p) => setPhase({ kind: "opening", progress: p }));
@@ -349,68 +362,155 @@ function Studio({ usb, loaded }: { usb: boolean; loaded: boolean }) {
     }
   };
 
-  if (!source) return <DropZone onFile={open} phase={phase} />;
-  return <Editor key={source.name + source.width + source.durationMs} source={source} usb={usb} loaded={loaded} onClose={() => setSource(null)} />;
+  if (!source) return <DropZone onFile={open} phase={phase} done={done} onDismiss={() => setDone(null)} />;
+  return (
+    <Editor
+      key={source.name + source.width + source.durationMs}
+      source={source}
+      usb={usb}
+      loaded={loaded}
+      onCancel={() => setSource(null)}
+      onFinished={(d) => {
+        setSource(null);
+        setDone(d);
+      }}
+    />
+  );
 }
 
-function DropZone({ onFile, phase }: { onFile: (f: File) => void; phase: Phase }) {
+type Step = 1 | 2 | 3 | 4;
+
+function Stepper({ step }: { step: Step }) {
+  const t = useT();
+  const steps: MessageKey[] = ["sc.step.file", "sc.step.edit", "sc.step.preview", "sc.step.upload"];
+  return (
+    <ol className="flex items-center gap-2" aria-label={t("sc.title")}>
+      {steps.map((k, i) => {
+        const n = (i + 1) as Step;
+        const state = n < step ? "done" : n === step ? "now" : "next";
+        return (
+          <li key={k} className="flex items-center gap-2" aria-current={state === "now" ? "step" : undefined}>
+            {i > 0 && <span className={`h-px w-6 ${n <= step ? "bg-signal" : "bg-line-strong"}`} />}
+            <span
+              className={`num flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
+                state === "done"
+                  ? "bg-signal/20 text-signal"
+                  : state === "now"
+                    ? "bg-signal text-signal-ink"
+                    : "border border-line-strong text-ink-3"
+              }`}
+            >
+              {state === "done" ? <Check size={12} /> : n}
+            </span>
+            <span className={`text-[12.5px] ${state === "now" ? "font-semibold text-ink" : "text-ink-3"}`}>{t(k)}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function DropZone({
+  onFile,
+  phase,
+  done,
+  onDismiss,
+}: {
+  onFile: (f: File) => void;
+  phase: Phase;
+  done: Done | null;
+  onDismiss: () => void;
+}) {
   const t = useT();
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   return (
-    <section
-      className={`card flex min-h-[340px] flex-col items-center justify-center gap-4 border-2 border-dashed p-10 text-center transition-colors ${
-        over ? "border-signal bg-signal/5" : "border-line"
-      }`}
-      onDragOver={(e) => {
-        e.preventDefault();
-        setOver(true);
-      }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setOver(false);
-        const f = e.dataTransfer.files[0];
-        if (f) onFile(f);
-      }}
-    >
-      <div className="flex gap-3 text-ink-3">
-        <ImageIcon size={26} />
-        <FileImage size={26} />
-        <Film size={26} />
-      </div>
-      <div>
-        <h2 className="font-display text-[22px] font-semibold tracking-[-0.02em]">{t("sc.drop.title")}</h2>
-        <p className="mt-1 max-w-[52ch] text-[13px] text-ink-2">{t("sc.drop.body")}</p>
-      </div>
-      <button
-        type="button"
-        disabled={phase.kind === "opening"}
-        onClick={() => input.current?.click()}
-        className="flex items-center gap-2 rounded-xl bg-signal px-4 py-2 text-[13px] font-semibold text-signal-ink disabled:opacity-50"
-      >
-        {phase.kind === "opening" ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-        {phase.kind === "opening"
-          ? `${t("sc.drop.opening")} ${Math.round(phase.progress * 100)}%`
-          : t("sc.drop.choose")}
-      </button>
-      <input
-        ref={input}
-        type="file"
-        hidden
-        accept="image/*,video/mp4,video/webm,.gif,.webp,.apng,.png,.jpg,.jpeg,.bmp,.avif,.mp4,.webm,.m4v,.mov"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          e.target.value = "";
+    <section className="card flex flex-col gap-4 p-5">
+      <Stepper step={1} />
+      <AnimatePresence>
+        {done && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            role="status"
+            className="flex items-start gap-3 rounded-2xl border border-ok/30 bg-ok/10 px-4 py-3"
+          >
+            <Check size={18} className="mt-0.5 shrink-0 text-ok" />
+            <div className="flex-1 text-[13px]">
+              <div className="font-semibold">
+                “{done.name}” {done.kind === "uploaded" ? t("sc.done.uploaded") : t("sc.done.saved")}
+                {done.seconds != null && <span className="num ml-2 font-normal text-ink-3">{fmtSeconds(done.seconds)}</span>}
+              </div>
+              <div className="text-ink-2">{done.kind === "uploaded" ? t("sc.done.uploadedHint") : t("sc.done.savedHint")}</div>
+            </div>
+            <button
+              type="button"
+              onClick={onDismiss}
+              aria-label={t("sc.close")}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-ink-3 hover:bg-surface hover:text-ink"
+            >
+              <X size={14} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <div
+        className={`flex min-h-[300px] flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed p-10 text-center transition-colors ${
+          over ? "border-signal bg-signal/5" : "border-line"
+        }`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setOver(true);
+        }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setOver(false);
+          const f = e.dataTransfer.files[0];
           if (f) onFile(f);
         }}
-      />
-      {phase.kind === "error" && (
-        <p className="flex items-center gap-2 text-[12.5px] text-danger">
-          <AlertTriangle size={14} /> {phase.message}
-        </p>
-      )}
-      <p className="num text-[11px] text-ink-3">{t("sc.drop.formats")}</p>
+      >
+        <div className="flex gap-3 text-ink-3">
+          <ImageIcon size={26} />
+          <FileImage size={26} />
+          <Film size={26} />
+        </div>
+        <div>
+          <h2 className="font-display text-[22px] font-semibold tracking-[-0.02em]">
+            {done ? t("sc.drop.titleNext") : t("sc.drop.title")}
+          </h2>
+          <p className="mt-1 max-w-[52ch] text-[13px] text-ink-2">{t("sc.drop.body")}</p>
+        </div>
+        <button
+          type="button"
+          disabled={phase.kind === "opening"}
+          onClick={() => input.current?.click()}
+          className="flex items-center gap-2 rounded-xl bg-signal px-4 py-2 text-[13px] font-semibold text-signal-ink disabled:opacity-50"
+        >
+          {phase.kind === "opening" ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+          {phase.kind === "opening"
+            ? `${t("sc.drop.opening")} ${Math.round(phase.progress * 100)}%`
+            : t("sc.drop.choose")}
+        </button>
+        <input
+          ref={input}
+          type="file"
+          hidden
+          accept="image/*,video/mp4,video/webm,.gif,.webp,.apng,.png,.jpg,.jpeg,.bmp,.avif,.mp4,.webm,.m4v,.mov"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) onFile(f);
+          }}
+        />
+        {phase.kind === "error" && (
+          <p className="flex items-center gap-2 text-[12.5px] text-danger">
+            <AlertTriangle size={14} /> {phase.message}
+          </p>
+        )}
+        <p className="num text-[11px] text-ink-3">{t("sc.drop.formats")}</p>
+      </div>
     </section>
   );
 }
@@ -418,9 +518,22 @@ function DropZone({ onFile, phase }: { onFile: (f: File) => void; phase: Phase }
 const FPS_VIDEO = [5, 8, 10, 12, 15, 20, 25];
 const FPS_ANIMATED = [0, 5, 10, 15, 20, 25];
 
-function Editor({ source, usb, loaded, onClose }: { source: Source; usb: boolean; loaded: boolean; onClose: () => void }) {
+function Editor({
+  source,
+  usb,
+  loaded,
+  onCancel,
+  onFinished,
+}: {
+  source: Source;
+  usb: boolean;
+  loaded: boolean;
+  onCancel: () => void;
+  onFinished: (d: Done) => void;
+}) {
   const t = useT();
   const still = source.kind === "image";
+  const upload = useScreen((s) => s.upload);
   const [framing, setFraming] = useState<Framing>(DEFAULT_FRAMING);
   const [timing, setTiming] = useState<Timing>(() => {
     // Animated images keep their own frames when they fit; longer ones and
@@ -436,18 +549,21 @@ function Editor({ source, usb, loaded, onClose }: { source: Source; usb: boolean
   const [prepared, setPrepared] = useState<Prepared | null>(null);
   const [preparing, setPreparing] = useState<{ done: number; total: number } | null>(null);
   const [confirm, setConfirm] = useState(false);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
 
   const p = useMemo(() => plan(source, timing), [source, timing]);
   const loopMs = p.frames.reduce((a, f) => a + Math.max(2, Math.round(f.delayMs / 2) * 2), 0);
+  const step: Step = uploading ? 4 : prepared ? 3 : 2;
+  const finalName = name.trim() || source.name;
 
-  // Any change invalidates a prepared result.
+  // Any change to the picture drops a prepared result (back to editing).
   useEffect(() => {
     abort.current?.abort();
     setPrepared(null);
     setPreparing(null);
-    setMessage(null);
+    setError(null);
   }, [framing, timing, dither]);
 
   // Keep the scrub cursor inside the range.
@@ -455,33 +571,48 @@ function Editor({ source, usb, loaded, onClose }: { source: Source; usb: boolean
     setCursor((c) => Math.min(Math.max(c, timing.startMs), Math.max(timing.startMs, timing.endMs - 1)));
   }, [timing.startMs, timing.endMs]);
 
-  const run = async () => {
+  // Stop preparing when the editor closes.
+  useEffect(() => () => abort.current?.abort(), []);
+
+  const runPreview = async () => {
     abort.current?.abort();
     const ctrl = new AbortController();
     abort.current = ctrl;
+    setError(null);
     setPreparing({ done: 0, total: p.frames.length });
     try {
-      const r = await prepare(source, p, framing, dither, name.trim() || source.name, (done, total) =>
-        setPreparing({ done, total }),
-        ctrl.signal,
-      );
+      const r = await prepare(source, p, framing, dither, finalName, (done, total) => setPreparing({ done, total }), ctrl.signal);
       if (!ctrl.signal.aborted) setPrepared(r);
     } catch (e) {
-      if ((e as Error).name !== "AbortError") setMessage({ ok: false, text: t(errorKey(e)) });
+      if ((e as Error).name !== "AbortError") setError(t(errorKey(e)));
     } finally {
       if (abort.current === ctrl) setPreparing(null);
     }
   };
 
-  const save = async () => {
-    if (!prepared) return null;
+  const store = async () => useScreen.getState().add({ ...prepared!, name: finalName });
+
+  const saveOnly = async () => {
     try {
-      const item = await useScreen.getState().add({ ...prepared, name: name.trim() || source.name });
-      setMessage({ ok: true, text: t("sc.saved") });
-      return item;
+      await store();
+      onFinished({ kind: "saved", name: finalName });
     } catch (e) {
-      setMessage({ ok: false, text: String(e) });
-      return null;
+      setError(String(e));
+    }
+  };
+
+  const runUpload = async () => {
+    setConfirm(false);
+    setError(null);
+    setUploading(true);
+    const started = performance.now();
+    try {
+      const item = await store();
+      await useScreen.getState().uploadToKeyboard(item, "editor");
+      onFinished({ kind: "uploaded", name: finalName, seconds: (performance.now() - started) / 1000 });
+    } catch (e) {
+      setError(`${t("sc.uploadFailed")}: ${String(e)}`);
+      setUploading(false);
     }
   };
 
@@ -492,29 +623,55 @@ function Editor({ source, usb, loaded, onClose }: { source: Source; usb: boolean
           source.kind === "animated" ? ` · ${source.frameStarts.length} ${t("sc.frames")}` : ""
         }`;
 
+  const stats = (
+    <div className="num flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-ink-2">
+      <span>
+        {p.frames.length} {t("sc.frames")}
+      </span>
+      {!still && (
+        <span>
+          {t("sc.loop")}: {fmtSeconds(loopMs / 1000)}
+        </span>
+      )}
+      <span>
+        {pagesFor(p.frames.length)} {t("sc.pages")}
+      </span>
+      <span>
+        {t("sc.uploadTime")}: ~{fmtSeconds(uploadSeconds(p.frames.length))}
+      </span>
+    </div>
+  );
+
   return (
     <section className="card flex flex-col gap-5 p-5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate text-[14px] font-semibold">{source.name}</div>
-          <div className="num text-[11.5px] text-ink-3">
-            {source.width}×{source.height} · {sourceInfo}
-          </div>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Stepper step={step} />
         <button
           type="button"
-          onClick={onClose}
-          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+          onClick={onCancel}
+          disabled={uploading}
+          className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink disabled:opacity-40"
         >
-          <X size={14} /> {t("sc.other")}
+          <X size={14} /> {t("sc.cancel")}
         </button>
+      </div>
+
+      <div className="flex items-baseline gap-3">
+        <span className="truncate text-[14px] font-semibold">{source.name}</span>
+        <span className="num truncate text-[11.5px] text-ink-3">
+          {source.width}×{source.height} · {sourceInfo}
+        </span>
       </div>
 
       <div className="grid grid-cols-[480px_minmax(280px,1fr)] gap-6">
         <div className="flex flex-col gap-2">
           {prepared ? (
             <div className="relative">
-              <FramePlayer frames={prepared.frames} delaysMs={prepared.delaysMs} className="h-[270px] w-[480px] rounded-lg bg-black" />
+              <FramePlayer
+                frames={prepared.frames}
+                delaysMs={prepared.delaysMs}
+                className="h-[270px] w-[480px] rounded-lg bg-black"
+              />
               <span className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[11px] text-white">
                 <Play size={10} /> {t("sc.preview.result")}
               </span>
@@ -536,132 +693,160 @@ function Editor({ source, usb, loaded, onClose }: { source: Source; usb: boolean
           )}
         </div>
 
-        <div className="flex flex-col gap-4">
-          <Field label={t("sc.fit")}>
-            <Segmented<Fit>
-              label={t("sc.fit")}
-              value={framing.fit}
-              onChange={(fit) => setFraming({ ...framing, fit, panX: 0, panY: 0 })}
-              options={[
-                { value: "fill", label: t("sc.fit.fill") },
-                { value: "fit", label: t("sc.fit.fit") },
-                { value: "stretch", label: t("sc.fit.stretch") },
-              ]}
-            />
-          </Field>
-          <Slider
-            label={t("sc.zoom")}
-            value={framing.zoom}
-            min={1}
-            max={4}
-            step={0.05}
-            disabled={framing.fit === "stretch"}
-            onChange={(zoom) => setFraming({ ...framing, zoom })}
-            format={(v) => `${v.toFixed(2)}×`}
-          />
-          <button
-            type="button"
-            onClick={() => setFraming({ ...framing, zoom: 1, panX: 0, panY: 0 })}
-            className="flex items-center gap-1.5 self-start text-[12px] text-ink-3 hover:text-ink"
-          >
-            <Crosshair size={12} /> {t("sc.center")}
-          </button>
+        {step === 2 ? (
+          <div className="flex flex-col gap-4">
+            <Field label={t("sc.fit")}>
+              <Segmented<Fit>
+                label={t("sc.fit")}
+                value={framing.fit}
+                onChange={(fit) => setFraming({ ...framing, fit, panX: 0, panY: 0 })}
+                options={[
+                  { value: "fill", label: t("sc.fit.fill") },
+                  { value: "fit", label: t("sc.fit.fit") },
+                  { value: "stretch", label: t("sc.fit.stretch") },
+                ]}
+              />
+            </Field>
+            <div className="flex flex-col gap-1.5">
+              <Slider
+                label={t("sc.zoom")}
+                value={framing.zoom}
+                min={1}
+                max={4}
+                step={0.05}
+                disabled={framing.fit === "stretch"}
+                onChange={(zoom) => setFraming({ ...framing, zoom })}
+                format={(v) => `${v.toFixed(2)}×`}
+              />
+              <button
+                type="button"
+                onClick={() => setFraming({ ...framing, zoom: 1, panX: 0, panY: 0 })}
+                className="flex items-center gap-1.5 self-start text-[12px] text-ink-3 hover:text-ink"
+              >
+                <Crosshair size={12} /> {t("sc.center")}
+              </button>
+            </div>
 
-          {!still && (
-            <>
-              <Field label={t("sc.fps")} hint={timing.fps ? `${Math.round(1000 / timing.fps)} ms / ${t("sc.frame")}` : t("sc.fps.sourceHint")}>
-                <Segmented<string>
+            {!still && (
+              <>
+                <Field
                   label={t("sc.fps")}
-                  value={String(timing.fps)}
-                  onChange={(v) => {
-                    const fps = Number(v);
-                    const maxMs = fps ? (MAX_FRAMES / fps) * 1000 : source.durationMs;
-                    setTiming({ ...timing, fps, endMs: Math.min(source.durationMs, timing.startMs + maxMs) });
-                  }}
-                  options={(source.kind === "video" ? FPS_VIDEO : FPS_ANIMATED).map((f) => ({
-                    value: String(f),
-                    label: f === 0 ? t("sc.fps.source") : String(f),
-                  }))}
+                  hint={timing.fps ? `${Math.round(1000 / timing.fps)} ms / ${t("sc.frame")}` : t("sc.fps.sourceHint")}
+                >
+                  <Segmented<string>
+                    label={t("sc.fps")}
+                    value={String(timing.fps)}
+                    onChange={(v) => {
+                      const fps = Number(v);
+                      const maxMs = fps ? (MAX_FRAMES / fps) * 1000 : source.durationMs;
+                      setTiming({ ...timing, fps, endMs: Math.min(source.durationMs, timing.startMs + maxMs) });
+                    }}
+                    options={(source.kind === "video" ? FPS_VIDEO : FPS_ANIMATED).map((f) => ({
+                      value: String(f),
+                      label: f === 0 ? t("sc.fps.source") : String(f),
+                    }))}
+                  />
+                </Field>
+                <Slider
+                  label={t("sc.start")}
+                  value={timing.startMs}
+                  min={0}
+                  max={Math.max(1, source.durationMs - 10)}
+                  step={10}
+                  onChange={(startMs) => setTiming({ ...timing, startMs, endMs: Math.max(timing.endMs, startMs + 10) })}
+                  format={(v) => fmtSeconds(v / 1000)}
                 />
-              </Field>
-              <Slider
-                label={t("sc.start")}
-                value={timing.startMs}
-                min={0}
-                max={Math.max(1, source.durationMs - 10)}
-                step={10}
-                onChange={(startMs) => setTiming({ ...timing, startMs, endMs: Math.max(timing.endMs, startMs + 10) })}
-                format={(v) => fmtSeconds(v / 1000)}
-              />
-              <Slider
-                label={t("sc.end")}
-                value={timing.endMs}
-                min={10}
-                max={source.durationMs}
-                step={10}
-                onChange={(endMs) => setTiming({ ...timing, endMs, startMs: Math.min(timing.startMs, endMs - 10) })}
-                format={(v) => fmtSeconds(v / 1000)}
-              />
-            </>
-          )}
+                <Slider
+                  label={t("sc.end")}
+                  value={timing.endMs}
+                  min={10}
+                  max={source.durationMs}
+                  step={10}
+                  onChange={(endMs) => setTiming({ ...timing, endMs, startMs: Math.min(timing.startMs, endMs - 10) })}
+                  format={(v) => fmtSeconds(v / 1000)}
+                />
+              </>
+            )}
 
-          <div className="flex items-center justify-between gap-3">
-            <span className="flex flex-col">
-              <span className="text-[12.5px] font-medium">{t("sc.dither")}</span>
-              <span className="text-[11.5px] text-ink-3">{t("sc.dither.hint")}</span>
-            </span>
-            <Toggle checked={dither} onChange={setDither} label={t("sc.dither")} />
+            <div className="flex items-center justify-between gap-3">
+              <span className="flex flex-col">
+                <span className="text-[12.5px] font-medium">{t("sc.dither")}</span>
+                <span className="text-[11.5px] text-ink-3">{t("sc.dither.hint")}</span>
+              </span>
+              <Toggle checked={dither} onChange={setDither} label={t("sc.dither")} />
+            </div>
           </div>
-
-          <Field label={t("sc.name")}>
-            <input
-              value={name}
-              maxLength={60}
-              onChange={(e) => setName(e.target.value)}
-              className="h-9 rounded-lg border border-line bg-bg-raise px-3 text-[13px] outline-none focus:border-signal"
-            />
-          </Field>
-        </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div>
+              <div className="text-[15px] font-semibold">{step === 4 ? t("sc.uploading") : t("sc.preview.ready")}</div>
+              <p className="mt-1 text-[12.5px] text-ink-2">
+                {step === 4 ? t("sc.uploading.note") : t("sc.preview.check")}
+              </p>
+            </div>
+            <Field label={t("sc.name")}>
+              <input
+                value={name}
+                maxLength={60}
+                disabled={uploading}
+                onChange={(e) => setName(e.target.value)}
+                className="h-9 rounded-lg border border-line bg-bg-raise px-3 text-[13px] outline-none focus:border-signal disabled:opacity-60"
+              />
+            </Field>
+            {stats}
+            {step === 4 ? (
+              <InlineProgress />
+            ) : (
+              <ul className="flex flex-col gap-1.5 text-[12px] text-ink-2">
+                <li className="flex gap-2">
+                  <Check size={13} className="mt-0.5 shrink-0 text-ok" /> {t("sc.confirm.onlyGif")}
+                </li>
+                <li className="flex gap-2">
+                  <Library size={13} className="mt-0.5 shrink-0 text-ink-3" /> {t("sc.preview.libraryNote")}
+                </li>
+              </ul>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-4 border-t border-line pt-4">
-        <div className="num flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-ink-2">
-          <span>
-            {p.frames.length} {t("sc.frames")}
-          </span>
-          {!still && <span>{t("sc.loop")}: {fmtSeconds(loopMs / 1000)}</span>}
-          <span>
-            {pagesFor(p.frames.length)} {t("sc.pages")}
-          </span>
-          <span>
-            {t("sc.uploadTime")}: ~{fmtSeconds(uploadSeconds(p.frames.length))}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          {!prepared ? (
+        {step === 2 ? stats : <span />}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {step === 2 && (
             <button
               type="button"
               disabled={!!preparing}
-              onClick={run}
-              className="flex h-10 items-center gap-2 rounded-xl bg-signal px-4 text-[13px] font-semibold text-signal-ink disabled:opacity-50"
+              onClick={runPreview}
+              className="flex h-10 items-center gap-2 rounded-xl bg-signal px-5 text-[13px] font-semibold text-signal-ink disabled:opacity-50"
             >
-              {preparing ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+              {preparing ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
               {preparing ? `${t("sc.preparing")} ${preparing.done}/${preparing.total}` : t("sc.prepare")}
             </button>
-          ) : (
+          )}
+          {step === 3 && (
             <>
               <button
                 type="button"
-                onClick={save}
-                className="flex h-10 items-center gap-2 rounded-xl border border-line px-4 text-[13px] font-medium hover:bg-surface-2"
+                onClick={saveOnly}
+                title={t("sc.saveOnly.hint")}
+                className="flex h-10 items-center gap-2 rounded-xl px-3 text-[12.5px] text-ink-2 hover:bg-surface-2 hover:text-ink"
               >
-                <Library size={15} /> {t("sc.saveLibrary")}
+                <Library size={14} /> {t("sc.saveOnly")}
               </button>
               <button
                 type="button"
-                disabled={!usb || !loaded}
+                onClick={() => setPrepared(null)}
+                className="flex h-10 items-center gap-2 rounded-xl border border-line px-4 text-[13px] font-medium hover:bg-surface-2"
+              >
+                <Pencil size={14} /> {t("sc.backToEdit")}
+              </button>
+              <button
+                type="button"
+                disabled={!usb || !loaded || !!upload}
+                title={!usb ? t("sc.needsUsb") : undefined}
                 onClick={() => setConfirm(true)}
-                className="flex h-10 items-center gap-2 rounded-xl bg-signal px-4 text-[13px] font-semibold text-signal-ink disabled:opacity-40"
+                className="flex h-10 items-center gap-2 rounded-xl bg-signal px-5 text-[13px] font-semibold text-signal-ink disabled:opacity-40"
               >
                 <Upload size={15} /> {t("sc.uploadAction")}
               </button>
@@ -670,7 +855,7 @@ function Editor({ source, usb, loaded, onClose }: { source: Source; usb: boolean
         </div>
       </div>
 
-      {p.clipped && (
+      {step === 2 && p.clipped && (
         <p className="flex items-start gap-2 text-[12px] text-warn">
           <AlertTriangle size={13} className="mt-0.5 shrink-0" />
           {t("sc.warn.clipped")}
@@ -682,9 +867,15 @@ function Editor({ source, usb, loaded, onClose }: { source: Source; usb: boolean
           {t("sc.warn.unproven")}
         </p>
       )}
-      {message && (
-        <p className={`flex items-center gap-2 text-[12px] ${message.ok ? "text-ok" : "text-danger"}`}>
-          {message.ok ? <Check size={13} /> : <X size={13} />} {message.text}
+      {step === 3 && !usb && (
+        <p className="flex items-start gap-2 text-[12px] text-ink-3">
+          <Usb size={13} className="mt-0.5 shrink-0" />
+          {t("sc.needsUsbShort")}
+        </p>
+      )}
+      {error && (
+        <p className="flex items-start gap-2 text-[12px] text-danger">
+          <X size={13} className="mt-0.5 shrink-0" /> {error}
         </p>
       )}
 
@@ -693,23 +884,50 @@ function Editor({ source, usb, loaded, onClose }: { source: Source; usb: boolean
           <ConfirmUpload
             frames={prepared.frames.length}
             loopMs={loopMs}
-            preview={prepared.frames[0]!}
+            preview={prepared.frames[Math.floor(prepared.frames.length / 3)]!}
             onCancel={() => setConfirm(false)}
-            onConfirm={async () => {
-              setConfirm(false);
-              const item = await save();
-              if (!item) return;
-              try {
-                await useScreen.getState().uploadToKeyboard(item);
-                setMessage({ ok: true, text: t("sc.uploaded") });
-              } catch (e) {
-                setMessage({ ok: false, text: String(e) });
-              }
-            }}
+            onConfirm={runUpload}
           />
         )}
       </AnimatePresence>
     </section>
+  );
+}
+
+/** Time left ("~1 dk 20 sn") from the pages done so far; `null` until known. */
+function remaining(u: { done: number; total: number; startedMs: number }, nowMs: number): string | null {
+  const elapsed = Math.max(0, nowMs - u.startedMs);
+  if (u.done === 0 || elapsed === 0) return null;
+  const left = ((elapsed / u.done) * Math.max(0, u.total - u.done)) / 1000;
+  return `~${fmtSeconds(left)}`;
+}
+
+/** Progress of the running upload, inside the studio. */
+function InlineProgress() {
+  const t = useT();
+  const upload = useScreen((s) => s.upload);
+  const now = useNow();
+  if (!upload) {
+    return (
+      <div className="flex items-center gap-2 text-[12.5px] text-ink-2">
+        <Loader2 size={14} className="animate-spin" /> {t("sc.saving")}
+      </div>
+    );
+  }
+  const pct = Math.round((upload.done / Math.max(1, upload.total)) * 100);
+  const left = remaining(upload, now.getTime());
+  return (
+    <div className="flex flex-col gap-2" role="status">
+      <div className="h-2 overflow-hidden rounded-full bg-surface-2">
+        <div className="h-full rounded-full bg-signal transition-[width]" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="num flex justify-between text-[12px] text-ink-2">
+        <span>
+          {upload.done}/{upload.total} {t("sc.pages")} · %{pct}
+        </span>
+        <span>{left ? `${left} ${t("sc.left")}` : ""}</span>
+      </div>
+    </div>
   );
 }
 
@@ -818,6 +1036,13 @@ function ConfirmUpload({
   const t = useT();
   const state = useScreen((s) => s.state);
   const factory = state?.items.some((i) => i.kind === "factory") ?? false;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -868,7 +1093,12 @@ function ConfirmUpload({
           </li>
         </ul>
         <div className="flex justify-end gap-2 pt-1">
-          <button type="button" onClick={onCancel} className="h-10 rounded-xl px-4 text-[13px] text-ink-2 hover:bg-surface-2">
+          <button
+            type="button"
+            autoFocus
+            onClick={onCancel}
+            className="h-10 rounded-xl border border-line px-4 text-[13px] text-ink-2 hover:bg-surface-2"
+          >
             {t("sc.cancel")}
           </button>
           <button
@@ -931,114 +1161,138 @@ function LibraryCard({ usb }: { usb: boolean }) {
   const [confirmItem, setConfirmItem] = useState<ScreenItem | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const items = state?.items ?? [];
 
+  const runUpload = async (it: ScreenItem) => {
+    setConfirmItem(null);
+    setNotice(null);
+    try {
+      await useScreen.getState().uploadToKeyboard(it, "library");
+      setNotice({ ok: true, text: `“${it.name}” ${t("sc.done.uploaded")}. ${t("sc.done.fnHome")}` });
+    } catch (e) {
+      setNotice({ ok: false, text: `${t("sc.uploadFailed")}: ${String(e)}` });
+    }
+  };
+
   return (
-    <section className="card flex flex-col gap-2 p-3">
-      <div className="flex items-center gap-2 px-2 pt-2 pb-1">
-        <Library size={14} className="text-ink-3" />
-        <div className="eyebrow">{t("sc.library")}</div>
+    <section className="card flex flex-col gap-3 p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 px-1">
+        <div className="flex items-center gap-2">
+          <Library size={14} className="text-ink-3" />
+          <div className="eyebrow">{t("sc.library")}</div>
+          <span className="num text-[11px] text-ink-3">{items.length}</span>
+        </div>
+        <span className="text-[11.5px] text-ink-3">{t("sc.library.note")}</span>
       </div>
-      {items.length === 0 && <p className="px-2 pb-2 text-[12.5px] text-ink-3">{t("sc.library.empty")}</p>}
-      <ul className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-1">
-        {items.map((it) => (
-          <li key={it.id} className="group flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-surface-2">
-            <Thumb item={it} />
-            <div className="flex min-w-0 flex-1 flex-col">
-              {editing === it.id ? (
-                <input
-                  autoFocus
-                  defaultValue={it.name}
-                  maxLength={60}
-                  onBlur={(e) => {
-                    setEditing(null);
-                    if (e.target.value.trim() && e.target.value !== it.name)
-                      useScreen.getState().rename(it.id, e.target.value).catch((x) => setError(String(x)));
-                  }}
-                  onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                  className="h-7 rounded-md border border-signal bg-bg-raise px-2 text-[12.5px] outline-none"
-                />
-              ) : (
-                <span className="truncate text-[13px] font-medium">{it.name}</span>
-              )}
-              <span className="num text-[11px] text-ink-3">
-                {it.frames} {t("sc.frames")}
-                {it.frames > 1 ? ` · ${t("sc.loop")} ${fmtSeconds(it.loopMs / 1000)}` : ""}
-              </span>
-              <span className="num text-[11px] text-ink-3">
-                {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(it.frames))}
-              </span>
-              <span className="flex gap-1.5 pt-0.5">
-                {it.kind === "factory" && (
-                  <span className="rounded-full bg-surface-2 px-1.5 text-[10px] text-ink-2">{t("sc.badge.factory")}</span>
-                )}
-                {state?.shown === it.id && (
-                  <span className="rounded-full bg-ok/15 px-1.5 text-[10px] text-ok">{t("sc.badge.onKeyboard")}</span>
-                )}
-              </span>
-            </div>
-            <div className="flex flex-col gap-1 opacity-70 group-hover:opacity-100">
-              <button
-                type="button"
-                title={it.kind === "factory" ? t("sc.factory.restore") : t("sc.uploadAction")}
-                aria-label={t("sc.uploadAction")}
-                disabled={!usb || !!upload}
-                onClick={() => setConfirmItem(it)}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-signal hover:bg-surface disabled:opacity-30"
-              >
-                <Upload size={14} />
-              </button>
-              {it.kind !== "factory" && (
-                <>
-                  <button
-                    type="button"
-                    title={t("sc.rename")}
+      {notice && (
+        <p className={`flex items-start gap-2 px-1 text-[12.5px] ${notice.ok ? "text-ok" : "text-danger"}`} role="status">
+          {notice.ok ? <Check size={14} className="mt-0.5 shrink-0" /> : <X size={14} className="mt-0.5 shrink-0" />}
+          {notice.text}
+        </p>
+      )}
+      {items.length === 0 && <p className="px-1 pb-1 text-[12.5px] text-ink-3">{t("sc.library.empty")}</p>}
+      <ul className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-2">
+        {items.map((it) => {
+          const onKeyboard = state?.shown === it.id;
+          const busy = upload?.id === it.id;
+          return (
+            <li
+              key={it.id}
+              className={`flex gap-3 rounded-xl border p-3 transition-colors ${
+                onKeyboard ? "border-ok/40 bg-ok/5" : "border-line hover:bg-surface-2/60"
+              }`}
+            >
+              <Thumb item={it} />
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                {editing === it.id ? (
+                  <input
+                    autoFocus
+                    defaultValue={it.name}
+                    maxLength={60}
                     aria-label={t("sc.rename")}
-                    onClick={() => setEditing(it.id)}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-ink-3 hover:bg-surface hover:text-ink"
-                  >
-                    <Pencil size={13} />
-                  </button>
-                  <button
-                    type="button"
-                    title={deleting === it.id ? t("sc.remove.confirm") : t("sc.remove")}
-                    aria-label={deleting === it.id ? t("sc.remove.confirm") : t("sc.remove")}
-                    disabled={!!upload && upload.id === it.id}
-                    onBlur={() => setDeleting(null)}
-                    onClick={() => {
-                      if (deleting !== it.id) return setDeleting(it.id);
-                      setDeleting(null);
-                      useScreen.getState().remove(it.id).catch((x) => setError(String(x)));
+                    onBlur={(e) => {
+                      setEditing(null);
+                      const v = e.target.value.trim();
+                      if (v && v !== it.name) useScreen.getState().rename(it.id, v).catch((x) => setNotice({ ok: false, text: String(x) }));
                     }}
-                    className={`flex h-7 w-7 items-center justify-center rounded-md hover:bg-surface ${
-                      deleting === it.id ? "bg-danger/15 text-danger" : "text-ink-3 hover:text-danger"
-                    }`}
-                  >
-                    {deleting === it.id ? <Check size={13} /> : <Trash2 size={13} />}
-                  </button>
-                </>
-              )}
-            </div>
-          </li>
-        ))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                      if (e.key === "Escape") setEditing(null);
+                    }}
+                    className="h-7 rounded-md border border-signal bg-bg-raise px-2 text-[12.5px] outline-none"
+                  />
+                ) : (
+                  <span className="truncate text-[13px] font-semibold" title={it.name}>
+                    {it.name}
+                  </span>
+                )}
+                <span className="num text-[11px] text-ink-3">
+                  {it.frames} {t("sc.frames")}
+                  {it.frames > 1 ? ` · ${t("sc.loop")} ${fmtSeconds(it.loopMs / 1000)}` : ""}
+                </span>
+                <span className="num text-[11px] text-ink-3">
+                  {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(it.frames))}
+                </span>
+                <span className="flex gap-1.5 pt-1">
+                  {it.kind === "factory" && (
+                    <span className="rounded-full bg-surface-2 px-2 py-px text-[10.5px] text-ink-2">{t("sc.badge.factory")}</span>
+                  )}
+                  {onKeyboard && (
+                    <span className="rounded-full bg-ok/15 px-2 py-px text-[10.5px] text-ok">{t("sc.badge.onKeyboard")}</span>
+                  )}
+                </span>
+              </div>
+              <div className="flex flex-col items-end justify-between gap-2">
+                <button
+                  type="button"
+                  disabled={!usb || !!upload}
+                  title={!usb ? t("sc.needsUsbShort") : it.kind === "factory" ? t("sc.factory.restoreHint") : undefined}
+                  onClick={() => setConfirmItem(it)}
+                  className="flex h-8 items-center gap-1.5 rounded-lg border border-signal/40 px-2.5 text-[12px] font-medium text-signal hover:bg-signal/10 disabled:opacity-35"
+                >
+                  {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                  {it.kind === "factory" ? t("sc.factory.restore") : t("sc.upload.short")}
+                </button>
+                {it.kind !== "factory" && (
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      title={t("sc.rename")}
+                      aria-label={t("sc.rename")}
+                      onClick={() => setEditing(it.id)}
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-ink-3 hover:bg-surface hover:text-ink"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      title={deleting === it.id ? t("sc.remove.confirm") : t("sc.remove")}
+                      aria-label={deleting === it.id ? t("sc.remove.confirm") : t("sc.remove")}
+                      disabled={busy}
+                      onBlur={() => setDeleting(null)}
+                      onClick={() => {
+                        if (deleting !== it.id) return setDeleting(it.id);
+                        setDeleting(null);
+                        useScreen.getState().remove(it.id).catch((x) => setNotice({ ok: false, text: String(x) }));
+                      }}
+                      className={`flex h-7 items-center justify-center gap-1 rounded-md px-1.5 text-[11.5px] ${
+                        deleting === it.id ? "bg-danger/15 text-danger" : "text-ink-3 hover:bg-surface hover:text-danger"
+                      }`}
+                    >
+                      <Trash2 size={13} />
+                      {deleting === it.id && t("sc.remove.confirmShort")}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </li>
+          );
+        })}
       </ul>
-      {error && <p className="px-2 text-[12px] text-danger">{error}</p>}
       <AnimatePresence>
         {confirmItem && (
-          <LibraryConfirm
-            item={confirmItem}
-            onCancel={() => setConfirmItem(null)}
-            onConfirm={async () => {
-              const it = confirmItem;
-              setConfirmItem(null);
-              try {
-                await useScreen.getState().uploadToKeyboard(it);
-              } catch (e) {
-                setError(String(e));
-              }
-            }}
-          />
+          <LibraryConfirm item={confirmItem} onCancel={() => setConfirmItem(null)} onConfirm={() => runUpload(confirmItem)} />
         )}
       </AnimatePresence>
     </section>
@@ -1048,27 +1302,32 @@ function LibraryCard({ usb }: { usb: boolean }) {
 function LibraryConfirm({ item, onCancel, onConfirm }: { item: ScreenItem; onCancel: () => void; onConfirm: () => void }) {
   const [first, setFirst] = useState<Uint16Array | null>(null);
   useEffect(() => {
-    loadFrames(item.id, true).then((d) => setFirst(d.frames[0] ?? null), console.error);
-  }, [item.id]);
+    loadFrames(item.id, item.frames === 1).then((d) => setFirst(pickThumb(d.frames)), console.error);
+  }, [item.id, item.frames]);
   if (!first) return null;
   return <ConfirmUpload frames={item.frames} loopMs={item.loopMs} preview={first} onCancel={onCancel} onConfirm={onConfirm} />;
 }
 
 // ----------------------------------------------------- upload progress
 
-/** Floating progress while an upload runs (shown on every page). */
+/** Floating progress while an upload runs. Hidden on the Screen page when
+ *  the studio itself shows the progress. */
 export function ScreenUploadToast() {
   const t = useT();
   const upload = useScreen((s) => s.upload);
+  const page = useApp((s) => s.page);
   const [now, setNow] = useState(Date.now());
+  const running = upload !== null;
   useEffect(() => {
-    if (!upload) return;
+    if (!running) return;
+    setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(id);
-  }, [upload]);
+  }, [running]);
+  const visible = !!upload && !(page === "screen" && upload.origin === "editor");
   return (
     <AnimatePresence>
-      {upload && (
+      {visible && upload && (
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1093,11 +1352,7 @@ export function ScreenUploadToast() {
               {upload.done}/{upload.total} {t("sc.pages")}
             </span>
             <span>
-              {upload.done > 0
-                ? `~${fmtSeconds(
-                    (((now - upload.startedMs) / upload.done) * (upload.total - upload.done)) / 1000,
-                  )} ${t("sc.left")}`
-                : ""}
+              {remaining(upload, now) ? `${remaining(upload, now)} ${t("sc.left")}` : ""}
             </span>
           </div>
           <p className="text-[11.5px] text-ink-2">{t("sc.uploading.note")}</p>

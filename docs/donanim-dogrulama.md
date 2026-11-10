@@ -381,9 +381,28 @@ Yöntem: `kb screen-test --yes` (E1) ve `kb screen-gif <dosya> --yes` (E4); uygu
   - Yükleme yalnızca GIF sayfasını değiştiriyor; ana sayfa etkilenmiyor.
   - Bu güne kadar yükleme sayısı: **2** (E1, E4).
 - **Açık kalanlar:**
-  - E2: fiş çekip takma ya da mod değişikliğinden sonra görsel kalıyor mu; açılışta hangi sayfa geliyor. Kendi görseliyle denenmeli; fabrika animasyonuyla fark görülemez.
   - E3: panelin gerçek kare hızı.
-  - Yükleme sırasında yazma ve ışıklar.
+  - Yükleme sırasında ışıkların davranışı (kullanıcının ışığı kapalı).
+
+### Ekran Stüdyosu, uçtan uca — 2026-11-10
+
+Uygulamanın Ekran sayfası; kullanıcı kendi dosyalarıyla denedi.
+
+- **Kütüphane:** Fabrika yedeği uygulama açılınca kütüphaneye kendiliğinden eklendi. Arayüzden içe aktarılan aynı GIF, Rust'ın çevirdiğiyle bayt bayt aynı çıktı ve ikinci kopya oluşmadı (CDP).
+- **Kullanıcının denemesi:**
+  - Kendi resmini ve GIF'ini uygulamadan yükledi; önizleme klavyedekiyle aynı.
+  - **Yükleme sırasında klavye yazmaya devam ediyor** (Not Defteri'nde denendi).
+  - Fn+Home GIF sayfasında yüklenen görseli gösteriyor; ana sayfaya da geçiyor.
+  - **E2, kalıcılık:** USB kablosunu çıkarıp taktı, 2.4G moduna geçip döndü; görsel GIF sayfasında kaldı. N1'in "fişten sonra kayboluyor" bildirimi bu klavyede geçerli değil.
+  - Uygulama kaydında uygulamadan yapılan 2 yükleme var. Toplam yükleme sayısı: **4** (E1, E4 ve kullanıcının 2 yüklemesi).
+- **Kullanıcının akış geri bildirimi** (aynı gün düzeltildi, aşağıda): Yükleme bittikten sonra alan düzenleme ekranında kalıyordu. "Başka dosya" düğmesi silik ve anlamsızdı. "Kütüphaneye kaydet" ile "Klavyeye yükle"nin farkı belli değildi ve Vazgeç düğmesi yoktu.
+- **Yeni akış:**
+  - Dört adım: Dosya → Düzenle → Önizle → Yükle.
+  - Her adımda görünür bir "Vazgeç" var.
+  - Önizleme adımında ana düğme "Klavyeye yükle", yanında "Düzenlemeye dön". "Yüklemeden kaydet" ikincil; açıklaması "klavye bağlı değilken ya da sonra yüklemek için". Yükleme zaten kütüphaneye de kaydediyor.
+  - Yükleme sırasında ilerleme stüdyonun içinde gösteriliyor. Bitince alan başlangıç ekranına dönüyor ve "… klavyeye yüklendi · Fn+Home" bilgisini veriyor.
+  - Onay penceresi Esc ile kapanıyor; açılınca odak Vazgeç'te.
+  - Tarayıcıda sahte arka uçla (`?mock=usb`) bütün yollar denendi: yükleme, yüklemeden kaydetme, düzenlemeye dönme, Vazgeç, Esc ve kütüphaneden yükleme.
 
 ### Sonuçlar
 

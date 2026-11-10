@@ -194,6 +194,21 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **Doğrulama:**
       - E1: test deseni doğru yön ve renkte, ayrı GIF sayfasında; Fn+Home ile saat sayfasına geçiliyor.
       - E4: fabrika animasyonu 308 s'de geri yüklendi; görüntü ve hız aynı. Yükleme sırasında ekranda LOADING % görünüyor.
+    - **PR:** [#18](https://github.com/cebersaban44-rgb/klavye-studio/pull/18).
+23. **Ekran Stüdyosu sayfası.** Ayrıntı: `donanim-dogrulama.md`, "Ekran Stüdyosu, uçtan uca".
+    - **Kullanıcının ilkesi uygulandı:** Dosya olduğu gibi gönderilmez. WebView2'nin kendi çözücüleriyle açılır, 240×135 RGB565'e çevrilir, gönderilecek baytlardan önizlenir, onayla yüklenir. Rust tarafı (`screen_add`) veriyi yeniden doğrular.
+    - **Akış:** Dosya → Düzenle → Önizle → Yükle; her adımda Vazgeç. Bitince alan başlangıca döner ve ne yapıldığını söyler.
+      - Düzenle: sürükleyerek kaydırma, tekerlekle yakınlaştırma; Doldur / Sığdır / Uzat; video ve animasyonda başlangıç, bitiş ve kare hızı; Bayer yumuşak geçiş. Renkler panelin gösterebildiği renkler.
+    - **Kütüphane** (`<config>/screen/`):
+      - Hazırlanan her animasyon doğrulanmış blob olarak saklanır; içerik özeti (FNV-1a) aynı içeriği tekilleştirir.
+      - Fabrika yedeği kendiliğinden eklenir ve silinemez.
+      - Yükleme, yeniden adlandırma ve iki adımlı silme var. "klavyede" etiketi, GIF sayfasında ne olduğunu gösterir.
+      - Bugünkü ve toplam yükleme sayısı tutulur.
+    - **Yükleme:** Cihaz aktörü üzerinden; `screen-upload-progress` olaylarıyla ilerleme gösterilir. Başka sayfalarda yüzen bir gösterge çıkar. Yükleme sürerken kapatmaya çalışınca uyarı verilir.
+    - **Klavye görünümü:** Saatli ana sayfanın canlı kopyası ile GIF sayfasının önizlemesi yan yana; Fn+Home açıklaması.
+    - **RGB565 dönüşümü:** Rust ve arayüz aynı kuralı kullanıyor: en yakın seviye (kırpma değil).
+    - **Doğrulama:** CDP ile fabrika GIF'i, dikey fotoğraf ve WebM video içe aktarıldı. Kullanıcı kendi resim ve GIF'ini yükledi; E2 geçti; yükleme sırasında yazma sürüyor.
+    - **Henüz yok:** yazı ve şablon kartları, slayt, canlı kartlar.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -350,8 +365,12 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
      - E1 (test deseni) ve E4 (fabrika animasyonu geri yüklendi) klavyede başarılı. Ayrıntı: `donanim-dogrulama.md`, "Ekran yüklemesi".
    - **Kullanıcının ilkesi (2026-11-10):** "Her ne yüklenirse yüklensin" dosya olduğu gibi gönderilmez. Uygulama onu klavyenin biçimine çevirir, önizletir, kullanıcı onaylarsa yükler. Ayrıntı: `research/ekran-derin-arastirma.md` §3.1.
    - **Sıradaki adımlar:**
-     1. Faz A: Ekran Stüdyosu sayfası. İçe aktarma (resim, GIF, video), kırpma ve sığdırma, önizleme ve onay, kütüphane, fabrika görünümüne dönüş.
-     2. E2 (kalıcılık) kullanıcının ilk kendi görseliyle; E3 (kare hızı). Her yükleme `donanim-dogrulama.md`'ye yazılır.
+     1. **Faz A bitti** (madde 23): Ekran Stüdyosu sayfası; kullanıcı kendi resim ve GIF'iyle denedi, E2 (kalıcılık) geçti.
+     2. Sıradaki adaylar (kullanıcı seçecek):
+        - Faz B: yazı ve şablon kartları, slayt (birkaç görsel tek animasyonda), ekranla uyumlu ışık.
+        - Faz C: olay tabanlı canlı kartlar.
+        - E3: panelin gerçek kare hızı.
+     3. Her yükleme `donanim-dogrulama.md`'ye yazılır.
    - **Güvenlik kuralları koda girecek** (§6):
      - kare ≤140, sayfa ≤2215, gecikme 1–254 (`FF` yasak);
      - `04 F0`, `04 38`, `1F`, güncelleme modu ve FF68'de GET_FEATURE asla gönderilmez;

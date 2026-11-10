@@ -131,6 +131,8 @@ async function uploadItem(modelId: string, id: string, onProgress: (p: ScreenPro
 
 export interface Upload {
   id: string;
+  /** Where it was started: the studio shows its own progress. */
+  origin: "editor" | "library";
   name: string;
   done: number;
   total: number;
@@ -145,7 +147,7 @@ interface ScreenStore {
   running: Promise<void> | null;
   load: (modelId: string) => Promise<void>;
   add: (p: Prepared) => Promise<ScreenItem>;
-  uploadToKeyboard: (item: ScreenItem) => Promise<void>;
+  uploadToKeyboard: (item: ScreenItem, origin: Upload["origin"]) => Promise<void>;
   rename: (id: string, name: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
 }
@@ -165,12 +167,12 @@ export const useScreen = create<ScreenStore>((set, get) => ({
     if (modelId) set({ state: await getScreenState(modelId) });
     return item;
   },
-  uploadToKeyboard: async (item) => {
+  uploadToKeyboard: async (item, origin) => {
     const modelId = get().modelId;
     if (!modelId || get().upload) return;
     let finish!: () => void;
     const running = new Promise<void>((r) => (finish = r));
-    set({ upload: { id: item.id, name: item.name, done: 0, total: item.pages, startedMs: Date.now() }, running });
+    set({ upload: { id: item.id, origin, name: item.name, done: 0, total: item.pages, startedMs: Date.now() }, running });
     try {
       const state = await uploadItem(modelId, item.id, (p) =>
         set((s) => (s.upload ? { upload: { ...s.upload, done: p.done, total: p.total } } : {})),
