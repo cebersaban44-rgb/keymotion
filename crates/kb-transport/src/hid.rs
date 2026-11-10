@@ -84,10 +84,7 @@ impl Hid {
     pub fn open(&self, iface: &HidInterface) -> Result<HidChannel> {
         let path = CString::new(iface.path.as_bytes()).map_err(|_| TransportError::BadPath)?;
         let device = self.api.open_path(&path)?;
-        Ok(HidChannel {
-            device,
-            info: iface.clone(),
-        })
+        Ok(HidChannel { device, info: iface.clone() })
     }
 }
 

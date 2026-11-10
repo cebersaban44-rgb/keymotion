@@ -1,13 +1,32 @@
-import { AlertTriangle, Check, Eraser, Loader2, PaintBucket, RotateCcw, Usb } from "lucide-react";
+import {
+  AlertTriangle,
+  BoxSelect,
+  Check,
+  Eraser,
+  Loader2,
+  MousePointer2,
+  PaintBucket,
+  Paintbrush,
+  RotateCcw,
+  Usb,
+  X,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EffectInfo } from "../bindings/EffectInfo";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
-import { ColorPicker, EffectSwatch, Field, Steps, Toggle, type SwatchVariant } from "../components/controls";
-import { KeyboardView } from "../components/KeyboardView";
-import { applyEffect, applyPerKey, getLightingCatalog, setLiveFrame } from "../lib/ipc";
+import { ColorPicker, EffectSwatch, Field, Segmented, Steps, Toggle, type SwatchVariant } from "../components/controls";
+import { KeyboardView, type KeyAction } from "../components/KeyboardView";
+import { getLightingCatalog, setLiveFrame } from "../lib/ipc";
 import { useT, type MessageKey } from "../lib/i18n";
-import { REACTIVE_EFFECTS, toLedColors, useLighting, type ColorMap } from "../lib/lighting";
+import {
+  REACTIVE_EFFECTS,
+  sameColors,
+  toLedColors,
+  useLighting,
+  type ColorMap,
+  type PaintTool,
+} from "../lib/lighting";
 import { useMirror } from "../lib/mirror";
 
 const VARIANT: Record<number, SwatchVariant> = {
@@ -83,15 +102,22 @@ export function Lighting({ kb }: { kb: KeyboardInfo }) {
   );
 }
 
-function Plate({ kb, colors, caption, live, onPaint }: {
+function Plate({ kb, colors, caption, live, onKeyAction, selected, tool, onBackgroundPress }: {
   kb: KeyboardInfo;
   colors: ColorMap | null;
   caption: string;
   live: boolean;
-  onPaint?: (led: number) => void;
+  onKeyAction?: (led: number, action: KeyAction, additive: boolean) => void;
+  selected?: ReadonlySet<number>;
+  tool?: PaintTool;
+  /** Pointer down on the plate outside any key (clears a selection). */
+  onBackgroundPress?: () => void;
 }) {
   return (
     <section
+      onPointerDown={(e) => {
+        if (!(e.target as HTMLElement).closest(".kb-key")) onBackgroundPress?.();
+      }}
       className="relative overflow-hidden rounded-[26px] border border-line p-6 pb-4"
       style={{ background: "linear-gradient(180deg, var(--plate), color-mix(in oklch, var(--plate) 80%, black))" }}
     >
@@ -101,7 +127,9 @@ function Plate({ kb, colors, caption, live, onPaint }: {
           battery={kb.battery?.percent ?? null}
           connection={kb.connection}
           colors={colors}
-          onPaint={onPaint}
+          onKeyAction={onKeyAction}
+          selected={selected}
+          tool={tool}
         />
       )}
       <div className="mt-4 flex items-center gap-2 text-[11.5px] text-[#8b8d92]">
@@ -139,7 +167,7 @@ function StatusLine({ status, okText }: { status: Status; okText: string }) {
 
 function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirror: ColorMap | null }) {
   const t = useT();
-  const { effect, setEffect, markApplied, appliedEffect } = useLighting();
+  const { effect, setEffect, applyEffectDraft, appliedEffect } = useLighting();
   const [catalog, setCatalog] = useState<EffectInfo[]>([]);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
@@ -156,8 +184,7 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
     setStatus({ kind: "busy" });
     const started = performance.now();
     try {
-      await applyEffect(effect);
-      markApplied(effect);
+      await applyEffectDraft();
       setStatus({ kind: "ok", ms: Math.round(performance.now() - started) });
     } catch (e) {
       setStatus({ kind: "error", message: String(e) });
@@ -315,11 +342,87 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
 
 function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey: ColorMap }) {
   const t = useT();
-  const { brush, setBrush, paint, setPerKey, perKeyBrightness, setPerKeyBrightness, livePreview, setLivePreview } =
-    useLighting();
+  const {
+    brush,
+    setBrush,
+    paint,
+    setPerKey,
+    perKeyBrightness,
+    setPerKeyBrightness,
+    livePreview,
+    setLivePreview,
+    savedPerKey,
+    savePerKeyDraft,
+    revertPerKey,
+    tool,
+    setTool,
+  } = useLighting();
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const keys = kb.geometry?.keys ?? [];
   const live = usb && livePreview;
+
+  // Select tool: keys stay selected and every colour pick recolours them.
+  // The ref mirrors the state so rapid drags and colour picks never see a
+  // stale selection.
+  const [selection, setSelection] = useState<ReadonlySet<number>>(() => new Set());
+  const selectionRef = useRef<ReadonlySet<number>>(selection);
+  const select = (next: ReadonlySet<number>) => {
+    selectionRef.current = next;
+    setSelection(next);
+    // Show the selection's colour in the picker when the keys share one.
+    const design = useLighting.getState().perKey;
+    const shared = new Set([...next].map((led) => design[led]?.toLowerCase()));
+    const [only] = shared;
+    if (shared.size === 1 && only) setBrush(only);
+  };
+  const switchTool = (next: PaintTool) => {
+    setTool(next);
+    select(new Set());
+  };
+  const onKeyAction = (led: number, action: KeyAction, additive: boolean) => {
+    if (tool === "brush") {
+      paint([led], currentBrush());
+      return;
+    }
+    const prev = selectionRef.current;
+    if (action === "drag") {
+      if (!prev.has(led)) select(new Set([...prev, led]));
+    } else if (additive) {
+      const next = new Set(prev);
+      if (next.has(led)) next.delete(led);
+      else next.add(led);
+      select(next);
+    } else {
+      select(new Set([led]));
+    }
+  };
+  const pickColor = (color: string) => {
+    setBrush(color);
+    if (tool === "select" && selectionRef.current.size) paint([...selectionRef.current], color);
+  };
+  const eraseSelection = () => paint([...selectionRef.current], null);
+  const selectAll = () => select(new Set(keys.map((k) => k.led)));
+
+  // Select-tool shortcuts; ignored while typing in a field.
+  useEffect(() => {
+    if (tool !== "select") return;
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target instanceof Element ? e.target : null;
+      if (target?.closest("input, textarea, [contenteditable]")) return;
+      if (e.key === "Escape") {
+        select(new Set());
+      } else if ((e.key === "Delete" || e.key === "Backspace") && selectionRef.current.size) {
+        e.preventDefault();
+        eraseSelection();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        selectAll();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // `select`, `eraseSelection` and `selectAll` only use refs and store setters.
+  }, [tool, keys]);
 
   // Stream the design to the keyboard's RAM while previewing; stop on leave.
   const timer = useRef<number | undefined>(undefined);
@@ -329,15 +432,10 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
       return;
     }
     window.clearTimeout(timer.current);
+    // Brightness is applied by the backend after calibration (linear, like
+    // the firmware), so the preview matches the stored design.
     timer.current = window.setTimeout(() => {
-      const scale = perKeyBrightness / 5;
-      const frame = toLedColors(perKey).map((c) => ({
-        ...c,
-        r: Math.round(c.r * scale),
-        g: Math.round(c.g * scale),
-        b: Math.round(c.b * scale),
-      }));
-      setLiveFrame(frame).catch(console.error);
+      setLiveFrame(toLedColors(perKey), perKeyBrightness).catch(console.error);
     }, 40);
   }, [live, perKey, perKeyBrightness]);
   useEffect(() => () => void setLiveFrame(null).catch(console.error), []);
@@ -354,7 +452,7 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
       const ids = name === "wasd" ? ["w", "a", "s", "d", "up", "left", "down", "right"] : ["a", "s", "d", "f", "j", "k", "l", "semicolon"];
       for (const id of ids) {
         const led = byId.get(id);
-        if (led !== undefined) map[led] = brush;
+        if (led !== undefined) map[led] = currentBrush();
       }
     }
     setPerKey(map);
@@ -364,7 +462,7 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
     setStatus({ kind: "busy" });
     const started = performance.now();
     try {
-      await applyPerKey(toLedColors(perKey), perKeyBrightness);
+      await savePerKeyDraft();
       setStatus({ kind: "ok", ms: Math.round(performance.now() - started) });
     } catch (e) {
       setStatus({ kind: "error", message: String(e) });
@@ -372,6 +470,10 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
   };
 
   const painted = Object.keys(perKey).length;
+  // Does the design on screen differ from the one stored on the keyboard?
+  const matchesSaved =
+    !!savedPerKey && savedPerKey.brightness === perKeyBrightness && sameColors(savedPerKey.colors, perKey);
+  const saveState: MessageKey = !savedPerKey ? "light.state.none" : matchesSaved ? "light.state.clean" : "light.state.dirty";
 
   return (
     <>
@@ -379,21 +481,78 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
         kb={kb}
         colors={perKey}
         live={live}
-        caption={live ? t("light.live.on") : t("light.design")}
-        onPaint={(led) => paint([led], brush)}
+        caption={live ? t(matchesSaved ? "light.live.saved" : "light.live.on") : t("light.design")}
+        onKeyAction={onKeyAction}
+        selected={tool === "select" ? selection : undefined}
+        tool={tool}
+        onBackgroundPress={() => tool === "select" && selection.size > 0 && select(new Set())}
       />
       <p className="-mt-3 text-[12px] text-ink-3">
-        {t("light.paintHint")} <span className="num">· {painted} {t("light.keysPainted")}</span>
+        {tool === "select" && selection.size > 0 ? (
+          <span className="text-ink-2">
+            <span className="num">{`${selection.size} ${t("light.keysSelected")}`}</span>
+            <span className="mx-1.5 text-ink-3">·</span>
+            {t("light.selectShortcuts")}
+          </span>
+        ) : (
+          t(tool === "brush" ? "light.paintHint" : "light.selectEmptyHint")
+        )}
+        <span className="mx-1.5">·</span>
+        <span className="num">
+          {painted} {t("light.keysPainted")}
+        </span>
       </p>
 
       <div className="grid grid-cols-[1fr_360px] items-start gap-5">
         <section className="card flex flex-col gap-5 p-5">
-          <Field label={t("light.brush")}>
-            <ColorPicker label={t("light.brush")} value={brush} onChange={setBrush} />
+          <div className="flex flex-col gap-2.5 rounded-xl border border-line bg-bg-raise/60 p-3.5">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-[12.5px] font-medium">{t("light.tool")}</span>
+              <Segmented<PaintTool>
+                label={t("light.tool")}
+                value={tool}
+                onChange={switchTool}
+                options={[
+                  { value: "brush", label: t("light.tool.brush"), icon: <Paintbrush size={13} /> },
+                  { value: "select", label: t("light.tool.select"), icon: <MousePointer2 size={13} /> },
+                ]}
+              />
+            </div>
+            <p className="text-[12px] leading-relaxed text-ink-2">
+              {t(tool === "brush" ? "light.tool.brushHint" : "light.tool.selectHint")}
+            </p>
+          </div>
+          <Field
+            label={
+              tool === "brush"
+                ? t("light.brush")
+                : selection.size
+                  ? `${t("light.selectedColor")} · ${selection.size}`
+                  : t("light.colorPickFirst")
+            }
+          >
+            <ColorPicker label={t("light.brush")} value={brush} onChange={pickColor} />
           </Field>
+          {tool === "select" && (
+            <Field label={t("light.selection")}>
+              <div className="flex flex-wrap gap-2">
+                <ToolButton icon={<BoxSelect size={14} />} label={t("light.selectAll")} onClick={selectAll} />
+                {selection.size > 0 && (
+                  <>
+                    <ToolButton icon={<Eraser size={14} />} label={t("light.eraseSelected")} onClick={eraseSelection} />
+                    <ToolButton icon={<X size={14} />} label={t("light.deselect")} onClick={() => select(new Set())} />
+                  </>
+                )}
+              </div>
+            </Field>
+          )}
           <Field label={t("light.tools")}>
             <div className="flex flex-wrap gap-2">
-              <ToolButton icon={<PaintBucket size={14} />} label={t("light.fillAll")} onClick={() => paint(keys.map((k) => k.led), brush)} />
+              <ToolButton
+                icon={<PaintBucket size={14} />}
+                label={t("light.fillAll")}
+                onClick={() => paint(keys.map((k) => k.led), currentBrush())}
+              />
               <ToolButton icon={<Eraser size={14} />} label={t("light.clear")} onClick={() => setPerKey({})} />
             </div>
           </Field>
@@ -418,6 +577,14 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
             <Steps label={t("light.brightness")} value={perKeyBrightness} onChange={setPerKeyBrightness} />
           </Field>
           <div className="flex flex-col gap-2.5 border-t border-line pt-4">
+            <div role="status" className="flex items-center gap-2 text-[12.5px]">
+              <span
+                className={`h-2 w-2 shrink-0 rounded-full ${
+                  matchesSaved ? "bg-ok shadow-[0_0_8px_var(--ok)]" : "bg-warn shadow-[0_0_8px_var(--warn)]"
+                }`}
+              />
+              <span className={matchesSaved ? "text-ink-2" : "text-ink"}>{t(saveState)}</span>
+            </div>
             <button
               type="button"
               disabled={!usb || status.kind === "busy"}
@@ -427,13 +594,32 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
               {status.kind === "busy" && <Loader2 size={15} className="animate-spin" />}
               {status.kind === "busy" ? t("light.saving") : t("light.save")}
             </button>
+            {savedPerKey && !matchesSaved && (
+              <button
+                type="button"
+                onClick={revertPerKey}
+                disabled={status.kind === "busy"}
+                className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-line bg-bg-raise text-[12.5px] text-ink-2 transition-colors hover:border-line-strong hover:text-ink disabled:opacity-40"
+              >
+                <RotateCcw size={13} />
+                {t("light.revert")}
+              </button>
+            )}
             <StatusLine status={status} okText={t("light.saved")} />
+            <p className="text-[11.5px] leading-relaxed text-ink-3">{t("light.indicatorNote")}</p>
           </div>
         </section>
       </div>
     </>
   );
 }
+
+/**
+ * The brush colour at the moment of painting. Read from the store, not from
+ * the render closure: a key pressed right after a colour change (before
+ * React re-renders) must still get the new colour.
+ */
+const currentBrush = () => useLighting.getState().brush;
 
 function ToolButton({ icon, label, onClick }: { icon?: React.ReactNode; label: string; onClick: () => void }) {
   return (

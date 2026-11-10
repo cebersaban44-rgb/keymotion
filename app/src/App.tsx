@@ -1,8 +1,19 @@
 import { RefreshCw } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
-import { getKeyboards, getUiEnvironment, onKeyboardsChanged, refreshKeyboards, setWindowTheme } from "./lib/ipc";
+import { UnsavedDialog } from "./components/UnsavedDialog";
+import {
+  closeWindow,
+  getKeyboards,
+  getUiEnvironment,
+  onCloseRequested,
+  onKeyboardsChanged,
+  refreshKeyboards,
+  setUnsavedFlag,
+  setWindowTheme,
+} from "./lib/ipc";
+import { useUnsaved } from "./lib/unsaved";
 import { useT } from "./lib/i18n";
 import { useActiveKeyboard, useApp } from "./lib/store";
 import { ComingSoon } from "./pages/ComingSoon";
@@ -45,6 +56,29 @@ function useThemeSync() {
   }, [locale]);
 }
 
+/**
+ * Ask before closing while changes are not on the keyboard. The backend
+ * only intercepts the close when told something is unsaved.
+ */
+function useCloseGuard() {
+  const items = useUnsaved();
+  const [asking, setAsking] = useState(false);
+  const unsaved = items.length > 0;
+  useEffect(() => {
+    setUnsavedFlag(unsaved).catch(console.error);
+  }, [unsaved]);
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    onCloseRequested(() => setAsking(true)).then((u) => (off = u));
+    return () => off?.();
+  }, []);
+  // Nothing left to ask about (saved in the meantime): just close.
+  useEffect(() => {
+    if (asking && !unsaved) closeWindow().catch(console.error);
+  }, [asking, unsaved]);
+  return { items, asking: asking && unsaved, cancel: () => setAsking(false) };
+}
+
 function EmptyState() {
   const t = useT();
   return (
@@ -70,6 +104,7 @@ function EmptyState() {
 export default function App() {
   useBootstrap();
   useThemeSync();
+  const guard = useCloseGuard();
   const page = useApp((s) => s.page);
   const loaded = useApp((s) => s.loaded);
   const kb = useActiveKeyboard();
@@ -94,21 +129,26 @@ export default function App() {
 
   return (
     <div className="flex h-full bg-bg">
-      <Sidebar />
-      <main className="relative flex-1 overflow-y-auto">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={page + (kb?.key ?? "none")}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="mx-auto min-h-full max-w-[1240px] px-10 pt-9 pb-12"
-          >
-            {content()}
-          </motion.div>
-        </AnimatePresence>
-      </main>
+      <div className="contents" inert={guard.asking}>
+        <Sidebar />
+        <main className="relative flex-1 overflow-y-auto">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={page + (kb?.key ?? "none")}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="mx-auto min-h-full max-w-[1240px] px-10 pt-9 pb-12"
+            >
+              {content()}
+            </motion.div>
+          </AnimatePresence>
+        </main>
+      </div>
+      <AnimatePresence>
+        {guard.asking && <UnsavedDialog items={guard.items} onCancel={guard.cancel} />}
+      </AnimatePresence>
     </div>
   );
 }

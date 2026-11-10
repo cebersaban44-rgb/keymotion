@@ -11,9 +11,19 @@ interface Props {
    * animation (mirror of the real keyboard, or a per-key design).
    */
   colors?: Record<number, string> | null;
-  /** Makes keys paintable: click, or press and drag across keys. */
-  onPaint?: (led: number) => void;
+  /**
+   * Makes keys interactive. `press` on pointer down (or Enter/Space on a
+   * focused key), `drag` when the pointer enters a key with the button
+   * held. `additive` is true while Ctrl, Shift or ⌘ is held.
+   */
+  onKeyAction?: (led: number, action: KeyAction, additive: boolean) => void;
+  /** Keys drawn with a selection ring. */
+  selected?: ReadonlySet<number>;
+  /** Pointer and ARIA semantics: painting (default) or selecting keys. */
+  tool?: "brush" | "select";
 }
+
+export type KeyAction = "press" | "drag";
 
 /** Ticks once a second; kept local so only the mini screen re-renders. */
 function useNow() {
@@ -32,14 +42,15 @@ type Vars = CSSProperties & Record<`--${string}`, string | number>;
  * LEDs sit under the south edge of each key like the real south-facing
  * RGB, so light bleeds below the legend.
  */
-export function KeyboardView({ geometry: g, battery, connection, colors, onPaint }: Props) {
+export function KeyboardView({ geometry: g, battery, connection, colors, onKeyAction, selected, tool = "brush" }: Props) {
   const stage: Vars = { "--u": `calc(100cqw / ${g.width})`, "--rows": g.height };
   const box = (x: number, y: number, w: number, h: number, led?: number): Vars => {
     const v: Vars = { "--x": x, "--y": y, "--w": w, "--h": h };
     if (colors && led !== undefined) v["--c"] = colors[led] ?? "transparent";
     return v;
   };
-  const paintable = !!onPaint;
+  const paintable = !!onKeyAction;
+  const additive = (e: { ctrlKey: boolean; shiftKey: boolean; metaKey: boolean }) => e.ctrlKey || e.shiftKey || e.metaKey;
   const at = (x: number, y: number, w: number, h: number): CSSProperties => ({
     left: `calc(${x} * var(--u))`,
     top: `calc(${y} * var(--u))`,
@@ -49,7 +60,10 @@ export function KeyboardView({ geometry: g, battery, connection, colors, onPaint
 
   return (
     <div className="kb-stage" aria-hidden={!paintable}>
-      <div className={`kb ${colors ? "kb-static" : ""} ${paintable ? "kb-paint" : ""}`} style={stage}>
+      <div
+        className={`kb ${colors ? "kb-static" : ""} ${paintable ? "kb-paint" : ""} ${tool === "select" ? "kb-select" : ""}`}
+        style={stage}
+      >
         {g.keys.map((k) => (
           <div key={`led-${k.id}`} className="kb-led" style={box(k.x, k.y, k.w, k.h, k.led)} />
         ))}
@@ -58,20 +72,21 @@ export function KeyboardView({ geometry: g, battery, connection, colors, onPaint
             <button
               key={k.id}
               type="button"
-              className="kb-key"
+              className={`kb-key ${selected?.has(k.led) ? "is-selected" : ""}`}
               style={box(k.x, k.y, k.w, k.h, k.led)}
               aria-label={`${k.label || k.id} ${colors?.[k.led] ?? ""}`}
+              aria-pressed={tool === "select" ? (selected?.has(k.led) ?? false) : undefined}
               onPointerDown={(e) => {
                 e.preventDefault();
-                onPaint(k.led);
+                onKeyAction(k.led, "press", additive(e));
               }}
               onPointerEnter={(e) => {
-                if (e.buttons & 1) onPaint(k.led);
+                if (e.buttons & 1) onKeyAction(k.led, "drag", true);
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  onPaint(k.led);
+                  onKeyAction(k.led, "press", additive(e));
                 }
               }}
             >

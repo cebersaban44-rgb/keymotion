@@ -1,38 +1,9 @@
 import type { ReactNode } from "react";
 import type { ThemePreference } from "../bindings/ThemePreference";
+import { CalibrationCard } from "../components/CalibrationCard";
+import { Segmented } from "../components/controls";
 import { useT, type Locale, type MessageKey } from "../lib/i18n";
 import { useApp } from "../lib/store";
-
-function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-  label,
-}: {
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (v: T) => void;
-  label: string;
-}) {
-  return (
-    <div role="radiogroup" aria-label={label} className="inline-flex rounded-xl border border-line bg-bg-raise p-1">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          role="radio"
-          aria-checked={o.value === value}
-          onClick={() => onChange(o.value)}
-          className={`rounded-lg px-3.5 py-1.5 text-[12.5px] transition-colors ${
-            o.value === value ? "bg-surface-2 text-ink shadow-[inset_0_0_0_1px_var(--line)]" : "text-ink-2 hover:text-ink"
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -73,6 +44,8 @@ export function Settings() {
           />
         </Row>
       </section>
+
+      <CalibrationCard />
 
       <section className="card px-5 py-1">
         <div className="eyebrow pt-4 pb-1">{t("settings.about")}</div>
