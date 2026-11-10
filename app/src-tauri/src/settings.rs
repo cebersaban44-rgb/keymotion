@@ -5,6 +5,7 @@
 use kb_core::color::LedCalibration;
 use kb_core::keymap::LayerMap;
 use kb_protocol::sonix::keymap::{KeyAction, Layer};
+use kb_protocol::sonix::macros::{MacroStep, StepKind};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -18,6 +19,8 @@ const CLOCK_FILE: &str = "clock.json";
 const CLOCK_VERSION: u32 = 1;
 const KEYMAP_FILE: &str = "keymap.json";
 const KEYMAP_VERSION: u32 = 1;
+const MACROS_FILE: &str = "macros.json";
+const MACROS_VERSION: u32 = 1;
 
 #[derive(Serialize, Deserialize)]
 struct Versioned<T> {
@@ -176,6 +179,77 @@ pub fn save_keymaps(dir: &Path, keymaps: &Keymaps) -> io::Result<()> {
     save(dir, KEYMAP_FILE, KEYMAP_VERSION, keymaps)
 }
 
+/// What this app last wrote to each model's macro memory. The keyboard
+/// cannot report its macros (or their names), so this is the only record.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MacroRecord {
+    /// Model id → macros.
+    #[serde(default)]
+    pub models: BTreeMap<String, StoredMacros>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredMacros {
+    /// Slot `i` is macro `i` on the keyboard; `null` is an unused slot.
+    #[serde(default)]
+    pub slots: Vec<Option<StoredMacro>>,
+    /// When this app last wrote the macros (Unix ms); `None`: never.
+    pub written_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredMacro {
+    pub name: String,
+    #[serde(default)]
+    pub steps: Vec<StoredStep>,
+}
+
+/// One step as `["down", 4, 20]`: action, key usage or mouse mask, pause.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "(String, u8, u16)", into = "(String, u8, u16)")]
+pub struct StoredStep(pub MacroStep);
+
+const STEP_NAMES: [(StepKind, &str); 4] = [
+    (StepKind::KeyDown, "down"),
+    (StepKind::KeyUp, "up"),
+    (StepKind::MouseDown, "mouse-down"),
+    (StepKind::MouseUp, "mouse-up"),
+];
+
+impl From<(String, u8, u16)> for StoredStep {
+    fn from((kind, code, delay_ms): (String, u8, u16)) -> Self {
+        // An unknown action reads as a key release, which is harmless.
+        let kind = STEP_NAMES.iter().find(|(_, n)| *n == kind).map_or(StepKind::KeyUp, |(k, _)| *k);
+        Self(MacroStep { kind, code, delay_ms })
+    }
+}
+
+impl From<StoredStep> for (String, u8, u16) {
+    fn from(StoredStep(s): StoredStep) -> Self {
+        let name = STEP_NAMES.iter().find(|(k, _)| *k == s.kind).map_or("up", |(_, n)| n);
+        (name.to_string(), s.code, s.delay_ms)
+    }
+}
+
+impl StoredMacros {
+    /// Steps per slot, as the keyboard stores them (unused slots are empty).
+    pub fn image_slots(&self) -> Vec<Vec<MacroStep>> {
+        self.slots
+            .iter()
+            .map(|m| m.as_ref().map(|m| m.steps.iter().map(|s| s.0).collect()).unwrap_or_default())
+            .collect()
+    }
+}
+
+pub fn load_macros(dir: &Path) -> MacroRecord {
+    load(dir, MACROS_FILE, MACROS_VERSION).unwrap_or_default()
+}
+
+pub fn save_macros(dir: &Path, macros: &MacroRecord) -> io::Result<()> {
+    save(dir, MACROS_FILE, MACROS_VERSION, macros)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,6 +299,32 @@ mod tests {
         assert_eq!(stored.base.written_ms, None, "base layer never written");
         let text = fs::read_to_string(dir.join(KEYMAP_FILE)).unwrap();
         assert!(text.contains(r#""fn""#), "{text}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn macro_record_round_trip() {
+        let dir = temp_dir("macros");
+        assert_eq!(load_macros(&dir), MacroRecord::default());
+        let ok = StoredMacro {
+            name: "ok".into(),
+            steps: vec![
+                StoredStep(MacroStep::new(StepKind::KeyDown, 0x12, 20)),
+                StoredStep(MacroStep::new(StepKind::MouseUp, 0x02, 300)),
+            ],
+        };
+        let mut rec = MacroRecord::default();
+        rec.models.insert(
+            "ajazz-ak980-pro".into(),
+            StoredMacros { slots: vec![Some(ok), None], written_ms: Some(1_794_000_000_000) },
+        );
+        save_macros(&dir, &rec).unwrap();
+        assert_eq!(load_macros(&dir), rec);
+        let text = fs::read_to_string(dir.join(MACROS_FILE)).unwrap();
+        assert!(text.contains(r#""down""#) && text.contains(r#""mouse-up""#), "{text}");
+        let slots = rec.models["ajazz-ak980-pro"].image_slots();
+        assert_eq!(slots.len(), 2);
+        assert!(slots[1].is_empty());
         let _ = fs::remove_dir_all(&dir);
     }
 

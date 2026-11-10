@@ -16,9 +16,12 @@ import {
 import { useUnsaved } from "./lib/unsaved";
 import { useT } from "./lib/i18n";
 import { useKeymap } from "./lib/keymap";
+import { useLayout } from "./lib/layout";
+import { useMacros } from "./lib/macros";
 import { useActiveKeyboard, useApp } from "./lib/store";
 import { ComingSoon } from "./pages/ComingSoon";
 import { Keymap } from "./pages/Keymap";
+import { Macros } from "./pages/Macros";
 import { Lighting } from "./pages/Lighting";
 import { Overview } from "./pages/Overview";
 import { Settings } from "./pages/Settings";
@@ -31,7 +34,15 @@ function useBootstrap() {
     getUiEnvironment().then(setEnv).catch(console.error);
     getKeyboards().then(setKeyboards).catch(console.error);
     onKeyboardsChanged(setKeyboards).then((u) => (off = u));
-    return () => off?.();
+    // Key labels follow the Windows keyboard layout; it can change while
+    // the app is in the background.
+    const refreshLayout = () => void useLayout.getState().refresh();
+    refreshLayout();
+    window.addEventListener("focus", refreshLayout);
+    return () => {
+      off?.();
+      window.removeEventListener("focus", refreshLayout);
+    };
   }, [setKeyboards, setEnv]);
 }
 
@@ -59,13 +70,15 @@ function useThemeSync() {
 }
 
 /**
- * Load the app's keymap record for the connected model, so unsaved keymap
- * edits are known (and guarded) before the keymap page is opened.
+ * Load the app's keymap and macro records for the connected model, so
+ * unsaved edits are known (and guarded) before their pages are opened.
  */
-function useKeymapRecord() {
+function useKeyboardRecords() {
   const modelId = useActiveKeyboard()?.modelId;
   useEffect(() => {
-    if (modelId) useKeymap.getState().load(modelId).catch(console.error);
+    if (!modelId) return;
+    useKeymap.getState().load(modelId).catch(console.error);
+    useMacros.getState().load(modelId).catch(console.error);
   }, [modelId]);
 }
 
@@ -117,7 +130,7 @@ function EmptyState() {
 export default function App() {
   useBootstrap();
   useThemeSync();
-  useKeymapRecord();
+  useKeyboardRecords();
   const guard = useCloseGuard();
   const page = useApp((s) => s.page);
   const loaded = useApp((s) => s.loaded);
@@ -135,7 +148,7 @@ export default function App() {
       case "keymap":
         return <Keymap kb={kb} />;
       case "macros":
-        return <ComingSoon title="nav.macros" features={["macros"]} />;
+        return <Macros kb={kb} />;
       case "screen":
         return <ComingSoon title="nav.screen" features={["screen", "clock"]} />;
     }

@@ -11,7 +11,7 @@ mod settings;
 use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request};
 use dto::{
     Calibration, CalibrationInfo, ClockStatus, EffectInfo, EffectRequest, KeyAssignment, KeyboardInfo, KeymapCatalog,
-    KeymapLayer, KeymapState, LedColor, MirrorHint, ThemePreference, UiEnvironment,
+    KeymapLayer, KeymapState, LedColor, MacroInfo, MacrosState, MirrorHint, ThemePreference, UiEnvironment,
 };
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -115,6 +115,28 @@ async fn apply_keymap(
     .await
     .map_err(|e| e.to_string())?
     .map(|k| KeymapState::from(&k))
+}
+
+/// What the app last wrote to this model's macro memory, with the limits.
+#[tauri::command]
+fn macros_state(device: Device<'_>, model_id: String) -> MacrosState {
+    let snap = device.snapshot.lock();
+    let stored = snap.ok().and_then(|s| s.macros.models.get(&model_id).cloned()).unwrap_or_default();
+    MacrosState::from(&stored)
+}
+
+/// Write every macro of the USB keyboard (flash write) and record them.
+/// Slot `i` is macro `i`; `null` leaves a slot unused so later slots keep
+/// their numbers.
+#[tauri::command]
+async fn apply_macros(device: Device<'_>, slots: Vec<Option<MacroInfo>>) -> Result<MacrosState, String> {
+    tracing::debug!(slots = slots.len(), "ipc: apply_macros");
+    let slots = slots.into_iter().map(|m| m.map(Into::into)).collect();
+    let handle = device.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || handle.call(|reply| Request::ApplyMacros { slots, reply }))
+        .await
+        .map_err(|e| e.to_string())?
+        .map(|m| MacrosState::from(&m))
 }
 
 /// Keyboard clock sync state (`clock-changed` events report updates).
@@ -315,7 +337,9 @@ pub fn run() {
             set_clock_auto,
             keymap_catalog,
             keymap_state,
-            apply_keymap
+            apply_keymap,
+            macros_state,
+            apply_macros
         ])
         .run(tauri::generate_context!())
         .expect("error while running Klavye Stüdyo");

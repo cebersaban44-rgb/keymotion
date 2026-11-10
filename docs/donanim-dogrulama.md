@@ -309,6 +309,18 @@ Kırmızı değerler `2·r mod 256` baytından çözüldü. 40 değerin hepsi `v
 - `06 SLOT MODE COUNT`: mod 0 bir kez, mod 1 COUNT kez oynatıyor. Mod 2 ve 3 (tekrar basana kadar, basılı tutuldukça) denenmedi.
 - Test sonunda `kb keymap --layer base` ve `kb macros` (boş) yazıldı: atama varsayılan, makro yok.
 
+### Makrolar sayfası, uçtan uca — 2026-11-10
+
+- **Kayıt (CDP):** Makrolar sayfasında yeni makro açıldı, "Kayda başla"dan sonra tuş olayları gönderildi: Shift+H, `Semicolon` (basılı, tekrarlı), I.
+  - Adımlar konuma göre HID koduna çevrildi (`Semicolon` → 0x33).
+  - Tekrarlar yok sayıldı; kayıt durunca basılı kalan tuş bırakıldı.
+  - Gerçek bekleme süreleri yazıldı. "+ Sol tık" bas-bırak çifti ekledi.
+- **Etiketler:** WebView2'de `navigator.keyboard.getLayoutMap()` çalışıyor (güvenli bağlam). Kullanıcının düzeninde `Semicolon` = ş, `KeyI` = ı, `Quote` = i, `BracketLeft` = ğ, `Comma` = ö. Adım listesinde 0x33 "Ş" olarak görünüyor.
+- **Klavye:**
+  - Uygulamadan makro (Shift+H, Ş, I, sol tık) ve atama (Num / → makro 1, 3 kez) kaydedildi; iki yazım da sağlama toplamıyla doğrulandı.
+  - Kullanıcı Tuş Atama'daki tuş testi kutusunda Num /'a bastı: "Shift + H, Ş, I, Fare Sol tık" dizisi tekrar tekrar geldi. Kutu o sırada son 10 olayı tuttuğu için iki tur görüldü; sınır sonra 24'e çıkarıldı.
+- **Silme:** Makro silinirken bağlı tuş (`/`) uyarıda listelendi ve atama taslağından kaldırıldı. Makrolar ve atama uygulamadan kaydedildi: `macros.json` boş, temel katman boş; klavye fabrika durumunda.
+
 ### Ekran: stok ana sayfa (fotoğraf, 2026-11-10 08:29)
 
 - **Yerleşim:** Panel yatay ve topuzun hemen solunda. Panelin sol yarısı mavi bir durum kartı, sağ yarısı siyah zemin üzerinde çizgi çizimi dağlar ve kuşlar.
