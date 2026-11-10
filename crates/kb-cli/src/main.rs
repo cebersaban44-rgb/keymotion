@@ -1,11 +1,12 @@
 //! `kb` — developer and QA tool.
 //!
-//! `effect`, `per-key`, `keymap`, `macros` and `direction-probe` write the
-//! keyboard's flash, and all need `--yes`. `live` and `live-probe` stream RAM-only real-time LED frames;
+//! `effect`, `per-key`, `keymap`, `macros`, `screen-test`, `screen-gif` and
+//! `direction-probe` write the keyboard's flash, and all need `--yes`. `live` and `live-probe` stream RAM-only real-time LED frames;
 //! `clock` sets the keyboard clock; everything else only reads. Flash-writing commands are added only after
 //! they are verified on the hardware.
 
 mod motion;
+mod png;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -82,6 +83,31 @@ enum Cmd {
         /// Frames read per setting.
         #[arg(long, default_value_t = 6)]
         frames: usize,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Screen test E1: upload one still test pattern (border, coloured
+    /// corners, an arrow pointing up, colour ramps) to the screen's GIF page.
+    /// WRITES FLASH and replaces the animation there (the factory one too);
+    /// needs --yes. `--preview` only writes the exact image as PNG.
+    ScreenTest {
+        /// Write a PNG preview of what would be sent (4× scale) and stop.
+        #[arg(long)]
+        preview: Option<std::path::PathBuf>,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Upload a 240×135 GIF (at most 140 frames) to the screen's GIF page,
+    /// e.g. the factory animation backup. WRITES FLASH and replaces the
+    /// animation there; needs --yes. Without it, prints the summary.
+    ScreenGif {
+        file: std::path::PathBuf,
+        /// Use this delay for every frame (ms, 2–508) instead of the file's.
+        #[arg(long)]
+        delay_ms: Option<u32>,
+        /// Write a PNG contact sheet of what would be sent and stop.
+        #[arg(long)]
+        preview: Option<std::path::PathBuf>,
         #[arg(long)]
         yes: bool,
     },
@@ -199,6 +225,8 @@ fn main() -> Result<()> {
             anyhow::ensure!(yes, "Bu komut klavyenin flash belleğine yazar. Onaylamak için --yes ekleyin.");
             direction_probe(&modes, &dirs, speed, frames)
         }
+        Cmd::ScreenTest { preview, yes } => screen_test(preview.as_deref(), yes),
+        Cmd::ScreenGif { file, delay_ms, preview, yes } => screen_gif(&file, delay_ms, preview.as_deref(), yes),
         Cmd::Clock { at } => {
             let time = match at {
                 Some(s) => {
@@ -491,6 +519,131 @@ fn open_command() -> Result<(kb_core::sonix::SonixFf13<kb_transport::hid::HidCha
         }
     }
     anyhow::bail!("USB modunda klavye yok. Kablo takılı ve arkadaki anahtar ortada (USB) olmalı.")
+}
+
+/// Open the wired display channel (FF68) of the first supported keyboard.
+fn open_display() -> Result<kb_transport::hid::HidChannel> {
+    let models = catalogue().map_err(|e| anyhow::anyhow!("{e}"))?;
+    let hid = Hid::new()?;
+    for iface in hid.interfaces() {
+        let Some(m) = match_interface(models, &probe(&iface)) else { continue };
+        if m.role == InterfaceRole::Display && m.mode.kind == kb_devices::ConnectionKind::Usb {
+            anyhow::ensure!(iface.usage_page == hid::DISPLAY_USAGE_PAGE, "ekran kanalı beklenmeyen usage page");
+            return hid.open(&iface).context("ekran kanalı açılamadı");
+        }
+    }
+    anyhow::bail!("USB modunda ekran kanalı yok. Kablo takılı ve arkadaki anahtar ortada (USB) olmalı.")
+}
+
+/// PNG of a frame exactly as the panel gets it (RGB565 expanded), scaled.
+fn frame_png(frame: &kb_protocol::sonix::screen::Frame, scale: usize) -> Vec<u8> {
+    use kb_protocol::sonix::screen::{rgb888, HEIGHT, WIDTH};
+    let (w, h) = (WIDTH * scale, HEIGHT * scale);
+    let mut rgb = Vec::with_capacity(w * h * 3);
+    for y in 0..h {
+        for x in 0..w {
+            rgb.extend_from_slice(&rgb888(frame.get(x / scale, y / scale)));
+        }
+    }
+    png::encode_rgb(w as u32, h as u32, &rgb)
+}
+
+fn screen_test(preview: Option<&std::path::Path>, yes: bool) -> Result<()> {
+    use kb_protocol::sonix::screen::{self, ScreenAnimation};
+    let frame = screen::test_pattern();
+    if let Some(path) = preview {
+        std::fs::write(path, frame_png(&frame, 4)).context("önizleme yazılamadı")?;
+        println!("Önizleme yazıldı: {}", path.display());
+        return Ok(());
+    }
+    let anim = ScreenAnimation::still(frame);
+    println!(
+        "Test deseni: 1 kare, {} sayfa (~{:.1} s). Ekrandaki GIF sayfasının yerine geçer; fabrika animasyonu silinir.",
+        anim.pages(),
+        anim.pages() as f32 * 0.145
+    );
+    anyhow::ensure!(yes, "Bu komut klavyenin flash belleğine yazar. Onaylamak için --yes ekleyin.");
+
+    upload(&anim)
+}
+
+fn screen_gif(
+    file: &std::path::Path,
+    delay_ms: Option<u32>,
+    preview: Option<&std::path::Path>,
+    yes: bool,
+) -> Result<()> {
+    use kb_core::screen_import::{decode_gif, exact_size_animation};
+    let bytes = std::fs::read(file).context("dosya okunamadı")?;
+    let decoded = decode_gif(&bytes)?;
+    let anim = exact_size_animation(&decoded, delay_ms)?;
+    let frames = anim.frames();
+    println!(
+        "{}: {}×{}, {} kare, bir tur {:.1} s, {} sayfa (~{:.0} s yükleme)",
+        file.display(),
+        decoded.width,
+        decoded.height,
+        frames.len(),
+        anim.loop_ms() as f32 / 1000.0,
+        anim.pages(),
+        anim.pages() as f32 * 0.145
+    );
+    if let Some(path) = preview {
+        let step = frames.len().div_ceil(16).max(1);
+        let picked: Vec<_> = frames.iter().step_by(step).map(|(f, _)| f).collect();
+        std::fs::write(path, sheet_png(&picked, 4)).context("önizleme yazılamadı")?;
+        println!("Önizleme ({} kare) yazıldı: {}", picked.len(), path.display());
+        return Ok(());
+    }
+    anyhow::ensure!(yes, "Bu komut klavyenin flash belleğine yazar. Onaylamak için --yes ekleyin.");
+    upload(&anim)
+}
+
+/// Frames tiled `cols` per row, exactly as the panel gets them.
+fn sheet_png(frames: &[&kb_protocol::sonix::screen::Frame], cols: usize) -> Vec<u8> {
+    use kb_protocol::sonix::screen::{rgb888, HEIGHT, WIDTH};
+    let gap = 4;
+    let rows = frames.len().div_ceil(cols).max(1);
+    let (w, h) = (cols * (WIDTH + gap), rows * (HEIGHT + gap));
+    let mut rgb = vec![0x40u8; w * h * 3];
+    for (k, f) in frames.iter().enumerate() {
+        let (ox, oy) = ((k % cols) * (WIDTH + gap), (k / cols) * (HEIGHT + gap));
+        for y in 0..HEIGHT {
+            for x in 0..WIDTH {
+                let d = ((oy + y) * w + ox + x) * 3;
+                rgb[d..d + 3].copy_from_slice(&rgb888(f.get(x, y)));
+            }
+        }
+    }
+    png::encode_rgb(w as u32, h as u32, &rgb)
+}
+
+/// Upload with progress, then print what was measured.
+fn upload(anim: &kb_protocol::sonix::screen::ScreenAnimation) -> Result<()> {
+    let (mut drv, model) = open_command()?;
+    let mut display = open_display()?;
+    let started = std::time::Instant::now();
+    let report = drv.upload_screen(&mut display, anim, |done, total| {
+        if done == 1 || done % 50 == 0 || done == total {
+            eprintln!("  sayfa {done}/{total} ({} s)", started.elapsed().as_secs());
+        }
+    })?;
+    let ms: Vec<u128> = report.page_times.iter().map(|d| d.as_millis()).collect();
+    let avg = ms.iter().sum::<u128>() / ms.len().max(1) as u128;
+    println!("{}: yükleme bitti, {} ms", model.name, started.elapsed().as_millis());
+    println!(
+        "  sayfa süresi: en kısa {} ms, ortalama {avg} ms, en uzun {} ms",
+        ms.iter().min().unwrap_or(&0),
+        ms.iter().max().unwrap_or(&0)
+    );
+    if ms.len() <= 32 {
+        println!("  sayfa süreleri (ms): {ms:?}");
+    }
+    println!("  önceden kuyrukta: {} rapor; 04 72 durumu: {:02X}", report.drained, report.announce_status);
+    println!("  ilk sayfa onayı: {}", hid::hex(&report.first_ack[..report.first_ack.len().min(16)]));
+    println!("  04 02 yankısı: {}", hid::hex(&report.commit_echo));
+    println!("  gönderilen toplam: sum16 {:04X}, sum32 {:08X}", report.sum16, report.sum32);
+    Ok(())
 }
 
 fn peek() -> Result<()> {
