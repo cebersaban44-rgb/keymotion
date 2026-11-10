@@ -11,6 +11,7 @@ Son güncelleme: **2026-11-10**. Bu belge, bağlam sıfırlandığında ya da ye
 | `docs/mimari.md` | ADR-001: neden Tauri 2 + Rust, katmanlar |
 | `docs/teknik-analiz.md` | İlk keşif: model, BT servisleri, Fn kombinasyonları |
 | `docs/gelistirme-akisi.md` | Dallar (`main` / `develop`), PR'lar, birleştirme yöntemi, sürüm ve hotfix adımları |
+| `docs/fikirler/` | Uygulama bittikten sonraya bırakılan fikirler (ör. `ajan-araci.md`: ajanlar için klavye aracı) |
 
 ---
 
@@ -46,7 +47,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | **Makrolar**: liste, tuşlara basarak kayıt (konuma göre), adım düzenleyici (bekleme, sıralama, fare tıklaması), bellek göstergesi, kaydet ve geri al; Tuş Atama'da "Makro" seçici ve oynatma biçimi | ✅ Uygulamadan klavyeye yazıldı; kullanıcı basarak doğruladı (madde 20, 21). |
 | **Ekran Stüdyosu**: dosyadan (resim, GIF, video; kırpma, süre), yazı kartları (5 şablon), slayt; önizleme, onay, kütüphane, fabrika animasyonuna dönüş | ✅ Kullanıcı klavyede hepsini denedi (maddeler 23–25). |
 | Ekran → **Işıkları uydur**: görselin paletinden tuş tasarımı (degrade, tek renk, görsel), Işıklar'da taslak | ✅ Kullanıcı mor kartta klavyede doğruladı (madde 26). |
-| Ekran → **Canlı ekran**: canlı mod, günlük yükleme bütçesi, "Çalan şarkı" kartı, kapatınca önceki görseli geri yükleme; "Ekranda ne görünür?" sırası (zamanlayıcı → şarkı → kendi görselin), kaynak bitince kendi görseline dönüş | ✅ Kullanıcı klavyede denedi (madde 27). Sıra ve dönüş (madde 31) sahte arka uçta ve gerçek uygulamada (canlı mod kapalı) denendi; klavyede denemesi bekliyor. |
+| Ekran → **Canlı ekran**: canlı mod, günlük yükleme bütçesi, "Çalan şarkı" kartı, kapatınca önceki görseli geri yükleme; "Ekranda ne görünür?" sırası (zamanlayıcı → şarkı → kendi görselin), kaynak bitince kendi görseline dönüş | ✅ Kullanıcı klavyede denedi (madde 27). Sıra, kendi görseline dönüş, bekleyen kartın gösterilmesi ve "Şimdi gönder" de klavyede denendi, çalışıyor (maddeler 31–32). |
 | Araçlar → **Odak zamanlayıcısı** (Pomodoro tekniği): odak ve mola süreleri; bütün klavye fazın rengiyle dolu başlar ve süre azaldıkça seçilen yönde boşalır (flash'sız; yön, renkler, parlaklık, nabız, faz geçişi, ses seçilebilir; "Klavyede dene"); faz başında ekran kartı; kenar çubuğunda kalan süre | ✅ Kullanıcı klavyede denedi: ışıklar, bildirim sesi, geçiş efektleri ve süreler çalışıyor (maddeler 28–30). Canlı mod açıkken faz kartları da klavyede çalışıyor (madde 31). |
 
 ## 3. Kronoloji: ne yaptık, neden
@@ -524,6 +525,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Tarayıcıda sahte arka uçla kullanıcının durumu kuruldu (bütçe 0, mola kartı ekranda, şarkı kartı bekliyor): uyarı ve "Şimdi gönder" göründü. Durdurunca kendi görseli bütçe yokken de geldi.
       - Gerçek uygulamada (CDP) katman durumları doğru göründü. Bu sırada da şarkı kartı 7 dk bütçe bekliyordu.
       - Uygulama yeni sürümle açılınca açılış kontrolü eski mola kartını buldu. 15 sn sonra, bütçe boşken, "cat" klavyeye geri yüklendi (37 sn, hata yok; `donanim-dogrulama.md`).
+    - **Kullanıcının denemesi (2026-11-10, düzeltmeden ve Yoğun plana geçtikten sonra):** "Sorun çözüldü, çalışıyor." Konu kapandı.
     - **Not (bütçe):** Dengeli planda (günde 24, en çok 6 birikir) 4 turluk bir seri 9 yükleme ister. Bir seriye bile ancak yetiyor; gün içinde birkaç seri ve şarkılarla kartlar gecikir. Bu tasarımın sonucu (ekran belleğini korumak için). Kullanıcı aynı gün kendi planını **Yoğun**'a aldı (günde 48, en çok 8 birikir; 4 turluk seri rahat sığar). Uygulamanın varsayılanı Dengeli kaldı; değiştirmek kullanıcının kararı.
 
 ## 4. Sistem nasıl kurulu (as-built)
@@ -694,7 +696,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 
 1. `git switch develop && git pull`, sonra yeni iş için dal aç. PR açınca auto-merge ve auto-fix'i aç (`gelistirme-akisi.md`).
 2. **Tuş atama ve makrolar bitti** (madde 19–21). Klavye fabrika durumunda: atama varsayılan, makro yok; `keymap.json` ve `macros.json` kayıtları da öyle.
-3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Odak zamanlayıcısı yapıldı ve kullanıcı denedi (maddeler 28–30); ekran sırası ve kendi görseline dönüş yapıldı (madde 31, klavyede denemesi bekliyor); sıradaki iş LED canlı katmanı** (aşağıda).
+3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Odak zamanlayıcısı yapıldı ve kullanıcı denedi (maddeler 28–30); ekran sırası ve kendi görseline dönüş yapıldı ve kullanıcı denedi (maddeler 31–32); sıradaki iş LED canlı katmanı** (aşağıda).
    - **Kullanıcının isteği:** "Ürünün farkı burada ortaya çıkacak." Ayrıca: "Buradaki görüntüyü de kaybetmeyelim" (stok ana sayfa) ve "birden fazla ekran görüntüsü veya başka ne yapabiliriz".
    - **Kısa sonuçlar:**
      - Resim ve GIF: evet, en çok 140 kare.
@@ -717,7 +719,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
           - Canlı mod açıkken faz kartları da klavyede çalışıyor (kullanıcı denedi). Bitince ekranda özet kartı kalması sorun oldu; madde 31 ile çözüldü.
         - **Ekran sırası** (maddeler 31–32): "Ekranda ne görünür?" (zamanlayıcı → şarkı → kendi görselin).
           - Kullanıcının ilk denemesinde bütçe bitti ve ekran "takılı" göründü. Madde 32 ile düzeltildi: dönüş bütçe beklemiyor, bekleyen kart görünüyor, "Şimdi gönder" var.
-          - Kullanıcının yeniden denemesi bekliyor: canlı mod açık, durdurunca 15 sn sonra cat (~37 sn).
+          - Kullanıcı düzeltmeden sonra yeniden denedi (2026-11-10): "Sorun çözüldü, çalışıyor." Konu kapandı.
           - Dengeli bütçe bir seriye ancak yetiyordu (madde 32 not). Kullanıcı kendi planını Yoğun'a aldı (2026-11-10). Uygulamanın varsayılanı hâlâ Dengeli.
           - Kullanıcının ayarı `pomodoro.json`'da: 1/1/1 dk, 2 tur, ses açık. Testler bu ayarı okuyup aynen geri yazar.
         - **Ekran sayfası düzeni** (maddeler 29–30): Görseller ve Canlı ekran sekmeleri; kütüphane sayfalı; Odak zamanlayıcısı kendi sayfasında.
@@ -915,6 +917,24 @@ Kullanıcıyla kararlaştırıldı (2026-11-10): Şu an her özellik yalnızca *
   3. Özellik özellik ölçüp açmak: saat, efekt, gerekirse diğerleri. Flash yazanları sınırla ve SEQ sınırlarına uy.
   4. Arayüz: her özelliğin hangi modda çalıştığını açıkça göster; modele göre kilitli/açık durumları doğrula.
   5. Model dosyasındaki mod yeteneklerini ölçüme göre güncelle (`verified`).
+
+### Sonraya bırakılan fikirler — uygulama bittikten sonra
+
+Kullanıcının fikirleri. Şimdi yapılmayacak; uygulamanın bütün özellikleri (P3 ürünleştirme dahil) bitince ele alınacak. O zamana kadar yalnızca not tutulur.
+
+- **Ajanlar için klavye aracı** (kullanıcının fikri, 2026-11-10). Ayrıntı ve ilk düşünceler: `fikirler/ajan-araci.md`.
+  - Claude Code, Codex gibi kodlama ajanları klavyenin ışıklarını ve ekranını kullanabilsin:
+    - ekrana metin ya da görsel;
+    - onay bekliyor, ret, hata, bitti gibi durumlar için renk ve dalga;
+    - odak modunu başlatıp takip etmek.
+  - Kullanıcılar için uygulama var; ajanlar için de "doğal" kullanılabilen bir araç gerekiyor.
+  - İlk öneri: Uygulama yerel bir API açar, klavyeyi tek sahip olarak yine o sürer. Bu API'nin üç ince yüzü olur:
+    - ajan kancaları (otomatik durum);
+    - CLI (`kb` genişler);
+    - MCP sunucusu.
+  - Ajan ham renk değil anlam gönderir ("bekliyor", "başarılı", "hata"…); nasıl görüneceğini kullanıcı seçer.
+  - Sık sinyaller tuş ışığıyla (RAM) verilir; ekran (flash) yalnızca seyrek ve önemli mesajlar için, bütçeli.
+  - Ön şart: P3'teki arka plan servisi (tepside çalışan uygulama).
 
 ### P3 — Ürünleştirme
 - [ ] Arka plan servisi:
