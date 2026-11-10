@@ -333,6 +333,8 @@ pub enum Invalid {
     Range { field: &'static str, value: u8, max: u8 },
     #[error("LED index {0} is above {PER_KEY_MAX_IDX}")]
     LedIndex(u8),
+    #[error("invalid date or time: {0}")]
+    Clock(&'static str),
 }
 
 /// Encode the data packet that follows `04 13`.
@@ -414,6 +416,59 @@ pub fn parse_color_table(bytes: &[u8]) -> Vec<(u8, Rgb)> {
 pub fn readback_red_candidates(byte: u8) -> [u8; 2] {
     let lo = byte >> 1;
     [lo, lo | 0x80]
+}
+
+// ---------------------------------------------------------------- clock
+
+/// Marker byte at payload offset 2 of the clock packet.
+const CLOCK_MARKER: u8 = 0x5A;
+/// Screen slot the official driver sends (selected list item + 1). Every
+/// clock packet switches the screen to its clock page regardless.
+const CLOCK_SLOT: u8 = 0x01;
+
+/// Local date and time for the keyboard clock, as the official driver
+/// sends it (Windows `SYSTEMTIME`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClockTime {
+    pub year: u16,
+    /// 1–12
+    pub month: u8,
+    /// 1–31
+    pub day: u8,
+    /// 0–23
+    pub hour: u8,
+    pub minute: u8,
+    pub second: u8,
+    /// 0 = Sunday … 6 = Saturday
+    pub weekday: u8,
+}
+
+/// Encode the data packet that follows `04 28`: `00 SLOT 5A YY MM DD hh mm
+/// ss 00 DOW`, binary (not BCD), `AA 55` in the last two bytes.
+/// Layout from docs/research/protokol-ff13.md §10.4 (S1, S2; replayed on an
+/// AK980 PRO by S3).
+pub fn clock_data(t: &ClockTime) -> Result<[u8; PAYLOAD], Invalid> {
+    let check = |ok: bool, what| if ok { Ok(()) } else { Err(Invalid::Clock(what)) };
+    check((2000..=2255).contains(&t.year), "year")?;
+    check((1..=12).contains(&t.month), "month")?;
+    check((1..=31).contains(&t.day), "day")?;
+    check(t.hour < 24, "hour")?;
+    check(t.minute < 60, "minute")?;
+    // A leap second (60) is shown as 59 rather than refused.
+    check(t.second <= 60, "second")?;
+    check(t.weekday < 7, "weekday")?;
+    let mut p = [0u8; PAYLOAD];
+    p[1] = CLOCK_SLOT;
+    p[2] = CLOCK_MARKER;
+    p[3] = (t.year - 2000) as u8;
+    p[4] = t.month;
+    p[5] = t.day;
+    p[6] = t.hour;
+    p[7] = t.minute;
+    p[8] = t.second.min(59);
+    p[10] = t.weekday;
+    p[PAYLOAD - 2..].copy_from_slice(&TRAILER);
+    Ok(p)
 }
 
 #[cfg(test)]
@@ -602,5 +657,33 @@ mod tests {
         }
         assert_eq!(readback_red_candidates(0xFE), [127, 255]);
         assert_eq!(readback_red_candidates(0), [0, 128]);
+    }
+
+    #[test]
+    fn clock_packet_matches_golden_capture() {
+        // S2 golden.json: 2026-10-29 15:07:32, a Thursday.
+        let t = ClockTime { year: 2026, month: 10, day: 29, hour: 15, minute: 7, second: 32, weekday: 4 };
+        let p = clock_data(&t).unwrap();
+        assert_eq!(&p[..11], &[0x00, 0x01, 0x5A, 0x1A, 0x0A, 0x1D, 0x0F, 0x07, 0x20, 0x00, 0x04]);
+        assert!(p[11..62].iter().all(|&b| b == 0));
+        assert_eq!(&p[62..], &[0xAA, 0x55]);
+        assert_eq!(guard(&p, PacketKind::Data), Ok(()));
+    }
+
+    #[test]
+    fn clock_rejects_impossible_values() {
+        let ok = ClockTime { year: 2026, month: 11, day: 10, hour: 23, minute: 59, second: 59, weekday: 2 };
+        assert!(clock_data(&ok).is_ok());
+        for (bad, what) in [
+            (ClockTime { year: 1999, ..ok }, "year"),
+            (ClockTime { month: 13, ..ok }, "month"),
+            (ClockTime { day: 0, ..ok }, "day"),
+            (ClockTime { hour: 24, ..ok }, "hour"),
+            (ClockTime { minute: 60, ..ok }, "minute"),
+            (ClockTime { weekday: 7, ..ok }, "weekday"),
+        ] {
+            assert_eq!(clock_data(&bad), Err(Invalid::Clock(what)));
+        }
+        assert_eq!(clock_data(&ClockTime { second: 60, ..ok }).unwrap()[8], 59, "leap second shown as 59");
     }
 }

@@ -2,7 +2,7 @@
 //!
 //! Only `effect` and `per-key` write the keyboard's flash, and both need
 //! `--yes`. `live` and `live-probe` stream RAM-only real-time LED frames;
-//! everything else only reads. Flash-writing commands are added only after
+//! `clock` sets the keyboard clock; everything else only reads. Flash-writing commands are added only after
 //! they are verified on the hardware.
 
 use anyhow::{Context, Result};
@@ -63,6 +63,13 @@ enum Cmd {
     LiveProbe,
     /// List the firmware lighting effects.
     Effects,
+    /// Set the keyboard clock to the PC's local time (`04 28`). The screen
+    /// switches to its clock page.
+    Clock {
+        /// Send this time instead, as "YYYY-MM-DD HH:MM:SS" (for testing).
+        #[arg(long)]
+        at: Option<String>,
+    },
     /// Store per-key colours: KEY=RRGGBB pairs (key ids from the model).
     /// Unlisted keys turn off. WRITES FLASH; needs --yes.
     PerKey {
@@ -129,6 +136,33 @@ fn main() -> Result<()> {
             for e in kb_protocol::sonix::EFFECTS {
                 println!("{:>3}  {:<12} caps=0x{:02X}", e.id, e.name, e.caps);
             }
+            Ok(())
+        }
+        Cmd::Clock { at } => {
+            let time = match at {
+                Some(s) => {
+                    let t = chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S")
+                        .context("tarih \"YYYY-MM-DD HH:MM:SS\" biçiminde olmalı")?;
+                    kb_core::clock::from_datetime(&t.and_utc())
+                }
+                None => kb_core::clock::now(),
+            };
+            let (mut drv, model) = open_command()?;
+            let started = std::time::Instant::now();
+            drv.set_clock(&time)?;
+            let t = time;
+            println!(
+                "{}: saat {:04}-{:02}-{:02} {:02}:{:02}:{:02} (haftanın günü {}) gönderildi, {} ms",
+                model.name,
+                t.year,
+                t.month,
+                t.day,
+                t.hour,
+                t.minute,
+                t.second,
+                t.weekday,
+                started.elapsed().as_millis()
+            );
             Ok(())
         }
         Cmd::PerKey { keys, brightness, yes } => {

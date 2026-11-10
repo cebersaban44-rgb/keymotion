@@ -15,6 +15,7 @@ kb-protocol = { path = "crates/kb-protocol" }
 kb-transport = { path = "crates/kb-transport" }
 
 anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap = { version = "4", features = ["derive"] }
 hidapi = "2"
 serde = { version = "1", features = ["derive"] }

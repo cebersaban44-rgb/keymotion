@@ -597,6 +597,7 @@ Cihazda bir reset komutu yok. Stok "Reset keyboard" iki katmanı da sıfırlarda
 - **Her saat paketi ekranı saat sayfasına geçirir** (SLOT değerinden bağımsız) [AK980-HW: S2 PROTOCOL.md:91-94]. Bu yüzden S2 saati yalnızca haftalık gönderiyor. Stok uygulama her açılışta saat ve sayfa gönderiyor (S1 README.md:14).
 - Klavye tak-çıkar sonrası 2 s beklenmeli: tüm arayüzlerin hazırlanması gerekiyor (S2 agent/mod.rs:484-510).
 - Wired `0C 10` (dongle komutu) saati değiştirmedi (S3 donanım negatifi). O komut yalnızca dongle üzerinde çalışır (§11).
+- [AK980 PRO-HW: bu proje, 2026-11-10] Veri paketinin yankısı gönderilenle bayt bayt aynı; `04 02` yankısı durum 01, bayt toplamı **0** (ışık akışlarından farklı). Ayrıntı: `docs/donanim-dogrulama.md`, "Saat senkronu".
 
 ### 10.5 Diğer ekran komutları
 

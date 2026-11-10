@@ -198,6 +198,24 @@ CDP ile gerçek uygulamada, klavye USB modundayken denendi:
 
 Kırmızı değerler `2·r mod 256` baytından çözüldü. 40 değerin hepsi `v·m[n] >> 10` tablosuna birebir uyuyor; efektlerdeki beyaz ölçümleri de aynı. İlk tahmindeki `m/256` tablosu (`48, 96, …`) 1. ve 2. seviyede bir birim şaşıyordu (örneğin #808080 2. seviyede 47 okunuyor, 48 değil).
 
+### Saat senkronu (`04 28`) — 2026-11-10
+
+**Akış** (resmi sürücüyle aynı, `04 F0` yok): `04 18` → `04 28 … [8]=01` → 1 veri paketi → `04 02`. Veri: `00 01 5A YY MM DD hh mm ss 00 DOW`, ikili (BCD değil), yerel saat, son iki bayt `AA 55`.
+
+| Adım | Ölçüm (`kb clock`, trace) |
+|---|---|
+| `04 18`, `04 28` | Yankılar durum **01** |
+| Veri `00 01 5A 1A 0B 0A 05 09 00 00 02 …` (2026-11-10 05:09:00, Salı) | Klavye veri paketini **bayt bayt aynen** geri yansıttı |
+| `04 02` | Durum **01**, ama bayt toplamı **`00 00`**. Işık akışlarında bu alan veri toplamını veriyordu; saat akışında vermiyor. |
+| Süre | 251 ms |
+
+**Sonuç:** Saat akışında teslimatın kanıtı toplam değil, **veri yankısı**. Sürücü yankının gönderilen paketle birebir aynı olmasını şart koşuyor; `04 02`'de yalnızca ret (`FF`) olmadığına bakıyor.
+
+**Uygulamada (CDP):**
+- `clock.json` yokken uygulama açıldı. Klavye bağlandıktan 2,3 sn sonra saat kendiliğinden ayarlandı ve `clock.json` yazıldı.
+- Genel Bakış → "Klavye saati" → "Şimdi eşitle": 250 ms, "Saat eşitlendi". "Bağlanınca eşitle" anahtarı dosyaya kaydedildi.
+- Ekranın gerçekten saat sayfasına geçtiğini ve doğru saati gösterdiğini kullanıcının gözle doğrulaması bekleniyor. S3 aynı paketi bu modelde tekrar oynatıp TFT saatinin değiştiğini görmüştü.
+
 ### Ekran: stok ana sayfa (fotoğraf, 2026-11-10 08:29)
 
 - **Yerleşim:** Panel yatay ve topuzun hemen solunda. Panelin sol yarısı mavi bir durum kartı, sağ yarısı siyah zemin üzerinde çizgi çizimi dağlar ve kuşlar.
