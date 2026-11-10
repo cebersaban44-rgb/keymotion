@@ -10,6 +10,7 @@ Son güncelleme: **2026-11-10**. Bu belge, bağlam sıfırlandığında ya da ye
 | `docs/research/ekran-ve-veri-kaynaklari.md` | Ekran fizibilitesi, flash ömrü hesabı, Windows veri kaynakları |
 | `docs/mimari.md` | ADR-001: neden Tauri 2 + Rust, katmanlar |
 | `docs/teknik-analiz.md` | İlk keşif: model, BT servisleri, Fn kombinasyonları |
+| `docs/gelistirme-akisi.md` | Dallar (`main` / `develop`), PR'lar, birleştirme yöntemi, sürüm ve hotfix adımları |
 
 ---
 
@@ -25,6 +26,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 - Topluluk projeleri **kopyalanmaz**. Yalnızca referans alınır, kaynak gösterilir ve her bilgi cihazda doğrulanır.
 - Önce Windows ve bu model. Mimari çoklu modele hazır kurulur.
 - Kalite çıtası yüksek (AA+). Güzel ve erişilebilir arayüz, TR/EN.
+- `main` yayındaki sürümdür, geliştirme `develop`'ta yapılır. Her iş ayrı dalda yapılır ve PR ile birleşir; `main`'e doğrudan commit atılmaz. Ayrıntı: `docs/gelistirme-akisi.md`.
 
 ## 2. Şu an çalışan özellikler (cihazda doğrulandı)
 
