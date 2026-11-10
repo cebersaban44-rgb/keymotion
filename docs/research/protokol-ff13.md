@@ -408,7 +408,7 @@ Kaynak: stok `layouts/rgb-keyboard.xml`. S1 `ak980-layout.json` ve S2 `data/layo
 | `03 LO HI 00` | consumer usage (LE) | §6.3 |
 | `06 SLOT MODE COUNT` | makro: SLOT 0 tabanlı (0–99); MODE 0 bir kez, 1 COUNT kez (1–255), 2 tekrar basana kadar, 3 basılı tutulduğu sürece, 4 "click to play"; COUNT yalnızca MODE 1 iken | `06 02 01 05` |
 | `07 K1 K2 K3` | aynı anda en fazla 3 tuş (modifier'lar E0–E7 olarak yazılır) | `07 04 05 06` |
-| `05 02 ID 00` | program/URL/metin: **yalnızca host uygulaması çalışırken** işler; firmware bir Input raporu gönderir | (sunmayın ya da kendi servisimizle işleyin) |
+| `05 02 ID 00` | program/URL/metin: **yalnızca host uygulaması çalışırken** işler; firmware bir Input raporu gönderir | (sunmayın ya da kendi servisimizle işleyin; tuşla uygulama başlatma fikri için `docs/DURUM.md` P2) |
 
 - Kaynaklar: S1 README.md:77-89, KeyMap.cs:8-15, 105-148; S2 keymap.rs:618-637; S4 Keymap.swift.
 - Notlar:

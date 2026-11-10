@@ -326,6 +326,21 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
   - [ ] `07 K1 K2 K3` (üç tuş birlikte) sunulmuyor; "Birlikte basılı" değiştiricileri çoğu ihtiyacı karşılıyor.
   - [ ] Kendi Fn işlevi olan tuşlarda Fn katmanı atamasının yok sayılıp sayılmadığı (kaynaklarda Fn+Home). Num / üzerinde Fn katmanı çalıştı.
   - [ ] Tuş üstü adlar ABD düzenine göre (`;` `'` `[`); Türkçe Q düzeninde ekranda farklı karakter yazılır. İleride Windows klavye düzenine göre ad gösterilebilir.
+- [ ] **Tuşla uygulama başlatma** (kullanıcının fikri, 2026-11-10; açık iş, şimdilik yapılmıyor). Bir tuş ya da tuş kombinasyonu bir programı (`.exe`), dosyayı, klasörü ya da web adresini açsın.
+  - **Neden yalnızca klavyeyle olmaz:** Klavye bilgisayarda program çalıştıramaz; tuş yalnızca bir kod gönderir. Programı, arka planda çalışan bir uygulama açar. Resmi sürücü de böyle yapıyor: `05 02 ID` girişi yalnızca resmi uygulama açıkken çalışıyor (`research/protokol-ff13.md` §6.2).
+  - **İki yol:**
+    1. **F13–F24 ile (önerilen):** Tuşa, klavyede fiziksel olarak bulunmayan F13–F24'ten biri atanır; bu bugünkü tuş atamayla zaten yapılabiliyor. Uygulama bu tuşları Windows'ta genel kısayol olarak dinler ve seçilen programı açar.
+       - Temel katmanda 12, Fn katmanında 12 tuş daha. Ctrl/Shift/Alt ile birleşince çok daha fazla kombinasyon olur.
+       - Klavyenin üreticiye özel kanalına bağlı değil. Atama klavyenin belleğinde durduğu için Bluetooth ve 2.4G'de de çalışması beklenir (doğrulanmalı).
+       - Kullanıcı bu tuşları başka araçlarla da (PowerToys, AutoHotkey) kullanabilir.
+    2. **Firmware'in kendi yolu (`05 02 ID`):** Tuş, FF13 kanalından bir bildirim (`05 xx ID`) gönderir; uygulama ID'ye bakıp programı açar. Yalnızca USB'de ve uygulama bu kanalı dinlerken çalışır. Hiç ölçülmedi.
+  - **Gerekenler:**
+    - Uygulamanın tepsi simgesiyle arka planda çalışması; isteğe bağlı olarak Windows açılışında başlaması.
+    - Tuş Atama'da "Uygulama aç" kategorisi: program seçme, klasör ya da adres yazma; atamaların kalıcı kaydı.
+    - Çakışma uyarısı: aynı F13–F24 kısayolunu başka bir program da kullanıyorsa.
+  - **Güvenlik:** Yalnızca kullanıcının kendi seçtiği program, dosya ya da adres açılır. Yol ve argümanlar başka bir kaynaktan gelmez. Yönetici olarak çalıştırma yok.
+  - **Önce ölçülecekler:** F13–F24'ün Windows'ta genel kısayol olarak yakalanması; atamanın BT ve 2.4G'de de geçerli olması.
+  - **İlgili:** P1'deki "uygulamaya göre otomatik profil" de aynı arka plan servisini kullanır; ikisi birlikte tasarlanmalı.
 - [ ] **Makrolar** (`04 19` → `04 15`): `04 19` makro tablosunu siler, dikkat.
 - [ ] **Ekran** (`04 72` + FF68):
   - Paketler **WriteFile** ile gönderilir, SET_REPORT ile değil (kardeş kartı çökertmiş). `04 F0` asla gönderilmez.
