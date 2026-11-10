@@ -460,7 +460,11 @@ Uygulamanın Ekran sayfası; kullanıcı kendi dosyalarıyla denedi.
   - 20:25 "Odak 1/2" ve 20:26 mola kartı: 16'şar sayfa, 2'şer sn.
   - 20:26:43 Durdur: "Erken bitti · 1 dk" özet kartı (16 sayfa, 2 sn). Kullanıcı bunu ekranda kalan "tur görseli" olarak gördü.
   - 20:28 canlı mod kapatıldı ve "cat" geri yüklendi: 254 sayfa, 37 sn. Hata yok.
-  - Bu denemeden sonra ekran sırası ve kendi görseline dönüş yapıldı (DURUM madde 31); onun klavyede denemesi bekliyor.
+  - Bu denemeden sonra ekran sırası ve kendi görseline dönüş yapıldı (DURUM madde 31).
+- **Kullanıcının üçüncü denemesi (21:02–21:08, yerel saat):** 21:02 odak ve 21:03 mola kartı yüklendi (16'şar sayfa, 2'şer sn). Bütçe 0,63'e düştü.
+  - Sonra hiçbir kart gitmedi; durdurunca dönüş de bütçe bekledi. Kullanıcı ekranın "takılı kaldığını" gördü. Klavye ya da yükleme hatası yok; sebep bütçe (DURUM madde 32).
+  - Düzeltmeden sonra uygulama yeniden açıldı (21:20:18). Açılış kontrolü ekranda eski zamanlayıcı kartını buldu ve 15 sn'lik dönüşü kurdu.
+  - 21:20:33'te bütçe boşken de dönüş başladı. 21:21:11'de "cat" geri yüklendi: 254 sayfa, 37 sn, hata yok. O sırada Chrome'daki şarkının kartı bütçe bekliyordu; bütçe gelince ya da "Şimdi gönder"le gider.
 
 ### Sonuçlar
 
