@@ -15,8 +15,12 @@ use tauri::{AppHandle, Emitter};
 pub const EVENT_NOW_PLAYING: &str = "now-playing";
 const POLL: Duration = Duration::from_secs(1);
 const IDLE_POLL: Duration = Duration::from_secs(2);
-/// Played this long without pause before it is worth an upload.
-pub const SETTLE: Duration = Duration::from_secs(12);
+/// Played this long without pause before it is worth an upload. Most skips
+/// happen in the first seconds; longer only delays the card (owner's
+/// feedback 2026-11-10: 12 s felt late).
+pub const SETTLE: Duration = Duration::from_secs(4);
+/// Covers often arrive after the title: wait this many more polls for one.
+const COVER_WAITS: u8 = 3;
 /// Largest cover accepted.
 const COVER_MAX: u64 = 8 * 1024 * 1024;
 
@@ -66,6 +70,7 @@ fn track_key(app: &str, title: &str, artist: &str) -> String {
 struct Current {
     info: TrackInfo,
     played: Duration,
+    cover_waits: u8,
 }
 
 pub fn spawn(app: AppHandle, live: Arc<LiveHandle>) -> Arc<NowPlaying> {
@@ -114,6 +119,7 @@ fn run(app: AppHandle, live: Arc<LiveHandle>, state: Arc<NowPlaying>) {
                             has_cover: false,
                         },
                         played: Duration::ZERO,
+                        cover_waits: 0,
                     });
                     live.set_track(current.as_ref().map(|c| c.info.clone()));
                 } else {
@@ -128,14 +134,19 @@ fn run(app: AppHandle, live: Arc<LiveHandle>, state: Arc<NowPlaying>) {
                             tracing::debug!("no cover: {e}");
                             None
                         });
-                        c.info.has_cover = cover.is_some();
-                        c.info.settled = true;
-                        if let Ok(mut slot) = state.cover.lock() {
-                            *slot = cover;
+                        if cover.is_none() && c.cover_waits < COVER_WAITS {
+                            // Give a late cover a moment before the card is made.
+                            c.cover_waits += 1;
+                        } else {
+                            c.info.has_cover = cover.is_some();
+                            c.info.settled = true;
+                            if let Ok(mut slot) = state.cover.lock() {
+                                *slot = cover;
+                            }
+                            tracing::info!(app = %c.info.app, "track settled");
+                            let _ = app.emit(EVENT_NOW_PLAYING, c.info.clone());
+                            live.set_track(Some(c.info.clone()));
                         }
-                        tracing::info!(app = %c.info.app, "track settled");
-                        let _ = app.emit(EVENT_NOW_PLAYING, c.info.clone());
-                        live.set_track(Some(c.info.clone()));
                     } else if was_playing != t.playing {
                         live.set_track(Some(c.info.clone()));
                     }

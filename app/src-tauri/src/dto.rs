@@ -997,6 +997,19 @@ pub struct TrackInfo {
     pub has_cover: bool,
 }
 
+/// What the GIF page showed before the live mode replaced it: offered to
+/// put back when the live mode is turned off.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveRestore {
+    /// Library item id.
+    pub id: String,
+    pub name: String,
+    pub frames: u32,
+    pub pages: u32,
+}
+
 /// Live mode, its budget and sources (`live-screen` event payload).
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -1018,4 +1031,7 @@ pub struct LiveState {
     /// Source switch: the song playing.
     pub now_playing: bool,
     pub track: Option<TrackInfo>,
+    /// A live card is on the GIF page and this library item was there
+    /// before it.
+    pub restore: Option<LiveRestore>,
 }

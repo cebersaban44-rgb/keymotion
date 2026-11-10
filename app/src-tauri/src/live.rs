@@ -117,6 +117,8 @@ pub struct LiveStored {
     pub last_source: Option<String>,
     pub last_name: Option<String>,
     pub last_ms: Option<f64>,
+    /// Library item the GIF page showed before the first live card.
+    pub before: Option<String>,
 }
 
 impl Default for LiveStored {
@@ -129,6 +131,7 @@ impl Default for LiveStored {
             last_source: None,
             last_name: None,
             last_ms: None,
+            before: None,
         }
     }
 }
@@ -147,6 +150,8 @@ struct Runtime {
     /// The keyboard was not reachable: wait before trying again.
     retry_at: Option<f64>,
     track: Option<TrackInfo>,
+    /// Library item to put back on the GIF page (live mode turned off).
+    restore: Option<String>,
 }
 
 enum Msg {
@@ -198,14 +203,21 @@ impl LiveHandle {
         }
     }
 
+    /// `restore` (with `enabled: false`): put back what the GIF page showed
+    /// before the live mode, if a live card is there now.
     pub fn configure(
         &self,
         enabled: Option<bool>,
         plan: Option<LivePlan>,
         now_playing: Option<bool>,
+        restore: Option<bool>,
     ) -> Result<LiveState, String> {
+        let mut put_back = None;
         {
             let mut lib = self.library.lock().map_err(|_| "screen library unavailable")?;
+            if enabled == Some(false) && restore == Some(true) {
+                put_back = lib.live_restore_target().map(|r| r.id);
+            }
             let now = now_ms();
             let live = lib.live_mut();
             if let Some(e) = enabled {
@@ -222,6 +234,11 @@ impl LiveHandle {
         if enabled == Some(false) {
             if let Ok(mut rt) = self.rt.lock() {
                 rt.pending = None;
+                if put_back.is_some() {
+                    tracing::info!("live mode off; putting the previous picture back");
+                    rt.restore = put_back;
+                    rt.retry_at = None;
+                }
             }
         }
         self.wake();
@@ -283,10 +300,13 @@ impl LiveHandle {
     fn next_wait(&self) -> Duration {
         let Ok(mut lib) = self.library.lock() else { return IDLE };
         let Ok(rt) = self.rt.lock() else { return IDLE };
+        let now = now_ms();
+        if rt.restore.is_some() {
+            return Duration::from_millis(rt.retry_at.map_or(0.0, |t| (t - now).max(0.0)) as u64);
+        }
         if rt.pending.is_none() || !lib.live().enabled {
             return IDLE;
         }
-        let now = now_ms();
         let mut wait = IDLE.as_millis() as f64;
         if let Some(t) = rt.retry_at {
             wait = wait.min((t - now).max(0.0));
@@ -297,7 +317,67 @@ impl LiveHandle {
         Duration::from_millis(wait.max(0.0) as u64)
     }
 
+    /// Put a library item back on the GIF page. Asked for by the user, so it
+    /// is counted like a manual upload and does not wait for the budget.
+    fn restore(&self, device: &DeviceHandle) -> bool {
+        let now = now_ms();
+        let (id, anim) = {
+            let Ok(lib) = self.library.lock() else { return false };
+            let Ok(mut rt) = self.rt.lock() else { return false };
+            if rt.uploading.is_some() || rt.retry_at.is_some_and(|t| now < t) {
+                return rt.restore.is_some();
+            }
+            let Some(id) = rt.restore.take() else { return false };
+            let name = lib.state("").items.into_iter().find(|i| i.id == id).map(|i| i.name);
+            match (lib.animation(&id), name) {
+                (Ok(anim), Some(name)) => {
+                    rt.uploading = Some(LiveItem { source: "restore".into(), name });
+                    (id, anim)
+                }
+                _ => {
+                    tracing::warn!(%id, "previous picture is gone from the library; nothing to put back");
+                    return false;
+                }
+            }
+        };
+        self.emit();
+        let result = device.upload_screen(id.clone(), anim);
+        {
+            let Ok(mut lib) = self.library.lock() else { return true };
+            let Ok(mut rt) = self.rt.lock() else { return true };
+            rt.uploading = None;
+            match &result.error {
+                None => {
+                    let model = result.model_id.clone().unwrap_or_default();
+                    if let Err(e) = lib.uploaded(&model, &id) {
+                        tracing::warn!("restore not recorded: {e}");
+                    }
+                    lib.live_mut().before = None;
+                    let _ = lib.save();
+                    rt.last_error = None;
+                    tracing::info!(%id, "previous picture put back");
+                }
+                Some(e) => {
+                    tracing::warn!(flash = result.flash_written, "putting the previous picture back failed: {e}");
+                    if result.flash_written {
+                        lib.count_upload(true);
+                        let _ = lib.save();
+                    }
+                    rt.last_error = Some(e.clone());
+                    rt.restore = Some(id);
+                    rt.retry_at = Some(now_ms() + RETRY_EVERY.as_millis() as f64);
+                }
+            }
+        }
+        self.emit();
+        true
+    }
+
     fn try_upload(&self, device: &DeviceHandle) {
+        if self.restore(device) {
+            self.wake();
+            return;
+        }
         let now = now_ms();
         let job = {
             let Ok(mut lib) = self.library.lock() else { return };
@@ -386,6 +466,12 @@ fn snapshot(lib: &mut ScreenLibrary, rt: &Runtime) -> LiveState {
         last_error: rt.last_error.clone(),
         now_playing: live.now_playing,
         track: rt.track.clone(),
+        // Not offered while it is being put back already.
+        restore: if rt.restore.is_some() || rt.uploading.as_ref().is_some_and(|u| u.source == "restore") {
+            None
+        } else {
+            lib.live_restore_target()
+        },
     }
 }
 
