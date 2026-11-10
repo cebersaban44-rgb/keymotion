@@ -25,6 +25,8 @@ pub enum TransportError {
     ReportTooLong { len: usize, max: usize },
     #[error("timed out after {0} ms waiting for an input report")]
     Timeout(i32),
+    #[error("refused: {0}")]
+    Refused(&'static str),
     #[cfg(windows)]
     #[error("Windows error: {0}")]
     Windows(#[from] windows::core::Error),
