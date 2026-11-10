@@ -107,7 +107,13 @@ CI eklendiğinde fmt, clippy, test ve typecheck kontrolleri iki dalda da birleş
 
 ## Varsayılan dal
 
-GitHub'da varsayılan dal **`main`**'dir, yani ziyaretçi kararlı sürümün kodunu görür. Dışarıdan gelen PR'lar `develop`'u hedeflemelidir; bu, açık kaynak hazırlığında `CONTRIBUTING.md`'ye yazılacak. O aşamada varsayılan dalın `develop` olup olmayacağına yeniden bakılacak.
+GitHub'da varsayılan dal **`develop`**'tur (karar 2026-11-10). Nedenleri:
+
+- Fork'lar ve dışarıdan gelen PR'lar kendiliğinden en güncel koda ve doğru dala gider. `main`'e açılan PR'ları tek tek `develop`'a çevirmek ve eski koda göre yazılmış PR'lardaki çakışmalarla uğraşmak gerekmez.
+- GitHub'ın "Fixes #12" gibi otomatik issue kapatma kelimeleri yalnızca varsayılan dala giren PR'larda çalışır.
+- Kullanıcılar uygulamayı koddan değil, Releases sayfasından kurar. Kararlı sürüm, etiketler ve Releases ile bulunur; README'nin en üstünde son sürüme bağlantı olur.
+
+Bir düzeltme `develop`'a girince issue kapanır ama kullanıcıya bir sonraki sürümle ulaşır. Bunu görünür kılmak için her issue bir sürüme (milestone, örneğin `v0.3.0`) bağlanır ve sürüm notlarında kapanan issue'lar listelenir.
 
 ## Kim ne yapar
 
