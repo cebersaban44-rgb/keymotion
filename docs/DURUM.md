@@ -113,6 +113,17 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Kaydetme işlemleri store'a taşındı (`applyEffectDraft`, `savePerKeyDraft`, `discardDraft`).
     - **Uygulama içi sayfa geçişi soru sormaz:** Taslak saklanıyor, nokta hatırlatıyor.
     - **Sonraki adım:** Tuş atama, makro ve ekran bölümleri gelince `useUnsaved` içine kendi kancalarını ekleyecek.
+14. **Dal düzeni, PR akışı ve CI.** Kullanıcıyla kararlaştırıldı; kurallar `docs/gelistirme-akisi.md`'de.
+    - **Dallar:** `main` yayındaki sürüm, `develop` geliştirme. Her iş `feature/`, `fix/`, `docs/` ya da `chore/` dalında yapılıp PR ile `develop`'a girer (squash). Sürüm `develop` → `main` PR'ıyla (merge commit) ve `v0.x.y` etiketiyle, kullanıcının onayıyla çıkar.
+    - **GitHub ayarları:**
+      - Varsayılan dal `develop`: dışarıdan gelen PR'lar güncel koda gider, "Fixes #N" çalışır. Kullanıcılar uygulamayı Releases'tan indirir.
+      - İki dal korumalı: PR zorunlu, force-push ve silme yasak, "Build and test" kontrolü birleştirme şartı. `main`'de kurallar yöneticiler için de geçerli.
+    - **CI (`.github/workflows/ci.yml`):** Windows'ta çalışır. Adımlar: arayüz kurulumu, typecheck ve derleme; fmt, clippy, testler; üretilen TS tiplerinin güncel olduğunun kontrolü. İlk çalışma 5 dk sürdü.
+    - **`.gitattributes`:** Bütün metin dosyaları LF; Windows'ta ts-rs ve CI aynı baytları görür.
+    - **PR'lar:**
+      - [#1](https://github.com/cebersaban44-rgb/klavye-studio/pull/1): ışık işleri (madde 10–13)
+      - [#2](https://github.com/cebersaban44-rgb/klavye-studio/pull/2) ve [#3](https://github.com/cebersaban44-rgb/klavye-studio/pull/3): dal rehberi ve varsayılan dal
+      - [#4](https://github.com/cebersaban44-rgb/klavye-studio/pull/4): CI
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -131,9 +142,12 @@ app/
                 settings.rs: Rust'ın sahip olduğu kalıcı ayarlar (calibration.json, uygulama yapılandırma klasörü).
   src/          React 19 + TS 7 + Tailwind 4 + motion. lib/ipc.ts (tipli köprü, seri kuyruk), lib/lighting.ts
                 (Işıklar durumu), lib/mirror.ts, components/KeyboardView.tsx (geometriden çizim, boyama),
-                components/CalibrationCard.tsx, pages/{Overview,Lighting,Settings,ComingSoon}.tsx.
+                components/CalibrationCard.tsx, components/UnsavedDialog.tsx, lib/unsaved.ts (kaydedilmemiş
+                değişiklik listesi), pages/{Overview,Lighting,Settings,ComingSoon}.tsx.
   src/bindings/ `cargo test` ile ÜRETİLİR (TS tipleri, geometri JSON'u, efekt kataloğu). Elle düzenlenmez.
 tools/cdp.mjs   Çalışan uygulamanın WebView2'sine CDP ile JS çalıştırır ya da ekran görüntüsü alır (uçtan uca test).
+.github/workflows/ci.yml   PR ve birleştirmelerde Windows'ta kontroller (bkz. gelistirme-akisi.md).
+rustfmt.toml, .gitattributes   120 sütun biçim; LF satır sonu.
 ```
 
 **Güvenlik kuralları** (kodda zorunlu):
@@ -178,6 +192,10 @@ node tools/cdp.mjs --shot ekran.png            # pencerenin ekran görüntüsü
 
 Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust log'unu (`RUST_LOG=klavye_studio=debug`) karşılaştırabilirsin. Hata ayıklama portunu kullanıcının normal çalıştırmasında açık bırakma.
 
+**Klavyeye yazan testler:** Kullanıcının kayıtlı tasarımını ve uygulama durumunu (`localStorage` içindeki `ks.lighting.v1`) önce yedekle, testten sonra geri yükle. Yalnızca gereken kadar flash yazımı yap.
+
+**İş akışı:** Her değişiklik `develop`'tan açılan bir dalda yapılır ve PR ile birleşir. CI yeşil olmadan birleştirilmez. Ayrıntı: `docs/gelistirme-akisi.md`.
+
 ## 6. Yaşanan sorunlar ve dersler (aynı hatayı tekrar etmemek için)
 
 | # | Sorun | Kök neden | Ders |
@@ -205,13 +223,26 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 21 | CDP testinde sürükleyerek boyama çalışmadı | React `onPointerEnter`'ı yerel `pointerenter`'dan değil, bırakılan öğenin `pointerout` olayından türetiyor | Sürüklemeyi `pointerout` (relatedTarget = yeni tuş) ve `pointerover` çiftiyle taklit et. |
 | 22 | Kısayol dinleyicisi `window`'dan gelen olayda çöktü | `e.target.closest` her hedefte yok | Hedefi `instanceof Element` ile denetle. |
 | 23 | Kapatma uyarısı nasıl test edilir? | CDP pencerenin X düğmesine basamıyor | `(Get-Process klavye-studio).CloseMainWindow()` gerçek WM_CLOSE gönderir; tarayıcı tarafını CDP ile sür. |
+| 24 | Bindings kontrolü içerik aynıyken "değişti" dedi | Windows'ta git dosyaları CRLF açıyor, ts-rs LF yazıyor | `.gitattributes` (`* text=auto eol=lf`). Kontrol `git status` yerine içerik farkına (`git diff --quiet`) ve commit'lenmemiş dosyalara bakıyor. |
+| 25 | Çalışan uygulamanın arayüzü dal değişince değişti | Debug exe arayüzü Vite'tan yüklüyor; Vite o anki çalışma ağacını sunuyor | Kullanıcı uygulamayı kullanırken başka dala geçme; geçtiysen işi bitirince güncel dala dön. |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 
+### Sıradaki oturum için
+
+1. `git switch develop && git pull`, sonra yeni iş için dal aç (örneğin `feature/clock-sync`).
+2. Önerilen sıra:
+   - Firmware efekt renginde gamma göz testi (P1).
+   - Saat senkronu (P2, kolay).
+   - Yön kodları (P1).
+   - Tuş atama (P2, büyük iş).
+3. **Kullanıcının kalibrasyonu:** Ayarlar'da gamma **1.0 (ham)** kayıtlı; kullanıcı kalibrasyonu denerken kendisi seçti. İlk göz testinde paletle en uyumlu değer 2.2 çıkmıştı. Efekt gamma testinde bu değeri de birlikte netleştir; kullanıcının ayarını sormadan değiştirme.
+
 ### P0 — Hemen
-- [ ] Kullanıcı tuş başına renk akışını düzeltmeden sonra yeniden denesin: boya, rengi değiştir, Temizle, kaydet, Kayıtlıya dön.
-- [x] Repo oluşturuldu: https://github.com/cebersaban44-rgb/klavye-studio (public, `main`). Commit'ler GitHub noreply e-postasıyla atılıyor (repo-yerel `user.email`).
-- [ ] Açık kaynak hazırlığı: lisans seçimi (henüz LICENSE yok, yani varsayılan olarak "tüm hakları saklı"), CONTRIBUTING, kaynak teşekkürleri.
+- [x] Kullanıcı tuş başına renk akışını yeniden denedi: Fırça ve Seç araçları, kaydetme ve kapatma uyarısı.
+- [x] Repo oluşturuldu: https://github.com/cebersaban44-rgb/klavye-studio (public; varsayılan dal `develop`, yayın dalı `main`). Commit'ler GitHub noreply e-postasıyla atılıyor (repo-yerel `user.email`).
+- [x] Dal düzeni, PR akışı ve CI kuruldu (madde 14).
+- [ ] Açık kaynak hazırlığı: lisans seçimi (henüz LICENSE yok, yani varsayılan olarak "tüm hakları saklı"). Geri kalanı P3'teki ilk sürüm gözden geçirmesinde.
 - [x] Geliştirme log'larını sadeleştir: IPC `info` log'ları `debug`'a çekildi.
 - [x] Kullanıcı Ayarlar → Renk kalibrasyonu'nu gözle denedi: gri basamaklar ve beyaz doğru.
 - [ ] Fn tuşunun sürekli kırmızı yanmasının nedenini öğren (gösterge mi, hangi durum?). Num Lock beyazı muhtemelen Num Lock göstergesi.
