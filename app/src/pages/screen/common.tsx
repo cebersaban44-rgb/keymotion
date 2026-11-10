@@ -13,12 +13,14 @@
 import { AlertTriangle, Check, Info, Library, Loader2, Pencil, Play, Upload, Usb, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { ScreenItem } from "../../bindings/ScreenItem";
 import { Field } from "../../components/controls";
 import { useT, type MessageKey } from "../../lib/i18n";
 import { itemData, useScreen } from "../../lib/screen";
 import {
   H,
   ImportError,
+  brightestFrame,
   PROVEN_FRAMES,
   W,
   fromBlob,
@@ -63,27 +65,8 @@ export function loadFrames(id: string, first?: boolean) {
   return p;
 }
 
-/** The frame that shows the most: brightest of up to 24 evenly spaced
- *  frames (animations often start on black). */
-export function pickThumb(frames: Uint16Array[]): Uint16Array | null {
-  if (frames.length === 0) return null;
-  const step = Math.max(1, Math.floor(frames.length / 24));
-  let best = frames[0]!;
-  let bestScore = -1;
-  for (let k = 0; k < frames.length; k += step) {
-    const f = frames[k]!;
-    let score = 0;
-    for (let i = 0; i < f.length; i += 7) {
-      const v = f[i]!;
-      score += (v >> 11) + ((v >> 5) & 63) / 2 + (v & 31);
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      best = f;
-    }
-  }
-  return best;
-}
+/** The frame that shows the most (library thumbnails, confirmations). */
+export const pickThumb = brightestFrame;
 
 export function errorKey(e: unknown): MessageKey {
   if (e instanceof ImportError) {
@@ -138,6 +121,23 @@ export function FramePlayer({
     return () => window.clearTimeout(timer);
   }, [frames, delaysMs, playing]);
   return <canvas ref={ref} width={W} height={H} className={`pixelated ${className}`} />;
+}
+
+/** A library item's representative frame, 120×68. */
+export function Thumb({ item }: { item: ScreenItem }) {
+  const [f, setF] = useState<Uint16Array | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadFrames(item.id, item.frames === 1).then((d) => live && setF(pickThumb(d.frames)), console.error);
+    return () => {
+      live = false;
+    };
+  }, [item.id, item.frames]);
+  return f ? (
+    <FramePlayer frames={[f]} delaysMs={[100]} className="h-[68px] w-[120px] shrink-0 rounded-md bg-black" />
+  ) : (
+    <div className="h-[68px] w-[120px] shrink-0 rounded-md bg-black" />
+  );
 }
 
 /** One line of guidance under a step (warning, note, error). */
