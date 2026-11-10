@@ -27,6 +27,8 @@ pub const REALTIME_PACKETS: u16 = 8;
 /// Data packets returned by a colour read-back (`[idx R G B]` × 144).
 pub const COLOR_TABLE_PACKETS: usize = 9;
 
+pub mod keymap;
+
 /// Command opcodes this project is allowed to send.
 ///
 /// Anything else, including opcodes the firmware accepts but the official
@@ -358,6 +360,8 @@ pub enum Invalid {
     LedIndex(u8),
     #[error("invalid date or time: {0}")]
     Clock(&'static str),
+    #[error("invalid key assignment: {0}")]
+    KeyAction(&'static str),
 }
 
 /// Encode the data packet that follows `04 13`.

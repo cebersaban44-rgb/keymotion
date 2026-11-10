@@ -42,7 +42,8 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | **Kaydedilmemiş değişiklik koruması**: kapatırken "Kaydet ve çık / Kaydetmeden çık / Vazgeç", kenar çubuğunda nokta | ✅ Uygulamada dört yol da denendi |
 | Ayarlar → **Renk kalibrasyonu**: gamma (bağlı ya da kanal başına), beyaz dengesi, eğri grafiği, klavyede canlı test deseni (beyaz, gri basamaklar, palet), kalıcı ayar | ✅ Kullanıcı gri basamakları ve beyazı onayladı. |
 | Genel Bakış → **Klavye saati**: bağlanınca otomatik eşitleme (günde en fazla bir kez, kapatılabilir), "Şimdi eşitle", son eşitleme zamanı | ✅ Uygulamada uçtan uca denendi; kullanıcı ekrandaki saatin doğru olduğunu onayladı. |
-| Tuş atama, Makrolar, Ekran sayfaları | ⏳ "Yapım aşamasında" yer tutucu |
+| **Tuş Atama**: temel ve Fn katmanı; tuş, kısayol (Ctrl/Shift/Alt/Win + tuş), medya, fare, tekerlek, devre dışı; taslak, kaydet, geri al, katmanı fabrika ayarına döndür; sayfada tuş testi kutusu | ✅ CLI ve uygulamayla klavyeye yazıldı; kullanıcı tuşlara basarak doğruladı (madde 19). |
+| Makrolar, Ekran sayfaları | ⏳ "Yapım aşamasında" yer tutucu |
 
 ## 3. Kronoloji: ne yaptık, neden
 
@@ -147,6 +148,14 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - Ölçüm aracı: F5 karelerinden desen kaymasını hesaplayan `kb-cli/src/motion.rs` (eksen izdüşümü ve iki boyutlu eşleştirme, birim testli).
     - Kullanıcı yön düğmelerini uygulamada seçip klavyede denedi: doğru çalışıyor.
     - **PR'lar:** [#6](https://github.com/cebersaban44-rgb/klavye-studio/pull/6) madde 15, [#7](https://github.com/cebersaban44-rgb/klavye-studio/pull/7) madde 16, [#8](https://github.com/cebersaban44-rgb/klavye-studio/pull/8) madde 17, [#9](https://github.com/cebersaban44-rgb/klavye-studio/pull/9) bağlantı modları listesi, [#10](https://github.com/cebersaban44-rgb/klavye-studio/pull/10) madde 18.
+19. **Tuş atama** (`04 11` temel, `04 27` Fn). Ayrıntı: `donanim-dogrulama.md`, "Tuş atama".
+    - **Protokol** (`kb-protocol/src/sonix/keymap.rs`): `KeyAction` (varsayılan, devre dışı, tuş + değiştiriciler, medya, fare, tekerlek), 576 baytlık katman tablosu, HID ve medya kataloğu. Fn (`0xAF`) hedef olarak da kabul edilmez. Geçerli her girişin `guard`'dan geçtiği testle kanıtlı.
+    - **Model:** her tuşun varsayılan HID kodu (`hid`) model dosyasında. `kb-core/src/keymap.rs` katmanı modele göre denetler: Fn tuşu kilitli, modelde olmayan tuş reddedilir, temel katmanda "tuş kendini gönderir" varsayılana çevrilir.
+    - **Sürücü:** `04 18` → `04 11/27` (9) → 9 veri → `04 02` (sağlama toplamı) → `04 F0` (yankısı okunuyor, resmi sürücü gibi).
+    - **Uygulamanın kaydı:** Klavye atamayı geri okuyamıyor. Cihaz aktörü yalnızca klavyenin onayladığı yazımdan sonra `keymap.json`'u (model başına, katman başına, ham 4 baytlık girişler ve son yazım zamanı) günceller. Uygulama açılınca bu kayıt yüklenir; kaydedilmemiş taslak `ks.keymap.v1`'de durur ve kapatma uyarısına katılır.
+    - **Arayüz:** Tuş Atama sayfası: katman sekmeleri, klavyede seçim (değişen tuş yeni işlevini ve altında asıl etiketini gösterir, kaydedilmemişler noktalı), işlev seçici (Tuşlar + "Birlikte basılı" değiştiriciler, Medya, Fare, Özel), kaydet paneli ve okunamama/Fn katmanı notları, tuş testi kutusu.
+    - **CLI:** `kb keymap --layer base|fn KEY=ACTION … --yes`, `kb keymap-targets`.
+    - **Doğrulama:** CLI ile iki katman yazılıp kullanıcı bastı; varsayılana dönüş doğrulandı. Sonra uygulamanın kendi Kaydet düğmesiyle yazılıp sayfadaki tuş testi kutusunda doğrulandı ve uygulamadan fabrika ayarına döndürüldü. Klavye şu an fabrika atamasında.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -156,20 +165,24 @@ crates/
                 firmware göstergeleri (Num Lock, Fn). G/Ç yok.
   kb-protocol/  Saf paket kodlama. sonix.rs: başlık/yankı, guard (izin listesi ve bootloader engeli),
                 efekt kataloğu, ışık paketi, tuş başına tablo, gerçek zamanlı tablo, ölçülmüş parlaklık
-                ölçeği, F5 kırmızı baytının iki adayı. WASM'a derlenebilir.
+                ölçeği, F5 kırmızı baytının iki adayı. sonix/keymap.rs: tuş atama girişleri, katman tablosu,
+                HID ve medya kataloğu. WASM'a derlenebilir.
   kb-transport/ hidapi (feature/output/input raporları) ve WinRT BLE (yalnızca okuma: pil).
   kb-core/      detect.rs (arayüzleri klavyelere gruplar), sonix.rs (sürücü: akışlar, zamanlama, yeniden deneme,
                 sağlama toplamı), color.rs (sRGB→LED gamma/kazanç, ters dönüşüm, doğrusal parlaklık),
-                readback.rs (F5 okumasında kırmızıyı beklenen renge göre çözer), clock.rs (yerel saat → klavye saati).
+                readback.rs (F5 okumasında kırmızıyı beklenen renge göre çözer), clock.rs (yerel saat → klavye saati),
+                keymap.rs (katmanı modele göre denetler: Fn kilidi, bilinmeyen tuş, kanonik biçim).
   kb-cli/       `kb` geliştirici aracı (bkz. §5).
 app/
   src-tauri/    İnce kabuk. device.rs: TEK cihaz aktörü (HID'e dokunan tek yer; istek kuyruğu, canlı akış
                 20 Hz, ayna 4 Hz, 2 sn yoklama). dto.rs: ts-rs ile TS tiplerine dönüşen DTO'lar. lib.rs: Tauri komutları.
-                settings.rs: Rust'ın sahip olduğu kalıcı ayarlar (calibration.json, clock.json; uygulama yapılandırma klasörü).
+                settings.rs: Rust'ın sahip olduğu kalıcı ayarlar (calibration.json, clock.json, keymap.json;
+                uygulama yapılandırma klasörü). keymap.json, klavyeye son yazılan atamanın tek kaydıdır.
   src/          React 19 + TS 7 + Tailwind 4 + motion. lib/ipc.ts (tipli köprü, seri kuyruk), lib/lighting.ts
                 (Işıklar durumu), lib/mirror.ts, components/KeyboardView.tsx (geometriden çizim, boyama),
                 components/CalibrationCard.tsx, components/UnsavedDialog.tsx, lib/unsaved.ts (kaydedilmemiş
-                değişiklik listesi), components/ClockCard.tsx, pages/{Overview,Lighting,Settings,ComingSoon}.tsx.
+                değişiklik listesi), components/ClockCard.tsx, lib/keymap.ts (atama taslağı ve kayıt),
+                lib/keymapLabels.tsx (tuş üstü ve uzun adlar), pages/{Overview,Lighting,Keymap,Settings,ComingSoon}.tsx.
   src/bindings/ `cargo test` ile ÜRETİLİR (TS tipleri, geometri JSON'u, efekt kataloğu). Elle düzenlenmez.
 tools/cdp.mjs   Çalışan uygulamanın WebView2'sine CDP ile JS çalıştırır ya da ekran görüntüsü alır (uçtan uca test).
 .github/workflows/ci.yml   PR ve birleştirmelerde Windows'ta kontroller (bkz. gelistirme-akisi.md).
@@ -181,11 +194,12 @@ rustfmt.toml, .gitattributes   120 sütun biçim; LF satır sonu.
 2. **BLE:** Hiç yazma API'si yok. `FEE0/FEE1` (OTA) dokunulmaz.
 3. **Flash'a yazan komutlar** (`04 13/23/11/27/15/17/72`) yalnızca açık kullanıcı eylemiyle gönderilir; kaydırıcı sürüklenirken asla.
 4. **Gerçek zamanlı kare:** Başlık gönderildiyse kare her koşulda tamamlanır.
+5. **Fn tuşu** yeniden atanamaz ve hedef olarak seçilemez (`kb-protocol` kodlayıcısı ve `kb_core::keymap::canonical`).
 
 ## 5. Nasıl çalıştırılır ve test edilir
 
 ```bash
-cargo test --workspace            # 82 test; TS tiplerini ve mock JSON'ları da üretir
+cargo test --workspace            # 106 test; TS tiplerini ve mock JSON'ları da üretir
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check        # rustfmt.toml: 120 sütun
 cd app && pnpm typecheck
@@ -208,6 +222,9 @@ kb effect --mode 11 --rainbow --yes        # FLASH
 kb per-key w=FF8A3D a=FF8A3D --yes         # FLASH
 kb clock [--at "2026-11-10 12:34:56"]      # 04 28: klavye saati (RTC); ekran saat sayfasına geçer
 kb direction-probe [--modes 10,11 --dirs 0,1 --speed 1] --yes   # FLASH: efekt yönlerini F5 ile ölçer
+kb keymap-targets                          # atanabilecek tuş, medya ve fare adları
+kb keymap --layer base kp-slash=a kp-star=media:volume-up caps=ctrl+z --yes   # FLASH: katmanın TAMAMI yazılır
+kb keymap --layer fn --yes                 # FLASH: Fn katmanını fabrika ayarına döndürür
 ```
 
 **Gerçek uygulamada uçtan uca test** (tarayıcı panelinde değil):
@@ -220,7 +237,9 @@ node tools/cdp.mjs --shot ekran.png            # pencerenin ekran görüntüsü
 
 Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust log'unu (`RUST_LOG=klavye_studio=debug`) karşılaştırabilirsin. Hata ayıklama portunu kullanıcının normal çalıştırmasında açık bırakma.
 
-**Klavyeye yazan testler:** Kullanıcının kayıtlı tasarımını ve uygulama durumunu (`localStorage` içindeki `ks.lighting.v1`) önce yedekle, testten sonra geri yükle. Yalnızca gereken kadar flash yazımı yap.
+**Klavyeye yazan testler:** Kullanıcının kayıtlı tasarımını ve uygulama durumunu (`localStorage` içindeki `ks.lighting.v1`, `ks.keymap.v1`) önce yedekle, testten sonra geri yükle. Yalnızca gereken kadar flash yazımı yap.
+- **Tuş atama** klavyeden okunamaz: yazmadan önce kullanıcıya mevcut atamasını sor. Testten sonra katmanı fabrika ayarına döndür. CLI yazımı uygulamanın `keymap.json` kaydına girmez; uygulamayla çalışırken atamayı uygulamadan yaz.
+- Kullanıcıdan tuşa basmasını isterken tuşu belirsizliksiz adlandır ("sayı tuş takımındaki / tuşu, Num Lock'a dokunmadan"). Uygulamadaki tuş testi kutusu ya da zaman damgalı bir dinleyici, kullanıcının kendi basışlarını ayırmaya yarar.
 
 **İş akışı:** Her değişiklik `develop`'tan açılan bir dalda yapılır ve PR ile birleşir. CI yeşil olmadan birleştirilmez. Ayrıntı: `docs/gelistirme-akisi.md`.
 
@@ -238,7 +257,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 8 | Ara sıra `0x1F` HID hatası | GET_FEATURE stall | 5, 10 ve 15 ms bekleyerek 3 yeniden deneme. |
 | 9 | Okuma kapanışı işlenmedi | `04 02` beklemesiz gönderildi | Resmi sürücünün 35 ms beklemesine uy. |
 | 10 | Test sahtesi yanlış başarı verdi | Sahte, yankıları kuyrukta tutuyordu | Sahte, gerçek davranışı taklit etmeli: feature raporu **yalnızca son** yankıyı tutar. |
-| 11 | Ekran görüntüleri eski kareyi gösterdi | Tarayıcı paneli gizliyken çizim durur | Playwright (başsız) ya da gerçek uygulama için CDP kullan. Not: Playwright MCP yalnızca kendi çıktı klasörüne yazabiliyor; ekran görüntüsünü dosya adı vermeden al. |
+| 11 | Ekran görüntüleri eski kareyi gösterdi; sayfa geçişi tamamlanmadı | Tarayıcı paneli gizliyken çizim ve `requestAnimationFrame` durur; motion'ın çıkış animasyonu bitmediği için sayfa değişmez | Playwright (başsız) ya da gerçek uygulama için CDP kullan. Not: Playwright MCP yalnızca kendi çıktı klasörüne yazabiliyor; ekran görüntüsünü dosya adı vermeden al. |
 | 12 | Palet renkleri soluk | Gamma: monitör sRGB, LED doğrusal | Renk testini **ara tonlarla** yap; saf renkler gamma'yı göstermez. Hipotezleri ayıran test tasarla (kanal sırası mı gamma mı?). |
 | 13 | Kaynaklar çelişti (mod numaraları, kuyruk sırası, F5 sayacı, F5'in animasyonu izleyip izlemediği) | Farklı kart ve ürün yazılımı sürümleri | Ölçüm kaynaktan üstündür; ölçümü `donanim-dogrulama.md`'ye tarihli yaz. |
 | 14 | "CLI'de çalışıyor" ama uygulamada çalışmıyor | Uygulama farklı zamanlama ve sıklıkla çağırıyor | Bir özelliği "bitti" saymadan önce **gerçek uygulamada** CDP ile uçtan uca dene. |
@@ -256,33 +275,25 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 26 | Ayna mor rengi lacivert gösterdi; FF "FA" okununca "6 bit çözünürlük" sanıldı | `F5` kırmızıyı `2·r mod 256` bildiriyor. FF→FA tesadüfen "yakın" göründü. | Okumayı tek değerle değil, **birkaç ara tonla ve her kanal için ayrı** doğrula. "Yaklaşık tuttu" sistematik bir hatayı gizleyebilir. |
 | 27 | Sekme değişince canlı önizleme durmadı | Bekleyen 40 ms'lik kare zamanlayıcısı bileşen kapandıktan sonra tetiklendi ve akışı yeniden başlattı | Kapanışta (unmount) zamanlayıcıları temizle. Sayfa geçiş animasyonu açılışı geciktirdiği için hızlı tıklama bunu tetikleyebilir. |
 | 28 | Saat gönderimi "sağlama toplamı tutmadı" hatası verdi | Saat akışında `04 02` toplamı 0 bildiriyor; ışık akışlarındaki davranış genellenmişti | Her akışın yankısını ayrı ölç. Saat akışında veri paketinin birebir yankısı teslimatı kanıtlıyor. |
+| 29 | Tuş testinde her basıştan önce `NumLock` göründü, Num − hiç gelmedi | Talimattaki "Num /" yazısı "Num Lock + /" diye okundu; kullanıcı Num Lock'u basılı tutarak bastı | Tuşu belirsizliksiz adlandır. Dinleyiciye zaman damgası ve `keyup` ekle: basılı tutulan tuş, aynı basışın parçası mı ayrı bir tuş mu, hemen görünür. |
+| 30 | `keymap.json` yazıldı ama geri okunamadı | Ayar dosyaları `#[serde(flatten)]` sarmalayıcısından geçiyor; flatten sayısal map anahtarlarını (`BTreeMap<u8, _>`) okuyamıyor | Bu dosyalarda map anahtarı metin olmalı. Her yeni ayar dosyasına yaz-oku testi ekle. |
+| 31 | CDP betiği yanlış düğmeye tıkladı | Klavye görselindeki "A" ve "Ctrl" tuşları da düğme; ayrıca `startsWith("A")` "Alt"ı buldu | Seçiciyi ilgili bölümle sınırla ve metni birebir eşleştir. Beklenmeyen sonuçta önce test betiğinden şüphelen, sonucu ekran görüntüsüyle doğrula. |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 
 ### Sıradaki oturum için
 
-1. `git switch develop && git pull`, sonra yeni iş için dal aç (örneğin `feature/keymap`). PR açınca auto-merge ve auto-fix'i aç (`gelistirme-akisi.md`).
-2. **Sıradaki iş: Tuş atama** (P2, büyük iş; kullanıcı 2026-11-10'da seçti). Başlamadan önce bilinenler (`research/protokol-ff13.md` §6):
-   - **Akış:** `04 18` → `04 11` (temel katman) ya da `04 27` (Fn katmanı), `[8]=09` → 9 veri paketi (576 bayt, giriş `idx×4`'te, 574–575 `AA 55`) → `04 02` → `04 F0`. Tuş başına renk tablosuyla aynı biçim; `per_key_table` ve sağlama toplamı doğrulaması yeniden kullanılabilir.
-   - **Giriş kodları:**
-     - `00 00 00 00` firmware varsayılanı, `05 03 00 00` kapalı.
-     - `02 MODS CODE 00` HID tuşu ve değiştiriciler; `03 LO HI 00` medya (consumer).
-     - `01 01 BTN 00` fare tuşu, `01 03 DIR 00` tekerlek.
-     - `06 SLOT MODE COUNT` makro, `07 K1 K2 K3` en fazla üç tuş birlikte.
-   - **Önemli kısıtlar:**
-     - Bir katmanı yazmak katmanın **tamamını** değiştirir; tabloda olmayan tuş varsayılana döner.
-     - Klavyeden keymap **okunamaz** (resmi sürücüde okuma yok). Uygulama kendi kopyasını tutup her seferinde tam tabloyu göndermeli.
-     - "Varsayılana dön" = bütün girişler sıfır.
-     - **Fn tuşu (`0xAF`) asla yeniden atanmaz.** Kendi Fn işlevi olan tuşlar Fn katmanı atamasını yok sayabilir.
-     - BT kanal değiştirme ve mod seçimi gibi firmware işlevlerinin giriş kodu bilinmiyor; bunlara yalnızca varsayılanla dönülür.
-     - `05 02 ID` (program/URL) yalnızca uygulama çalışırken işler; ilk sürümde sunma.
-   - **Doğrulama:**
-     - Önce CLI ile tek bir zararsız atama (ör. F13 ya da bir harf değişimi) ve sağlama toplamı.
-     - Tuşa basınca Windows'a giden kodu kullanıcıyla ya da bir tuş dinleyicisiyle kontrol et.
-     - Sonra tam tabloyla varsayılana dönüşü dene. Kullanıcının mevcut ataması bilinmediği için ilk yazımdan önce kullanıcıya sor; büyük olasılıkla fabrika varsayılanı.
-   - **Arayüz:** Tuş Atama sayfası şu an yer tutucu. Klavye görünümünde tuş seçme; temel ve Fn katmanı; kategoriler (tuşlar, medya, fare, kapalı); taslak, kaydet, kayıtlıya dön (ışıktaki akışla aynı). Kaydedilmemiş değişiklik uyarısı için `useUnsaved` kancası eklenmeli.
-3. Bekleyen küçük iş: "Kapalı" (mod 0) sonrası Fn+X ile ışığın geri açılıp açılmadığı. Kullanıcıyla, klavyede (P1).
-3. **Kullanıcının kalibrasyonu:** Ayarlar'da gamma **1.0 (ham)** kayıtlı. Kullanıcı bunu bilerek seçti: 2.2'de "Gri basamaklar" deseninin sol tarafı soluk kalıyordu, bütün klavyenin yanmasını istedi.
+1. `git switch develop && git pull`, sonra yeni iş için dal aç. PR açınca auto-merge ve auto-fix'i aç (`gelistirme-akisi.md`).
+2. **Tuş atama bitti** (madde 19). Klavye fabrika atamasında; `keymap.json` kaydı da öyle.
+3. **Sıradaki işi kullanıcıyla seç.** Adaylar (P2):
+   - **Makrolar** (`04 19` → `04 15`; `research/protokol-ff13.md` §7). Tuş atamaya bağlanır: makro, tuş girişinde `06 SLOT MODE COUNT` ile atanır.
+     - `04 19` makro tablosunu siler. Makro tablosu ve iki katman birlikte yeniden yazılmalı; bir makro silinince sonraki slotlar kayar.
+     - Klavyeden okunamaz; uygulama kendi kaydını tutar (`keymap.json` gibi).
+     - Doğrulama: önce CLI ile kısa bir makro (ör. "ok"), bir tuşa bağla, kullanıcı tuş testi kutusunda denesin.
+   - **Seçenekler** (`04 17`): uyku, Win kilidi, tepki süresi. Bayt sırası yakalamayla doğrulanmalı.
+   - **Ekran** (`04 72` + FF68): en riskli ve en büyük iş.
+4. Bekleyen küçük iş: "Kapalı" (mod 0) sonrası Fn+X ile ışığın geri açılıp açılmadığı. Kullanıcıyla, klavyede (P1).
+5. **Kullanıcının kalibrasyonu:** Ayarlar'da gamma **1.0 (ham)** kayıtlı. Kullanıcı bunu bilerek seçti: 2.2'de "Gri basamaklar" deseninin sol tarafı soluk kalıyordu, bütün klavyenin yanmasını istedi.
    - **Açıklama (kullanıcıya iletildi):** Soldaki basamaklar desenin en koyu grileri (#202020, #404040); 2.2'de LED'de %1 ve %5'e düşüyorlar. Gamma parlaklığı değil ara tonları ayarlar. Beyaz ve saf renkler her gamma'da aynı yanar. 1.0'da ara tonlu renkler (mor, pembe, açık mavi) ekrandakinden daha soluk ve beyazımsı görünür. İlk göz testinde paletle en uyumlu değer 2.2 çıkmıştı.
    - **Karar kullanıcının:** Ayarını sormadan değiştirme.
 
@@ -309,7 +320,12 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 ### P2 — Diğer özellikler
 - [x] **Saat senkronu** (`04 28`): bağlanınca günde en fazla bir kez ve elle (madde 17). Kullanıcı ekrandaki saatin doğru olduğunu onayladı.
 - [ ] **Seçenekler** (`04 17`): uyku süresi, Win kilidi, Alt+Tab ve Alt+F4 kilidi, tepki süresi. Bayt sırası yakalamayla doğrulanmalı.
-- [ ] **Tuş atama** (`04 11` temel, `04 27` Fn; 9 paket, 576 bayt): HID kodları, medya, fare, makro bağlama; varsayılana dönme. Klavyeden okunamıyor; uygulama kendi kopyasını tutar. Hazırlık notu: "Sıradaki oturum için".
+- [x] **Tuş atama** (`04 11` temel, `04 27` Fn): tuş, kısayol, medya, fare, tekerlek, devre dışı, varsayılana dönme; uygulamanın kendi kaydı (madde 19). Açık kalanlar:
+  - [ ] Makro bağlama (`06 SLOT MODE COUNT`), makrolarla birlikte.
+  - [ ] Klavyede denenmedi: ileri yan tuş (`10`), çift tık (`03`), tekerlek (`01 03`). Kodlama kaynaklarla uyumlu; kullanıcıyla bir kez denenmeli.
+  - [ ] `07 K1 K2 K3` (üç tuş birlikte) sunulmuyor; "Birlikte basılı" değiştiricileri çoğu ihtiyacı karşılıyor.
+  - [ ] Kendi Fn işlevi olan tuşlarda Fn katmanı atamasının yok sayılıp sayılmadığı (kaynaklarda Fn+Home). Num / üzerinde Fn katmanı çalıştı.
+  - [ ] Tuş üstü adlar ABD düzenine göre (`;` `'` `[`); Türkçe Q düzeninde ekranda farklı karakter yazılır. İleride Windows klavye düzenine göre ad gösterilebilir.
 - [ ] **Makrolar** (`04 19` → `04 15`): `04 19` makro tablosunu siler, dikkat.
 - [ ] **Ekran** (`04 72` + FF68):
   - Paketler **WriteFile** ile gönderilir, SET_REPORT ile değil (kardeş kartı çökertmiş). `04 F0` asla gönderilmez.
@@ -332,7 +348,8 @@ Kullanıcıyla kararlaştırıldı (2026-11-10): Şu an her özellik yalnızca *
 | Tuş başına renk | ✅ `04 23` | `05 10 80` + `14` × 21 (yalnızca statik analiz) | Yok |
 | Canlı ışık (RAM) | ✅ `04 20` | Per-key canlı kare **yok**; yalnızca `0B` müzik çubuğu | Yok |
 | Ayna (`04 F5`) | ✅ | Bilinen okuma yok | Yok |
-| Tuş atama / makro / seçenekler | Henüz yok | `10`/`12`, `09`, `07 10` (kardeşlerde; akış sınırları tehlikeli) | Yok |
+| Tuş atama | ✅ `04 11` / `04 27` | `10`/`12` (kardeşlerde; akış sınırları tehlikeli) | Yok |
+| Makro / seçenekler | Henüz yok | `09`, `07 10` (kardeşlerde) | Yok |
 | Ekran | Henüz yok | `7F 03` (kardeşte, ~62 s) | Yok |
 
 - **Bluetooth:** Ölçüm, üreticiye özel HID kanalı olmadığını gösterdi. Ayar yapılamıyor; `FEE0/FEE1` (OTA) asla yazılmaz. Uygulama BT'de pil ve "ayar için USB'ye geçin" yönlendirmesi gösteriyor.

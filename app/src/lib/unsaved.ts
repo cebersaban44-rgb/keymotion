@@ -1,9 +1,10 @@
 // Changes the user made in the app that are not stored on the keyboard yet.
 // Every page with such state contributes one hook below; the close guard
-// (UnsavedDialog) and the sidebar read the combined list. Keymap, macros and
-// the screen studio plug in here when they exist.
+// (UnsavedDialog) and the sidebar read the combined list. Macros and the
+// screen studio plug in here when they exist.
 
 import type { MessageKey } from "./i18n";
+import { dirtyLayers, useKeymap } from "./keymap";
 import { lightingUnsaved, useLighting } from "./lighting";
 import type { PageId } from "./store";
 
@@ -40,8 +41,24 @@ function useLightingItem(): UnsavedItem | null {
   };
 }
 
+/** Keymap: layers edited but not written to the keyboard. */
+function useKeymapItem(): UnsavedItem | null {
+  const dirty = useKeymap((s) => dirtyLayers(s).join(","));
+  if (!dirty) return null;
+  return {
+    id: `keymap:${dirty}`,
+    page: "keymap",
+    area: "nav.keymap",
+    detail: "unsaved.keymap",
+    needsUsb: true,
+    save: () => useKeymap.getState().save(),
+    discard: () => useKeymap.getState().discard(),
+  };
+}
+
 /** Every area with unsaved changes, in sidebar order. */
 export function useUnsaved(): UnsavedItem[] {
   const lighting = useLightingItem();
-  return [lighting].filter((i): i is UnsavedItem => i !== null);
+  const keymap = useKeymapItem();
+  return [lighting, keymap].filter((i): i is UnsavedItem => i !== null);
 }
