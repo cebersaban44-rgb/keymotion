@@ -1,4 +1,4 @@
-import { Check, Info, Library, Loader2, Pencil, Trash2, Upload, Usb, X } from "lucide-react";
+import { Check, Info, Library, Loader2, Palette, Pencil, Trash2, Upload, Usb, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
@@ -20,6 +20,7 @@ import {
   type Done,
 } from "./screen/common";
 import { FileFlow, FileTile } from "./screen/FileFlow";
+import { MatchLightsDialog } from "./screen/MatchLights";
 import { SlideFlow, SlideTile } from "./screen/SlideFlow";
 import { TextFlow, TextTile } from "./screen/TextFlow";
 
@@ -66,8 +67,8 @@ export function Screen({ kb }: { kb: KeyboardInfo }) {
 
       <KeyboardScreens />
 
-      <Studio usb={usb} loaded={loaded} />
-      <LibraryCard usb={usb} />
+      <Studio kb={kb} usb={usb} loaded={loaded} />
+      <LibraryCard kb={kb} usb={usb} />
     </div>
   );
 }
@@ -216,10 +217,12 @@ type Flow = { kind: "file"; source: Source } | { kind: "text" } | { kind: "slide
 
 /** Step 1 picks a source; each source runs steps 2–4 in its own flow and
  *  comes back here with what it did. */
-function Studio({ usb, loaded }: { usb: boolean; loaded: boolean }) {
+function Studio({ kb, usb, loaded }: { kb: KeyboardInfo; usb: boolean; loaded: boolean }) {
   const t = useT();
   const [flow, setFlow] = useState<Flow | null>(null);
   const [done, setDone] = useState<Done | null>(null);
+  const [matching, setMatching] = useState(false);
+  const doneItem = useScreen((s) => (done?.id ? (s.state?.items.find((i) => i.id === done.id) ?? null) : null));
   const fileSource = flow?.kind === "file" ? flow.source : null;
 
   // The decoded file holds bitmaps and decoders; free them when it goes.
@@ -258,6 +261,15 @@ function Studio({ usb, loaded }: { usb: boolean; loaded: boolean }) {
                 {done.seconds != null && <span className="num ml-2 font-normal text-ink-3">{fmtSeconds(done.seconds)}</span>}
               </div>
               <div className="text-ink-2">{done.kind === "uploaded" ? t("sc.done.uploadedHint") : t("sc.done.savedHint")}</div>
+              {doneItem && kb.geometry && (
+                <button
+                  type="button"
+                  onClick={() => setMatching(true)}
+                  className="mt-2 flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-[12px] font-medium hover:bg-surface-2"
+                >
+                  <Palette size={13} /> {t("sc.lm.action")}
+                </button>
+              )}
             </div>
             <button
               type="button"
@@ -281,17 +293,21 @@ function Studio({ usb, loaded }: { usb: boolean; loaded: boolean }) {
         <TextTile onStart={() => start({ kind: "text" })} />
         <SlideTile onStart={() => start({ kind: "slides" })} />
       </div>
+      <AnimatePresence>
+        {matching && doneItem && <MatchLightsDialog kb={kb} item={doneItem} onClose={() => setMatching(false)} />}
+      </AnimatePresence>
     </section>
   );
 }
 
 // --------------------------------------------------------------- library
 
-function LibraryCard({ usb }: { usb: boolean }) {
+function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
   const t = useT();
   const state = useScreen((s) => s.state);
   const upload = useScreen((s) => s.upload);
   const [confirmItem, setConfirmItem] = useState<ScreenItem | null>(null);
+  const [matchItem, setMatchItem] = useState<ScreenItem | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
@@ -387,8 +403,19 @@ function LibraryCard({ usb }: { usb: boolean }) {
                   {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
                   {it.kind === "factory" ? t("sc.factory.restore") : t("sc.upload.short")}
                 </button>
-                {it.kind !== "factory" && (
-                  <div className="flex gap-1">
+                <div className="flex gap-1">
+                  {kb.geometry && (
+                    <button
+                      type="button"
+                      title={t("sc.lm.action")}
+                      aria-label={t("sc.lm.action")}
+                      onClick={() => setMatchItem(it)}
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-ink-3 hover:bg-surface hover:text-ink"
+                    >
+                      <Palette size={13} />
+                    </button>
+                  )}
+                  {it.kind !== "factory" && (
                     <button
                       type="button"
                       title={t("sc.rename")}
@@ -398,6 +425,8 @@ function LibraryCard({ usb }: { usb: boolean }) {
                     >
                       <Pencil size={13} />
                     </button>
+                  )}
+                  {it.kind !== "factory" && (
                     <button
                       type="button"
                       title={deleting === it.id ? t("sc.remove.confirm") : t("sc.remove")}
@@ -416,8 +445,8 @@ function LibraryCard({ usb }: { usb: boolean }) {
                       <Trash2 size={13} />
                       {deleting === it.id && t("sc.remove.confirmShort")}
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </li>
           );
@@ -427,6 +456,7 @@ function LibraryCard({ usb }: { usb: boolean }) {
         {confirmItem && (
           <LibraryConfirm item={confirmItem} onCancel={() => setConfirmItem(null)} onConfirm={() => runUpload(confirmItem)} />
         )}
+        {matchItem && <MatchLightsDialog kb={kb} item={matchItem} onClose={() => setMatchItem(null)} />}
       </AnimatePresence>
     </section>
   );
