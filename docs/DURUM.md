@@ -47,7 +47,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | **Ekran Stüdyosu**: dosyadan (resim, GIF, video; kırpma, süre), yazı kartları (5 şablon), slayt; önizleme, onay, kütüphane, fabrika animasyonuna dönüş | ✅ Kullanıcı klavyede hepsini denedi (maddeler 23–25). |
 | Ekran → **Işıkları uydur**: görselin paletinden tuş tasarımı (degrade, tek renk, görsel), Işıklar'da taslak | ✅ Kullanıcı mor kartta klavyede doğruladı (madde 26). |
 | Ekran → **Canlı ekran**: canlı mod, günlük yükleme bütçesi, "Çalan şarkı" kartı, kapatınca önceki görseli geri yükleme | ✅ Kullanıcı klavyede denedi (madde 27). |
-| Ekran → **Pomodoro**: odak/mola zamanlayıcısı, tuş ışıklarında ilerleme (F1–F12, flash'sız), faz başında ekran kartı, kenar çubuğunda kalan süre | ⏳ Zamanlayıcı ve ışık katmanı gerçek uygulamada ve klavyede denendi (CDP, günlük). Kullanıcının gözle denemesi ve ekran kartının klavyede yüklenmesi bekliyor (madde 28). |
+| Ekran → **Odak zamanlayıcısı** (Pomodoro tekniği): odak ve mola süreleri, tuş ışıklarında ilerleme (F1–F12, flash'sız), faz başında ekran kartı, kenar çubuğunda kalan süre | ⏳ Zamanlayıcı ve ışık katmanı gerçek uygulamada ve klavyede denendi (CDP, günlük). Kullanıcının gözle denemesi ve ekran kartının klavyede yüklenmesi bekliyor (madde 28). |
 
 ## 3. Kronoloji: ne yaptık, neden
 
@@ -353,7 +353,8 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - CI'da rustfmt hatası. Ders §6: push etmeden önce CI adımlarını yerelde çalıştır.
       - Uygulama dal değişimi sırasında açılınca pencere boş kaldı. Ders §6.
     - **PR:** [#25](https://github.com/cebersaban44-rgb/klavye-studio/pull/25) (canlı mod, bütçe, çalan şarkı), [#26](https://github.com/cebersaban44-rgb/klavye-studio/pull/26) (kapatınca geri yükleme, 4 sn).
-28. **Ekran Faz C, ikinci adım: Pomodoro.**
+28. **Ekran Faz C, ikinci adım: Odak zamanlayıcısı (Pomodoro tekniği).**
+    - **Ad:** Arayüzde "Odak zamanlayıcısı" (İngilizcede "Focus timer"). Kullanıcı "Pomodoro"nun Türkçe olmadığını fark etti: kelime İtalyanca ("domates"), TDK sözlüğünde yok ve tekniğin adı olarak Francesco Cirillo'nun tescilli markası. Türkçe sayfada yalnız Türkçe kelime kullanılır (ders §6, 41). Koddaki adlar (`pomodoro.rs`, `source = "pomodoro"`) iç ad olarak kaldı.
     - **Zamanlayıcı arka uçta** (`app/src-tauri/src/pomodoro.rs`):
       - Neden: pencere küçülünce WebView2 sayfanın zamanlayıcılarını kısıyor (5 dk sonra dakikada bir). Süre Rust'ta tutulursa faz değişimi ve ışıklar şaşmaz.
       - Fazlar: Odak → Kısa mola → … → son odaktan sonra Uzun mola → seri biter. Varsayılan 25 / 5 / 15 dk, 4 tur. Ayarlar `pomodoro.json`'da (sürüm 1).
@@ -535,6 +536,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 38 | CI'da yalnızca rustfmt kırıldı | Push'tan önce `cargo fmt --check` çalıştırılmadı | Push'tan önce CI'ın adımlarını yerelde çalıştır: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `pnpm --dir app build`. |
 | 39 | Uygulama penceresi boş kaldı ("crash oldu herhalde") | Uygulama yeniden başlatıldıktan hemen sonra `git stash` + `switch` yapıldı; arayüz Vite'tan yüklenirken dosyalar geçici olarak eksikti | Önce dalı hazırla, uygulamayı en son başlat. Başlattıktan sonra çalışma ağacını değiştirme; şüphede CDP ile sayfanın çizildiğini doğrula (bkz. #25). |
 | 40 | `npx eslint` bir paketi indirip çalıştırdı | Projede ESLint (ve Prettier) yok; `npx` eksik aracı sormadan indiriyor | Bir aracı çalıştırmadan önce `app/node_modules/.bin`'de olduğuna bak ya da `npx --no-install` kullan. Projenin denetimleri: `tsc` (`pnpm build`), rustfmt, clippy. İndirilen paket önbellekten silindi. |
+| 41 | Türkçe arayüze "Pomodoro" ve "flash" girdi | Tekniğin yabancı adı ve teknik terim, Türkçe metne olduğu gibi yazıldı | Türkçe sayfada yalnız Türkçe içerik: yabancı adın Türkçe karşılığını kullan ("Odak zamanlayıcısı", "kalıcı bellek"). Emin değilsen TDK sözlüğüne bak (`sozluk.gov.tr/gts?ara=…`). Yabancı ad gerekiyorsa yalnız belgelerde, parantez içinde. |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 
