@@ -9,12 +9,14 @@
 //! * mirrors the colours currently shown (`04 F5`) while the UI asks for it,
 //! * sets the keyboard clock when it connects over USB (at most once a day).
 //!
-//! It also keeps the app's record of each model's keymap (`keymap.json`):
-//! the keyboard cannot report its keymap, so the record is updated only
-//! after a write the keyboard confirmed.
+//! It also keeps the app's record of each model's keymap (`keymap.json`)
+//! and macros (`macros.json`): the keyboard cannot report either, so a
+//! record is updated only after a write the keyboard confirmed.
 
 use crate::dto::{Battery, KeyboardInfo, LedColor};
-use crate::settings::{self, ClockSettings, Keymaps, StoredKeymap, StoredLayer};
+use crate::settings::{
+    self, ClockSettings, Keymaps, MacroRecord, StoredKeymap, StoredLayer, StoredMacro, StoredMacros,
+};
 use kb_core::color::LedCalibration;
 use kb_core::detect::BlePeer;
 use kb_core::readback;
@@ -85,6 +87,12 @@ pub enum Request {
         entries: Vec<(u8, KeyAction)>,
         reply: Reply<StoredKeymap>,
     },
+    /// Write every macro of the USB keyboard (flash) and record them with
+    /// their names. Replies with the model's updated record.
+    ApplyMacros {
+        slots: Vec<Option<StoredMacro>>,
+        reply: Reply<StoredMacros>,
+    },
 }
 
 /// A RAM-only frame in UI colours (sRGB). Calibration and the linear
@@ -122,6 +130,8 @@ pub struct Snapshot {
     pub clock: ClockSettings,
     /// What the app last wrote to each model's keymap.
     pub keymaps: Keymaps,
+    /// What the app last wrote to each model's macro memory.
+    pub macros: MacroRecord,
 }
 
 pub struct DeviceHandle {
@@ -147,13 +157,19 @@ impl DeviceHandle {
 pub fn spawn(app: AppHandle, calibration: LedCalibration, config_dir: Option<PathBuf>) -> DeviceHandle {
     let clock = config_dir.as_deref().map(settings::load_clock).unwrap_or_default();
     let keymaps = config_dir.as_deref().map(settings::load_keymaps).unwrap_or_default();
-    let snapshot =
-        Arc::new(Mutex::new(Snapshot { keyboards: Vec::new(), calibration, clock, keymaps: keymaps.clone() }));
+    let macros = config_dir.as_deref().map(settings::load_macros).unwrap_or_default();
+    let snapshot = Arc::new(Mutex::new(Snapshot {
+        keyboards: Vec::new(),
+        calibration,
+        clock,
+        keymaps: keymaps.clone(),
+        macros: macros.clone(),
+    }));
     let (tx, rx) = mpsc::channel();
     let shared = snapshot.clone();
     std::thread::Builder::new()
         .name("device-actor".into())
-        .spawn(move || Actor::new(app, shared, calibration, clock, keymaps, config_dir).run(rx))
+        .spawn(move || Actor::new(app, shared, calibration, clock, keymaps, macros, config_dir).run(rx))
         .expect("spawn device actor");
     DeviceHandle { snapshot, tx }
 }
@@ -188,6 +204,7 @@ struct Actor {
     calibration: LedCalibration,
     clock: ClockSettings,
     keymaps: Keymaps,
+    macros: MacroRecord,
     config_dir: Option<PathBuf>,
     /// When the next automatic clock sync is due, and attempts left.
     clock_due: Option<(Instant, u8)>,
@@ -203,6 +220,7 @@ impl Actor {
         calibration: LedCalibration,
         clock: ClockSettings,
         keymaps: Keymaps,
+        macros: MacroRecord,
         config_dir: Option<PathBuf>,
     ) -> Self {
         let hid = Hid::new().map_err(|e| tracing::error!("HID init failed: {e}")).ok();
@@ -223,6 +241,7 @@ impl Actor {
             calibration,
             clock,
             keymaps,
+            macros,
             config_dir,
             clock_due: None,
             next_enumerate: now,
@@ -336,7 +355,37 @@ impl Actor {
             Request::ApplyKeymap { layer, entries, reply } => {
                 let _ = reply.send(self.apply_keymap(layer, entries));
             }
+            Request::ApplyMacros { slots, reply } => {
+                let _ = reply.send(self.apply_macros(slots));
+            }
         }
+    }
+
+    /// Write every macro, then record them (names included). Like the
+    /// keymap, the record changes only after the keyboard confirmed the data.
+    fn apply_macros(&mut self, mut slots: Vec<Option<StoredMacro>>) -> Result<StoredMacros, String> {
+        let model = self
+            .usb_model
+            .ok_or_else(|| "Klavye USB modunda değil. Kabloyu takıp anahtarı ortaya (USB) alın.".to_string())?;
+        while slots.last().is_some_and(Option::is_none) {
+            slots.pop();
+        }
+        let mut stored = StoredMacros { slots, written_ms: None };
+        let image = stored.image_slots();
+        self.with_command(|d| d.write_macros(&image))?;
+        tracing::info!(slots = image.len(), model = %model.id, "macros written");
+        stored.written_ms = Some(now_ms());
+        self.macros.models.insert(model.id.clone(), stored.clone());
+        if let Ok(mut s) = self.shared.lock() {
+            s.macros = self.macros.clone();
+        }
+        if let Some(dir) = &self.config_dir {
+            if let Err(e) = settings::save_macros(dir, &self.macros) {
+                // The keyboard has the macros; only the record on disk is stale.
+                tracing::warn!("macro record not saved: {e}");
+            }
+        }
+        Ok(stored)
     }
 
     /// Write a keymap layer, then record it. The record changes only after
