@@ -94,6 +94,9 @@ pub struct HidChannel {
     info: HidInterface,
 }
 
+/// SONiX display channel (screen image pages).
+pub const DISPLAY_USAGE_PAGE: u16 = 0xFF68;
+
 /// Upper bound for one report including the report-ID byte. The largest
 /// report we know of is the 4096-byte display channel.
 const MAX_REPORT: usize = 4096 + 1;
@@ -121,7 +124,14 @@ impl HidChannel {
     }
 
     /// Read a feature report of `len` bytes (including the report-ID byte).
+    ///
+    /// Refused on the SONiX display channel (usage page 0xFF68): a
+    /// GET_FEATURE there locks the firmware until a power cycle (sibling
+    /// AK35i, docs/research/ekran-derin-arastirma.md §6).
     pub fn get_feature(&self, report_id: u8, len: usize) -> Result<Vec<u8>> {
+        if self.info.usage_page == DISPLAY_USAGE_PAGE {
+            return Err(TransportError::Refused("GET_FEATURE on the display channel"));
+        }
         check_len(len)?;
         let mut buf = vec![0u8; len];
         buf[0] = report_id;

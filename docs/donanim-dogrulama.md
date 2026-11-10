@@ -323,7 +323,8 @@ Kırmızı değerler `2·r mod 256` baytından çözüldü. 40 değerin hepsi `v
 
 ### Ekran: stok ana sayfa (fotoğraf, 2026-11-10 08:29)
 
-- **Yerleşim:** Panel yatay ve topuzun hemen solunda. Panelin sol yarısı mavi bir durum kartı, sağ yarısı siyah zemin üzerinde çizgi çizimi dağlar ve kuşlar.
+- **Yerleşim:** Panel yatay ve topuzun hemen solunda. Işıklı alan mavi bir durum kartı; yanındaki siyah zemin üzerinde çizgi çizimi dağlar ve kuşlar var.
+  - **Düzeltme (ikinci fotoğraf ve kullanıcının açıklaması, 2026-11-10):** Dağlar ekranın parçası değil; ekranın çevresindeki siyah çerçeveye basılmış süs. Ekranın kendisi yalnızca ışıklı dikdörtgen: yaklaşık 25×15 mm, yani 1,14" 240×135 panelin tamamı. Durum kartı da ana sayfanın tamamı.
 - **Durum kartının içeriği:**
   - Sol üstte tarih (`2026/11/10`).
   - Sağ üstte şimşek simgesi ve pil (şarj oluyor).
@@ -340,13 +341,49 @@ Kırmızı değerler `2·r mod 256` baytından çözüldü. 40 değerin hepsi `v
   | A (Caps) | sarı | çerçeve |
   | 1 (Num) | sarı | çerçeve |
 
-- **Görünen en-boy oranı:** Yaklaşık 2.8:1. Fotoğraf açılı çekildiği için dikey boyut kısa görünüyor olabilir.
-- **[AÇIK SORU]:** Yükleme formatı 240×135 (resmi sürücünün yapılandırma dosyası; S1 ve S2 bu klavyede doğrulamış). Bu görüntünün nerede gösterildiği bilinmiyor. İki olasılık var:
-  - Ana sayfanın sağ panelinde.
-  - Fn+Home ile açılan, tam ekran animasyon sayfasında.
+- **Görünen en-boy oranı:** Yaklaşık 2.8:1 ölçülmüştü; bu, çerçevedeki dağlar dahil bütün şeridin oranı.
+- **[ÇÖZÜLDÜ, E1]:** Yüklenen 240×135 görüntü ana sayfada değil, Fn+Home ile açılan ayrı, tam ekran GIF sayfasında gösteriliyor (aşağıda "Ekran yüklemesi").
+- **Uygulamadaki taklit:** `KeyboardView.tsx` içindeki `MiniScreen` bu fotoğrafa göre çizildi; çerçevedeki dağları da çiziyor. Etkin bağlantı simgesi, uygulamanın algıladığı moda göre doluyor. Ekran Stüdyosu yapılırken ekran alanı ile çerçeve ayrımı gözden geçirilecek.
+- **Fn tuşunun kırmızısı:** Şarj göstergesi. Kullanıcı 2026-11-10'da gözledi: klavye şarj olurken Fn kırmızı yanıyor (ışık kapalı modda bile).
 
-  İlk ekran yüklemesinde bir test deseniyle (köşe işaretleri ve ızgara) netleştirilecek.
-- **Uygulamadaki taklit:** `KeyboardView.tsx` içindeki `MiniScreen` bu fotoğrafa göre çizildi. Etkin bağlantı simgesi, uygulamanın algıladığı moda göre doluyor.
+### Ekran yüklemesi (`04 72` + FF68) — 2026-11-10
+
+Yöntem: `kb screen-test --yes` (E1) ve `kb screen-gif <dosya> --yes` (E4); uygulama kapalıyken, kablolu, fw 0x0106. Ayrıntı: `research/ekran-derin-arastirma.md`.
+
+- **Fabrika animasyonunun yedeği:**
+  - Kaynak: AJAZZ'ın sitesindeki "AJAZZ_AK980 V2_Tri-mode Screen version_RGB_Keyboard driver(986086…).rar" (5.146.495 bayt, SHA-256 `50b5338f…6ea44`). Kullanıcı onayıyla indirildi; hiçbir şey çalıştırılmadı.
+  - Arşiv Windows'un `archiveint.dll`'i ile açıldı. İçindeki Inno Setup 6.1 kurulum dosyasının veri bloğu Python `lzma` ile çözüldü.
+  - Paketteki yapılandırma bu klavyeyi tanımlıyor: `product_name="AK980 PRO"`, `pid="8009"`; 2.4G `"AJAZZ AK980 PRO 2.4G"`.
+  - `0.gif`: 240×135, 135 kare, 238.733 bayt, SHA-256 `4d245d45…598323b`. AJAZZ logo animasyonu.
+  - Yedek: `%APPDATA%\dev.klavye.studio\screen\factory\ak980-pro-factory.gif` (+ paketin iki XML'i).
+- **Kullanıcının karşılaştırması:**
+  - Fn+Home GIF sayfasını açtı; aynı AJAZZ logo animasyonu oynuyordu.
+  - Hızı, tarayıcı önizlemesiyle (kare başına 100 ms) aynıydı. GIF'teki gecikme 0 olduğu için tarayıcının 100 ms kuralı kullanılıyor.
+- **E1, köşe işaretli tek kare:**
+  - 16 sayfa, toplam 2,7 s.
+  - Sayfa süresi: ilk 283 ms, sonrakiler 141–145 ms, son 184 ms.
+  - `04 72` yankı durumu `01`.
+  - Her sayfanın onayı Input raporu `01 5A 02 00 …`.
+  - `04 02` yankısı `04 02 00 01 00 00 00 00`: durum 01, **toplam 0**, saat akışındaki gibi. Ekran yüklemesinde aktarım bu toplamla doğrulanamıyor; güvence her sayfanın onayı.
+  - Kullanıcı gözlemi:
+    - Desen doğru yönde: sol üst kırmızı, sağ üst yeşil, sol alt mavi, sağ alt sarı; ok yukarıda.
+    - Bantlar kırmızı-yeşil-mavi-gri sırasında; RGB565 LE doğru.
+    - Fn+Home saat sayfası ile desen arasında geçiyor; saat sayfası sağlam.
+- **E4, fabrika animasyonunun geri yüklenmesi:**
+  - 135 kare, kare başına 100 ms (bayt 50), 2136 sayfa.
+  - Toplam 308 s, sayfa başına ortalama 143 ms (en kısa 133, en uzun 283). Hata yok.
+  - Kullanıcı gözlemi:
+    - Yükleme boyunca ekranda LOADING ve yüzde göründü.
+    - Sonra Fn+Home ile açılan animasyon fabrikadakiyle görüntü ve hız olarak aynı.
+    - Işık kapalı modda olduğu için yükleme sırasında ışık davranışı görülemedi. Yazmanın sürüp sürmediği gözlenmedi.
+- **Sonuç:**
+  - Sayfa süresi ~143 ms, flash yazma süresiyle uyumlu. Yükleme RAM'e değil flash'a gidiyor (LT-104'ün "RAM tamponu" iddiası bu klavye için geçersiz).
+  - Yükleme yalnızca GIF sayfasını değiştiriyor; ana sayfa etkilenmiyor.
+  - Bu güne kadar yükleme sayısı: **2** (E1, E4).
+- **Açık kalanlar:**
+  - E2: fiş çekip takma ya da mod değişikliğinden sonra görsel kalıyor mu; açılışta hangi sayfa geliyor. Kendi görseliyle denenmeli; fabrika animasyonuyla fark görülemez.
+  - E3: panelin gerçek kare hızı.
+  - Yükleme sırasında yazma ve ışıklar.
 
 ### Sonuçlar
 

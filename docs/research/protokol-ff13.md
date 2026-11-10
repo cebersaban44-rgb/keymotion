@@ -621,8 +621,10 @@ Cihazda bir reset komutu yok. Stok "Reset keyboard" iki katmanı da sıfırlarda
   - Sık yükleme flash'ı aşındırır. Tipik NOR flash sektör başına ~10^5 silme döngüsü dayanır (genel bilgi; AK980 PRO'nun flash çipi doğrulanmadı; AK820'de PY25Q128HA, W5). Dakikada bir tek kare yükleme yaklaşık 70 günde bu sınıra ulaşır.
 - **2026-11-10 derin araştırmasından eklenenler** (ayrıntı ve kaynaklar: `ekran-derin-arastirma.md` §5–§6):
   - Gecikme baytı `FF` yasak: firmware onu dolgu sanıyor, ekran iki görüntü arasında yırtılıyor. Gecikme 1–254.
-  - Tek karede gecikme: resmi sürücü `max(1, ms/2)` yazıyor; `00` de çalışıyor. Biz `01` göndereceğiz.
-  - Sayfa onayı `01 5A 02 00`. `04 02` yanıtı aktarımın toplamını taşıyor (bayt 4–7, E1'de ölçülecek).
+  - Tek karede gecikme: resmi sürücü `max(1, ms/2)` yazıyor; `00` de çalışıyor. Biz 50 (100 ms) gönderiyoruz [AK980 PRO-HW: E1].
+  - Sayfa onayı `01 5A 02 00` [AK980 PRO-HW: bu proje, E1]. `04 02` yanıtı ekran yüklemesinde `04 02 00 01 00 00 00 00`: toplam 0 [AK980 PRO-HW: E1, E4]. Kardeş AK35i'deki "bayt 4–7 toplam" bu klavyede yok.
+  - Sayfa süresi ilk sayfada ~283 ms, sonra ~143 ms; 2136 sayfa 308 s [AK980 PRO-HW: E1, E4].
+  - Yüklenen görüntü Fn+Home ile açılan ayrı GIF sayfasında; ana sayfa etkilenmiyor. Yön ve renk sırası (RGB565 LE) doğru [AK980 PRO-HW: E1].
   - Yükleme sırasında ekranda "LOADING %" görünüyor. Yarıda kalırsa yalnızca GIF sayfası bozulur; saat paketi "loading" durumundan çıkarır, yeniden yükleme düzeltir.
   - Asla gönderilmeyecekler: `04 38` (harici flash'a 0 adresinden yazar), `AA 42 89 5A FF 71 62 CC` (güncelleme modu), `1F` (bootloader), FF68'de GET_FEATURE (firmware kilitlenir).
   - Bağlandıktan sonra ~2 s, iki yükleme arasında ≥2 s beklenmeli.

@@ -178,6 +178,22 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **Klavye düzenine göre etiketler** (`lib/layout.ts`): WebView2'nin Keyboard Map API'siyle her tuşun Windows'ta yazdığı karakter gösteriliyor (Türkçe Q'da `;` konumu **Ş**, `[` **Ğ**). Makro adımlarında, Tuş Atama seçicisinde ve atanmış tuş adlarında kullanılıyor. Pencere odak alınca düzen yeniden okunuyor.
     - **Doğrulama:** Kayıt, bağlama ve silme CDP ile denendi. Ardından uygulamadan makro ve atama kaydedildi; kullanıcı Num /'a bastı ve tuş testi kutusunda "Shift+H, Ş, I, sol tık" dizisi tekrar tekrar geldi. Sonra makro uygulamadan silindi ve ikisi de kaydedildi; klavye ve kayıtlar fabrika durumunda.
     - **PR:** [#15](https://github.com/cebersaban44-rgb/klavye-studio/pull/15).
+22. **Ekran: derin araştırma ve güvenli yükleme çekirdeği.** Ayrıntı: `research/ekran-derin-arastirma.md`, `donanim-dogrulama.md` "Ekran yüklemesi".
+    - **Araştırma** ([#17](https://github.com/cebersaban44-rgb/klavye-studio/pull/17)): resim ve GIF evet; canlı video yok, kısa video ≤140 karelik animasyona çevrilir; tek animasyon yuvası; stok firmware'de flash'sız yol yok; kullanıcının "kendi firmware katmanımız" fikri araştırma hattı.
+    - **Fabrika animasyonu yedeği:** Resmi sürücü paketinden çıkarıldı (hiçbir şey çalıştırılmadan); kullanıcı klavyedekiyle aynı olduğunu doğruladı.
+    - **Protokol** (`kb-protocol/src/sonix/screen.rs`):
+      - `Frame` (240×135 RGB565) ve `ScreenAnimation`. Klavyeye giden tek tür bu: 1–140 kare, gecikme 1–254 (`FF` yasak).
+      - Blob ve sayfalar, sayfa tavanı (2215), test deseni.
+      - `guard_screen_page`; `04 38`, `1F`, `50`, `51` engelli (testle).
+    - **Aktarım:** FF68 kanalında GET_FEATURE reddediliyor (kardeş kartta firmware'i kilitliyor).
+    - **Sürücü** (`SonixFf13::upload_screen`):
+      - `04 18` → `04 72 01 … PAGES` → her sayfa WriteFile ile ve onayı okunarak → `04 02`. `04 F0` yok.
+      - Sayfalar göndermeden önce denetleniyor. Bir sayfa başarısız olursa oturum `04 02` ile kapatılıyor.
+    - **İçe aktarma** (`kb-core::screen_import`): GIF, boyut ve bellek sınırlarıyla çözülüyor, kareler birleştiriliyor (disposal). Şimdilik yalnızca 240×135; ölçekleme Ekran Stüdyosu'nda.
+    - **CLI:** `kb screen-test [--preview PNG] --yes`, `kb screen-gif DOSYA [--delay-ms N] [--preview PNG] --yes`.
+    - **Doğrulama:**
+      - E1: test deseni doğru yön ve renkte, ayrı GIF sayfasında; Fn+Home ile saat sayfasına geçiliyor.
+      - E4: fabrika animasyonu 308 s'de geri yüklendi; görüntü ve hız aynı. Yükleme sırasında ekranda LOADING % görünüyor.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -252,6 +268,9 @@ kb keymap --layer base kp-slash=a kp-star=media:volume-up caps=ctrl+z --yes   # 
 kb keymap --layer fn --yes                 # FLASH: Fn katmanını fabrika ayarına döndürür
 kb macros "text:ok" - "steps:click:right,wait:200,tap:x" --yes   # FLASH: BÜTÜN makrolar (yuva 0, 1 boş, 2)
 kb macros --yes                            # FLASH: bütün makroları siler
+kb screen-test --preview e1.png            # ekrana gidecek test desenini PNG olarak yazar (klavyeye dokunmaz)
+kb screen-test --yes                       # FLASH: GIF sayfasına test deseni (16 sayfa, ~2,7 s)
+kb screen-gif "%APPDATA%/dev.klavye.studio/screen/factory/ak980-pro-factory.gif" --yes   # FLASH: fabrika animasyonunu geri yükler (~5 dk)
 kb keymap --layer base kp-slash=macro:0 kp-star=macro:0:times:3 --yes   # makroyu tuşa bağla
 ```
 
@@ -325,10 +344,14 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
      - Stok ana sayfa (saat, tarih, pil) firmware'den çiziliyor ve yükleme ona dokunmuyor. Kaybolan tek şey GIF sayfasındaki fabrika animasyonu; resmi sürücünün `0.gif` dosyasıyla geri yüklenebilir. Bu bilgisayarda resmi sürücü kurulu değil.
      - Flash'a yazmadan ekran yolu stok firmware'de yok.
      - Kullanıcının "kendi katmanımız/firmware" fikri araştırma hattı olarak kaydedildi (§4.4).
+   - **Yapıldı (2026-11-10):**
+     - Fabrika animasyonu resmi sürücü paketinden yedeklendi; kullanıcı klavyedekiyle aynı olduğunu doğruladı.
+     - Güvenli yükleme çekirdeği ve CLI (`kb screen-test`, `kb screen-gif`).
+     - E1 (test deseni) ve E4 (fabrika animasyonu geri yüklendi) klavyede başarılı. Ayrıntı: `donanim-dogrulama.md`, "Ekran yüklemesi".
+   - **Kullanıcının ilkesi (2026-11-10):** "Her ne yüklenirse yüklensin" dosya olduğu gibi gönderilmez. Uygulama onu klavyenin biçimine çevirir, önizletir, kullanıcı onaylarsa yükler. Ayrıntı: `research/ekran-derin-arastirma.md` §3.1.
    - **Sıradaki adımlar:**
-     1. Kullanıcı rapordaki önerilerden öncelik seçer (§7 Faz A/B/C).
-     2. Kullanıcı onayıyla ilk donanım testi E1: köşe işaretli tek kare. Fabrika animasyonunu siler; önce sorulur (§8).
-     3. Sonra E2 (kalıcılık), E3 (kare hızı). Her yükleme `donanim-dogrulama.md`'ye yazılır.
+     1. Faz A: Ekran Stüdyosu sayfası. İçe aktarma (resim, GIF, video), kırpma ve sığdırma, önizleme ve onay, kütüphane, fabrika görünümüne dönüş.
+     2. E2 (kalıcılık) kullanıcının ilk kendi görseliyle; E3 (kare hızı). Her yükleme `donanim-dogrulama.md`'ye yazılır.
    - **Güvenlik kuralları koda girecek** (§6):
      - kare ≤140, sayfa ≤2215, gecikme 1–254 (`FF` yasak);
      - `04 F0`, `04 38`, `1F`, güncelleme modu ve FF68'de GET_FEATURE asla gönderilmez;
@@ -350,7 +373,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 - [ ] Açık kaynak hazırlığı: lisans seçimi (henüz LICENSE yok, yani varsayılan olarak "tüm hakları saklı"). Geri kalanı P3'teki ilk sürüm gözden geçirmesinde.
 - [x] Geliştirme log'larını sadeleştir: IPC `info` log'ları `debug`'a çekildi.
 - [x] Kullanıcı Ayarlar → Renk kalibrasyonu'nu gözle denedi: gri basamaklar ve beyaz doğru.
-- [ ] Fn tuşunun sürekli kırmızı yanmasının nedenini öğren (hangi durumu gösteriyor?). İkisi de firmware göstergesi; model dosyasında `indicators` olarak kayıtlı.
+- [x] Fn tuşunun kırmızı yanması şarj göstergesi: kullanıcı 2026-11-10'da gözledi (klavye şarj olurken, ışık kapalı modda bile). Model dosyasında `indicators` olarak kayıtlı.
 
 ### P1 — Işıklar tamamlama
 - [x] Firmware efekt rengine (`04 13`) gamma gerekiyor mu? Hayır, firmware doğrusal. Uygulamanın kalibrasyonu efekt rengine de uygulanıyor (madde 15).
