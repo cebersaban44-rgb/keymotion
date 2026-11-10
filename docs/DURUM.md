@@ -208,8 +208,39 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **Klavye görünümü:** Saatli ana sayfanın canlı kopyası ile GIF sayfasının önizlemesi yan yana; Fn+Home açıklaması.
     - **RGB565 dönüşümü:** Rust ve arayüz aynı kuralı kullanıyor: en yakın seviye (kırpma değil).
     - **Doğrulama:** CDP ile fabrika GIF'i, dikey fotoğraf ve WebM video içe aktarıldı. Kullanıcı kendi resim ve GIF'ini yükledi; E2 geçti; yükleme sırasında yazma sürüyor.
-    - **Henüz yok:** yazı ve şablon kartları, slayt, canlı kartlar.
+    - **Henüz yok:** slayt, canlı kartlar. Yazı kartları madde 24'te.
     - **PR:** [#19](https://github.com/cebersaban44-rgb/klavye-studio/pull/19).
+24. **Ekran Stüdyosu Faz B1: kaynak seçici ve yazı kartları.**
+    - **Akış:** Adım 1 artık kaynak seçiyor: **Dosyadan** (Faz A akışı) ya da **Yazı kartı**. Adımlar: Kaynak → Düzenle → Önizle → Yükle.
+      - Önizleme, onay, ilerleme ve "bitti" durumu bütün kaynaklarda ortak (`pages/screen/common.tsx`).
+      - "Düzenlemeye dön" ayarları korur. Son yazı kartı oturum boyunca hatırlanır.
+    - **Şablonlar:** ad kartı, söz, kayan yazı, dağ teması (çerçevedeki dağlara uygun çizgi), rozet (emoji ya da 1–2 harf).
+      - Kullanıcı yazmaya başlayana kadar şablon değişince örnek yazı da değişir; yazdıktan sonra kendi yazısı korunur.
+    - **Ayarlar:**
+      - başlık ve alt yazı;
+      - yazı tipi: Bricolage, Instrument, Mono;
+      - büyük harf (uygulamanın diline göre; Türkçede "i" → "İ");
+      - boyut (sığmazsa küçültülür ve bunu gösterir);
+      - hizalama (yalnız işe yaradığı yerde);
+      - altı renk teması ("Gece" klavyenin kendi ana sayfasının renkleri) ve elle renk seçimi;
+      - düz ya da degrade arka plan, degradenin yönü;
+      - kayan yazıda hız ve kare hızı.
+    - **Çizim** (`lib/screenText.ts`):
+      - Arka plan ve yazı iki ayrı katmanda çizilir. Yalnız arka plan pikselleri yumuşatılır (Bayer), yazı keskin kalır (`toRgb565` artık piksel maskesi alıyor).
+      - Fontlar çizimden önce yüklenir (`document.fonts.load`, Türkçe harfler dahil).
+      - Rozet işareti çizilen piksellerine göre ortalanır; renkli emoji fontlarının ölçüleri güvenilir değil.
+      - Kayan yazı tam piksel adımlarla kayar. Döngü 140 kareye sığmazsa hız yükseltilir ve kullanıcıya söylenir.
+      - Kayan yazıda varsayılan kare hızı 10: fabrika animasyonunun kanıtlanmış hızı. Daha yükseği E3 ölçülene kadar seçmeli.
+    - **Uyarılar:** yazı ile arka plan arasında kontrast düşükse; 135 kareden uzunsa.
+    - **Doğrulama:** Tarayıcıda sahte arka uçla (`?mock=usb`, 1320×860) bütün yollar denendi:
+      - beş şablon;
+      - Türkçe harfler ve büyük harf;
+      - yükleme → "bitti" bandı;
+      - yüklemeden kaydet;
+      - bozuk dosya hatası;
+      - Vazgeç;
+      - düzenlemeye dön.
+      - Klavyeye gerçek yükleme henüz yapılmadı; kullanıcının onayını bekliyor.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -239,7 +270,9 @@ app/
                 değişiklik listesi), components/ClockCard.tsx, lib/keymap.ts (atama taslağı ve kayıt),
                 lib/keymapLabels.tsx (tuş üstü ve uzun adlar), lib/macros.ts (makro taslağı ve kayıt),
                 lib/hidCodes.ts (e.code ↔ HID), lib/layout.ts (Windows düzenine göre tuş adları),
-                pages/{Overview,Lighting,Keymap,Macros,Settings,ComingSoon}.tsx.
+                lib/screen.ts (ekran kütüphanesi ve yükleme durumu), lib/screenImport.ts (dosya → RGB565),
+                lib/screenText.ts (yazı kartı çizicisi), pages/{Overview,Lighting,Keymap,Macros,Screen,Settings}.tsx,
+                pages/screen/ (Ekran Stüdyosu: common.tsx ortak adımlar, FileFlow.tsx, TextFlow.tsx).
   src/bindings/ `cargo test` ile ÜRETİLİR (TS tipleri, geometri JSON'u, efekt kataloğu). Elle düzenlenmez.
 tools/cdp.mjs   Çalışan uygulamanın WebView2'sine CDP ile JS çalıştırır ya da ekran görüntüsü alır (uçtan uca test).
 .github/workflows/ci.yml   PR ve birleştirmelerde Windows'ta kontroller (bkz. gelistirme-akisi.md).
@@ -367,10 +400,10 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
    - **Kullanıcının ilkesi (2026-11-10):** "Her ne yüklenirse yüklensin" dosya olduğu gibi gönderilmez. Uygulama onu klavyenin biçimine çevirir, önizletir, kullanıcı onaylarsa yükler. Ayrıntı: `research/ekran-derin-arastirma.md` §3.1.
    - **Sıradaki adımlar:**
      1. **Faz A bitti** (madde 23): Ekran Stüdyosu sayfası; kullanıcı kendi resim ve GIF'iyle denedi, E2 (kalıcılık) geçti.
-     2. **Sıradaki iş: Faz B** (kullanıcı 2026-11-10'da seçti; plan aşağıda, "Faz B planı").
+     2. **Faz B sürüyor** (kullanıcı 2026-11-10'da seçti; plan aşağıda, "Faz B planı"). Yeniden düzenleme ve B1 bitti (madde 24); sırada B2 (slayt), sonra B3 (ekranla uyumlu ışık).
      3. Sonra: Faz C (olay tabanlı canlı kartlar), E3 (panelin gerçek kare hızı).
      4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar 4 yükleme: E1, E4 ve kullanıcının 2 yüklemesi.
-   - **Faz B planı** (henüz kod yok; bağlam sıkıştırması öncesi yazıldı):
+   - **Faz B planı** (yeniden düzenleme ve B1 yapıldı, madde 24; B2 ve B3 bekliyor):
      - **Kullanıcının arayüz kuralı** (2026-11-10, Faz A geri bildirimi):
        - adımlar görünür olsun;
        - her adımda belirgin bir "Vazgeç" bulunsun;
