@@ -446,6 +446,15 @@ Uygulamanın Ekran sayfası; kullanıcı kendi dosyalarıyla denedi.
   - 66 sn'de 15 `04 20` karesi `FF` ile reddedildi (saniyede 20 karede yaklaşık %1). Bir sonraki kare 50 ms sonra gidiyor; bilinen ara sıra `FF`.
 - **Bekleyen:** Kullanıcının çubuğu ve renkleri gözle doğrulaması; canlı mod açıkken faz kartlarının yüklenmesi.
 
+### Odak zamanlayıcısı: bütün klavyede boşalan ışık — 2026-11-10
+
+- **Nasıl:** Gerçek uygulama, CDP ile. "Klavyede dene" iki kez çalıştırıldı (yalnızca RAM; ekrana yükleme yok). Kullanıcının kayıtlı ayarları önce okundu, sonra aynen geri yazıldı.
+- **Sonuç (uygulama günlüğü):**
+  - Birinci tur: varsayılanlar (sağdan sola, iki kez yanıp sönme, turuncu), ses açık. Katman 97 LED'le başladı, 12 sn sonra durdu. Ses çalarken hata yok (duyulup duyulmadığını kullanıcı söyleyecek).
+  - İkinci tur: soldan sağa, dalga, mor odak. Katman yine 97 LED'le başladı ve 12 sn sonra durdu; klavye kendi ışığına döndü.
+  - Art arda kare hatası uyarısı yok.
+- **Bekleyen:** Kullanıcının gözle denemesi.
+
 ### Sonuçlar
 
 1. **Durum baytı kuralı:** Yalnızca `FF` ret demektir. `00` ve `01` kabul olarak sayılır.
