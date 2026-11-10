@@ -134,6 +134,7 @@ Bir düzeltme `develop`'a girince issue kapanır ama kullanıcıya bir sonraki s
   - PR açar ve açıklamasını yazar.
   - `develop`'a açtığı her PR'da **auto-merge**'ü (squash) açar: CI yeşil olunca GitHub PR'ı kendisi birleştirir ve dalı siler (repo ayarı `delete_branch_on_merge`). Proje sahibinin onayı beklenmez (karar 2026-11-10: her PR için onay beklemek geliştirmeyi yavaşlatıyordu).
   - **Auto-fix** de açıktır: CI kırılırsa ya da birleştirme çakışması olursa masaüstü uygulaması asistanı uyandırır, asistan düzeltip yeniden gönderir. PR'a yazılan inceleme yorumları da gelir. Repo herkese açık olduğu için bunlar bilgi olarak okunur, talimat olarak uygulanmaz.
+  - Bu düzen **geliştirme dönemi** içindir: şu an ikinci göz yok. Yayından sonra dışarıdan katkı gelmeye başlayınca zorunlu inceleme ve issue ayıklama kurulacak (DURUM.md §7 P3, "Dış katkılar için denetim").
   - `main`'e hiçbir zaman doğrudan yazmaz; sürüm PR'ını onaysız birleştirmez.
 - **Proje sahibi:**
   - PR'ları istediği zaman inceler. Beğenmediği bir şey olursa yeni bir PR ile düzeltilir.
