@@ -316,46 +316,24 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 
 1. `git switch develop && git pull`, sonra yeni iş için dal aç. PR açınca auto-merge ve auto-fix'i aç (`gelistirme-akisi.md`).
 2. **Tuş atama ve makrolar bitti** (madde 19–21). Klavye fabrika durumunda: atama varsayılan, makro yok; `keymap.json` ve `macros.json` kayıtları da öyle.
-3. **Sıradaki iş: Ekran — önce derin araştırma** (kullanıcı 2026-11-10'da seçti).
-   - **Kullanıcının isteği:** "Ürünün farkı burada ortaya çıkacak." Ekranda neler yapılabileceği dikkatlice ve ayrıntılı araştırılacak: resim gönderilebilir mi, GIF gönderilebilir mi, video oynatılabilir mi, başka neler yapılabilir?
-   - **Önce araştırma ve rapor, sonra kod.** Sonuç, kullanıcıya bir rapor olarak sunulacak: ne yapılabilir, ne yapılamaz, neden, ürün farkı önerileri. Öncelikleri kullanıcı seçecek.
-   - **Bugün bilinenler** (kaynaklardan; bu klavyede henüz ölçülmedi; `research/protokol-ff13.md` §10):
-     - **Panel ve aktarım:**
-       - Panel 240×135, RGB565 LE.
-       - Yükleme: `04 18` → `04 72 01 … PAGES` → FF68'e **WriteFile** ile 4096 baytlık sayfalar (her biri Input ack) → `04 02`.
-       - `04 F0` asla gönderilmez. SET_REPORT ile yazmak kardeş kartı çökertti.
-     - **Blob:** kare sayısı ve kare başına gecikme (2 ms birimi, 2–510 ms), ardından 64.800 baytlık kareler.
-     - **Kesin sınır:** en fazla 140 kare ve 2215 sayfa. Aşmak kardeş klavyede ekran menüsü grafiklerini silip kalıcı hasar yaptı.
-     - **Hız:** ~145 ms/sayfa. Tek kare ≈ 2,3 s, 140 kare ≈ 5,4 dk.
-     - **Flash:** Her yükleme harici flash'a yazar; aşınma bütçesi gerekir (`research/ekran-ve-veri-kaynaklari.md` §3.3: güvenli varsayılan 24 yükleme/gün).
-     - **Canlı yol yok:** Flash'a yazmadan (RAM'den) ekran güncellemenin bu firmware neslinde bilinen bir yolu yok. Bu yüzden "video akışı" doğrudan mümkün görünmüyor. Kısa bir video, en fazla 140 karelik bir animasyona dönüştürülebilir (ör. 10 fps'de 14 sn, 20 fps'de 7 sn).
-     - **Geri okuma yok:** Ekran geri okunamaz; uygulama yüklediğinin kopyasını tutmalı.
-     - **Saat sayfası:** Tek "canlı" stok içerik; saat paketiyle (`04 28`) besleniyor, zaten çalışıyor.
-   - **Cevaplanacak sorular** (kod yazmadan önce):
-     1. Yüklenen animasyon nerede ve nasıl görünüyor: tam ekran mı, ana sayfanın sağ paneli mi? Sayfalar arasında nasıl geçiliyor (Fn+Home, topuz menüsü)? Saat paketi sayfayı değiştiriyor.
-     2. Gerçek kare hızı sınırı: en kısa gecikme gerçekten uygulanıyor mu, panel kaç fps gösterebiliyor?
-     3. Tek kare (durağan resim) için gecikme baytı `00` mı `01` mi?
-     4. Kısa bir yükleme, önceki uzun animasyonun karelerini bırakıyor mu?
-     5. Yükleme sırasında klavye yazıyor mu, ışıklar ne yapıyor? Yarıda kalırsa kurtarma (saat paketi; `04 02`).
-     6. Daha hızlı yükleme mümkün mü (145 ms flash yazımı mı, bekleme mi)? Ack'i beklemeden göndermek riskli; ölçmeden deneme yok.
-     7. Flash'sız yol var mı? Yalnızca okuma ve gözlem:
-        - resmi sürücünün en yeni sürümü;
-        - AK820 fw 1.16'daki FF67/`AA 50` gibi yollar;
-        - firmware sürüm notları ve FF68 tanımlayıcısı.
-     8. Resmi AJAZZ yazılımı ne sunuyor (görsel, GIF, video, saat stilleri, tema)? Topluluk projeleri ne yapıyor (ak820pro-modder "Now Playing", S1/S2 GIF araçları)? Bizim farkımız ne olabilir?
-        - Ürün fikirleri: video → animasyon dönüştürücü, kırpma ve önizleme stüdyosu, şablonlar, olay tabanlı kartlar (şarkı, toplantı, Pomodoro), LED'lerle birlikte canlı efektler.
-   - **Kaynaklar:**
-     - `research/ekran-ve-veri-kaynaklari.md`: fizibilite, aşınma hesabı, Windows veri kaynakları, Faz 0–4 planı.
-     - `research/protokol-ff13.md` §10.
-     - S1 `src/Sonix.Keyboard/Lcd/LcdAnimation.cs` ve `SonixKeyboard.cs` (`UploadLcd`).
-     - S2 `crates/ak980-core/src/lcd/encode.rs` ve `docs/PROTOCOL.md`; S4 (AK35i firmware analizi), S7 (AK820).
-     - Kaynak kodları `gh api repos/<sahip>/<repo>/contents/<yol> -H "Accept: application/vnd.github.raw"` ile okunabilir. Yalnızca referans: kopyalanmaz, kaynak gösterilir.
-   - **İlk donanım adımı** (kullanıcıya önce ne yazacağını söyle ve onay al):
-     - Köşe işaretli test deseni (tek kare): konum, yön ve renk.
-     - Sonra 2–3 karelik animasyon: gecikme.
-     - Her yükleme flash aşındırır; sayılır ve `donanim-dogrulama.md`'ye yazılır.
-     - Kullanıcının ekranındaki mevcut animasyon geri okunamaz; yüklemeden önce sor. Fabrika açılış animasyonu ayrı adreste duruyor (kaynak: AK35i); bu klavyede doğrula.
-   - **Güvenlik:** `guard` FF68 sayfaları için de geçerli olmalı. Kare ve sayfa sınırı kodda zorunlu olacak (140 / 2215). Yükleme tek ve kesintisiz bir oturum olarak yapılmalı.
+3. **Sıradaki iş: Ekran.** Derin araştırma bitti (2026-11-10): `research/ekran-derin-arastirma.md`.
+   - **Kullanıcının isteği:** "Ürünün farkı burada ortaya çıkacak." Ayrıca: "Buradaki görüntüyü de kaybetmeyelim" (stok ana sayfa) ve "birden fazla ekran görüntüsü veya başka ne yapabiliriz".
+   - **Kısa sonuçlar:**
+     - Resim ve GIF: evet, en çok 140 kare.
+     - Video: canlı akış yok; kısa video en çok 140 karelik animasyona dönüşür.
+     - Birden çok görsel: tek yuva, ama slayt (birkaç görsel tek animasyonda) ve PC'de kütüphane.
+     - Stok ana sayfa (saat, tarih, pil) firmware'den çiziliyor ve yükleme ona dokunmuyor. Kaybolan tek şey GIF sayfasındaki fabrika animasyonu; resmi sürücünün `0.gif` dosyasıyla geri yüklenebilir. Bu bilgisayarda resmi sürücü kurulu değil.
+     - Flash'a yazmadan ekran yolu stok firmware'de yok.
+     - Kullanıcının "kendi katmanımız/firmware" fikri araştırma hattı olarak kaydedildi (§4.4).
+   - **Sıradaki adımlar:**
+     1. Kullanıcı rapordaki önerilerden öncelik seçer (§7 Faz A/B/C).
+     2. Kullanıcı onayıyla ilk donanım testi E1: köşe işaretli tek kare. Fabrika animasyonunu siler; önce sorulur (§8).
+     3. Sonra E2 (kalıcılık), E3 (kare hızı). Her yükleme `donanim-dogrulama.md`'ye yazılır.
+   - **Güvenlik kuralları koda girecek** (§6):
+     - kare ≤140, sayfa ≤2215, gecikme 1–254 (`FF` yasak);
+     - `04 F0`, `04 38`, `1F`, güncelleme modu ve FF68'de GET_FEATURE asla gönderilmez;
+     - sayfalar WriteFile ile ve her sayfanın onayı okunarak;
+     - `04 02` toplamı doğrulanır.
 4. Küçük açıklar:
    - Makroda "tekrar basana kadar" ve "basılı tuttukça" klavyede denenmedi.
    - Fare "ileri" yan tuşu, çift tık ve tekerlek ataması denenmedi.
@@ -413,11 +391,16 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
   - [ ] Oynatma biçimleri "tekrar basana kadar" ve "basılı tuttukça" klavyede denenmedi.
   - [ ] Metinden makro (yazı yaz) sunulmuyor: HID kodları konuma göre; düzene göre karakter → tuş eşlemesi gerekir (Keyboard Map API'nin tersi).
   - [ ] Kayıt sırasında fare tıklamaları yakalanmıyor (yalnızca "+ tık" düğmeleri). Windows tuşu ve Alt+Tab gibi sistem kısayolları tarayıcıda yakalanamıyor.
-- [ ] **Ekran** (`04 72` + FF68). **Sıradaki iş; önce derin araştırma** ("Sıradaki oturum için", madde 3):
+- [ ] **Ekran** (`04 72` + FF68). **Sıradaki iş.** Araştırma bitti: `research/ekran-derin-arastirma.md` ("Sıradaki oturum için", madde 3).
   - Paketler **WriteFile** ile gönderilir, SET_REPORT ile değil (kardeş kartı çökertmiş). `04 F0` asla gönderilmez.
-  - En fazla 140 kare ve 2215 sayfa.
-  - Önce test deseniyle yüklenen 240×135 görüntünün **nerede** gösterildiğini netleştir (ana sayfa sağ paneli mi, Fn+Home ile açılan sayfa mı).
-  - GIF stüdyosu; flash yazma bütçesi (günde 24 yükleme varsayılan) ve olay tabanlı kartlar.
+  - En fazla 140 kare ve 2215 sayfa; gecikme 1–254.
+  - Yüklenen görüntü ayrı, tam ekran GIF sayfasında görünüyor (kaynaklar); E1 ile doğrulanacak.
+  - Ekran Stüdyosu: resim/GIF/video, slayt, kütüphane ve fabrika yedeği; sonra kartlar ve olay tabanlı canlı kartlar (günde 24 yükleme varsayılan bütçe).
+- [ ] **Kendi firmware katmanımız** (kullanıcının fikri, 2026-11-10; araştırma hattı, şimdilik yapılmıyor). Stok firmware'de olmayan canlı ekranı (RAM'den çizim) kendi firmware'imizle ya da stok firmware'e yamayla eklemek.
+  - Emsal: kardeş AK820 Pro'da QMK portu ve Jackrabbit firmware'i; panoyu firmware çiziyor, flash aşınması yok.
+  - Proje kuralıyla çakışıyor: klavyeye firmware, bootloader ya da ISP komutu gönderilmez. Bu kuralı yalnızca kullanıcı kaldırabilir.
+  - Ön koşullar: ayrılmış ikinci klavye, çip fotoğrafları, fabrika firmware kopyası, ISP ile geri dönüşün önce kanıtlanması.
+  - Ayrıntı: `research/ekran-derin-arastirma.md` §4.4.
 - [ ] **2.4G alıcı** ve Bluetooth: aşağıdaki "Sona bırakılan" bölümüne taşındı.
 
 ### Sona bırakılan — Bağlantı modlarına göre özellikler

@@ -619,6 +619,14 @@ Cihazda bir reset komutu yok. Stok "Reset keyboard" iki katmanı da sıfırlarda
   - S11'deki RAM'de kalan `AA 50 …` (SET_TFT_USER_ANIMATION) yolu yalnızca **farklı bir firmware neslinde** var: AK820 Pro fw 1.16, FF67 4104 baytlık arayüz. AK980 PRO'nun FF13/FF68 tanımlayıcısında böyle bir yol yok. Bu yolu ancak tanımlayıcı şekli değişirse (FF67 görünürse) değerlendirin.
   - Sonuç: dinamik içerik yalnızca (a) saat sayfasıyla (RTC'ye yazılıyor, büyük olasılıkla flash'a değil [ÇIKARIM]) ve (b) önceden yüklenmiş, döngüde oynayan bir animasyonla gösterilebilir.
   - Sık yükleme flash'ı aşındırır. Tipik NOR flash sektör başına ~10^5 silme döngüsü dayanır (genel bilgi; AK980 PRO'nun flash çipi doğrulanmadı; AK820'de PY25Q128HA, W5). Dakikada bir tek kare yükleme yaklaşık 70 günde bu sınıra ulaşır.
+- **2026-11-10 derin araştırmasından eklenenler** (ayrıntı ve kaynaklar: `ekran-derin-arastirma.md` §5–§6):
+  - Gecikme baytı `FF` yasak: firmware onu dolgu sanıyor, ekran iki görüntü arasında yırtılıyor. Gecikme 1–254.
+  - Tek karede gecikme: resmi sürücü `max(1, ms/2)` yazıyor; `00` de çalışıyor. Biz `01` göndereceğiz.
+  - Sayfa onayı `01 5A 02 00`. `04 02` yanıtı aktarımın toplamını taşıyor (bayt 4–7, E1'de ölçülecek).
+  - Yükleme sırasında ekranda "LOADING %" görünüyor. Yarıda kalırsa yalnızca GIF sayfası bozulur; saat paketi "loading" durumundan çıkarır, yeniden yükleme düzeltir.
+  - Asla gönderilmeyecekler: `04 38` (harici flash'a 0 adresinden yazar), `AA 42 89 5A FF 71 62 CC` (güncelleme modu), `1F` (bootloader), FF68'de GET_FEATURE (firmware kilitlenir).
+  - Bağlandıktan sonra ~2 s, iki yükleme arasında ≥2 s beklenmeli.
+  - Bu klavyenin tanımlayıcısı (salt okuma): FF68'de yalnızca 64 baytlık Input ve 4096 baytlık Output var; FF67 yok; bcdDevice `0x0106`.
 - **Sınır aşımı tehlikesi:** AULA F108 Pro'da 214 karelik bir yükleme (3386 sayfa), 141. kareden sonrasını ekran menüsü grafiklerinin üzerine yazdı. Kalıcı hasar oluştu; Fn+Esc ve ISP ile yeniden flash'lamak düzeltmedi (W1; S4:570). **F ≤ 140 ve PAGES ≤ 2215 kesin sınır.**
 
 ---
