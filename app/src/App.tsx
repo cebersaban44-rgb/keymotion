@@ -91,6 +91,7 @@ function useKeyboardRecords() {
 function pomodoroWords(): PomodoroWords {
   return {
     label: tNow("pomo.card.label"),
+    name: tNow("pomo.card.name"),
     phase: { focus: tNow("pomo.phase.focus"), shortBreak: tNow("pomo.phase.shortBreak"), longBreak: tNow("pomo.phase.longBreak") },
     round: tNow("pomo.card.round"),
     min: tNow("pomo.card.min"),
