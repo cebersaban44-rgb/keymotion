@@ -15,6 +15,9 @@ const tr = {
   "nav.settings": "Ayarlar",
   "nav.section.device": "Cihaz",
   "nav.section.app": "Uygulama",
+  "nav.section.tools": "Araçlar",
+  "nav.focus": "Odak zamanlayıcısı",
+  "focus.eyebrow": "Araçlar · odak",
 
   "device.none.title": "Klavye bekleniyor",
   "device.none.body":
@@ -507,7 +510,6 @@ const tr = {
   "sc.live.leftover": "Ekranda hâlâ canlı kart var. Canlı moddan önce şu vardı:",
   "sc.tab.visuals": "Görseller",
   "sc.tab.live": "Canlı ekran",
-  "sc.tab.focus": "Odak zamanlayıcısı",
   "sc.lib.filter.all": "Tümü",
   "sc.lib.filter.image": "Durağan",
   "sc.lib.filter.animation": "Hareketli",
@@ -520,8 +522,6 @@ const tr = {
   "pomo.preview.off": "Tuş ışıkları kapalı",
   "pomo.screen.openLive": "Canlı ekrana git",
   "sc.live.np.held": "Odak zamanlayıcısı çalışırken bekliyor; bitince şarkının kartı geri gelir.",
-  "sc.live.pomo": "Odak zamanlayıcısı",
-  "sc.live.pomo.body": "Her faz başında kart (Odak, Mola). Süreler ve ışıklar aşağıdaki Odak zamanlayıcısı bölümünde.",
   "pomo.eyebrow": "Odak zamanlayıcısı",
   "pomo.title": "Odaklan, mola ver",
   "pomo.body": "Odak ve mola sürelerini sayar. İlerleme tuş ışıklarında görünür; canlı mod açıksa her faz başında ekrana bir kart gider. Zamanlayıcı uygulama açıkken çalışır, pencere küçültülse de sayar.",
@@ -718,6 +718,9 @@ const en: Record<MessageKey, string> = {
   "nav.settings": "Settings",
   "nav.section.device": "Device",
   "nav.section.app": "App",
+  "nav.section.tools": "Tools",
+  "nav.focus": "Focus timer",
+  "focus.eyebrow": "Tools · focus",
 
   "device.none.title": "Waiting for a keyboard",
   "device.none.body":
@@ -1209,7 +1212,6 @@ const en: Record<MessageKey, string> = {
   "sc.live.leftover": "A live card is still on the screen. Before the live mode it showed:",
   "sc.tab.visuals": "Visuals",
   "sc.tab.live": "Live screen",
-  "sc.tab.focus": "Focus timer",
   "sc.lib.filter.all": "All",
   "sc.lib.filter.image": "Still",
   "sc.lib.filter.animation": "Animated",
@@ -1222,8 +1224,6 @@ const en: Record<MessageKey, string> = {
   "pomo.preview.off": "Key lights are off",
   "pomo.screen.openLive": "Go to live screen",
   "sc.live.np.held": "Waiting while the focus timer runs; the song's card comes back after it.",
-  "sc.live.pomo": "Focus timer",
-  "sc.live.pomo.body": "A card when each phase starts (Focus, Break). Lengths and lights are in the Focus timer section below.",
   "pomo.eyebrow": "Focus timer",
   "pomo.title": "Focus, then rest",
   "pomo.body": "Counts focus and break time. Progress shows on the key lights; with the live mode on, a card goes to the screen when each phase starts. The timer runs while the app is open, minimised too.",

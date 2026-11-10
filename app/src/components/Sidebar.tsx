@@ -23,6 +23,9 @@ const DEVICE_ITEMS: NavItem[] = [
   { id: "connection", label: "nav.connection", icon: Cable },
 ];
 
+/** Tools that use the whole keyboard (lights and screen) for a task. */
+const TOOL_ITEMS: NavItem[] = [{ id: "focus", label: "nav.focus", icon: Timer }];
+
 const APP_ITEMS: NavItem[] = [{ id: "settings", label: "nav.settings", icon: Settings2 }];
 
 export function Sidebar() {
@@ -78,6 +81,10 @@ export function Sidebar() {
           <ul className="flex flex-col gap-0.5">{DEVICE_ITEMS.map(item)}</ul>
         </div>
         <div>
+          <div className="eyebrow mb-2 px-3">{t("nav.section.tools")}</div>
+          <ul className="flex flex-col gap-0.5">{TOOL_ITEMS.map(item)}</ul>
+        </div>
+        <div>
           <div className="eyebrow mb-2 px-3">{t("nav.section.app")}</div>
           <ul className="flex flex-col gap-0.5">{APP_ITEMS.map(item)}</ul>
         </div>
@@ -104,7 +111,8 @@ export function Sidebar() {
 function PomodoroChip() {
   const t = useT();
   const p = usePomodoro((x) => x.state);
-  const openScreen = useApp((s) => s.openScreen);
+  const setPage = useApp((s) => s.setPage);
+  const onPage = useApp((s) => s.page === "focus");
   const [, tick] = useState(0);
   const running = p?.status === "running";
   useEffect(() => {
@@ -112,7 +120,8 @@ function PomodoroChip() {
     const id = window.setInterval(() => tick((n) => n + 1), 500);
     return () => window.clearInterval(id);
   }, [running]);
-  if (!p || p.status === "idle") return null;
+  // Not needed on the timer's own page.
+  if (!p || p.status === "idle" || onPage) return null;
   const color = phaseColor(p.settings, p.phase);
   const phase =
     p.phase === "focus" ? t("pomo.phase.focus") : p.phase === "shortBreak" ? t("pomo.phase.shortBreak") : t("pomo.phase.longBreak");
@@ -120,7 +129,7 @@ function PomodoroChip() {
     <button
       type="button"
       title={t("pomo.go")}
-      onClick={() => openScreen("focus")}
+      onClick={() => setPage("focus")}
       className="flex items-center gap-3 rounded-2xl border border-line px-3.5 py-2.5 text-left hover:bg-surface/60"
       data-pomo-chip
     >

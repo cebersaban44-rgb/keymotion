@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Images, Info, Library, Loader2, Palette, Pencil, Radio, Search, Timer, Trash2, Upload, Usb, X, type LucideIcon } from "lucide-react";
+import { Check, ChevronDown, Images, Info, Library, Loader2, Palette, Pencil, Radio, Search, Trash2, Upload, Usb, X, type LucideIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
@@ -22,7 +22,6 @@ import {
 } from "./screen/common";
 import { FileFlow, FileTile } from "./screen/FileFlow";
 import { LivePanel } from "./screen/LivePanel";
-import { PomodoroPanel } from "./screen/PomodoroPanel";
 import { MatchLightsDialog } from "./screen/MatchLights";
 import { SlideFlow, SlideTile } from "./screen/SlideFlow";
 import { TextFlow, TextTile } from "./screen/TextFlow";
@@ -32,14 +31,14 @@ import { TextFlow, TextTile } from "./screen/TextFlow";
 const TABS: { id: ScreenTab; label: MessageKey; icon: LucideIcon }[] = [
   { id: "visuals", label: "sc.tab.visuals", icon: Images },
   { id: "live", label: "sc.tab.live", icon: Radio },
-  { id: "focus", label: "sc.tab.focus", icon: Timer },
 ];
 
 /**
- * The Screen page in three tabs: "Görseller" (make a visual, and the
- * library of visuals made before, right under it), "Canlı ekran" (cards
- * that update the screen by themselves) and "Odak zamanlayıcısı". What the
- * keyboard's screen shows sits above the first two.
+ * The Screen page in two tabs: "Görseller" (make a visual, and the library
+ * of visuals made before, right under it) and "Canlı ekran" (cards that
+ * update the screen by themselves). What the keyboard's screen shows sits
+ * above both. The focus timer has its own page (it is one of the live
+ * screen's sources, but mostly lights the keys).
  */
 export function Screen({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
@@ -88,7 +87,7 @@ export function Screen({ kb }: { kb: KeyboardInfo }) {
         </div>
       )}
 
-      {tab !== "focus" && <KeyboardScreens />}
+      <KeyboardScreens />
 
       {/* Kept mounted on other tabs, so a visual being made is not lost. */}
       <div className={tab === "visuals" ? "flex flex-col gap-6" : "hidden"}>
@@ -96,7 +95,6 @@ export function Screen({ kb }: { kb: KeyboardInfo }) {
         <LibraryCard kb={kb} usb={usb} />
       </div>
       {tab === "live" && <LivePanel usb={usb} />}
-      {tab === "focus" && <PomodoroPanel kb={kb} usb={usb} />}
     </div>
   );
 }
