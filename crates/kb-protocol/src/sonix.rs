@@ -254,10 +254,30 @@ pub mod caps {
     pub const SPEED: u8 = 0x02;
     /// Two directions (0/1).
     pub const DIRECTION2: u8 = 0x04;
-    /// Four directions (0–3).
+    /// Four directions (0–3) in the vendor's table. No effect on fw 0x0106
+    /// has four distinct directions (see [`super::Motion`]).
     pub const DIRECTION4: u8 = 0x08;
     pub const COLOR: u8 = 0x10;
     pub const RAINBOW: u8 = 0x20;
+}
+
+/// How a directional effect moves with direction code 0; code 1 runs the
+/// other way. Codes 2 and 3 repeat 1 and 0. Measured on the AK980 PRO (fw
+/// 0x0106) with `kb direction-probe`, which reads frames back with `04 F5`
+/// and estimates the motion (docs/donanim-dogrulama.md, 2026-11-10).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Motion {
+    /// 0 down, 1 up.
+    Vertical,
+    /// 0 right, 1 left.
+    Horizontal,
+    /// 0 counter-clockwise, 1 clockwise.
+    Rotation,
+    /// A short train of lights following the LED order: 0 forward (row by
+    /// row, left to right, top to bottom), 1 backward.
+    Path,
+    /// 0 up and right, 1 down and left.
+    Diagonal,
 }
 
 /// A firmware lighting effect.
@@ -267,6 +287,8 @@ pub struct Effect {
     /// English name from the vendor language file; the UI translates it.
     pub name: &'static str,
     pub caps: u8,
+    /// How direction codes move it, for effects that take a direction.
+    pub motion: Option<Motion>,
 }
 
 impl Effect {
@@ -278,26 +300,27 @@ impl Effect {
 /// Firmware effects in firmware order (docs/research/protokol-ff13.md §4.1).
 /// `0 = Off` is listed last; it is known to block Fn+X on a sibling board.
 pub const EFFECTS: [Effect; 20] = [
-    Effect { id: 1, name: "Static", caps: 0x31 },
-    Effect { id: 2, name: "Single on", caps: 0x33 },
-    Effect { id: 3, name: "Single off", caps: 0x33 },
-    Effect { id: 4, name: "Glittering", caps: 0x33 },
-    Effect { id: 5, name: "Fluttering", caps: 0x33 },
-    Effect { id: 6, name: "Colourful", caps: 0x03 },
-    Effect { id: 7, name: "Breath", caps: 0x33 },
-    Effect { id: 8, name: "Spectrum", caps: 0x03 },
-    Effect { id: 9, name: "Outward", caps: 0x33 },
-    Effect { id: 10, name: "Scrolling", caps: 0x3B },
-    Effect { id: 11, name: "Rolling", caps: 0x37 },
-    Effect { id: 12, name: "Rotating", caps: 0x37 },
-    Effect { id: 13, name: "Explode", caps: 0x33 },
-    Effect { id: 14, name: "Launch", caps: 0x33 },
-    Effect { id: 15, name: "Ripples", caps: 0x33 },
-    Effect { id: 16, name: "Flowing", caps: 0x37 },
-    Effect { id: 17, name: "Pulsating", caps: 0x33 },
-    Effect { id: 18, name: "Tilt", caps: 0x37 },
-    Effect { id: 19, name: "Shuttle", caps: 0x33 },
-    Effect { id: 0, name: "Off", caps: 0x00 },
+    Effect { id: 1, name: "Static", caps: 0x31, motion: None },
+    Effect { id: 2, name: "Single on", caps: 0x33, motion: None },
+    Effect { id: 3, name: "Single off", caps: 0x33, motion: None },
+    Effect { id: 4, name: "Glittering", caps: 0x33, motion: None },
+    Effect { id: 5, name: "Fluttering", caps: 0x33, motion: None },
+    Effect { id: 6, name: "Colourful", caps: 0x03, motion: None },
+    Effect { id: 7, name: "Breath", caps: 0x33, motion: None },
+    Effect { id: 8, name: "Spectrum", caps: 0x03, motion: None },
+    Effect { id: 9, name: "Outward", caps: 0x33, motion: None },
+    // The vendor declares four directions (0x3B); codes 2 and 3 repeat 1 and 0.
+    Effect { id: 10, name: "Scrolling", caps: 0x37, motion: Some(Motion::Vertical) },
+    Effect { id: 11, name: "Rolling", caps: 0x37, motion: Some(Motion::Horizontal) },
+    Effect { id: 12, name: "Rotating", caps: 0x37, motion: Some(Motion::Rotation) },
+    Effect { id: 13, name: "Explode", caps: 0x33, motion: None },
+    Effect { id: 14, name: "Launch", caps: 0x33, motion: None },
+    Effect { id: 15, name: "Ripples", caps: 0x33, motion: None },
+    Effect { id: 16, name: "Flowing", caps: 0x37, motion: Some(Motion::Path) },
+    Effect { id: 17, name: "Pulsating", caps: 0x33, motion: None },
+    Effect { id: 18, name: "Tilt", caps: 0x37, motion: Some(Motion::Diagonal) },
+    Effect { id: 19, name: "Shuttle", caps: 0x33, motion: None },
+    Effect { id: 0, name: "Off", caps: 0x00, motion: None },
 ];
 
 /// Factory default effect (vendor config.xml `default_mode="11"`).
@@ -657,6 +680,14 @@ mod tests {
         }
         assert_eq!(readback_red_candidates(0xFE), [127, 255]);
         assert_eq!(readback_red_candidates(0), [0, 128]);
+    }
+
+    #[test]
+    fn directional_effects_have_a_measured_motion() {
+        for e in EFFECTS {
+            assert_eq!(e.has(caps::DIRECTION2), e.motion.is_some(), "{}", e.name);
+            assert!(!e.has(caps::DIRECTION4), "{}: no effect has four distinct directions", e.name);
+        }
     }
 
     #[test]

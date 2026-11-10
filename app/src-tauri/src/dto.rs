@@ -269,7 +269,39 @@ pub struct EffectInfo {
     pub rainbow: bool,
     /// 0, 2 or 4 selectable directions.
     pub directions: u8,
+    /// How direction 0 moves (1 is the other way), for directional effects.
+    pub motion: Option<EffectMotion>,
     pub factory_default: bool,
+}
+
+/// How a directional effect moves with direction 0; 1 runs the other way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum EffectMotion {
+    /// 0 down, 1 up.
+    Vertical,
+    /// 0 right, 1 left.
+    Horizontal,
+    /// 0 counter-clockwise, 1 clockwise.
+    Rotation,
+    /// A train of lights along the LED order: 0 forward, 1 backward.
+    Path,
+    /// 0 up-right, 1 down-left.
+    Diagonal,
+}
+
+impl From<kb_protocol::sonix::Motion> for EffectMotion {
+    fn from(m: kb_protocol::sonix::Motion) -> Self {
+        use kb_protocol::sonix::Motion as M;
+        match m {
+            M::Vertical => Self::Vertical,
+            M::Horizontal => Self::Horizontal,
+            M::Rotation => Self::Rotation,
+            M::Path => Self::Path,
+            M::Diagonal => Self::Diagonal,
+        }
+    }
 }
 
 impl EffectInfo {
@@ -291,6 +323,7 @@ impl EffectInfo {
                 } else {
                     0
                 },
+                motion: e.motion.map(EffectMotion::from),
                 factory_default: e.id == FACTORY_EFFECT,
             })
             .collect()

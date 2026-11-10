@@ -5,6 +5,8 @@
 //! `clock` sets the keyboard clock; everything else only reads. Flash-writing commands are added only after
 //! they are verified on the hardware.
 
+mod motion;
+
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use kb_devices::{catalogue, match_ble_name, match_interface, Bus, InterfaceProbe, InterfaceRole};
@@ -63,6 +65,26 @@ enum Cmd {
     LiveProbe,
     /// List the firmware lighting effects.
     Effects,
+    /// Measure which way directional effects move: stores each effect in
+    /// rainbow mode with each direction code, reads frames back with
+    /// `04 F5` and estimates the motion. WRITES FLASH (one effect write per
+    /// mode and direction); needs --yes. Restore your own lighting after.
+    DirectionProbe {
+        /// Effect ids to test.
+        #[arg(long, value_delimiter = ',', default_value = "10,11,12,16,18")]
+        modes: Vec<u8>,
+        /// Direction codes to test.
+        #[arg(long, value_delimiter = ',', default_value = "0,1,2,3")]
+        dirs: Vec<u8>,
+        /// Effect speed (0–5); slow keeps shifts between reads small.
+        #[arg(long, default_value_t = 1)]
+        speed: u8,
+        /// Frames read per setting.
+        #[arg(long, default_value_t = 6)]
+        frames: usize,
+        #[arg(long)]
+        yes: bool,
+    },
     /// Set the keyboard clock to the PC's local time (`04 28`). The screen
     /// switches to its clock page.
     Clock {
@@ -137,6 +159,10 @@ fn main() -> Result<()> {
                 println!("{:>3}  {:<12} caps=0x{:02X}", e.id, e.name, e.caps);
             }
             Ok(())
+        }
+        Cmd::DirectionProbe { modes, dirs, speed, frames, yes } => {
+            anyhow::ensure!(yes, "Bu komut klavyenin flash belleğine yazar. Onaylamak için --yes ekleyin.");
+            direction_probe(&modes, &dirs, speed, frames)
         }
         Cmd::Clock { at } => {
             let time = match at {
@@ -402,6 +428,68 @@ fn live_probe() -> Result<()> {
         }
     }
     println!("Akış bitti; klavye kayıtlı ışığına döner.");
+    Ok(())
+}
+
+/// See `Cmd::DirectionProbe`.
+fn direction_probe(modes: &[u8], dirs: &[u8], speed: u8, frames: usize) -> Result<()> {
+    use motion::{axis_motion, Axis, Frame, KeyPos};
+    let (mut drv, model) = open_command()?;
+    let geo = model.geometry.as_ref().context("modelde geometri yok")?;
+    let keys: Vec<KeyPos> =
+        geo.keys.iter().map(|k| KeyPos { led: k.led, x: k.x + k.w / 2.0, y: k.y + k.h / 2.0 }).collect();
+    let median = |mut v: Vec<f32>| {
+        v.sort_by(f32::total_cmp);
+        v.get(v.len() / 2).copied().unwrap_or(f32::NAN)
+    };
+    for &mode in modes {
+        for &direction in dirs {
+            let settings = kb_protocol::sonix::EffectSettings {
+                mode,
+                color: [0xFF, 0, 0],
+                rainbow: true,
+                brightness: 5,
+                speed,
+                direction,
+            };
+            drv.apply_effect(&settings)?;
+            std::thread::sleep(std::time::Duration::from_millis(1200));
+            let start = std::time::Instant::now();
+            let mut shots: Vec<(f32, Frame)> = Vec::new();
+            for _ in 0..frames {
+                let t0 = start.elapsed().as_secs_f32();
+                let read = drv.read_colors()?;
+                let t1 = start.elapsed().as_secs_f32();
+                shots.push(((t0 + t1) / 2.0, read.into_iter().collect()));
+            }
+            let mut line = format!("mod {mode:>2} yön {direction}:");
+            for (axis, name, unit, max) in
+                [(Axis::X, "x", "u/s", 3.0), (Axis::Y, "y", "u/s", 2.0), (Axis::Angle, "açı", "°/s", 60.0)]
+            {
+                let (mut speeds, mut confs) = (Vec::new(), Vec::new());
+                for pair in shots.windows(2) {
+                    let dt = pair[1].0 - pair[0].0;
+                    if let Some(m) = axis_motion(&keys, &pair[0].1, &pair[1].1, dt, axis, max) {
+                        speeds.push(m.speed);
+                        confs.push(m.confidence);
+                    }
+                }
+                line += &format!("  {name} {:+6.1} {unit} (güven {:4.1})", median(speeds), median(confs));
+            }
+            // Two-dimensional match, for diagonal and sparse patterns.
+            let (mut vx, mut vy, mut c2) = (Vec::new(), Vec::new(), Vec::new());
+            for pair in shots.windows(2) {
+                if let Some((x, y, c)) = motion::motion_2d(&keys, &pair[0].1, &pair[1].1, pair[1].0 - pair[0].0, 2.0) {
+                    vx.push(x);
+                    vy.push(y);
+                    c2.push(c);
+                }
+            }
+            line += &format!("  2B ({:+5.1}, {:+5.1}) u/s (güven {:4.1})", median(vx), median(vy), median(c2));
+            println!("{line}");
+        }
+    }
+    println!("Bitti. Klavye son denenen efekte kaldı; kendi ışığınızı geri yükleyin.");
     Ok(())
 }
 
