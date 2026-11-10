@@ -20,12 +20,14 @@ import { useLayout } from "./lib/layout";
 import { startLive } from "./lib/live";
 import { nowPlayingCard, pomodoroCard, pomodoroWords } from "./lib/liveCards";
 import { startPomodoro, usePomodoro, DEFAULT_SETTINGS } from "./lib/pomodoro";
+import { useGauges } from "./lib/gauges";
 import { useMacros } from "./lib/macros";
 import { useScreen } from "./lib/screen";
 import { useActiveKeyboard, useApp } from "./lib/store";
 import { Keymap } from "./pages/Keymap";
 import { Macros } from "./pages/Macros";
 import { Focus } from "./pages/Focus";
+import { Gauges } from "./pages/Gauges";
 import { Lighting } from "./pages/Lighting";
 import { Overview } from "./pages/Overview";
 import { Screen, ScreenUploadToast } from "./pages/Screen";
@@ -100,6 +102,10 @@ function useLiveScreen() {
       ),
     [],
   );
+  // Whether the system gauges are on (the Lighting page says so).
+  useEffect(() => {
+    useGauges.getState().load().catch(console.error);
+  }, []);
 }
 
 /**
@@ -174,6 +180,8 @@ export default function App() {
         return <Screen kb={kb} />;
       case "focus":
         return <Focus kb={kb} />;
+      case "gauges":
+        return <Gauges kb={kb} />;
     }
   };
 

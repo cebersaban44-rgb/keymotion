@@ -1283,3 +1283,123 @@ pub struct PomodoroCard {
     pub complete: bool,
     pub ended_ms: f64,
 }
+
+// ------------------------------------------------------------ system gauges
+
+/// How a gauge bar is coloured.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum GaugeStyle {
+    /// Green, then yellow, then red towards the end of the bar: the load
+    /// reads at a glance (owner's choice, 2026-11-10).
+    #[default]
+    Heat,
+    /// Each gauge in its own colour.
+    Own,
+}
+
+/// What the keys outside the gauges show while the gauges are on. A live
+/// frame covers the whole keyboard, so the saved effect cannot show under
+/// them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum GaugeBase {
+    #[default]
+    Dark,
+    /// A faint colour (`GaugesSettings::tint`).
+    Tint,
+}
+
+/// System gauges settings (persisted in `gauges.json`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct GaugesSettings {
+    /// The gauges are on the keys (RAM only, no flash write).
+    pub enabled: bool,
+    /// Processor load on the number row (1 … 0).
+    pub cpu: bool,
+    /// Graphics load on the Q row (Q … P).
+    pub gpu: bool,
+    /// Memory in use on the home row (A … ;).
+    pub ram: bool,
+    /// The volume on the F row for a moment when it changes (the knob).
+    pub volume: bool,
+    /// A key lit red while the microphone is muted in Windows.
+    pub mic: bool,
+    /// Id of that key in the model's geometry.
+    pub mic_key: String,
+    pub style: GaugeStyle,
+    /// The empty part of a bar is faintly lit, so its length shows.
+    pub track: bool,
+    pub base: GaugeBase,
+    /// The faint colour of `GaugeBase::Tint` (UI colour, sRGB).
+    pub tint: [u8; 3],
+    /// Light brightness in the keyboard's own steps, 1–5.
+    pub brightness: u8,
+}
+
+impl Default for GaugesSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            cpu: true,
+            gpu: true,
+            ram: false,
+            volume: true,
+            mic: true,
+            mic_key: "delete".into(),
+            style: GaugeStyle::default(),
+            track: true,
+            base: GaugeBase::default(),
+            tint: [124, 92, 255],
+            brightness: 4,
+        }
+    }
+}
+
+impl GaugesSettings {
+    pub fn sanitized(self) -> Self {
+        let key_ok = !self.mic_key.is_empty()
+            && self.mic_key.len() <= 32
+            && self.mic_key.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+        Self {
+            brightness: self.brightness.clamp(1, 5),
+            mic_key: if key_ok { self.mic_key } else { Self::default().mic_key },
+            ..self
+        }
+    }
+}
+
+/// The latest readings (`None`: not read, or not there on this PC).
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GaugeReadings {
+    /// Processor load, 0–100.
+    pub cpu: Option<f32>,
+    /// Graphics load, 0–100 (the busiest card).
+    pub gpu: Option<f32>,
+    /// Memory in use, 0–100.
+    pub ram: Option<f32>,
+    /// Speaker volume, 0–100.
+    pub volume: Option<f32>,
+    pub muted: Option<bool>,
+    pub mic_muted: Option<bool>,
+}
+
+/// System gauges state (`gauges` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GaugesState {
+    pub settings: GaugesSettings,
+    pub readings: GaugeReadings,
+    /// What the gauges put on the keys now, alerts included (UI colours,
+    /// before brightness). Empty when nothing would show.
+    pub frame: Vec<LedColor>,
+    /// The volume bar shows (for a moment after a change).
+    pub volume_showing: bool,
+}

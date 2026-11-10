@@ -1,0 +1,26 @@
+[package]
+name = "kb-winsys"
+description = "Readings from Windows for the key-light gauges: processor, graphics and memory load, speaker volume, microphone mute. The only crate that calls Win32/COM directly."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+tracing.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_Media_Audio_Endpoints",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Performance",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_System_Variant",
+] }
+
+[lints]
+workspace = true

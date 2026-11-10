@@ -446,6 +446,17 @@ Uygulamanın Ekran sayfası; kullanıcı kendi dosyalarıyla denedi.
   - 66 sn'de 15 `04 20` karesi `FF` ile reddedildi (saniyede 20 karede yaklaşık %1). Bir sonraki kare 50 ms sonra gidiyor; bilinen ara sıra `FF`.
 - **Bekleyen:** Kullanıcının çubuğu ve renkleri gözle doğrulaması; canlı mod açıkken faz kartlarının yüklenmesi.
 
+### Sistem göstergeleri ışık katmanı (`04 20`, yalnızca RAM) — 2026-11-10
+
+- **Nasıl:** Gerçek uygulama (debug, `target/debug/klavye-studio.exe`), CDP ile. Klavye USB'de. Flash'a yazma yok; ekrana yükleme yok.
+- **Okumalar bu PC'de** (`cargo run -p kb-winsys --example probe`): işlemci, ekran kartı (GTX 1650 + Intel UHD, PDH `GPU Engine` sayaçları Türkçe Windows'ta İngilizce adla açıldı), bellek (%80–90), hoparlör (%100, açık), mikrofon (açık). Ekran kartı sayacının ilk açılışı ~1 sn, sonraki okumalar ~1 ms; ses ~9 ms'de açıldı. Not: `Get-Counter '\Processor(_Total)\% Processor Time'` bu makinede İngilizce adla hata verdi (`c0000bb8`); işlemci için PDH değil `GetSystemTimes` kullanılıyor.
+- **Sonuç (uygulama günlüğü, UTC):**
+  - 22:48:37 göstergeler açıldı: `Gauges` katmanı 97 LED'le başladı. 22:49:06 kapatıldı: "light layer stopped", "no light layer left; keyboard reverts to its saved effect".
+  - 22:54:41 göstergeler açıkken (kullanıcının ayarı: işlemci, ekran kartı, bellek, Isı, Karanlık, parlaklık 4) "Klavyede dene": 22:54:43 `Timer` katmanı başladı, 22:54:56 durdu. `Gauges` katmanı sürdü; klavye kayıtlı ışığa dönmedi (beklenen).
+  - Kare reddi (`FF`): yeni oturumda yaklaşık 230 sn'de 66 kare (yaklaşık %1,4; saniyede 20 kare). En sık zamanlayıcı denemesi sırasında (20 sn'de 22). Art arda uyarı ("keep failing") yok; bilinen ara sıra `FF`.
+- **Kullanıcı:** 22:50'de uygulamada göstergeleri kendisi açtı (bellek dahil). Klavyede gözle onayı bekleniyor.
+- **Bekleyen:** topuzla ses çubuğu ve mikrofon tuşu klavyede denenmedi (sistem ses düzeyine ve mikrofona dokunulmadı).
+
 ### Odak zamanlayıcısı: bütün klavyede boşalan ışık — 2026-11-10
 
 - **Nasıl:** Gerçek uygulama, CDP ile. "Klavyede dene" iki kez çalıştırıldı (yalnızca RAM; ekrana yükleme yok). Kullanıcının kayıtlı ayarları önce okundu, sonra aynen geri yazıldı.
