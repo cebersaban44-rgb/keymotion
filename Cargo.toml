@@ -13,6 +13,7 @@ kb-core = { path = "crates/kb-core" }
 kb-devices = { path = "crates/kb-devices" }
 kb-protocol = { path = "crates/kb-protocol" }
 kb-transport = { path = "crates/kb-transport" }
+kb-winsys = { path = "crates/kb-winsys" }
 
 anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

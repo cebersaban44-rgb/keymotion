@@ -83,9 +83,9 @@ pub enum Request {
     },
     /// `Some` starts/updates the live frame, `None` stops streaming.
     SetLive(Option<LiveFrame>),
-    /// Background live layer (Pomodoro progress): streamed while no UI
-    /// preview (`SetLive`) is set. `None` stops it.
-    SetAmbient(Option<LiveFrame>),
+    /// One background light layer (see [`LightLayer`]): streamed while no
+    /// UI preview (`SetLive`) is set. `None` takes the layer away.
+    SetLayer(LightLayer, Option<LiveFrame>),
     /// Start (`Some`, with what the keys should show) or stop the mirror.
     SetMirror(Option<MirrorExpect>),
     /// New colour calibration; re-sends the live frame at once so sliders
@@ -135,6 +135,53 @@ pub struct ScreenUploadResult {
 pub struct LiveFrame {
     pub colors: Vec<(u8, Rgb)>,
     pub level: f32,
+}
+
+/// Background light layers, from the bottom up (owner's decision,
+/// 2026-11-10). A live frame covers the whole keyboard, so the keyboard's
+/// own saved light only shows when no layer is set.
+///
+/// * `Gauges`: the system gauges (processor, graphics, memory bars) with
+///   the rest of the keys dark or tinted.
+/// * `Timer`: the focus timer. It uses the whole keyboard ("the light left
+///   is the time left"), so the gauges wait while it shows.
+/// * `Alerts`: only the keys it names (volume bar for a moment, the
+///   microphone key), on top of the timer or the gauges.
+///
+/// A preview the user edits on the Lighting page (`SetLive`) goes over all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LightLayer {
+    Gauges,
+    Timer,
+    Alerts,
+}
+
+/// One LED of a composed frame: UI colour and linear brightness (0–1).
+pub type LitKey = (u8, Rgb, f32);
+
+/// What the keys show: the preview alone, or the timer (else the gauges)
+/// with the alerts' keys on top. `None` when nothing is set.
+pub fn compose(
+    live: Option<&LiveFrame>,
+    gauges: Option<&LiveFrame>,
+    timer: Option<&LiveFrame>,
+    alerts: Option<&LiveFrame>,
+) -> Option<Vec<LitKey>> {
+    let keys = |f: &LiveFrame| f.colors.iter().map(|&(l, c)| (l, c, f.level)).collect::<Vec<_>>();
+    if let Some(live) = live {
+        return Some(keys(live));
+    }
+    let mut out = timer.or(gauges).map(keys);
+    if let Some(alerts) = alerts {
+        let base = out.get_or_insert_with(Vec::new);
+        for (led, c, level) in keys(alerts) {
+            match base.iter_mut().find(|k| k.0 == led) {
+                Some(k) => *k = (led, c, level),
+                None => base.push((led, c, level)),
+            }
+        }
+    }
+    out
 }
 
 /// What the keyboard should be showing, in UI colours (sRGB). The mirror
@@ -241,8 +288,10 @@ struct Actor {
     usb_model: Option<&'static Model>,
     command: Option<Command>,
     live: Option<LiveFrame>,
-    /// Background layer, shown while `live` is not set.
-    ambient: Option<LiveFrame>,
+    /// Background layers, shown while `live` is not set.
+    gauges: Option<LiveFrame>,
+    timer: Option<LiveFrame>,
+    alerts: Option<LiveFrame>,
     /// Live frames that failed in a row.
     live_failures: u32,
     /// `Some` while the UI shows the mirror.
@@ -290,7 +339,9 @@ impl Actor {
             usb_model: None,
             command: None,
             live: None,
-            ambient: None,
+            gauges: None,
+            timer: None,
+            alerts: None,
             live_failures: 0,
             mirror: None,
             indicators: Vec::new(),
@@ -379,7 +430,7 @@ impl Actor {
                     tracing::trace!(lit = lit.len(), sample = ?&lit[..lit.len().min(6)], level = f.level, "live frame");
                 }
                 match (&frame, &self.live) {
-                    (None, Some(_)) if self.ambient.is_some() => {
+                    (None, Some(_)) if self.has_layer() => {
                         tracing::debug!("live preview stopped; the background layer shows again")
                     }
                     (None, Some(_)) => {
@@ -391,13 +442,21 @@ impl Actor {
                 self.live = frame;
                 self.next_live = Instant::now();
             }
-            Request::SetAmbient(frame) => {
-                match (&frame, &self.ambient) {
-                    (None, Some(_)) => tracing::debug!("background light layer stopped"),
-                    (Some(f), None) => tracing::debug!(leds = f.colors.len(), "background light layer started"),
+            Request::SetLayer(layer, frame) => {
+                let slot = match layer {
+                    LightLayer::Gauges => &mut self.gauges,
+                    LightLayer::Timer => &mut self.timer,
+                    LightLayer::Alerts => &mut self.alerts,
+                };
+                match (&frame, &slot) {
+                    (None, Some(_)) => tracing::debug!(?layer, "light layer stopped"),
+                    (Some(f), None) => tracing::debug!(?layer, leds = f.colors.len(), "light layer started"),
                     _ => {}
                 }
-                self.ambient = frame;
+                *slot = frame;
+                if !self.streaming() {
+                    tracing::debug!("no light layer left; keyboard reverts to its saved effect");
+                }
                 if self.live.is_none() {
                     self.next_live = Instant::now();
                 }
@@ -610,16 +669,23 @@ impl Actor {
 
     /// A live frame is being streamed (preview or background layer).
     fn streaming(&self) -> bool {
-        self.live.is_some() || self.ambient.is_some()
+        self.live.is_some() || self.has_layer()
+    }
+
+    fn has_layer(&self) -> bool {
+        self.gauges.is_some() || self.timer.is_some() || self.alerts.is_some()
     }
 
     fn send_live(&mut self) {
-        let Some(live) = self.live.as_ref().or(self.ambient.as_ref()) else { return };
         if self.command_path.is_none() {
             return;
         }
+        let Some(keys) = compose(self.live.as_ref(), self.gauges.as_ref(), self.timer.as_ref(), self.alerts.as_ref())
+        else {
+            return;
+        };
         let cal = self.calibration;
-        let frame: Vec<(u8, Rgb)> = live.colors.iter().map(|&(l, c)| (l, cal.apply_dimmed(c, live.level))).collect();
+        let frame: Vec<(u8, Rgb)> = keys.into_iter().map(|(l, c, level)| (l, cal.apply_dimmed(c, level))).collect();
         match self.with_command(|d| d.realtime_frame(frame)) {
             Ok(()) => self.live_failures = 0,
             Err(e) => {
@@ -785,4 +851,39 @@ fn read_battery(address: u64) -> Option<Battery> {
 fn read_battery(_address: u64) -> Option<Battery> {
     let _ = (SystemTime::now(), UNIX_EPOCH);
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn frame(keys: &[(u8, u8)], level: f32) -> LiveFrame {
+        LiveFrame { colors: keys.iter().map(|&(l, v)| (l, [v, v, v])).collect(), level }
+    }
+
+    #[test]
+    fn the_timer_hides_the_gauges_and_alerts_go_on_top() {
+        let gauges = frame(&[(1, 10), (2, 10), (3, 10)], 0.5);
+        let timer = frame(&[(1, 20), (2, 20), (3, 20)], 0.8);
+        let alerts = frame(&[(2, 99), (9, 99)], 1.0);
+        assert_eq!(
+            compose(None, Some(&gauges), None, None),
+            Some(vec![(1, [10; 3], 0.5), (2, [10; 3], 0.5), (3, [10; 3], 0.5)])
+        );
+        assert_eq!(
+            compose(None, Some(&gauges), Some(&timer), Some(&alerts)),
+            Some(vec![(1, [20; 3], 0.8), (2, [99; 3], 1.0), (3, [20; 3], 0.8), (9, [99; 3], 1.0)])
+        );
+        // Alerts alone light only their keys.
+        assert_eq!(compose(None, None, None, Some(&alerts)), Some(vec![(2, [99; 3], 1.0), (9, [99; 3], 1.0)]));
+        assert_eq!(compose(None, None, None, None), None);
+    }
+
+    #[test]
+    fn the_lighting_preview_goes_over_every_layer() {
+        let live = frame(&[(5, 50)], 1.0);
+        let timer = frame(&[(1, 20)], 0.8);
+        let alerts = frame(&[(2, 99)], 1.0);
+        assert_eq!(compose(Some(&live), None, Some(&timer), Some(&alerts)), Some(vec![(5, [50; 3], 1.0)]));
+    }
 }
