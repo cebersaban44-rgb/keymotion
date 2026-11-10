@@ -5,8 +5,8 @@
 //! are implemented, and each one follows the official driver's sequence.
 
 use kb_protocol::sonix::{
-    self as proto, guard, header, parse_ack, payload_of, report, Ack, Blocked, EffectSettings, Invalid, Op, PacketKind,
-    Rgb, PAYLOAD, REPORT_LEN,
+    self as proto, guard, header, parse_ack, payload_of, report, Ack, Blocked, ClockTime, EffectSettings, Invalid, Op,
+    PacketKind, Rgb, PAYLOAD, REPORT_LEN,
 };
 use kb_transport::hid::HidChannel;
 use std::thread::sleep;
@@ -42,6 +42,8 @@ pub enum DriverError {
     Busy,
     #[error("keyboard received different data (checksum 0x{got:04X}, expected 0x{expected:04X})")]
     Checksum { expected: u16, got: u16 },
+    #[error("keyboard echoed different data for 0x{0:02X}")]
+    DataEcho(u8),
 }
 
 /// LE16 byte sum the keyboard reports in the `04 02` echo (wrapping).
@@ -307,6 +309,26 @@ impl<P: FeaturePort> SonixFf13<P> {
         self.apply()
     }
 
+    /// Set the keyboard clock: `04 18` → `04 28` (1) → data → `04 02`, no
+    /// `04 F0`. Sets the clock (RTC); the screen switches to its clock page.
+    ///
+    /// Measured on fw 0x0106 (2026-11-10): the keyboard echoes the data
+    /// packet byte for byte (the official driver reads it too), and the
+    /// `04 02` echo carries status 01 but a byte sum of 0 in this flow. So
+    /// the data echo is what proves delivery here, not the sum.
+    pub fn set_clock(&mut self, time: &ClockTime) -> Result<()> {
+        let data = proto::clock_data(time)?;
+        self.begin()?;
+        self.acked(Op::Clock, 0, 1)?;
+        self.data(&data)?;
+        let echo = self.port.get_feature()?;
+        if payload_of(&echo).get(..PAYLOAD) != Some(&data[..]) {
+            tracing::debug!(echo = ?payload_of(&echo).get(..11), "clock data echo differs");
+            return Err(DriverError::DataEcho(Op::Clock as u8));
+        }
+        self.acked(Op::Commit, 0, 0).map(|_| ())
+    }
+
     pub fn into_inner(self) -> P {
         self.port
     }
@@ -327,6 +349,8 @@ mod tests {
         sum: u16,
         /// Corrupt the reported checksum (simulates a transfer error).
         corrupt: bool,
+        /// Echo data packets with one byte changed.
+        garble_echo: bool,
     }
 
     impl FeaturePort for Fake {
@@ -335,6 +359,12 @@ mod tests {
             if self.pending > 0 {
                 self.pending -= 1;
                 self.sum = self.sum.wrapping_add(byte_sum(&r[1..]));
+                // Data packets are echoed as they are.
+                let mut echo = r.to_vec();
+                if self.garble_echo {
+                    echo[4] ^= 1;
+                }
+                self.last = Some(echo);
                 return Ok(());
             }
             if r[1] == 0x04 {
@@ -367,6 +397,29 @@ mod tests {
         assert_eq!(&w[1][5..9], &[1, 255, 0, 0], "LED 1 at offset 4 of the table");
         assert_eq!(&w[9][..3], &[0, 4, 0x02]);
         assert!(w.iter().all(|r| r[0] == 0), "report ID 0 everywhere");
+    }
+
+    #[test]
+    fn clock_sequence_matches_official_flow() {
+        let mut d = SonixFf13::new(Fake::default());
+        let t = ClockTime { year: 2026, month: 10, day: 29, hour: 15, minute: 7, second: 32, weekday: 4 };
+        d.set_clock(&t).unwrap();
+        let w = d.into_inner().writes;
+        let ops: Vec<(u8, u8)> = w.iter().map(|r| (r[1], r[2])).collect();
+        assert_eq!(ops.len(), 4, "START, header, data, COMMIT; no APPLY");
+        assert_eq!(ops[0], (0x04, 0x18));
+        assert_eq!((ops[1], w[1][9]), ((0x04, 0x28), 1), "clock header announces 1 packet");
+        assert_eq!(&w[2][1..12], &[0x00, 0x01, 0x5A, 0x1A, 0x0A, 0x1D, 0x0F, 0x07, 0x20, 0x00, 0x04]);
+        assert_eq!(ops[3], (0x04, 0x02));
+    }
+
+    #[test]
+    fn clock_fails_when_the_echo_differs() {
+        let mut d = SonixFf13::new(Fake { garble_echo: true, ..Fake::default() });
+        let t = ClockTime { year: 2026, month: 11, day: 10, hour: 5, minute: 9, second: 0, weekday: 2 };
+        assert!(matches!(d.set_clock(&t), Err(DriverError::DataEcho(0x28))));
+        let w = d.into_inner().writes;
+        assert_eq!(w.len(), 3, "no COMMIT after a bad echo");
     }
 
     #[test]

@@ -1717,6 +1717,7 @@ name = "kb-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "kb-core",
  "kb-devices",
@@ -1729,6 +1730,7 @@ dependencies = [
 name = "kb-core"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "kb-devices",
  "kb-protocol",
  "kb-transport",

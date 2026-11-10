@@ -10,8 +10,8 @@ mod settings;
 
 use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request};
 use dto::{
-    Calibration, CalibrationInfo, EffectInfo, EffectRequest, KeyboardInfo, LedColor, MirrorHint, ThemePreference,
-    UiEnvironment,
+    Calibration, CalibrationInfo, ClockStatus, EffectInfo, EffectRequest, KeyboardInfo, LedColor, MirrorHint,
+    ThemePreference, UiEnvironment,
 };
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -82,6 +82,31 @@ fn set_live_frame(device: Device<'_>, colors: Option<Vec<LedColor>>, brightness:
     let level = kb_protocol::sonix::level_factor(brightness.unwrap_or(5));
     let frame = colors.map(|c| LiveFrame { colors: c.into_iter().map(|c| (c.led, [c.r, c.g, c.b])).collect(), level });
     device.send(Request::SetLive(frame))
+}
+
+/// Keyboard clock sync state (`clock-changed` events report updates).
+#[tauri::command]
+fn clock_status(device: Device<'_>) -> ClockStatus {
+    ClockStatus::from(device.snapshot.lock().map(|s| s.clock).unwrap_or_default())
+}
+
+/// Set the keyboard clock to the PC's local time now (USB only). The
+/// keyboard's screen switches to its clock page.
+#[tauri::command]
+async fn sync_clock(device: Device<'_>) -> Result<ClockStatus, String> {
+    tracing::debug!("ipc: sync_clock");
+    let handle = device.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || handle.call(Request::SyncClock))
+        .await
+        .map_err(|e| e.to_string())?
+        .map(ClockStatus::from)
+}
+
+/// Turn automatic clock sync (on USB connect, at most once a day) on or off.
+#[tauri::command]
+fn set_clock_auto(device: Device<'_>, enabled: bool) -> Result<ClockStatus, String> {
+    tracing::debug!(enabled, "ipc: set_clock_auto");
+    device.call(|reply| Request::SetClockAuto(enabled, reply)).map(ClockStatus::from)
 }
 
 /// Mirror the colours shown on the keyboard into the UI (`lighting-mirror`
@@ -231,14 +256,9 @@ pub fn run() {
             let build = os_build();
             let mica = apply_backdrop(&window, build);
             app.manage(UiEnvironment { app_version: app.package_info().version.to_string(), mica, os_build: build });
-            let calibration = match app.path().app_config_dir() {
-                Ok(dir) => settings::load_calibration(&dir),
-                Err(e) => {
-                    tracing::warn!("no config directory: {e}");
-                    LedCalibration::default()
-                }
-            };
-            app.manage(Arc::new(device::spawn(app.handle().clone(), calibration)));
+            let config_dir = app.path().app_config_dir().map_err(|e| tracing::warn!("no config directory: {e}")).ok();
+            let calibration = config_dir.as_deref().map(settings::load_calibration).unwrap_or_default();
+            app.manage(Arc::new(device::spawn(app.handle().clone(), calibration, config_dir)));
             window.show()?;
             Ok(())
         })
@@ -256,7 +276,10 @@ pub fn run() {
             ack_close_request,
             close_window,
             ui_environment,
-            set_window_theme
+            set_window_theme,
+            clock_status,
+            sync_clock,
+            set_clock_auto
         ])
         .run(tauri::generate_context!())
         .expect("error while running Klavye Stüdyo");

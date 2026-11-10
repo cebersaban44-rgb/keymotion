@@ -297,6 +297,23 @@ impl EffectInfo {
     }
 }
 
+/// Keyboard clock sync state.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ClockStatus {
+    /// Set the clock when the keyboard connects over USB, at most once a day.
+    pub auto_sync: bool,
+    /// Last successful sync, Unix time in milliseconds.
+    pub last_sync_ms: Option<f64>,
+}
+
+impl From<crate::settings::ClockSettings> for ClockStatus {
+    fn from(c: crate::settings::ClockSettings) -> Self {
+        Self { auto_sync: c.auto_sync, last_sync_ms: c.last_sync_ms.map(|ms| ms as f64) }
+    }
+}
+
 /// What the UI believes the keyboard shows, so the mirror can resolve the
 /// read-back's ambiguous red byte (`04 F5` reports red as `2·r mod 256`).
 #[derive(Debug, Clone, serde::Deserialize, TS)]
