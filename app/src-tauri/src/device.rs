@@ -9,6 +9,9 @@
 //! * mirrors the colours currently shown (`04 F5`) while the UI asks for it,
 //! * sets the keyboard clock when it connects over USB (at most once a day).
 //!
+//! A screen upload (up to ~5 minutes) runs inside one request, so nothing
+//! else talks to the keyboard meanwhile; progress goes out as events.
+//!
 //! It also keeps the app's record of each model's keymap (`keymap.json`)
 //! and macros (`macros.json`): the keyboard cannot report either, so a
 //! record is updated only after a write the keyboard confirmed.
@@ -23,6 +26,7 @@ use kb_core::readback;
 use kb_core::sonix::SonixFf13;
 use kb_devices::{ConnectionKind, Model};
 use kb_protocol::sonix::keymap::{KeyAction, Layer};
+use kb_protocol::sonix::screen::ScreenAnimation;
 use kb_protocol::sonix::{scale_to_level, EffectSettings, Rgb, MAX_LEVEL};
 use kb_transport::hid::{Hid, HidChannel};
 use std::collections::HashMap;
@@ -35,6 +39,11 @@ use tauri::{AppHandle, Emitter};
 pub const EVENT_KEYBOARDS_CHANGED: &str = "keyboards-changed";
 pub const EVENT_MIRROR: &str = "lighting-mirror";
 pub const EVENT_CLOCK: &str = "clock-changed";
+pub const EVENT_SCREEN_PROGRESS: &str = "screen-upload-progress";
+/// Longest wait for a screen upload (140 frames take ~5.4 min).
+pub const SCREEN_UPLOAD_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+/// Progress events at most this often.
+const SCREEN_PROGRESS_EVERY: Duration = Duration::from_millis(150);
 
 const ENUMERATE_EVERY: Duration = Duration::from_secs(2);
 const BLE_RESCAN: Duration = Duration::from_secs(10);
@@ -93,6 +102,24 @@ pub enum Request {
         slots: Vec<Option<StoredMacro>>,
         reply: Reply<StoredMacros>,
     },
+    /// Upload an animation to the USB keyboard's GIF page (flash write).
+    /// `id` only labels the progress events.
+    UploadScreen {
+        id: String,
+        anim: Box<ScreenAnimation>,
+        reply: mpsc::Sender<ScreenUploadResult>,
+    },
+}
+
+/// How a screen upload ended.
+#[derive(Debug, Clone)]
+pub struct ScreenUploadResult {
+    /// Model of the keyboard written to.
+    pub model_id: Option<String>,
+    /// Whether the keyboard's flash was touched (the session was opened),
+    /// even if the upload then failed: it counts towards wear.
+    pub flash_written: bool,
+    pub error: Option<String>,
 }
 
 /// A RAM-only frame in UI colours (sRGB). Calibration and the linear
@@ -150,6 +177,19 @@ impl DeviceHandle {
         self.send(make(tx))?;
         rx.recv_timeout(Duration::from_secs(20)).map_err(|_| "keyboard did not answer in time".to_string())?
     }
+
+    /// Upload to the screen and wait (long) for the outcome.
+    pub fn upload_screen(&self, id: String, anim: ScreenAnimation) -> ScreenUploadResult {
+        let (tx, rx) = mpsc::channel();
+        if let Err(e) = self.send(Request::UploadScreen { id, anim: Box::new(anim), reply: tx }) {
+            return ScreenUploadResult { model_id: None, flash_written: false, error: Some(e) };
+        }
+        rx.recv_timeout(SCREEN_UPLOAD_TIMEOUT).unwrap_or_else(|_| ScreenUploadResult {
+            model_id: None,
+            flash_written: true,
+            error: Some("keyboard did not finish the upload in time".into()),
+        })
+    }
 }
 
 /// Start the actor. `config_dir` is where clock sync history and the keymap
@@ -188,6 +228,8 @@ struct Actor {
     batteries: HashMap<u64, (Battery, Instant)>,
     /// Path of the wired command interface of the active keyboard, if any.
     command_path: Option<String>,
+    /// Path of its display channel (screen pages), if any.
+    display_path: Option<String>,
     /// Model of the keyboard behind `command_path`.
     usb_model: Option<&'static Model>,
     command: Option<Command>,
@@ -233,6 +275,7 @@ impl Actor {
             last_ble_scan: None,
             batteries: HashMap::new(),
             command_path: None,
+            display_path: None,
             usb_model: None,
             command: None,
             live: None,
@@ -358,6 +401,59 @@ impl Actor {
             Request::ApplyMacros { slots, reply } => {
                 let _ = reply.send(self.apply_macros(slots));
             }
+            Request::UploadScreen { id, anim, reply } => {
+                let _ = reply.send(self.upload_screen(&id, &anim));
+            }
+        }
+    }
+
+    /// Upload to the GIF page: command channel for the session, display
+    /// channel (opened just for this) for the pages. Progress is emitted as
+    /// `screen-upload-progress`.
+    fn upload_screen(&mut self, id: &str, anim: &ScreenAnimation) -> ScreenUploadResult {
+        let model_id = self.usb_model.map(|m| m.id.clone());
+        let fail = |model_id: Option<String>, flash_written: bool, e: String| ScreenUploadResult {
+            model_id,
+            flash_written,
+            error: Some(e),
+        };
+        const NO_USB: &str = "Klavye USB modunda değil. Kabloyu takıp anahtarı ortaya (USB) alın.";
+        let Some(path) = self.display_path.clone() else { return fail(model_id, false, NO_USB.into()) };
+        let display = self.hid.as_ref().ok_or_else(|| "HID unavailable".to_string()).and_then(|hid| {
+            let iface = hid.interfaces().into_iter().find(|i| i.path == path).ok_or("display channel disappeared")?;
+            hid.open(&iface).map_err(|e| e.to_string())
+        });
+        let mut display = match display {
+            Ok(d) => d,
+            Err(e) => return fail(model_id, false, e),
+        };
+        let app = self.app.clone();
+        let label = id.to_string();
+        let mut last = Instant::now() - SCREEN_PROGRESS_EVERY;
+        let mut started = false;
+        let started_at = Instant::now();
+        let r = self.with_command(|d| {
+            d.upload_screen(&mut display, anim, |done, total| {
+                started = true;
+                if done == 1 || done == total || last.elapsed() >= SCREEN_PROGRESS_EVERY {
+                    last = Instant::now();
+                    let p = crate::dto::ScreenProgress { id: label.clone(), done: done as u32, total: total as u32 };
+                    let _ = app.emit(EVENT_SCREEN_PROGRESS, p);
+                }
+            })
+        });
+        match r {
+            Ok(report) => {
+                tracing::info!(
+                    pages = report.pages,
+                    secs = started_at.elapsed().as_secs(),
+                    commit = ?report.commit_echo,
+                    "screen upload done"
+                );
+                ScreenUploadResult { model_id, flash_written: true, error: None }
+            }
+            // A failure after the first page left the GIF page half written.
+            Err(e) => fail(model_id, started, e),
         }
     }
 
@@ -549,6 +645,7 @@ impl Actor {
         let usb = detected.iter().find(|k| k.connection == ConnectionKind::Usb);
         let was_connected = self.command_path.is_some();
         self.command_path = usb.and_then(|k| k.command.as_ref()).map(|i| i.path.clone());
+        self.display_path = usb.and_then(|k| k.display.as_ref()).map(|i| i.path.clone());
         let clock_capable = usb.is_some_and(|k| k.capabilities().contains(&kb_devices::Capability::Clock));
         if !was_connected && self.command_path.is_some() && clock_capable && self.clock_sync_due() {
             tracing::debug!("keyboard connected; clock sync due");

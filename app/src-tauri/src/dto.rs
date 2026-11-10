@@ -6,7 +6,7 @@ use kb_core::DetectedKeyboard;
 use kb_devices::{Capability, ConnectionKind, Model};
 use kb_protocol::sonix::keymap::{KeyAction, Layer, MacroPlay, MouseButton, UsageGroup};
 use kb_protocol::sonix::macros::{MacroStep, StepKind};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
@@ -786,6 +786,112 @@ impl From<MacroInfo> for StoredMacro {
 
 /// Longest macro name the app keeps.
 pub const MACRO_NAME_MAX: usize = 40;
+
+// ------------------------------------------------------------------ screen
+
+/// What a library item holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum ScreenItemKind {
+    /// One still image.
+    Image,
+    /// Several frames (GIF, video, slideshow).
+    Animation,
+    /// The keyboard's factory animation (backup; cannot be removed).
+    Factory,
+}
+
+/// One prepared animation in the app's screen library.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ScreenItem {
+    /// Content hash (16 hex digits).
+    pub id: String,
+    pub name: String,
+    pub kind: ScreenItemKind,
+    pub frames: u32,
+    /// One loop, in ms.
+    pub loop_ms: u32,
+    /// Display-channel pages an upload takes.
+    pub pages: u32,
+    pub created_ms: f64,
+    /// Last upload the keyboard confirmed; `null` when never uploaded.
+    pub uploaded_ms: Option<f64>,
+}
+
+/// The panel and upload limits (kb-protocol `screen`).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ScreenLimits {
+    pub width: u32,
+    pub height: u32,
+    pub max_frames: u32,
+    /// Frames proven on this keyboard (its own factory animation).
+    pub proven_frames: u32,
+    pub min_delay_ms: u32,
+    pub max_delay_ms: u32,
+    pub still_delay_ms: u32,
+    /// Measured time per page (E1/E4, 2026-11-10).
+    pub page_ms: u32,
+    pub header_len: u32,
+    pub frame_bytes: u32,
+    pub max_pages: u32,
+    pub name_max: u32,
+}
+
+impl ScreenLimits {
+    pub fn new() -> Self {
+        use kb_protocol::sonix::screen as s;
+        Self {
+            width: s::WIDTH as u32,
+            height: s::HEIGHT as u32,
+            max_frames: s::MAX_FRAMES as u32,
+            proven_frames: s::PROVEN_FRAMES as u32,
+            min_delay_ms: s::MIN_DELAY as u32 * s::DELAY_UNIT_MS,
+            max_delay_ms: s::MAX_DELAY as u32 * s::DELAY_UNIT_MS,
+            still_delay_ms: s::STILL_DELAY as u32 * s::DELAY_UNIT_MS,
+            page_ms: 145,
+            header_len: s::HEADER_LEN as u32,
+            frame_bytes: s::FRAME_BYTES as u32,
+            max_pages: s::MAX_PAGES as u32,
+            name_max: crate::screen_lib::NAME_MAX as u32,
+        }
+    }
+}
+
+impl Default for ScreenLimits {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// The screen library and what the keyboard's GIF page shows.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ScreenState {
+    /// Factory backup first, then newest first.
+    pub items: Vec<ScreenItem>,
+    /// Item the GIF page shows, as far as the app knows (`null`: unknown,
+    /// for example the factory animation the keyboard shipped with).
+    pub shown: Option<String>,
+    pub uploads_today: u32,
+    pub uploads_total: u32,
+    pub limits: ScreenLimits,
+}
+
+/// `screen-upload-progress` event payload.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ScreenProgress {
+    pub id: String,
+    pub done: u32,
+    pub total: u32,
+}
 
 /// What the app last wrote to a model's macro memory, plus its limits.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]

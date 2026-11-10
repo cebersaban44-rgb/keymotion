@@ -4,9 +4,11 @@
 //   node cdp.mjs "<expression>"     evaluate JS (awaits promises, prints JSON)
 //   node cdp.mjs @file.js           same, expression read from a file
 //   node cdp.mjs --shot out.png     save a screenshot of the window
+//   node cdp.mjs --file "<css selector>" <path>   put a file in an <input type=file>
 import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-const [arg, out] = process.argv.slice(2);
+const [arg, out, extra] = process.argv.slice(2);
 const list = await (await fetch("http://127.0.0.1:9222/json")).json();
 const page = list.find((t) => t.type === "page");
 if (!page) throw new Error("no page target: " + JSON.stringify(list));
@@ -28,7 +30,13 @@ const call = (method, params) =>
     ws.send(JSON.stringify({ id, method, params }));
   });
 
-if (arg === "--shot") {
+if (arg === "--file") {
+  const doc = await call("DOM.getDocument", { depth: -1, pierce: true });
+  const q = await call("DOM.querySelector", { nodeId: doc.result.root.nodeId, selector: out });
+  if (!q.result?.nodeId) throw new Error("no element for " + out);
+  const r = await call("DOM.setFileInputFiles", { nodeId: q.result.nodeId, files: [resolve(extra)] });
+  console.log(r.error ? "ERROR " + JSON.stringify(r.error) : "file set: " + resolve(extra));
+} else if (arg === "--shot") {
   const msg = await call("Page.captureScreenshot", { format: "png" });
   if (!msg.result?.data) throw new Error("screenshot failed: " + JSON.stringify(msg.error ?? msg));
   writeFileSync(out ?? "shot.png", Buffer.from(msg.result.data, "base64"));

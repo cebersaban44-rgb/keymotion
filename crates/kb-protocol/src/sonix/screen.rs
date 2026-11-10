@@ -45,9 +45,13 @@ pub const SLOT: u8 = 1;
 /// hardware, and it avoids redrawing every 2 ms.
 pub const STILL_DELAY: u8 = 50;
 
-/// Pack 8-bit RGB into RGB565.
+/// Pack 8-bit RGB into RGB565, each channel to the nearest level (the UI's
+/// converter does the same, so both give identical bytes).
 pub const fn rgb565(r: u8, g: u8, b: u8) -> u16 {
-    ((r as u16 >> 3) << 11) | ((g as u16 >> 2) << 5) | (b as u16 >> 3)
+    let r5 = (r as u16 * 31 + 127) / 255;
+    let g6 = (g as u16 * 63 + 127) / 255;
+    let b5 = (b as u16 * 31 + 127) / 255;
+    (r5 << 11) | (g6 << 5) | b5
 }
 
 /// Expand RGB565 back to 8-bit RGB (for previews).
@@ -176,6 +180,35 @@ pub fn blob(anim: &ScreenAnimation) -> Vec<u8> {
     out
 }
 
+/// Read back a blob made by [`blob`] (trailing page padding optional),
+/// validating it again: frame count, delays and length. Used for the app's
+/// stored library and for data coming from the UI.
+pub fn from_blob(data: &[u8]) -> Result<ScreenAnimation, Invalid> {
+    let count = *data.first().ok_or(Invalid::Screen("empty data"))? as usize;
+    if count == 0 || count > MAX_FRAMES {
+        return Err(Invalid::Screen("frame count must be 1–140"));
+    }
+    if data.len() < HEADER_LEN + count * FRAME_BYTES {
+        return Err(Invalid::Screen("data is shorter than its frame count"));
+    }
+    let frames = (0..count)
+        .map(|i| {
+            let start = HEADER_LEN + i * FRAME_BYTES;
+            let pixels =
+                data[start..start + FRAME_BYTES].chunks_exact(2).map(|p| u16::from_le_bytes([p[0], p[1]])).collect();
+            Ok((Frame::from_pixels(pixels)?, data[1 + i]))
+        })
+        .collect::<Result<Vec<_>, Invalid>>()?;
+    ScreenAnimation::new(frames)
+}
+
+/// The blob without page padding: header and frames only.
+pub fn blob_unpadded(anim: &ScreenAnimation) -> Vec<u8> {
+    let mut data = blob(anim);
+    data.truncate(HEADER_LEN + anim.frames.len() * FRAME_BYTES);
+    data
+}
+
 /// The blob cut into display-channel pages. Fails only if an internal
 /// invariant broke (the page ceiling is checked again here on purpose).
 pub fn upload_pages(anim: &ScreenAnimation) -> Result<Vec<[u8; PAGE]>, Invalid> {
@@ -251,6 +284,14 @@ mod tests {
         assert_eq!(rgb565(0, 0, 255), 0x001F);
         assert_eq!(rgb888(rgb565(255, 255, 255)), [255, 255, 255]);
         assert_eq!(rgb888(rgb565(0, 0, 0)), [0, 0, 0]);
+        // Nearest level, not truncation: 6 → level 1 (8), 3 → 0.
+        assert_eq!(rgb565(6, 0, 0) >> 11, 1);
+        assert_eq!(rgb565(3, 0, 0) >> 11, 0);
+        // Every value round-trips to within half a step.
+        for v in 0..=255u8 {
+            let [r, g, _] = rgb888(rgb565(v, v, v));
+            assert!((r as i16 - v as i16).abs() <= 4 && (g as i16 - v as i16).abs() <= 2, "{v}");
+        }
     }
 
     #[test]
@@ -296,6 +337,23 @@ mod tests {
         let f1 = HEADER_LEN + FRAME_BYTES;
         assert_eq!(&data[f1..f1 + 2], &[0x1F, 0x00], "frame 1 blue");
         assert!(data[HEADER_LEN + 2 * FRAME_BYTES..].iter().all(|&x| x == 0xFF), "page padding");
+    }
+
+    #[test]
+    fn blob_round_trip_and_validation() {
+        let anim = ScreenAnimation::new(vec![(test_pattern(), 50), (Frame::filled(rgb565(0, 0, 255)), 7)]).unwrap();
+        let raw = blob_unpadded(&anim);
+        assert_eq!(raw.len(), HEADER_LEN + 2 * FRAME_BYTES);
+        assert_eq!(from_blob(&raw).unwrap(), anim);
+        assert_eq!(from_blob(&blob(&anim)).unwrap(), anim, "page padding is ignored");
+        let mut bad = raw.clone();
+        bad[2] = 0xFF;
+        assert!(from_blob(&bad).is_err(), "delay FF");
+        assert!(from_blob(&raw[..raw.len() - 1]).is_err(), "truncated");
+        let mut zero = raw;
+        zero[0] = 0;
+        assert!(from_blob(&zero).is_err());
+        assert!(from_blob(&[]).is_err());
     }
 
     #[test]

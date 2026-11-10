@@ -18,12 +18,13 @@ import { useT } from "./lib/i18n";
 import { useKeymap } from "./lib/keymap";
 import { useLayout } from "./lib/layout";
 import { useMacros } from "./lib/macros";
+import { useScreen } from "./lib/screen";
 import { useActiveKeyboard, useApp } from "./lib/store";
-import { ComingSoon } from "./pages/ComingSoon";
 import { Keymap } from "./pages/Keymap";
 import { Macros } from "./pages/Macros";
 import { Lighting } from "./pages/Lighting";
 import { Overview } from "./pages/Overview";
+import { Screen, ScreenUploadToast } from "./pages/Screen";
 import { Settings } from "./pages/Settings";
 
 function useBootstrap() {
@@ -70,8 +71,8 @@ function useThemeSync() {
 }
 
 /**
- * Load the app's keymap and macro records for the connected model, so
- * unsaved edits are known (and guarded) before their pages are opened.
+ * Load the app's keymap, macro and screen records for the connected model,
+ * so unsaved edits are known (and guarded) before their pages are opened.
  */
 function useKeyboardRecords() {
   const modelId = useActiveKeyboard()?.modelId;
@@ -79,6 +80,7 @@ function useKeyboardRecords() {
     if (!modelId) return;
     useKeymap.getState().load(modelId).catch(console.error);
     useMacros.getState().load(modelId).catch(console.error);
+    useScreen.getState().load(modelId).catch(console.error);
   }, [modelId]);
 }
 
@@ -150,7 +152,7 @@ export default function App() {
       case "macros":
         return <Macros kb={kb} />;
       case "screen":
-        return <ComingSoon title="nav.screen" features={["screen", "clock"]} />;
+        return <Screen kb={kb} />;
     }
   };
 
@@ -173,6 +175,7 @@ export default function App() {
           </AnimatePresence>
         </main>
       </div>
+      <ScreenUploadToast />
       <AnimatePresence>
         {guard.asking && <UnsavedDialog items={guard.items} onCancel={guard.cancel} />}
       </AnimatePresence>

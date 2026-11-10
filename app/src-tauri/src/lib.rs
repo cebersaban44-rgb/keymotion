@@ -6,16 +6,20 @@
 
 mod device;
 mod dto;
+mod screen_lib;
 mod settings;
 
 use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request};
 use dto::{
     Calibration, CalibrationInfo, ClockStatus, EffectInfo, EffectRequest, KeyAssignment, KeyboardInfo, KeymapCatalog,
-    KeymapLayer, KeymapState, LedColor, MacroInfo, MacrosState, MirrorHint, ThemePreference, UiEnvironment,
+    KeymapLayer, KeymapState, LedColor, MacroInfo, MacrosState, MirrorHint, ScreenItem, ScreenItemKind, ScreenState,
+    ThemePreference, UiEnvironment,
 };
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
+use screen_lib::ScreenLibrary;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 
@@ -33,6 +37,116 @@ struct CloseGuard {
 }
 
 type Device<'a> = State<'a, Arc<DeviceHandle>>;
+type Library<'a> = State<'a, Arc<Mutex<ScreenLibrary>>>;
+
+fn lock_library(lib: &Mutex<ScreenLibrary>) -> Result<std::sync::MutexGuard<'_, ScreenLibrary>, String> {
+    lib.lock().map_err(|_| "screen library unavailable".to_string())
+}
+
+/// The screen library and what this model's GIF page shows.
+#[tauri::command]
+fn screen_state(library: Library<'_>, model_id: String) -> Result<ScreenState, String> {
+    Ok(lock_library(&library)?.state(&model_id))
+}
+
+/// Store an animation the UI prepared. The body is the blob (header +
+/// RGB565 frames, kb-protocol `screen::blob`); headers `x-name` (URI
+/// encoded) and `x-kind` (`image` | `animation`). Everything is validated
+/// again here: the UI is not trusted with the keyboard's format.
+#[tauri::command]
+fn screen_add(library: Library<'_>, request: tauri::ipc::Request<'_>) -> Result<ScreenItem, String> {
+    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
+        return Err("expected binary data".into());
+    };
+    let anim = kb_protocol::sonix::screen::from_blob(data).map_err(|e| e.to_string())?;
+    let header = |name: &str| request.headers().get(name).and_then(|v| v.to_str().ok()).unwrap_or("");
+    let name = percent_decode(header("x-name"));
+    let kind = match header("x-kind") {
+        "animation" => ScreenItemKind::Animation,
+        _ if anim.frames().len() > 1 => ScreenItemKind::Animation,
+        _ => ScreenItemKind::Image,
+    };
+    tracing::debug!(frames = anim.frames().len(), %name, "ipc: screen_add");
+    lock_library(&library)?.add(&name, kind, &anim).map_err(|e| e.to_string())
+}
+
+/// Decode `%XX` escapes (the UI sends names with `encodeURIComponent`).
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let Some(v) = std::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Stored data of a library item (header + frames), at most `frames`
+/// frames, as raw bytes for previews.
+#[tauri::command]
+fn screen_data(library: Library<'_>, id: String, frames: Option<u32>) -> Result<tauri::ipc::Response, String> {
+    let mut data = lock_library(&library)?.data(&id)?;
+    if let Some(n) = frames {
+        use kb_protocol::sonix::screen::{FRAME_BYTES, HEADER_LEN};
+        data.truncate(HEADER_LEN + n.max(1) as usize * FRAME_BYTES);
+    }
+    Ok(tauri::ipc::Response::new(data))
+}
+
+#[tauri::command]
+fn screen_rename(library: Library<'_>, model_id: String, id: String, name: String) -> Result<ScreenState, String> {
+    let mut lib = lock_library(&library)?;
+    lib.rename(&id, &name).map_err(|e| e.to_string())?;
+    Ok(lib.state(&model_id))
+}
+
+#[tauri::command]
+fn screen_remove(library: Library<'_>, model_id: String, id: String) -> Result<ScreenState, String> {
+    let mut lib = lock_library(&library)?;
+    lib.remove(&id).map_err(|e| e.to_string())?;
+    Ok(lib.state(&model_id))
+}
+
+/// Upload a library item to the USB keyboard's GIF page (flash write, up
+/// to ~5 minutes; `screen-upload-progress` events report the pages).
+#[tauri::command]
+async fn screen_upload(
+    device: Device<'_>,
+    library: Library<'_>,
+    model_id: String,
+    id: String,
+) -> Result<ScreenState, String> {
+    tracing::debug!(%id, "ipc: screen_upload");
+    let anim = lock_library(&library)?.animation(&id)?;
+    let handle = device.inner().clone();
+    let (result, id) = tauri::async_runtime::spawn_blocking(move || (handle.upload_screen(id.clone(), anim), id))
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut lib = lock_library(&library)?;
+    let model = result.model_id.clone().unwrap_or(model_id.clone());
+    match &result.error {
+        None => lib.uploaded(&model, &id).map_err(|e| e.to_string())?,
+        Some(_) if result.flash_written => {
+            lib.count_upload();
+            if let Err(e) = lib.save() {
+                tracing::warn!("upload count not saved: {e}");
+            }
+        }
+        Some(_) => {}
+    }
+    match result.error {
+        None => Ok(lib.state(&model_id)),
+        Some(e) => Err(e),
+    }
+}
 
 #[tauri::command]
 fn keyboards(device: Device<'_>) -> Vec<KeyboardInfo> {
@@ -313,6 +427,7 @@ pub fn run() {
             app.manage(UiEnvironment { app_version: app.package_info().version.to_string(), mica, os_build: build });
             let config_dir = app.path().app_config_dir().map_err(|e| tracing::warn!("no config directory: {e}")).ok();
             let calibration = config_dir.as_deref().map(settings::load_calibration).unwrap_or_default();
+            app.manage(Arc::new(Mutex::new(ScreenLibrary::open(config_dir.as_deref()))));
             app.manage(Arc::new(device::spawn(app.handle().clone(), calibration, config_dir)));
             window.show()?;
             Ok(())
@@ -339,8 +454,27 @@ pub fn run() {
             keymap_state,
             apply_keymap,
             macros_state,
-            apply_macros
+            apply_macros,
+            screen_state,
+            screen_add,
+            screen_data,
+            screen_rename,
+            screen_remove,
+            screen_upload
         ])
         .run(tauri::generate_context!())
         .expect("error while running Klavye Stüdyo");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::percent_decode;
+
+    #[test]
+    fn decodes_names_from_the_ui() {
+        // encodeURIComponent("Kedi ğüşıöç 1/2") in the UI.
+        assert_eq!(percent_decode("Kedi%20%C4%9F%C3%BC%C5%9F%C4%B1%C3%B6%C3%A7%201%2F2"), "Kedi ğüşıöç 1/2");
+        assert_eq!(percent_decode("plain"), "plain");
+        assert_eq!(percent_decode("bad%zz%4"), "bad%zz%4", "broken escapes stay as they are");
+    }
 }
