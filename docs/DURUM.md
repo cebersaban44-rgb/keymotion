@@ -309,6 +309,32 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
         - Degrade, renkler görselde birbirinden ayrık durmuyorsa (yatay yayılım < 0,25) tona göre diziliyor; en geniş ton boşluğundan başlanıyor.
         - "Görsel" seçeneği parlaklığı %90'lık dilime göre, karekök eğrisiyle kaldırıyor.
       - **Sonuç:** "Günaydın" paleti mor #791BFF, pembe #FF3FD7, açık pembe #FA8CFF. Kullanıcı klavyede degradeyi gözle "karta benziyor" diye doğruladı. Testten sonra kullanıcının ışık tasarımı (kayıtlı 16 tuş) geri yüklendi.
+27. **Ekran Faz C, ilk adım: canlı mod, yükleme bütçesi, "Çalan şarkı" kartı.**
+    - **Bütçe** (`app/src-tauri/src/live.rs`):
+      - Token bucket: Tasarruf 8/gün (art arda en çok 3), Dengeli 24/gün (6, varsayılan), Yoğun 48/gün (8). Saatlik dolum = günlük / 24.
+      - Elle yapılan yüklemeler de bütçeden düşer ama hiç engellenmez. Borç bir kova ile sınırlı.
+      - Flash'a hiç dokunmayan başarısız deneme bütçeyi geri verir.
+      - Ayarlar ve bütçe `library.json` içinde `live` alanında tutulur. Alanın eksik olması sorun değil; sürüm 1 kaldı.
+    - **Canlı yükleme işçisi:**
+      - Yalnız en yeni bekleyen kart tutulur.
+      - GIF sayfasında zaten aynı içerik varsa (içerik özeti) yüklenmez.
+      - Bütçe, kablo ya da başarısız deneme yüzünden gidemeyen kart bekler: bütçe dolunca ya da 10 sn sonra yeniden denenir.
+      - Kart yine Rust'ta doğrulanır (`live_submit`). Son kart `screen/live.bin`'e yazılır; GIF sayfası önizlemesi onu gösterir (`shown = "live"`).
+    - **"Çalan şarkı" kaynağı** (`now_playing.rs`):
+      - Windows'un medya oturumları (GSMTC) saniyede bir yoklanır, yalnız canlı mod ve kaynak açıkken.
+      - Çalan oturum, duraklatılmış olana tercih edilir.
+      - Şarkı 12 sn kesintisiz çalınca kapağıyla birlikte duyurulur (`now-playing` olayı); hızlı atlamalar yüklenmez.
+      - Bilinen uygulamalar adıyla gösterilir (Spotify, Chrome, Edge, Medya Oynatıcı…).
+    - **Kart** (`lib/liveCards.ts`):
+      - Solda kapak, sağda "ÇALIYOR", başlık (iki satıra sığacak kadar büyük), sanatçı ve uygulama.
+      - Arka plan kapağın renk tonundan koyu bir degrade. Arka plan yumuşatılır, yazı keskin kalır.
+      - Saat ya da ilerleme gibi bayatlayan bilgi yok.
+    - **Arayüz:** Ekran sayfasında "Canlı ekran" bölümü: canlı mod anahtarı, günlük bütçe ve kalan yükleme, kaynak anahtarı ve o an çalan, durum (yükleniyor / sırada ve neden / ekranda).
+    - **Doğrulama:**
+      - Bütçe birim testleri (dolum, art arda sınır, elle yükleme borcu, iade, plan değişimi, eski kayıt).
+      - Tarayıcıda sahte arka uçla örnek şarkı: kart çizildi, bütçeden düştü, GIF sayfası önizlemesi kartı gösterdi.
+      - Bu PC'de GSMTC okundu (salt okuma testi, `now_playing_probe`): Chrome'da duraklatılmış bir YouTube videosu, başlık, kanal ve 24 KB kapak; duraklatılmış olduğu için "çalıyor" sayılmadı.
+      - Klavyede gerçek canlı yükleme henüz yapılmadı; kullanıcının açması bekleniyor.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -331,7 +357,9 @@ app/
                 20 Hz, ayna 4 Hz, 2 sn yoklama). dto.rs: ts-rs ile TS tiplerine dönüşen DTO'lar. lib.rs: Tauri komutları.
                 settings.rs: Rust'ın sahip olduğu kalıcı ayarlar (calibration.json, clock.json, keymap.json,
                 macros.json; uygulama yapılandırma klasörü). keymap.json ve macros.json, klavyeye son yazılan
-                atamanın ve makroların tek kaydıdır.
+                atamanın ve makroların tek kaydıdır. screen_lib.rs: ekran kütüphanesi (screen/library.json,
+                library/<id>.bin, live.bin). live.rs: canlı mod, yükleme bütçesi, bekleyen kart işçisi.
+                now_playing.rs: Windows medya oturumlarından "Çalan şarkı".
   src/          React 19 + TS 7 + Tailwind 4 + motion. lib/ipc.ts (tipli köprü, seri kuyruk), lib/lighting.ts
                 (Işıklar durumu), lib/mirror.ts, components/KeyboardView.tsx (geometriden çizim, boyama),
                 components/CalibrationCard.tsx, components/UnsavedDialog.tsx, lib/unsaved.ts (kaydedilmemiş
@@ -341,8 +369,9 @@ app/
                 lib/screen.ts (ekran kütüphanesi ve yükleme durumu), lib/screenImport.ts (dosya → RGB565),
                 lib/screenText.ts (yazı kartı çizicisi), pages/{Overview,Lighting,Keymap,Macros,Screen,Settings}.tsx,
                 lib/screenSlides.ts (slayt kare bütçesi ve geçişler), lib/screenPalette.ts (ekrana uygun ışık),
+                lib/live.ts (canlı mod durumu ve kaynaklar), lib/liveCards.ts (canlı kartlar),
                 pages/screen/ (Ekran Stüdyosu: common.tsx ortak adımlar, FileFlow.tsx, TextFlow.tsx, SlideFlow.tsx,
-                MatchLights.tsx).
+                MatchLights.tsx, LivePanel.tsx).
   src/bindings/ `cargo test` ile ÜRETİLİR (TS tipleri, geometri JSON'u, efekt kataloğu). Elle düzenlenmez.
 tools/cdp.mjs   Çalışan uygulamanın WebView2'sine CDP ile JS çalıştırır ya da ekran görüntüsü alır (uçtan uca test).
 .github/workflows/ci.yml   PR ve birleştirmelerde Windows'ta kontroller (bkz. gelistirme-akisi.md).
@@ -472,7 +501,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
      1. **Faz A bitti** (madde 23): Ekran Stüdyosu sayfası; kullanıcı kendi resim ve GIF'iyle denedi, E2 (kalıcılık) geçti.
      2. **Faz B bitti** (maddeler 24–26): kaynak seçici, yazı kartları, slayt, ışıkları ekrana uydurma. Tarayıcıda sahte arka uçla doğrulandı.
         - Klavyede denenmesi gerekiyor: bir yazı kartı, bir slayt ve "Işıkları uydur". Kullanıcının onayıyla ya da kendi yüklemesiyle yapılır.
-     3. Sonra: Faz C (olay tabanlı canlı kartlar; plan aşağıda), E3 (panelin gerçek kare hızı).
+     3. **Faz C sürüyor:** ilk adım (bütçe + "Çalan şarkı", madde 27) yapıldı. Sırada Pomodoro (kart + LED), sonra LED canlı katmanı. E3 (panelin gerçek kare hızı) hâlâ ölçülmedi.
      4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar 4 yükleme: E1, E4 ve kullanıcının 2 yüklemesi.
    - **Faz B planı** (hepsi yapıldı, maddeler 24–26; plan kayıt için duruyor):
      - **Kullanıcının arayüz kuralı** (2026-11-10, Faz A geri bildirimi):
@@ -519,7 +548,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
        - Seçim Işıklar sayfasında **taslak** olarak açılır: `useLighting` `setTab` / `setEffect` / `setPerKey`. Canlı önizleme tuşlarda (RAM) görünür; flash'a yazım yalnızca kullanıcı orada kaydedince olur, mevcut akış ve kapatma uyarısı korunur.
        - Not: kullanıcının kayıtlı ışığı şu an mod 0 (Kapalı).
      - **Sıra:** yeniden düzenleme → B1 → B2 → B3. Her biri ayrı PR olabilir. Donanım testi yalnızca kullanıcının onayıyla ya da kullanıcının kendi yüklemesiyle yapılır.
-   - **Faz C planı** (Faz B'den sonra; henüz kod yok). Ayrıntılı araştırma `research/ekran-ve-veri-kaynaklari.md`'de: tasarım §3.4, Windows veri kaynakları §5, plan "Faz 2".
+   - **Faz C planı** (bütçe ve "Çalan şarkı" yapıldı, madde 27; gerisi bekliyor). Ayrıntılı araştırma `research/ekran-ve-veri-kaynaklari.md`'de: tasarım §3.4, Windows veri kaynakları §5, plan "Faz 2".
      - **İlke:**
        - Ekran = olay tabanlı bağlam: bir sonraki olaya kadar doğru kalan içerik.
        - LED = gerçek zamanlı veri (`04 20`, RAM, flash'a yazmaz; 30–70 fps).
