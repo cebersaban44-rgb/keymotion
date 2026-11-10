@@ -9,7 +9,7 @@ import type { PomodoroSettings } from "../bindings/PomodoroSettings";
 import type { PomodoroState } from "../bindings/PomodoroState";
 
 const FLASH_MS = 1_000;
-const TRACK = 0.08;
+const TRACK = 0.03;
 const EDGE = 0.04;
 const PAUSE_LOW = 0.15;
 const PAUSE_HIGH = 0.35;
