@@ -92,7 +92,7 @@ const tr = {
 
   "cal.title": "Renk kalibrasyonu",
   "cal.intro":
-    "Ekran renkleri sRGB'dir, klavye LED'leri ise doğrusal yanar. Kalibrasyon, tuş başına renkleri ve canlı önizlemeyi ekranda gördüğünüze benzetir.",
+    "Ekran renkleri sRGB'dir, klavye LED'leri ise doğrusal yanar. Kalibrasyon, tuş başına renkleri, efekt renklerini ve canlı önizlemeyi ekranda gördüğünüze benzetir. Parlaklığı değil, ara tonları ayarlar: beyaz ve saf renkler her gamma'da aynı yanar.",
   "cal.gamma": "Gamma",
   "cal.gammaHint": "Ara tonların koyuluğu",
   "cal.perChannel": "Kanal başına",
@@ -115,12 +115,12 @@ const tr = {
   "cal.pattern.hint.white":
     "Tüm tuşlar beyaz. Beyaz pembe ya da mavi görünüyorsa baskın kanalın beyaz dengesini düşürün.",
   "cal.pattern.hint.ramp":
-    "Soldan sağa 8 gri basamak. Klavyedeki basamaklar ekrandakiyle aynı aralıkla açılmalı. Koyu basamaklar fazla parlaksa gamma'yı artırın, fazla koyuysa azaltın.",
+    "Soldan sağa koyudan açığa 8 gri basamak. Soldaki basamaklar ekranda da çok koyu; klavyede soluk görünmeleri normaldir. Klavyedeki basamaklar ekrandakiyle aynı aralıkla açılmalı. Koyu basamaklar ekrandakinden parlaksa gamma'yı artırın, koyuysa azaltın.",
   "cal.pattern.hint.palette": "Uygulamanın paleti. Turuncu ve mor gibi ara tonlar ekrandakine benzemeli.",
   "cal.usbOnly": "Test deseni için klavyeyi USB moduna alın.",
   "cal.target": "Ekrandaki hedef · klavyedekiyle karşılaştırın",
   "cal.note":
-    "Kalibrasyon canlı önizlemeye, aynaya ve tuş başına renk kaydına uygulanır. Klavyede kayıtlı renkler kendiliğinden değişmez; yeni ayarla yazmak için Işıklar'da yeniden kaydedin. Firmware efektlerinin rengine uygulanmaz.",
+    "Kalibrasyon canlı önizlemeye, aynaya, tuş başına renk kaydına ve efekt rengine uygulanır. Klavyede kayıtlı renkler kendiliğinden değişmez; yeni ayarla yazmak için Işıklar'da yeniden kaydedin ya da uygulayın.",
 
   "time.s": "sn",
   "time.m": "dk",
@@ -306,7 +306,7 @@ const en: Record<MessageKey, string> = {
 
   "cal.title": "Colour calibration",
   "cal.intro":
-    "Screen colours are sRGB while the keyboard's LEDs are linear. Calibration makes per-key colours and the live preview look like they do on screen.",
+    "Screen colours are sRGB while the keyboard's LEDs are linear. Calibration makes per-key colours, effect colours and the live preview look like they do on screen. It shapes mid tones, not brightness: white and pure colours light the same at any gamma.",
   "cal.gamma": "Gamma",
   "cal.gammaHint": "How dark mid tones get",
   "cal.perChannel": "Per channel",
@@ -329,12 +329,12 @@ const en: Record<MessageKey, string> = {
   "cal.pattern.hint.white":
     "Every key is white. If white looks pink or blue, lower the white balance of the dominant channel.",
   "cal.pattern.hint.ramp":
-    "Eight grey steps from left to right. The steps on the keyboard should brighten evenly like the ones on screen. Raise gamma if the dark steps are too bright, lower it if they are too dark.",
+    "Eight grey steps from dark (left) to light (right). The left steps are very dark on screen too, so they look dim on the keyboard as well. The steps on the keyboard should brighten evenly like the ones on screen. Raise gamma if the dark steps are brighter than on screen, lower it if they are darker.",
   "cal.pattern.hint.palette": "The app's palette. Mid tones such as orange and violet should match the screen.",
   "cal.usbOnly": "Switch the keyboard to USB mode for the test pattern.",
   "cal.target": "Target on screen · compare with the keyboard",
   "cal.note":
-    "Calibration applies to the live preview, the mirror and saving per-key colours. Colours already stored on the keyboard do not change on their own; save again in Lighting to write them with the new setting. It does not apply to firmware effect colours.",
+    "Calibration applies to the live preview, the mirror, saving per-key colours and effect colours. Colours already stored on the keyboard do not change on their own; save or apply again in Lighting to write them with the new setting.",
 
   "time.s": "s",
   "time.m": "min",

@@ -11,6 +11,7 @@ import type { GeometryInfo } from "../bindings/GeometryInfo";
 import type { EffectInfo } from "../bindings/EffectInfo";
 import type { EffectRequest } from "../bindings/EffectRequest";
 import type { LedColor } from "../bindings/LedColor";
+import type { MirrorHint } from "../bindings/MirrorHint";
 import type { Calibration } from "../bindings/Calibration";
 import type { CalibrationInfo } from "../bindings/CalibrationInfo";
 // Generated from Rust by `cargo test` (dto.rs export_mock_geometry).
@@ -107,8 +108,8 @@ let frameInFlight = false;
 
 /**
  * RAM-only live frame in screen colours; `null` stops the stream and the
- * keyboard reverts. `brightness` (0–5) dims linearly after calibration,
- * like the firmware's own brightness setting.
+ * keyboard reverts. `brightness` (0–5) dims after calibration with the
+ * firmware's own brightness scale, so the preview matches the saved design.
  */
 export function setLiveFrame(colors: LedColor[] | null, brightness = 5): Promise<void> {
   if (!inTauri) return Promise.resolve();
@@ -128,10 +129,13 @@ export function setLiveFrame(colors: LedColor[] | null, brightness = 5): Promise
   });
 }
 
-/** Ask the backend to mirror the colours shown on the keyboard. */
-export function setMirror(enabled: boolean): Promise<void> {
+/**
+ * Ask the backend to mirror the colours shown on the keyboard. `hint` is
+ * what the app last saved there; it resolves the read-back's red channel.
+ */
+export function setMirror(enabled: boolean, hint: MirrorHint | null = null): Promise<void> {
   if (!inTauri) return Promise.resolve();
-  return serial(() => invoke<void>("set_mirror", { enabled }));
+  return serial(() => invoke<void>("set_mirror", { enabled, hint }));
 }
 
 export async function onMirror(cb: (colors: LedColor[]) => void): Promise<UnlistenFn> {

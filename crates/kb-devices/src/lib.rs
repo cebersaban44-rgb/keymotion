@@ -155,6 +155,22 @@ pub struct Model {
     pub modes: Vec<ModeSpec>,
     #[serde(default)]
     pub geometry: Option<Geometry>,
+    /// Status lights driven by the firmware itself (Num Lock, Fn, …). They
+    /// ignore effects, per-key tables and live frames.
+    #[serde(default)]
+    pub indicators: Vec<Indicator>,
+}
+
+/// A firmware status light on one LED.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Indicator {
+    pub led: u8,
+    /// What it shows, e.g. "Num Lock".
+    pub name: String,
+    /// Colour when lit, as the LED is driven (not affected by brightness).
+    pub color: [u8; 3],
+    pub verified: bool,
 }
 
 impl Model {
