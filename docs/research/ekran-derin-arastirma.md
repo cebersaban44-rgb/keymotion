@@ -104,6 +104,22 @@ Hesap: görsel başına kare = ⌈süre / 0,508 s⌉; sayfa = ⌈(256 + 64.800 �
 
 ## 3. Resim, GIF ve video dönüştürme hattı
 
+### 3.1 Kullanıcının ilkesi: önce çevir, önizlet, onaylat
+
+Kullanıcının sözü (2026-11-10): "Her ne yüklenirse yüklensin bizim bu görselleri doğru formatta ve doğru bir şekilde, doğru verilerle, doğru optimizasyonla içeri aktarmamız gerekiyor. Bir çökme, patlama olmaması için. … O videonun yayınlanacağı halini biz çevirip hazırlayıp bir ön izleme yapmak lazım. Onaylarsa da yüklemek lazım."
+
+Bu ilke koda şöyle giriyor:
+
+1. **Okuma, sınırlarla.** Dosya boyutu, çözünürlük, kare sayısı ve çözücü belleği sınırlı. Bozuk dosya hata verir, çökmez (`kb-core::screen_import`).
+2. **Tek biçime çevirme.** Her şey 240×135 RGB565, 1–140 kare ve 1–254 gecikme baytına dönüşür. Klavyeye giden yol yalnızca bu doğrulanmış türü (`ScreenAnimation`) kabul eder; ham dosya hiçbir zaman klavyeye gitmez.
+3. **Önizleme, gönderilecek baytlardan.** Önizleme, klavyeye gidecek RGB565 verisinden çizilir; kullanıcı tam olarak ekranda göreceğini görür. Yükleme süresi ve aşınma da gösterilir.
+4. **Onay.** Yükleme yalnızca kullanıcının onayıyla başlar.
+5. **Kütüphane hazır hâli saklar.** Kütüphane özgün dosyayı değil, çevrilmiş sonucu saklar. Yeniden uygulamak aynı baytları gönderir; aynı içerik ikinci kez yüklenmez.
+6. **Arayüze güvenilmez.** Video ve görsel arayüzde (WebView2) çözülse bile Rust tarafı her kareyi ve sınırı yeniden doğrular.
+7. **Cihaz tarafı denetim.** Her sayfanın onayı okunur. Sınırlar kodda zorunlu. Yasak komutlar engelli (§6).
+
+### 3.2 Hat
+
 - **Kod çözme [çıkarım; prototipte doğrulanacak]**
   - WebView2, Chromium tabanlı olduğu için GIF, APNG, WebP, MP4 ve WebM'i kendisi çözebiliyor.
   - Animasyonlu görseller için WebCodecs `ImageDecoder` kare sürelerini de veriyor.
@@ -201,13 +217,13 @@ Kullanıcının sorusu: "Mevcut yazılımlarda, katmanlarda, çekirdekte veya si
 
 | # | Soru | Cevap | Durum |
 |---|---|---|---|
-| 1 | Animasyon nerede, sayfalar arasında nasıl geçiliyor? | Ayrı, tam ekran GIF sayfası. Fn+Home ve topuz menüsüyle geçiliyor. Saat paketi ana sayfaya çekiyor. | Kaynaklarda var; E1'de doğrulanacak |
+| 1 | Animasyon nerede, sayfalar arasında nasıl geçiliyor? | Ayrı, tam ekran GIF sayfası. Fn+Home ile geçiliyor. Saat paketi ana sayfaya çekiyor. | **Doğrulandı (E1)** |
 | 2 | Gerçek kare hızı sınırı? | 2 ms gecikme oynuyor; panelin sınırı bilinmiyor (AK820'de ~60 ms). | E3 |
-| 3 | Tek karede gecikme `00` mı `01` mi? | İkisi de çalışıyor. Resmi sürücü `max(1, ms/2)` yazıyor [doğrulandı: A `ak980pro_tft_protocol.md:100`]. Biz **`01`** göndereceğiz. | Karar verildi |
+| 3 | Tek karede gecikme `00` mı `01` mi? | İkisi de çalışıyor. Resmi sürücü `max(1, ms/2)` yazıyor [doğrulandı: A `ak980pro_tft_protocol.md:100`]. Biz tek karede **50** (100 ms) gönderiyoruz: S1'in AK980'de kullandığı değer, kareyi 2 ms'de bir yeniden çizdirmiyor. | **Doğrulandı (E1)** |
 | 4 | Kısa yükleme eski kareleri bırakıyor mu? | Başlıktaki kare sayısı neyin oynayacağını belirliyor; eski kareler büyük olasılıkla oynamıyor **[çıkarım]**. "Hayalet piksel" bildirimi başlıksız ve `04 F0`'lı bir yüklemeden geliyor [S7 0x5k]. | E3'te yan gözlem |
-| 5 | Yükleme sırasında ne oluyor? | Ekranda "LOADING %" gösteriliyor [doğrulandı: N1 dd46c24]. Işıkların söndüğü bildiriliyor [N12; W satıcı yorumu]. Yazma bilinmiyor. Yarıda kalırsa yalnızca GIF sayfası bozulur; saat paketi "loading" durumundan çıkarır [doğrulandı: S8 `pantalla.md:38-40`], yeniden yükleme düzeltir. | E1 |
+| 5 | Yükleme sırasında ne oluyor? | Ekranda "LOADING %" gösteriliyor [doğrulandı: N1 dd46c24; **bu klavye, E4**]. Işıkların söndüğü bildiriliyor [N12; W satıcı yorumu]. Yazma bilinmiyor. Yarıda kalırsa yalnızca GIF sayfası bozulur; saat paketi "loading" durumundan çıkarır [doğrulandı: S8 `pantalla.md:38-40`], yeniden yükleme düzeltir. | E1 |
 | 6 | Daha hızlı yükleme mümkün mü? | Hayır. Onayı beklemeden göndermek görüntüyü bozuyor ya da kalıcı olmuyor [doğrulandı: N1 README:142-143; N7 README:67,76]. Süreyi büyük olasılıkla 4 KiB sektör silme belirliyor **[çıkarım]**. | Kapandı |
-| 7 | Flash'sız yol var mı? | Stok firmware'de yok (§4.1). | Kapandı; E1 sayfa süresiyle teyit |
+| 7 | Flash'sız yol var mı? | Stok firmware'de yok (§4.1). Sayfa süresi ~143 ms, flash yazımıyla uyumlu. | **Kapandı (E1, E4)** |
 | 8 | Resmi yazılım ne sunuyor, farkımız ne? | GIF içe aktarma, fırça, silgi, metin ve kare kopyala/sil içeren basit editör, saat senkronu, yükleme. Video, tema, saat stili, varsayılana dönüş, kütüphane yok. Yalnızca Windows. Kullanıcılar sürücüyü bulmakta zorlanıyor ve uygulama ekranı ele geçiriyor [A; W4; S3]. Farkımız: §7. | Kapandı |
 
 **Çelişkili kaynak (E2 ile çözülecek):** Fişi çekip takmak ya da mod değiştirmek yüklenen görseli siliyor mu?
@@ -237,7 +253,7 @@ Kullanıcının sorusu: "Mevcut yazılımlarda, katmanlarda, çekirdekte veya si
   - Komutlar arasında 35 ms bekle [doğrulandı: A `cmd_delaytime`].
   - Klavye bağlandıktan sonra ~2 s bekle; iki yükleme arasında ≥2 s bekle [doğrulandı: N1 f22eb38, 4ca834b].
   - Ekran yüklemesi tek ve kesintisiz bir oturum olmalı. LED akışı yükleme boyunca durur. HID kilidi tek olmalı.
-  - `04 02` yanıtı aktarımın toplamını taşıyor (bayt 4–7) [doğrulandı: N8]. Gönderilenle karşılaştırılacak. Biçimi E1'de ölçülecek; makro ve tuş haritasında zaten bayt toplamını doğruluyoruz.
+  - `04 02` yanıtı bu klavyede ekran yüklemesinden sonra toplam taşımıyor: `04 02 00 01 00 00 00 00` [bu klavye, E1 ve E4]. Saat akışındaki gibi. Güvence, her sayfanın onayı (`01 5A 02 00`).
 - **16 MiB riski [çıkarım]**
   - AK35i'de kullanıcı bölgesi `0x950000`'da başlıyor. Oradan 140 kare 16 MiB'ı aşardı.
   - AK980'in kendi fabrika animasyonu ~135 kare ve resmi sürücü 140'a izin veriyor. Bu yüzden AK980'in bölgesi farklı bir adreste olmalı.

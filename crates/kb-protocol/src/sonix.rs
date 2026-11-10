@@ -29,6 +29,7 @@ pub const COLOR_TABLE_PACKETS: usize = 9;
 
 pub mod keymap;
 pub mod macros;
+pub mod screen;
 
 /// Command opcodes this project is allowed to send.
 ///
@@ -105,6 +106,8 @@ pub enum Blocked {
     Opcode(u8),
     #[error("packet is {0} bytes; expected at most {PAYLOAD}")]
     TooLong(usize),
+    #[error("display page is {0} bytes; expected exactly 4096")]
+    PageLength(usize),
 }
 
 /// What kind of packet the caller believes it is sending.
@@ -133,6 +136,19 @@ pub fn guard(packet: &[u8], kind: PacketKind) -> Result<(), Blocked> {
         if packet.first() != Some(&PREFIX) || Op::from_byte(op).is_none() {
             return Err(Blocked::Opcode(op));
         }
+    }
+    Ok(())
+}
+
+/// Guard for one display-channel (FF68) page: exactly 4096 bytes and never
+/// a firmware-update sequence. Pages are image data, so there is no opcode
+/// to check; the announce header before them goes through [`guard`].
+pub fn guard_screen_page(page: &[u8]) -> Result<(), Blocked> {
+    if page.len() != screen::PAGE {
+        return Err(Blocked::PageLength(page.len()));
+    }
+    if BOOTLOADER_MAGIC.iter().any(|m| page.starts_with(m)) {
+        return Err(Blocked::BootloaderMagic);
     }
     Ok(())
 }
@@ -365,6 +381,8 @@ pub enum Invalid {
     KeyAction(&'static str),
     #[error("invalid macro: {0}")]
     Macro(&'static str),
+    #[error("invalid screen image: {0}")]
+    Screen(&'static str),
 }
 
 /// Encode the data packet that follows `04 13`.
@@ -529,12 +547,23 @@ mod tests {
     #[test]
     fn guard_blocks_unknown_opcodes() {
         let mut p = header(Op::Begin, 0, 0);
-        for op in [0x38u8, 0x05, 0x10, 0x12, 0x22, 0x26, 0x50, 0xAB, 0xE0, 0xF1, 0xF6] {
+        // 38 writes external flash from address 0, 1F reboots into the
+        // bootloader, 50/51 are unverified resets.
+        for op in [0x38u8, 0x1F, 0x05, 0x10, 0x12, 0x22, 0x26, 0x50, 0x51, 0xAB, 0xE0, 0xF1, 0xF6] {
             p[1] = op;
             assert_eq!(guard(&p, PacketKind::Header), Err(Blocked::Opcode(op)), "op {op:02X}");
         }
         // A header must start with 04.
         assert!(guard(&[0x20, 0x01], PacketKind::Header).is_err());
+    }
+
+    #[test]
+    fn screen_page_guard() {
+        assert!(guard_screen_page(&[0u8; screen::PAGE]).is_ok());
+        assert_eq!(guard_screen_page(&[0u8; 64]), Err(Blocked::PageLength(64)));
+        let mut p = [0u8; screen::PAGE];
+        p[..8].copy_from_slice(&[0xAA, 0x42, 0x89, 0x5A, 0xFF, 0x71, 0x62, 0xCC]);
+        assert_eq!(guard_screen_page(&p), Err(Blocked::BootloaderMagic));
     }
 
     #[test]
