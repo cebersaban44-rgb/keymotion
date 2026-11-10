@@ -1796,6 +1796,8 @@ dependencies = [
 name = "klavye-studio"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "gif",
  "kb-core",
  "kb-devices",
  "kb-protocol",
