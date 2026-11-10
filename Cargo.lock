@@ -1809,6 +1809,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ts-rs",
+ "windows",
  "windows-version 0.100.0",
 ]
 
