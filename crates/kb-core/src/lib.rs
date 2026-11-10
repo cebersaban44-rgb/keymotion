@@ -2,6 +2,7 @@
 
 pub mod color;
 pub mod detect;
+pub mod readback;
 pub mod sonix;
 
 pub use detect::{detect, DetectedKeyboard};

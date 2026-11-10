@@ -297,6 +297,20 @@ impl EffectInfo {
     }
 }
 
+/// What the UI believes the keyboard shows, so the mirror can resolve the
+/// read-back's ambiguous red byte (`04 F5` reports red as `2·r mod 256`).
+#[derive(Debug, Clone, serde::Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct MirrorHint {
+    /// Brightness level (0–5) of the saved effect or design.
+    pub brightness: u8,
+    /// Single-colour firmware effect: its colour, `#RRGGBB`.
+    pub color: Option<String>,
+    /// Per-key design: the saved colours (keys not listed are off).
+    pub keys: Option<Vec<LedColor>>,
+}
+
 /// Effect settings as the UI edits them.
 #[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]

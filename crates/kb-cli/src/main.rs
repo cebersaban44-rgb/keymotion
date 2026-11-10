@@ -197,7 +197,7 @@ fn read_colors() -> Result<()> {
     let colors = drv.read_colors()?;
     let names: std::collections::HashMap<u8, &str> =
         model.geometry.iter().flat_map(|g| g.keys.iter().map(|k| (k.led, k.id.as_str()))).collect();
-    println!("{}: {} LED rengi okundu", model.name, colors.len());
+    println!("{}: {} LED rengi okundu (ham; kırmızı bayt 2·r mod 256)", model.name, colors.len());
     for (led, [r, g, b]) in colors {
         println!("  {:>3} {:<10} #{r:02X}{g:02X}{b:02X}", led, names.get(&led).copied().unwrap_or("?"));
     }
@@ -293,22 +293,25 @@ fn live(pattern: &str, color: &str, seconds: f32, fps: u32) -> Result<()> {
     Ok(())
 }
 
-/// Three phases of 0.6 s each, with an `04 F5` read at the end of each:
+/// Five phases of 0.6 s each, with an `04 F5` read at the end of each:
 /// A every key blue; B only Esc red (other keys not given); C Esc red and
-/// every other key sent explicitly as black.
+/// every other key sent explicitly as black; D every key grey #808080 and
+/// E violet #8B5CF6, which show how F5 reports red (`2·r mod 256`).
 fn live_probe() -> Result<()> {
     let (mut drv, model) = open_command()?;
     let geo = model.geometry.as_ref().context("modelde geometri yok")?;
     let esc = geo.keys.iter().find(|k| k.id == "esc").context("esc yok")?.led;
     let keys: Vec<u8> = geo.keys.iter().map(|k| k.led).collect();
     type Frame = Vec<(u8, [u8; 3])>;
-    let phases: [(&str, Frame); 3] = [
+    let phases: [(&str, Frame); 5] = [
         ("A: tüm tuşlar mavi", keys.iter().map(|&l| (l, [0, 0, 255])).collect()),
         ("B: yalnızca Esc kırmızı (diğer tuşlar verilmedi)", vec![(esc, [255, 0, 0])]),
         (
             "C: Esc kırmızı, diğerleri açıkça siyah",
             keys.iter().map(|&l| (l, if l == esc { [255, 0, 0] } else { [0, 0, 0] })).collect(),
         ),
+        ("D: tüm tuşlar gri #808080", keys.iter().map(|&l| (l, [0x80, 0x80, 0x80])).collect()),
+        ("E: tüm tuşlar mor #8B5CF6", keys.iter().map(|&l| (l, [0x8B, 0x5C, 0xF6])).collect()),
     ];
     for (name, frame) in phases {
         let start = std::time::Instant::now();
@@ -336,7 +339,13 @@ fn live_probe() -> Result<()> {
             .filter_map(|k| {
                 let want = frame.iter().find(|(l, _)| *l == k.led).map(|(_, c)| *c);
                 let got = shown.get(&k.led).copied().unwrap_or([0, 0, 0]);
-                let close = |w: [u8; 3]| w.iter().zip(got).all(|(a, b)| a.abs_diff(b) <= 4);
+                // F5 reports red as 2·r mod 256: either value of the byte counts.
+                let red = kb_protocol::sonix::readback_red_candidates(got[0]);
+                let close = |w: [u8; 3]| {
+                    red.iter().any(|r| r.abs_diff(w[0]) <= 4)
+                        && w[1].abs_diff(got[1]) <= 4
+                        && w[2].abs_diff(got[2]) <= 4
+                };
                 match want {
                     Some(w) if !close(w) => {
                         Some(format!("{}(led {}) #{:02X}{:02X}{:02X}", k.id, k.led, got[0], got[1], got[2]))

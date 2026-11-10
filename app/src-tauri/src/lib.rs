@@ -8,9 +8,10 @@ mod device;
 mod dto;
 mod settings;
 
-use device::{DeviceHandle, LiveFrame, Request};
+use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request};
 use dto::{
-    Calibration, CalibrationInfo, EffectInfo, EffectRequest, KeyboardInfo, LedColor, ThemePreference, UiEnvironment,
+    Calibration, CalibrationInfo, EffectInfo, EffectRequest, KeyboardInfo, LedColor, MirrorHint, ThemePreference,
+    UiEnvironment,
 };
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -73,21 +74,39 @@ async fn apply_per_key(device: Device<'_>, colors: Vec<LedColor>, brightness: u8
 }
 
 /// Start/update (`Some`) or stop (`None`) the RAM-only live frame.
-/// `brightness` (0–5, default 5) dims linearly after calibration, like the
-/// firmware's brightness setting.
+/// `brightness` (0–5, default 5) dims after calibration with the
+/// firmware's own brightness scale, so a preview matches the saved design.
 #[tauri::command]
 fn set_live_frame(device: Device<'_>, colors: Option<Vec<LedColor>>, brightness: Option<u8>) -> Result<(), String> {
     tracing::trace!(keys = colors.as_ref().map(Vec::len), brightness, "ipc: set_live_frame");
-    let level = f32::from(brightness.unwrap_or(5).min(5)) / 5.0;
+    let level = kb_protocol::sonix::level_factor(brightness.unwrap_or(5));
     let frame = colors.map(|c| LiveFrame { colors: c.into_iter().map(|c| (c.led, [c.r, c.g, c.b])).collect(), level });
     device.send(Request::SetLive(frame))
 }
 
-/// Mirror the colours shown on the keyboard into the UI (`lighting-mirror` events).
+/// Mirror the colours shown on the keyboard into the UI (`lighting-mirror`
+/// events). `hint` says what the app last saved to the keyboard; it
+/// resolves the read-back's ambiguous red channel.
 #[tauri::command]
-fn set_mirror(device: Device<'_>, enabled: bool) -> Result<(), String> {
-    tracing::debug!(enabled, "ipc: set_mirror");
-    device.send(Request::SetMirror(enabled))
+fn set_mirror(device: Device<'_>, enabled: bool, hint: Option<MirrorHint>) -> Result<(), String> {
+    tracing::debug!(enabled, ?hint, "ipc: set_mirror");
+    if !enabled {
+        return device.send(Request::SetMirror(None));
+    }
+    let expect = match hint {
+        None => MirrorExpect { level: kb_protocol::sonix::MAX_LEVEL, colors: Expected::Unknown },
+        Some(h) => {
+            let colors = if let Some(keys) = h.keys {
+                Expected::PerKey(keys.into_iter().map(|c| (c.led, [c.r, c.g, c.b])).collect())
+            } else if let Some(hex) = h.color {
+                Expected::Uniform(dto::parse_hex(&hex)?)
+            } else {
+                Expected::Unknown
+            };
+            MirrorExpect { level: h.brightness, colors }
+        }
+    };
+    device.send(Request::SetMirror(Some(expect)))
 }
 
 #[tauri::command]
