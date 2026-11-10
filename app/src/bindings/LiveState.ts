@@ -26,4 +26,8 @@ nowPlaying: boolean, track: TrackInfo | null,
  * A live card is on the GIF page and this library item was there
  * before it.
  */
-restore: LiveRestore | null, };
+restore: LiveRestore | null, 
+/**
+ * The Pomodoro holds the screen while it runs: "Çalan şarkı" waits.
+ */
+held: boolean, };

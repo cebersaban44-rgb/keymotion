@@ -1,7 +1,7 @@
 // "Canlı ekran": the live mode switch, its upload budget and the sources
 // (phase C). The backend runs the live mode; this only shows and sets it.
 
-import { AlertTriangle, Clock3, Loader2, Music2, Radio, RotateCcw, Upload, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, Clock3, Loader2, Music2, Radio, RotateCcw, Timer, Upload, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import type { LivePlan } from "../../bindings/LivePlan";
@@ -10,6 +10,7 @@ import type { LiveState } from "../../bindings/LiveState";
 import { Segmented, Toggle } from "../../components/controls";
 import { useT, type MessageKey } from "../../lib/i18n";
 import { fmtWait, useLive } from "../../lib/live";
+import { PHASE_COLOR, fmtClock, remainingNow, usePomodoro } from "../../lib/pomodoro";
 import { uploadSeconds } from "../../lib/screenImport";
 import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useNow } from "./common";
 
@@ -84,6 +85,7 @@ export function LivePanel({ usb }: { usb: boolean }) {
             </div>
             {s.enabled && s.nowPlaying && <TrackLine s={s} />}
           </div>
+          <PomodoroSource />
         </div>
       </div>
 
@@ -247,8 +249,14 @@ function BudgetLine({ s }: { s: LiveState }) {
 function TrackLine({ s }: { s: LiveState }) {
   const t = useT();
   const tr = s.track;
-  if (!tr) return <p className="text-[12px] text-ink-3">{t("sc.live.np.none")}</p>;
-  const state = !tr.playing ? t("sc.live.np.paused") : tr.settled ? t("sc.live.np.settled") : t("sc.live.np.settling");
+  if (!tr) return <p className="text-[12px] text-ink-3">{s.held ? t("sc.live.np.held") : t("sc.live.np.none")}</p>;
+  const state = s.held
+    ? t("sc.live.np.held")
+    : !tr.playing
+      ? t("sc.live.np.paused")
+      : tr.settled
+        ? t("sc.live.np.settled")
+        : t("sc.live.np.settling");
   return (
     <div className="flex flex-col gap-0.5 rounded-lg bg-surface-2/60 px-2.5 py-2" data-track>
       <span className="truncate text-[12.5px] font-medium">
@@ -258,6 +266,58 @@ function TrackLine({ s }: { s: LiveState }) {
         {tr.app ? `${tr.app} · ` : ""}
         {state}
       </span>
+    </div>
+  );
+}
+
+/** The Pomodoro as a source: its screen-card switch and where it stands.
+ *  The timer itself is in the Pomodoro section below. */
+function PomodoroSource() {
+  const t = useT();
+  const p = usePomodoro((x) => x.state);
+  const configure = usePomodoro((x) => x.configure);
+  if (!p) return null;
+  const idle = p.status === "idle";
+  const phase =
+    p.phase === "focus" ? t("pomo.phase.focus") : p.phase === "shortBreak" ? t("pomo.phase.shortBreak") : t("pomo.phase.longBreak");
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-line p-3" data-live-pomodoro>
+      <div className="flex items-start justify-between gap-3">
+        <span className="flex items-start gap-2.5">
+          <Timer size={16} className="mt-0.5 shrink-0 text-signal" />
+          <span className="flex flex-col">
+            <span className="text-[13px] font-semibold">{t("sc.live.pomo")}</span>
+            <span className="text-[11.5px] text-ink-3">{t("sc.live.pomo.body")}</span>
+          </span>
+        </span>
+        <Toggle
+          checked={p.settings.screen}
+          onChange={(screen) => configure({ screen }).catch(console.error)}
+          label={t("sc.live.pomo")}
+        />
+      </div>
+      <button
+        type="button"
+        onClick={() => document.querySelector("[data-pomodoro]")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        className="flex items-center justify-between gap-2 rounded-lg bg-surface-2/60 px-2.5 py-2 text-left text-[12.5px] hover:bg-surface-2"
+      >
+        <span className="flex items-center gap-2">
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{ background: idle ? "var(--ink-3)" : PHASE_COLOR[p.phase] }}
+            aria-hidden
+          />
+          {idle ? (
+            <span className="text-ink-3">{t("pomo.idle")}</span>
+          ) : (
+            <span className="num">
+              {phase} · {fmtClock(remainingNow(p))}
+              {p.status === "paused" && <span className="text-ink-3"> · {t("pomo.paused")}</span>}
+            </span>
+          )}
+        </span>
+        <ChevronDown size={14} className="text-ink-3" />
+      </button>
     </div>
   );
 }
