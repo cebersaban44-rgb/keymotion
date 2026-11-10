@@ -927,14 +927,24 @@ Kullanıcının fikirleri. Şimdi yapılmayacak; uygulamanın bütün özellikle
     - ekrana metin ya da görsel;
     - onay bekliyor, ret, hata, bitti gibi durumlar için renk ve dalga;
     - odak modunu başlatıp takip etmek.
-  - Kullanıcılar için uygulama var; ajanlar için de "doğal" kullanılabilen bir araç gerekiyor.
-  - İlk öneri: Uygulama yerel bir API açar, klavyeyi tek sahip olarak yine o sürer. Bu API'nin üç ince yüzü olur:
-    - ajan kancaları (otomatik durum);
-    - CLI (`kb` genişler);
-    - MCP sunucusu.
-  - Ajan ham renk değil anlam gönderir ("bekliyor", "başarılı", "hata"…); nasıl görüneceğini kullanıcı seçer.
-  - Sık sinyaller tuş ışığıyla (RAM) verilir; ekran (flash) yalnızca seyrek ve önemli mesajlar için, bütçeli.
-  - Ön şart: P3'teki arka plan servisi (tepside çalışan uygulama).
+  - Kullanıcının istekleri:
+    - tek ve sağlam bir yapı;
+    - ajanın doğal olarak (terminalden) kullanması;
+    - uygulamanın penceresi açılmadan çalışması;
+    - davranışı ajanın kendisinin belirlemesi (hazır kalıplar olur ama zorunlu değil);
+    - bağlamı şişirmemesi;
+    - görsellerin kontrol ve testlerle sınırlanması.
+  - Güncel öneri (karar değil):
+    - **Tek bir CLI** ajanın tek arayüzü olur (adı açık, ör. `klavye`).
+    - Arkasında klavyeyi tek sahip olarak süren bir **motor** çalışır. Motor penceresizdir; CLI onu gerekince kendisi başlatır. Klavye Stüdyo penceresi de aynı motora bağlanır.
+    - Ajana üç düzeyde serbestlik verilir:
+      - ilkel komutlar (renk, tuş, dalga, nabız, süre);
+      - JSON sahne dosyası;
+      - hazır ya da ajanın kendi kaydettiği kalıplar.
+    - Ajanın ışıkları kendi katmanında ve süreli durur; bitince alttaki hâle döner.
+    - Tuş ışığı serbest; ekran (kalıcı bellek) bütçeli ve izinli.
+    - MCP ve beceri dosyası ayrı yapılar değil: gerekirse aynı CLI'ın üstüne ince bir sarmalayıcı ya da bir iki satırlık bir işaret.
+  - Ön şart: P3'teki arka plan servisi (penceresiz çalışma).
 
 ### P3 — Ürünleştirme
 - [ ] Arka plan servisi:
