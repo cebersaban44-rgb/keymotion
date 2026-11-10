@@ -1,0 +1,162 @@
+# AJAZZ AK980 PRO — ekranlı üç modlu sürüm.
+# `verified = true` yalnızca bu projede gerçek cihazda ölçülen bilgiler içindir.
+# Kaynaklar: docs/teknik-analiz.md, docs/research/
+
+id = "ajazz-ak980-pro"
+name = "AJAZZ AK980 PRO"
+vendor = "AJAZZ"
+protocol = "sonix-ff13"
+layout = "98"
+key_count = 97
+has_knob = true
+has_side_light = true
+
+[screen]
+width = 240
+height = 135
+pixel_format = "rgb565-le"
+verified = false
+
+# Verified 2026-11-10 on fw 0x0106: IDs, product "AK980 PRO", FF13/FF68
+# interfaces, F5 read-back and the 04 20 real-time stream (docs/donanim-dogrulama.md).
+[[modes]]
+kind = "usb"
+vid = 0x0C45
+pid = 0x8009
+product_contains = "AK980"
+command_usage_page = 0xFF13
+display_usage_page = 0xFF68
+capabilities = ["lighting", "per-key-rgb", "keymap", "macros", "options", "screen", "clock"]
+verified = true
+
+[[modes]]
+kind = "dongle"
+vid = 0x0C45
+pid = 0xFEFE
+command_usage_page = 0xFF60
+capabilities = ["lighting", "clock", "battery"]
+verified = false
+
+[[modes]]
+kind = "bluetooth"
+vid = 0x0C45
+pid = 0xFEFE
+ble_name_prefix = "AK980 PRO"
+capabilities = ["battery"]
+verified = true
+
+# Physical geometry in key units (1u = one standard key).
+# Positions: measured from a top-down photo of the user's board (2026-11-10,
+# ~89.6 px/u). LED indices: vendor rgb-keyboard.xml map as documented in
+# docs/research/protokol-ff13.md §5.2 (LED index = keymap index).
+[geometry]
+width = 20.5
+height = 6.5
+source = "photo-2026-11-10 + vendor LED map"
+screen = { x = 16.5, y = 0.0, w = 3.0, h = 1.0 }
+knob = { x = 19.5, y = 0.0, d = 1.0 }
+keys = [
+  # Row 0
+  { id = "esc", label = "Esc", led = 1, x = 0.0, y = 0.0 },
+  { id = "f1", label = "F1", led = 2, x = 2.0, y = 0.0 },
+  { id = "f2", label = "F2", led = 3, x = 3.0, y = 0.0 },
+  { id = "f3", label = "F3", led = 4, x = 4.0, y = 0.0 },
+  { id = "f4", label = "F4", led = 5, x = 5.0, y = 0.0 },
+  { id = "f5", label = "F5", led = 6, x = 6.25, y = 0.0 },
+  { id = "f6", label = "F6", led = 7, x = 7.25, y = 0.0 },
+  { id = "f7", label = "F7", led = 8, x = 8.25, y = 0.0 },
+  { id = "f8", label = "F8", led = 9, x = 9.25, y = 0.0 },
+  { id = "f9", label = "F9", led = 10, x = 10.75, y = 0.0 },
+  { id = "f10", label = "F10", led = 11, x = 11.75, y = 0.0 },
+  { id = "f11", label = "F11", led = 12, x = 12.75, y = 0.0 },
+  { id = "f12", label = "F12", led = 13, x = 13.75, y = 0.0 },
+  { id = "delete", label = "Del", led = 119, x = 15.25, y = 0.0 },
+  # Row 1
+  { id = "grave", label = "`", led = 19, x = 0.0, y = 1.4 },
+  { id = "1", label = "1", led = 20, x = 1.0, y = 1.4 },
+  { id = "2", label = "2", led = 21, x = 2.0, y = 1.4 },
+  { id = "3", label = "3", led = 22, x = 3.0, y = 1.4 },
+  { id = "4", label = "4", led = 23, x = 4.0, y = 1.4 },
+  { id = "5", label = "5", led = 24, x = 5.0, y = 1.4 },
+  { id = "6", label = "6", led = 25, x = 6.0, y = 1.4 },
+  { id = "7", label = "7", led = 26, x = 7.0, y = 1.4 },
+  { id = "8", label = "8", led = 27, x = 8.0, y = 1.4 },
+  { id = "9", label = "9", led = 28, x = 9.0, y = 1.4 },
+  { id = "0", label = "0", led = 29, x = 10.0, y = 1.4 },
+  { id = "minus", label = "-", led = 30, x = 11.0, y = 1.4 },
+  { id = "equal", label = "=", led = 31, x = 12.0, y = 1.4 },
+  { id = "backspace", label = "Backspace", led = 103, x = 13.0, y = 1.4, w = 2.0 },
+  { id = "home", label = "Home", led = 117, x = 15.25, y = 1.4 },
+  { id = "numlock", label = "Num", led = 32, x = 16.5, y = 1.4 },
+  { id = "kp-slash", label = "/", led = 33, x = 17.5, y = 1.4 },
+  { id = "kp-star", label = "*", led = 34, x = 18.5, y = 1.4 },
+  { id = "kp-minus", label = "−", led = 122, x = 19.5, y = 1.4 },
+  # Row 2
+  { id = "tab", label = "Tab", led = 37, x = 0.0, y = 2.4, w = 1.5 },
+  { id = "q", label = "Q", led = 38, x = 1.5, y = 2.4 },
+  { id = "w", label = "W", led = 39, x = 2.5, y = 2.4 },
+  { id = "e", label = "E", led = 40, x = 3.5, y = 2.4 },
+  { id = "r", label = "R", led = 41, x = 4.5, y = 2.4 },
+  { id = "t", label = "T", led = 42, x = 5.5, y = 2.4 },
+  { id = "y", label = "Y", led = 43, x = 6.5, y = 2.4 },
+  { id = "u", label = "U", led = 44, x = 7.5, y = 2.4 },
+  { id = "i", label = "I", led = 45, x = 8.5, y = 2.4 },
+  { id = "o", label = "O", led = 46, x = 9.5, y = 2.4 },
+  { id = "p", label = "P", led = 47, x = 10.5, y = 2.4 },
+  { id = "lbracket", label = "[", led = 48, x = 11.5, y = 2.4 },
+  { id = "rbracket", label = "]", led = 49, x = 12.5, y = 2.4 },
+  { id = "backslash", label = "\\", led = 67, x = 13.5, y = 2.4, w = 1.5 },
+  { id = "pgup", label = "PgUp", led = 118, x = 15.25, y = 2.4 },
+  { id = "kp7", label = "7", led = 50, x = 16.5, y = 2.4 },
+  { id = "kp8", label = "8", led = 51, x = 17.5, y = 2.4 },
+  { id = "kp9", label = "9", led = 52, x = 18.5, y = 2.4 },
+  { id = "kp-plus", label = "+", led = 123, x = 19.5, y = 2.4, h = 2.0 },
+  # Row 3
+  { id = "caps", label = "Caps", led = 55, x = 0.0, y = 3.4, w = 1.75 },
+  { id = "a", label = "A", led = 56, x = 1.75, y = 3.4 },
+  { id = "s", label = "S", led = 57, x = 2.75, y = 3.4 },
+  { id = "d", label = "D", led = 58, x = 3.75, y = 3.4 },
+  { id = "f", label = "F", led = 59, x = 4.75, y = 3.4 },
+  { id = "g", label = "G", led = 60, x = 5.75, y = 3.4 },
+  { id = "h", label = "H", led = 61, x = 6.75, y = 3.4 },
+  { id = "j", label = "J", led = 62, x = 7.75, y = 3.4 },
+  { id = "k", label = "K", led = 63, x = 8.75, y = 3.4 },
+  { id = "l", label = "L", led = 64, x = 9.75, y = 3.4 },
+  { id = "semicolon", label = ";", led = 65, x = 10.75, y = 3.4 },
+  { id = "quote", label = "'", led = 66, x = 11.75, y = 3.4 },
+  { id = "enter", label = "Enter", led = 85, x = 12.75, y = 3.4, w = 2.25 },
+  { id = "pgdn", label = "PgDn", led = 121, x = 15.25, y = 3.4 },
+  { id = "kp4", label = "4", led = 68, x = 16.5, y = 3.4 },
+  { id = "kp5", label = "5", led = 69, x = 17.5, y = 3.4 },
+  { id = "kp6", label = "6", led = 70, x = 18.5, y = 3.4 },
+  # Row 4
+  { id = "lshift", label = "Shift", led = 73, x = 0.0, y = 4.4, w = 2.25 },
+  { id = "z", label = "Z", led = 74, x = 2.25, y = 4.4 },
+  { id = "x", label = "X", led = 75, x = 3.25, y = 4.4 },
+  { id = "c", label = "C", led = 76, x = 4.25, y = 4.4 },
+  { id = "v", label = "V", led = 77, x = 5.25, y = 4.4 },
+  { id = "b", label = "B", led = 78, x = 6.25, y = 4.4 },
+  { id = "n", label = "N", led = 79, x = 7.25, y = 4.4 },
+  { id = "m", label = "M", led = 80, x = 8.25, y = 4.4 },
+  { id = "comma", label = ",", led = 81, x = 9.25, y = 4.4 },
+  { id = "period", label = ".", led = 82, x = 10.25, y = 4.4 },
+  { id = "slash", label = "/", led = 83, x = 11.25, y = 4.4 },
+  { id = "rshift", label = "Shift", led = 84, x = 12.25, y = 4.4, w = 1.5 },
+  { id = "up", label = "↑", led = 101, x = 13.85, y = 4.5 },
+  { id = "kp1", label = "1", led = 86, x = 16.5, y = 4.4 },
+  { id = "kp2", label = "2", led = 87, x = 17.5, y = 4.4 },
+  { id = "kp3", label = "3", led = 88, x = 18.5, y = 4.4 },
+  { id = "kp-enter", label = "Enter", led = 106, x = 19.5, y = 4.4, h = 2.0 },
+  # Row 5
+  { id = "lctrl", label = "Ctrl", led = 91, x = 0.0, y = 5.4, w = 1.25 },
+  { id = "lwin", label = "Win", led = 92, x = 1.25, y = 5.4, w = 1.25 },
+  { id = "lalt", label = "Alt", led = 93, x = 2.5, y = 5.4, w = 1.25 },
+  { id = "space", label = "", led = 94, x = 3.75, y = 5.4, w = 6.0 },
+  { id = "fn", label = "Fn", led = 96, x = 9.75, y = 5.4, w = 1.25 },
+  { id = "rctrl", label = "Ctrl", led = 98, x = 11.0, y = 5.4, w = 1.25 },
+  { id = "left", label = "←", led = 99, x = 12.85, y = 5.5 },
+  { id = "down", label = "↓", led = 100, x = 13.85, y = 5.5 },
+  { id = "right", label = "→", led = 102, x = 14.85, y = 5.5 },
+  { id = "kp0", label = "0", led = 104, x = 16.5, y = 5.4, w = 2.0 },
+  { id = "kp-dot", label = ".", led = 105, x = 18.5, y = 5.4 },
+]

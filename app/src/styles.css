@@ -1,0 +1,398 @@
+@import "tailwindcss";
+@import "@fontsource-variable/bricolage-grotesque";
+@import "@fontsource-variable/instrument-sans";
+@import "@fontsource-variable/jetbrains-mono";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ------------------------------------------------------------------
+   Tokens. Anodized aluminium surfaces; the only saturated colour in the
+   chrome is the "signal" orange of an indicator LED. Keyboard lighting
+   brings every other colour.
+   ------------------------------------------------------------------ */
+:root,
+:root[data-theme="dark"] {
+  --bg: #0d0e10;
+  --bg-raise: #131417;
+  --surface: #17191c;
+  --surface-2: #1d2024;
+  --line: rgb(255 255 255 / 0.07);
+  --line-strong: rgb(255 255 255 / 0.13);
+  --ink: #ece9e3;
+  --ink-2: #a9a8a4;
+  --ink-3: #6c6d70;
+  --signal: #ff8a3d;
+  --signal-ink: #1a0d04;
+  --ok: #5fd39a;
+  --warn: #f2c14e;
+  --danger: #ff5d5d;
+  --plate: #0a0b0d;
+  --key-top: #2a2d32;
+  --key-side: #1c1e22;
+  --key-edge: rgb(255 255 255 / 0.06);
+  --key-legend: #d9d6cf;
+  --shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 18px 40px -24px rgb(0 0 0 / 0.8);
+  --grain-opacity: 0.05;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #ebe9e4;
+  --bg-raise: #f2f0ec;
+  --surface: #f8f7f4;
+  --surface-2: #ffffff;
+  --line: rgb(20 20 24 / 0.08);
+  --line-strong: rgb(20 20 24 / 0.16);
+  --ink: #16171a;
+  --ink-2: #55565b;
+  --ink-3: #8a8b8f;
+  --signal: #f0701f;
+  --signal-ink: #ffffff;
+  --ok: #1f9d63;
+  --warn: #b7860b;
+  --danger: #d23b3b;
+  --plate: #23262b;
+  --key-top: #f6f4ef;
+  --key-side: #d9d5cc;
+  --key-edge: rgb(0 0 0 / 0.08);
+  --key-legend: #2a2b2f;
+  --shadow: 0 1px 0 rgb(255 255 255 / 0.8) inset, 0 18px 40px -26px rgb(40 30 20 / 0.45);
+  --grain-opacity: 0.035;
+  color-scheme: light;
+}
+
+/* Windows 11 Mica shows through the window background. */
+:root[data-mica="true"][data-theme="dark"] {
+  --bg: rgb(13 14 16 / 0.55);
+  --bg-raise: rgb(19 20 23 / 0.5);
+}
+:root[data-mica="true"][data-theme="light"] {
+  --bg: rgb(235 233 228 / 0.55);
+  --bg-raise: rgb(242 240 236 / 0.55);
+}
+
+@theme inline {
+  --font-display: "Bricolage Grotesque Variable", ui-sans-serif, sans-serif;
+  --font-sans: "Instrument Sans Variable", ui-sans-serif, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+
+  --color-bg: var(--bg);
+  --color-bg-raise: var(--bg-raise);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-signal: var(--signal);
+  --color-signal-ink: var(--signal-ink);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "ss01", "cv11";
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Film grain over everything, very faint. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+
+/* Thin scrollbars that match the chrome. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+/* ------------------------------------------------------------------
+   Keyboard render. Units are keyboard units (1u = one standard key);
+   --u is set from the container width with container query units.
+   ------------------------------------------------------------------ */
+@property --hue {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 20;
+}
+
+/* Registered so key colours can transition (mirror updates, painting). */
+@property --c {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+/* Static colours (mirror / per-key): no idle animation, smooth changes. */
+.kb-static .kb-led,
+.kb-static .kb-key {
+  animation: none;
+  transition: --c 220ms ease-out;
+}
+
+.kb-paint .kb-key {
+  cursor: crosshair;
+  text-align: left;
+  touch-action: none;
+}
+
+.kb-paint .kb-key:hover {
+  border-color: var(--line-strong);
+  filter: brightness(1.12);
+}
+
+.kb-paint .kb-key:focus-visible {
+  outline-offset: 1px;
+}
+
+.kb-stage {
+  container-type: inline-size;
+}
+
+.kb {
+  position: relative;
+  width: 100%;
+  height: calc(var(--rows) * var(--u));
+  --gap: calc(var(--u) * 0.06);
+}
+
+.kb-led {
+  position: absolute;
+  left: calc(var(--x) * var(--u));
+  top: calc(var(--y) * var(--u));
+  width: calc(var(--w) * var(--u));
+  height: calc(var(--h) * var(--u));
+  pointer-events: none;
+  --c: oklch(0.74 0.19 var(--hue));
+  animation: hueflow 14s linear infinite, led-in 900ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(var(--x) * -0.42s), calc(var(--x) * 38ms + 200ms);
+}
+
+.kb-led::before {
+  content: "";
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: -4%;
+  height: 42%;
+  border-radius: 50%;
+  background: var(--c);
+  filter: blur(calc(var(--u) * 0.22));
+  opacity: 0.85;
+}
+
+[data-theme="light"] .kb-led::before {
+  opacity: 0.7;
+}
+
+.kb-key {
+  position: absolute;
+  left: calc(var(--x) * var(--u) + var(--gap));
+  top: calc(var(--y) * var(--u) + var(--gap));
+  width: calc(var(--w) * var(--u) - var(--gap) * 2);
+  height: calc(var(--h) * var(--u) - var(--gap) * 2);
+  border-radius: calc(var(--u) * 0.14);
+  background:
+    linear-gradient(180deg, var(--key-top) 0%, var(--key-top) 62%, var(--key-side) 100%);
+  border: 1px solid var(--key-edge);
+  box-shadow:
+    inset 0 calc(var(--u) * -0.05) 0 0 color-mix(in oklch, var(--c, transparent) 55%, transparent),
+    0 calc(var(--u) * 0.03) calc(var(--u) * 0.06) rgb(0 0 0 / 0.35);
+  color: var(--key-legend);
+  font-family: var(--font-mono);
+  font-size: calc(var(--u) * 0.2);
+  line-height: 1.1;
+  padding: calc(var(--u) * 0.1) calc(var(--u) * 0.12);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  overflow: hidden;
+  white-space: nowrap;
+  --c: oklch(0.74 0.19 var(--hue));
+  animation: hueflow 14s linear infinite;
+  animation-delay: calc(var(--x) * -0.42s);
+}
+
+.kb-key .sub {
+  margin-top: auto;
+  opacity: 0.55;
+  font-size: calc(var(--u) * 0.16);
+}
+
+.kb-screen {
+  position: absolute;
+  border-radius: calc(var(--u) * 0.12);
+  background: #050607;
+  border: calc(var(--u) * 0.05) solid #1f2125;
+  box-shadow: inset 0 0 calc(var(--u) * 0.3) rgb(255 138 61 / 0.12);
+  overflow: hidden;
+}
+
+.kb-knob {
+  position: absolute;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 40% 35%, #5a5e66 0%, #2b2e33 55%, #16181b 100%);
+  box-shadow:
+    0 0 0 calc(var(--u) * 0.05) #0e0f11,
+    0 0 0 calc(var(--u) * 0.11) transparent,
+    0 calc(var(--u) * 0.06) calc(var(--u) * 0.14) rgb(0 0 0 / 0.5);
+}
+
+.kb-knob::after {
+  content: "";
+  position: absolute;
+  inset: 7%;
+  border-radius: 50%;
+  background: repeating-conic-gradient(rgb(255 255 255 / 0.1) 0 4deg, transparent 4deg 9deg);
+  mask: radial-gradient(circle, transparent 62%, #000 64%);
+}
+
+/* ------------------------------------------------------------------
+   Effect swatches: 7×2 mini keys approximating each firmware effect.
+   ------------------------------------------------------------------ */
+.fx {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.fx span {
+  aspect-ratio: 1;
+  border-radius: 3px;
+  --hue: 20;
+  --c: var(--fx-color);
+  background: var(--c);
+  box-shadow: 0 0 6px color-mix(in oklch, var(--c) 70%, transparent);
+}
+
+.fx-rainbow span,
+.fx-spectrum span {
+  --c: oklch(0.74 0.19 var(--hue));
+}
+
+.fx-rainbow span {
+  --hue: calc(var(--col) * 45);
+}
+
+.fx-wave span {
+  animation: hueflow 3.2s linear infinite;
+  animation-delay: calc(var(--col) * -0.25s);
+}
+
+.fx-wave:not(.fx-rainbow) span {
+  animation: pulse 1.8s ease-in-out infinite;
+  animation-delay: calc(var(--col) * 0.12s);
+}
+
+.fx-spectrum span {
+  animation: hueflow 4s linear infinite;
+}
+
+.fx-breath span {
+  animation: pulse 2.6s ease-in-out infinite;
+}
+
+.fx-sparkle span {
+  animation: pulse 1.4s ease-in-out infinite;
+  animation-delay: calc(var(--i) * 0.37s);
+}
+
+.fx-ripple span {
+  animation: pulse 2s ease-out infinite;
+  animation-delay: calc((var(--col) - 3) * (var(--col) - 3) * 0.06s);
+}
+
+.fx-off span {
+  --c: var(--line-strong);
+  box-shadow: none;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.18;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes hueflow {
+  from {
+    --hue: 0;
+  }
+  to {
+    --hue: 360;
+  }
+}
+
+@keyframes led-in {
+  from {
+    opacity: 0;
+    transform: translateY(12%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

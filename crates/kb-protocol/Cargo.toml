@@ -1,0 +1,13 @@
+[package]
+name = "kb-protocol"
+description = "Pure packet encoding/decoding for keyboard protocol families. No I/O; compiles to WebAssembly."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[lints]
+workspace = true

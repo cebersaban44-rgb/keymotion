@@ -1,0 +1,202 @@
+[
+  {
+    "id": 1,
+    "name": "Static",
+    "brightness": true,
+    "speed": false,
+    "color": true,
+    "rainbow": true,
+    "directions": 0,
+    "factoryDefault": false
+  },
+  {
+    "id": 2,
+    "name": "Single on",
+    "brightness": true,
+    "speed": true,
+    "color": true,
+    "rainbow": true,
+    "directions": 0,
+    "factoryDefault": false
+  },
+  {
+    "id": 3,
+    "name": "Single off",
+    "brightness": true,
+    "speed": true,
+    "color": true,
+    "rainbow": true,
+    "directions": 0,
+    "factoryDefault": false
+  },
+  {
+    "id": 4,
+    "name": "Glittering",
+    "brightness": true,
+    "speed": true,
+    "color": true,
+    "rainbow": true,
+    "directions": 0,
+    "factoryDefault": false
+  },
+  {
+    "id": 5,
+    "name": "Fluttering",
+    "brightness": true,
+    "speed": true,
+    "color": true,
+    "rainbow": true,
+    "directions": 0,
+    "factoryDefault": false
+  },
+  {
+    "id": 6,
+    "name": "Colourful",
+    "brightness": true,
+    "speed": true,
+    "color": false,
+    "rainbow": false,
+    "directions": 0,
+    "factoryDefault": false
+  },
+  {
+    "id": 7,
+    "name": "Breath",
+    "brightness": true,
+    "speed": true,
+    "color": true,
+    "rainbow": true,
+    "directions": 0,
+    "factoryDefault": false
+  },
+  {
+    "id": 8,
+    "name": "Spectrum",
+    "brightness": true,
+    "speed": true,
+    "color": false,
+    "rainbow": false,
+    "directions": 0,
+    "factoryDefault": false
+  },
+  {
+    "id": 9,
+    "name": "Outward",
+    "brightness": true,
+    "speed": true,
+    "color": true,
+    "rainbow": true,
+    "directions": 0,
+    "factoryDefault": false
+  },
+  {
+    "id": 10,
+    "name": "Scrolling",
+    "brightness": true,
+    "speed": true,
+    "color": true,
+    "rainbow": true,
+    "directions": 4,
+    "factoryDefault": false
+  },
+  {
+    "id": 11,
+    "name": "Rolling",
+    "brightness": true,
+    "speed": true,
+    "color": true,
+    "rainbow": true,
+    "directions": 2,
+    "factoryDefault": true
+  },
+  {
+    "id": 12,
+    "name": "Rotating",
+    "brightness": true,
+    "speed": true,
+    "color": true,
+    "rainbow": true,
+    "directions": 2,
+    "factoryDefault": false
+  },
+  {
+    "id": 13,
+    "name": "Explode",
+    "brightness": true,
+    "speed": true,
+    "color": true,
+    "rainbow": true,
+    "directions": 0,
+    "factoryDefault": false
+  },
+  {
+    "id": 14,
+    "name": "Launch",
+    "brightness": true,
+    "speed": true,
+    "color": true,
+    "rainbow": true,
+    "directions": 0,
+    "factoryDefault": false
+  },
+  {
+    "id": 15,
+    "name": "Ripples",
+    "brightness": true,
+    "speed": true,
+    "color": true,
+    "rainbow": true,
+    "directions": 0,
+    "factoryDefault": false
+  },
+  {
+    "id": 16,
+    "name": "Flowing",
+    "brightness": true,
+    "speed": true,
+    "color": true,
+    "rainbow": true,
+    "directions": 2,
+    "factoryDefault": false
+  },
+  {
+    "id": 17,
+    "name": "Pulsating",
+    "brightness": true,
+    "speed": true,
+    "color": true,
+    "rainbow": true,
+    "directions": 0,
+    "factoryDefault": false
+  },
+  {
+    "id": 18,
+    "name": "Tilt",
+    "brightness": true,
+    "speed": true,
+    "color": true,
+    "rainbow": true,
+    "directions": 2,
+    "factoryDefault": false
+  },
+  {
+    "id": 19,
+    "name": "Shuttle",
+    "brightness": true,
+    "speed": true,
+    "color": true,
+    "rainbow": true,
+    "directions": 0,
+    "factoryDefault": false
+  },
+  {
+    "id": 0,
+    "name": "Off",
+    "brightness": false,
+    "speed": false,
+    "color": false,
+    "rainbow": false,
+    "directions": 0,
+    "factoryDefault": false
+  }
+]
