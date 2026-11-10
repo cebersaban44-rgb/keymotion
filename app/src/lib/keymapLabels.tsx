@@ -138,6 +138,8 @@ export function actionText(a: KeyActionInfo, catalog: KeymapCatalog | null, t: T
       return t(`km.mouse.${a.button}` as MessageKey);
     case "wheel":
       return t(a.up ? "km.wheel.up" : "km.wheel.down");
+    case "macro":
+      return `${t("km.macro")} ${a.slot + 1}`;
   }
 }
 
@@ -176,5 +178,7 @@ export function actionShort(a: KeyActionInfo, catalog: KeymapCatalog | null): Re
           {a.up ? "↑" : "↓"}
         </>
       );
+    case "macro":
+      return `M${a.slot + 1}`;
   }
 }

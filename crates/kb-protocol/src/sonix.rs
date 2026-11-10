@@ -28,6 +28,7 @@ pub const REALTIME_PACKETS: u16 = 8;
 pub const COLOR_TABLE_PACKETS: usize = 9;
 
 pub mod keymap;
+pub mod macros;
 
 /// Command opcodes this project is allowed to send.
 ///
@@ -362,6 +363,8 @@ pub enum Invalid {
     Clock(&'static str),
     #[error("invalid key assignment: {0}")]
     KeyAction(&'static str),
+    #[error("invalid macro: {0}")]
+    Macro(&'static str),
 }
 
 /// Encode the data packet that follows `04 13`.

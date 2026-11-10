@@ -1,7 +1,7 @@
 //! `kb` — developer and QA tool.
 //!
-//! `effect`, `per-key`, `keymap` and `direction-probe` write the keyboard's
-//! flash, and all need `--yes`. `live` and `live-probe` stream RAM-only real-time LED frames;
+//! `effect`, `per-key`, `keymap`, `macros` and `direction-probe` write the
+//! keyboard's flash, and all need `--yes`. `live` and `live-probe` stream RAM-only real-time LED frames;
 //! `clock` sets the keyboard clock; everything else only reads. Flash-writing commands are added only after
 //! they are verified on the hardware.
 
@@ -110,7 +110,8 @@ enum Cmd {
     ///
     /// ACTION: default | off | keys joined with + (a, f13, ctrl+shift+a,
     /// lctrl) | media:ID | mouse:left|right|middle|back|forward|double |
-    /// wheel:up|down. `kb keymap-targets` lists the ids.
+    /// wheel:up|down | macro:SLOT[:times:N|:toggle|:hold]. `kb keymap-targets`
+    /// lists the ids.
     Keymap {
         /// `base` or `fn`.
         #[arg(long, default_value = "base")]
@@ -122,6 +123,21 @@ enum Cmd {
     },
     /// List what a key can be assigned (key, media and mouse ids).
     KeymapTargets,
+    /// Store every macro: the Nth SPEC goes to slot N-1, `-` leaves a slot
+    /// empty, no SPEC clears all macros. WRITES FLASH; needs --yes. Bind a
+    /// macro to a key with `kb keymap KEY=macro:SLOT`. The app does not see
+    /// this write.
+    ///
+    /// SPEC: text:ok (US layout) | combo:ctrl+shift+esc |
+    /// steps:down:a,wait:50,up:a,click:left (wait sets the previous step's pause)
+    Macros {
+        specs: Vec<String>,
+        /// Pause after each step, in ms (at least 10).
+        #[arg(long, default_value_t = 20)]
+        delay: u16,
+        #[arg(long)]
+        yes: bool,
+    },
     /// Store a firmware lighting effect. WRITES FLASH; needs --yes.
     Effect {
         /// Effect id (see `kb effects`). Default: factory "Rolling".
@@ -238,6 +254,10 @@ fn main() -> Result<()> {
             keymap_targets();
             Ok(())
         }
+        Cmd::Macros { specs, delay, yes } => {
+            anyhow::ensure!(yes, "Bu komut klavyenin flash belleğine yazar. Onaylamak için --yes ekleyin.");
+            macros(&specs, delay)
+        }
         Cmd::Effect { mode, color, rainbow, brightness, speed, direction, yes } => {
             anyhow::ensure!(yes, "Bu komut klavyenin flash belleğine yazar. Onaylamak için --yes ekleyin.");
             let settings = kb_protocol::sonix::EffectSettings {
@@ -292,10 +312,86 @@ fn keymap(layer: &str, pairs: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// `default`, `off`, `media:ID`, `mouse:BUTTON`, `wheel:up|down`, or keys
-/// joined with `+` (at most one non-modifier).
+fn macros(specs: &[String], delay: u16) -> Result<()> {
+    use kb_protocol::sonix::macros::{budget_used, macro_image, BUDGET};
+    let slots: Vec<_> =
+        specs.iter().map(|s| if s == "-" { Ok(Vec::new()) } else { parse_macro(s, delay) }).collect::<Result<_>>()?;
+    let pages = macro_image(&slots)?.len() / 64;
+    let (mut drv, model) = open_command()?;
+    let started = std::time::Instant::now();
+    drv.write_macros(&slots)?;
+    println!(
+        "{}: {} makro yuvası yazıldı ({} sayfa, bellek {}/{} bayt, sağlama toplamı doğrulandı), {} ms",
+        model.name,
+        slots.len(),
+        pages,
+        budget_used(&slots),
+        BUDGET,
+        started.elapsed().as_millis()
+    );
+    for (i, steps) in slots.iter().enumerate() {
+        let total: u32 = steps.iter().map(|s| s.delay_ms.max(10) as u32).sum();
+        println!("  {i:>2}: {} adım, {total} ms", steps.len());
+    }
+    Ok(())
+}
+
+/// `text:…`, `combo:keys` or `steps:down:K,up:K,tap:K,click:BUTTON,wait:MS`.
+fn parse_macro(spec: &str, delay: u16) -> Result<Vec<kb_protocol::sonix::macros::MacroStep>> {
+    use kb_protocol::sonix::keymap::{usage_by_id, KeyAction};
+    use kb_protocol::sonix::macros::{mouse, text_steps, MacroStep, StepKind};
+    let (kind, rest) = spec.split_once(':').context("makro `text:`, `combo:` ya da `steps:` ile başlamalı")?;
+    let key = |id: &str| usage_by_id(id).map(|u| u.code).with_context(|| format!("bilinmeyen tuş `{id}`"));
+    let step = |k, code| MacroStep::new(k, code, delay);
+    match kind {
+        "text" => Ok(text_steps(rest, delay)),
+        "combo" => {
+            let KeyAction::Key { mods, code } = parse_key_action(rest)? else {
+                anyhow::bail!("combo yalnızca tuşlardan oluşur")
+            };
+            let held: Vec<u8> = (0..8).filter(|b| mods & (1 << b) != 0).map(|b| 0xE0 + b).collect();
+            let mut steps: Vec<_> = held.iter().map(|&c| step(StepKind::KeyDown, c)).collect();
+            if code != 0 {
+                steps.extend([step(StepKind::KeyDown, code), step(StepKind::KeyUp, code)]);
+            }
+            steps.extend(held.iter().rev().map(|&c| step(StepKind::KeyUp, c)));
+            Ok(steps)
+        }
+        "steps" => {
+            let mut steps: Vec<MacroStep> = Vec::new();
+            for part in rest.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+                let (verb, arg) = part.split_once(':').with_context(|| format!("adım `{part}` anlaşılmadı"))?;
+                match verb {
+                    "down" => steps.push(step(StepKind::KeyDown, key(arg)?)),
+                    "up" => steps.push(step(StepKind::KeyUp, key(arg)?)),
+                    "tap" => steps.extend([step(StepKind::KeyDown, key(arg)?), step(StepKind::KeyUp, key(arg)?)]),
+                    "click" => {
+                        let b = match arg {
+                            "left" => mouse::LEFT,
+                            "right" => mouse::RIGHT,
+                            "middle" => mouse::MIDDLE,
+                            _ => anyhow::bail!("bilinmeyen fare tuşu `{arg}`"),
+                        };
+                        steps.extend([step(StepKind::MouseDown, b), step(StepKind::MouseUp, b)]);
+                    }
+                    "wait" => {
+                        let last = steps.last_mut().context("`wait` bir adımdan sonra gelmeli")?;
+                        last.delay_ms = arg.parse().context("bekleme ms olarak yazılmalı")?;
+                    }
+                    _ => anyhow::bail!("bilinmeyen adım `{verb}`"),
+                }
+            }
+            Ok(steps)
+        }
+        _ => anyhow::bail!("makro `text:`, `combo:` ya da `steps:` ile başlamalı"),
+    }
+}
+
+/// `default`, `off`, `media:ID`, `mouse:BUTTON`, `wheel:up|down`,
+/// `macro:SLOT[:times:N|:toggle|:hold]`, or keys joined with `+` (at most
+/// one non-modifier).
 fn parse_key_action(s: &str) -> Result<kb_protocol::sonix::keymap::KeyAction> {
-    use kb_protocol::sonix::keymap::{consumer_by_id, mods, usage_by_id, KeyAction, MouseButton};
+    use kb_protocol::sonix::keymap::{consumer_by_id, mods, usage_by_id, KeyAction, MacroPlay, MouseButton};
     let s = s.trim().to_ascii_lowercase();
     if s == "default" {
         return Ok(KeyAction::Default);
@@ -318,6 +414,20 @@ fn parse_key_action(s: &str) -> Result<kb_protocol::sonix::keymap::KeyAction> {
             _ => anyhow::bail!("bilinmeyen fare tuşu `{id}`"),
         };
         return Ok(KeyAction::Mouse(b));
+    }
+    if let Some(rest) = s.strip_prefix("macro:") {
+        let mut parts = rest.split(':');
+        let slot: u8 = parts.next().unwrap_or("").parse().context("makro yuvası sayı olmalı (0–99)")?;
+        let play = match (parts.next(), parts.next()) {
+            (None | Some("once"), None) => MacroPlay::Once,
+            (Some("times"), Some(n)) => MacroPlay::Times(n.parse().context("tekrar sayısı 1–255 olmalı")?),
+            (Some("toggle"), None) => MacroPlay::Toggle,
+            (Some("hold"), None) => MacroPlay::WhileHeld,
+            _ => anyhow::bail!("oynatma biçimi: once, times:N, toggle ya da hold"),
+        };
+        let action = KeyAction::Macro { slot, play };
+        action.encode()?;
+        return Ok(action);
     }
     if let Some(dir) = s.strip_prefix("wheel:") {
         return match dir {
@@ -365,6 +475,7 @@ fn keymap_targets() {
         println!("  {:<18} 0x{:04X}", c.id, c.code);
     }
     println!("Fare: mouse:left|right|middle|back|forward|double, wheel:up|down");
+    println!("Makro: macro:SLOT (bir kez), macro:SLOT:times:N, macro:SLOT:toggle, macro:SLOT:hold");
     println!("Diğer: default (firmware varsayılanı), off (devre dışı)");
 }
 
@@ -790,7 +901,7 @@ fn models() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::parse_key_action;
-    use kb_protocol::sonix::keymap::{mods, KeyAction, MouseButton};
+    use kb_protocol::sonix::keymap::{mods, KeyAction, MacroPlay, MouseButton};
 
     #[test]
     fn key_actions_parse() {
@@ -810,5 +921,31 @@ mod tests {
         assert!(parse_key_action("a+b").is_err(), "two normal keys");
         assert!(parse_key_action("fn").is_err());
         assert!(parse_key_action("media:nope").is_err());
+        assert_eq!(parse_key_action("macro:0").unwrap(), KeyAction::Macro { slot: 0, play: MacroPlay::Once });
+        assert_eq!(
+            parse_key_action("macro:3:times:5").unwrap(),
+            KeyAction::Macro { slot: 3, play: MacroPlay::Times(5) }
+        );
+        assert_eq!(parse_key_action("macro:1:hold").unwrap(), KeyAction::Macro { slot: 1, play: MacroPlay::WhileHeld });
+        assert!(parse_key_action("macro:100").is_err());
+        assert!(parse_key_action("macro:0:times:0").is_err());
+    }
+
+    #[test]
+    fn macro_specs_parse() {
+        use kb_protocol::sonix::macros::StepKind::*;
+        let steps =
+            |s| super::parse_macro(s, 20).unwrap().iter().map(|x| (x.kind, x.code, x.delay_ms)).collect::<Vec<_>>();
+        assert_eq!(
+            steps("combo:ctrl+c"),
+            vec![(KeyDown, 0xE0, 20), (KeyDown, 0x06, 20), (KeyUp, 0x06, 20), (KeyUp, 0xE0, 20)]
+        );
+        assert_eq!(
+            steps("steps:tap:a,wait:100,click:left"),
+            vec![(KeyDown, 0x04, 20), (KeyUp, 0x04, 100), (MouseDown, 1, 20), (MouseUp, 1, 20)]
+        );
+        assert_eq!(steps("text:ok").len(), 4);
+        assert!(super::parse_macro("steps:wait:5", 20).is_err());
+        assert!(super::parse_macro("nope", 20).is_err());
     }
 }
