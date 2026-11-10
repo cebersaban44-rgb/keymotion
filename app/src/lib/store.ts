@@ -4,9 +4,9 @@ import type { ThemePreference } from "../bindings/ThemePreference";
 import type { UiEnvironment } from "../bindings/UiEnvironment";
 import type { Locale } from "./i18n";
 
-export type PageId = "overview" | "lighting" | "keymap" | "macros" | "screen" | "connection" | "settings";
+export type PageId = "overview" | "lighting" | "keymap" | "macros" | "screen" | "connection" | "focus" | "settings";
 /** Tabs of the Screen page. */
-export type ScreenTab = "visuals" | "live" | "focus";
+export type ScreenTab = "visuals" | "live";
 
 interface AppState {
   keyboards: KeyboardInfo[];
@@ -49,7 +49,7 @@ export const useApp = create<AppState>((set) => ({
   loaded: false,
   env: null,
   page: "overview",
-  screenTab: load<ScreenTab>("ks.screenTab", ["visuals", "live", "focus"], "visuals"),
+  screenTab: load<ScreenTab>("ks.screenTab", ["visuals", "live"], "visuals"),
   theme: load<ThemePreference>("ks.theme", ["system", "dark", "light"], "system"),
   locale: load<Locale>("ks.locale", ["tr", "en"], "tr"),
   setKeyboards: (keyboards) => set({ keyboards, loaded: true }),

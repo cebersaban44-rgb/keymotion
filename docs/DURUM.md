@@ -47,7 +47,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | **Ekran Stüdyosu**: dosyadan (resim, GIF, video; kırpma, süre), yazı kartları (5 şablon), slayt; önizleme, onay, kütüphane, fabrika animasyonuna dönüş | ✅ Kullanıcı klavyede hepsini denedi (maddeler 23–25). |
 | Ekran → **Işıkları uydur**: görselin paletinden tuş tasarımı (degrade, tek renk, görsel), Işıklar'da taslak | ✅ Kullanıcı mor kartta klavyede doğruladı (madde 26). |
 | Ekran → **Canlı ekran**: canlı mod, günlük yükleme bütçesi, "Çalan şarkı" kartı, kapatınca önceki görseli geri yükleme | ✅ Kullanıcı klavyede denedi (madde 27). |
-| Ekran → **Odak zamanlayıcısı** (Pomodoro tekniği): odak ve mola süreleri; bütün klavye fazın rengiyle dolu başlar ve süre azaldıkça seçilen yönde boşalır (flash'sız; yön, renkler, parlaklık, nabız, faz geçişi, ses seçilebilir; "Klavyede dene"); faz başında ekran kartı; kenar çubuğunda kalan süre | ⏳ Zamanlayıcı ve ışık katmanı gerçek uygulamada ve klavyede denendi (CDP, günlük). Kullanıcının gözle denemesi ve ekran kartının klavyede yüklenmesi bekliyor (madde 28). |
+| Araçlar → **Odak zamanlayıcısı** (Pomodoro tekniği): odak ve mola süreleri; bütün klavye fazın rengiyle dolu başlar ve süre azaldıkça seçilen yönde boşalır (flash'sız; yön, renkler, parlaklık, nabız, faz geçişi, ses seçilebilir; "Klavyede dene"); faz başında ekran kartı; kenar çubuğunda kalan süre | ⏳ Zamanlayıcı ve ışık katmanı gerçek uygulamada ve klavyede denendi (CDP, günlük). Kullanıcının gözle denemesi ve ekran kartının klavyede yüklenmesi bekliyor (madde 28). |
 
 ## 3. Kronoloji: ne yaptık, neden
 
@@ -434,6 +434,19 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **Doğrulama:**
       - Tarayıcıda sahte arka uç ve 15 deneme görseliyle: sayfa sayfa gösterme, süzgeç, arama ve "eşleşen yok" durumu; sekme hafızası; Canlı ekrandan Odak zamanlayıcısına bağlantı; yarım kart sekme değişince korunuyor.
       - Gerçek uygulamada (CDP) üç sekme ve kullanıcının kütüphanesi.
+
+30. **Odak zamanlayıcısı kendi sayfasında (Araçlar).**
+    - **Kullanıcının sorusu (2026-11-10):** Odak zamanlayıcısı hem Ekran'ın ayrı bir sekmesindeydi hem de Canlı ekran'ın kaynak listesinde bir satırdı; ikisinde de aynı "ekran kartı" anahtarı vardı. "Doğru yerde mi?"
+    - **Karar:** Hayır.
+      - Işık tasarımından sonra zamanlayıcının asıl çıktısı bütün klavyenin ışığı; ekran kartı bir seçenek ve canlı mod olmadan da çalışıyor. Onu Ekran'ın altında aramak doğal değil.
+      - Aynı ayarın iki yerde olması da karışıklık yaratıyordu.
+    - **Yeni düzen:**
+      - Kenar çubuğunda yeni bir **Araçlar** grubu ve içinde **Odak zamanlayıcısı** sayfası. İleride gelecek canlı ışık araçları (CPU/GPU barı, ses düzeyi, mikrofon) da buraya.
+      - Ekran sayfasında iki sekme kaldı: Görseller ve Canlı ekran. "Klavyede şu an" ikisinde de üstte. Eski kayıtlı `focus` sekmesi Görseller'e düşer.
+      - Canlı ekran'ın kaynak listesindeki satır artık yalnız kaynağı gösteriyor: kartların açık mı kapalı mı olduğunu, zamanlayıcının durumunu ve "Ayarlarını aç" bağlantısını. Anahtar yok; ayarın tek yeri zamanlayıcının sayfası.
+      - Zamanlayıcı sayfasında canlı mod kapalıyken "Canlı ekrana git" Ekran sayfasını Canlı ekran sekmesinde açar.
+      - Kenar çubuğundaki kalan süre kutusu zamanlayıcının kendi sayfasında gizlenir (aynı bilgi sayfada var). Kutuya tıklayınca zamanlayıcı sayfası açılır.
+    - **Doğrulama:** Tarayıcıda sahte arka uçla bütün bağlantılar ve kenar çubuğu. Gerçek uygulamada (CDP) zamanlayıcı sayfası, Ekran'ın iki sekmesi ve kaynak satırı.
 
 ## 4. Sistem nasıl kurulu (as-built)
 

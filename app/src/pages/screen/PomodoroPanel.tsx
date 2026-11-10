@@ -1,4 +1,4 @@
-// "Odak zamanlayıcısı" tab of the Screen page: the focus timer (phase C,
+// The focus timer's card on its own page (pages/Focus.tsx; phase C,
 // second source). The backend runs it, lights the keys and asks for screen
 // cards; this shows it and sets it. One card: what the timer shows (the
 // dial and the keyboard as its keys light up) on top, and every setting of
@@ -20,7 +20,6 @@ import {
   SkipForward,
   Square,
   SunDim,
-  Timer,
   Volume2,
   type LucideIcon,
 } from "lucide-react";
@@ -76,7 +75,7 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
   const control = usePomodoro((x) => x.control);
   const configure = usePomodoro((x) => x.configure);
   const live = useLive((x) => x.state);
-  const setScreenTab = useApp((x) => x.setScreenTab);
+  const openScreen = useApp((x) => x.openScreen);
   useTicking(s?.status === "running");
   // The idle preview loops the run "Klavyede dene" plays; trying restarts
   // it so the drawing and the keys move together.
@@ -104,15 +103,6 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
 
   return (
     <section className="card flex flex-col gap-6 p-5" data-pomodoro>
-      <div className="max-w-[72ch]">
-        <div className="mb-1.5 flex items-center gap-2">
-          <Timer size={14} className={idle ? "text-ink-3" : "text-signal"} />
-          <span className="eyebrow">{t("pomo.eyebrow")}</span>
-        </div>
-        <h2 className="font-display text-[22px] font-semibold tracking-[-0.02em]">{t("pomo.title")}</h2>
-        <p className="mt-1 text-[12.5px] text-ink-2">{t("pomo.body")}</p>
-      </div>
-
       {/* What the timer shows: the time left, and the keys. */}
       <div className="flex flex-col gap-5 rounded-2xl border border-line bg-bg-raise/50 p-5">
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-6">
@@ -212,7 +202,7 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
               ) : (
                 <p className="flex flex-wrap items-center gap-x-2 text-[11.5px] text-ink-3">
                   {t("pomo.screen.liveOff")}
-                  <button type="button" onClick={() => setScreenTab("live")} className="font-medium text-signal hover:underline">
+                  <button type="button" onClick={() => openScreen("live")} className="font-medium text-signal hover:underline">
                     {t("pomo.screen.openLive")}
                   </button>
                 </p>
@@ -228,7 +218,6 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
         </div>
       </div>
 
-      {!usb && <Hint tone="usb">{t("pomo.noUsb")}</Hint>}
       {drawError && <Hint tone="error">{drawError}</Hint>}
     </section>
   );

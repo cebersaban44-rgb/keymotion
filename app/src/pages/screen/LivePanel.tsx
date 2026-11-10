@@ -1,7 +1,7 @@
 // "Canlı ekran": the live mode switch, its upload budget and the sources
 // (phase C). The backend runs the live mode; this only shows and sets it.
 
-import { AlertTriangle, ChevronDown, Clock3, Loader2, Music2, Radio, RotateCcw, Timer, Upload, X } from "lucide-react";
+import { AlertTriangle, ChevronRight, Clock3, Loader2, Music2, Radio, RotateCcw, Timer, Upload, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import type { LivePlan } from "../../bindings/LivePlan";
@@ -271,14 +271,16 @@ function TrackLine({ s }: { s: LiveState }) {
   );
 }
 
-/** The Pomodoro as a source: its screen-card switch and where it stands.
- *  The timer itself is in the Pomodoro section below. */
+/** The focus timer as a source: whether it sends cards and where it is.
+ *  Its settings (the card switch too) are on its own page, so there is one
+ *  place to set them. */
 function PomodoroSource() {
   const t = useT();
   const p = usePomodoro((x) => x.state);
-  const configure = usePomodoro((x) => x.configure);
+  const setPage = useApp((x) => x.setPage);
   if (!p) return null;
   const idle = p.status === "idle";
+  const cards = p.settings.screen;
   const phase =
     p.phase === "focus" ? t("pomo.phase.focus") : p.phase === "shortBreak" ? t("pomo.phase.shortBreak") : t("pomo.phase.longBreak");
   return (
@@ -291,16 +293,16 @@ function PomodoroSource() {
             <span className="text-[11.5px] text-ink-3">{t("sc.live.pomo.body")}</span>
           </span>
         </span>
-        <Toggle
-          checked={p.settings.screen}
-          onChange={(screen) => configure({ screen }).catch(console.error)}
-          label={t("sc.live.pomo")}
-        />
+        <span
+          className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${cards ? "bg-ok/15 text-ok" : "bg-surface-2 text-ink-3"}`}
+          data-live-pomodoro-cards={cards ? "on" : "off"}
+        >
+          {cards ? t("sc.live.pomo.on") : t("sc.live.pomo.off")}
+        </span>
       </div>
       <button
         type="button"
-        onClick={() => useApp.getState().setScreenTab("focus")}
-        title={t("pomo.go")}
+        onClick={() => setPage("focus")}
         className="flex items-center justify-between gap-2 rounded-lg bg-surface-2/60 px-2.5 py-2 text-left text-[12.5px] hover:bg-surface-2"
       >
         <span className="flex items-center gap-2">
@@ -318,7 +320,9 @@ function PomodoroSource() {
             </span>
           )}
         </span>
-        <ChevronDown size={14} className="text-ink-3" />
+        <span className="flex items-center gap-1 text-[12px] font-medium text-signal">
+          {t("sc.live.pomo.open")} <ChevronRight size={14} />
+        </span>
       </button>
     </div>
   );
