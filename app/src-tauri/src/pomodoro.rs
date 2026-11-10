@@ -9,9 +9,11 @@
 //!   light left is the time left (owner's design, 2026-11-10). The light
 //!   left breathes in the last minute; a paused timer dims and breathes
 //!   slowly; a phase starts with two blinks or a wave of the new colour.
-//!   A preview the user edits on the Lighting page goes on top
-//!   (`device::Request::SetAmbient`). When the timer stops, the keyboard
-//!   goes back to its saved effect. "Klavyede dene" plays a short run.
+//!   It is the timer layer (`device::LightLayer::Timer`): above the system
+//!   gauges, which wait while it shows, and below their alerts (volume,
+//!   microphone) and the preview the user edits on the Lighting page. When
+//!   the timer stops, the gauges come back, or else the keyboard's saved
+//!   effect. "Klavyede dene" plays a short run.
 //! * When a phase starts the UI is asked for a card (`pomodoro-card`
 //!   event), which goes through the live mode like any other source:
 //!   budget, newest card wins. While the timer runs it holds the screen, so
@@ -20,7 +22,7 @@
 //!   `BACK_AFTER`, or a summary card stays, as the user chose
 //!   (`PomodoroEndScreen`; owner's request, 2026-11-10).
 
-use crate::device::{DeviceHandle, LiveFrame, Request};
+use crate::device::{DeviceHandle, LightLayer, LiveFrame, Request};
 use crate::dto::{
     Connection, PomodoroCard, PomodoroCardKind, PomodoroEndScreen, PomodoroMotion, PomodoroPhase, PomodoroSettings,
     PomodoroState, PomodoroStatus, PomodoroSummary, PomodoroTransition,
@@ -752,7 +754,8 @@ impl PomodoroHandle {
             inner.done_at = None;
         }
         if frame != inner.sent {
-            let _ = device.send(Request::SetAmbient(
+            let _ = device.send(Request::SetLayer(
+                LightLayer::Timer,
                 frame.clone().map(|(colors, b)| LiveFrame { colors, level: level_factor(b) }),
             ));
             inner.sent = frame;

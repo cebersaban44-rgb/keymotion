@@ -6,6 +6,7 @@
 
 mod device;
 mod dto;
+mod gauges;
 mod live;
 mod now_playing;
 mod pomodoro;
@@ -14,10 +15,12 @@ mod settings;
 
 use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request};
 use dto::{
-    Calibration, CalibrationInfo, ClockStatus, EffectInfo, EffectRequest, KeyAssignment, KeyboardInfo, KeymapCatalog,
-    KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, PomodoroSettings,
-    PomodoroState, ScreenItem, ScreenItemKind, ScreenState, SongStop, ThemePreference, UiEnvironment,
+    Calibration, CalibrationInfo, ClockStatus, EffectInfo, EffectRequest, GaugesSettings, GaugesState, KeyAssignment,
+    KeyboardInfo, KeymapCatalog, KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState,
+    MirrorHint, PomodoroSettings, PomodoroState, ScreenItem, ScreenItemKind, ScreenState, SongStop, ThemePreference,
+    UiEnvironment,
 };
+use gauges::GaugesHandle;
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
 use live::LiveHandle;
 use now_playing::NowPlaying;
@@ -46,6 +49,7 @@ type Device<'a> = State<'a, Arc<DeviceHandle>>;
 type Library<'a> = State<'a, Arc<Mutex<ScreenLibrary>>>;
 type Live<'a> = State<'a, Arc<LiveHandle>>;
 type Pomodoro<'a> = State<'a, Arc<PomodoroHandle>>;
+type Gauges<'a> = State<'a, Arc<GaugesHandle>>;
 
 fn lock_library(lib: &Mutex<ScreenLibrary>) -> Result<std::sync::MutexGuard<'_, ScreenLibrary>, String> {
     lib.lock().map_err(|_| "screen library unavailable".to_string())
@@ -231,6 +235,26 @@ fn pomodoro_control(pomodoro: Pomodoro<'_>, action: PomodoroAction) -> Result<Po
 fn pomodoro_configure(pomodoro: Pomodoro<'_>, settings: PomodoroSettings) -> Result<PomodoroState, String> {
     tracing::debug!(?settings, "ipc: pomodoro_configure");
     pomodoro.configure(settings)
+}
+
+/// The system gauges.
+#[tauri::command]
+fn gauges_state(gauges: Gauges<'_>) -> Result<GaugesState, String> {
+    gauges.state()
+}
+
+/// New system gauges settings (saved).
+#[tauri::command]
+fn gauges_configure(gauges: Gauges<'_>, settings: GaugesSettings) -> Result<GaugesState, String> {
+    tracing::debug!(?settings, "ipc: gauges_configure");
+    gauges.configure(settings)
+}
+
+/// The gauges page opened or closed: it gets readings (`gauges` events)
+/// while open, even with the gauges off.
+#[tauri::command]
+fn gauges_watch(gauges: Gauges<'_>, on: bool) {
+    gauges.watch(on);
 }
 
 #[tauri::command]
@@ -516,7 +540,8 @@ pub fn run() {
             let device = Arc::new(device::spawn(app.handle().clone(), calibration, config_dir.clone()));
             let live = LiveHandle::spawn(app.handle().clone(), library.clone(), device.clone());
             app.manage(now_playing::spawn(app.handle().clone(), live.clone()));
-            app.manage(PomodoroHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir));
+            app.manage(PomodoroHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir.clone()));
+            app.manage(GaugesHandle::spawn(app.handle().clone(), device.clone(), config_dir));
             app.manage(library);
             app.manage(device);
             app.manage(live);
@@ -559,7 +584,10 @@ pub fn run() {
             now_playing_cover,
             pomodoro_state,
             pomodoro_control,
-            pomodoro_configure
+            pomodoro_configure,
+            gauges_state,
+            gauges_configure,
+            gauges_watch
         ])
         .run(tauri::generate_context!())
         .expect("error while running Klavye Stüdyo");

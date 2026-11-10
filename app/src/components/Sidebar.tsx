@@ -1,4 +1,4 @@
-import { Cable, Keyboard, LayoutGrid, Lock, Monitor, Settings2, Sparkles, Timer, Workflow, type LucideIcon } from "lucide-react";
+import { Cable, Gauge, Keyboard, LayoutGrid, Lock, Monitor, Settings2, Sparkles, Timer, Workflow, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Feature } from "../bindings/Feature";
 import { connectionKey, useT, type MessageKey } from "../lib/i18n";
@@ -24,7 +24,10 @@ const DEVICE_ITEMS: NavItem[] = [
 ];
 
 /** Tools that use the whole keyboard (lights and screen) for a task. */
-const TOOL_ITEMS: NavItem[] = [{ id: "focus", label: "nav.focus", icon: Timer }];
+const TOOL_ITEMS: NavItem[] = [
+  { id: "focus", label: "nav.focus", icon: Timer },
+  { id: "gauges", label: "nav.gauges", icon: Gauge },
+];
 
 const APP_ITEMS: NavItem[] = [{ id: "settings", label: "nav.settings", icon: Settings2 }];
 
