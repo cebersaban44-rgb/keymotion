@@ -922,3 +922,100 @@ impl From<&StoredMacros> for MacrosState {
         }
     }
 }
+
+// ------------------------------------------------------------- live screen
+
+/// How many automatic screen uploads a day the live mode may use (flash
+/// wear budget, docs/research/ekran-ve-veri-kaynaklari.md §3.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum LivePlan {
+    /// 8 a day.
+    Saver,
+    /// 24 a day (default).
+    #[default]
+    Balanced,
+    /// 48 a day.
+    Heavy,
+}
+
+impl LivePlan {
+    pub fn per_day(self) -> u32 {
+        match self {
+            Self::Saver => 8,
+            Self::Balanced => 24,
+            Self::Heavy => 48,
+        }
+    }
+
+    /// Uploads that may run back to back before the hourly refill limits them.
+    pub fn burst(self) -> u32 {
+        match self {
+            Self::Saver => 3,
+            Self::Balanced => 6,
+            Self::Heavy => 8,
+        }
+    }
+}
+
+/// A card waiting for, or going through, an automatic upload.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveItem {
+    /// Source id, e.g. `now-playing`.
+    pub source: String,
+    pub name: String,
+}
+
+/// The last card the live mode put on the GIF page.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveShown {
+    pub source: String,
+    pub name: String,
+    pub at_ms: f64,
+}
+
+/// What Windows reports as playing (System Media Transport Controls).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TrackInfo {
+    /// Stable id of the track (app + title + artist).
+    pub key: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    /// Friendly name of the playing app when known (Spotify, Chrome, …).
+    pub app: String,
+    pub playing: bool,
+    /// Played long enough (and not paused) to be worth an upload.
+    pub settled: bool,
+    pub has_cover: bool,
+}
+
+/// Live mode, its budget and sources (`live-screen` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveState {
+    pub enabled: bool,
+    pub plan: LivePlan,
+    pub per_day: u32,
+    pub burst: u32,
+    /// Uploads available now (may be fractional while refilling, negative
+    /// after manual uploads beyond the budget).
+    pub tokens: f64,
+    /// Time until the next upload is allowed, when none is available now.
+    pub next_token_ms: Option<f64>,
+    pub pending: Option<LiveItem>,
+    pub uploading: Option<LiveItem>,
+    pub last: Option<LiveShown>,
+    pub last_error: Option<String>,
+    /// Source switch: the song playing.
+    pub now_playing: bool,
+    pub track: Option<TrackInfo>,
+}

@@ -45,6 +45,14 @@ function mockState(): ScreenState {
   };
 }
 
+/** Browser preview: a live card reached the GIF page. */
+export function mockLiveUploaded(blob: Uint8Array) {
+  mock.data.set("live", blob);
+  mock.shown = "live";
+  mock.today++;
+  mock.total++;
+}
+
 export function getScreenState(modelId: string): Promise<ScreenState> {
   if (!inTauri) return Promise.resolve(mockState());
   return invoke<ScreenState>("screen_state", { modelId });

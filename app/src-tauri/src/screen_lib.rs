@@ -6,7 +6,8 @@
 //! Files live in `<config>/screen/`: `library.json` and `library/<id>.bin`.
 //! The id is a hash of the data, so the same content is stored once.
 
-use crate::dto::{ScreenItem, ScreenItemKind, ScreenLimits, ScreenState};
+use crate::dto::{LiveItem, ScreenItem, ScreenItemKind, ScreenLimits, ScreenState};
+use crate::live::LiveStored;
 use kb_protocol::sonix::screen::{self, from_blob, ScreenAnimation};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -19,6 +20,10 @@ const INDEX_VERSION: u32 = 1;
 /// Factory animation backup taken from the official driver package
 /// (docs/donanim-dogrulama.md, "Ekran yüklemesi").
 const FACTORY_FILE: &str = "factory/ak980-pro-factory.gif";
+/// The last card the live mode uploaded (not a library item).
+const LIVE_FILE: &str = "live.bin";
+/// What `shown` holds while the GIF page shows a live card.
+pub const LIVE_ID: &str = "live";
 /// Upload counts are kept per day for this long.
 const KEEP_DAYS: usize = 60;
 /// Longest stored name.
@@ -32,6 +37,9 @@ struct Index {
     total_uploads: u32,
     /// Local date (YYYY-MM-DD) → uploads that day.
     uploads_by_day: BTreeMap<String, u32>,
+    /// Live mode settings, budget and its last card.
+    #[serde(default)]
+    live: LiveStored,
 }
 
 pub struct ScreenLibrary {
@@ -41,7 +49,7 @@ pub struct ScreenLibrary {
 
 /// FNV-1a 64: a stable content id (std's hasher may change between Rust
 /// versions; ids end up in file names).
-fn content_id(data: &[u8]) -> String {
+pub(crate) fn content_id(data: &[u8]) -> String {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for &b in data {
         h ^= b as u64;
@@ -58,7 +66,7 @@ fn now_ms() -> f64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as f64).unwrap_or(0.0)
 }
 
-fn clean_name(name: &str) -> String {
+pub(crate) fn clean_name(name: &str) -> String {
     let n: String = name.chars().filter(|c| !c.is_control()).take(NAME_MAX).collect();
     let n = n.trim();
     if n.is_empty() {
@@ -160,7 +168,12 @@ impl ScreenLibrary {
     }
 
     /// Raw stored data (header + frames), optionally only the first frames.
+    /// `live` gives the last live card.
     pub fn data(&self, id: &str) -> Result<Vec<u8>, String> {
+        if id == LIVE_ID {
+            let path = self.dir.as_ref().map(|d| d.join(LIVE_FILE)).ok_or("library has no storage")?;
+            return fs::read(path).map_err(|e| e.to_string());
+        }
         if !self.index.items.iter().any(|i| i.id == id) {
             return Err("unknown library item".into());
         }
@@ -196,12 +209,17 @@ impl ScreenLibrary {
             item.uploaded_ms = Some(now);
         }
         self.index.shown.insert(model_id.to_string(), id.to_string());
-        self.count_upload();
+        self.count_upload(true);
         self.save_index()
     }
 
     /// Count an upload that reached the keyboard's flash, finished or not.
-    pub fn count_upload(&mut self) {
+    /// `charge`: also take it from the live budget (manual uploads; the live
+    /// mode takes its token before uploading).
+    pub fn count_upload(&mut self, charge: bool) {
+        if charge {
+            self.index.live.budget.charge(crate::live::now_ms());
+        }
         self.index.total_uploads += 1;
         *self.index.uploads_by_day.entry(today()).or_default() += 1;
         while self.index.uploads_by_day.len() > KEEP_DAYS {
@@ -211,6 +229,47 @@ impl ScreenLibrary {
     }
 
     pub fn save(&self) -> io::Result<()> {
+        self.save_index()
+    }
+
+    pub fn live(&self) -> &LiveStored {
+        &self.index.live
+    }
+
+    pub fn live_mut(&mut self) -> &mut LiveStored {
+        &mut self.index.live
+    }
+
+    /// The GIF page shows this live card already (as far as the app knows).
+    pub fn live_is_showing(&self, content: &str) -> bool {
+        self.index.live.last_content.as_deref() == Some(content) && self.index.shown.values().any(|v| v == LIVE_ID)
+    }
+
+    /// Record a live card the keyboard confirmed and keep its data for
+    /// the preview of the GIF page.
+    pub fn live_uploaded(
+        &mut self,
+        model_id: &str,
+        anim: &ScreenAnimation,
+        content: &str,
+        item: &LiveItem,
+    ) -> io::Result<()> {
+        if let Some(d) = &self.dir {
+            fs::create_dir_all(d)?;
+            let path = d.join(LIVE_FILE);
+            let tmp = path.with_extension("tmp");
+            fs::write(&tmp, screen::blob_unpadded(anim))?;
+            fs::rename(&tmp, &path)?;
+        }
+        if !model_id.is_empty() {
+            self.index.shown.insert(model_id.to_string(), LIVE_ID.to_string());
+        }
+        let live = &mut self.index.live;
+        live.last_content = Some(content.to_string());
+        live.last_source = Some(item.source.clone());
+        live.last_name = Some(item.name.clone());
+        live.last_ms = Some(now_ms());
+        self.count_upload(false);
         self.save_index()
     }
 
