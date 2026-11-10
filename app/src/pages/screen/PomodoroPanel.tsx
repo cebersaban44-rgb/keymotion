@@ -2,11 +2,14 @@
 // second source). The backend runs it, lights the keys and asks for screen
 // cards; this shows it and sets it. One card: what the timer shows (the
 // dial and the keyboard as its keys light up) on top, and every setting of
-// the timer under it, the key lights' own settings nested in their row.
+// the timer under it, the key lights' own settings nested in their row. The
+// "Klavye ekranı" row shows the cards the screen will get, drawn by the same
+// code as the real ones, and what comes back when a series ends.
 
 import {
   ArrowDownToLine,
   ArrowLeftToLine,
+  ArrowRight,
   ArrowRightToLine,
   Clock3,
   FoldHorizontal,
@@ -17,6 +20,7 @@ import {
   Pause,
   Play,
   Plus,
+  Radio,
   SkipForward,
   Square,
   SunDim,
@@ -25,6 +29,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { KeyboardInfo } from "../../bindings/KeyboardInfo";
+import type { LiveRestore } from "../../bindings/LiveRestore";
+import type { PomodoroEndScreen } from "../../bindings/PomodoroEndScreen";
 import type { PomodoroMotion } from "../../bindings/PomodoroMotion";
 import type { PomodoroPhase } from "../../bindings/PomodoroPhase";
 import type { PomodoroSettings } from "../../bindings/PomodoroSettings";
@@ -33,10 +39,12 @@ import type { PomodoroTransition } from "../../bindings/PomodoroTransition";
 import { ColorPicker, Segmented, Slider, Toggle } from "../../components/controls";
 import { useT, type MessageKey } from "../../lib/i18n";
 import { useLive } from "../../lib/live";
+import { pomodoroCard, pomodoroWords } from "../../lib/liveCards";
 import { useApp } from "../../lib/store";
 import { LIMITS, fmtClock, phaseColor, remainingNow, usePomodoro } from "../../lib/pomodoro";
 import { TRY_MS, fromHex, keyPositions, lightColors, tryColors, viewOf } from "../../lib/pomodoroLights";
-import { Hint } from "./common";
+import { uploadSeconds } from "../../lib/screenImport";
+import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb } from "./common";
 
 const MOTIONS: { id: PomodoroMotion; label: MessageKey; icon: LucideIcon }[] = [
   { id: "rightToLeft", label: "pomo.motion.rightToLeft", icon: ArrowLeftToLine },
@@ -74,8 +82,6 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
   const drawError = usePomodoro((x) => x.drawError);
   const control = usePomodoro((x) => x.control);
   const configure = usePomodoro((x) => x.configure);
-  const live = useLive((x) => x.state);
-  const openScreen = useApp((x) => x.openScreen);
   useTicking(s?.status === "running");
   // The idle preview loops the run "Klavyede dene" plays; trying restarts
   // it so the drawing and the keys move together.
@@ -195,18 +201,9 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
             body={t("pomo.screen.body")}
             checked={s.settings.screen}
             onChange={(screen) => set({ screen })}
+            data="screen"
           >
-            {s.settings.screen &&
-              (live?.enabled ? (
-                <CostLine s={s} />
-              ) : (
-                <p className="flex flex-wrap items-center gap-x-2 text-[11.5px] text-ink-3">
-                  {t("pomo.screen.liveOff")}
-                  <button type="button" onClick={() => openScreen("live")} className="font-medium text-signal hover:underline">
-                    {t("pomo.screen.openLive")}
-                  </button>
-                </p>
-              ))}
+            {s.settings.screen && <ScreenSettings s={s} set={set} />}
           </SettingRow>
           <SettingRow
             icon={Volume2}
@@ -448,14 +445,184 @@ function LastLine({ s }: { s: PomodoroState }) {
   );
 }
 
+/** What the keyboard screen gets: the cards in turn, the live mode they need,
+ *  and what comes back at the end. */
+function ScreenSettings({ s, set }: { s: PomodoroState; set: (patch: Partial<PomodoroSettings>) => void }) {
+  const t = useT();
+  const live = useLive((x) => x.state);
+  const configureLive = useLive((x) => x.configure);
+  const openScreen = useApp((x) => x.openScreen);
+  if (!live) return null;
+  return (
+    <>
+      <CardStrip settings={s.settings} own={live.own} />
+      {live.enabled ? (
+        <CostLine s={s} />
+      ) : (
+        <div className="flex flex-col gap-2 rounded-xl border border-warn/40 bg-warn/10 px-3.5 py-3" data-pomo-liveoff>
+          <p className="flex items-start gap-2 text-[12.5px] text-ink">
+            <Radio size={14} className="mt-0.5 shrink-0 text-warn" />
+            {t("pomo.screen.liveOff")}
+          </p>
+          {live.nowPlaying && <p className="text-[11.5px] text-ink-3">{t("pomo.screen.npToo")}</p>}
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => configureLive({ enabled: true }).catch(console.error)}
+              className="flex h-9 items-center gap-2 rounded-lg bg-signal px-3 text-[12.5px] font-semibold text-signal-ink"
+              data-pomo-liveon
+            >
+              <Radio size={14} /> {t("pomo.screen.liveOn")}
+            </button>
+            <button type="button" onClick={() => openScreen("live")} className="text-[12px] font-medium text-signal hover:underline">
+              {t("pomo.screen.openLive")}
+            </button>
+          </div>
+        </div>
+      )}
+      <EndChoice value={s.settings.endScreen} own={live.own} onChange={(endScreen) => set({ endScreen })} />
+    </>
+  );
+}
+
+/** The cards one series puts on the screen, drawn by the real card code
+ *  with the user's lengths and colours, and what comes at the end. */
+function CardStrip({ settings, own }: { settings: PomodoroSettings; own: LiveRestore | null }) {
+  const t = useT();
+  const locale = useApp((x) => x.locale);
+  const [cards, setCards] = useState<Uint16Array[] | null>(null);
+  const { focusMin, shortMin, longMin, rounds, focusColor, shortColor, longColor, endScreen } = settings;
+  useEffect(() => {
+    let live = true;
+    const w = pomodoroWords(t);
+    const s = settings;
+    const breakPhase = rounds > 1 ? "shortBreak" : "longBreak";
+    const base = { kind: "phase" as const, round: 1, rounds, focusMin: 0, complete: false, endedMs: Date.now() };
+    const list = [
+      pomodoroCard({ ...base, phase: "focus", minutes: focusMin, focusDone: 0 }, s, w),
+      pomodoroCard({ ...base, phase: breakPhase, minutes: rounds > 1 ? shortMin : longMin, focusDone: 1 }, s, w),
+    ];
+    if (endScreen === "summary") {
+      const done = { kind: "done" as const, phase: "focus" as const, round: rounds, rounds, minutes: 0 };
+      list.push(pomodoroCard({ ...done, focusDone: rounds, focusMin: rounds * focusMin, complete: true, endedMs: Date.now() }, s, w));
+    }
+    Promise.all(list).then((p) => live && setCards(p.map((c) => c.frames[0]!)), console.error);
+    return () => {
+      live = false;
+    };
+    // The colours are arrays: compare them by value.
+  }, [locale, focusMin, shortMin, longMin, rounds, endScreen, focusColor.join(), shortColor.join(), longColor.join()]);
+  const [ownFrame, setOwnFrame] = useState<Uint16Array | null>(null);
+  useEffect(() => {
+    setOwnFrame(null);
+    if (!own || endScreen !== "back") return;
+    let live = true;
+    loadFrames(own.id, own.frames === 1).then((d) => live && setOwnFrame(pickThumb(d.frames) ?? null), console.error);
+    return () => {
+      live = false;
+    };
+  }, [own?.id, own?.frames, endScreen]);
+
+  const box = "h-[76px] w-[135px] shrink-0 rounded-md bg-black";
+  const labels = [t("pomo.phase.focus"), t(rounds > 1 ? "pomo.phase.shortBreak" : "pomo.phase.longBreak")];
+  const tile = (frame: Uint16Array | null | undefined, label: string, key: string) => (
+    <figure key={key} className="flex flex-col gap-1">
+      {frame ? <FramePlayer frames={[frame]} delaysMs={[100]} className={box} /> : <div className={box} />}
+      <figcaption className="truncate text-[11px] text-ink-3">{label}</figcaption>
+    </figure>
+  );
+  const arrow = (key: string) => <ArrowRight key={key} size={14} className="mb-5 shrink-0 text-ink-3" />;
+  const end =
+    endScreen === "summary"
+      ? cards?.[2]
+      : ownFrame;
+  const endLabel = `${t("pomo.screen.atEnd")}: ${endScreen === "summary" ? t("pomo.end.summary.short") : own?.name ?? t("pomo.end.own")}`;
+  return (
+    <div className="flex flex-col gap-1.5" data-pomo-strip>
+      <span className="text-[11.5px] text-ink-3">{t("pomo.screen.example")}</span>
+      <div className="flex flex-wrap items-center gap-2">
+        {tile(cards?.[0], labels[0]!, "a")}
+        {arrow("x")}
+        {tile(cards?.[1], labels[1]!, "b")}
+        {arrow("y")}
+        {endScreen === "back" && !own ? (
+          <figure className="flex flex-col gap-1">
+            <div className={`${box} flex items-center justify-center border border-dashed border-line bg-transparent text-[11px] text-ink-3`}>
+              {t("pomo.end.own")}
+            </div>
+            <figcaption className="truncate text-[11px] text-ink-3">{t("pomo.screen.atEnd")}</figcaption>
+          </figure>
+        ) : (
+          tile(end, endLabel, "c")
+        )}
+      </div>
+    </div>
+  );
+}
+
+const END_CHOICES: { id: PomodoroEndScreen; label: MessageKey; body: MessageKey }[] = [
+  { id: "back", label: "pomo.end.back", body: "pomo.end.back.body" },
+  { id: "summary", label: "pomo.end.summary", body: "pomo.end.summary.body" },
+];
+
+/** What the screen shows when a series ends or is stopped. */
+function EndChoice({
+  value,
+  own,
+  onChange,
+}: {
+  value: PomodoroEndScreen;
+  own: LiveRestore | null;
+  onChange: (v: PomodoroEndScreen) => void;
+}) {
+  const t = useT();
+  return (
+    <div className="flex flex-col gap-1.5" role="radiogroup" aria-label={t("pomo.end")} data-pomo-end>
+      <span className="text-[12.5px] font-medium">{t("pomo.end")}</span>
+      {END_CHOICES.map((c) => {
+        const on = c.id === value;
+        return (
+          <button
+            key={c.id}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            onClick={() => onChange(c.id)}
+            className={`flex items-start gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-colors ${
+              on ? "border-signal/60 bg-signal/10" : "border-line hover:bg-surface-2"
+            }`}
+          >
+            <span
+              className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${on ? "border-signal" : "border-ink-3"}`}
+            >
+              {on && <span className="h-1.5 w-1.5 rounded-full bg-signal" />}
+            </span>
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-[12.5px] font-semibold">{t(c.label)}</span>
+              <span className="text-[11.5px] text-ink-3">{t(c.body)}</span>
+              {c.id === "back" && own && (
+                <span className="text-[11.5px] text-ink-2">
+                  {t("pomo.end.own")}: <span className="font-medium text-ink">{own.name}</span> · {t("sc.uploadTime")}{" "}
+                  <span className="num">~{fmtSeconds(uploadSeconds(own.frames))}</span>
+                </span>
+              )}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Uploads one series needs against the budget ready now. */
 function CostLine({ s }: { s: PomodoroState }) {
   const t = useT();
   const live = useLive((x) => x.state);
   if (!live) return null;
-  // Every phase is a card: rounds focus phases, rounds − 1 short breaks, one long break.
+  // Every phase is a card: rounds focus phases, rounds − 1 short breaks, one
+  // long break; and one more at the end (the own picture or a summary).
   const { rounds, focusMin, shortMin, longMin } = s.settings;
-  const need = rounds * 2;
+  const need = rounds * 2 + 1;
   const ready = Math.max(0, Math.floor(live.tokens + 1e-6));
   const seriesMin = rounds * focusMin + (rounds - 1) * shortMin + longMin;
   const refill = (live.perDay / 24) * (seriesMin / 60);

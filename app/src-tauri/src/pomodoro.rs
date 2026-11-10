@@ -15,13 +15,15 @@
 //! * When a phase starts the UI is asked for a card (`pomodoro-card`
 //!   event), which goes through the live mode like any other source:
 //!   budget, newest card wins. While the timer runs it holds the screen, so
-//!   "Çalan şarkı" waits; when it stops, the song that plays comes back, or
-//!   a summary card replaces the phase card so the screen stays true.
+//!   "Çalan şarkı" waits. When it ends or is stopped, the song that plays
+//!   comes back; otherwise the user's own picture comes back after
+//!   `BACK_AFTER`, or a summary card stays, as the user chose
+//!   (`PomodoroEndScreen`; owner's request, 2026-11-10).
 
 use crate::device::{DeviceHandle, LiveFrame, Request};
 use crate::dto::{
-    Connection, PomodoroCard, PomodoroCardKind, PomodoroMotion, PomodoroPhase, PomodoroSettings, PomodoroState,
-    PomodoroStatus, PomodoroSummary, PomodoroTransition,
+    Connection, PomodoroCard, PomodoroCardKind, PomodoroEndScreen, PomodoroMotion, PomodoroPhase, PomodoroSettings,
+    PomodoroState, PomodoroStatus, PomodoroSummary, PomodoroTransition,
 };
 use crate::live::{now_ms, LiveHandle};
 use crate::settings;
@@ -49,6 +51,9 @@ const IDLE: Duration = Duration::from_secs(60);
 /// The blink or wave when a phase starts; the card is asked for after it,
 /// so the upload (which pauses the live layer) does not cut it short.
 const FLASH_MS: f64 = 1_000.0;
+/// After the timer stops, wait this long before the user's own picture goes
+/// back up: starting again at once costs no upload.
+const BACK_AFTER: Duration = Duration::from_secs(15);
 
 /// Keys the light has left: barely lit, so the empty part stays visible.
 /// 8 % looked like the light was still waiting there (owner, 2026-11-10).
@@ -559,7 +564,11 @@ impl PomodoroHandle {
                 inner.trying = None;
             }
             match action {
-                PomodoroAction::Start => inner.timer.start(&s, now),
+                PomodoroAction::Start => {
+                    // Started again soon after a stop: the screen stays ours.
+                    self.live.cancel_return(SOURCE);
+                    inner.timer.start(&s, now)
+                }
                 PomodoroAction::Pause => {
                     inner.timer.pause(now);
                     None
@@ -612,12 +621,19 @@ impl PomodoroHandle {
                 inner.card_at = None;
                 inner.done_at = Some(now);
                 let cards = inner.settings.screen && self.live.enabled();
+                let end = inner.settings.end_screen;
                 drop(inner);
                 tracing::info!(complete = summary.complete, rounds = summary.focus_done, "pomodoro series ended");
                 // Leave the screen true: the song that plays comes back by
-                // itself once the hold ends; otherwise a summary card.
+                // itself once the hold ends; otherwise the user's own
+                // picture, or a summary card.
                 self.live.drop_pending(SOURCE);
-                if cards && self.live.has_card_from(SOURCE) && !self.live.track_playing() {
+                if !cards || !self.live.has_card_from(SOURCE) || self.live.track_playing() {
+                    return;
+                }
+                if end == PomodoroEndScreen::Back {
+                    self.live.return_after(SOURCE, BACK_AFTER);
+                } else {
                     let card = PomodoroCard {
                         kind: PomodoroCardKind::Done,
                         phase: PomodoroPhase::Focus,
@@ -663,6 +679,14 @@ impl PomodoroHandle {
         let wanted = running && s.screen && live_on;
         if wanted && !inner.cards_wanted && inner.card_at.is_none() {
             inner.card_at = Some(now);
+        }
+        if !wanted && inner.cards_wanted && running && live_on {
+            // Cards turned off while the timer runs: its card leaves the
+            // screen like at the end (the song that plays comes back).
+            self.live.drop_pending(SOURCE);
+            if !self.live.track_playing() {
+                self.live.return_after(SOURCE, BACK_AFTER);
+            }
         }
         inner.cards_wanted = wanted;
         self.live.set_held(wanted);
