@@ -21,7 +21,15 @@ Ayarlar (ışık, tuş atama, ekran) için klavye **USB kabloyla** bağlı ve ar
 - [docs/DURUM.md](docs/DURUM.md): durum, kronoloji, dersler, yapılacaklar
 - [docs/donanim-dogrulama.md](docs/donanim-dogrulama.md): cihazda ölçülen protokol gerçekleri
 - [docs/mimari.md](docs/mimari.md): mimari kararı
+- [docs/gelistirme-akisi.md](docs/gelistirme-akisi.md): dallar, PR'lar ve sürüm çıkarma
 - [docs/research/](docs/research/): protokol ve ekran araştırmaları
+
+## Dallar ve sürümler
+
+- `main`: yayındaki sürüm. Kurulum dosyaları **Releases** sayfasında.
+- `develop`: geliştirme.
+
+Her iş kendi dalında yapılır ve PR ile `develop`'a girer. Ayrıntı için [docs/gelistirme-akisi.md](docs/gelistirme-akisi.md)'ye bakın.
 
 ## Güvenlik
 
