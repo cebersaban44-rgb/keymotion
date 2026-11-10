@@ -209,6 +209,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **RGB565 dönüşümü:** Rust ve arayüz aynı kuralı kullanıyor: en yakın seviye (kırpma değil).
     - **Doğrulama:** CDP ile fabrika GIF'i, dikey fotoğraf ve WebM video içe aktarıldı. Kullanıcı kendi resim ve GIF'ini yükledi; E2 geçti; yükleme sırasında yazma sürüyor.
     - **Henüz yok:** yazı ve şablon kartları, slayt, canlı kartlar.
+    - **PR:** [#19](https://github.com/cebersaban44-rgb/klavye-studio/pull/19).
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -366,11 +367,54 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
    - **Kullanıcının ilkesi (2026-11-10):** "Her ne yüklenirse yüklensin" dosya olduğu gibi gönderilmez. Uygulama onu klavyenin biçimine çevirir, önizletir, kullanıcı onaylarsa yükler. Ayrıntı: `research/ekran-derin-arastirma.md` §3.1.
    - **Sıradaki adımlar:**
      1. **Faz A bitti** (madde 23): Ekran Stüdyosu sayfası; kullanıcı kendi resim ve GIF'iyle denedi, E2 (kalıcılık) geçti.
-     2. Sıradaki adaylar (kullanıcı seçecek):
-        - Faz B: yazı ve şablon kartları, slayt (birkaç görsel tek animasyonda), ekranla uyumlu ışık.
-        - Faz C: olay tabanlı canlı kartlar.
-        - E3: panelin gerçek kare hızı.
-     3. Her yükleme `donanim-dogrulama.md`'ye yazılır.
+     2. **Sıradaki iş: Faz B** (kullanıcı 2026-11-10'da seçti; plan aşağıda, "Faz B planı").
+     3. Sonra: Faz C (olay tabanlı canlı kartlar), E3 (panelin gerçek kare hızı).
+     4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar 4 yükleme: E1, E4 ve kullanıcının 2 yüklemesi.
+   - **Faz B planı** (henüz kod yok; bağlam sıkıştırması öncesi yazıldı):
+     - **Kullanıcının arayüz kuralı** (2026-11-10, Faz A geri bildirimi):
+       - adımlar görünür olsun;
+       - her adımda belirgin bir "Vazgeç" bulunsun;
+       - iş bitince alan başlangıca dönüp ne yapıldığını söylesin;
+       - amacı belli olmayan düğme olmasın.
+       - Her yol (başarı, iptal, hata, geri dönüş) kullanıcıya göstermeden önce denenir: tarayıcı panelinde `http://127.0.0.1:1420/?mock=usb` (sahte arka uç, flash yazmaz) ve gerçek uygulamada CDP.
+     - **Önce yeniden düzenleme** (`app/src/pages/Screen.tsx`):
+       - Adım 1 bir kaynak seçici olacak, üç kutu: **Dosyadan** (bugünkü akış), **Yazı kartı**, **Slayt**.
+       - Ortak bir çerçeve bileşeni (Stepper + Vazgeç) ve ortak bir önizleme/yükleme adımı (bugün `Editor` içinde: önizleme oynatıcısı, "Klavyeye yükle", "Düzenlemeye dön", "Yüklemeden kaydet", onay, satır içi ilerleme, bitince `onFinished`) ayrı bileşen olacak.
+       - Her kaynak yalnızca adım 2'yi kendisi çizecek ve sonunda bir `Prepared` (kareler + gecikmeler) üretecek.
+     - **B1, yazı ve şablon kartları:**
+       - Şablonlar:
+         - ad kartı (büyük ad, küçük alt yazı);
+         - söz/alıntı;
+         - kayan yazı (animasyon);
+         - çerçevedeki dağlarla uyumlu çizgi-dağ teması;
+         - rozet/emoji + yazı.
+       - Ayarlar:
+         - başlık ve alt yazı;
+         - font: uygulamadaki Bricolage Grotesque, Instrument Sans ve JetBrains Mono (fontsource latin-ext, Türkçe karakterli);
+         - boyut, yazı rengi;
+         - arka plan: düz ya da iki renkli degrade;
+         - hizalama;
+         - kayan yazıda hız ve fps.
+       - Kurallar:
+         - Çizimden önce `document.fonts.load`.
+         - Türkçe büyük harf için `toLocaleUpperCase("tr")`.
+         - Yazıda yumuşak geçiş (dither) kapalı.
+         - Kayan yazının kare sayısı ≤140 olacak şekilde adım otomatik büyütülür.
+       - Canlı önizleme mevcut 2× tuvalde, RGB565 renkleriyle.
+     - **B2, slayt:**
+       - Slaytlar birden çok dosyadan ve kütüphaneden eklenir. Kütüphane öğeleri hazır 240×135; animasyonlu öğenin temsilci karesi alınır (`pickThumb`).
+       - Slayt başına süre 1–20 s; dosya slaytlarında Doldur/Sığdır; sıralama (yukarı/aşağı), silme.
+       - Geçiş: "Kesme" ya da "Yumuşak": 3 karelik çapraz geçiş, 100 ms.
+       - Bütçe:
+         - D saniyelik slayt = ⌈D / 0,508⌉ kare (her biri ≤508 ms).
+         - Toplam ≤140 kare (≈71 s döngü).
+         - Kare, döngü ve yükleme süresi göstergesi.
+     - **B3, ekranla uyumlu ışık:**
+       - Hazırlanan karelerden ya da bir kütüphane öğesinden 5 renklik palet çıkarılır (median cut).
+       - "Işıkları ekrana uydur" iki seçenek sunar: tek renk (Static efekt) ya da tuşlara palet degradesi (tuş başına).
+       - Seçim Işıklar sayfasında **taslak** olarak açılır: `useLighting` `setTab` / `setEffect` / `setPerKey`. Canlı önizleme tuşlarda (RAM) görünür; flash'a yazım yalnızca kullanıcı orada kaydedince olur, mevcut akış ve kapatma uyarısı korunur.
+       - Not: kullanıcının kayıtlı ışığı şu an mod 0 (Kapalı).
+     - **Sıra:** yeniden düzenleme → B1 → B2 → B3. Her biri ayrı PR olabilir. Donanım testi yalnızca kullanıcının onayıyla ya da kullanıcının kendi yüklemesiyle yapılır.
    - **Güvenlik kuralları koda girecek** (§6):
      - kare ≤140, sayfa ≤2215, gecikme 1–254 (`FF` yasak);
      - `04 F0`, `04 38`, `1F`, güncelleme modu ve FF68'de GET_FEATURE asla gönderilmez;
