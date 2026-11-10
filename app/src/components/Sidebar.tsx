@@ -2,6 +2,7 @@ import { Cable, Keyboard, LayoutGrid, Lock, Monitor, Settings2, Sparkles, Workfl
 import type { Feature } from "../bindings/Feature";
 import { connectionKey, useT, type MessageKey } from "../lib/i18n";
 import { useActiveKeyboard, useApp, type PageId } from "../lib/store";
+import { useUnsaved } from "../lib/unsaved";
 
 interface NavItem {
   id: PageId;
@@ -27,6 +28,7 @@ export function Sidebar() {
   const page = useApp((s) => s.page);
   const setPage = useApp((s) => s.setPage);
   const kb = useActiveKeyboard();
+  const unsavedPages = new Set(useUnsaved().map((i) => i.page));
 
   const item = (it: NavItem) => {
     const active = page === it.id;
@@ -45,6 +47,14 @@ export function Sidebar() {
           {active && <span className="absolute top-2.5 bottom-2.5 left-0 w-[3px] rounded-full bg-signal" />}
           <Icon size={17} strokeWidth={1.75} className={active ? "text-signal" : ""} />
           <span className="flex-1">{t(it.label)}</span>
+          {unsavedPages.has(it.id) && (
+            <span
+              role="img"
+              aria-label={t("unsaved.dot")}
+              title={t("unsaved.dot")}
+              className="h-2 w-2 rounded-full bg-warn shadow-[0_0_8px_var(--warn)]"
+            />
+          )}
           {locked && <Lock size={12} className="text-ink-3" aria-label={t("soon.needsUsb")} />}
         </button>
       </li>

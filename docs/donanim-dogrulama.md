@@ -121,6 +121,48 @@ Kullanıcıya gözle yaptırılan testler:
 
 **Çözüm:** `kb-core::color::LedCalibration`. Varsayılan gamma 2.2; kanal başına kazanç ayarlanabilir. Cihaz aktörü canlı karelere ve tuş başına tablolara bu dönüşümü uyguluyor. Firmware efektlerinin rengine (`04 13`) henüz uygulanmıyor; ayrıca doğrulanacak.
 
+### Kalibrasyon arayüzü, uçtan uca — 2026-11-10
+
+CDP ile gerçek uygulamada, klavye USB modundayken denendi:
+
+- **Test deseni (gri basamaklar):** 97 LED'lik canlı akış başladı. Gamma kaydırıcısı 1.6 → 1.8 → 2.2 oynatılınca aktör her değeri aldı ve bir sonraki kareyi yeni değerle gönderdi.
+- **Kalıcılık:** Kaydırıcı 400 ms durunca `%APPDATA%\dev.klavye.studio\calibration.json` yazıldı. "Varsayılana dön" 2.2'yi geri yazdı.
+- **Akışın bitişi:** Desen kapatılınca akış durdu ve klavye kayıtlı ışığına döndü.
+- **Ayna:** `04 F5` okumaları ters kalibrasyonla gösteriliyor. Tuş başına modda boyanan renkler aynen geri okunur. Firmware efektlerinde düşük PWM değerleri ekranda daha açık görünür; LED'in gerçek görünüşü de budur.
+- **Gözlem:** Yaklaşık 60 saniyelik akışta (yaklaşık 1200 kare) bir `04 20` karesi `FF` ile reddedildi. Sonraki kare 50 ms sonra sorunsuz gitti; aktör hatayı log'layıp devam ediyor. Sıklık artarsa incelenecek.
+- **Göz testi:** Kullanıcı gri basamakları ve beyazı gözle denedi; ikisi de doğru.
+
+### Eksik tuşlar bir önceki rengini koruyor — 2026-11-10
+
+**Belirti (kullanıcı):** Tuş başına renkte canlı önizleme açıkken:
+- "Temizle" ekrandaki tuşları söndürdü ama klavyedeki renkler kaldı.
+- Tıklanan tuşlar seçilen rengi almıyor gibi görünüyordu.
+- Eski renkler klavyede kalmaya devam etti.
+
+**Ölçüm (`kb live-probe`, yalnızca RAM; `04 F5` canlı katmanı okuyabiliyor):**
+
+| Aşama | Gönderilen kare | `F5` sonucu |
+|---|---|---|
+| A | 97 tuşun hepsi mavi | 95 tuş mavi |
+| B | Yalnızca Esc kırmızı, diğer yuvalar `00 00 00 00` | Esc kırmızı, **94 tuş hâlâ mavi** |
+| C | Esc kırmızı, diğer tuşlar `[idx 0 0 0]` | 94 tuş siyah |
+| B (düzeltmeden sonra) | Yalnızca Esc kırmızı | 94 tuş siyah |
+
+- **Neden:** Firmware karedeki girişleri **idx baytına göre** uyguluyor. Tamamı sıfır olan yuva yalnızca "LED 0" anlamına geliyor ve hiçbir tuşu değiştirmiyor. Uygulama yalnızca boyanmış tuşları gönderiyordu. Bu yüzden boyanmayan tuşlar önceki karedeki renklerini korudu; buna kalibrasyon test deseni de dahil. Boş tasarım ise hiçbir şeyi söndürmedi.
+- **Neden testlerde görülmedi:** CLI desenleri her zaman 97 tuşun hepsini, siyahları da açıkça yazarak gönderiyordu.
+- **Çözüm:** `realtime_table` ve `per_key_table` her yuvaya kendi idx'ini yazıyor; verilmeyen LED'ler siyah gidiyor.
+
+**Uygulamada kayıt (CDP, flash):**
+- 97 tuş beyaz kaydedildi (869 ms). Sağlama toplamı 16 biti aştığı halde tuttu; firmware toplamı 16 bitte sarıyor. Ayna 96 tuşu beyaz okudu.
+- Ardından yalnızca Esc kırmızı kaydedildi. Ayna 94 tuşu siyah, Esc'i #FE3B30 okudu; ters kalibrasyon boyanan rengi geri verdi.
+- Testten sonra kullanıcının önceki efekti (15, kırmızı) yeniden uygulandı.
+
+**Göstergeler:**
+- Num Lock (LED 32, beyaz) ve Fn (LED 96, kırmızı) ne canlı kareye ne de kayıtlı tabloya uyuyor; firmware bunları kendisi yakıyor.
+- Num Lock'un beyazı muhtemelen Num Lock'un açık olduğunu gösteriyor. Fn'in kırmızısının neyi gösterdiği henüz bilinmiyor.
+
+**Arayüz hatası (ayrıca):** Fırça rengi değiştikten hemen sonra tıklanan tuş, React yeniden çizmeden önce eski rengi alıyordu. Boyama artık rengi tıklama anında durum deposundan okuyor.
+
 ### Ekran: stok ana sayfa (fotoğraf, 2026-11-10 08:29)
 
 - **Yerleşim:** Panel yatay ve topuzun hemen solunda. Panelin sol yarısı mavi bir durum kartı, sağ yarısı siyah zemin üzerinde çizgi çizimi dağlar ve kuşlar.
