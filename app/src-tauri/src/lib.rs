@@ -16,7 +16,7 @@ use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request};
 use dto::{
     Calibration, CalibrationInfo, ClockStatus, EffectInfo, EffectRequest, KeyAssignment, KeyboardInfo, KeymapCatalog,
     KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, PomodoroSettings,
-    PomodoroState, ScreenItem, ScreenItemKind, ScreenState, ThemePreference, UiEnvironment,
+    PomodoroState, ScreenItem, ScreenItemKind, ScreenState, SongStop, ThemePreference, UiEnvironment,
 };
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
 use live::LiveHandle;
@@ -177,9 +177,10 @@ fn live_configure(
     plan: Option<LivePlan>,
     now_playing: Option<bool>,
     restore: Option<bool>,
+    song_stop: Option<SongStop>,
 ) -> Result<LiveState, String> {
-    tracing::debug!(?enabled, ?plan, ?now_playing, ?restore, "ipc: live_configure");
-    live.configure(enabled, plan, now_playing, restore)
+    tracing::debug!(?enabled, ?plan, ?now_playing, ?restore, ?song_stop, "ipc: live_configure");
+    live.configure(enabled, plan, now_playing, restore, song_stop)
 }
 
 /// A finished live card from the UI: the blob as body (validated here),

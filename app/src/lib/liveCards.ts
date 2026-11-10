@@ -5,6 +5,7 @@ import type { PomodoroCard } from "../bindings/PomodoroCard";
 import type { PomodoroPhase } from "../bindings/PomodoroPhase";
 import type { PomodoroSettings } from "../bindings/PomodoroSettings";
 import type { TrackInfo } from "../bindings/TrackInfo";
+import type { MessageKey } from "./i18n";
 import { phaseColor } from "./pomodoro";
 import { H, STILL_DELAY_MS, W, type Prepared } from "./screenImport";
 import { compose565, makeLayers } from "./screenText";
@@ -203,6 +204,25 @@ export interface PomodoroWords {
   doneComplete: string;
   doneStopped: string;
   ended: string;
+}
+
+/** The card's words in the current language. */
+export function pomodoroWords(tNow: (key: MessageKey) => string): PomodoroWords {
+  return {
+    label: tNow("pomo.card.label"),
+    name: tNow("pomo.card.name"),
+    phase: { focus: tNow("pomo.phase.focus"), shortBreak: tNow("pomo.phase.shortBreak"), longBreak: tNow("pomo.phase.longBreak") },
+    round: tNow("pomo.card.round"),
+    min: tNow("pomo.card.min"),
+    next: tNow("pomo.card.next"),
+    nextFocus: tNow("pomo.card.nextFocus"),
+    nextShort: tNow("pomo.card.nextShort"),
+    nextLong: tNow("pomo.card.nextLong"),
+    lastBreak: tNow("pomo.card.lastBreak"),
+    doneComplete: tNow("pomo.card.doneComplete"),
+    doneStopped: tNow("pomo.card.doneStopped"),
+    ended: tNow("pomo.card.ended"),
+  };
 }
 
 function hexRgb(hex: string): [number, number, number] {

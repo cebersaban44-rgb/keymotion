@@ -7,12 +7,16 @@ import { listen } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type { LivePlan } from "../bindings/LivePlan";
 import type { LiveState } from "../bindings/LiveState";
+import type { SongStop } from "../bindings/SongStop";
 import type { TrackInfo } from "../bindings/TrackInfo";
 import { inTauri } from "./ipc";
-import { mockLiveUploaded, mockRestored, useScreen } from "./screen";
+import { mockLiveUploaded, mockRestored, mockShown, useScreen } from "./screen";
 import { toBlob, type Prepared } from "./screenImport";
 
 // ------------------------------------------------------------------- ipc
+
+/** Source ids, as the backend knows them. */
+export const NOW_PLAYING_SOURCE = "now-playing";
 
 const PLAN: Record<LivePlan, { perDay: number; burst: number }> = {
   saver: { perDay: 8, burst: 3 },
@@ -37,6 +41,9 @@ const mock = {
     track: null,
     restore: null,
     held: false,
+    songStop: "back",
+    own: null,
+    goingBack: null,
   } as LiveState,
   /** What the mock GIF page showed before the first live card. */
   before: null as { id: string; name: string; frames: number; pages: number } | null,
@@ -44,10 +51,74 @@ const mock = {
   onTrack: null as ((t: TrackInfo) => void) | null,
   cover: null as Blob | null,
   timer: 0 as number,
+  backTimer: 0 as number,
 };
 
+/** In the browser preview with `pomofast`, waits are short too. */
+const FAST = typeof location !== "undefined" && location.search.includes("pomofast");
+
+function mockLiveShowing() {
+  return mockShown() === "live";
+}
+
 function mockEmit() {
+  const shown = mockShown();
+  mock.state.own = shown === "live" ? mock.before : shown;
+  mock.state.restore = shown === "live" && !mock.state.uploading ? mock.before : null;
   mock.emit?.({ ...mock.state });
+}
+
+/** Put the user's own picture back (browser preview). */
+function mockPutBack() {
+  const back = mock.before;
+  if (!back || !mockLiveShowing()) return;
+  mock.state.goingBack = null;
+  mock.state.uploading = { source: "restore", name: back.name };
+  mockEmit();
+  window.setTimeout(() => {
+    mock.state.uploading = null;
+    mock.before = null;
+    mockRestored(back.id);
+    mockEmit();
+  }, 1500);
+}
+
+/** Like `LiveHandle::return_after`: only while this source's card shows. */
+export function mockReturnAfter(source: string, ms: number) {
+  const s = mock.state;
+  if (inTauri || !s.enabled || !mockLiveShowing() || s.last?.source !== source) return;
+  window.clearTimeout(mock.backTimer);
+  s.goingBack = { source, atMs: Date.now() + ms };
+  mock.backTimer = window.setTimeout(() => {
+    const b = mock.state.goingBack;
+    if (!b || b.source !== source) return;
+    mock.state.goingBack = null;
+    if (mock.state.enabled && !mock.state.pending && mock.state.last?.source === source) {
+      mock.state.tokens -= 1;
+      mockPutBack();
+    } else mockEmit();
+  }, ms);
+  mockEmit();
+}
+
+export function mockCancelReturn(source: string) {
+  if (inTauri || mock.state.goingBack?.source !== source) return;
+  window.clearTimeout(mock.backTimer);
+  mock.state.goingBack = null;
+  mockEmit();
+}
+
+/** Browser preview: the pretend song plays or stops (`__ksMockTrack`). */
+function mockTrackPlaying(playing: boolean) {
+  const t = mock.state.track;
+  if (!t || t.playing === playing) return;
+  mock.state.track = { ...t, playing };
+  if (!playing && mock.state.songStop === "back") mockReturnAfter(NOW_PLAYING_SOURCE, FAST ? 8_000 : 300_000);
+  if (playing) mockCancelReturn(NOW_PLAYING_SOURCE);
+  mockEmit();
+}
+if (!inTauri && typeof window !== "undefined") {
+  (window as unknown as { __ksMockTrack: (p: boolean) => void }).__ksMockTrack = mockTrackPlaying;
 }
 
 /** The mock Pomodoro holds the screen (browser preview only). */
@@ -104,26 +175,22 @@ export interface LivePatch {
   enabled?: boolean;
   plan?: LivePlan;
   nowPlaying?: boolean;
-  /** With `enabled: false`: put back what the GIF page showed before. */
+  /** Put back what the GIF page showed before the live mode (with
+   *  `enabled: false`, or on its own while the live mode stays on). */
   restore?: boolean;
+  songStop?: SongStop;
 }
 
 export async function configureLive(patch: LivePatch): Promise<LiveState> {
   if (!inTauri) {
     const s = mock.state;
-    if (patch.enabled === false && patch.restore && s.restore) {
-      const back = s.restore;
-      s.restore = null;
-      s.uploading = { source: "restore", name: back.name };
-      window.setTimeout(() => {
-        s.uploading = null;
-        mock.before = null;
-        mockRestored(back.id);
-        mockEmit();
-      }, 1500);
-    }
+    if (patch.restore && patch.enabled !== true && s.restore) mockPutBack();
     if (patch.enabled !== undefined) s.enabled = patch.enabled;
     if (patch.nowPlaying !== undefined) s.nowPlaying = patch.nowPlaying;
+    if (patch.songStop) {
+      s.songStop = patch.songStop;
+      if (patch.songStop === "keep") mockCancelReturn(NOW_PLAYING_SOURCE);
+    }
     if (patch.plan) {
       s.plan = patch.plan;
       s.perDay = PLAN[patch.plan].perDay;
@@ -133,6 +200,8 @@ export async function configureLive(patch: LivePatch): Promise<LiveState> {
     if (!s.enabled) {
       s.pending = null;
       s.track = null;
+      s.goingBack = null;
+      window.clearTimeout(mock.backTimer);
     }
     mockEmit();
     void mockTrackLoop();
@@ -143,6 +212,7 @@ export async function configureLive(patch: LivePatch): Promise<LiveState> {
     plan: patch.plan ?? null,
     nowPlaying: patch.nowPlaying ?? null,
     restore: patch.restore ?? null,
+    songStop: patch.songStop ?? null,
   });
 }
 
@@ -154,6 +224,9 @@ export async function submitLive(p: Prepared, source: string): Promise<LiveState
     if (!s.enabled) throw new Error("live mode is off");
     const item = { source, name: p.name };
     s.pending = item;
+    // A new card replaces the screen anyway.
+    s.goingBack = null;
+    window.clearTimeout(mock.backTimer);
     mockEmit();
     if (s.tokens < 1) {
       s.nextTokenMs = ((1 - s.tokens) / (s.perDay / 24)) * 3_600_000;
@@ -169,7 +242,6 @@ export async function submitLive(p: Prepared, source: string): Promise<LiveState
     s.last = { ...item, atMs: Date.now() };
     const prev = mockLiveUploaded(blob);
     if (prev !== undefined) mock.before = prev;
-    s.restore = mock.before;
     mockEmit();
     return { ...s };
   }
@@ -231,7 +303,7 @@ export function startLive(draw: (t: TrackInfo, cover: Blob | null) => Promise<Pr
     try {
       const cover = t.hasCover ? await nowPlayingCover() : null;
       const card = await draw(t, cover);
-      onState(await submitLive(card, "now-playing"));
+      onState(await submitLive(card, NOW_PLAYING_SOURCE));
       useLive.setState({ drawError: null });
     } catch (e) {
       console.error(e);

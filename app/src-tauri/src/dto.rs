@@ -1036,6 +1036,36 @@ pub struct LiveState {
     pub restore: Option<LiveRestore>,
     /// The Pomodoro holds the screen while it runs: "Çalan şarkı" waits.
     pub held: bool,
+    /// What "Çalan şarkı" does when the music stops.
+    pub song_stop: SongStop,
+    /// The user's own picture: what the screen goes back to when no source
+    /// has anything to show (the last library item uploaded by hand).
+    pub own: Option<LiveRestore>,
+    /// The screen goes back to the user's own picture at this time.
+    pub going_back: Option<LiveBack>,
+}
+
+/// What the "Çalan şarkı" source does when the music stops.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum SongStop {
+    /// After a while without music, the user's own picture comes back.
+    #[default]
+    Back,
+    /// The song's card stays until the next card.
+    Keep,
+}
+
+/// A source has nothing to show any more: the screen goes back to the
+/// user's own picture unless something else comes first.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveBack {
+    /// Source whose card is on the screen now.
+    pub source: String,
+    pub at_ms: f64,
 }
 
 /// Pomodoro phase.
@@ -1120,6 +1150,21 @@ pub struct PomodoroSettings {
     pub transition: PomodoroTransition,
     /// The Windows notification sound when a phase ends by itself.
     pub sound: bool,
+    /// What the screen shows when a series ends or is stopped.
+    pub end_screen: PomodoroEndScreen,
+}
+
+/// What the screen shows when a series ends or is stopped (with screen
+/// cards on). A song that plays always comes back first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum PomodoroEndScreen {
+    /// The user's own picture comes back (owner's choice, 2026-11-10).
+    #[default]
+    Back,
+    /// A summary card (rounds, minutes) stays until the next card.
+    Summary,
 }
 
 impl Default for PomodoroSettings {
@@ -1139,6 +1184,7 @@ impl Default for PomodoroSettings {
             pulse: true,
             transition: PomodoroTransition::default(),
             sound: false,
+            end_screen: PomodoroEndScreen::default(),
         }
     }
 }
