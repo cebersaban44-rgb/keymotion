@@ -152,6 +152,8 @@ struct Runtime {
     track: Option<TrackInfo>,
     /// Library item to put back on the GIF page (live mode turned off).
     restore: Option<String>,
+    /// The Pomodoro holds the screen: "Çalan şarkı" waits.
+    held: bool,
 }
 
 enum Msg {
@@ -295,6 +297,61 @@ impl LiveHandle {
 
     pub fn now_playing_wanted(&self) -> bool {
         self.library.lock().map(|l| l.live().enabled && l.live().now_playing).unwrap_or(false)
+    }
+
+    pub fn enabled(&self) -> bool {
+        self.library.lock().map(|l| l.live().enabled).unwrap_or(false)
+    }
+
+    /// While held, sources other than the holder (the Pomodoro) wait.
+    pub fn set_held(&self, held: bool) {
+        let changed = self.rt.lock().map(|mut rt| std::mem::replace(&mut rt.held, held) != held).unwrap_or(false);
+        if changed {
+            tracing::debug!(held, "live screen hold");
+            self.emit();
+        }
+    }
+
+    pub fn held(&self) -> bool {
+        self.rt.lock().map(|rt| rt.held).unwrap_or(false)
+    }
+
+    /// Forget a card from `source` that has not gone yet.
+    pub fn drop_pending(&self, source: &str) {
+        let dropped = self
+            .rt
+            .lock()
+            .map(|mut rt| {
+                let mine = rt.pending.as_ref().is_some_and(|p| p.item.source == source);
+                if mine {
+                    rt.pending = None;
+                }
+                mine
+            })
+            .unwrap_or(false);
+        if dropped {
+            tracing::debug!(%source, "waiting live card dropped");
+            self.emit();
+        }
+    }
+
+    /// A card from `source` is on the GIF page, going there, or waiting.
+    pub fn has_card_from(&self, source: &str) -> bool {
+        let showing = self.library.lock().map(|l| l.live_source_showing(source)).unwrap_or(false);
+        let queued = self
+            .rt
+            .lock()
+            .map(|rt| {
+                rt.pending.as_ref().is_some_and(|p| p.item.source == source)
+                    || rt.uploading.as_ref().is_some_and(|u| u.source == source)
+            })
+            .unwrap_or(false);
+        showing || queued
+    }
+
+    /// A song plays now (as the "Çalan şarkı" source last saw it).
+    pub fn track_playing(&self) -> bool {
+        self.rt.lock().map(|rt| rt.track.as_ref().is_some_and(|t| t.playing)).unwrap_or(false)
     }
 
     fn next_wait(&self) -> Duration {
@@ -472,6 +529,7 @@ fn snapshot(lib: &mut ScreenLibrary, rt: &Runtime) -> LiveState {
         } else {
             lib.live_restore_target()
         },
+        held: rt.held,
     }
 }
 

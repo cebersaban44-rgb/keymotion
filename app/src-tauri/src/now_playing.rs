@@ -4,7 +4,9 @@
 //!
 //! A track is announced (`now-playing` event) once it has played for
 //! `SETTLE` without pause, so skipping through songs costs no uploads. A
-//! paused session is never chosen over one that plays.
+//! paused session is never chosen over one that plays. While the Pomodoro
+//! holds the screen nothing is announced; when it lets go, the song that
+//! plays is announced again so its card comes back.
 
 use crate::dto::TrackInfo;
 use crate::live::LiveHandle;
@@ -88,6 +90,7 @@ fn run(app: AppHandle, live: Arc<LiveHandle>, state: Arc<NowPlaying>) {
     let mut source = win::Source::default();
     let mut current: Option<Current> = None;
     let mut last = Instant::now();
+    let mut was_held = false;
     loop {
         if !live.now_playing_wanted() {
             if current.take().is_some() {
@@ -100,6 +103,15 @@ fn run(app: AppHandle, live: Arc<LiveHandle>, state: Arc<NowPlaying>) {
         }
         let elapsed = last.elapsed();
         last = Instant::now();
+        let held = live.held();
+        if was_held && !held {
+            // The Pomodoro let go of the screen: bring the song's card back.
+            if let Some(c) = current.as_mut() {
+                c.info.settled = false;
+                c.cover_waits = 0;
+            }
+        }
+        was_held = held;
         match source.poll() {
             Ok(Some(t)) => {
                 let name = app_name(&t.aumid);
@@ -129,7 +141,7 @@ fn run(app: AppHandle, live: Arc<LiveHandle>, state: Arc<NowPlaying>) {
                     if t.playing {
                         c.played += elapsed.min(POLL * 3);
                     }
-                    if !c.info.settled && t.playing && c.played >= SETTLE && !c.info.title.trim().is_empty() {
+                    if !c.info.settled && !held && t.playing && c.played >= SETTLE && !c.info.title.trim().is_empty() {
                         let cover = source.cover().unwrap_or_else(|e| {
                             tracing::debug!("no cover: {e}");
                             None

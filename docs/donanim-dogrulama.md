@@ -434,6 +434,18 @@ Uygulamanın Ekran sayfası; kullanıcı kendi dosyalarıyla denedi.
   - Uygulamanın kaydında bugün **11** yükleme var. Bunlara kullanıcının elle yüklemeleri, canlı kartlar ve geri yüklemeler dahil.
   - CLI ile yapılan E1 ve E4 de eklenince toplam **13**.
 
+### Pomodoro ışık katmanı (`04 20`, yalnızca RAM) — 2026-11-10
+
+- **Nasıl:** Gerçek uygulama, CDP ile. Canlı mod kapalıydı, yani ekrana yükleme yapılmadı. Odak 1 dk, mola 1 dk, 2 tur.
+- **Sonuç (uygulama günlüğü):**
+  - Katman 97 LED'le başladı (`background light layer started leds=97`).
+  - Duraklatınca kalan süre 57 sn'de durdu, sürdürünce devam etti.
+  - Süre bitince kısa molaya geçti (çubuk yeşil, rakam 1 yandı).
+  - "Bitir"den 1 sn sonra (iki yeşil yanıp sönme) katman durdu; klavye kendi efektine döndü (kayıtlı ışık: Kapalı).
+  - Işıklar sayfası önizlemesi (`set_live_frame`, yalnız Esc beyaz) Pomodoro katmanının üstüne geldi; önizleme kapanınca Pomodoro katmanı geri geldi.
+  - 66 sn'de 15 `04 20` karesi `FF` ile reddedildi (saniyede 20 karede yaklaşık %1). Bir sonraki kare 50 ms sonra gidiyor; bilinen ara sıra `FF`.
+- **Bekleyen:** Kullanıcının çubuğu ve renkleri gözle doğrulaması; canlı mod açıkken faz kartlarının yüklenmesi.
+
 ### Sonuçlar
 
 1. **Durum baytı kuralı:** Yalnızca `FF` ret demektir. `00` ve `01` kabul olarak sayılır.

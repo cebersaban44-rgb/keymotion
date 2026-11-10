@@ -256,6 +256,12 @@ impl ScreenLibrary {
         self.index.live.last_content.as_deref() == Some(content) && self.index.shown.values().any(|v| v == LIVE_ID)
     }
 
+    /// The GIF page shows a live card from this source (as far as the app
+    /// knows).
+    pub fn live_source_showing(&self, source: &str) -> bool {
+        self.index.live.last_source.as_deref() == Some(source) && self.index.shown.values().any(|v| v == LIVE_ID)
+    }
+
     /// Record a live card the keyboard confirmed and keep its data for
     /// the preview of the GIF page.
     pub fn live_uploaded(

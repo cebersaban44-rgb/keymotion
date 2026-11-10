@@ -1,7 +1,11 @@
 // Live cards drawn for the keyboard screen (phase C). Same rules as the
 // text cards: fonts loaded first, background dithered, text sharp.
 
+import type { PomodoroCard } from "../bindings/PomodoroCard";
+import type { PomodoroPhase } from "../bindings/PomodoroPhase";
+import type { PomodoroSettings } from "../bindings/PomodoroSettings";
 import type { TrackInfo } from "../bindings/TrackInfo";
+import { PHASE_COLOR } from "./pomodoro";
 import { H, STILL_DELAY_MS, W, type Prepared } from "./screenImport";
 import { compose565, makeLayers } from "./screenText";
 
@@ -174,6 +178,149 @@ export async function nowPlayingCard(t: TrackInfo, cover: Blob | null, label: st
     frames: [px565],
     delaysMs: [STILL_DELAY_MS],
     name: artist ? `${artist} — ${title}` : title,
+    kind: "image",
+  };
+}
+
+// -------------------------------------------------------------- pomodoro
+
+const MONO = '"JetBrains Mono Variable", monospace';
+
+/** Words the Pomodoro cards need, in the UI language. */
+export interface PomodoroWords {
+  label: string;
+  phase: Record<PomodoroPhase, string>;
+  round: string;
+  min: string;
+  next: string;
+  nextFocus: string;
+  nextShort: string;
+  nextLong: string;
+  lastBreak: string;
+  doneComplete: string;
+  doneStopped: string;
+  ended: string;
+}
+
+function hexRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** Largest size from `max` down to `min` at which `text` fits `maxW`. */
+function fitFont(ctx: CanvasRenderingContext2D, text: string, font: (px: number) => string, maxW: number, max: number, min: number) {
+  let px = max;
+  for (; px > min; px--) {
+    ctx.font = font(px);
+    if (ctx.measureText(text).width <= maxW) break;
+  }
+  ctx.font = font(px);
+  return px;
+}
+
+/**
+ * Pomodoro card: the phase and its length, the round on a ring, and what
+ * comes next; or, when the timer stopped, a summary. Both stay true until
+ * the next card, so no countdown is drawn (the keys show the progress).
+ */
+export async function pomodoroCard(c: PomodoroCard, s: PomodoroSettings, w: PomodoroWords): Promise<Prepared> {
+  const done = c.kind === "done";
+  // A finished series gets a check; one ended early shows its rounds.
+  const check = done && c.complete;
+  const color = done ? (check ? PHASE_COLOR.shortBreak : PHASE_COLOR.focus) : PHASE_COLOR[c.phase];
+  const tone = hexRgb(color);
+  const light = tone.map((v) => Math.round(v + (255 - v) * 0.35)) as [number, number, number];
+  const endTime = new Date(c.endedMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  const title = done ? (c.complete ? w.doneComplete : w.doneStopped) : w.phase[c.phase];
+  const big = done ? `${c.focusMin} ${w.min}` : `${String(c.minutes).padStart(2, "0")}:00`;
+  let foot: string;
+  if (done) foot = `${c.focusDone} ${w.round} · ${w.ended} ${endTime}`;
+  else if (c.phase === "focus")
+    foot = c.focusDone + 1 >= c.rounds ? `${w.next}: ${s.longMin} ${w.min} ${w.nextLong}` : `${w.next}: ${s.shortMin} ${w.min} ${w.nextShort}`;
+  else if (c.phase === "shortBreak") foot = `${w.next}: ${s.focusMin} ${w.min} ${w.nextFocus}`;
+  else foot = w.lastBreak;
+  await Promise.all([fonts(`${w.label} ${title} ${foot}`), document.fonts.load(`700 34px ${MONO}`, big).catch(() => [])]);
+
+  const { bg, fg } = makeLayers();
+  const grad = bg.createLinearGradient(0, 0, W * 0.6, H);
+  grad.addColorStop(0, rgb(tone, 0.34));
+  grad.addColorStop(1, rgb(tone, 0.07));
+  bg.fillStyle = grad;
+  bg.fillRect(0, 0, W, H);
+
+  fg.clearRect(0, 0, W, H);
+  // Ring on the right: one arc per round, finished rounds filled.
+  const r = 40;
+  const cx = W - 16 - r;
+  const cy = H / 2;
+  const rounds = check ? 1 : Math.max(1, done ? s.rounds : c.rounds);
+  const filled = check ? 1 : c.focusDone;
+  const gap = rounds > 1 ? 0.16 : 0;
+  const seg = (Math.PI * 2) / rounds;
+  fg.lineWidth = 7;
+  fg.lineCap = rounds > 1 ? "round" : "butt";
+  for (let i = 0; i < rounds; i++) {
+    const a0 = -Math.PI / 2 + i * seg + gap / 2;
+    const a1 = a0 + seg - gap;
+    fg.strokeStyle = i < filled ? color : rgb(tone, 0.32);
+    fg.beginPath();
+    fg.arc(cx, cy, r, a0, a1);
+    fg.stroke();
+    // The round under way: half of its arc.
+    if (!done && c.phase === "focus" && i === filled) {
+      fg.strokeStyle = rgb(light);
+      fg.beginPath();
+      fg.arc(cx, cy, r, a0, a0 + (a1 - a0) / 2);
+      fg.stroke();
+    }
+  }
+  fg.textAlign = "center";
+  fg.fillStyle = "#ffffff";
+  if (check) {
+    fg.lineWidth = 6;
+    fg.lineCap = "round";
+    fg.lineJoin = "round";
+    fg.strokeStyle = "#ffffff";
+    fg.beginPath();
+    fg.moveTo(cx - 15, cy + 1);
+    fg.lineTo(cx - 4, cy + 12);
+    fg.lineTo(cx + 16, cy - 11);
+    fg.stroke();
+  } else {
+    fg.font = `700 24px ${DISPLAY}`;
+    fg.fillText(done ? `${c.focusDone}/${s.rounds}` : `${c.round}/${c.rounds}`, cx, cy + 6);
+    fg.font = `600 8px ${SANS}`;
+    fg.letterSpacing = "1px";
+    fg.fillStyle = "rgba(255,255,255,0.6)";
+    fg.fillText(w.round.toLocaleUpperCase(), cx, cy + 19);
+    fg.letterSpacing = "0px";
+  }
+
+  // Text on the left.
+  const left = 14;
+  const maxW = cx - r - 10 - left;
+  fg.textAlign = "left";
+  fg.font = `600 9px ${SANS}`;
+  fg.letterSpacing = "1px";
+  fg.fillStyle = rgb(light);
+  fg.fillText(w.label, left, 24);
+  fg.letterSpacing = "0px";
+  fg.fillStyle = "#ffffff";
+  fitFont(fg, title, (px) => `700 ${px}px ${DISPLAY}`, maxW, 26, 15);
+  fg.fillText(title, left, 54);
+  fg.fillStyle = rgb(light);
+  fitFont(fg, big, (px) => `700 ${px}px ${MONO}`, maxW, 34, 20);
+  fg.fillText(big, left, 92);
+  fg.fillStyle = "rgba(255,255,255,0.62)";
+  fitFont(fg, foot, (px) => `500 ${px}px ${SANS}`, maxW + r, 10.5, 8);
+  fg.fillText(foot, left, 118);
+
+  const px565 = compose565(bg.getImageData(0, 0, W, H).data, fg.getImageData(0, 0, W, H).data, true);
+  return {
+    frames: [px565],
+    delaysMs: [STILL_DELAY_MS],
+    name: done ? `${w.label} · ${title}` : `${w.label} · ${title} ${c.round}/${c.rounds}`,
     kind: "image",
   };
 }

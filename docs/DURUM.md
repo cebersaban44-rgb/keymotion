@@ -47,6 +47,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | **Ekran Stüdyosu**: dosyadan (resim, GIF, video; kırpma, süre), yazı kartları (5 şablon), slayt; önizleme, onay, kütüphane, fabrika animasyonuna dönüş | ✅ Kullanıcı klavyede hepsini denedi (maddeler 23–25). |
 | Ekran → **Işıkları uydur**: görselin paletinden tuş tasarımı (degrade, tek renk, görsel), Işıklar'da taslak | ✅ Kullanıcı mor kartta klavyede doğruladı (madde 26). |
 | Ekran → **Canlı ekran**: canlı mod, günlük yükleme bütçesi, "Çalan şarkı" kartı, kapatınca önceki görseli geri yükleme | ✅ Kullanıcı klavyede denedi (madde 27). |
+| Ekran → **Pomodoro**: odak/mola zamanlayıcısı, tuş ışıklarında ilerleme (F1–F12, flash'sız), faz başında ekran kartı, kenar çubuğunda kalan süre | ⏳ Zamanlayıcı ve ışık katmanı gerçek uygulamada ve klavyede denendi (CDP, günlük). Kullanıcının gözle denemesi ve ekran kartının klavyede yüklenmesi bekliyor (madde 28). |
 
 ## 3. Kronoloji: ne yaptık, neden
 
@@ -352,6 +353,39 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - CI'da rustfmt hatası. Ders §6: push etmeden önce CI adımlarını yerelde çalıştır.
       - Uygulama dal değişimi sırasında açılınca pencere boş kaldı. Ders §6.
     - **PR:** [#25](https://github.com/cebersaban44-rgb/klavye-studio/pull/25) (canlı mod, bütçe, çalan şarkı), [#26](https://github.com/cebersaban44-rgb/klavye-studio/pull/26) (kapatınca geri yükleme, 4 sn).
+28. **Ekran Faz C, ikinci adım: Pomodoro.**
+    - **Zamanlayıcı arka uçta** (`app/src-tauri/src/pomodoro.rs`):
+      - Neden: pencere küçülünce WebView2 sayfanın zamanlayıcılarını kısıyor (5 dk sonra dakikada bir). Süre Rust'ta tutulursa faz değişimi ve ışıklar şaşmaz.
+      - Fazlar: Odak → Kısa mola → … → son odaktan sonra Uzun mola → seri biter. Varsayılan 25 / 5 / 15 dk, 4 tur. Ayarlar `pomodoro.json`'da (sürüm 1).
+      - Başlat, Duraklat / Sürdür, Atla (fazı bitir, sonrakine geç), Bitir.
+      - Süre değişikliği süren faza da hemen uygulanır.
+      - Bilgisayar uzun süre uyursa yalnızca bir faz ilerler; yeni faz uyanınca başlar.
+      - Atlanan odak tur sayılır ama özetteki odak süresine yalnız geçen süre girer.
+    - **Tuş ışıkları** (flash'sız, `04 20`):
+      - Cihaz aktörüne ikinci bir canlı katman eklendi (`SetAmbient`). Işıklar sayfasının önizlemesi (`SetLive`) her zaman üstte; kapanınca Pomodoro katmanı geri gelir.
+      - F1–F12 fazın rengiyle dolar: odak turuncu, kısa mola yeşil, uzun mola mavi. Dolmamış kısım soluk (%8); dolan tuş 32 adımda parlar, böylece kare yalnız görünen bir şey değişince gönderilir.
+      - Esc fazın rengini gösterir. Rakam tuşları 1–N biten turları sayar.
+      - Faz başında bütün klavye yeni fazın rengiyle iki kez yanıp söner (1 sn). Duraklatınca çubuk yavaşça yanıp söner. Seri bitince iki yeşil yanıp sönme, sonra katman durur ve klavye kendi efektine döner.
+      - F sırası olmayan modellerde çubuk rakam sırasına geçer (model dosyasındaki tuş kimliklerinden).
+    - **Ekran kartı** (canlı modun kaynağı, `source = "pomodoro"`):
+      - Faz başında, yanıp sönme bittikten sonra arayüzden kart istenir (`pomodoro-card` olayı); yükleme ışık akışını kesmesin diye beklenir. Kart canlı modun kurallarıyla gider: bütçe, en yeni kazanır.
+      - Kart: faz adı, süre ("Odak 25:00"), sağda tur halkası ("2/4", biten turlar dolu), altta sıradaki faz ("Sonra: 5 dk mola"). Geri sayım yok: kart faz boyunca doğru kalır, ilerleme tuşlarda.
+      - Pomodoro çalışırken ekranı tutar: "Çalan şarkı" duyurmaz. Pomodoro bitince çalan şarkı varsa kartı kendiliğinden geri gelir; yoksa bir özet kartı yüklenir ("Seri tamam · 100 dk"; erken bitince "Pomodoro bitti", halkada biten turlar ve bitiş saati). Böylece ekranda bayat bir "Odak" kartı kalmaz (kullanıcının madde 27'deki "kapanınca eskisi gelsin" ilkesi).
+      - Canlı mod kapalıysa kart gitmez; ilerleme yalnız tuşlarda.
+      - Maliyet: her faz bir yükleme, 4 turluk seri 8 yükleme. Panel bunu bütçeyle karşılaştırır, yetmezse uyarır.
+    - **Arayüz:**
+      - Ekran sayfasında "Pomodoro" bölümü: kalan süre halkası, tuşların küçük kopyası (Esc, F1–F12, tur tuşları; klavyedekiyle aynı kural), düğmeler, süreler (− / + ve yazarak), iki anahtar ("Tuş ışıklarında ilerleme", "Faz başında ekran kartı").
+      - Canlı ekran bölümünün kaynaklarında "Pomodoro" satırı (kart anahtarı ve durum). Pomodoro sürerken "Çalan şarkı" satırı "bekliyor" der.
+      - Pomodoro çalışırken kenar çubuğunda faz, tur ve kalan süre görünür; tıklayınca bölüme gider.
+    - **Doğrulama:**
+      - 11 birim testi: seri akışı, duraklatma, erken bitirme, atlama, uyku, süre değişikliği, ayar sınırları, AK980'de F1–F12 = LED 2–13, çubuğun dolması, duraklama yanıp sönmesi, bitiş yanıp sönmesi.
+      - Tarayıcıda sahte arka uçla (`?mock=usb&pomofast`, bir dakika 2 sn): bütün seri; duraklat / sürdür / atla / bitir; kartlar ve özet kartı; açık ve koyu tema; 1024 px genişlik.
+      - **Gerçek uygulamada, klavyede** (CDP, canlı mod kapalı, yani yükleme yok):
+        - 1 dakikalık odak; duraklatınca süre durdu; süre bitince kısa molaya geçti; Bitir'le katman durdu.
+        - Işıklar sayfası önizlemesi Pomodoro'nun üstüne geldi, kapanınca çubuk geri geldi.
+        - Ayrıntı: `donanim-dogrulama.md`, "Pomodoro ışık katmanı".
+      - Tek tek reddedilen `04 20` kareleri (yaklaşık %1) artık `debug` düzeyinde. Yalnız art arda 20 kare (1 sn) giderse uyarı yazılır. Yoksa 25 dakikalık bir odakta yüzlerce uyarı satırı birikirdi.
+    - **Bekleyen:** Kullanıcının ışıkları gözle görmesi ve canlı mod açıkken faz kartlarının klavyeye yüklenmesi (flash yazar; kullanıcının kendi denemesiyle). Pencere küçükken kart çiziminin gecikip gecikmediği de o denemede görülecek.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -377,6 +411,7 @@ app/
                 atamanın ve makroların tek kaydıdır. screen_lib.rs: ekran kütüphanesi (screen/library.json,
                 library/<id>.bin, live.bin). live.rs: canlı mod, yükleme bütçesi, bekleyen kart işçisi.
                 now_playing.rs: Windows medya oturumlarından "Çalan şarkı".
+                pomodoro.rs: Pomodoro zamanlayıcısı, tuş ışığı katmanı, faz kartı isteği.
   src/          React 19 + TS 7 + Tailwind 4 + motion. lib/ipc.ts (tipli köprü, seri kuyruk), lib/lighting.ts
                 (Işıklar durumu), lib/mirror.ts, components/KeyboardView.tsx (geometriden çizim, boyama),
                 components/CalibrationCard.tsx, components/UnsavedDialog.tsx, lib/unsaved.ts (kaydedilmemiş
@@ -387,8 +422,9 @@ app/
                 lib/screenText.ts (yazı kartı çizicisi), pages/{Overview,Lighting,Keymap,Macros,Screen,Settings}.tsx,
                 lib/screenSlides.ts (slayt kare bütçesi ve geçişler), lib/screenPalette.ts (ekrana uygun ışık),
                 lib/live.ts (canlı mod durumu ve kaynaklar), lib/liveCards.ts (canlı kartlar),
+                lib/pomodoro.ts (Pomodoro durumu, sahte arka uç),
                 pages/screen/ (Ekran Stüdyosu: common.tsx ortak adımlar, FileFlow.tsx, TextFlow.tsx, SlideFlow.tsx,
-                MatchLights.tsx, LivePanel.tsx).
+                MatchLights.tsx, LivePanel.tsx, PomodoroPanel.tsx).
   src/bindings/ `cargo test` ile ÜRETİLİR (TS tipleri, geometri JSON'u, efekt kataloğu). Elle düzenlenmez.
 tools/cdp.mjs   Çalışan uygulamanın WebView2'sine CDP ile JS çalıştırır ya da ekran görüntüsü alır (uçtan uca test).
 .github/workflows/ci.yml   PR ve birleştirmelerde Windows'ta kontroller (bkz. gelistirme-akisi.md).
@@ -498,6 +534,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 37 | Canlı kart yüklenince GIF önizlemesi yenilenmedi | "İlk durum" `null` ile ayırt ediliyordu; ilk gerçek değişiklik de `null`'dan geliyordu | "Henüz bilinmiyor" için `undefined`, "yok" için `null` kullan. |
 | 38 | CI'da yalnızca rustfmt kırıldı | Push'tan önce `cargo fmt --check` çalıştırılmadı | Push'tan önce CI'ın adımlarını yerelde çalıştır: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `pnpm --dir app build`. |
 | 39 | Uygulama penceresi boş kaldı ("crash oldu herhalde") | Uygulama yeniden başlatıldıktan hemen sonra `git stash` + `switch` yapıldı; arayüz Vite'tan yüklenirken dosyalar geçici olarak eksikti | Önce dalı hazırla, uygulamayı en son başlat. Başlattıktan sonra çalışma ağacını değiştirme; şüphede CDP ile sayfanın çizildiğini doğrula (bkz. #25). |
+| 40 | `npx eslint` bir paketi indirip çalıştırdı | Projede ESLint (ve Prettier) yok; `npx` eksik aracı sormadan indiriyor | Bir aracı çalıştırmadan önce `app/node_modules/.bin`'de olduğuna bak ya da `npx --no-install` kullan. Projenin denetimleri: `tsc` (`pnpm build`), rustfmt, clippy. İndirilen paket önbellekten silindi. |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 
@@ -505,7 +542,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 
 1. `git switch develop && git pull`, sonra yeni iş için dal aç. PR açınca auto-merge ve auto-fix'i aç (`gelistirme-akisi.md`).
 2. **Tuş atama ve makrolar bitti** (madde 19–21). Klavye fabrika durumunda: atama varsayılan, makro yok; `keymap.json` ve `macros.json` kayıtları da öyle.
-3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Sıradaki iş: Faz C'nin ikinci adımı, Pomodoro** (aşağıda).
+3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Pomodoro yapıldı (madde 28), kullanıcı denemesi bekliyor; sıradaki iş LED canlı katmanı** (aşağıda).
    - **Kullanıcının isteği:** "Ürünün farkı burada ortaya çıkacak." Ayrıca: "Buradaki görüntüyü de kaybetmeyelim" (stok ana sayfa) ve "birden fazla ekran görüntüsü veya başka ne yapabiliriz".
    - **Kısa sonuçlar:**
      - Resim ve GIF: evet, en çok 140 kare.
@@ -523,8 +560,8 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
      1. **Faz A bitti** (madde 23): Ekran Stüdyosu sayfası; kullanıcı kendi resim ve GIF'iyle denedi, E2 (kalıcılık) geçti.
      2. **Faz B bitti** (maddeler 24–26): kaynak seçici, yazı kartları, slayt, ışıkları ekrana uydurma. Kullanıcı klavyede denedi; "Işıkları uydur"un renkleri düzeltildi ve onaylandı.
      3. **Faz C sürüyor:** ilk adım bitti ve kullanıcı klavyede denedi (madde 27): canlı mod, bütçe, "Çalan şarkı", kapatınca önceki görseli geri yükleme.
-        - **Sıradaki: Pomodoro.** Faz değişince ekranda kart ("Odak 25:00" / "Mola"); ilerleme tuş ışıklarında (`04 20`, flash'sız). Canlı modun kaynağı olarak, "Çalan şarkı" gibi.
-        - Ardından: LED canlı katmanı (CPU/GPU barı, ses düzeyi, mikrofon kapalı uyarısı), takvim, hatırlatıcı, oyun oturumu.
+        - **Pomodoro yapıldı** (madde 28). Kullanıcının klavyede denemesi bekliyor: ışıklar ve canlı mod açıkken faz kartları.
+        - Sıradaki: LED canlı katmanı (CPU/GPU barı, ses düzeyi, mikrofon kapalı uyarısı), takvim, hatırlatıcı, oyun oturumu.
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.
      4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar **13** yükleme: uygulamanın kaydında 11 (elle, canlı ve geri yükleme), CLI ile E1 ve E4.
@@ -672,13 +709,14 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
   - [ ] Oynatma biçimleri "tekrar basana kadar" ve "basılı tuttukça" klavyede denenmedi.
   - [ ] Metinden makro (yazı yaz) sunulmuyor: HID kodları konuma göre; düzene göre karakter → tuş eşlemesi gerekir (Keyboard Map API'nin tersi).
   - [ ] Kayıt sırasında fare tıklamaları yakalanmıyor (yalnızca "+ tık" düğmeleri). Windows tuşu ve Alt+Tab gibi sistem kısayolları tarayıcıda yakalanamıyor.
-- [ ] **Ekran** (`04 72` + FF68). Faz A, Faz B ve Faz C'nin ilk adımı bitti, kullanıcı klavyede denedi (maddeler 22–27). **Sıradaki: Pomodoro** ("Sıradaki oturum için", madde 3).
+- [ ] **Ekran** (`04 72` + FF68). Faz A, Faz B ve Faz C'nin ilk adımı bitti, kullanıcı klavyede denedi (maddeler 22–27). Pomodoro yapıldı (madde 28). **Sıradaki: LED canlı katmanı** ("Sıradaki oturum için", madde 3).
   - Paketler **WriteFile** ile gönderilir, SET_REPORT ile değil (kardeş kartı çökertmiş). `04 F0` asla gönderilmez.
   - En fazla 140 kare ve 2215 sayfa; gecikme 1–254.
   - [x] Yüklenen görüntü ayrı, tam ekran GIF sayfasında görünüyor (E1).
   - [x] Ekran Stüdyosu: resim/GIF/video, yazı kartları, slayt, kütüphane, fabrika yedeği, ışıkları ekrana uydurma.
   - [x] Canlı mod: günlük bütçe (varsayılan 24), "Çalan şarkı", kapatınca önceki görsele dönüş.
-  - [ ] Faz C'nin geri kalanı: Pomodoro, LED canlı katmanı, takvim, hatırlatıcı, oyun oturumu.
+  - [x] Pomodoro (madde 28; kullanıcı denemesi bekliyor).
+  - [ ] Faz C'nin geri kalanı: LED canlı katmanı, takvim, hatırlatıcı, oyun oturumu.
 - [ ] **Kendi firmware katmanımız** (kullanıcının fikri, 2026-11-10; araştırma hattı, şimdilik yapılmıyor). Stok firmware'de olmayan canlı ekranı (RAM'den çizim) kendi firmware'imizle ya da stok firmware'e yamayla eklemek.
   - Emsal: kardeş AK820 Pro'da QMK portu ve Jackrabbit firmware'i; panoyu firmware çiziyor, flash aşınması yok.
   - Proje kuralıyla çakışıyor: klavyeye firmware, bootloader ya da ISP komutu gönderilmez. Bu kuralı yalnızca kullanıcı kaldırabilir.
