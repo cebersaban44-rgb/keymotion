@@ -52,6 +52,8 @@ const mock = {
   cover: null as Blob | null,
   timer: 0 as number,
   backTimer: 0 as number,
+  /** The waiting card's data (browser preview). */
+  pendingBlob: null as Uint8Array | null,
 };
 
 /** In the browser preview with `pomofast`, waits are short too. */
@@ -93,7 +95,10 @@ export function mockReturnAfter(source: string, ms: number) {
     const b = mock.state.goingBack;
     if (!b || b.source !== source) return;
     mock.state.goingBack = null;
-    if (mock.state.enabled && !mock.state.pending && mock.state.last?.source === source) {
+    // Like `back_step`: a waiting card that can go now replaces the screen;
+    // one that waits for the budget does not stop the return.
+    const ready = !!mock.state.pending && mock.state.tokens >= 1;
+    if (mock.state.enabled && !ready && mock.state.last?.source === source) {
       mock.state.tokens -= 1;
       mockPutBack();
     } else mockEmit();
@@ -216,38 +221,56 @@ export async function configureLive(patch: LivePatch): Promise<LiveState> {
   });
 }
 
+/** Browser preview: the waiting card goes up (budget taken or charged). */
+async function mockUploadPending() {
+  const s = mock.state;
+  const item = s.pending;
+  const blob = mock.pendingBlob;
+  if (!item || !blob) return { ...s };
+  s.tokens -= 1;
+  s.nextTokenMs = s.tokens < 1 ? ((1 - s.tokens) / (s.perDay / 24)) * 3_600_000 : null;
+  s.pending = null;
+  mock.pendingBlob = null;
+  s.uploading = item;
+  mockEmit();
+  await new Promise((r) => setTimeout(r, 1200));
+  s.uploading = null;
+  s.last = { ...item, atMs: Date.now() };
+  const prev = mockLiveUploaded(blob);
+  if (prev !== undefined) mock.before = prev;
+  mockEmit();
+  return { ...s };
+}
+
 /** Hand a finished card to the backend; it waits for budget and cable. */
 export async function submitLive(p: Prepared, source: string): Promise<LiveState> {
   const blob = toBlob(p);
   if (!inTauri) {
     const s = mock.state;
     if (!s.enabled) throw new Error("live mode is off");
-    const item = { source, name: p.name };
-    s.pending = item;
-    // A new card replaces the screen anyway.
-    s.goingBack = null;
-    window.clearTimeout(mock.backTimer);
+    s.pending = { source, name: p.name };
+    mock.pendingBlob = blob;
     mockEmit();
     if (s.tokens < 1) {
       s.nextTokenMs = ((1 - s.tokens) / (s.perDay / 24)) * 3_600_000;
       mockEmit();
       return { ...s };
     }
-    s.tokens -= 1;
-    s.pending = null;
-    s.uploading = item;
-    mockEmit();
-    await new Promise((r) => setTimeout(r, 1200));
-    s.uploading = null;
-    s.last = { ...item, atMs: Date.now() };
-    const prev = mockLiveUploaded(blob);
-    if (prev !== undefined) mock.before = prev;
-    mockEmit();
-    return { ...s };
+    return mockUploadPending();
   }
   return invoke<LiveState>("live_submit", blob, {
     headers: { "x-source": source, "x-name": encodeURIComponent(p.name) },
   });
+}
+
+/** Send the waiting card now instead of waiting for the budget (the
+ *  user's choice: counted, never refused). */
+export async function sendLiveNow(): Promise<LiveState> {
+  if (!inTauri) {
+    void mockUploadPending();
+    return { ...mock.state };
+  }
+  return invoke<LiveState>("live_send_now");
 }
 
 /** Cover art of the announced track, if Windows gave one. */
@@ -269,6 +292,7 @@ interface LiveStore {
   drawError: string | null;
   load: () => Promise<void>;
   configure: (patch: LivePatch) => Promise<void>;
+  sendNow: () => Promise<void>;
 }
 
 export const useLive = create<LiveStore>((set) => ({
@@ -276,6 +300,7 @@ export const useLive = create<LiveStore>((set) => ({
   drawError: null,
   load: async () => set({ state: await getLiveState() }),
   configure: async (patch) => set({ state: await configureLive(patch) }),
+  sendNow: async () => set({ state: await sendLiveNow() }),
 }));
 
 /**

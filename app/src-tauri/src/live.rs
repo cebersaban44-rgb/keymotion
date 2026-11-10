@@ -156,8 +156,11 @@ struct Runtime {
     /// Library item to put back on the GIF page.
     restore: Option<String>,
     /// The put-back above is the live mode going back by itself, for this
-    /// source's card (its token is taken); `None`: the user asked for it.
+    /// source's card; `None`: the user asked for it.
     restore_auto: Option<String>,
+    /// The user asked to send the waiting card now, without waiting for
+    /// the budget (it is still counted).
+    send_now: bool,
     /// A source has nothing to show any more: go back to the user's own
     /// picture at this time, unless another card comes first.
     back: Option<LiveBack>,
@@ -178,9 +181,11 @@ enum BackStep {
 }
 
 /// `showing`: the source's card is on the GIF page; `busy`: an upload runs;
-/// `queued`: another card waits to go (it replaces the screen anyway).
-fn back_step(back: &LiveBack, now: f64, enabled: bool, showing: bool, busy: bool, queued: bool) -> BackStep {
-    if !enabled || queued {
+/// `ready`: another card waits and can go now (it replaces the screen
+/// anyway). A card that waits for the budget does not stop the return: the
+/// old card would stay on the screen until then (owner's test, 2026-11-10).
+fn back_step(back: &LiveBack, now: f64, enabled: bool, showing: bool, busy: bool, ready: bool) -> BackStep {
+    if !enabled || ready {
         return BackStep::Drop;
     }
     if now < back.at_ms {
@@ -322,8 +327,8 @@ impl LiveHandle {
                 drop(rt);
                 return self.state();
             }
-            // A new card replaces the screen anyway.
-            rt.back = None;
+            // A return that is due stays: if this card has to wait for the
+            // budget, the old card should not stay on the screen meanwhile.
             // The newest card wins.
             rt.pending = Some(Pending {
                 anim,
@@ -428,6 +433,22 @@ impl LiveHandle {
         self.emit();
     }
 
+    /// Send the waiting card now instead of waiting for the budget. Asked
+    /// for by the user, so it is counted like a manual upload.
+    pub fn send_now(&self) -> Result<LiveState, String> {
+        {
+            let mut rt = self.rt.lock().map_err(|_| "live state unavailable")?;
+            if rt.pending.is_none() {
+                return Err("no card is waiting".into());
+            }
+            rt.send_now = true;
+            rt.retry_at = None;
+        }
+        tracing::info!("sending the waiting live card now");
+        self.wake();
+        self.state()
+    }
+
     /// `source` has something to show again: forget its return.
     pub fn cancel_return(&self, source: &str) {
         let cancelled = self
@@ -466,14 +487,18 @@ impl LiveHandle {
         if let Some(t) = rt.retry_at {
             wait = wait.min((t - now).max(0.0));
         }
+        if let Some(b) = &rt.back {
+            wait = wait.min((b.at_ms - now).max(0.0));
+        }
         if let Some(ms) = lib.live_mut().budget.ms_until_token(now) {
             wait = wait.min(ms + 50.0);
         }
         Duration::from_millis(wait.max(0.0) as u64)
     }
 
-    /// Put a library item back on the GIF page. Asked for by the user, so it
-    /// is counted like a manual upload and does not wait for the budget.
+    /// Put a library item back on the GIF page: asked for by the user, or
+    /// the screen going back to the own picture. Counted like a manual
+    /// upload; it does not wait for the budget.
     fn restore(&self, device: &DeviceHandle) -> bool {
         let now = now_ms();
         let (id, anim) = {
@@ -483,12 +508,10 @@ impl LiveHandle {
                 return rt.restore.is_some();
             }
             let Some(id) = rt.restore.take() else { return false };
-            if rt.restore_auto.is_some() && rt.pending.is_some() {
-                // A new card came while waiting: it replaces the screen, so
-                // going back would be an upload for nothing.
+            if rt.restore_auto.is_some() && card_ready(&mut lib, &rt, now) {
+                // A new card that can go came meanwhile: it replaces the
+                // screen, so going back would be an upload for nothing.
                 rt.restore_auto = None;
-                lib.live_mut().budget.refund(now);
-                let _ = lib.save();
                 tracing::debug!("going back skipped; a new card goes instead");
                 return false;
             }
@@ -500,10 +523,7 @@ impl LiveHandle {
                 }
                 _ => {
                     tracing::warn!(%id, "previous picture is gone from the library; nothing to put back");
-                    if rt.restore_auto.take().is_some() {
-                        lib.live_mut().budget.refund(now);
-                        let _ = lib.save();
-                    }
+                    rt.restore_auto = None;
                     return false;
                 }
             }
@@ -519,8 +539,7 @@ impl LiveHandle {
             match &result.error {
                 None => {
                     let model = result.model_id.clone().unwrap_or_default();
-                    // Going back by itself took its token before.
-                    if let Err(e) = lib.uploaded_with(&model, &id, auto.is_none()) {
+                    if let Err(e) = lib.uploaded(&model, &id) {
                         tracing::warn!("restore not recorded: {e}");
                     }
                     lib.live_mut().before = None;
@@ -532,11 +551,9 @@ impl LiveHandle {
                     tracing::warn!(flash = result.flash_written, "putting the previous picture back failed: {e}");
                     let now = now_ms();
                     if result.flash_written {
-                        lib.count_upload(auto.is_none());
-                    } else if auto.is_some() {
-                        lib.live_mut().budget.refund(now);
+                        lib.count_upload(true);
+                        let _ = lib.save();
                     }
-                    let _ = lib.save();
                     rt.last_error = Some(e.clone());
                     rt.retry_at = Some(now + RETRY_EVERY.as_millis() as f64);
                     match auto {
@@ -562,7 +579,7 @@ impl LiveHandle {
         let job = {
             let Ok(mut lib) = self.library.lock() else { return };
             let Ok(mut rt) = self.rt.lock() else { return };
-            if rt.pending.is_none() && go_back(&mut lib, &mut rt, now) {
+            if go_back(&mut lib, &mut rt, now) {
                 drop(rt);
                 drop(lib);
                 self.emit();
@@ -575,7 +592,10 @@ impl LiveHandle {
             if rt.retry_at.is_some_and(|t| now < t) {
                 return;
             }
-            if !lib.live_mut().budget.try_take(now) {
+            if std::mem::take(&mut rt.send_now) {
+                // The user's choice: counted, never refused.
+                lib.live_mut().budget.charge(now);
+            } else if !lib.live_mut().budget.try_take(now) {
                 drop(rt);
                 drop(lib);
                 self.emit();
@@ -628,12 +648,18 @@ impl LiveHandle {
     }
 }
 
-/// A scheduled return is due: turn it into a put-back (taking a token, or
-/// waiting for one). True when something changed.
+/// A card waits and may go now (budget, or the user said "send now").
+fn card_ready(lib: &mut ScreenLibrary, rt: &Runtime, now: f64) -> bool {
+    rt.pending.is_some() && (rt.send_now || lib.live_mut().budget.ms_until_token(now).is_none())
+}
+
+/// A scheduled return is due: turn it into a put-back. True when something
+/// changed.
 fn go_back(lib: &mut ScreenLibrary, rt: &mut Runtime, now: f64) -> bool {
     let Some(back) = rt.back.clone() else { return false };
     let showing = lib.live_source_showing(&back.source);
-    match back_step(&back, now, lib.live().enabled, showing, rt.uploading.is_some(), rt.pending.is_some()) {
+    let ready = card_ready(lib, rt, now);
+    match back_step(&back, now, lib.live().enabled, showing, rt.uploading.is_some(), ready) {
         BackStep::Wait(_) => false,
         BackStep::Drop => {
             tracing::debug!(source = %back.source, "return to the own picture no longer needed");
@@ -648,13 +674,11 @@ fn go_back(lib: &mut ScreenLibrary, rt: &mut Runtime, now: f64) -> bool {
             if rt.retry_at.is_some_and(|t| now < t) {
                 return false;
             }
-            if !lib.live_mut().budget.try_take(now) {
-                // Wait for the budget, like any card.
-                let wait = lib.live_mut().budget.ms_until_token(now).unwrap_or(0.0) + 50.0;
-                rt.back = Some(LiveBack { at_ms: now + wait, ..back });
-                return true;
-            }
-            let _ = lib.save();
+            // It does not wait for the budget: a card left on the screen
+            // after its source ended is untrue ("Mola" after a stop), and
+            // there is at most one return per series or music stop. It is
+            // counted like a manual upload (owner's test, 2026-11-10: with
+            // the budget empty the break card stayed for an hour).
             tracing::info!(source = %back.source, id = %target.id, "going back to the own picture");
             rt.back = None;
             rt.restore = Some(target.id);
@@ -760,7 +784,7 @@ mod tests {
         let b = LiveBack { source: "pomodoro".into(), at_ms: 1_000.0 };
         assert_eq!(back_step(&b, 400.0, true, true, false, false), BackStep::Wait(600.0));
         assert_eq!(back_step(&b, 1_000.0, true, true, false, false), BackStep::Go);
-        // Another card is waiting: it replaces the screen anyway.
+        // Another card is waiting and can go: it replaces the screen anyway.
         assert_eq!(back_step(&b, 400.0, true, true, false, true), BackStep::Drop);
         assert_eq!(back_step(&b, 2_000.0, true, true, false, true), BackStep::Drop);
         // The source's card is no longer on the page (the user uploaded
@@ -770,6 +794,63 @@ mod tests {
         assert!(matches!(back_step(&b, 2_000.0, true, false, true, false), BackStep::Wait(_)));
         // Live mode off: nothing goes by itself.
         assert_eq!(back_step(&b, 2_000.0, false, true, false, false), BackStep::Drop);
+    }
+
+    /// Owner's test, 2026-11-10: the budget was empty, the timer was
+    /// stopped, and its break card stayed for an hour. Going back to the own
+    /// picture must not wait for the budget.
+    #[test]
+    fn going_back_does_not_wait_for_an_empty_budget() {
+        use crate::dto::{LiveItem, ScreenItemKind};
+        use kb_protocol::sonix::screen::{rgb565, Frame, ScreenAnimation};
+        let dir = std::env::temp_dir().join(format!("klavye-live-back-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut lib = ScreenLibrary::open(Some(&dir));
+        let mine = lib.add("cat", ScreenItemKind::Image, &ScreenAnimation::still(Frame::filled(0))).unwrap();
+        lib.uploaded("m", &mine.id).unwrap();
+        lib.live_mut().enabled = true;
+        let card = ScreenAnimation::still(Frame::filled(rgb565(0, 200, 80)));
+        let item = LiveItem { source: "pomodoro".into(), name: "Kısa mola".into() };
+        lib.live_uploaded("m", &card, "c1", &item).unwrap();
+        let now = now_ms();
+        while lib.live_mut().budget.try_take(now) {}
+        assert!(lib.live_mut().budget.ms_until_token(now).is_some(), "budget empty");
+
+        let mut rt =
+            Runtime { back: Some(LiveBack { source: "pomodoro".into(), at_ms: now - 1.0 }), ..Runtime::default() };
+        assert!(go_back(&mut lib, &mut rt, now));
+        assert_eq!(rt.restore.as_deref(), Some(mine.id.as_str()), "the own picture goes up now");
+        assert_eq!(rt.restore_auto.as_deref(), Some("pomodoro"));
+        assert!(rt.back.is_none());
+
+        // A song card waits for the budget too: the return still goes, the
+        // song follows when the budget allows (the owner's case at 20:08).
+        let song = LiveItem { source: "now-playing".into(), name: "Şarkı".into() };
+        let waiting = || Pending { anim: card.clone(), content: "c2".into(), item: song.clone() };
+        let mut rt =
+            Runtime { back: Some(LiveBack { source: "pomodoro".into(), at_ms: now - 1.0 }), ..Runtime::default() };
+        rt.pending = Some(waiting());
+        assert!(go_back(&mut lib, &mut rt, now));
+        assert_eq!(rt.restore.as_deref(), Some(mine.id.as_str()));
+
+        // The user sends it now: it replaces the screen, no return.
+        let mut rt =
+            Runtime { back: Some(LiveBack { source: "pomodoro".into(), at_ms: now - 1.0 }), ..Runtime::default() };
+        rt.pending = Some(waiting());
+        rt.send_now = true;
+        assert!(go_back(&mut lib, &mut rt, now));
+        assert!(rt.restore.is_none() && rt.back.is_none());
+
+        // With budget left the waiting card goes first: no return either.
+        lib.live_mut().budget.set_plan(LivePlan::Heavy, now);
+        lib.live_mut().budget.refund(now);
+        lib.live_mut().budget.refund(now);
+        let mut rt =
+            Runtime { back: Some(LiveBack { source: "pomodoro".into(), at_ms: now - 1.0 }), ..Runtime::default() };
+        rt.pending = Some(waiting());
+        assert!(go_back(&mut lib, &mut rt, now));
+        assert!(rt.restore.is_none() && rt.back.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

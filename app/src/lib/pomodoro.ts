@@ -156,11 +156,12 @@ function mockEnd(complete: boolean) {
   const cards = mockCardsWanted();
   Object.assign(mock, { status: "idle", phase: "focus", round: 1, phaseMs: 0, anchor: 0, focusDone: 0, focusMs: 0 });
   mock.last = summary;
-  // Like the backend: a playing song takes the screen back by itself;
-  // otherwise the user's own picture, or a summary card.
+  // Like the backend: a playing song takes the screen back by itself (its
+  // card cancels the return if it can go); otherwise the user's own picture,
+  // or a summary card.
   const playing = !!useLive.getState().state?.track?.playing;
-  if (cards && mock.cardShown && !playing) {
-    if (mock.settings.endScreen === "summary") {
+  if (cards && mock.cardShown) {
+    if (mock.settings.endScreen === "summary" && !playing) {
       mock.onCard?.({ kind: "done", phase: "focus", round: 0, rounds: 0, minutes: 0, ...summary });
     } else mockReturnAfter(POMODORO_SOURCE, MINUTE < 60_000 ? 3_000 : BACK_AFTER_MS);
   }
@@ -242,7 +243,7 @@ export function configurePomodoro(settings: PomodoroSettings): Promise<PomodoroS
     // Cards turned off while it runs: its card leaves the screen.
     const wanted = mockCardsWanted();
     mock.settings = { ...settings };
-    if (wanted && !mockCardsWanted() && !useLive.getState().state?.track?.playing) {
+    if (wanted && !mockCardsWanted()) {
       mockReturnAfter(POMODORO_SOURCE, MINUTE < 60_000 ? 3_000 : BACK_AFTER_MS);
     }
     if (mock.status !== "idle") {

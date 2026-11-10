@@ -147,7 +147,9 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
     ? "sc.live.st.liveOff"
     : p && !p.settings.screen
       ? "sc.live.st.cardsOff"
-      : on === 1
+      : s.pending?.source === POMODORO_SOURCE && s.nextTokenMs != null
+        ? "sc.live.st.waitBudget"
+        : on === 1
         ? "sc.live.st.showing"
         : p?.status === "running"
           ? "sc.live.st.running"
@@ -158,13 +160,15 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
     ? "sc.live.st.liveOff"
     : !s.nowPlaying
       ? "sc.live.st.sourceOff"
-      : on === 2
-        ? "sc.live.st.showing"
-        : s.held && playing
-          ? "sc.live.st.waiting"
-          : playing
-            ? "sc.live.st.playing"
-            : "sc.live.st.silent";
+      : s.pending?.source === NOW_PLAYING_SOURCE && s.nextTokenMs != null
+        ? "sc.live.st.waitBudget"
+        : on === 2
+          ? "sc.live.st.showing"
+          : s.held && playing
+            ? "sc.live.st.waiting"
+            : playing
+              ? "sc.live.st.playing"
+              : "sc.live.st.silent";
   const goingBack = s.enabled && s.goingBack ? Math.max(0, s.goingBack.atMs - Date.now()) : null;
 
   return (
@@ -433,6 +437,23 @@ function BudgetLine({ s }: { s: LiveState }) {
   );
 }
 
+/** Send the waiting card without waiting for the budget. */
+export function SendNow() {
+  const t = useT();
+  const sendNow = useLive((x) => x.sendNow);
+  return (
+    <button
+      type="button"
+      onClick={() => sendNow().catch(console.error)}
+      title={t("sc.live.sendNow.hint")}
+      className="ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-signal/50 px-2.5 text-[12px] font-semibold text-signal hover:bg-signal/10"
+      data-send-now
+    >
+      <Upload size={13} /> {t("sc.live.sendNow")}
+    </button>
+  );
+}
+
 function TrackLine({ s }: { s: LiveState }) {
   const t = useT();
   const tr = s.track;
@@ -483,6 +504,7 @@ function StatusLine({ s, usb }: { s: LiveState; usb: boolean }) {
                 ? `${t("sc.live.waitBudget")} ${fmtWait(s.nextTokenMs, units)}`
                 : t("sc.live.waitTurn")}
           </span>
+          {usb && s.nextTokenMs != null && <SendNow />}
         </p>
       )}
       {s.last ? (
