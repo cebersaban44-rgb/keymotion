@@ -89,10 +89,8 @@ impl Op {
 
 /// Byte sequences that switch the MCU into firmware-update/ISP mode.
 /// Never sent, in any position of the protocol.
-const BOOTLOADER_MAGIC: &[&[u8]] = &[
-    &[0xAA, 0x42, 0x89, 0x5A, 0xFF, 0x71, 0x62, 0xCC],
-    &[0xAA, 0x55, 0xA5, 0x5A, 0xFF, 0x00, 0x33, 0xCC],
-];
+const BOOTLOADER_MAGIC: &[&[u8]] =
+    &[&[0xAA, 0x42, 0x89, 0x5A, 0xFF, 0x71, 0x62, 0xCC], &[0xAA, 0x55, 0xA5, 0x5A, 0xFF, 0x00, 0x33, 0xCC]];
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Blocked {
@@ -177,8 +175,7 @@ pub fn parse_ack(reply: &[u8]) -> Option<Ack> {
     if p.len() < 4 || p[0] != PREFIX {
         return None;
     }
-    let sum = (p[1] == Op::Commit as u8 && p[3] == STATUS_OK && p.len() >= 6)
-        .then(|| u16::from_le_bytes([p[4], p[5]]));
+    let sum = (p[1] == Op::Commit as u8 && p[3] == STATUS_OK && p.len() >= 6).then(|| u16::from_le_bytes([p[4], p[5]]));
     Some(Ack { op: p[1], arg: p[2], status: p[3], sum })
 }
 
@@ -195,9 +192,18 @@ pub fn payload_of(reply: &[u8]) -> &[u8] {
 pub type Rgb = [u8; 3];
 
 /// Encode one real-time frame: entry `idx` lives at byte `idx * 4` as
-/// `[idx R G B]`; unused slots stay zero. Indices ≥ 128 are ignored.
+/// `[idx R G B]`. Indices ≥ 128 are ignored.
+///
+/// Every slot from 1 up carries its own index, so LEDs that are not given
+/// are sent as black. The firmware applies entries by their index byte: an
+/// all-zero slot changes nothing, so a sparse frame left keys showing their
+/// previous colour and an empty frame did not clear the keyboard (measured
+/// with `kb live-probe` on 2026-11-10).
 pub fn realtime_table(leds: impl IntoIterator<Item = (u8, Rgb)>) -> [u8; REALTIME_SLOTS * 4] {
     let mut t = [0u8; REALTIME_SLOTS * 4];
+    for i in 1..REALTIME_SLOTS {
+        t[i * 4] = i as u8;
+    }
     for (idx, [r, g, b]) in leds {
         let i = idx as usize;
         if i < REALTIME_SLOTS {
@@ -345,12 +351,17 @@ pub fn per_key_mode_data(brightness: u8) -> Result<[u8; PAYLOAD], Invalid> {
     Ok(p)
 }
 
-/// Encode the 576-byte per-key table: entry `idx` at `idx * 4`, unused
-/// entries zero, `AA 55` in the last two bytes.
+/// Encode the 576-byte per-key table: entry `idx` at `idx * 4`, `AA 55` in
+/// the last two bytes. Like [`realtime_table`], every entry 1–142 carries
+/// its index so keys that are not given are stored as black instead of
+/// keeping an earlier colour.
 pub fn per_key_table(
     colors: impl IntoIterator<Item = (u8, Rgb)>,
 ) -> Result<[u8; PER_KEY_PACKETS as usize * PAYLOAD], Invalid> {
     let mut t = [0u8; PER_KEY_PACKETS as usize * PAYLOAD];
+    for i in 1..=PER_KEY_MAX_IDX as usize {
+        t[i * 4] = i as u8;
+    }
     for (idx, rgb) in colors {
         if idx > PER_KEY_MAX_IDX {
             return Err(Invalid::LedIndex(idx));
@@ -366,11 +377,7 @@ pub fn per_key_table(
 
 /// Decode a colour read-back: `[idx R G B]` entries, skipping empty ones.
 pub fn parse_color_table(bytes: &[u8]) -> Vec<(u8, Rgb)> {
-    bytes
-        .chunks_exact(4)
-        .filter(|e| e != &[0, 0, 0, 0])
-        .map(|e| (e[0], [e[1], e[2], e[3]]))
-        .collect()
+    bytes.chunks_exact(4).filter(|e| e != &[0, 0, 0, 0]).map(|e| (e[0], [e[1], e[2], e[3]])).collect()
 }
 
 #[cfg(test)]
@@ -440,9 +447,34 @@ mod tests {
     }
 
     #[test]
+    fn missing_leds_are_sent_as_black() {
+        // An empty frame must clear the keyboard: every slot names its LED.
+        let t = realtime_table([]);
+        for i in 1..REALTIME_SLOTS {
+            assert_eq!(&t[i * 4..i * 4 + 4], &[i as u8, 0, 0, 0], "slot {i}");
+        }
+        let p = per_key_table([(2, [9, 9, 9])]).unwrap();
+        assert_eq!(&p[4..8], &[1, 0, 0, 0]);
+        assert_eq!(&p[8..12], &[2, 9, 9, 9]);
+        assert_eq!(&p[568..572], &[142, 0, 0, 0]);
+        assert_eq!(&p[572..576], &[0, 0, 0xAA, 0x55], "entry 143 holds only the trailer");
+        // Packets still never start like an ISP command.
+        for chunk in p.chunks_exact(PAYLOAD).chain(t.chunks_exact(PAYLOAD)) {
+            assert!(guard(chunk, PacketKind::Data).is_ok());
+        }
+    }
+
+    #[test]
     fn lighting_packet_matches_hardware_golden() {
         // S2 golden.json:467, verified on the AK980: mode 2, FFD200, bright 4, speed 1, dir 2.
-        let s = EffectSettings { mode: 2, color: [0xFF, 0xD2, 0x00], rainbow: false, brightness: 4, speed: 1, direction: 2 };
+        let s = EffectSettings {
+            mode: 2,
+            color: [0xFF, 0xD2, 0x00],
+            rainbow: false,
+            brightness: 4,
+            speed: 1,
+            direction: 2,
+        };
         let p = lighting_data(&s).unwrap();
         assert_eq!(&p[..16], &[0x02, 0xFF, 0xD2, 0x00, 0, 0, 0, 0, 0x00, 0x04, 0x01, 0x02, 0, 0, 0xAA, 0x55]);
         assert!(p[16..].iter().all(|&b| b == 0));
@@ -459,7 +491,11 @@ mod tests {
     fn lighting_validation() {
         let ok = EffectSettings::factory();
         assert_eq!(lighting_data(&EffectSettings { mode: 0x14, ..ok }), Err(Invalid::Mode(0x14)));
-        assert_eq!(lighting_data(&EffectSettings { mode: 0x20, ..ok }), Err(Invalid::Mode(0x20)), "side light needs its own flag");
+        assert_eq!(
+            lighting_data(&EffectSettings { mode: 0x20, ..ok }),
+            Err(Invalid::Mode(0x20)),
+            "side light needs its own flag"
+        );
         assert!(matches!(lighting_data(&EffectSettings { brightness: 6, ..ok }), Err(Invalid::Range { .. })));
         assert!(matches!(lighting_data(&EffectSettings { direction: 4, ..ok }), Err(Invalid::Range { .. })));
         assert_eq!(EFFECTS.len(), 20);
@@ -491,6 +527,8 @@ mod tests {
     #[test]
     fn color_table_round_trip() {
         let t = realtime_table([(1, [1, 2, 3]), (19, [4, 5, 6])]);
-        assert_eq!(parse_color_table(&t), vec![(1, [1, 2, 3]), (19, [4, 5, 6])]);
+        let lit: Vec<_> = parse_color_table(&t).into_iter().filter(|(_, c)| c != &[0, 0, 0]).collect();
+        assert_eq!(lit, vec![(1, [1, 2, 3]), (19, [4, 5, 6])]);
+        assert_eq!(parse_color_table(&t).len(), REALTIME_SLOTS - 1, "black LEDs are listed too");
     }
 }

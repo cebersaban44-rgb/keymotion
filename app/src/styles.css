@@ -149,6 +149,58 @@ body::after {
   box-shadow: var(--shadow);
 }
 
+/* Range slider: filled track up to --pct in --fill, ring thumb. */
+.range {
+  appearance: none;
+  width: 100%;
+  height: 20px;
+  background: transparent;
+  cursor: pointer;
+  --pct: 50%;
+  --fill: var(--signal);
+}
+.range:disabled {
+  cursor: not-allowed;
+}
+.range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--fill) 0 var(--pct), var(--line-strong) var(--pct) 100%);
+}
+.range::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--fill);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
+  transition: transform 120ms ease-out;
+}
+.range:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+.range:focus-visible {
+  outline: none;
+}
+.range:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+.range::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--fill) 0 var(--pct), var(--line-strong) var(--pct) 100%);
+}
+.range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--fill);
+}
+
 /* Thin scrollbars that match the chrome. */
 * {
   scrollbar-width: thin;
@@ -183,6 +235,20 @@ body::after {
   cursor: crosshair;
   text-align: left;
   touch-action: none;
+  /* A solid colour edge so each painted key's colour reads at a glance. */
+  box-shadow:
+    inset 0 calc(var(--u) * -0.1) 0 0 var(--c, transparent),
+    0 calc(var(--u) * 0.03) calc(var(--u) * 0.06) rgb(0 0 0 / 0.35);
+}
+
+/* Select tool: arrow pointer and a ring around selected keys. */
+.kb-select .kb-key {
+  cursor: pointer;
+}
+.kb-key.is-selected {
+  outline: 2px solid #f6f3ec;
+  outline-offset: 2px;
+  filter: brightness(1.18);
 }
 
 .kb-paint .kb-key:hover {

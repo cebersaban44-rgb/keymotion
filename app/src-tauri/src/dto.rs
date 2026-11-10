@@ -192,11 +192,7 @@ impl KeyboardInfo {
             key_count: m.key_count,
             has_knob: m.has_knob,
             has_side_light: m.has_side_light,
-            screen: m.screen.as_ref().map(|s| ScreenInfo {
-                width: s.width,
-                height: s.height,
-                verified: s.verified,
-            }),
+            screen: m.screen.as_ref().map(|s| ScreenInfo { width: s.width, height: s.height, verified: s.verified }),
             connection: k.connection.into(),
             product: k.product.clone(),
             features: k.capabilities().into_iter().map(Feature::from).collect(),
@@ -335,6 +331,39 @@ impl EffectRequest {
             direction: self.direction,
         })
     }
+}
+
+/// sRGB → LED colour calibration, per channel (R, G, B).
+#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize, Serialize, TS)]
+#[ts(export)]
+pub struct Calibration {
+    /// Exponent per channel; 1.0 sends raw values.
+    pub gamma: [f32; 3],
+    /// Gain per channel, 0.0–1.0 (white balance).
+    pub gain: [f32; 3],
+}
+
+impl From<kb_core::color::LedCalibration> for Calibration {
+    fn from(c: kb_core::color::LedCalibration) -> Self {
+        Self { gamma: c.gamma, gain: c.gain }
+    }
+}
+
+impl From<Calibration> for kb_core::color::LedCalibration {
+    fn from(c: Calibration) -> Self {
+        Self { gamma: c.gamma, gain: c.gain }.sanitized()
+    }
+}
+
+/// The active calibration plus the values the UI needs to edit it.
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CalibrationInfo {
+    pub current: Calibration,
+    pub factory: Calibration,
+    pub gamma_min: f32,
+    pub gamma_max: f32,
 }
 
 #[derive(Debug, Clone, Copy, serde::Deserialize, Serialize, TS)]
