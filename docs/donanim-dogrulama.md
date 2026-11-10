@@ -465,6 +465,7 @@ Uygulamanın Ekran sayfası; kullanıcı kendi dosyalarıyla denedi.
   - Sonra hiçbir kart gitmedi; durdurunca dönüş de bütçe bekledi. Kullanıcı ekranın "takılı kaldığını" gördü. Klavye ya da yükleme hatası yok; sebep bütçe (DURUM madde 32).
   - Düzeltmeden sonra uygulama yeniden açıldı (21:20:18). Açılış kontrolü ekranda eski zamanlayıcı kartını buldu ve 15 sn'lik dönüşü kurdu.
   - 21:20:33'te bütçe boşken de dönüş başladı. 21:21:11'de "cat" geri yüklendi: 254 sayfa, 37 sn, hata yok. O sırada Chrome'daki şarkının kartı bütçe bekliyordu; bütçe gelince ya da "Şimdi gönder"le gider.
+  - Kullanıcı canlı planını Yoğun'a aldı ve odak zamanlayıcısını canlı modla yeniden denedi: "Sorun çözüldü, çalışıyor." (2026-11-10)
 
 ### Sonuçlar
 
