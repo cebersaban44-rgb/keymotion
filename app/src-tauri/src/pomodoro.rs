@@ -475,6 +475,9 @@ struct Inner {
     card_at: Option<f64>,
     /// Cards were wanted on the last tick (live mode on, screen switch on).
     cards_wanted: bool,
+    /// The first tick looked for a card left on the screen from before the
+    /// app started.
+    startup_checked: bool,
     /// The series ended at this time: the green blink shows until then + FLASH_MS.
     done_at: Option<f64>,
     /// "Klavyede dene" started at this time.
@@ -516,6 +519,7 @@ impl PomodoroHandle {
             timer: Timer::default(),
             card_at: None,
             cards_wanted: false,
+            startup_checked: false,
             done_at: None,
             trying: None,
             try_sounded: false,
@@ -625,13 +629,14 @@ impl PomodoroHandle {
                 drop(inner);
                 tracing::info!(complete = summary.complete, rounds = summary.focus_done, "pomodoro series ended");
                 // Leave the screen true: the song that plays comes back by
-                // itself once the hold ends; otherwise the user's own
-                // picture, or a summary card.
+                // itself once the hold ends (its card cancels the return if
+                // it can go by then); otherwise the user's own picture, or a
+                // summary card.
                 self.live.drop_pending(SOURCE);
-                if !cards || !self.live.has_card_from(SOURCE) || self.live.track_playing() {
+                if !cards || !self.live.has_card_from(SOURCE) {
                     return;
                 }
-                if end == PomodoroEndScreen::Back {
+                if end == PomodoroEndScreen::Back || self.live.track_playing() {
                     self.live.return_after(SOURCE, BACK_AFTER);
                 } else {
                     let card = PomodoroCard {
@@ -674,6 +679,20 @@ impl PomodoroHandle {
         let s = inner.settings;
         let running = inner.timer.status != PomodoroStatus::Idle;
 
+        // A phase card left on the screen from before the app started (it
+        // was closed while the timer ran, or before the return): the timer
+        // does not run now, so the card is untrue. The scheduled return is
+        // not kept across restarts, so set it again.
+        if !std::mem::replace(&mut inner.startup_checked, true)
+            && !running
+            && live_on
+            && s.end_screen == PomodoroEndScreen::Back
+            && self.live.has_card_from(SOURCE)
+        {
+            tracing::info!("a timer card from before the start is on the screen");
+            self.live.return_after(SOURCE, BACK_AFTER);
+        }
+
         // Screen: hold it while the timer runs with cards on, and ask for the
         // current phase's card when it starts or when cards were just turned on.
         let wanted = running && s.screen && live_on;
@@ -684,9 +703,7 @@ impl PomodoroHandle {
             // Cards turned off while the timer runs: its card leaves the
             // screen like at the end (the song that plays comes back).
             self.live.drop_pending(SOURCE);
-            if !self.live.track_playing() {
-                self.live.return_after(SOURCE, BACK_AFTER);
-            }
+            self.live.return_after(SOURCE, BACK_AFTER);
         }
         inner.cards_wanted = wanted;
         self.live.set_held(wanted);

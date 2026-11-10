@@ -204,18 +204,12 @@ impl ScreenLibrary {
 
     /// Record an upload the keyboard confirmed.
     pub fn uploaded(&mut self, model_id: &str, id: &str) -> io::Result<()> {
-        self.uploaded_with(model_id, id, true)
-    }
-
-    /// `charge`: take it from the live budget (false when the live mode
-    /// took its token before uploading).
-    pub fn uploaded_with(&mut self, model_id: &str, id: &str, charge: bool) -> io::Result<()> {
         let now = now_ms();
         if let Some(item) = self.index.items.iter_mut().find(|i| i.id == id) {
             item.uploaded_ms = Some(now);
         }
         self.index.shown.insert(model_id.to_string(), id.to_string());
-        self.count_upload(charge);
+        self.count_upload(true);
         self.save_index()
     }
 
@@ -402,12 +396,11 @@ mod tests {
         assert!(lib.data(LIVE_ID).is_ok(), "the live card is kept for the preview");
 
         // Putting it back (or any manual upload) leaves nothing to restore.
-        // The live mode going back by itself took its token already.
         let tokens = lib.live_mut().budget.tokens(now_ms());
-        lib.uploaded_with("m", &mine.id, false).unwrap();
+        lib.uploaded("m", &mine.id).unwrap();
         assert!(lib.live_restore_target().is_none());
         assert!(!lib.live_source_showing("now-playing"), "the song card is gone from the page");
-        assert!((lib.live_mut().budget.tokens(now_ms()) - tokens).abs() < 0.01, "not charged twice");
+        assert!((tokens - lib.live_mut().budget.tokens(now_ms()) - 1.0).abs() < 0.01, "counted once");
         assert_eq!(lib.live_own().map(|o| o.id), Some(mine.id.clone()));
         let reopened = ScreenLibrary::open(Some(&dir));
         assert_eq!(reopened.state("m").uploads_today, 4);
