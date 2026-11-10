@@ -233,7 +233,7 @@ mod tests {
         let layer = StoredLayer {
             entries: BTreeMap::from([
                 ("33".into(), "02000400".into()),
-                ("34".into(), "06020105".into()),
+                ("34".into(), "07040506".into()),
                 ("35".into(), "zz".into()),
                 ("x".into(), "02000400".into()),
             ]),

@@ -4,7 +4,7 @@
 use crate::settings::{StoredKeymap, StoredLayer};
 use kb_core::DetectedKeyboard;
 use kb_devices::{Capability, ConnectionKind, Model};
-use kb_protocol::sonix::keymap::{KeyAction, Layer, MouseButton, UsageGroup};
+use kb_protocol::sonix::keymap::{KeyAction, Layer, MacroPlay, MouseButton, UsageGroup};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -506,6 +506,21 @@ impl From<MouseButtonName> for MouseButton {
     }
 }
 
+/// How a key plays its macro.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum MacroPlayMode {
+    /// Once per press.
+    Once,
+    /// `count` times per press.
+    Times,
+    /// Until the key is pressed again.
+    Toggle,
+    /// While the key is held.
+    Hold,
+}
+
 /// What a key does, as the UI edits it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Serialize, TS)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
@@ -531,6 +546,12 @@ pub enum KeyActionInfo {
     Wheel {
         up: bool,
     },
+    /// Play stored macro `slot`; `count` is used with `times` (1–255).
+    Macro {
+        slot: u8,
+        mode: MacroPlayMode,
+        count: u8,
+    },
 }
 
 impl From<KeyAction> for KeyActionInfo {
@@ -542,6 +563,15 @@ impl From<KeyAction> for KeyActionInfo {
             KeyAction::Consumer(usage) => Self::Media { usage },
             KeyAction::Mouse(b) => Self::Mouse { button: b.into() },
             KeyAction::Wheel { up } => Self::Wheel { up },
+            KeyAction::Macro { slot, play } => {
+                let (mode, count) = match play {
+                    MacroPlay::Once => (MacroPlayMode::Once, 1),
+                    MacroPlay::Times(n) => (MacroPlayMode::Times, n),
+                    MacroPlay::Toggle => (MacroPlayMode::Toggle, 1),
+                    MacroPlay::WhileHeld => (MacroPlayMode::Hold, 1),
+                };
+                Self::Macro { slot, mode, count }
+            }
         }
     }
 }
@@ -555,6 +585,15 @@ impl From<KeyActionInfo> for KeyAction {
             KeyActionInfo::Media { usage } => Self::Consumer(usage),
             KeyActionInfo::Mouse { button } => Self::Mouse(button.into()),
             KeyActionInfo::Wheel { up } => Self::Wheel { up },
+            KeyActionInfo::Macro { slot, mode, count } => Self::Macro {
+                slot,
+                play: match mode {
+                    MacroPlayMode::Once => MacroPlay::Once,
+                    MacroPlayMode::Times => MacroPlay::Times(count),
+                    MacroPlayMode::Toggle => MacroPlay::Toggle,
+                    MacroPlayMode::Hold => MacroPlay::WhileHeld,
+                },
+            },
         }
     }
 }

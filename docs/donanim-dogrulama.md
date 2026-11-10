@@ -274,6 +274,41 @@ Kırmızı değerler `2·r mod 256` baytından çözüldü. 40 değerin hepsi `v
 - Fn katmanı, kendi Fn işlevi olmayan bir tuşta (Num /) çalışıyor.
 - **Ders:** Talimattaki "Num /" yazısı "Num Lock + /" diye okundu ve ilk denemede her basıştan önce bir `NumLock` göründü. Zaman damgaları, Num Lock'un test tuşuyla birlikte basılı tutulduğunu gösterdi; ikinci denemede tuşlar ayrı ayrı doğrulandı.
 
+### Makrolar (`04 19` → `04 15`) — 2026-11-10
+
+**Soru:** Kaynaklardaki makro görüntüsü (§7) ve akış bu klavyede çalışıyor mu? `04 19` yankı veriyor mu, `04 02` toplamı tutuyor mu, beklemeler uygulanıyor mu?
+
+**Önce:** Kullanıcı daha önce makro kaydetmediğini söyledi; `04 19` bütün makroları siler.
+
+**Yöntem (`kb macros`, `kb keymap`):**
+- Makrolar:
+  - **Yuva 0:** "ok" (o ve k, bas-bırak, her adımdan sonra 20 ms).
+  - **Yuva 1:** boş (`FF FF FF FF`).
+  - **Yuva 2:** sağ tık bas-bırak, 200 ms, x bas-bırak.
+- Görüntü 9 sayfa, bellek 88/2700 bayt. Akış `04 19` → `04 15 [8]=09` → 30 ms → 9 sayfa → 30 ms → `04 02`, 600 ms.
+- Temel katman bağlamaları:
+  - Num / → `06 00 00 00` (yuva 0, bir kez).
+  - Num * → `06 00 01 03` (yuva 0, 3 kez).
+  - Num − → `06 02 00 00` (yuva 2).
+- Kullanıcı tuşlara zaman damgalı test sayfasında bastı.
+
+| Tuş | Gelen olaylar | Sonuç |
+|---|---|---|
+| Num / | o↓ o↑ k↓ k↑, adımlar arası ~20 ms | ✅ |
+| Num * | "ok" üç kez art arda (tekrarlar arası ~10 ms) | ✅ N kez |
+| Num − | sağ tık ↓↑ (20 ms), 218 ms sonra x↓ x↑ | ✅ fare ve bekleme |
+
+**Sonuçlar:**
+- `04 19` yankı veriyor (durum `FF` değil). Öncesinde `04 18` gerekmiyor (açık soru §14.10 kapandı).
+- `04 02` yankısındaki bayt toplamı, gönderilen görüntünün toplamıyla aynı. Saat akışındaki gibi 0 dönmüyor, yani teslimat toplamla doğrulanabiliyor.
+- Görüntü biçimi doğru:
+  - Dizin ofsetleri ve boş yuva (`FF FF FF FF`) çalışıyor.
+  - Olay sayacı her adım için 2.
+  - Bekleme `MS_LO MS_HI 00 50`.
+  - Sayfa sayısı stok formülüyle.
+- `06 SLOT MODE COUNT`: mod 0 bir kez, mod 1 COUNT kez oynatıyor. Mod 2 ve 3 (tekrar basana kadar, basılı tutuldukça) denenmedi.
+- Test sonunda `kb keymap --layer base` ve `kb macros` (boş) yazıldı: atama varsayılan, makro yok.
+
 ### Ekran: stok ana sayfa (fotoğraf, 2026-11-10 08:29)
 
 - **Yerleşim:** Panel yatay ve topuzun hemen solunda. Panelin sol yarısı mavi bir durum kartı, sağ yarısı siyah zemin üzerinde çizgi çizimi dağlar ve kuşlar.

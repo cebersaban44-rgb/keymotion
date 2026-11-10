@@ -43,7 +43,8 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | Ayarlar → **Renk kalibrasyonu**: gamma (bağlı ya da kanal başına), beyaz dengesi, eğri grafiği, klavyede canlı test deseni (beyaz, gri basamaklar, palet), kalıcı ayar | ✅ Kullanıcı gri basamakları ve beyazı onayladı. |
 | Genel Bakış → **Klavye saati**: bağlanınca otomatik eşitleme (günde en fazla bir kez, kapatılabilir), "Şimdi eşitle", son eşitleme zamanı | ✅ Uygulamada uçtan uca denendi; kullanıcı ekrandaki saatin doğru olduğunu onayladı. |
 | **Tuş Atama**: temel ve Fn katmanı; tuş, kısayol (Ctrl/Shift/Alt/Win + tuş), medya, fare, tekerlek, devre dışı; taslak, kaydet, geri al, katmanı fabrika ayarına döndür; sayfada tuş testi kutusu | ✅ CLI ve uygulamayla klavyeye yazıldı; kullanıcı tuşlara basarak doğruladı (madde 19). |
-| Makrolar, Ekran sayfaları | ⏳ "Yapım aşamasında" yer tutucu |
+| **Makrolar**: protokol, sürücü ve CLI (`kb macros`, tuşa `macro:N`) | ✅ Klavyede doğrulandı (madde 20). Uygulama sayfası henüz yok. |
+| Makrolar ve Ekran sayfaları | ⏳ "Yapım aşamasında" yer tutucu |
 
 ## 3. Kronoloji: ne yaptık, neden
 
@@ -156,6 +157,15 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **Arayüz:** Tuş Atama sayfası: katman sekmeleri, klavyede seçim (değişen tuş yeni işlevini ve altında asıl etiketini gösterir, kaydedilmemişler noktalı), işlev seçici (Tuşlar + "Birlikte basılı" değiştiriciler, Medya, Fare, Özel), kaydet paneli ve okunamama/Fn katmanı notları, tuş testi kutusu.
     - **CLI:** `kb keymap --layer base|fn KEY=ACTION … --yes`, `kb keymap-targets`.
     - **Doğrulama:** CLI ile iki katman yazılıp kullanıcı bastı; varsayılana dönüş doğrulandı. Sonra uygulamanın kendi Kaydet düğmesiyle yazılıp sayfadaki tuş testi kutusunda doğrulandı ve uygulamadan fabrika ayarına döndürüldü. Klavye şu an fabrika atamasında.
+    - **PR'lar:** [#12](https://github.com/cebersaban44-rgb/klavye-studio/pull/12) madde 19, [#13](https://github.com/cebersaban44-rgb/klavye-studio/pull/13) "tuşla uygulama başlatma" fikri (P2).
+20. **Makrolar: temel** (`04 19` → `04 15`). Ayrıntı: `donanim-dogrulama.md`, "Makrolar".
+    - **Protokol** (`kb-protocol/src/sonix/macros.rs`): makro görüntüsü (100 yuvalık dizin, kayıtlar, sayfa sayısı ve `AA 55`), bellek sınırı (`(adım + yuva) × 8 ≤ 0xA8C`), ABD düzeniyle metin → adım, geri okuma (test için). Geçerli her görüntünün `guard`'dan geçtiği testle kanıtlı.
+    - **Yuvalar sabit:** Boş yuva numarasını korur (`FF FF FF FF`). Bir makro silinince sonrakiler kaymaz, tuş atamalarını yeniden yazmak gerekmez.
+    - **Tuşa bağlama:** `KeyAction::Macro { slot, play }` = `06 SLOT MODE COUNT`; bir kez, N kez, tekrar basana kadar, basılı tutulduğu sürece. Satıcının 4. modu ("click to play") anlamı belirsiz olduğu için sunulmuyor.
+    - **Sürücü:** `04 19` → `04 15` (sayfa) → 30 ms → sayfalar → 30 ms → `04 02`; `04 18` ve `04 F0` yok. `04 02` yankısındaki toplam görüntünün toplamıyla tutuyor.
+    - **CLI:** `kb macros SPEC… --yes` (`text:`, `combo:`, `steps:`; `-` boş yuva), `kb keymap KEY=macro:N[:times:K|:toggle|:hold]`.
+    - **Doğrulama:** Kullanıcı Num / (bir kez "ok"), Num * ("ok" üç kez) ve Num − (sağ tık, 200 ms, x) tuşlarına bastı; olaylar ve beklemeler beklendiği gibi. Sonra makrolar silindi ve atama fabrika ayarına döndü.
+    - **Uygulama sayfası henüz yok** (sıradaki iş).
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -199,7 +209,7 @@ rustfmt.toml, .gitattributes   120 sütun biçim; LF satır sonu.
 ## 5. Nasıl çalıştırılır ve test edilir
 
 ```bash
-cargo test --workspace            # 106 test; TS tiplerini ve mock JSON'ları da üretir
+cargo test --workspace            # 116 test; TS tiplerini ve mock JSON'ları da üretir
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check        # rustfmt.toml: 120 sütun
 cd app && pnpm typecheck
@@ -225,6 +235,9 @@ kb direction-probe [--modes 10,11 --dirs 0,1 --speed 1] --yes   # FLASH: efekt y
 kb keymap-targets                          # atanabilecek tuş, medya ve fare adları
 kb keymap --layer base kp-slash=a kp-star=media:volume-up caps=ctrl+z --yes   # FLASH: katmanın TAMAMI yazılır
 kb keymap --layer fn --yes                 # FLASH: Fn katmanını fabrika ayarına döndürür
+kb macros "text:ok" - "steps:click:right,wait:200,tap:x" --yes   # FLASH: BÜTÜN makrolar (yuva 0, 1 boş, 2)
+kb macros --yes                            # FLASH: bütün makroları siler
+kb keymap --layer base kp-slash=macro:0 kp-star=macro:0:times:3 --yes   # makroyu tuşa bağla
 ```
 
 **Gerçek uygulamada uçtan uca test** (tarayıcı panelinde değil):
@@ -284,14 +297,18 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 ### Sıradaki oturum için
 
 1. `git switch develop && git pull`, sonra yeni iş için dal aç. PR açınca auto-merge ve auto-fix'i aç (`gelistirme-akisi.md`).
-2. **Tuş atama bitti** (madde 19). Klavye fabrika atamasında; `keymap.json` kaydı da öyle.
-3. **Sıradaki işi kullanıcıyla seç.** Adaylar (P2):
-   - **Makrolar** (`04 19` → `04 15`; `research/protokol-ff13.md` §7). Tuş atamaya bağlanır: makro, tuş girişinde `06 SLOT MODE COUNT` ile atanır.
-     - `04 19` makro tablosunu siler. Makro tablosu ve iki katman birlikte yeniden yazılmalı; bir makro silinince sonraki slotlar kayar.
-     - Klavyeden okunamaz; uygulama kendi kaydını tutar (`keymap.json` gibi).
-     - Doğrulama: önce CLI ile kısa bir makro (ör. "ok"), bir tuşa bağla, kullanıcı tuş testi kutusunda denesin.
-   - **Seçenekler** (`04 17`): uyku, Win kilidi, tepki süresi. Bayt sırası yakalamayla doğrulanmalı.
-   - **Ekran** (`04 72` + FF68): en riskli ve en büyük iş.
+2. **Tuş atama bitti** (madde 19). **Makroların temeli bitti** (madde 20). Klavye fabrika durumunda: atama varsayılan, makro yok; `keymap.json` kaydı da öyle.
+3. **Sıradaki iş: Makrolar sayfası** (kullanıcı makrolara başlamayı seçti).
+   - **Kayıt:** Makrolar da klavyeden okunamaz. Uygulama kendi kaydını tutar (`macros.json`: yuva → ad ve adımlar). Cihaz aktörü klavye onayladıktan sonra günceller, `keymap.json` gibi.
+   - **Düzenleyici:**
+     - Makro listesi (ad, adım sayısı, süre).
+     - Adım listesi: bas/bırak, tuş ya da fare, bekleme. Ekleme, silme, sıralama, beklemeyi düzenleme.
+     - **Kaydet düğmesiyle kayıt:** `keydown`/`keyup`'ı `e.code` ile yakala (konuma göre). Böylece Türkçe Q düzeninde de doğru tuş yazılır.
+     - Gerçek bekleme süreleri ya da sabit bekleme seçeneği.
+     - Bellek göstergesi (`budget_used` / 0xA8C).
+   - **Tuşa bağlama:** Tuş Atama'daki seçiciye "Makro" kategorisi; oynatma biçimi (bir kez, N kez, tekrar basana kadar, basılı tutulduğu sürece). Bağlı makro silinirken uyarı ve bağlantıyı kaldırma.
+   - **Kaydetme:** Makrolar bütün görüntü olarak yazılır; tuş atamasından ayrı bir flash yazımı. Kaydedilmemiş makrolar kapatma uyarısına katılmalı.
+   - **Diğer adaylar** (sonra): Seçenekler (`04 17`, yakalama gerekir), Ekran (`04 72` + FF68, en büyük ve riskli iş).
 4. Bekleyen küçük iş: "Kapalı" (mod 0) sonrası Fn+X ile ışığın geri açılıp açılmadığı. Kullanıcıyla, klavyede (P1).
 5. **Kullanıcının kalibrasyonu:** Ayarlar'da gamma **1.0 (ham)** kayıtlı. Kullanıcı bunu bilerek seçti: 2.2'de "Gri basamaklar" deseninin sol tarafı soluk kalıyordu, bütün klavyenin yanmasını istedi.
    - **Açıklama (kullanıcıya iletildi):** Soldaki basamaklar desenin en koyu grileri (#202020, #404040); 2.2'de LED'de %1 ve %5'e düşüyorlar. Gamma parlaklığı değil ara tonları ayarlar. Beyaz ve saf renkler her gamma'da aynı yanar. 1.0'da ara tonlu renkler (mor, pembe, açık mavi) ekrandakinden daha soluk ve beyazımsı görünür. İlk göz testinde paletle en uyumlu değer 2.2 çıkmıştı.
@@ -321,7 +338,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 - [x] **Saat senkronu** (`04 28`): bağlanınca günde en fazla bir kez ve elle (madde 17). Kullanıcı ekrandaki saatin doğru olduğunu onayladı.
 - [ ] **Seçenekler** (`04 17`): uyku süresi, Win kilidi, Alt+Tab ve Alt+F4 kilidi, tepki süresi. Bayt sırası yakalamayla doğrulanmalı.
 - [x] **Tuş atama** (`04 11` temel, `04 27` Fn): tuş, kısayol, medya, fare, tekerlek, devre dışı, varsayılana dönme; uygulamanın kendi kaydı (madde 19). Açık kalanlar:
-  - [ ] Makro bağlama (`06 SLOT MODE COUNT`), makrolarla birlikte.
+  - [x] Makro bağlama (`06 SLOT MODE COUNT`): protokol ve CLI (madde 20). Tuş Atama sayfasında seçici henüz yok.
   - [ ] Klavyede denenmedi: ileri yan tuş (`10`), çift tık (`03`), tekerlek (`01 03`). Kodlama kaynaklarla uyumlu; kullanıcıyla bir kez denenmeli.
   - [ ] `07 K1 K2 K3` (üç tuş birlikte) sunulmuyor; "Birlikte basılı" değiştiricileri çoğu ihtiyacı karşılıyor.
   - [ ] Kendi Fn işlevi olan tuşlarda Fn katmanı atamasının yok sayılıp sayılmadığı (kaynaklarda Fn+Home). Num / üzerinde Fn katmanı çalıştı.
@@ -341,7 +358,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
   - **Güvenlik:** Yalnızca kullanıcının kendi seçtiği program, dosya ya da adres açılır. Yol ve argümanlar başka bir kaynaktan gelmez. Yönetici olarak çalıştırma yok.
   - **Önce ölçülecekler:** F13–F24'ün Windows'ta genel kısayol olarak yakalanması; atamanın BT ve 2.4G'de de geçerli olması.
   - **İlgili:** P1'deki "uygulamaya göre otomatik profil" de aynı arka plan servisini kullanır; ikisi birlikte tasarlanmalı.
-- [ ] **Makrolar** (`04 19` → `04 15`): `04 19` makro tablosunu siler, dikkat.
+- [ ] **Makrolar** (`04 19` → `04 15`): temel bitti (protokol, sürücü, CLI, klavyede doğrulandı; madde 20). Kalan: uygulamanın kaydı (`macros.json`), Makrolar sayfası, Tuş Atama'da makro seçici. `04 19` bütün makroları siler; her kayıt bütün görüntüyü yazar.
 - [ ] **Ekran** (`04 72` + FF68):
   - Paketler **WriteFile** ile gönderilir, SET_REPORT ile değil (kardeş kartı çökertmiş). `04 F0` asla gönderilmez.
   - En fazla 140 kare ve 2215 sayfa.
@@ -364,7 +381,8 @@ Kullanıcıyla kararlaştırıldı (2026-11-10): Şu an her özellik yalnızca *
 | Canlı ışık (RAM) | ✅ `04 20` | Per-key canlı kare **yok**; yalnızca `0B` müzik çubuğu | Yok |
 | Ayna (`04 F5`) | ✅ | Bilinen okuma yok | Yok |
 | Tuş atama | ✅ `04 11` / `04 27` | `10`/`12` (kardeşlerde; akış sınırları tehlikeli) | Yok |
-| Makro / seçenekler | Henüz yok | `09`, `07 10` (kardeşlerde) | Yok |
+| Makro | ✅ `04 19` → `04 15` (CLI) | `09` (kardeşlerde) | Yok |
+| Seçenekler | Henüz yok | `07 10` (kardeşlerde) | Yok |
 | Ekran | Henüz yok | `7F 03` (kardeşte, ~62 s) | Yok |
 
 - **Bluetooth:** Ölçüm, üreticiye özel HID kanalı olmadığını gösterdi. Ayar yapılamıyor; `FEE0/FEE1` (OTA) asla yazılmaz. Uygulama BT'de pil ve "ayar için USB'ye geçin" yönlendirmesi gösteriyor.

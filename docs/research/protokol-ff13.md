@@ -453,6 +453,12 @@ Cihazda bir reset komutu yok. Stok "Reset keyboard" iki katmanı da sıfırlarda
 
 `04 19` (`04 18` gönderilmez) → `04 15 … [8..9]=PAGES` → 30 ms → PAGES×64 → 30 ms → `04 02` (F0 yok) [AK980-HW: S1 SonixKeyboard.cs:322-335; S2 2026-10-30 "ok" yazan makro].
 
+- [AK980 PRO-HW: bu proje, 2026-11-10] Ölçüldü:
+  - `04 19` yankı veriyor; `04 02` toplamı görüntünün toplamıyla tutuyor.
+  - Dizin, boş yuva (`FF FF FF FF`), bekleme ve sayfa sayısı doğru.
+  - `06` mod 0 ve mod 1 (N kez) çalışıyor.
+  - Ayrıntı: `docs/donanim-dogrulama.md`, "Makrolar".
+
 ### 7.2 Görüntü (image) biçimi
 
 | Ofset | İçerik |
@@ -753,7 +759,7 @@ Cihazda bir reset komutu yok. Stok "Reset keyboard" iki katmanı da sıfırlarda
    - Stok Fn katmanında varsayılan sıfır olmayan girişler var mı?
    - "Reset keyboard" ve "Factory reset" düğmeleri hangi paketleri gönderiyor (yeni bir opcode var mı)?
    - "Open program/website/text" Input raporlarının biçimi.
-10. **Makrolar:** AK980 PRO'da bütçe (0xA8C) ve 0xE00 sınırı; `04 19` öncesinde `04 18` var mı.
+10. **Makrolar:** AK980 PRO'da bütçe (0xA8C) ve 0xE00 sınırı. ~~`04 19` öncesinde `04 18` var mı~~: gerekmiyor, `04 19` yankı veriyor (ölçüldü 2026-11-10).
 11. **2.4G:**
     - AK980 PRO sürücüsü 2.4G modunda hangi özellikleri sunuyor ve hangi komutları gönderiyor (`05 10`, `07 10`, `0B`, `7F 03`)?
     - Pil yoklama aralığı.

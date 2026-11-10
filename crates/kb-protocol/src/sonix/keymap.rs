@@ -6,6 +6,7 @@
 //! that are not given go back to the firmware default. The keyboard cannot
 //! report its keymap, so callers keep their own copy.
 
+use super::macros::MAX_MACROS;
 use super::{Invalid, Op, PAYLOAD, TRAILER};
 
 /// Data packets in one keymap layer.
@@ -85,6 +86,20 @@ impl MouseButton {
     }
 }
 
+/// How a key plays its macro (`06 SLOT MODE COUNT`; S1 KeyMap.cs, the
+/// stock key dialog's play modes 0–3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MacroPlay {
+    /// Once per press.
+    Once,
+    /// `n` times per press (1–255).
+    Times(u8),
+    /// Repeats until the key is pressed again.
+    Toggle,
+    /// Repeats while the key is held.
+    WhileHeld,
+}
+
 /// What one key does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeyAction {
@@ -101,6 +116,8 @@ pub enum KeyAction {
     Mouse(MouseButton),
     /// One notch of the wheel (`01 03 01 00` up, `01 03 FF 00` down).
     Wheel { up: bool },
+    /// Play stored macro `slot` (0-based, see [`super::macros`]).
+    Macro { slot: u8, play: MacroPlay },
 }
 
 /// Keyboard usages a key may send: the standard keys of page 0x07.
@@ -144,11 +161,24 @@ impl KeyAction {
             }
             Self::Mouse(b) => [0x01, 0x01, b.code(), 0],
             Self::Wheel { up } => [0x01, 0x03, if up { 0x01 } else { 0xFF }, 0],
+            Self::Macro { slot, play } => {
+                if slot as usize >= MAX_MACROS {
+                    return Err(Invalid::KeyAction("macro slot out of range"));
+                }
+                let (mode, count) = match play {
+                    MacroPlay::Once => (0, 0),
+                    MacroPlay::Times(0) => return Err(Invalid::KeyAction("macro repeat count is zero")),
+                    MacroPlay::Times(n) => (1, n),
+                    MacroPlay::Toggle => (2, 0),
+                    MacroPlay::WhileHeld => (3, 0),
+                };
+                [0x06, slot, mode, count]
+            }
         })
     }
 
     /// Read an entry back; `None` for kinds this crate does not produce
-    /// (macros, combos, host programs) or malformed bytes.
+    /// (combos, host programs) or malformed bytes.
     pub fn decode(e: [u8; 4]) -> Option<Self> {
         let action = match e {
             [0, 0, 0, 0] => Self::Default,
@@ -158,6 +188,10 @@ impl KeyAction {
             [0x01, 0x01, b, 0] => Self::Mouse(MouseButton::from_code(b)?),
             [0x01, 0x03, 0x01, 0] => Self::Wheel { up: true },
             [0x01, 0x03, 0xFF, 0] => Self::Wheel { up: false },
+            [0x06, slot, 0, 0] => Self::Macro { slot, play: MacroPlay::Once },
+            [0x06, slot, 1, n] => Self::Macro { slot, play: MacroPlay::Times(n) },
+            [0x06, slot, 2, 0] => Self::Macro { slot, play: MacroPlay::Toggle },
+            [0x06, slot, 3, 0] => Self::Macro { slot, play: MacroPlay::WhileHeld },
             _ => return None,
         };
         action.encode().ok().map(|_| action)
@@ -313,6 +347,10 @@ mod tests {
         assert_eq!(KeyAction::Consumer(0xE9).encode().unwrap(), [0x03, 0xE9, 0x00, 0x00]);
         assert_eq!(KeyAction::Mouse(MouseButton::Middle).encode().unwrap(), [0x01, 0x01, 0x04, 0x00]);
         assert_eq!(KeyAction::Wheel { up: false }.encode().unwrap(), [0x01, 0x03, 0xFF, 0x00]);
+        // §6.2 example `06 02 01 05`: slot 2, five times.
+        let m = KeyAction::Macro { slot: 2, play: MacroPlay::Times(5) };
+        assert_eq!(m.encode().unwrap(), [0x06, 0x02, 0x01, 0x05]);
+        assert_eq!(KeyAction::Macro { slot: 0, play: MacroPlay::WhileHeld }.encode().unwrap(), [0x06, 0, 3, 0]);
     }
 
     #[test]
@@ -322,6 +360,8 @@ mod tests {
         assert!(KeyAction::Key { mods: 0, code: 0xAA }.encode().is_err(), "reserved usage");
         assert!(KeyAction::Key { mods: 0, code: 0x66 }.encode().is_err(), "Power is not offered");
         assert!(KeyAction::Consumer(0).encode().is_err());
+        assert!(KeyAction::Macro { slot: 100, play: MacroPlay::Once }.encode().is_err());
+        assert!(KeyAction::Macro { slot: 0, play: MacroPlay::Times(0) }.encode().is_err());
     }
 
     #[test]
@@ -335,13 +375,18 @@ mod tests {
             KeyAction::Consumer(0x00CD),
             KeyAction::Wheel { up: true },
             KeyAction::Wheel { up: false },
+            KeyAction::Macro { slot: 0, play: MacroPlay::Once },
+            KeyAction::Macro { slot: 99, play: MacroPlay::Times(255) },
+            KeyAction::Macro { slot: 7, play: MacroPlay::Toggle },
+            KeyAction::Macro { slot: 7, play: MacroPlay::WhileHeld },
         ]
         .into_iter()
         .chain(MouseButton::ALL.map(KeyAction::Mouse));
         for a in all {
             assert_eq!(KeyAction::decode(a.encode().unwrap()), Some(a), "{a:?}");
         }
-        assert_eq!(KeyAction::decode([0x06, 0x02, 0x01, 0x05]), None, "macros are not decoded yet");
+        assert_eq!(KeyAction::decode([0x07, 0x04, 0x05, 0x06]), None, "combos are not produced");
+        assert_eq!(KeyAction::decode([0x06, 0x02, 0x04, 0x00]), None, "click-to-play is not offered");
         assert_eq!(KeyAction::decode([0x02, 0x00, FN_USAGE, 0x00]), None);
     }
 
@@ -368,6 +413,7 @@ mod tests {
         actions.extend(CONSUMER.iter().map(|c| KeyAction::Consumer(c.code)));
         actions.extend(MouseButton::ALL.map(KeyAction::Mouse));
         actions.extend([KeyAction::Disabled, KeyAction::Wheel { up: true }, KeyAction::Wheel { up: false }]);
+        actions.extend((0..100).map(|slot| KeyAction::Macro { slot, play: MacroPlay::Times(0x55) }));
         for a in actions {
             // Packets start at entries 0, 16, 32, …: put the action there.
             let t = keymap_table((1..=8).map(|p| (p * 16, a))).unwrap();
