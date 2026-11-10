@@ -241,6 +241,35 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Vazgeç;
       - düzenlemeye dön.
       - Klavyeye gerçek yükleme henüz yapılmadı; kullanıcının onayını bekliyor.
+    - **PR:** [#21](https://github.com/cebersaban44-rgb/klavye-studio/pull/21).
+25. **Ekran Stüdyosu Faz B2: slayt.**
+    - **Kaynak:** Adım 1'de üçüncü kutu, **Slayt**. Birkaç görsel tek döngüde gösterilir.
+    - **Slaytlar** (en çok 24):
+      - Dosyadan eklenebilir: çoklu seçim ya da önizlemenin üstüne bırakma. Animasyon ya da videodan en dolu an alınır: 8 an örneklenir, en parlak olan seçilir.
+      - Kütüphaneden eklenebilir: öğenin temsilci karesi alınır.
+      - Her slaytın süresi 1–20 sn. Dosya slaytları Doldur ya da Sığdır olabilir.
+      - Sıralama yukarı/aşağı yapılır, slayt çıkarılabilir. Degrade yumuşatma açılıp kapatılabilir.
+    - **Geçiş:**
+      - Kesme;
+      - Yumuşak: 3 karışım karesi, her biri 100 ms. Son slayttan ilkine de geçiş var, döngü dikişsiz.
+    - **Kare bütçesi:**
+      - Panel bir kareyi en çok 508 ms gösterir. Bu yüzden D saniyelik slayt ⌈D / 0,508⌉ kez tekrarlanan aynı karedir.
+      - Düzenleyicide "Kare bütçesi" çubuğu var.
+      - 140 kare aşılırsa Önizle kapanır ve nedeni yazılır.
+      - Doğrulandı: `assemble` ile `budget` her durumda aynı kare sayısını ve döngü süresini veriyor; en uzun kare 500 ms.
+    - **Ad:** Varsayılan "Slayt · N görsel"; kullanıcı değiştirmedikçe slayt sayısını izler.
+    - **Ayrıca:**
+      - "Yumuşak geçiş" anahtarının adı "Degrade yumuşatma" oldu. Slayttaki "Yumuşak" geçişle karışıyordu; zaten yaptığı iş bantlanmayı azaltmak.
+      - Küçük resim ve en parlak kare yardımcıları ortak modüllere taşındı.
+    - **Doğrulama:** Tarayıcıda sahte arka uçla (1320×860) denendi:
+      - dosya ekleme (çoklu ve iki seferde);
+      - kütüphaneden ekleme;
+      - yukarı taşıma, çıkarma;
+      - 20 sn'lik süreler ve bütçe aşımı;
+      - önizleme → yükleme → "bitti" bandı;
+      - Vazgeç.
+      - Geliştirme sırasında bir hata bulunup düzeltildi: HMR sonrası slayt anahtarları çakışıp yanlış küçük resim gösteriyordu. Anahtarlar artık düzenleyici başına sayaçla üretiliyor.
+      - Klavyeye gerçek yükleme henüz yapılmadı.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -272,7 +301,8 @@ app/
                 lib/hidCodes.ts (e.code ↔ HID), lib/layout.ts (Windows düzenine göre tuş adları),
                 lib/screen.ts (ekran kütüphanesi ve yükleme durumu), lib/screenImport.ts (dosya → RGB565),
                 lib/screenText.ts (yazı kartı çizicisi), pages/{Overview,Lighting,Keymap,Macros,Screen,Settings}.tsx,
-                pages/screen/ (Ekran Stüdyosu: common.tsx ortak adımlar, FileFlow.tsx, TextFlow.tsx).
+                lib/screenSlides.ts (slayt kare bütçesi ve geçişler),
+                pages/screen/ (Ekran Stüdyosu: common.tsx ortak adımlar, FileFlow.tsx, TextFlow.tsx, SlideFlow.tsx).
   src/bindings/ `cargo test` ile ÜRETİLİR (TS tipleri, geometri JSON'u, efekt kataloğu). Elle düzenlenmez.
 tools/cdp.mjs   Çalışan uygulamanın WebView2'sine CDP ile JS çalıştırır ya da ekran görüntüsü alır (uçtan uca test).
 .github/workflows/ci.yml   PR ve birleştirmelerde Windows'ta kontroller (bkz. gelistirme-akisi.md).
@@ -400,10 +430,10 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
    - **Kullanıcının ilkesi (2026-11-10):** "Her ne yüklenirse yüklensin" dosya olduğu gibi gönderilmez. Uygulama onu klavyenin biçimine çevirir, önizletir, kullanıcı onaylarsa yükler. Ayrıntı: `research/ekran-derin-arastirma.md` §3.1.
    - **Sıradaki adımlar:**
      1. **Faz A bitti** (madde 23): Ekran Stüdyosu sayfası; kullanıcı kendi resim ve GIF'iyle denedi, E2 (kalıcılık) geçti.
-     2. **Faz B sürüyor** (kullanıcı 2026-11-10'da seçti; plan aşağıda, "Faz B planı"). Yeniden düzenleme ve B1 bitti (madde 24); sırada B2 (slayt), sonra B3 (ekranla uyumlu ışık).
+     2. **Faz B sürüyor** (kullanıcı 2026-11-10'da seçti; plan aşağıda, "Faz B planı"). Yeniden düzenleme, B1 (madde 24) ve B2 (madde 25) bitti; sırada B3 (ekranla uyumlu ışık).
      3. Sonra: Faz C (olay tabanlı canlı kartlar), E3 (panelin gerçek kare hızı).
      4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar 4 yükleme: E1, E4 ve kullanıcının 2 yüklemesi.
-   - **Faz B planı** (yeniden düzenleme ve B1 yapıldı, madde 24; B2 ve B3 bekliyor):
+   - **Faz B planı** (yeniden düzenleme, B1 ve B2 yapıldı, maddeler 24–25; B3 bekliyor):
      - **Kullanıcının arayüz kuralı** (2026-11-10, Faz A geri bildirimi):
        - adımlar görünür olsun;
        - her adımda belirgin bir "Vazgeç" bulunsun;

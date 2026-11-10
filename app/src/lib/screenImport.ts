@@ -422,6 +422,28 @@ export function toRgb565(rgba: Uint8ClampedArray, dither: boolean | Uint8Array):
   return out;
 }
 
+/** The frame that shows the most: brightest of up to 24 evenly spaced
+ *  frames (animations often start on black). */
+export function brightestFrame(frames: Uint16Array[]): Uint16Array | null {
+  if (frames.length === 0) return null;
+  const step = Math.max(1, Math.floor(frames.length / 24));
+  let best = frames[0]!;
+  let bestScore = -1;
+  for (let k = 0; k < frames.length; k += step) {
+    const f = frames[k]!;
+    let score = 0;
+    for (let i = 0; i < f.length; i += 7) {
+      const v = f[i]!;
+      score += (v >> 11) + ((v >> 5) & 63) / 2 + (v & 31);
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = f;
+    }
+  }
+  return best;
+}
+
 /** RGB565 → RGBA for previews: exactly the colours the panel gets. */
 export function toRgba(
   px: Uint16Array,
