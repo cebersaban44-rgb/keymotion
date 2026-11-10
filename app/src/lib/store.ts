@@ -5,17 +5,23 @@ import type { UiEnvironment } from "../bindings/UiEnvironment";
 import type { Locale } from "./i18n";
 
 export type PageId = "overview" | "lighting" | "keymap" | "macros" | "screen" | "connection" | "settings";
+/** Tabs of the Screen page. */
+export type ScreenTab = "visuals" | "live" | "focus";
 
 interface AppState {
   keyboards: KeyboardInfo[];
   loaded: boolean;
   env: UiEnvironment | null;
   page: PageId;
+  screenTab: ScreenTab;
   theme: ThemePreference;
   locale: Locale;
   setKeyboards: (k: KeyboardInfo[]) => void;
   setEnv: (e: UiEnvironment) => void;
   setPage: (p: PageId) => void;
+  setScreenTab: (t: ScreenTab) => void;
+  /** Open the Screen page on a tab (links from elsewhere in the app). */
+  openScreen: (t: ScreenTab) => void;
   setTheme: (t: ThemePreference) => void;
   setLocale: (l: Locale) => void;
 }
@@ -43,11 +49,20 @@ export const useApp = create<AppState>((set) => ({
   loaded: false,
   env: null,
   page: "overview",
+  screenTab: load<ScreenTab>("ks.screenTab", ["visuals", "live", "focus"], "visuals"),
   theme: load<ThemePreference>("ks.theme", ["system", "dark", "light"], "system"),
   locale: load<Locale>("ks.locale", ["tr", "en"], "tr"),
   setKeyboards: (keyboards) => set({ keyboards, loaded: true }),
   setEnv: (env) => set({ env }),
   setPage: (page) => set({ page }),
+  setScreenTab: (screenTab) => {
+    save("ks.screenTab", screenTab);
+    set({ screenTab });
+  },
+  openScreen: (screenTab) => {
+    save("ks.screenTab", screenTab);
+    set({ page: "screen", screenTab });
+  },
   setTheme: (theme) => {
     save("ks.theme", theme);
     set({ theme });

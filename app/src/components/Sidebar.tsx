@@ -104,7 +104,7 @@ export function Sidebar() {
 function PomodoroChip() {
   const t = useT();
   const p = usePomodoro((x) => x.state);
-  const setPage = useApp((s) => s.setPage);
+  const openScreen = useApp((s) => s.openScreen);
   const [, tick] = useState(0);
   const running = p?.status === "running";
   useEffect(() => {
@@ -120,10 +120,7 @@ function PomodoroChip() {
     <button
       type="button"
       title={t("pomo.go")}
-      onClick={() => {
-        setPage("screen");
-        window.setTimeout(() => document.querySelector("[data-pomodoro]")?.scrollIntoView({ behavior: "smooth", block: "start" }), 300);
-      }}
+      onClick={() => openScreen("focus")}
       className="flex items-center gap-3 rounded-2xl border border-line px-3.5 py-2.5 text-left hover:bg-surface/60"
       data-pomo-chip
     >
