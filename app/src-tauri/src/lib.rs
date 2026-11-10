@@ -165,16 +165,18 @@ fn live_state(live: Live<'_>) -> Result<LiveState, String> {
 }
 
 /// Change the live mode switch, the budget plan or a source switch (fields
-/// left out stay as they are).
+/// left out stay as they are). `restore` with `enabled: false` puts back
+/// what the GIF page showed before the live mode (a flash write).
 #[tauri::command]
 fn live_configure(
     live: Live<'_>,
     enabled: Option<bool>,
     plan: Option<LivePlan>,
     now_playing: Option<bool>,
+    restore: Option<bool>,
 ) -> Result<LiveState, String> {
-    tracing::debug!(?enabled, ?plan, ?now_playing, "ipc: live_configure");
-    live.configure(enabled, plan, now_playing)
+    tracing::debug!(?enabled, ?plan, ?now_playing, ?restore, "ipc: live_configure");
+    live.configure(enabled, plan, now_playing, restore)
 }
 
 /// A finished live card from the UI: the blob as body (validated here),
