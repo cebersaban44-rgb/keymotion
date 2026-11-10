@@ -188,7 +188,10 @@ const MONO = '"JetBrains Mono Variable", monospace';
 
 /** Words the Pomodoro cards need, in the UI language. */
 export interface PomodoroWords {
+  /** Small caps line on the card. */
   label: string;
+  /** Name of the feature, for the card's name in the app. */
+  name: string;
   phase: Record<PomodoroPhase, string>;
   round: string;
   min: string;
@@ -301,9 +304,9 @@ export async function pomodoroCard(c: PomodoroCard, s: PomodoroSettings, w: Pomo
   const left = 14;
   const maxW = cx - r - 10 - left;
   fg.textAlign = "left";
-  fg.font = `600 9px ${SANS}`;
   fg.letterSpacing = "1px";
   fg.fillStyle = rgb(light);
+  fitFont(fg, w.label, (px) => `600 ${px}px ${SANS}`, maxW, 9, 7);
   fg.fillText(w.label, left, 24);
   fg.letterSpacing = "0px";
   fg.fillStyle = "#ffffff";
@@ -320,7 +323,7 @@ export async function pomodoroCard(c: PomodoroCard, s: PomodoroSettings, w: Pomo
   return {
     frames: [px565],
     delaysMs: [STILL_DELAY_MS],
-    name: done ? `${w.label} · ${title}` : `${w.label} · ${title} ${c.round}/${c.rounds}`,
+    name: done ? `${w.name} · ${title}` : `${w.name} · ${title} ${c.round}/${c.rounds}`,
     kind: "image",
   };
 }
