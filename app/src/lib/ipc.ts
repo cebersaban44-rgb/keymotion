@@ -19,6 +19,8 @@ import type { KeyAssignment } from "../bindings/KeyAssignment";
 import type { KeymapCatalog } from "../bindings/KeymapCatalog";
 import type { KeymapLayer } from "../bindings/KeymapLayer";
 import type { KeymapState } from "../bindings/KeymapState";
+import type { MacroInfo } from "../bindings/MacroInfo";
+import type { MacrosState } from "../bindings/MacrosState";
 // Generated from Rust by `cargo test` (dto.rs export_mock_geometry).
 import ak980Geometry from "../bindings/geometry-ajazz-ak980-pro.json";
 import mockKeymapCatalog from "../bindings/keymap-catalog.json";
@@ -212,6 +214,38 @@ export async function applyKeymap(layer: KeymapLayer, assignments: KeyAssignment
     return mockKeymap;
   }
   return serial(() => invoke<KeymapState>("apply_keymap", { layer, assignments }));
+}
+
+// ------------------------------------------------------------------ macros
+
+// Browser-only stand-in for the app's macro record.
+let mockMacros: MacrosState = {
+  slots: [],
+  writtenMs: null,
+  budget: 0xa8c,
+  maxSlots: 100,
+  minDelayMs: 10,
+  maxName: 40,
+};
+
+/** What the app last wrote to this model's macros, with the keyboard's limits. */
+export function getMacrosState(modelId: string): Promise<MacrosState> {
+  if (!inTauri) return Promise.resolve(mockMacros);
+  return invoke<MacrosState>("macros_state", { modelId });
+}
+
+/**
+ * Write every macro (flash write); slot `i` is macro `i`, `null` leaves a
+ * slot unused. Resolves with the app's updated record.
+ */
+export async function applyMacros(slots: (MacroInfo | null)[]): Promise<MacrosState> {
+  if (!inTauri) {
+    await mockDelay(600);
+    while (slots.length && slots[slots.length - 1] === null) slots = slots.slice(0, -1);
+    mockMacros = { ...mockMacros, slots, writtenMs: Date.now() };
+    return mockMacros;
+  }
+  return serial(() => invoke<MacrosState>("apply_macros", { slots }));
 }
 
 // ------------------------------------------------------------- calibration

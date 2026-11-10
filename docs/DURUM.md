@@ -43,8 +43,8 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | Ayarlar → **Renk kalibrasyonu**: gamma (bağlı ya da kanal başına), beyaz dengesi, eğri grafiği, klavyede canlı test deseni (beyaz, gri basamaklar, palet), kalıcı ayar | ✅ Kullanıcı gri basamakları ve beyazı onayladı. |
 | Genel Bakış → **Klavye saati**: bağlanınca otomatik eşitleme (günde en fazla bir kez, kapatılabilir), "Şimdi eşitle", son eşitleme zamanı | ✅ Uygulamada uçtan uca denendi; kullanıcı ekrandaki saatin doğru olduğunu onayladı. |
 | **Tuş Atama**: temel ve Fn katmanı; tuş, kısayol (Ctrl/Shift/Alt/Win + tuş), medya, fare, tekerlek, devre dışı; taslak, kaydet, geri al, katmanı fabrika ayarına döndür; sayfada tuş testi kutusu | ✅ CLI ve uygulamayla klavyeye yazıldı; kullanıcı tuşlara basarak doğruladı (madde 19). |
-| **Makrolar**: protokol, sürücü ve CLI (`kb macros`, tuşa `macro:N`) | ✅ Klavyede doğrulandı (madde 20). Uygulama sayfası henüz yok. |
-| Makrolar ve Ekran sayfaları | ⏳ "Yapım aşamasında" yer tutucu |
+| **Makrolar**: liste, tuşlara basarak kayıt (konuma göre), adım düzenleyici (bekleme, sıralama, fare tıklaması), bellek göstergesi, kaydet ve geri al; Tuş Atama'da "Makro" seçici ve oynatma biçimi | ✅ Uygulamadan klavyeye yazıldı; kullanıcı basarak doğruladı (madde 20, 21). |
+| Ekran sayfası | ⏳ "Yapım aşamasında" yer tutucu |
 
 ## 3. Kronoloji: ne yaptık, neden
 
@@ -165,7 +165,18 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **Sürücü:** `04 19` → `04 15` (sayfa) → 30 ms → sayfalar → 30 ms → `04 02`; `04 18` ve `04 F0` yok. `04 02` yankısındaki toplam görüntünün toplamıyla tutuyor.
     - **CLI:** `kb macros SPEC… --yes` (`text:`, `combo:`, `steps:`; `-` boş yuva), `kb keymap KEY=macro:N[:times:K|:toggle|:hold]`.
     - **Doğrulama:** Kullanıcı Num / (bir kez "ok"), Num * ("ok" üç kez) ve Num − (sağ tık, 200 ms, x) tuşlarına bastı; olaylar ve beklemeler beklendiği gibi. Sonra makrolar silindi ve atama fabrika ayarına döndü.
-    - **Uygulama sayfası henüz yok** (sıradaki iş).
+    - **PR:** [#14](https://github.com/cebersaban44-rgb/klavye-studio/pull/14).
+21. **Makrolar sayfası.** Ayrıntı: `donanim-dogrulama.md`, "Makrolar sayfası, uçtan uca".
+    - **Uygulamanın kaydı:** `macros.json` (model başına yuvalar; ad ve adımlar, son yazım zamanı). Klavye makroları ve adlarını geri okuyamıyor; cihaz aktörü kaydı yalnızca klavyenin onayladığı yazımdan sonra günceller. Taslak `ks.macros.v1`'de, kapatma uyarısına katılıyor.
+    - **Sayfa:**
+      - Makro listesi (M1…M100, ad, adım, süre, kaydedilmedi noktası) ve bellek göstergesi (`(adım + yuva) × 8` / 2700).
+      - Düzenleyici: ad; "Kayda başla" ile tuşlar `e.code` (konum) üzerinden HID koduna çevrilerek eklenir. Gerçek ya da sabit bekleme seçilebilir.
+      - Kayıt sırasında tekrarlar yok sayılır; kayıt durunca basılı kalan tuşlar bırakılır.
+      - Fare tıklaması ekleme, adım başına bekleme, taşıma ve silme; "bırakılmayan tuş" uyarısı.
+      - Silme: yuva numarası korunur. Bağlı tuşlar listelenir ve bağlantıları da kaldırılır.
+    - **Tuş Atama:** "Makro" kategorisi; oynatma biçimi (bir kez, belirli sayıda, tekrar basana kadar, basılı tuttukça). Tuş üstünde `M1`, panelde makronun adı görünür.
+    - **Klavye düzenine göre etiketler** (`lib/layout.ts`): WebView2'nin Keyboard Map API'siyle her tuşun Windows'ta yazdığı karakter gösteriliyor (Türkçe Q'da `;` konumu **Ş**, `[` **Ğ**). Makro adımlarında, Tuş Atama seçicisinde ve atanmış tuş adlarında kullanılıyor. Pencere odak alınca düzen yeniden okunuyor.
+    - **Doğrulama:** Kayıt, bağlama ve silme CDP ile denendi. Ardından uygulamadan makro ve atama kaydedildi; kullanıcı Num /'a bastı ve tuş testi kutusunda "Shift+H, Ş, I, sol tık" dizisi tekrar tekrar geldi. Sonra makro uygulamadan silindi ve ikisi de kaydedildi; klavye ve kayıtlar fabrika durumunda.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -186,13 +197,16 @@ crates/
 app/
   src-tauri/    İnce kabuk. device.rs: TEK cihaz aktörü (HID'e dokunan tek yer; istek kuyruğu, canlı akış
                 20 Hz, ayna 4 Hz, 2 sn yoklama). dto.rs: ts-rs ile TS tiplerine dönüşen DTO'lar. lib.rs: Tauri komutları.
-                settings.rs: Rust'ın sahip olduğu kalıcı ayarlar (calibration.json, clock.json, keymap.json;
-                uygulama yapılandırma klasörü). keymap.json, klavyeye son yazılan atamanın tek kaydıdır.
+                settings.rs: Rust'ın sahip olduğu kalıcı ayarlar (calibration.json, clock.json, keymap.json,
+                macros.json; uygulama yapılandırma klasörü). keymap.json ve macros.json, klavyeye son yazılan
+                atamanın ve makroların tek kaydıdır.
   src/          React 19 + TS 7 + Tailwind 4 + motion. lib/ipc.ts (tipli köprü, seri kuyruk), lib/lighting.ts
                 (Işıklar durumu), lib/mirror.ts, components/KeyboardView.tsx (geometriden çizim, boyama),
                 components/CalibrationCard.tsx, components/UnsavedDialog.tsx, lib/unsaved.ts (kaydedilmemiş
                 değişiklik listesi), components/ClockCard.tsx, lib/keymap.ts (atama taslağı ve kayıt),
-                lib/keymapLabels.tsx (tuş üstü ve uzun adlar), pages/{Overview,Lighting,Keymap,Settings,ComingSoon}.tsx.
+                lib/keymapLabels.tsx (tuş üstü ve uzun adlar), lib/macros.ts (makro taslağı ve kayıt),
+                lib/hidCodes.ts (e.code ↔ HID), lib/layout.ts (Windows düzenine göre tuş adları),
+                pages/{Overview,Lighting,Keymap,Macros,Settings,ComingSoon}.tsx.
   src/bindings/ `cargo test` ile ÜRETİLİR (TS tipleri, geometri JSON'u, efekt kataloğu). Elle düzenlenmez.
 tools/cdp.mjs   Çalışan uygulamanın WebView2'sine CDP ile JS çalıştırır ya da ekran görüntüsü alır (uçtan uca test).
 .github/workflows/ci.yml   PR ve birleştirmelerde Windows'ta kontroller (bkz. gelistirme-akisi.md).
@@ -209,7 +223,7 @@ rustfmt.toml, .gitattributes   120 sütun biçim; LF satır sonu.
 ## 5. Nasıl çalıştırılır ve test edilir
 
 ```bash
-cargo test --workspace            # 116 test; TS tiplerini ve mock JSON'ları da üretir
+cargo test --workspace            # 121 test; TS tiplerini ve mock JSON'ları da üretir
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check        # rustfmt.toml: 120 sütun
 cd app && pnpm typecheck
@@ -291,24 +305,20 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 29 | Tuş testinde her basıştan önce `NumLock` göründü, Num − hiç gelmedi | Talimattaki "Num /" yazısı "Num Lock + /" diye okundu; kullanıcı Num Lock'u basılı tutarak bastı | Tuşu belirsizliksiz adlandır. Dinleyiciye zaman damgası ve `keyup` ekle: basılı tutulan tuş, aynı basışın parçası mı ayrı bir tuş mu, hemen görünür. |
 | 30 | `keymap.json` yazıldı ama geri okunamadı | Ayar dosyaları `#[serde(flatten)]` sarmalayıcısından geçiyor; flatten sayısal map anahtarlarını (`BTreeMap<u8, _>`) okuyamıyor | Bu dosyalarda map anahtarı metin olmalı. Her yeni ayar dosyasına yaz-oku testi ekle. |
 | 31 | CDP betiği yanlış düğmeye tıkladı | Klavye görselindeki "A" ve "Ctrl" tuşları da düğme; ayrıca `startsWith("A")` "Alt"ı buldu | Seçiciyi ilgili bölümle sınırla ve metni birebir eşleştir. Beklenmeyen sonuçta önce test betiğinden şüphelen, sonucu ekran görüntüsüyle doğrula. |
+| 32 | Yeni açılış kodu (klavye düzeni okuma) çalışmadı gibi göründü | Vite'ın anlık yenilemesi (HMR) `App`'in açılış etkilerini yeniden çalıştırmadı | Açılışta çalışan kodu denerken sayfayı yeniden yükle (`location.reload()`); yedeklenen `window` değişkenleri de silinir, karşılaştırmayı kayıtlı değerle yap. |
+| 33 | (incelemede yakalandı) Seçici her çağrıda yeni `Set` döndürüyordu | zustand + React 19 `useSyncExternalStore`: değişen anlık görüntü sonsuz yeniden çizime yol açar | Seçiciden yalnızca ilkel değer (sayı, metin) ya da depodaki nesnenin kendisini döndür; türetilmiş nesneyi bileşende kur. |
+| 34 | "Kaydet" düğmesi iki anlama geliyordu | Türkçede "kaydet" hem kayıt almak hem saklamak | Kayıt düğmesi "Kayda başla / Kaydı durdur"; saklama "Klavyeye kaydet". Arayüz metinlerini bağlam içinde, yan yana duran düğmelerle birlikte oku. |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 
 ### Sıradaki oturum için
 
 1. `git switch develop && git pull`, sonra yeni iş için dal aç. PR açınca auto-merge ve auto-fix'i aç (`gelistirme-akisi.md`).
-2. **Tuş atama bitti** (madde 19). **Makroların temeli bitti** (madde 20). Klavye fabrika durumunda: atama varsayılan, makro yok; `keymap.json` kaydı da öyle.
-3. **Sıradaki iş: Makrolar sayfası** (kullanıcı makrolara başlamayı seçti).
-   - **Kayıt:** Makrolar da klavyeden okunamaz. Uygulama kendi kaydını tutar (`macros.json`: yuva → ad ve adımlar). Cihaz aktörü klavye onayladıktan sonra günceller, `keymap.json` gibi.
-   - **Düzenleyici:**
-     - Makro listesi (ad, adım sayısı, süre).
-     - Adım listesi: bas/bırak, tuş ya da fare, bekleme. Ekleme, silme, sıralama, beklemeyi düzenleme.
-     - **Kaydet düğmesiyle kayıt:** `keydown`/`keyup`'ı `e.code` ile yakala (konuma göre). Böylece Türkçe Q düzeninde de doğru tuş yazılır.
-     - Gerçek bekleme süreleri ya da sabit bekleme seçeneği.
-     - Bellek göstergesi (`budget_used` / 0xA8C).
-   - **Tuşa bağlama:** Tuş Atama'daki seçiciye "Makro" kategorisi; oynatma biçimi (bir kez, N kez, tekrar basana kadar, basılı tutulduğu sürece). Bağlı makro silinirken uyarı ve bağlantıyı kaldırma.
-   - **Kaydetme:** Makrolar bütün görüntü olarak yazılır; tuş atamasından ayrı bir flash yazımı. Kaydedilmemiş makrolar kapatma uyarısına katılmalı.
-   - **Diğer adaylar** (sonra): Seçenekler (`04 17`, yakalama gerekir), Ekran (`04 72` + FF68, en büyük ve riskli iş).
+2. **Tuş atama ve makrolar bitti** (madde 19–21). Klavye fabrika durumunda: atama varsayılan, makro yok; `keymap.json` ve `macros.json` kayıtları da öyle.
+3. **Sıradaki işi kullanıcıyla seç.** Adaylar:
+   - **Seçenekler** (`04 17`): uyku süresi, Win kilidi, Alt+Tab ve Alt+F4 kilidi, tepki süresi. Bayt sırası kaynaklarda kesin değil; önce ölçüm planı gerekiyor (`research/protokol-ff13.md` §8).
+   - **Ekran** (`04 72` + FF68): en büyük ve en riskli iş. Kardeş kartı çökerten hata (SET_REPORT yerine WriteFile) ve flash bütçesi dikkate alınmalı (P2 notları).
+   - Küçük açıklar: makroda "tekrar basana kadar" ve "basılı tuttukça" klavyede denenmedi; fare "ileri" yan tuşu, çift tık ve tekerlek ataması da denenmedi.
 4. Bekleyen küçük iş: "Kapalı" (mod 0) sonrası Fn+X ile ışığın geri açılıp açılmadığı. Kullanıcıyla, klavyede (P1).
 5. **Kullanıcının kalibrasyonu:** Ayarlar'da gamma **1.0 (ham)** kayıtlı. Kullanıcı bunu bilerek seçti: 2.2'de "Gri basamaklar" deseninin sol tarafı soluk kalıyordu, bütün klavyenin yanmasını istedi.
    - **Açıklama (kullanıcıya iletildi):** Soldaki basamaklar desenin en koyu grileri (#202020, #404040); 2.2'de LED'de %1 ve %5'e düşüyorlar. Gamma parlaklığı değil ara tonları ayarlar. Beyaz ve saf renkler her gamma'da aynı yanar. 1.0'da ara tonlu renkler (mor, pembe, açık mavi) ekrandakinden daha soluk ve beyazımsı görünür. İlk göz testinde paletle en uyumlu değer 2.2 çıkmıştı.
@@ -338,11 +348,11 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 - [x] **Saat senkronu** (`04 28`): bağlanınca günde en fazla bir kez ve elle (madde 17). Kullanıcı ekrandaki saatin doğru olduğunu onayladı.
 - [ ] **Seçenekler** (`04 17`): uyku süresi, Win kilidi, Alt+Tab ve Alt+F4 kilidi, tepki süresi. Bayt sırası yakalamayla doğrulanmalı.
 - [x] **Tuş atama** (`04 11` temel, `04 27` Fn): tuş, kısayol, medya, fare, tekerlek, devre dışı, varsayılana dönme; uygulamanın kendi kaydı (madde 19). Açık kalanlar:
-  - [x] Makro bağlama (`06 SLOT MODE COUNT`): protokol ve CLI (madde 20). Tuş Atama sayfasında seçici henüz yok.
+  - [x] Makro bağlama (`06 SLOT MODE COUNT`): protokol, CLI ve Tuş Atama'daki "Makro" seçici (madde 20, 21).
   - [ ] Klavyede denenmedi: ileri yan tuş (`10`), çift tık (`03`), tekerlek (`01 03`). Kodlama kaynaklarla uyumlu; kullanıcıyla bir kez denenmeli.
   - [ ] `07 K1 K2 K3` (üç tuş birlikte) sunulmuyor; "Birlikte basılı" değiştiricileri çoğu ihtiyacı karşılıyor.
   - [ ] Kendi Fn işlevi olan tuşlarda Fn katmanı atamasının yok sayılıp sayılmadığı (kaynaklarda Fn+Home). Num / üzerinde Fn katmanı çalıştı.
-  - [ ] Tuş üstü adlar ABD düzenine göre (`;` `'` `[`); Türkçe Q düzeninde ekranda farklı karakter yazılır. İleride Windows klavye düzenine göre ad gösterilebilir.
+  - [x] Atanacak tuşların adları Windows klavye düzenine göre (Keyboard Map API; madde 21). Klavye görselindeki tuş üstü yazılar modeldeki fiziksel etiketler olarak kaldı.
 - [ ] **Tuşla uygulama başlatma** (kullanıcının fikri, 2026-11-10; açık iş, şimdilik yapılmıyor). Bir tuş ya da tuş kombinasyonu bir programı (`.exe`), dosyayı, klasörü ya da web adresini açsın.
   - **Neden yalnızca klavyeyle olmaz:** Klavye bilgisayarda program çalıştıramaz; tuş yalnızca bir kod gönderir. Programı, arka planda çalışan bir uygulama açar. Resmi sürücü de böyle yapıyor: `05 02 ID` girişi yalnızca resmi uygulama açıkken çalışıyor (`research/protokol-ff13.md` §6.2).
   - **İki yol:**
@@ -358,7 +368,10 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
   - **Güvenlik:** Yalnızca kullanıcının kendi seçtiği program, dosya ya da adres açılır. Yol ve argümanlar başka bir kaynaktan gelmez. Yönetici olarak çalıştırma yok.
   - **Önce ölçülecekler:** F13–F24'ün Windows'ta genel kısayol olarak yakalanması; atamanın BT ve 2.4G'de de geçerli olması.
   - **İlgili:** P1'deki "uygulamaya göre otomatik profil" de aynı arka plan servisini kullanır; ikisi birlikte tasarlanmalı.
-- [ ] **Makrolar** (`04 19` → `04 15`): temel bitti (protokol, sürücü, CLI, klavyede doğrulandı; madde 20). Kalan: uygulamanın kaydı (`macros.json`), Makrolar sayfası, Tuş Atama'da makro seçici. `04 19` bütün makroları siler; her kayıt bütün görüntüyü yazar.
+- [x] **Makrolar** (`04 19` → `04 15`): protokol, sürücü, CLI, uygulamanın kaydı (`macros.json`), Makrolar sayfası ve Tuş Atama'da makro seçici (madde 20, 21). Açık kalanlar:
+  - [ ] Oynatma biçimleri "tekrar basana kadar" ve "basılı tuttukça" klavyede denenmedi.
+  - [ ] Metinden makro (yazı yaz) sunulmuyor: HID kodları konuma göre; düzene göre karakter → tuş eşlemesi gerekir (Keyboard Map API'nin tersi).
+  - [ ] Kayıt sırasında fare tıklamaları yakalanmıyor (yalnızca "+ tık" düğmeleri). Windows tuşu ve Alt+Tab gibi sistem kısayolları tarayıcıda yakalanamıyor.
 - [ ] **Ekran** (`04 72` + FF68):
   - Paketler **WriteFile** ile gönderilir, SET_REPORT ile değil (kardeş kartı çökertmiş). `04 F0` asla gönderilmez.
   - En fazla 140 kare ve 2215 sayfa.

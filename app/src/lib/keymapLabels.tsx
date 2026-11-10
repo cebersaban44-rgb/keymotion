@@ -119,15 +119,31 @@ function mediaId(catalog: KeymapCatalog | null, usage: number): string | undefin
   return catalog?.media.find((m) => m.usage === usage)?.id;
 }
 
+/** Macro slot → its name in the app, if any. */
+export type MacroNames = (slot: number) => string | undefined;
+/** HID usage → what it types on the user's layout, if known (see layout.ts). */
+export type LayoutLabel = (hid: number) => string | undefined;
+
+const PLAY_SUFFIX: Record<string, MessageKey> = {
+  toggle: "km.play.toggle",
+  hold: "km.play.hold",
+};
+
 /** Full description, e.g. "Ctrl + Shift + A" or "Volume up". */
-export function actionText(a: KeyActionInfo, catalog: KeymapCatalog | null, t: T): string {
+export function actionText(
+  a: KeyActionInfo,
+  catalog: KeymapCatalog | null,
+  t: T,
+  names?: MacroNames,
+  layout?: LayoutLabel,
+): string {
   switch (a.kind) {
     case "default":
       return t("km.default");
     case "disabled":
       return t("km.disabled");
     case "key": {
-      const key = a.code ? (usageOf(catalog, a.code)?.label ?? `0x${a.code.toString(16)}`) : null;
+      const key = a.code ? (layout?.(a.code) ?? usageOf(catalog, a.code)?.label ?? `0x${a.code.toString(16)}`) : null;
       return [...modNames(a.modifiers), ...(key ? [key] : [])].join(" + ");
     }
     case "media": {
@@ -138,13 +154,17 @@ export function actionText(a: KeyActionInfo, catalog: KeymapCatalog | null, t: T
       return t(`km.mouse.${a.button}` as MessageKey);
     case "wheel":
       return t(a.up ? "km.wheel.up" : "km.wheel.down");
-    case "macro":
-      return `${t("km.macro")} ${a.slot + 1}`;
+    case "macro": {
+      const name = names?.(a.slot) || `${t("km.macro")} ${a.slot + 1}`;
+      if (a.mode === "times") return `${name} × ${a.count}`;
+      const suffix = PLAY_SUFFIX[a.mode];
+      return suffix ? `${name} (${t(suffix).toLocaleLowerCase()})` : name;
+    }
   }
 }
 
 /** Keycap legend: symbols and icons that fit a 1u key. */
-export function actionShort(a: KeyActionInfo, catalog: KeymapCatalog | null): ReactNode {
+export function actionShort(a: KeyActionInfo, catalog: KeymapCatalog | null, layout?: LayoutLabel): ReactNode {
   switch (a.kind) {
     case "default":
       return null;
@@ -157,7 +177,7 @@ export function actionShort(a: KeyActionInfo, catalog: KeymapCatalog | null): Re
         const names = modNames(a.modifiers);
         return names.length === 1 ? names[0] : modSymbols(a.modifiers);
       }
-      const key = u ? usageShort(u) : `0x${a.code.toString(16)}`;
+      const key = layout?.(a.code) ?? (u ? usageShort(u) : `0x${a.code.toString(16)}`);
       return modSymbols(a.modifiers) + key;
     }
     case "media": {
