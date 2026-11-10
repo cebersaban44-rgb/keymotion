@@ -1,0 +1,44 @@
+[workspace]
+resolver = "2"
+members = ["crates/*", "app/src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+
+[workspace.dependencies]
+kb-core = { path = "crates/kb-core" }
+kb-devices = { path = "crates/kb-devices" }
+kb-protocol = { path = "crates/kb-protocol" }
+kb-transport = { path = "crates/kb-transport" }
+
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+hidapi = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+toml = "0.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+windows = { version = "0.62", features = [
+    "Foundation",
+    "Foundation_Collections",
+    "Devices_Bluetooth",
+    "Devices_Bluetooth_GenericAttributeProfile",
+    "Devices_Enumeration",
+    "Storage_Streams",
+] }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

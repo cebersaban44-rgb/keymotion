@@ -1,0 +1,316 @@
+import { useApp } from "./store";
+import type { Connection } from "../bindings/Connection";
+import type { Feature } from "../bindings/Feature";
+
+export type Locale = "tr" | "en";
+
+const tr = {
+  "app.name": "Klavye Stüdyo",
+  "nav.overview": "Genel Bakış",
+  "nav.lighting": "Işıklar",
+  "nav.keymap": "Tuş Atama",
+  "nav.macros": "Makrolar",
+  "nav.screen": "Ekran",
+  "nav.connection": "Bağlantı",
+  "nav.settings": "Ayarlar",
+  "nav.section.device": "Cihaz",
+  "nav.section.app": "Uygulama",
+
+  "device.none.title": "Klavye bekleniyor",
+  "device.none.body":
+    "Desteklenen bir klavye bulunamadı. Kabloyla, 2.4G alıcıyla ya da Bluetooth ile bağlayın; uygulama onu kendiliğinden tanır.",
+  "device.refresh": "Yeniden tara",
+  "device.connected": "Bağlı",
+  "device.detected": "Algılanan klavye",
+
+  "conn.usb": "USB kablo",
+  "conn.dongle": "2.4G alıcı",
+  "conn.bluetooth": "Bluetooth",
+  "conn.usb.short": "USB",
+  "conn.dongle.short": "2.4G",
+  "conn.bluetooth.short": "BT",
+
+  "feature.lighting": "Işık efektleri",
+  "feature.per-key-rgb": "Tuş başına renk",
+  "feature.keymap": "Tuş atama ve Fn katmanı",
+  "feature.macros": "Makrolar",
+  "feature.options": "Uyku, Win kilidi ve seçenekler",
+  "feature.screen": "Ekran: görsel ve GIF",
+  "feature.clock": "Saat senkronu",
+  "feature.battery": "Pil seviyesi",
+
+  "overview.specs.keys": "tuş",
+  "overview.specs.screen": "ekran",
+  "overview.specs.knob": "topuz",
+  "overview.preview": "Görsel önizleme · klavyenin gerçek ışığı değil",
+  "overview.layoutMeasured": "ölçülmüş düzen",
+  "overview.mode.title": "Bağlantı modu",
+  "overview.mode.hint": "Klavyenin arkasındaki sürgü anahtarı",
+  "overview.mode.channel": "Kanal",
+  "overview.battery.title": "Pil",
+  "overview.battery.source": "Bluetooth pil servisi",
+  "overview.battery.unknown": "Bu modda okunamıyor",
+  "overview.battery.ago": "önce okundu",
+  "overview.features.title": "Bu modda kullanılabilir",
+  "overview.features.locked": "USB modunda",
+  "overview.unlock.title": "Tüm özellikler USB modunda açılır",
+  "overview.unlock.body":
+    "Bluetooth bağlantısı yalnızca yazı yazmayı ve pil okumayı taşır. Işıklar, tuş atama, makrolar ve ekran için kabloyu takın ve arkadaki anahtarı USB konumuna getirin.",
+  "overview.unlock.step1": "USB-C kabloyu bilgisayara takın",
+  "overview.unlock.step2": "Arkadaki anahtarı USB konumuna getirin",
+  "overview.unlock.step3": "Uygulama klavyeyi kendiliğinden tanır",
+  "overview.firmware": "BT modül yazılımı",
+
+  "soon.title": "Yapım aşamasında",
+  "soon.needsUsb": "USB modu gerekir",
+  "soon.body":
+    "Bu bölümün protokolü resmi sürücünün USB trafiğiyle doğrulanıyor. Doğrulanmamış komutlar klavyeye asla gönderilmez.",
+
+  "settings.appearance": "Görünüm",
+  "settings.theme": "Tema",
+  "settings.theme.system": "Sistem",
+  "settings.theme.dark": "Koyu",
+  "settings.theme.light": "Açık",
+  "settings.language": "Dil",
+  "settings.about": "Hakkında",
+  "settings.version": "Sürüm",
+  "settings.backdrop": "Pencere arka planı",
+  "settings.backdrop.mica": "Windows 11 Mica",
+  "settings.backdrop.solid": "Düz",
+
+  "time.s": "sn",
+  "time.m": "dk",
+  "time.h": "sa",
+
+  "light.eyebrow": "Işık kontrolü",
+  "light.tab.effects": "Efektler",
+  "light.tab.perKey": "Tuş başına renk",
+  "light.mirror.on": "Klavyeden canlı okunuyor",
+  "light.mirror.off": "Görsel önizleme",
+  "light.live.on": "Canlı önizleme klavyede · kalıcı değil",
+  "light.design": "Tasarım",
+  "light.effects": "Firmware efektleri",
+  "light.reactive": "tuşa basınca",
+  "light.factory": "fabrika",
+  "light.settings": "Ayarlar",
+  "light.color": "Renk",
+  "light.rainbow": "Gökkuşağı",
+  "light.brightness": "Parlaklık",
+  "light.speed": "Hız",
+  "light.direction": "Yön",
+  "light.dir.forward": "İleri",
+  "light.dir.reverse": "Geri",
+  "light.noSettings": "Bu efektin ayarı yok.",
+  "light.apply": "Klavyeye uygula",
+  "light.applying": "Uygulanıyor…",
+  "light.applied": "Klavyeye kaydedildi",
+  "light.persistNote": "Kalıcı kaydedilir; klavye kapanıp açılınca da kalır.",
+  "light.factoryReset": "Fabrika efekti",
+  "light.offWarning":
+    "Kapalı modu kardeş bir modelde Fn+X ile ışığın geri açılmasını engelledi. Işığı geçici kapatmak için klavyede Fn+X kullanın.",
+  "light.needsUsb": "Işık ayarları için klavye USB modunda olmalı.",
+  "light.brush": "Fırça rengi",
+  "light.tools": "Araçlar",
+  "light.fillAll": "Tümünü boya",
+  "light.clear": "Temizle",
+  "light.presets": "Hazır desenler",
+  "light.preset.wasd": "WASD + oklar",
+  "light.preset.rainbow": "Gökkuşağı",
+  "light.preset.home": "Ana sıra",
+  "light.livePreview": "Canlı önizleme",
+  "light.livePreviewHint": "Boyadıkça klavyede görünür, flash'a yazmaz",
+  "light.save": "Klavyeye kaydet",
+  "light.saving": "Kaydediliyor…",
+  "light.saved": "Tasarım klavyeye kaydedildi",
+  "light.paintHint": "Tuşa tıklayın ya da basılı tutup sürükleyin. Boyanmayan tuşlar kapalı kalır.",
+  "light.keysPainted": "tuş boyandı",
+
+  "fx.0": "Kapalı",
+  "fx.1": "Sabit",
+  "fx.2": "Tek tuş yanar",
+  "fx.3": "Tek tuş söner",
+  "fx.4": "Yıldızlar",
+  "fx.5": "Uçuşan ışıklar",
+  "fx.6": "Renk cümbüşü",
+  "fx.7": "Nefes",
+  "fx.8": "Spektrum",
+  "fx.9": "Dışa dalga",
+  "fx.10": "Kayan",
+  "fx.11": "Akan ışık",
+  "fx.12": "Dönen",
+  "fx.13": "Patlama",
+  "fx.14": "Fırlatma",
+  "fx.15": "Halkalar",
+  "fx.16": "Akış",
+  "fx.17": "Nabız",
+  "fx.18": "Eğik yağmur",
+  "fx.19": "Mekik",
+} as const;
+
+export type MessageKey = keyof typeof tr;
+
+const en: Record<MessageKey, string> = {
+  "app.name": "Klavye Studio",
+  "nav.overview": "Overview",
+  "nav.lighting": "Lighting",
+  "nav.keymap": "Keymap",
+  "nav.macros": "Macros",
+  "nav.screen": "Screen",
+  "nav.connection": "Connection",
+  "nav.settings": "Settings",
+  "nav.section.device": "Device",
+  "nav.section.app": "App",
+
+  "device.none.title": "Waiting for a keyboard",
+  "device.none.body":
+    "No supported keyboard found. Connect it by cable, 2.4G dongle or Bluetooth and the app picks it up automatically.",
+  "device.refresh": "Rescan",
+  "device.connected": "Connected",
+  "device.detected": "Detected keyboard",
+
+  "conn.usb": "USB cable",
+  "conn.dongle": "2.4G dongle",
+  "conn.bluetooth": "Bluetooth",
+  "conn.usb.short": "USB",
+  "conn.dongle.short": "2.4G",
+  "conn.bluetooth.short": "BT",
+
+  "feature.lighting": "Lighting effects",
+  "feature.per-key-rgb": "Per-key colour",
+  "feature.keymap": "Keymap and Fn layer",
+  "feature.macros": "Macros",
+  "feature.options": "Sleep, Win lock and options",
+  "feature.screen": "Screen: images and GIFs",
+  "feature.clock": "Clock sync",
+  "feature.battery": "Battery level",
+
+  "overview.specs.keys": "keys",
+  "overview.specs.screen": "screen",
+  "overview.specs.knob": "knob",
+  "overview.preview": "Visual preview · not the keyboard's actual lighting",
+  "overview.layoutMeasured": "measured layout",
+  "overview.mode.title": "Connection mode",
+  "overview.mode.hint": "The slide switch on the back of the keyboard",
+  "overview.mode.channel": "Channel",
+  "overview.battery.title": "Battery",
+  "overview.battery.source": "Bluetooth battery service",
+  "overview.battery.unknown": "Not readable in this mode",
+  "overview.battery.ago": "ago",
+  "overview.features.title": "Available in this mode",
+  "overview.features.locked": "In USB mode",
+  "overview.unlock.title": "Every feature unlocks in USB mode",
+  "overview.unlock.body":
+    "Bluetooth only carries typing and the battery level. For lighting, keymap, macros and the screen, plug in the cable and set the switch on the back to USB.",
+  "overview.unlock.step1": "Plug the USB-C cable into the PC",
+  "overview.unlock.step2": "Set the switch on the back to USB",
+  "overview.unlock.step3": "The app detects the keyboard on its own",
+  "overview.firmware": "BT module firmware",
+
+  "soon.title": "Under construction",
+  "soon.needsUsb": "Needs USB mode",
+  "soon.body":
+    "This section's protocol is being verified against USB captures of the official driver. Unverified commands are never sent to the keyboard.",
+
+  "settings.appearance": "Appearance",
+  "settings.theme": "Theme",
+  "settings.theme.system": "System",
+  "settings.theme.dark": "Dark",
+  "settings.theme.light": "Light",
+  "settings.language": "Language",
+  "settings.about": "About",
+  "settings.version": "Version",
+  "settings.backdrop": "Window backdrop",
+  "settings.backdrop.mica": "Windows 11 Mica",
+  "settings.backdrop.solid": "Solid",
+
+  "time.s": "s",
+  "time.m": "min",
+  "time.h": "h",
+
+  "light.eyebrow": "Lighting control",
+  "light.tab.effects": "Effects",
+  "light.tab.perKey": "Per-key colour",
+  "light.mirror.on": "Live from the keyboard",
+  "light.mirror.off": "Visual preview",
+  "light.live.on": "Live preview on the keyboard · not saved",
+  "light.design": "Design",
+  "light.effects": "Firmware effects",
+  "light.reactive": "on key press",
+  "light.factory": "factory",
+  "light.settings": "Settings",
+  "light.color": "Colour",
+  "light.rainbow": "Rainbow",
+  "light.brightness": "Brightness",
+  "light.speed": "Speed",
+  "light.direction": "Direction",
+  "light.dir.forward": "Forward",
+  "light.dir.reverse": "Reverse",
+  "light.noSettings": "This effect has no settings.",
+  "light.apply": "Apply to keyboard",
+  "light.applying": "Applying…",
+  "light.applied": "Saved to the keyboard",
+  "light.persistNote": "Stored on the keyboard; survives power cycles.",
+  "light.factoryReset": "Factory effect",
+  "light.offWarning":
+    "On a sibling model, Off stopped Fn+X from turning the light back on. To switch the light off temporarily, press Fn+X on the keyboard.",
+  "light.needsUsb": "Lighting needs the keyboard in USB mode.",
+  "light.brush": "Brush colour",
+  "light.tools": "Tools",
+  "light.fillAll": "Fill all",
+  "light.clear": "Clear",
+  "light.presets": "Presets",
+  "light.preset.wasd": "WASD + arrows",
+  "light.preset.rainbow": "Rainbow",
+  "light.preset.home": "Home row",
+  "light.livePreview": "Live preview",
+  "light.livePreviewHint": "Shows on the keyboard as you paint, without writing flash",
+  "light.save": "Save to keyboard",
+  "light.saving": "Saving…",
+  "light.saved": "Design saved to the keyboard",
+  "light.paintHint": "Click a key, or press and drag across keys. Unpainted keys stay off.",
+  "light.keysPainted": "keys painted",
+
+  "fx.0": "Off",
+  "fx.1": "Static",
+  "fx.2": "Single on",
+  "fx.3": "Single off",
+  "fx.4": "Glittering",
+  "fx.5": "Fluttering",
+  "fx.6": "Colourful",
+  "fx.7": "Breath",
+  "fx.8": "Spectrum",
+  "fx.9": "Outward",
+  "fx.10": "Scrolling",
+  "fx.11": "Rolling",
+  "fx.12": "Rotating",
+  "fx.13": "Explode",
+  "fx.14": "Launch",
+  "fx.15": "Ripples",
+  "fx.16": "Flowing",
+  "fx.17": "Pulsating",
+  "fx.18": "Tilt",
+  "fx.19": "Shuttle",
+};
+
+const messages: Record<Locale, Record<MessageKey, string>> = { tr, en };
+
+export function useT() {
+  const locale = useApp((s) => s.locale);
+  return (key: MessageKey) => messages[locale][key];
+}
+
+export const connectionKey = (c: Connection, short = false): MessageKey =>
+  `conn.${c}${short ? ".short" : ""}` as MessageKey;
+
+export const featureKey = (f: Feature): MessageKey => `feature.${f}` as MessageKey;
+
+export function useAgo() {
+  const t = useT();
+  return (ms: number) => {
+    const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    if (s < 60) return `${s} ${t("time.s")}`;
+    const m = Math.round(s / 60);
+    if (m < 60) return `${m} ${t("time.m")}`;
+    return `${Math.round(m / 60)} ${t("time.h")}`;
+  };
+}

@@ -1,0 +1,18 @@
+[package]
+name = "kb-core"
+description = "High-level keyboard operations shared by the app and the CLI: detection, state, (later) lighting, keymap, screen."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+kb-devices.workspace = true
+kb-protocol.workspace = true
+kb-transport.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
