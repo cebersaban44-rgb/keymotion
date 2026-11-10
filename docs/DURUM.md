@@ -524,7 +524,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Tarayıcıda sahte arka uçla kullanıcının durumu kuruldu (bütçe 0, mola kartı ekranda, şarkı kartı bekliyor): uyarı ve "Şimdi gönder" göründü. Durdurunca kendi görseli bütçe yokken de geldi.
       - Gerçek uygulamada (CDP) katman durumları doğru göründü. Bu sırada da şarkı kartı 7 dk bütçe bekliyordu.
       - Uygulama yeni sürümle açılınca açılış kontrolü eski mola kartını buldu. 15 sn sonra, bütçe boşken, "cat" klavyeye geri yüklendi (37 sn, hata yok; `donanim-dogrulama.md`).
-    - **Not (bütçe):** Dengeli planda (günde 24, en çok 6 birikir) 4 turluk bir seri 9 yükleme ister. Bir seriye bile ancak yetiyor; gün içinde birkaç seri ve şarkılarla kartlar gecikir. Bu tasarımın sonucu (ekran belleğini korumak için). Kullanıcı isterse Yoğun plana geçebilir ya da "Şimdi gönder"i kullanabilir. Varsayılanı değiştirmek kullanıcının kararı.
+    - **Not (bütçe):** Dengeli planda (günde 24, en çok 6 birikir) 4 turluk bir seri 9 yükleme ister. Bir seriye bile ancak yetiyor; gün içinde birkaç seri ve şarkılarla kartlar gecikir. Bu tasarımın sonucu (ekran belleğini korumak için). Kullanıcı aynı gün kendi planını **Yoğun**'a aldı (günde 48, en çok 8 birikir; 4 turluk seri rahat sığar). Uygulamanın varsayılanı Dengeli kaldı; değiştirmek kullanıcının kararı.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -718,7 +718,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
         - **Ekran sırası** (maddeler 31–32): "Ekranda ne görünür?" (zamanlayıcı → şarkı → kendi görselin).
           - Kullanıcının ilk denemesinde bütçe bitti ve ekran "takılı" göründü. Madde 32 ile düzeltildi: dönüş bütçe beklemiyor, bekleyen kart görünüyor, "Şimdi gönder" var.
           - Kullanıcının yeniden denemesi bekliyor: canlı mod açık, durdurunca 15 sn sonra cat (~37 sn).
-          - Bütçe bir seriye ancak yetiyor (madde 32 not). Plan ya da varsayılan değişikliği kullanıcıya sorulmalı.
+          - Dengeli bütçe bir seriye ancak yetiyordu (madde 32 not). Kullanıcı kendi planını Yoğun'a aldı (2026-11-10). Uygulamanın varsayılanı hâlâ Dengeli.
           - Kullanıcının ayarı `pomodoro.json`'da: 1/1/1 dk, 2 tur, ses açık. Testler bu ayarı okuyup aynen geri yazar.
         - **Ekran sayfası düzeni** (maddeler 29–30): Görseller ve Canlı ekran sekmeleri; kütüphane sayfalı; Odak zamanlayıcısı kendi sayfasında.
         - **Sıradaki: LED canlı katmanı** (CPU/GPU barı, ses düzeyi, mikrofon kapalı uyarısı). Sonra takvim, hatırlatıcı, oyun oturumu.
