@@ -5,6 +5,7 @@
 //! are implemented, and each one follows the official driver's sequence.
 
 use kb_protocol::sonix::keymap::{keymap_table, KeyAction, Layer};
+use kb_protocol::sonix::macros::{macro_image, MacroStep};
 use kb_protocol::sonix::{
     self as proto, guard, header, parse_ack, payload_of, report, Ack, Blocked, ClockTime, EffectSettings, Invalid, Op,
     PacketKind, Rgb, PAYLOAD, REPORT_LEN,
@@ -23,6 +24,8 @@ const ECHO_POLL: Duration = Duration::from_millis(4);
 /// `04 F5`: time for the echo to turn 01, then for the 9 data reports.
 const READ_ACCEPT_TIMEOUT: Duration = Duration::from_millis(150);
 const READ_DATA_TIMEOUT: Duration = Duration::from_millis(400);
+/// Pause before and after the macro pages (official driver, S1 :322-335).
+const MACRO_GAP: Duration = Duration::from_millis(30);
 /// START retries while a previous session is still closing.
 const BEGIN_ATTEMPTS: usize = 10;
 const BEGIN_RETRY: Duration = Duration::from_millis(300);
@@ -315,6 +318,24 @@ impl<P: FeaturePort> SonixFf13<P> {
         self.acked(Op::Apply, 0, 0).map(|_| ())
     }
 
+    /// Store every macro: `04 19` → `04 15` announcing the pages → 30 ms →
+    /// the pages → 30 ms → `04 02`. No `04 18` and no `04 F0`, like the
+    /// official driver. **Writes flash** and replaces all macros: `04 19`
+    /// clears the stored ones first, and an empty list leaves none.
+    pub fn write_macros(&mut self, slots: &[Vec<MacroStep>]) -> Result<()> {
+        let image = macro_image(slots)?;
+        self.acked(Op::MacroBegin, 0, 0)?;
+        self.acked(Op::MacroData, 0, (image.len() / PAYLOAD) as u16)?;
+        sleep(MACRO_GAP);
+        for chunk in image.chunks_exact(PAYLOAD) {
+            let mut p = [0u8; PAYLOAD];
+            p.copy_from_slice(chunk);
+            self.data(&p)?;
+        }
+        sleep(MACRO_GAP);
+        self.commit_verified(&image)
+    }
+
     /// `04 18` → `op` announcing the table's packets → the table → `04 02`
     /// with its byte sum checked.
     fn write_table(&mut self, op: Op, table: &[u8]) -> Result<()> {
@@ -489,6 +510,28 @@ mod tests {
         let w = d.into_inner().writes;
         assert_eq!(w[1][2], 0x11, "base layer");
         assert!(w[2..10].iter().all(|r| r[1..].iter().all(|&b| b == 0)), "reset = all default");
+    }
+
+    #[test]
+    fn macro_sequence_matches_official_flow() {
+        use kb_protocol::sonix::macros::text_steps;
+        let mut d = SonixFf13::new(Fake::default());
+        d.write_macros(&[text_steps("ok", 25)]).unwrap();
+        let w = d.into_inner().writes;
+        // "ok" is 4 steps: 400 + 8 + 32 = 440 bytes → 8 pages.
+        // 04 19 + 04 15 + 8 pages + 04 02; no 04 18, no 04 F0.
+        assert_eq!(w.len(), 1 + 1 + 8 + 1);
+        assert_eq!(w[0][1..3], [0x04, 0x19]);
+        assert_eq!((w[1][2], w[1][9]), (0x15, 8), "04 15 announces 8 pages");
+        assert_eq!(&w[2][1..5], &[0x90, 0x01, 0, 0], "directory: slot 0 at 400");
+        assert_eq!(&w[9][63..65], &[0xAA, 0x55]);
+        assert_eq!(w[10][2], 0x02);
+        assert!(w.iter().all(|r| r[2] != 0x18 && r[2] != 0xF0));
+
+        let mut d = SonixFf13::new(Fake::default());
+        d.write_macros(&[]).unwrap();
+        let w = d.into_inner().writes;
+        assert_eq!(w[1][9], 8, "no macros: 8 empty pages");
     }
 
     #[test]

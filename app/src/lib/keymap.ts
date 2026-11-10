@@ -156,6 +156,8 @@ export function sameAction(a: KeyActionInfo | undefined, b: KeyActionInfo | unde
       return y.kind === "mouse" && x.button === y.button;
     case "wheel":
       return y.kind === "wheel" && x.up === y.up;
+    case "macro":
+      return y.kind === "macro" && x.slot === y.slot && x.mode === y.mode && x.count === y.count;
     default:
       return true;
   }
