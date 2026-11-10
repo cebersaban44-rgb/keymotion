@@ -241,6 +241,7 @@ Kırmızı değerler `2·r mod 256` baytından çözüldü. 40 değerin hepsi `v
 **Sonuçlar:**
 - Her yönlü efektin **iki** yönü var. Kod 2, 1 gibi; kod 3, 0 gibi davranıyor. Satıcı tablosunda mod 10 dört yönlü (`caps` 0x3B) görünüyordu; bu firmware'de öyle değil.
 - Uygulama her efekt için iki seçenek gösteriyor ve bunları hareketin kendisiyle adlandırıyor (Aşağı/Yukarı, Sağa/Sola, Saat yönü/Saatin tersi, İleri/Geri, Sağ yukarı/Sol aşağı). Katalog bilgisi: `kb_protocol::sonix::Motion`.
+- **Kullanıcı denemesi:** Kullanıcı yön düğmelerini uygulamada seçip klavyede gördü: yazdığı gibi çalışıyor.
 - **Yan gözlem:** Akış efekti geri yönde katarın başına (indeks ~0–20) geldiğinde, `F5` modelde tuşu olmayan yaklaşık 45 LED indeksini de yanık döndürdü. İndeksler: 0, 14–18, 35, 36, 53, 54, 71, 72, 89, 90, 95, 97, 107–109, 112–116, 120, 124–143. Bunlar yan ışık şeridi ya da firmware'in boş indeksleri olabilir (açık soru, DURUM.md §8).
 
 ### Ekran: stok ana sayfa (fotoğraf, 2026-11-10 08:29)
