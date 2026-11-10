@@ -10,6 +10,7 @@ import type { LiveState } from "../../bindings/LiveState";
 import { Segmented, Toggle } from "../../components/controls";
 import { useT, type MessageKey } from "../../lib/i18n";
 import { fmtWait, useLive } from "../../lib/live";
+import { useApp } from "../../lib/store";
 import { fmtClock, phaseColor, remainingNow, usePomodoro } from "../../lib/pomodoro";
 import { uploadSeconds } from "../../lib/screenImport";
 import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useNow } from "./common";
@@ -298,7 +299,8 @@ function PomodoroSource() {
       </div>
       <button
         type="button"
-        onClick={() => document.querySelector("[data-pomodoro]")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        onClick={() => useApp.getState().setScreenTab("focus")}
+        title={t("pomo.go")}
         className="flex items-center justify-between gap-2 rounded-lg bg-surface-2/60 px-2.5 py-2 text-left text-[12.5px] hover:bg-surface-2"
       >
         <span className="flex items-center gap-2">

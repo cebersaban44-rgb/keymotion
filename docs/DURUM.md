@@ -406,6 +406,35 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - **Doğrulama:** 16 birim testi (yönler, renkler, nabız, duraklama, geçişler, deneme turu, eski ayar dosyası). Tarayıcıda sahte arka uçla bütün seçenekler. Gerçek uygulamada iki "Klavyede dene" turu klavyede çalıştı: önce varsayılanlarla ve ses açık, sonra soldan sağa, dalga ve mor odakla. Ayrıntı: `donanim-dogrulama.md`.
       - **Bekleyen:** Kullanıcının gözle denemesi ve sesi duyması.
 
+29. **Ekran sayfasının düzeni: sekmeler, birleşik odak zamanlayıcısı, büyüyen kütüphane.**
+    - **Kullanıcının geri bildirimi (2026-11-10):**
+      - Odak zamanlayıcısı ile tuş ışıkları iki ayrı parça gibi duruyordu; ışıklar zamanlayıcının ayarları gibi görünmeli.
+      - Kütüphane en alta kaymıştı, görsel hazırlama alanından çok uzaktı.
+      - Kütüphane büyüyünce hepsi mi gösterilecek?
+      - Kullanıcı ayrıca alt menü mü, aynı sayfada iç içe mi olacağını sordu.
+    - **Karar:** Sayfa içi sekmeler (Işıklar sayfasındaki gibi), kenar çubuğunda alt menü değil. Uygulamada tek bir düzen kalıyor ve kenar çubuğu kısa kalıyor. Sekmeler:
+      - **Görseller:** "Ekranda ne olsun?" ve hemen altında kütüphane.
+      - **Canlı ekran:** canlı mod, bütçe, kaynaklar.
+      - **Odak zamanlayıcısı.**
+    - **Davranış:**
+      - Son açılan sekme hatırlanır (`ks.screenTab`).
+      - "Klavyede şu an" (ana sayfa ve GIF sayfası önizlemesi) Görseller ve Canlı ekran sekmelerinde üstte durur. Yükleme sayaçları başlıktan buraya taşındı.
+      - Görseller sekmesi başka sekmeye geçince de bellekte kalır; yarım kalmış bir görsel kaybolmaz.
+      - Kenar çubuğundaki süre ve Canlı ekrandaki zamanlayıcı satırı doğrudan Odak zamanlayıcısı sekmesini açar.
+    - **Odak zamanlayıcısı tek kart:**
+      - Üstte zamanlayıcının gösterdikleri: kalan süre halkası ve yanında klavye önizlemesi, altında düğmeler ve "Klavyede dene".
+      - Altta "Ayarlar" listesi: Süreler, Tuş ışıkları, Faz başında ekran kartı, Faz bitince ses.
+      - Tuş ışıklarının kendi ayarları (hareket, renkler, parlaklık, faz başında, nabız) o satırın altında girintili ve sol çizgili duruyor. Işıklar kapalıyken önizleme gri.
+      - Canlı mod kapalıysa ekran kartı satırında "Canlı ekrana git" bağlantısı var.
+    - **Kütüphane:**
+      - Önce klavyede o an gösterilen görsel gelir, sonra fabrika animasyonu, sonra en yeniler.
+      - İlk 6 görsel gösterilir; "Daha fazla göster" 12'şer ekler ve kaç tane kaldığını yazar. "Daha az göster" de var.
+      - 6'dan fazla görsel varsa Tümü / Durağan / Hareketli süzgeci, 12'den fazlaysa arama kutusu çıkar.
+      - Neden sayfa sayfa: her kart kendi resmini yüklüyor; yüzlerce görseli birden göstermek sayfayı ağırlaştırırdı.
+    - **Doğrulama:**
+      - Tarayıcıda sahte arka uç ve 15 deneme görseliyle: sayfa sayfa gösterme, süzgeç, arama ve "eşleşen yok" durumu; sekme hafızası; Canlı ekrandan Odak zamanlayıcısına bağlantı; yarım kart sekme değişince korunuyor.
+      - Gerçek uygulamada (CDP) üç sekme ve kullanıcının kütüphanesi.
+
 ## 4. Sistem nasıl kurulu (as-built)
 
 ```
@@ -556,6 +585,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 40 | `npx eslint` bir paketi indirip çalıştırdı | Projede ESLint (ve Prettier) yok; `npx` eksik aracı sormadan indiriyor | Bir aracı çalıştırmadan önce `app/node_modules/.bin`'de olduğuna bak ya da `npx --no-install` kullan. Projenin denetimleri: `tsc` (`pnpm build`), rustfmt, clippy. İndirilen paket önbellekten silindi. |
 | 41 | Türkçe arayüze "Pomodoro" ve "flash" girdi | Tekniğin yabancı adı ve teknik terim, Türkçe metne olduğu gibi yazıldı | Türkçe sayfada yalnız Türkçe içerik: yabancı adın Türkçe karşılığını kullan ("Odak zamanlayıcısı", "kalıcı bellek"). Emin değilsen TDK sözlüğüne bak (`sozluk.gov.tr/gts?ara=…`). Yabancı ad gerekiyorsa yalnız belgelerde, parantez içinde. |
 | 42 | Uygulamadaki odak önizlemesinde renk neredeyse görünmedi | Klavye çizimi ışığı gerçekteki gibi tuşun altından hafif bir parlama olarak gösteriyor; küçük boyutta bu sönük kalıyor | Amaç bir hareketi anlatmaksa tuşları düz renkle çiz (sohbetteki önizlemenin onaylanan hâli). Gerçekçi çizim, ışığın tasarımına bakılan yerde kalsın. |
+| 43 | Tarayıcı testinde eklenen deneme görselleri sayfada görünmedi | `import('/src/lib/screen.ts')` uygulamanın kullandığı modül değildi: oturumda değişen dosyaları Vite `?t=…` ile yüklüyor, düz adres ayrı bir kopya açıyor | Test için modül alırken uygulamanın yüklediği adresi kullan: `performance.getEntriesByType('resource')` içinden bul. |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 

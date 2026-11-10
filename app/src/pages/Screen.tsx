@@ -1,13 +1,13 @@
-import { Check, Info, Library, Loader2, Palette, Pencil, Trash2, Upload, Usb, X } from "lucide-react";
+import { Check, ChevronDown, Images, Info, Library, Loader2, Palette, Pencil, Radio, Search, Timer, Trash2, Upload, Usb, X, type LucideIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { ScreenItem } from "../bindings/ScreenItem";
-import { useT } from "../lib/i18n";
+import { useT, type MessageKey } from "../lib/i18n";
 import { useLive } from "../lib/live";
 import { itemData, useScreen } from "../lib/screen";
 import { fromBlob, uploadSeconds, type Source } from "../lib/screenImport";
-import { useApp } from "../lib/store";
+import { useApp, type ScreenTab } from "../lib/store";
 import {
   ConfirmUpload,
   FramePlayer,
@@ -29,12 +29,26 @@ import { TextFlow, TextTile } from "./screen/TextFlow";
 
 // -------------------------------------------------------------- the page
 
+const TABS: { id: ScreenTab; label: MessageKey; icon: LucideIcon }[] = [
+  { id: "visuals", label: "sc.tab.visuals", icon: Images },
+  { id: "live", label: "sc.tab.live", icon: Radio },
+  { id: "focus", label: "sc.tab.focus", icon: Timer },
+];
+
+/**
+ * The Screen page in three tabs: "Görseller" (make a visual, and the
+ * library of visuals made before, right under it), "Canlı ekran" (cards
+ * that update the screen by themselves) and "Odak zamanlayıcısı". What the
+ * keyboard's screen shows sits above the first two.
+ */
 export function Screen({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
   const usb = kb.connection === "usb" && kb.hasCommandChannel && kb.features.includes("screen");
   const state = useScreen((s) => s.state);
   const modelId = useScreen((s) => s.modelId);
   const loaded = state !== null && modelId === kb.modelId;
+  const tab = useApp((s) => s.screenTab);
+  const setTab = useApp((s) => s.setScreenTab);
 
   useEffect(() => {
     if (!loaded) useScreen.getState().load(kb.modelId).catch(console.error);
@@ -42,23 +56,29 @@ export function Screen({ kb }: { kb: KeyboardInfo }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex items-end justify-between gap-6">
+      <header className="flex flex-wrap items-end justify-between gap-6">
         <div>
           <div className="eyebrow mb-2">{t("sc.eyebrow")}</div>
           <h1 className="font-display text-[40px] leading-none font-semibold tracking-[-0.035em]">{t("sc.title")}</h1>
         </div>
-        {loaded && (
-          <div
-            className="num flex flex-col items-end gap-0.5 text-[11.5px] text-ink-3"
-            title={t("sc.wear.hint")}
-          >
-            <span>
-              {t("sc.uploads.today")}: <span className="text-ink-2">{state.uploadsToday}</span> ·{" "}
-              {t("sc.uploads.total")}: <span className="text-ink-2">{state.uploadsTotal}</span>
-            </span>
-            <span>{t("sc.wear.short")}</span>
-          </div>
-        )}
+        <div role="tablist" aria-label={t("sc.title")} className="inline-flex rounded-xl border border-line bg-bg-raise p-1">
+          {TABS.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              role="tab"
+              type="button"
+              aria-selected={tab === id}
+              onClick={() => setTab(id)}
+              className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-[13px] transition-colors ${
+                tab === id ? "bg-surface-2 text-ink shadow-[inset_0_0_0_1px_var(--line)]" : "text-ink-2 hover:text-ink"
+              }`}
+              data-screen-tab={id}
+            >
+              <Icon size={14} className={tab === id ? "text-signal" : "text-ink-3"} />
+              {t(label)}
+            </button>
+          ))}
+        </div>
       </header>
 
       {!usb && (
@@ -68,12 +88,15 @@ export function Screen({ kb }: { kb: KeyboardInfo }) {
         </div>
       )}
 
-      <KeyboardScreens />
+      {tab !== "focus" && <KeyboardScreens />}
 
-      <Studio kb={kb} usb={usb} loaded={loaded} />
-      <LivePanel usb={usb} />
-      <PomodoroPanel kb={kb} usb={usb} />
-      <LibraryCard kb={kb} usb={usb} />
+      {/* Kept mounted on other tabs, so a visual being made is not lost. */}
+      <div className={tab === "visuals" ? "flex flex-col gap-6" : "hidden"}>
+        <Studio kb={kb} usb={usb} loaded={loaded} />
+        <LibraryCard kb={kb} usb={usb} />
+      </div>
+      {tab === "live" && <LivePanel usb={usb} />}
+      {tab === "focus" && <PomodoroPanel kb={kb} usb={usb} />}
     </div>
   );
 }
@@ -218,6 +241,15 @@ function KeyboardScreens() {
         )}
       </Panel>
       <div className="flex flex-col gap-3 text-[12.5px] text-ink-2">
+        {state && (
+          <div className="num flex flex-col gap-0.5 text-[11.5px] text-ink-3" title={t("sc.wear.hint")}>
+            <span>
+              {t("sc.uploads.today")}: <span className="text-ink-2">{state.uploadsToday}</span> · {t("sc.uploads.total")}:{" "}
+              <span className="text-ink-2">{state.uploadsTotal}</span>
+            </span>
+            <span>{t("sc.wear.short")}</span>
+          </div>
+        )}
         <p className="flex gap-2">
           <Info size={14} className="mt-0.5 shrink-0 text-signal" />
           <span>{t("sc.pages.note")}</span>
@@ -322,6 +354,19 @@ function Studio({ kb, usb, loaded }: { kb: KeyboardInfo; usb: boolean; loaded: b
 
 // --------------------------------------------------------------- library
 
+/** Shown at first; more come in steps, so a large library stays light
+ *  (every card loads its picture). */
+const LIBRARY_PAGE = 6;
+const LIBRARY_MORE = 12;
+/** A search box once the library is this big. */
+const LIBRARY_SEARCH_FROM = 12;
+type LibraryFilter = "all" | "image" | "animation";
+const LIBRARY_FILTERS: { id: LibraryFilter; label: MessageKey }[] = [
+  { id: "all", label: "sc.lib.filter.all" },
+  { id: "image", label: "sc.lib.filter.image" },
+  { id: "animation", label: "sc.lib.filter.animation" },
+];
+
 function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
   const t = useT();
   const state = useScreen((s) => s.state);
@@ -331,7 +376,22 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
-  const items = state?.items ?? [];
+  const [kind, setKind] = useState<LibraryFilter>("all");
+  const [query, setQuery] = useState("");
+  const [limit, setLimit] = useState(LIBRARY_PAGE);
+  const all = state?.items ?? [];
+  // What the keyboard shows first, then the factory animation, then newest.
+  const items = useMemo(() => {
+    const q = query.trim().toLocaleLowerCase();
+    const shownId = state?.shown;
+    return all
+      .filter((it) => kind === "all" || (kind === "image" ? it.kind === "image" : it.kind !== "image"))
+      .filter((it) => !q || it.name.toLocaleLowerCase().includes(q))
+      .sort((a, b) => Number(b.id === shownId) - Number(a.id === shownId));
+  }, [all, kind, query, state?.shown]);
+  const visible = items.slice(0, limit);
+  const rest = items.length - visible.length;
+  useEffect(() => setLimit(LIBRARY_PAGE), [kind, query]);
 
   const runUpload = async (it: ScreenItem) => {
     setConfirmItem(null);
@@ -350,19 +410,57 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
         <div className="flex items-center gap-2">
           <Library size={14} className="text-ink-3" />
           <div className="eyebrow">{t("sc.library")}</div>
-          <span className="num text-[11px] text-ink-3">{items.length}</span>
+          <span className="num text-[11px] text-ink-3">{all.length}</span>
         </div>
         <span className="text-[11.5px] text-ink-3">{t("sc.library.note")}</span>
       </div>
+      {all.length > LIBRARY_PAGE && (
+        <div className="flex flex-wrap items-center gap-2 px-1">
+          <div role="radiogroup" aria-label={t("sc.library")} className="inline-flex rounded-lg border border-line bg-bg-raise p-0.5">
+            {LIBRARY_FILTERS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                role="radio"
+                aria-checked={kind === f.id}
+                onClick={() => setKind(f.id)}
+                className={`rounded-md px-3 py-1 text-[12px] ${
+                  kind === f.id ? "bg-surface-2 text-ink shadow-[inset_0_0_0_1px_var(--line)]" : "text-ink-2 hover:text-ink"
+                }`}
+              >
+                {t(f.label)}
+              </button>
+            ))}
+          </div>
+          {all.length > LIBRARY_SEARCH_FROM && (
+            <label className="flex h-8 min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-line bg-bg-raise px-2.5 sm:max-w-[320px]">
+              <Search size={13} className="text-ink-3" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t("sc.lib.search")}
+                aria-label={t("sc.lib.search")}
+                className="min-w-0 flex-1 bg-transparent text-[12.5px] outline-none"
+              />
+              {query && (
+                <button type="button" onClick={() => setQuery("")} aria-label={t("sc.close")} className="text-ink-3 hover:text-ink">
+                  <X size={13} />
+                </button>
+              )}
+            </label>
+          )}
+        </div>
+      )}
       {notice && (
         <p className={`flex items-start gap-2 px-1 text-[12.5px] ${notice.ok ? "text-ok" : "text-danger"}`} role="status">
           {notice.ok ? <Check size={14} className="mt-0.5 shrink-0" /> : <X size={14} className="mt-0.5 shrink-0" />}
           {notice.text}
         </p>
       )}
-      {items.length === 0 && <p className="px-1 pb-1 text-[12.5px] text-ink-3">{t("sc.library.empty")}</p>}
-      <ul className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-2">
-        {items.map((it) => {
+      {all.length === 0 && <p className="px-1 pb-1 text-[12.5px] text-ink-3">{t("sc.library.empty")}</p>}
+      {all.length > 0 && items.length === 0 && <p className="px-1 pb-1 text-[12.5px] text-ink-3">{t("sc.lib.none")}</p>}
+      <ul className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-2" data-library>
+        {visible.map((it) => {
           const onKeyboard = state?.shown === it.id;
           const busy = upload?.id === it.id;
           return (
@@ -472,6 +570,32 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
           );
         })}
       </ul>
+      {(rest > 0 || limit > LIBRARY_PAGE) && (
+        <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+          {rest > 0 && (
+            <button
+              type="button"
+              onClick={() => setLimit((n) => n + LIBRARY_MORE)}
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-[12.5px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+              data-library-more
+            >
+              <ChevronDown size={14} /> {t("sc.lib.more")}
+              <span className="num text-ink-3">
+                · {rest} {t("sc.lib.left")}
+              </span>
+            </button>
+          )}
+          {limit > LIBRARY_PAGE && (
+            <button
+              type="button"
+              onClick={() => setLimit(LIBRARY_PAGE)}
+              className="h-8 rounded-lg px-3 text-[12.5px] text-ink-3 hover:bg-surface-2 hover:text-ink"
+            >
+              {t("sc.lib.less")}
+            </button>
+          )}
+        </div>
+      )}
       <AnimatePresence>
         {confirmItem && (
           <LibraryConfirm item={confirmItem} onCancel={() => setConfirmItem(null)} onConfirm={() => runUpload(confirmItem)} />
