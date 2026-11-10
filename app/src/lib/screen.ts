@@ -58,6 +58,13 @@ export function mockLiveUploaded(blob: Uint8Array) {
   return item ? { id: item.id, name: item.name, frames: item.frames, pages: item.pages } : null;
 }
 
+/** Browser preview: what the mock GIF page shows ("live" for a live card). */
+export function mockShown(): "live" | { id: string; name: string; frames: number; pages: number } | null {
+  if (mock.shown === "live") return "live";
+  const item = mock.items.find((i) => i.id === mock.shown);
+  return item ? { id: item.id, name: item.name, frames: item.frames, pages: item.pages } : null;
+}
+
 /** Browser preview: a library item was put back on the GIF page. */
 export function mockRestored(id: string) {
   mock.shown = id;

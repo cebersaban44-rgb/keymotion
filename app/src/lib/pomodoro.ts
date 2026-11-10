@@ -11,7 +11,7 @@ import type { PomodoroPhase } from "../bindings/PomodoroPhase";
 import type { PomodoroSettings } from "../bindings/PomodoroSettings";
 import type { PomodoroState } from "../bindings/PomodoroState";
 import { inTauri } from "./ipc";
-import { mockLiveHeld, submitLive, useLive } from "./live";
+import { mockCancelReturn, mockLiveHeld, mockReturnAfter, submitLive, useLive } from "./live";
 import { TRY_MS, phaseRgb, toHex } from "./pomodoroLights";
 import type { Prepared } from "./screenImport";
 
@@ -32,7 +32,12 @@ export const DEFAULT_SETTINGS: PomodoroSettings = {
   pulse: true,
   transition: "blink",
   sound: false,
+  endScreen: "back",
 };
+
+/** After a stop, the user's own picture goes back up this long later
+ *  (`BACK_AFTER` in pomodoro.rs). */
+export const BACK_AFTER_MS = 15_000;
 
 export const LIMITS = {
   focusMin: [1, 120],
@@ -151,10 +156,13 @@ function mockEnd(complete: boolean) {
   const cards = mockCardsWanted();
   Object.assign(mock, { status: "idle", phase: "focus", round: 1, phaseMs: 0, anchor: 0, focusDone: 0, focusMs: 0 });
   mock.last = summary;
-  // Like the backend: a playing song takes the screen back by itself.
+  // Like the backend: a playing song takes the screen back by itself;
+  // otherwise the user's own picture, or a summary card.
   const playing = !!useLive.getState().state?.track?.playing;
   if (cards && mock.cardShown && !playing) {
-    mock.onCard?.({ kind: "done", phase: "focus", round: 0, rounds: 0, minutes: 0, ...summary });
+    if (mock.settings.endScreen === "summary") {
+      mock.onCard?.({ kind: "done", phase: "focus", round: 0, rounds: 0, minutes: 0, ...summary });
+    } else mockReturnAfter(POMODORO_SOURCE, MINUTE < 60_000 ? 3_000 : BACK_AFTER_MS);
   }
   mock.cardShown = false;
 }
@@ -196,6 +204,7 @@ function mockControl(action: PomodoroAction): PomodoroState {
       }, TRY_MS);
     }
   } else if (action === "start") {
+    mockCancelReturn(POMODORO_SOURCE);
     if (mock.status === "idle") {
       Object.assign(mock, { round: 1, focusDone: 0, focusMs: 0 });
       mockBegin("focus");
@@ -230,7 +239,12 @@ export function controlPomodoro(action: PomodoroAction): Promise<PomodoroState> 
 
 export function configurePomodoro(settings: PomodoroSettings): Promise<PomodoroState> {
   if (!inTauri) {
+    // Cards turned off while it runs: its card leaves the screen.
+    const wanted = mockCardsWanted();
     mock.settings = { ...settings };
+    if (wanted && !mockCardsWanted() && !useLive.getState().state?.track?.playing) {
+      mockReturnAfter(POMODORO_SOURCE, MINUTE < 60_000 ? 3_000 : BACK_AFTER_MS);
+    }
     if (mock.status !== "idle") {
       mock.phaseMs = minutesOf(settings, mock.phase) * MINUTE;
       mock.round = Math.min(mock.round, settings.rounds);

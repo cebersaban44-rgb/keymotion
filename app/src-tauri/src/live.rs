@@ -9,7 +9,7 @@
 //! blocked by it (docs/research/ekran-ve-veri-kaynaklari.md §3.4).
 
 use crate::device::DeviceHandle;
-use crate::dto::{LiveItem, LivePlan, LiveShown, LiveState, TrackInfo};
+use crate::dto::{LiveBack, LiveItem, LivePlan, LiveShown, LiveState, SongStop, TrackInfo};
 use crate::screen_lib::ScreenLibrary;
 use kb_protocol::sonix::screen::ScreenAnimation;
 use serde::{Deserialize, Serialize};
@@ -119,6 +119,8 @@ pub struct LiveStored {
     pub last_ms: Option<f64>,
     /// Library item the GIF page showed before the first live card.
     pub before: Option<String>,
+    /// What "Çalan şarkı" does when the music stops.
+    pub song_stop: SongStop,
 }
 
 impl Default for LiveStored {
@@ -132,6 +134,7 @@ impl Default for LiveStored {
             last_name: None,
             last_ms: None,
             before: None,
+            song_stop: SongStop::default(),
         }
     }
 }
@@ -150,10 +153,48 @@ struct Runtime {
     /// The keyboard was not reachable: wait before trying again.
     retry_at: Option<f64>,
     track: Option<TrackInfo>,
-    /// Library item to put back on the GIF page (live mode turned off).
+    /// Library item to put back on the GIF page.
     restore: Option<String>,
+    /// The put-back above is the live mode going back by itself, for this
+    /// source's card (its token is taken); `None`: the user asked for it.
+    restore_auto: Option<String>,
+    /// A source has nothing to show any more: go back to the user's own
+    /// picture at this time, unless another card comes first.
+    back: Option<LiveBack>,
     /// The Pomodoro holds the screen: "Çalan şarkı" waits.
     held: bool,
+}
+
+/// What to do about a scheduled return to the user's own picture.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum BackStep {
+    /// Not yet: check again in this many ms.
+    Wait(f64),
+    /// Nothing to do any more (another card is coming, or the source's card
+    /// is gone from the screen).
+    Drop,
+    /// Put the user's picture back now.
+    Go,
+}
+
+/// `showing`: the source's card is on the GIF page; `busy`: an upload runs;
+/// `queued`: another card waits to go (it replaces the screen anyway).
+fn back_step(back: &LiveBack, now: f64, enabled: bool, showing: bool, busy: bool, queued: bool) -> BackStep {
+    if !enabled || queued {
+        return BackStep::Drop;
+    }
+    if now < back.at_ms {
+        return BackStep::Wait(back.at_ms - now);
+    }
+    if busy {
+        // The upload may be this source's card: decide when it is done.
+        return BackStep::Wait(RETRY_EVERY.as_millis() as f64 / 10.0);
+    }
+    if showing {
+        BackStep::Go
+    } else {
+        BackStep::Drop
+    }
 }
 
 enum Msg {
@@ -205,19 +246,21 @@ impl LiveHandle {
         }
     }
 
-    /// `restore` (with `enabled: false`): put back what the GIF page showed
-    /// before the live mode, if a live card is there now.
+    /// `restore`: put back what the GIF page showed before the live mode,
+    /// if a live card is there now (with `enabled: false`, or on its own
+    /// while the live mode stays on).
     pub fn configure(
         &self,
         enabled: Option<bool>,
         plan: Option<LivePlan>,
         now_playing: Option<bool>,
         restore: Option<bool>,
+        song_stop: Option<SongStop>,
     ) -> Result<LiveState, String> {
         let mut put_back = None;
         {
             let mut lib = self.library.lock().map_err(|_| "screen library unavailable")?;
-            if enabled == Some(false) && restore == Some(true) {
+            if restore == Some(true) && enabled != Some(true) {
                 put_back = lib.live_restore_target().map(|r| r.id);
             }
             let now = now_ms();
@@ -231,16 +274,26 @@ impl LiveHandle {
             if let Some(n) = now_playing {
                 live.now_playing = n;
             }
+            if let Some(k) = song_stop {
+                live.song_stop = k;
+            }
             lib.save().map_err(|e| e.to_string())?;
         }
-        if enabled == Some(false) {
-            if let Ok(mut rt) = self.rt.lock() {
+        if let Ok(mut rt) = self.rt.lock() {
+            if enabled == Some(false) {
                 rt.pending = None;
-                if put_back.is_some() {
-                    tracing::info!("live mode off; putting the previous picture back");
-                    rt.restore = put_back;
-                    rt.retry_at = None;
-                }
+                rt.back = None;
+            }
+            let song_back = rt.back.as_ref().is_some_and(|b| b.source == crate::now_playing::SOURCE);
+            if song_stop == Some(SongStop::Keep) && song_back {
+                rt.back = None;
+            }
+            if put_back.is_some() {
+                tracing::info!(live_off = enabled == Some(false), "putting the previous picture back");
+                rt.restore = put_back;
+                rt.restore_auto = None;
+                rt.back = None;
+                rt.retry_at = None;
             }
         }
         self.wake();
@@ -269,6 +322,8 @@ impl LiveHandle {
                 drop(rt);
                 return self.state();
             }
+            // A new card replaces the screen anyway.
+            rt.back = None;
             // The newest card wins.
             rt.pending = Some(Pending {
                 anim,
@@ -354,12 +409,55 @@ impl LiveHandle {
         self.rt.lock().map(|rt| rt.track.as_ref().is_some_and(|t| t.playing)).unwrap_or(false)
     }
 
+    pub fn song_stop(&self) -> SongStop {
+        self.library.lock().map(|l| l.live().song_stop).unwrap_or_default()
+    }
+
+    /// `source` has nothing to show any more: go back to the user's own
+    /// picture after `delay`, unless another card comes first. Only when
+    /// the source's card is on the screen (or going there) now.
+    pub fn return_after(&self, source: &str, delay: Duration) {
+        if !self.enabled() || !self.has_card_from(source) {
+            return;
+        }
+        if let Ok(mut rt) = self.rt.lock() {
+            rt.back = Some(LiveBack { source: source.to_string(), at_ms: now_ms() + delay.as_millis() as f64 });
+        }
+        tracing::info!(%source, secs = delay.as_secs(), "going back to the own picture soon");
+        self.wake();
+        self.emit();
+    }
+
+    /// `source` has something to show again: forget its return.
+    pub fn cancel_return(&self, source: &str) {
+        let cancelled = self
+            .rt
+            .lock()
+            .map(|mut rt| {
+                let mine = rt.back.as_ref().is_some_and(|b| b.source == source);
+                if mine {
+                    rt.back = None;
+                }
+                mine
+            })
+            .unwrap_or(false);
+        if cancelled {
+            tracing::debug!(%source, "return to the own picture cancelled");
+            self.emit();
+        }
+    }
+
     fn next_wait(&self) -> Duration {
         let Ok(mut lib) = self.library.lock() else { return IDLE };
         let Ok(rt) = self.rt.lock() else { return IDLE };
         let now = now_ms();
         if rt.restore.is_some() {
             return Duration::from_millis(rt.retry_at.map_or(0.0, |t| (t - now).max(0.0)) as u64);
+        }
+        if rt.pending.is_none() && lib.live().enabled {
+            if let Some(b) = &rt.back {
+                return Duration::from_millis((b.at_ms - now).clamp(0.0, IDLE.as_millis() as f64) as u64);
+            }
         }
         if rt.pending.is_none() || !lib.live().enabled {
             return IDLE;
@@ -379,12 +477,21 @@ impl LiveHandle {
     fn restore(&self, device: &DeviceHandle) -> bool {
         let now = now_ms();
         let (id, anim) = {
-            let Ok(lib) = self.library.lock() else { return false };
+            let Ok(mut lib) = self.library.lock() else { return false };
             let Ok(mut rt) = self.rt.lock() else { return false };
             if rt.uploading.is_some() || rt.retry_at.is_some_and(|t| now < t) {
                 return rt.restore.is_some();
             }
             let Some(id) = rt.restore.take() else { return false };
+            if rt.restore_auto.is_some() && rt.pending.is_some() {
+                // A new card came while waiting: it replaces the screen, so
+                // going back would be an upload for nothing.
+                rt.restore_auto = None;
+                lib.live_mut().budget.refund(now);
+                let _ = lib.save();
+                tracing::debug!("going back skipped; a new card goes instead");
+                return false;
+            }
             let name = lib.state("").items.into_iter().find(|i| i.id == id).map(|i| i.name);
             match (lib.animation(&id), name) {
                 (Ok(anim), Some(name)) => {
@@ -393,36 +500,52 @@ impl LiveHandle {
                 }
                 _ => {
                     tracing::warn!(%id, "previous picture is gone from the library; nothing to put back");
+                    if rt.restore_auto.take().is_some() {
+                        lib.live_mut().budget.refund(now);
+                        let _ = lib.save();
+                    }
                     return false;
                 }
             }
         };
+        let auto = self.rt.lock().map(|rt| rt.restore_auto.clone()).unwrap_or(None);
         self.emit();
         let result = device.upload_screen(id.clone(), anim);
         {
             let Ok(mut lib) = self.library.lock() else { return true };
             let Ok(mut rt) = self.rt.lock() else { return true };
             rt.uploading = None;
+            rt.restore_auto = None;
             match &result.error {
                 None => {
                     let model = result.model_id.clone().unwrap_or_default();
-                    if let Err(e) = lib.uploaded(&model, &id) {
+                    // Going back by itself took its token before.
+                    if let Err(e) = lib.uploaded_with(&model, &id, auto.is_none()) {
                         tracing::warn!("restore not recorded: {e}");
                     }
                     lib.live_mut().before = None;
                     let _ = lib.save();
                     rt.last_error = None;
-                    tracing::info!(%id, "previous picture put back");
+                    tracing::info!(%id, auto = auto.is_some(), "previous picture put back");
                 }
                 Some(e) => {
                     tracing::warn!(flash = result.flash_written, "putting the previous picture back failed: {e}");
+                    let now = now_ms();
                     if result.flash_written {
-                        lib.count_upload(true);
-                        let _ = lib.save();
+                        lib.count_upload(auto.is_none());
+                    } else if auto.is_some() {
+                        lib.live_mut().budget.refund(now);
                     }
+                    let _ = lib.save();
                     rt.last_error = Some(e.clone());
-                    rt.restore = Some(id);
-                    rt.retry_at = Some(now_ms() + RETRY_EVERY.as_millis() as f64);
+                    rt.retry_at = Some(now + RETRY_EVERY.as_millis() as f64);
+                    match auto {
+                        // Try again through the budget, if still wanted then.
+                        Some(source) => {
+                            rt.back = Some(LiveBack { source, at_ms: now + RETRY_EVERY.as_millis() as f64 });
+                        }
+                        None => rt.restore = Some(id),
+                    }
                 }
             }
         }
@@ -439,6 +562,13 @@ impl LiveHandle {
         let job = {
             let Ok(mut lib) = self.library.lock() else { return };
             let Ok(mut rt) = self.rt.lock() else { return };
+            if rt.pending.is_none() && go_back(&mut lib, &mut rt, now) {
+                drop(rt);
+                drop(lib);
+                self.emit();
+                self.wake();
+                return;
+            }
             if !lib.live().enabled || rt.uploading.is_some() || rt.pending.is_none() {
                 return;
             }
@@ -498,6 +628,42 @@ impl LiveHandle {
     }
 }
 
+/// A scheduled return is due: turn it into a put-back (taking a token, or
+/// waiting for one). True when something changed.
+fn go_back(lib: &mut ScreenLibrary, rt: &mut Runtime, now: f64) -> bool {
+    let Some(back) = rt.back.clone() else { return false };
+    let showing = lib.live_source_showing(&back.source);
+    match back_step(&back, now, lib.live().enabled, showing, rt.uploading.is_some(), rt.pending.is_some()) {
+        BackStep::Wait(_) => false,
+        BackStep::Drop => {
+            tracing::debug!(source = %back.source, "return to the own picture no longer needed");
+            rt.back = None;
+            true
+        }
+        BackStep::Go => {
+            let Some(target) = lib.live_restore_target() else {
+                rt.back = None;
+                return true;
+            };
+            if rt.retry_at.is_some_and(|t| now < t) {
+                return false;
+            }
+            if !lib.live_mut().budget.try_take(now) {
+                // Wait for the budget, like any card.
+                let wait = lib.live_mut().budget.ms_until_token(now).unwrap_or(0.0) + 50.0;
+                rt.back = Some(LiveBack { at_ms: now + wait, ..back });
+                return true;
+            }
+            let _ = lib.save();
+            tracing::info!(source = %back.source, id = %target.id, "going back to the own picture");
+            rt.back = None;
+            rt.restore = Some(target.id);
+            rt.restore_auto = Some(back.source);
+            true
+        }
+    }
+}
+
 fn snapshot(lib: &mut ScreenLibrary, rt: &Runtime) -> LiveState {
     let now = now_ms();
     let live = lib.live_mut();
@@ -530,6 +696,9 @@ fn snapshot(lib: &mut ScreenLibrary, rt: &Runtime) -> LiveState {
             lib.live_restore_target()
         },
         held: rt.held,
+        song_stop: live.song_stop,
+        own: lib.live_own(),
+        going_back: rt.back.clone(),
     }
 }
 
@@ -587,9 +756,27 @@ mod tests {
     }
 
     #[test]
+    fn going_back_waits_its_time_and_gives_way_to_new_cards() {
+        let b = LiveBack { source: "pomodoro".into(), at_ms: 1_000.0 };
+        assert_eq!(back_step(&b, 400.0, true, true, false, false), BackStep::Wait(600.0));
+        assert_eq!(back_step(&b, 1_000.0, true, true, false, false), BackStep::Go);
+        // Another card is waiting: it replaces the screen anyway.
+        assert_eq!(back_step(&b, 400.0, true, true, false, true), BackStep::Drop);
+        assert_eq!(back_step(&b, 2_000.0, true, true, false, true), BackStep::Drop);
+        // The source's card is no longer on the page (the user uploaded
+        // something, or another source took over).
+        assert_eq!(back_step(&b, 2_000.0, true, false, false, false), BackStep::Drop);
+        // An upload runs: decide after it.
+        assert!(matches!(back_step(&b, 2_000.0, true, false, true, false), BackStep::Wait(_)));
+        // Live mode off: nothing goes by itself.
+        assert_eq!(back_step(&b, 2_000.0, false, true, false, false), BackStep::Drop);
+    }
+
+    #[test]
     fn stored_settings_tolerate_missing_fields() {
         let s: LiveStored = serde_json::from_str("{}").unwrap();
         assert!(!s.enabled && s.now_playing);
+        assert_eq!(s.song_stop, SongStop::Back, "older files: the own picture comes back");
         assert_eq!(s.budget.plan, LivePlan::Balanced);
         let s: LiveStored = serde_json::from_str(r#"{"enabled":true,"budget":{"plan":"heavy"}}"#).unwrap();
         assert!(s.enabled);

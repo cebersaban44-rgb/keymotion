@@ -7,14 +7,23 @@
 //! paused session is never chosen over one that plays. While the Pomodoro
 //! holds the screen nothing is announced; when it lets go, the song that
 //! plays is announced again so its card comes back.
+//!
+//! When the music stops and the song's card is on the screen, the screen
+//! goes back to the user's own picture after `BACK_AFTER` without music
+//! (unless the user chose to keep the card); music again cancels that.
 
-use crate::dto::TrackInfo;
+use crate::dto::{SongStop, TrackInfo};
 use crate::live::LiveHandle;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
 pub const EVENT_NOW_PLAYING: &str = "now-playing";
+/// Live mode source id of the song cards (the UI submits them).
+pub const SOURCE: &str = "now-playing";
+/// Without music this long, the user's own picture comes back. Short
+/// pauses cost no upload.
+pub const BACK_AFTER: Duration = Duration::from_secs(5 * 60);
 const POLL: Duration = Duration::from_secs(1);
 const IDLE_POLL: Duration = Duration::from_secs(2);
 /// Played this long without pause before it is worth an upload. Most skips
@@ -91,11 +100,13 @@ fn run(app: AppHandle, live: Arc<LiveHandle>, state: Arc<NowPlaying>) {
     let mut current: Option<Current> = None;
     let mut last = Instant::now();
     let mut was_held = false;
+    let mut was_playing = false;
     loop {
         if !live.now_playing_wanted() {
             if current.take().is_some() {
                 live.set_track(None);
             }
+            was_playing = false;
             source = win::Source::default();
             std::thread::sleep(IDLE_POLL);
             last = Instant::now();
@@ -178,6 +189,13 @@ fn run(app: AppHandle, live: Arc<LiveHandle>, state: Arc<NowPlaying>) {
                 source = win::Source::default();
             }
         }
+        let playing = current.as_ref().is_some_and(|c| c.info.playing);
+        if was_playing && !playing && live.song_stop() == SongStop::Back {
+            live.return_after(SOURCE, BACK_AFTER);
+        } else if !was_playing && playing {
+            live.cancel_return(SOURCE);
+        }
+        was_playing = playing;
         std::thread::sleep(POLL);
     }
 }
