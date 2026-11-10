@@ -5,7 +5,8 @@
 //! (START … COMMIT) can never interleave. Between requests the actor
 //!
 //! * re-enumerates devices and emits `keyboards-changed`,
-//! * streams the live (RAM-only) LED frame while one is set,
+//! * streams the live (RAM-only) LED frame while one is set: a preview the
+//!   UI shows goes on top of a background layer (the Pomodoro progress),
 //! * mirrors the colours currently shown (`04 F5`) while the UI asks for it,
 //! * sets the keyboard clock when it connects over USB (at most once a day).
 //!
@@ -51,6 +52,8 @@ const BATTERY_REFRESH: Duration = Duration::from_secs(60);
 /// Live frames are re-sent continuously; the keyboard reverts to its saved
 /// effect when the stream stops (verified 2026-11-10).
 const LIVE_EVERY: Duration = Duration::from_millis(50);
+/// Warn when this many live frames in a row failed (one second's worth).
+const LIVE_FAILURES_WARN: u32 = 20;
 /// `04 F5` polling rate for the on-screen mirror.
 const MIRROR_EVERY: Duration = Duration::from_millis(250);
 /// Wait after the keyboard appears before talking to it: all its interfaces
@@ -80,6 +83,9 @@ pub enum Request {
     },
     /// `Some` starts/updates the live frame, `None` stops streaming.
     SetLive(Option<LiveFrame>),
+    /// Background live layer (Pomodoro progress): streamed while no UI
+    /// preview (`SetLive`) is set. `None` stops it.
+    SetAmbient(Option<LiveFrame>),
     /// Start (`Some`, with what the keys should show) or stop the mirror.
     SetMirror(Option<MirrorExpect>),
     /// New colour calibration; re-sends the live frame at once so sliders
@@ -125,6 +131,7 @@ pub struct ScreenUploadResult {
 /// A RAM-only frame in UI colours (sRGB). Calibration and the linear
 /// brightness `level` (0–1) are applied when the frame is sent, so a
 /// calibration change shows up on the next frame.
+#[derive(Debug, Clone, PartialEq)]
 pub struct LiveFrame {
     pub colors: Vec<(u8, Rgb)>,
     pub level: f32,
@@ -234,6 +241,10 @@ struct Actor {
     usb_model: Option<&'static Model>,
     command: Option<Command>,
     live: Option<LiveFrame>,
+    /// Background layer, shown while `live` is not set.
+    ambient: Option<LiveFrame>,
+    /// Live frames that failed in a row.
+    live_failures: u32,
     /// `Some` while the UI shows the mirror.
     mirror: Option<MirrorExpect>,
     /// Firmware status lights of the USB keyboard: (LED, colour when lit).
@@ -279,6 +290,8 @@ impl Actor {
             usb_model: None,
             command: None,
             live: None,
+            ambient: None,
+            live_failures: 0,
             mirror: None,
             indicators: Vec::new(),
             calibration,
@@ -300,10 +313,10 @@ impl Actor {
                 self.enumerate();
                 self.next_enumerate = Instant::now() + ENUMERATE_EVERY;
             }
-            if self.live.is_some() && now >= self.next_live {
+            if self.streaming() && now >= self.next_live {
                 self.send_live();
                 self.next_live = Instant::now() + LIVE_EVERY;
-            } else if self.mirror.is_some() && self.live.is_none() && now >= self.next_mirror {
+            } else if self.mirror.is_some() && !self.streaming() && now >= self.next_mirror {
                 self.send_mirror();
                 self.next_mirror = Instant::now() + MIRROR_EVERY;
             }
@@ -320,7 +333,7 @@ impl Actor {
             }
 
             let mut wake = self.next_enumerate;
-            if self.live.is_some() {
+            if self.streaming() {
                 wake = wake.min(self.next_live);
             } else if self.mirror.is_some() {
                 wake = wake.min(self.next_mirror);
@@ -366,6 +379,9 @@ impl Actor {
                     tracing::trace!(lit = lit.len(), sample = ?&lit[..lit.len().min(6)], level = f.level, "live frame");
                 }
                 match (&frame, &self.live) {
+                    (None, Some(_)) if self.ambient.is_some() => {
+                        tracing::debug!("live preview stopped; the background layer shows again")
+                    }
                     (None, Some(_)) => {
                         tracing::debug!("live stream stopped; keyboard reverts to its saved effect")
                     }
@@ -374,6 +390,17 @@ impl Actor {
                 }
                 self.live = frame;
                 self.next_live = Instant::now();
+            }
+            Request::SetAmbient(frame) => {
+                match (&frame, &self.ambient) {
+                    (None, Some(_)) => tracing::debug!("background light layer stopped"),
+                    (Some(f), None) => tracing::debug!(leds = f.colors.len(), "background light layer started"),
+                    _ => {}
+                }
+                self.ambient = frame;
+                if self.live.is_none() {
+                    self.next_live = Instant::now();
+                }
             }
             Request::SetMirror(expect) => {
                 self.mirror = expect;
@@ -565,7 +592,14 @@ impl Actor {
         match f(&mut cmd.driver) {
             Ok(v) => Ok(v),
             Err(e) => {
-                tracing::warn!("command failed: {e}");
+                // The keyboard now and then refuses one real-time frame
+                // (`FF`, about 1 in 100); the next one goes 50 ms later.
+                // `send_live` warns when they keep failing.
+                if matches!(e, kb_core::sonix::DriverError::Refused { op: 0x20, .. }) {
+                    tracing::debug!("command failed: {e}");
+                } else {
+                    tracing::warn!("command failed: {e}");
+                }
                 if matches!(e, kb_core::sonix::DriverError::Transport(_)) {
                     self.command = None;
                 }
@@ -574,15 +608,28 @@ impl Actor {
         }
     }
 
+    /// A live frame is being streamed (preview or background layer).
+    fn streaming(&self) -> bool {
+        self.live.is_some() || self.ambient.is_some()
+    }
+
     fn send_live(&mut self) {
-        let Some(live) = &self.live else { return };
+        let Some(live) = self.live.as_ref().or(self.ambient.as_ref()) else { return };
         if self.command_path.is_none() {
             return;
         }
         let cal = self.calibration;
         let frame: Vec<(u8, Rgb)> = live.colors.iter().map(|&(l, c)| (l, cal.apply_dimmed(c, live.level))).collect();
-        if let Err(e) = self.with_command(|d| d.realtime_frame(frame)) {
-            tracing::warn!("live frame skipped: {e}");
+        match self.with_command(|d| d.realtime_frame(frame)) {
+            Ok(()) => self.live_failures = 0,
+            Err(e) => {
+                self.live_failures += 1;
+                if self.live_failures == LIVE_FAILURES_WARN {
+                    tracing::warn!(in_a_row = self.live_failures, "live frames keep failing: {e}");
+                } else {
+                    tracing::debug!("live frame skipped: {e}");
+                }
+            }
         }
     }
 
@@ -625,7 +672,7 @@ impl Actor {
 
     fn enumerate(&mut self) {
         // BLE enumeration is slow; skip it while streaming so frames stay smooth.
-        let busy = self.live.is_some() || self.mirror.is_some();
+        let busy = self.streaming() || self.mirror.is_some();
         if !busy && self.last_ble_scan.is_none_or(|t| t.elapsed() >= BLE_RESCAN) {
             self.peers = scan_ble();
             self.last_ble_scan = Some(Instant::now());

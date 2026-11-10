@@ -1,6 +1,8 @@
-import { Cable, Keyboard, LayoutGrid, Lock, Monitor, Settings2, Sparkles, Workflow, type LucideIcon } from "lucide-react";
+import { Cable, Keyboard, LayoutGrid, Lock, Monitor, Settings2, Sparkles, Timer, Workflow, type LucideIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { Feature } from "../bindings/Feature";
 import { connectionKey, useT, type MessageKey } from "../lib/i18n";
+import { PHASE_COLOR, fmtClock, remainingNow, usePomodoro } from "../lib/pomodoro";
 import { useActiveKeyboard, useApp, type PageId } from "../lib/store";
 import { useUnsaved } from "../lib/unsaved";
 
@@ -81,6 +83,8 @@ export function Sidebar() {
         </div>
       </nav>
 
+      <PomodoroChip />
+
       <div className="card flex items-center gap-3 rounded-2xl px-3.5 py-3">
         <span
           className={`h-2 w-2 shrink-0 rounded-full ${kb ? "bg-ok shadow-[0_0_8px_var(--ok)]" : "bg-ink-3"}`}
@@ -93,5 +97,47 @@ export function Sidebar() {
         {kb?.battery && <span className="num text-[12px] text-ink-2">%{kb.battery.percent}</span>}
       </div>
     </aside>
+  );
+}
+
+/** The running Pomodoro, on every page; opens its section. */
+function PomodoroChip() {
+  const t = useT();
+  const p = usePomodoro((x) => x.state);
+  const setPage = useApp((s) => s.setPage);
+  const [, tick] = useState(0);
+  const running = p?.status === "running";
+  useEffect(() => {
+    if (!running) return;
+    const id = window.setInterval(() => tick((n) => n + 1), 500);
+    return () => window.clearInterval(id);
+  }, [running]);
+  if (!p || p.status === "idle") return null;
+  const color = PHASE_COLOR[p.phase];
+  const phase =
+    p.phase === "focus" ? t("pomo.phase.focus") : p.phase === "shortBreak" ? t("pomo.phase.shortBreak") : t("pomo.phase.longBreak");
+  return (
+    <button
+      type="button"
+      title={t("pomo.go")}
+      onClick={() => {
+        setPage("screen");
+        window.setTimeout(() => document.querySelector("[data-pomodoro]")?.scrollIntoView({ behavior: "smooth", block: "start" }), 300);
+      }}
+      className="flex items-center gap-3 rounded-2xl border border-line px-3.5 py-2.5 text-left hover:bg-surface/60"
+      data-pomo-chip
+    >
+      <Timer size={16} style={{ color }} />
+      <span className="min-w-0 flex-1 leading-tight">
+        <span className="block text-[11px] text-ink-3">
+          {phase} · {t("pomo.round")} {p.round}/{p.settings.rounds}
+        </span>
+        <span className="num block text-[15px] font-semibold">
+          {fmtClock(remainingNow(p))}
+          {p.status === "paused" && <span className="ml-1.5 text-[11px] font-normal text-ink-3">{t("pomo.paused")}</span>}
+        </span>
+      </span>
+      <span className="h-2 w-2 rounded-full" style={{ background: color, boxShadow: `0 0 8px ${color}` }} aria-hidden />
+    </button>
   );
 }

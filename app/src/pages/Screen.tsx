@@ -22,6 +22,7 @@ import {
 } from "./screen/common";
 import { FileFlow, FileTile } from "./screen/FileFlow";
 import { LivePanel } from "./screen/LivePanel";
+import { PomodoroPanel } from "./screen/PomodoroPanel";
 import { MatchLightsDialog } from "./screen/MatchLights";
 import { SlideFlow, SlideTile } from "./screen/SlideFlow";
 import { TextFlow, TextTile } from "./screen/TextFlow";
@@ -71,6 +72,7 @@ export function Screen({ kb }: { kb: KeyboardInfo }) {
 
       <Studio kb={kb} usb={usb} loaded={loaded} />
       <LivePanel usb={usb} />
+      <PomodoroPanel usb={usb} />
       <LibraryCard kb={kb} usb={usb} />
     </div>
   );
