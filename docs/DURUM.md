@@ -47,7 +47,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | **Ekran Stüdyosu**: dosyadan (resim, GIF, video; kırpma, süre), yazı kartları (5 şablon), slayt; önizleme, onay, kütüphane, fabrika animasyonuna dönüş | ✅ Kullanıcı klavyede hepsini denedi (maddeler 23–25). |
 | Ekran → **Işıkları uydur**: görselin paletinden tuş tasarımı (degrade, tek renk, görsel), Işıklar'da taslak | ✅ Kullanıcı mor kartta klavyede doğruladı (madde 26). |
 | Ekran → **Canlı ekran**: canlı mod, günlük yükleme bütçesi, "Çalan şarkı" kartı, kapatınca önceki görseli geri yükleme | ✅ Kullanıcı klavyede denedi (madde 27). |
-| Ekran → **Odak zamanlayıcısı** (Pomodoro tekniği): odak ve mola süreleri; bütün klavye fazın rengiyle dolu başlar ve süre azaldıkça seçilen yönde boşalır (flash'sız; yön, renkler, parlaklık, nabız, faz geçişi, ses seçilebilir; "Klavyede dene"); faz başında ekran kartı; kenar çubuğunda kalan süre | ⏳ Zamanlayıcı ve ışık katmanı gerçek uygulamada ve klavyede denendi (CDP, günlük). Kullanıcının gözle denemesi ve ekran kartının klavyede yüklenmesi bekliyor (madde 28). |
+| Araçlar → **Odak zamanlayıcısı** (Pomodoro tekniği): odak ve mola süreleri; bütün klavye fazın rengiyle dolu başlar ve süre azaldıkça seçilen yönde boşalır (flash'sız; yön, renkler, parlaklık, nabız, faz geçişi, ses seçilebilir; "Klavyede dene"); faz başında ekran kartı; kenar çubuğunda kalan süre | ⏳ Zamanlayıcı ve ışık katmanı gerçek uygulamada ve klavyede denendi (CDP, günlük). Kullanıcının gözle denemesi ve ekran kartının klavyede yüklenmesi bekliyor (madde 28). |
 
 ## 3. Kronoloji: ne yaptık, neden
 
@@ -435,6 +435,20 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Tarayıcıda sahte arka uç ve 15 deneme görseliyle: sayfa sayfa gösterme, süzgeç, arama ve "eşleşen yok" durumu; sekme hafızası; Canlı ekrandan Odak zamanlayıcısına bağlantı; yarım kart sekme değişince korunuyor.
       - Gerçek uygulamada (CDP) üç sekme ve kullanıcının kütüphanesi.
 
+30. **Odak zamanlayıcısı kendi sayfasında (Araçlar).**
+    - **Kullanıcının sorusu (2026-11-10):** Odak zamanlayıcısı hem Ekran'ın ayrı bir sekmesindeydi hem de Canlı ekran'ın kaynak listesinde bir satırdı; ikisinde de aynı "ekran kartı" anahtarı vardı. "Doğru yerde mi?"
+    - **Karar:** Hayır.
+      - Işık tasarımından sonra zamanlayıcının asıl çıktısı bütün klavyenin ışığı; ekran kartı bir seçenek ve canlı mod olmadan da çalışıyor. Onu Ekran'ın altında aramak doğal değil.
+      - Aynı ayarın iki yerde olması da karışıklık yaratıyordu.
+    - **Yeni düzen:**
+      - Kenar çubuğunda yeni bir **Araçlar** grubu ve içinde **Odak zamanlayıcısı** sayfası. İleride gelecek canlı ışık araçları (CPU/GPU barı, ses düzeyi, mikrofon) da buraya.
+      - Ekran sayfasında iki sekme kaldı: Görseller ve Canlı ekran. "Klavyede şu an" ikisinde de üstte. Eski kayıtlı `focus` sekmesi Görseller'e düşer.
+      - Canlı ekran'ın kaynak listesindeki zamanlayıcı satırı kaldırıldı. Önce anahtarsız bir durum satırı olarak bırakılmıştı. Kullanıcı "orada bir işlevi var mı?" diye sordu; yoktu, yalnızca başka sayfaya yönlendiriyordu. Ayarın ve bütçe hesabının tek yeri zamanlayıcının sayfası.
+      - Canlı ekran yine de zamanlayıcıyı gösteriyor, hem de iş başındayken: durum satırı "Ekranda: Odak zamanlayıcısı · Odak 1/4" diye yazar. Çalan şarkı satırı "Odak zamanlayıcısı çalışırken bekliyor" der.
+      - Zamanlayıcı sayfasında canlı mod kapalıyken "Canlı ekrana git" Ekran sayfasını Canlı ekran sekmesinde açar.
+      - Kenar çubuğundaki kalan süre kutusu zamanlayıcının kendi sayfasında gizlenir (aynı bilgi sayfada var). Kutuya tıklayınca zamanlayıcı sayfası açılır.
+    - **Doğrulama:** Tarayıcıda sahte arka uçla bütün bağlantılar ve kenar çubuğu. Gerçek uygulamada (CDP) zamanlayıcı sayfası, Ekran'ın iki sekmesi ve kaynak satırı.
+
 ## 4. Sistem nasıl kurulu (as-built)
 
 ```
@@ -586,6 +600,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 41 | Türkçe arayüze "Pomodoro" ve "flash" girdi | Tekniğin yabancı adı ve teknik terim, Türkçe metne olduğu gibi yazıldı | Türkçe sayfada yalnız Türkçe içerik: yabancı adın Türkçe karşılığını kullan ("Odak zamanlayıcısı", "kalıcı bellek"). Emin değilsen TDK sözlüğüne bak (`sozluk.gov.tr/gts?ara=…`). Yabancı ad gerekiyorsa yalnız belgelerde, parantez içinde. |
 | 42 | Uygulamadaki odak önizlemesinde renk neredeyse görünmedi | Klavye çizimi ışığı gerçekteki gibi tuşun altından hafif bir parlama olarak gösteriyor; küçük boyutta bu sönük kalıyor | Amaç bir hareketi anlatmaksa tuşları düz renkle çiz (sohbetteki önizlemenin onaylanan hâli). Gerçekçi çizim, ışığın tasarımına bakılan yerde kalsın. |
 | 43 | Tarayıcı testinde eklenen deneme görselleri sayfada görünmedi | `import('/src/lib/screen.ts')` uygulamanın kullandığı modül değildi: oturumda değişen dosyaları Vite `?t=…` ile yüklüyor, düz adres ayrı bir kopya açıyor | Test için modül alırken uygulamanın yüklediği adresi kullan: `performance.getEntriesByType('resource')` içinden bul. |
+| 44 | Canlı ekranda işlevsiz bir zamanlayıcı satırı kaldı | Çift anahtar kaldırıldı ama satır "bilgi" diye bırakıldı; yalnızca yönlendiriyordu | Bir şeyi taşırken eski yerde bir kalıntı bırakma: o yerde kullanıcının yapabileceği bir şey yoksa satır da olmasın. Bilgi zaten iş başındayken görünüyorsa (durum satırı) yeter. |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 
