@@ -402,14 +402,17 @@ const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 
 /** RGBA (240×135) → RGB565. Ordered (Bayer 4×4) dithering spreads the
  *  RGB565 steps so gradients do not band; it is stable from frame to frame,
- *  so animations do not shimmer. */
-export function toRgb565(rgba: Uint8ClampedArray, dither: boolean): Uint16Array {
+ *  so animations do not shimmer. `dither` may be a per-pixel mask (non-zero =
+ *  dither): text cards dither only their background and keep text crisp. */
+export function toRgb565(rgba: Uint8ClampedArray, dither: boolean | Uint8Array): Uint16Array {
   const out = new Uint16Array(FRAME_PIXELS);
+  const mask = typeof dither === "boolean" ? null : dither;
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const i = y * W + x;
       const p = i * 4;
-      const t = dither ? (BAYER4[(y & 3) * 4 + (x & 3)]! + 0.5) / 16 : 0.5;
+      const on = mask ? mask[i] !== 0 : dither;
+      const t = on ? (BAYER4[(y & 3) * 4 + (x & 3)]! + 0.5) / 16 : 0.5;
       const r = Math.min(31, Math.floor((rgba[p]! * 31) / 255 + t));
       const g = Math.min(63, Math.floor((rgba[p + 1]! * 63) / 255 + t));
       const b = Math.min(31, Math.floor((rgba[p + 2]! * 31) / 255 + t));
