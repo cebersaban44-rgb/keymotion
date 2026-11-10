@@ -72,7 +72,7 @@ export function Screen({ kb }: { kb: KeyboardInfo }) {
 
       <Studio kb={kb} usb={usb} loaded={loaded} />
       <LivePanel usb={usb} />
-      <PomodoroPanel usb={usb} />
+      <PomodoroPanel kb={kb} usb={usb} />
       <LibraryCard kb={kb} usb={usb} />
     </div>
   );

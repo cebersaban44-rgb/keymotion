@@ -2,7 +2,7 @@ import { Cable, Keyboard, LayoutGrid, Lock, Monitor, Settings2, Sparkles, Timer,
 import { useEffect, useState } from "react";
 import type { Feature } from "../bindings/Feature";
 import { connectionKey, useT, type MessageKey } from "../lib/i18n";
-import { PHASE_COLOR, fmtClock, remainingNow, usePomodoro } from "../lib/pomodoro";
+import { fmtClock, phaseColor, remainingNow, usePomodoro } from "../lib/pomodoro";
 import { useActiveKeyboard, useApp, type PageId } from "../lib/store";
 import { useUnsaved } from "../lib/unsaved";
 
@@ -113,7 +113,7 @@ function PomodoroChip() {
     return () => window.clearInterval(id);
   }, [running]);
   if (!p || p.status === "idle") return null;
-  const color = PHASE_COLOR[p.phase];
+  const color = phaseColor(p.settings, p.phase);
   const phase =
     p.phase === "focus" ? t("pomo.phase.focus") : p.phase === "shortBreak" ? t("pomo.phase.shortBreak") : t("pomo.phase.longBreak");
   return (

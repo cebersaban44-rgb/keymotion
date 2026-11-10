@@ -10,7 +10,7 @@ import type { LiveState } from "../../bindings/LiveState";
 import { Segmented, Toggle } from "../../components/controls";
 import { useT, type MessageKey } from "../../lib/i18n";
 import { fmtWait, useLive } from "../../lib/live";
-import { PHASE_COLOR, fmtClock, remainingNow, usePomodoro } from "../../lib/pomodoro";
+import { fmtClock, phaseColor, remainingNow, usePomodoro } from "../../lib/pomodoro";
 import { uploadSeconds } from "../../lib/screenImport";
 import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useNow } from "./common";
 
@@ -304,7 +304,7 @@ function PomodoroSource() {
         <span className="flex items-center gap-2">
           <span
             className="h-2 w-2 rounded-full"
-            style={{ background: idle ? "var(--ink-3)" : PHASE_COLOR[p.phase] }}
+            style={{ background: idle ? "var(--ink-3)" : phaseColor(p.settings, p.phase) }}
             aria-hidden
           />
           {idle ? (

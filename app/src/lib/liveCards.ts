@@ -5,7 +5,7 @@ import type { PomodoroCard } from "../bindings/PomodoroCard";
 import type { PomodoroPhase } from "../bindings/PomodoroPhase";
 import type { PomodoroSettings } from "../bindings/PomodoroSettings";
 import type { TrackInfo } from "../bindings/TrackInfo";
-import { PHASE_COLOR } from "./pomodoro";
+import { phaseColor } from "./pomodoro";
 import { H, STILL_DELAY_MS, W, type Prepared } from "./screenImport";
 import { compose565, makeLayers } from "./screenText";
 
@@ -230,7 +230,7 @@ export async function pomodoroCard(c: PomodoroCard, s: PomodoroSettings, w: Pomo
   const done = c.kind === "done";
   // A finished series gets a check; one ended early shows its rounds.
   const check = done && c.complete;
-  const color = done ? (check ? PHASE_COLOR.shortBreak : PHASE_COLOR.focus) : PHASE_COLOR[c.phase];
+  const color = phaseColor(s, done ? (check ? "shortBreak" : "focus") : c.phase);
   const tone = hexRgb(color);
   const light = tone.map((v) => Math.round(v + (255 - v) * 0.35)) as [number, number, number];
   const endTime = new Date(c.endedMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });

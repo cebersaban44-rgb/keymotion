@@ -1,13 +1,17 @@
-//! Pomodoro (phase C, second source): a focus/break timer.
+//! Odak zamanlayıcısı (the Pomodoro technique; phase C, second source):
+//! a focus/break timer.
 //!
 //! * The timer runs here, not in the webview, so it keeps time while the
 //!   window is hidden (hidden pages get their timers throttled).
-//! * Progress shows on the key lights as a background live layer (`04 20`,
-//!   RAM only, no flash write): F1–F12 fill up in the phase colour, the
-//!   digit keys count the finished rounds, Esc shows the phase, and the
-//!   whole board blinks twice when a phase starts. A preview the user edits
-//!   on the Lighting page goes on top (`device::Request::SetAmbient`). When
-//!   the timer stops, the keyboard goes back to its saved effect.
+//! * The whole keyboard shows the phase as a background live layer (`04 20`,
+//!   RAM only, no flash write): it is full in the phase colour when a phase
+//!   starts and empties in the chosen direction as time runs out, so the
+//!   light left is the time left (owner's design, 2026-11-10). The light
+//!   left breathes in the last minute; a paused timer dims and breathes
+//!   slowly; a phase starts with two blinks or a wave of the new colour.
+//!   A preview the user edits on the Lighting page goes on top
+//!   (`device::Request::SetAmbient`). When the timer stops, the keyboard
+//!   goes back to its saved effect. "Klavyede dene" plays a short run.
 //! * When a phase starts the UI is asked for a card (`pomodoro-card`
 //!   event), which goes through the live mode like any other source:
 //!   budget, newest card wins. While the timer runs it holds the screen, so
@@ -16,13 +20,13 @@
 
 use crate::device::{DeviceHandle, LiveFrame, Request};
 use crate::dto::{
-    Connection, PomodoroCard, PomodoroCardKind, PomodoroPhase, PomodoroSettings, PomodoroState, PomodoroStatus,
-    PomodoroSummary,
+    Connection, PomodoroCard, PomodoroCardKind, PomodoroMotion, PomodoroPhase, PomodoroSettings, PomodoroState,
+    PomodoroStatus, PomodoroSummary, PomodoroTransition,
 };
 use crate::live::{now_ms, LiveHandle};
 use crate::settings;
 use kb_devices::Model;
-use kb_protocol::sonix::Rgb;
+use kb_protocol::sonix::{level_factor, Rgb};
 use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
@@ -38,26 +42,35 @@ pub const SOURCE: &str = "pomodoro";
 const FILE: &str = "pomodoro.json";
 const VERSION: u32 = 1;
 const MINUTE_MS: f64 = 60_000.0;
-/// Light frames are worked out this often while they show.
-const TICK: Duration = Duration::from_millis(100);
+/// Light frames are worked out this often while they show (the device
+/// sends one every 50 ms).
+const TICK: Duration = Duration::from_millis(50);
 const IDLE: Duration = Duration::from_secs(60);
-/// The blink when a phase starts; the card is asked for after it, so the
-/// upload (which pauses the live layer) does not cut it short.
+/// The blink or wave when a phase starts; the card is asked for after it,
+/// so the upload (which pauses the live layer) does not cut it short.
 const FLASH_MS: f64 = 1_000.0;
 
-const FOCUS: Rgb = [255, 80, 20];
-const SHORT: Rgb = [30, 220, 100];
-const LONG: Rgb = [40, 140, 255];
-/// Unfilled part of the bar, so the track stays visible.
+/// Keys the light has left: dim, so the empty part stays visible.
 const TRACK: f32 = 0.08;
-/// Finished rounds on the digit keys.
-const ROUND: f32 = 0.45;
-/// Bar while paused, at the low point of its blink.
-const PAUSE_LOW: f32 = 0.2;
-const PAUSE_PERIOD_MS: f64 = 1_200.0;
-/// The bar's partly filled key changes in this many steps, so frames go
-/// to the keyboard only when something visible changed.
+/// Width of the edge between lit and dark keys, as a share of the keyboard:
+/// the key on the edge dims slowly instead of switching off.
+const EDGE: f32 = 0.04;
+/// Paused: the whole keyboard dims and breathes slowly between these.
+const PAUSE_LOW: f32 = 0.15;
+const PAUSE_HIGH: f32 = 0.35;
+const PAUSE_PERIOD_MS: f64 = 3_000.0;
+/// Last minute: the whole keyboard breathes. The light left dips to this
+/// share and the dim part rises to `PULSE_TRACK`, in step, so the pulse is
+/// seen even when only a few keys are still lit.
+const PULSE_LOW: f32 = 0.45;
+const PULSE_TRACK: f32 = 0.22;
+const PULSE_PERIOD_MS: f64 = 1_600.0;
+/// Light levels change in this many steps, so frames go to the keyboard
+/// only when something visible changed.
 const STEPS: f32 = 32.0;
+/// "Klavyede dene": a focus phase and a break, much shorter.
+const TRY_FOCUS_MS: f64 = 8_000.0;
+const TRY_BREAK_MS: f64 = 3_000.0;
 
 /// What the UI asks the timer to do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
@@ -70,18 +83,8 @@ pub enum PomodoroAction {
     /// End the current phase now.
     Skip,
     Stop,
-}
-
-fn phase_color(p: PomodoroPhase) -> Rgb {
-    match p {
-        PomodoroPhase::Focus => FOCUS,
-        PomodoroPhase::ShortBreak => SHORT,
-        PomodoroPhase::LongBreak => LONG,
-    }
-}
-
-fn scale(c: Rgb, k: f32) -> Rgb {
-    c.map(|v| (f32::from(v) * k.clamp(0.0, 1.0)).round() as u8)
+    /// Show a short run on the keys (only while idle).
+    Try,
 }
 
 // ------------------------------------------------------------------ timer
@@ -242,6 +245,7 @@ impl Timer {
             at_ms: now,
             focus_done: self.focus_done,
             last: self.last,
+            trying: false,
         }
     }
 
@@ -262,97 +266,198 @@ impl Timer {
 
 // ----------------------------------------------------------------- lights
 
-/// Which LEDs the Pomodoro uses on a model.
+/// Where each key sits, as a share (0–1) of the span of the key centres.
 #[derive(Debug, Clone, Default, PartialEq)]
 struct KeyMap {
-    /// Progress bar, left to right (F1–F12, or the digit row).
-    bar: Vec<u8>,
-    /// Finished rounds: the digit keys 1–8.
-    rounds: Vec<u8>,
-    /// Shows the phase colour.
-    phase: Option<u8>,
-    /// Every key, for the blink.
-    all: Vec<u8>,
+    keys: Vec<(u8, f32, f32)>,
 }
 
 impl KeyMap {
     fn of(model: &Model) -> Self {
         let Some(g) = &model.geometry else { return Self::default() };
-        let find = |id: &str| g.keys.iter().find(|k| k.id == id);
-        let row = |ids: &[&str]| {
-            let mut keys: Vec<_> = ids.iter().filter_map(|id| find(id)).collect();
-            keys.sort_by(|a, b| a.x.total_cmp(&b.x));
-            keys.into_iter().map(|k| k.led).collect::<Vec<u8>>()
+        let centres: Vec<(u8, f32, f32)> = g.keys.iter().map(|k| (k.led, k.x + k.w / 2.0, k.y + k.h / 2.0)).collect();
+        let span = |pick: fn(&(u8, f32, f32)) -> f32| {
+            let lo = centres.iter().map(pick).fold(f32::INFINITY, f32::min);
+            let hi = centres.iter().map(pick).fold(f32::NEG_INFINITY, f32::max);
+            (lo, (hi - lo).max(f32::EPSILON))
         };
-        let digits = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
-        let fkeys = ["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12"];
-        let fbar = row(&fkeys);
-        let (bar, rounds) = if fbar.len() >= 4 {
-            (fbar, digits[..8].iter().filter_map(|id| find(id)).map(|k| k.led).collect())
-        } else {
-            // No function row: the digits carry the bar and the rounds go.
-            (row(&digits), Vec::new())
-        };
-        Self { bar, rounds, phase: find("esc").map(|k| k.led), all: g.keys.iter().map(|k| k.led).collect() }
+        let (x0, xs) = span(|k| k.1);
+        let (y0, ys) = span(|k| k.2);
+        Self { keys: centres.iter().map(|&(l, x, y)| (l, (x - x0) / xs, (y - y0) / ys)).collect() }
     }
 }
 
-/// The key colours for the timer at `now` (UI colours, before calibration).
-/// Empty when nothing should show.
-fn light_frame(map: &KeyMap, t: &Timer, rounds: u8, now: f64) -> Vec<(u8, Rgb)> {
+/// Where a key sits along the drain: keys with a higher value go dark first.
+fn drain_order(motion: PomodoroMotion, x: f32, y: f32) -> f32 {
+    match motion {
+        PomodoroMotion::RightToLeft => x,
+        PomodoroMotion::LeftToRight => 1.0 - x,
+        PomodoroMotion::TopToBottom => 1.0 - y,
+        PomodoroMotion::ToCenter => (x - 0.5).abs() * 2.0,
+        PomodoroMotion::Fade => 0.0,
+    }
+}
+
+/// Light (0–1) of a key at `order` when `left` (0–1) of the phase is left.
+fn lit(motion: PomodoroMotion, order: f32, left: f32) -> f32 {
+    let left = left.clamp(0.0, 1.0);
+    if motion == PomodoroMotion::Fade {
+        return left;
+    }
+    let edge = left * (1.0 + 2.0 * EDGE) - EDGE;
+    ((edge - order) / EDGE + 0.5).clamp(0.0, 1.0)
+}
+
+/// The last minute of a phase, or its last 15 % when it is short.
+fn pulse_window(phase_ms: f64) -> f64 {
+    (phase_ms * 0.15).min(60_000.0)
+}
+
+/// 0–1, one cycle every `period` ms.
+fn breathe(now: f64, period: f64) -> f32 {
+    (0.5 + 0.5 * (std::f64::consts::TAU * now / period).cos()) as f32
+}
+
+fn scale(c: Rgb, k: f32) -> Rgb {
+    let k = ((k.clamp(0.0, 1.0)) * STEPS).round() / STEPS;
+    c.map(|v| (f32::from(v) * k).round() as u8)
+}
+
+/// The first second of a phase: two blinks of the whole keyboard, or the
+/// new colour washing in from the side that stays lit longest.
+fn transition_frame(map: &KeyMap, s: &PomodoroSettings, color: Rgb, since: f64) -> Vec<(u8, Rgb)> {
+    match s.transition {
+        PomodoroTransition::Blink => {
+            let on = since < 220.0 || (420.0..640.0).contains(&since);
+            map.keys.iter().map(|&(l, _, _)| (l, if on { color } else { [0, 0, 0] })).collect()
+        }
+        PomodoroTransition::Wave => {
+            let fill = (since / FLASH_MS) as f32;
+            map.keys
+                .iter()
+                .map(|&(l, x, y)| {
+                    let on = lit(s.motion, drain_order(s.motion, x, y), fill);
+                    (l, scale(color, TRACK + (1.0 - TRACK) * on))
+                })
+                .collect()
+        }
+    }
+}
+
+/// Key colours for the timer at `now` (UI colours, before calibration and
+/// brightness). Empty when nothing should show.
+fn light_frame(map: &KeyMap, t: &Timer, s: &PomodoroSettings, now: f64) -> Vec<(u8, Rgb)> {
     if t.status == PomodoroStatus::Idle {
         return Vec::new();
     }
-    let color = phase_color(t.phase);
+    let color = s.color(t.phase);
     let since = now - t.started;
     if (0.0..FLASH_MS).contains(&since) {
-        // Two blinks of the whole board in the new phase's colour.
-        let on = since < 220.0 || (420.0..640.0).contains(&since);
-        return map.all.iter().map(|&l| (l, if on { color } else { [0, 0, 0] })).collect();
+        return transition_frame(map, s, color, since);
     }
-    let blink = if t.status == PomodoroStatus::Paused {
-        let in_period = (now - t.started).rem_euclid(PAUSE_PERIOD_MS);
-        if in_period < PAUSE_PERIOD_MS * 0.6 {
-            1.0
-        } else {
-            PAUSE_LOW
-        }
-    } else {
-        1.0
-    };
-    let progress = if t.phase_ms > 0.0 { (t.elapsed(now) / t.phase_ms) as f32 } else { 0.0 };
-    let filled = progress.clamp(0.0, 1.0) * map.bar.len() as f32;
-    let mut out: Vec<(u8, Rgb)> = map.all.iter().map(|&l| (l, [0, 0, 0])).collect();
-    let mut set = |led: u8, c: Rgb| {
-        if let Some(slot) = out.iter_mut().find(|(l, _)| *l == led) {
-            slot.1 = c;
-        } else {
-            out.push((led, c));
-        }
-    };
-    for (i, &led) in map.bar.iter().enumerate() {
-        let part = (filled - i as f32).clamp(0.0, 1.0);
-        let part = (part * STEPS).floor() / STEPS;
-        set(led, scale(color, (TRACK + (1.0 - TRACK) * part) * blink));
-    }
-    for (i, &led) in map.rounds.iter().enumerate().take(usize::from(rounds)) {
-        let done = i < usize::from(t.focus_done);
-        set(led, if done { scale(FOCUS, ROUND) } else { scale(FOCUS, TRACK) });
-    }
-    if let Some(led) = map.phase {
-        set(led, color);
-    }
-    out
+    let elapsed = t.elapsed(now);
+    let left = if t.phase_ms > 0.0 { (1.0 - elapsed / t.phase_ms) as f32 } else { 0.0 };
+    let pulsing = s.pulse && t.status == PomodoroStatus::Running && t.phase_ms - elapsed <= pulse_window(t.phase_ms);
+    map.keys
+        .iter()
+        .map(|&(led, x, y)| {
+            let on = lit(s.motion, drain_order(s.motion, x, y), left);
+            let level = if t.status == PomodoroStatus::Paused {
+                (TRACK + (1.0 - TRACK) * on) * (PAUSE_LOW + (PAUSE_HIGH - PAUSE_LOW) * breathe(now, PAUSE_PERIOD_MS))
+            } else if pulsing {
+                // Dark keys rise and lit keys dip in step: one breath.
+                let b = breathe(now, PULSE_PERIOD_MS);
+                let track = TRACK + (PULSE_TRACK - TRACK) * b;
+                let level = track + (1.0 - track) * on;
+                if on > 0.5 {
+                    level * (PULSE_LOW + (1.0 - PULSE_LOW) * b)
+                } else {
+                    level
+                }
+            } else {
+                TRACK + (1.0 - TRACK) * on
+            };
+            (led, scale(color, level))
+        })
+        .collect()
 }
 
-/// After the series: the same two blinks in green, then the layer stops.
-fn done_frame(map: &KeyMap, ended: f64, now: f64) -> Option<Vec<(u8, Rgb)>> {
+/// After the series: two blinks in the short break's colour, then the
+/// layer stops.
+fn done_frame(map: &KeyMap, s: &PomodoroSettings, ended: f64, now: f64) -> Option<Vec<(u8, Rgb)>> {
     let since = now - ended;
     if !(0.0..FLASH_MS).contains(&since) {
         return None;
     }
     let on = since < 220.0 || (420.0..640.0).contains(&since);
-    Some(map.all.iter().map(|&l| (l, if on { SHORT } else { [0, 0, 0] })).collect())
+    Some(map.keys.iter().map(|&(l, _, _)| (l, if on { s.short_color } else { [0, 0, 0] })).collect())
+}
+
+/// "Klavyede dene": the same light as a real series, but a focus phase of
+/// 8 s and a break of 3 s. `None` once it is over.
+fn try_frame(map: &KeyMap, s: &PomodoroSettings, start: f64, now: f64) -> Option<Vec<(u8, Rgb)>> {
+    let t = now - start;
+    let phase = |phase, at: f64, len: f64| Timer {
+        status: PomodoroStatus::Running,
+        phase,
+        phase_ms: len,
+        anchor: at,
+        started: at,
+        ..Timer::default()
+    };
+    if t < 0.0 {
+        None
+    } else if t < TRY_FOCUS_MS {
+        Some(light_frame(map, &phase(PomodoroPhase::Focus, start, TRY_FOCUS_MS), s, now))
+    } else if t < TRY_FOCUS_MS + TRY_BREAK_MS {
+        Some(light_frame(map, &phase(PomodoroPhase::ShortBreak, start + TRY_FOCUS_MS, TRY_BREAK_MS), s, now))
+    } else {
+        done_frame(map, s, start + TRY_FOCUS_MS + TRY_BREAK_MS, now)
+    }
+}
+
+/// The Windows notification sound, without waiting for it.
+fn play_sound() {
+    std::thread::Builder::new()
+        .name("pomodoro-sound".into())
+        .spawn(|| {
+            if let Err(e) = sound::play() {
+                tracing::debug!("notification sound not played: {e}");
+            }
+        })
+        .ok();
+}
+
+#[cfg(windows)]
+mod sound {
+    use windows::core::HSTRING;
+    use windows::Foundation::Uri;
+    use windows::Media::Core::MediaSource;
+    use windows::Media::Playback::MediaPlayer;
+
+    pub fn play() -> windows::core::Result<()> {
+        let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+        let media = std::path::Path::new(&root).join("Media");
+        let file = ["Windows Notify System Generic.wav", "Windows Notify.wav"]
+            .iter()
+            .map(|f| media.join(f))
+            .find(|p| p.exists())
+            .ok_or_else(|| windows::core::Error::from(windows::core::HRESULT(0x8007_0002_u32 as i32)))?;
+        let url = format!("file:///{}", file.to_string_lossy().replace('\\', "/").replace(' ', "%20"));
+        let player = MediaPlayer::new()?;
+        player.SetSource(&MediaSource::CreateFromUri(&Uri::CreateUri(&HSTRING::from(url))?)?)?;
+        player.Play()?;
+        // Keep the player alive while the sound plays.
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        Ok(())
+    }
+}
+
+#[cfg(not(windows))]
+mod sound {
+    pub fn play() -> Result<(), String> {
+        Err("no notification sound on this system".into())
+    }
 }
 
 // ----------------------------------------------------------------- worker
@@ -366,8 +471,12 @@ struct Inner {
     cards_wanted: bool,
     /// The series ended at this time: the green blink shows until then + FLASH_MS.
     done_at: Option<f64>,
-    /// Last frame handed to the device, to send only changes.
-    sent: Option<Vec<(u8, Rgb)>>,
+    /// "Klavyede dene" started at this time.
+    trying: Option<f64>,
+    /// The sound of the try's phase change was played.
+    try_sounded: bool,
+    /// Last frame (and brightness) handed to the device, to send only changes.
+    sent: Option<(Vec<(u8, Rgb)>, u8)>,
     model: Option<(String, KeyMap)>,
 }
 
@@ -402,6 +511,8 @@ impl PomodoroHandle {
             card_at: None,
             cards_wanted: false,
             done_at: None,
+            trying: None,
+            try_sounded: false,
             sent: None,
             model: None,
         }));
@@ -427,7 +538,9 @@ impl PomodoroHandle {
 
     pub fn state(&self) -> Result<PomodoroState, String> {
         let inner = self.inner.lock().map_err(|_| "pomodoro unavailable")?;
-        Ok(inner.timer.state(inner.settings, now_ms()))
+        let mut state = inner.timer.state(inner.settings, now_ms());
+        state.trying = inner.trying.is_some();
+        Ok(state)
     }
 
     fn emit(&self) {
@@ -441,6 +554,9 @@ impl PomodoroHandle {
         let step = {
             let mut inner = self.inner.lock().map_err(|_| "pomodoro unavailable")?;
             let s = inner.settings;
+            if action != PomodoroAction::Try {
+                inner.trying = None;
+            }
             match action {
                 PomodoroAction::Start => inner.timer.start(&s, now),
                 PomodoroAction::Pause => {
@@ -449,6 +565,14 @@ impl PomodoroHandle {
                 }
                 PomodoroAction::Skip => inner.timer.advance(&s, now),
                 PomodoroAction::Stop => inner.timer.stop(now),
+                PomodoroAction::Try => {
+                    if inner.timer.status == PomodoroStatus::Idle {
+                        inner.trying = Some(now);
+                        inner.try_sounded = false;
+                        inner.done_at = None;
+                    }
+                    None
+                }
             }
         };
         tracing::info!(?action, "pomodoro");
@@ -514,12 +638,17 @@ impl PomodoroHandle {
     fn tick(&self, device: &DeviceHandle) -> Duration {
         let now = now_ms();
         let live_on = self.live.enabled();
-        let step = {
+        let (step, sound) = {
             let Ok(mut inner) = self.inner.lock() else { return IDLE };
             let s = inner.settings;
-            inner.timer.tick(&s, now)
+            (inner.timer.tick(&s, now), s.sound)
         };
         if let Some(step) = step {
+            // The phase ended by itself: the sound is for this moment only
+            // (not for buttons the user pressed).
+            if sound {
+                play_sound();
+            }
             self.stepped(step, now);
             self.emit();
         }
@@ -549,21 +678,59 @@ impl PomodoroHandle {
 
         // Lights.
         let map = self.key_map(&mut inner, device);
+        let mut try_ended = false;
         let frame = match (&map, s.lights) {
-            (Some(map), true) if running => Some(light_frame(map, &inner.timer, s.rounds, now)),
-            (Some(map), true) => inner.done_at.and_then(|at| done_frame(map, at, now)),
-            _ => None,
+            (Some(map), true) => {
+                if let Some(at) = inner.trying {
+                    if s.sound && !inner.try_sounded && now - at >= TRY_FOCUS_MS {
+                        inner.try_sounded = true;
+                        play_sound();
+                    }
+                    let f = try_frame(map, &s, at, now);
+                    if f.is_none() {
+                        inner.trying = None;
+                        try_ended = true;
+                    }
+                    f
+                } else if running {
+                    Some(light_frame(map, &inner.timer, &s, now))
+                } else {
+                    inner.done_at.and_then(|at| done_frame(map, &s, at, now))
+                }
+            }
+            _ => {
+                // No keyboard on the cable, or lights off: a try has nothing to show.
+                try_ended = inner.trying.take().is_some();
+                None
+            }
         }
-        .filter(|f| !f.is_empty());
+        .filter(|f| !f.is_empty())
+        .map(|f| (f, s.brightness));
         if frame.is_none() && inner.done_at.is_some_and(|at| now - at >= FLASH_MS) {
             inner.done_at = None;
         }
         if frame != inner.sent {
-            let _ = device.send(Request::SetAmbient(frame.clone().map(|colors| LiveFrame { colors, level: 1.0 })));
+            let _ = device.send(Request::SetAmbient(
+                frame.clone().map(|(colors, b)| LiveFrame { colors, level: level_factor(b) }),
+            ));
             inner.sent = frame;
         }
+        if try_ended {
+            drop(inner);
+            self.emit();
+            return self.tick_wait();
+        }
 
-        let lights_on = inner.sent.is_some();
+        Self::wait_for(&inner, now)
+    }
+
+    fn tick_wait(&self) -> Duration {
+        self.inner.lock().map(|inner| Self::wait_for(&inner, now_ms())).unwrap_or(IDLE)
+    }
+
+    /// How long the worker may sleep.
+    fn wait_for(inner: &Inner, now: f64) -> Duration {
+        let lights_on = inner.sent.is_some() || inner.trying.is_some();
         let mut wait = if lights_on { TICK } else { IDLE };
         if inner.timer.status == PomodoroStatus::Running {
             let left = inner.timer.phase_ms - (now - inner.timer.anchor);
@@ -600,7 +767,7 @@ mod tests {
     use super::*;
 
     fn s() -> PomodoroSettings {
-        PomodoroSettings { focus_min: 25, short_min: 5, long_min: 15, rounds: 2, lights: true, screen: true }
+        PomodoroSettings { rounds: 2, ..PomodoroSettings::default() }
     }
 
     const M: f64 = MINUTE_MS;
@@ -690,66 +857,151 @@ mod tests {
         KeyMap::of(model)
     }
 
+    fn color(f: &[(u8, Rgb)], led: u8) -> Rgb {
+        f.iter().find(|(l, _)| *l == led).unwrap().1
+    }
+
+    /// LEDs of the AK980 PRO: Esc 1 (top left), F12 13, Del 119 (top right
+    /// of the main block), Num Lock 32, keypad + 123 (right edge).
+    const ESC: u8 = 1;
+    const KP_PLUS: u8 = 123;
+
     #[test]
-    fn the_bar_is_the_function_row() {
+    fn every_key_takes_part() {
         let map = ak980();
-        assert_eq!(map.bar, (2..=13).collect::<Vec<u8>>(), "F1–F12 are LEDs 2–13");
-        assert_eq!(map.phase, Some(1));
-        assert_eq!(map.rounds.len(), 8);
-        assert!(map.all.len() > 90);
+        assert_eq!(map.keys.len(), 97);
+        assert!(map.keys.iter().all(|&(_, x, y)| (0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y)));
     }
 
     #[test]
-    fn the_bar_fills_with_the_phase() {
+    fn a_phase_starts_full_and_empties_in_the_chosen_direction() {
         let map = ak980();
         let s = s();
         let mut t = Timer::default();
         t.start(&s, 0.0);
-        let color = |f: &[(u8, Rgb)], led: u8| f.iter().find(|(l, _)| *l == led).unwrap().1;
-        // During the blink the whole board shows the phase colour.
-        let f = light_frame(&map, &t, s.rounds, 100.0);
-        assert!(f.iter().all(|(_, c)| *c == FOCUS));
-        assert_eq!(f.len(), map.all.len());
-        // Half way: F1–F6 full, F7–F12 dim, Esc in the phase colour.
-        let f = light_frame(&map, &t, s.rounds, 12.5 * M);
-        assert_eq!(color(&f, 2), FOCUS);
-        assert_eq!(color(&f, 7), FOCUS);
-        assert_eq!(color(&f, 8), scale(FOCUS, TRACK));
-        assert_eq!(color(&f, 13), scale(FOCUS, TRACK));
-        assert_eq!(color(&f, 1), FOCUS);
-        // No round finished yet: the digit keys are dim.
-        let one = map.rounds[0];
-        assert_eq!(color(&f, one), scale(FOCUS, TRACK));
-        // In the break the first round is lit and the bar is green.
+        // Just after the blink: the whole keyboard in the focus colour.
+        let f = light_frame(&map, &t, &s, 2_000.0);
+        assert_eq!(f.len(), 97);
+        assert!(f.iter().all(|(_, c)| *c == s.focus_color), "full at the start");
+        // Right to left (default): half way, the left is lit and the right is dim.
+        let f = light_frame(&map, &t, &s, 12.5 * M);
+        assert_eq!(color(&f, ESC), s.focus_color);
+        assert_eq!(color(&f, KP_PLUS), scale(s.focus_color, TRACK));
+        // Left to right: the other way round.
+        let ltr = PomodoroSettings { motion: PomodoroMotion::LeftToRight, ..s };
+        let f = light_frame(&map, &t, &ltr, 12.5 * M);
+        assert_eq!(color(&f, ESC), scale(s.focus_color, TRACK));
+        assert_eq!(color(&f, KP_PLUS), s.focus_color);
+        // Fade: every key at the same level.
+        let fade = PomodoroSettings { motion: PomodoroMotion::Fade, ..s };
+        let f = light_frame(&map, &t, &fade, 12.5 * M);
+        assert!(f.iter().all(|(_, c)| *c == f[0].1));
+        // Nearly over (pulse off): only the dim track is left.
+        let still = PomodoroSettings { pulse: false, ..s };
+        let f = light_frame(&map, &t, &still, 25.0 * M - 1.0);
+        assert!(f.iter().all(|(_, c)| *c == scale(s.focus_color, TRACK)));
+    }
+
+    #[test]
+    fn top_to_bottom_and_to_center_empty_the_right_keys_first() {
+        let map = ak980();
+        let s = s();
+        let mut t = Timer::default();
+        t.start(&s, 0.0);
+        let at = 15.0 * M; // 40 % left
+        let ttb = PomodoroSettings { motion: PomodoroMotion::TopToBottom, ..s };
+        let f = light_frame(&map, &t, &ttb, at);
+        let space = map.keys.iter().find(|k| k.2 > 0.99).unwrap().0; // bottom row
+        assert_eq!(color(&f, ESC), scale(s.focus_color, TRACK), "top goes dark first");
+        assert_eq!(color(&f, space), s.focus_color);
+        let mid = PomodoroSettings { motion: PomodoroMotion::ToCenter, ..s };
+        let f = light_frame(&map, &t, &mid, at);
+        let centre = map.keys.iter().min_by(|a, b| (a.1 - 0.5).abs().total_cmp(&(b.1 - 0.5).abs())).unwrap().0;
+        assert_eq!(color(&f, ESC), scale(s.focus_color, TRACK), "edges go dark first");
+        assert_eq!(color(&f, centre), s.focus_color);
+    }
+
+    #[test]
+    fn breaks_use_their_own_colour() {
+        let map = ak980();
+        let s = PomodoroSettings { short_color: [10, 20, 200], ..s() };
+        let mut t = Timer::default();
+        t.start(&s, 0.0);
         t.tick(&s, 25.0 * M);
-        let f = light_frame(&map, &t, s.rounds, 26.0 * M);
-        assert_eq!(color(&f, one), scale(FOCUS, ROUND));
-        assert_eq!(color(&f, 1), SHORT);
-        // Idle: nothing.
-        t.stop(27.0 * M);
-        assert!(light_frame(&map, &t, s.rounds, 27.0 * M).is_empty());
+        let f = light_frame(&map, &t, &s, 25.0 * M + 2_000.0);
+        assert!(f.iter().all(|(_, c)| *c == [10, 20, 200]));
     }
 
     #[test]
-    fn a_paused_bar_blinks_and_a_still_one_does_not_change() {
+    fn the_last_minute_breathes_and_a_pause_dims() {
         let map = ak980();
         let s = s();
         let mut t = Timer::default();
         t.start(&s, 0.0);
-        let a = light_frame(&map, &t, s.rounds, 60_000.0);
-        let b = light_frame(&map, &t, s.rounds, 60_100.0);
-        assert_eq!(a, b, "the same frame within one step");
-        t.pause(60_000.0);
-        let high = light_frame(&map, &t, s.rounds, 60_000.0 + 100.0);
-        let low = light_frame(&map, &t, s.rounds, 60_000.0 + 1_000.0);
-        assert_ne!(high, low);
+        // Last minute: the whole keyboard breathes, the dark part too.
+        let a = light_frame(&map, &t, &s, 24.5 * M);
+        let b = light_frame(&map, &t, &s, 24.5 * M + PULSE_PERIOD_MS / 4.0);
+        assert_ne!(color(&a, KP_PLUS), color(&b, KP_PLUS));
+        // With the pulse off it does not.
+        let still = PomodoroSettings { pulse: false, ..s };
+        let a = light_frame(&map, &t, &still, 24.5 * M);
+        let b = light_frame(&map, &t, &still, 24.5 * M + PULSE_PERIOD_MS / 4.0);
+        assert_eq!(color(&a, KP_PLUS), color(&b, KP_PLUS));
+        // Earlier the frame stays the same within a step.
+        let a = light_frame(&map, &t, &s, 5.0 * M);
+        let b = light_frame(&map, &t, &s, 5.0 * M + 100.0);
+        assert_eq!(a, b);
+        // Paused: never brighter than PAUSE_HIGH of the colour.
+        t.pause(5.0 * M);
+        let f = light_frame(&map, &t, &s, 6.0 * M);
+        let max = f32::from(s.focus_color[0]) * PAUSE_HIGH + 1.0;
+        assert!(f.iter().all(|(_, c)| f32::from(c[0]) <= max));
     }
 
     #[test]
-    fn the_series_ends_with_a_green_blink() {
+    fn a_phase_starts_with_a_blink_or_a_wave() {
         let map = ak980();
-        assert!(done_frame(&map, 0.0, 100.0).unwrap().iter().all(|(_, c)| *c == SHORT));
-        assert!(done_frame(&map, 0.0, 300.0).unwrap().iter().all(|(_, c)| *c == [0, 0, 0]));
-        assert!(done_frame(&map, 0.0, FLASH_MS).is_none());
+        let s = s();
+        let mut t = Timer::default();
+        t.start(&s, 0.0);
+        assert!(light_frame(&map, &t, &s, 100.0).iter().all(|(_, c)| *c == s.focus_color));
+        assert!(light_frame(&map, &t, &s, 300.0).iter().all(|(_, c)| *c == [0, 0, 0]));
+        // Wave (right to left): the left fills first.
+        let wave = PomodoroSettings { transition: PomodoroTransition::Wave, ..s };
+        let f = light_frame(&map, &t, &wave, 400.0);
+        assert_eq!(color(&f, ESC), s.focus_color);
+        assert_eq!(color(&f, KP_PLUS), scale(s.focus_color, TRACK));
+    }
+
+    #[test]
+    fn idle_shows_nothing_and_the_series_ends_with_two_blinks() {
+        let map = ak980();
+        let s = s();
+        assert!(light_frame(&map, &Timer::default(), &s, 0.0).is_empty());
+        assert!(done_frame(&map, &s, 0.0, 100.0).unwrap().iter().all(|(_, c)| *c == s.short_color));
+        assert!(done_frame(&map, &s, 0.0, 300.0).unwrap().iter().all(|(_, c)| *c == [0, 0, 0]));
+        assert!(done_frame(&map, &s, 0.0, FLASH_MS).is_none());
+    }
+
+    #[test]
+    fn the_try_runs_focus_then_break_then_stops() {
+        let map = ak980();
+        let s = s();
+        assert!(try_frame(&map, &s, 0.0, 500.0).unwrap().iter().all(|(_, c)| *c == s.focus_color));
+        let f = try_frame(&map, &s, 0.0, TRY_FOCUS_MS + 1_500.0).unwrap();
+        assert_eq!(color(&f, ESC), s.short_color);
+        assert!(try_frame(&map, &s, 0.0, TRY_FOCUS_MS + TRY_BREAK_MS + 100.0).is_some(), "end blink");
+        assert!(try_frame(&map, &s, 0.0, TRY_FOCUS_MS + TRY_BREAK_MS + FLASH_MS).is_none());
+    }
+
+    #[test]
+    fn old_settings_files_get_the_new_light_settings() {
+        let old = r#"{"focusMin":30,"shortMin":5,"longMin":15,"rounds":4,"lights":true,"screen":false}"#;
+        let s: PomodoroSettings = serde_json::from_str(old).unwrap();
+        assert_eq!(s.focus_min, 30);
+        assert!(!s.screen);
+        assert_eq!(s.motion, PomodoroMotion::RightToLeft);
+        assert_eq!(s.focus_color, PomodoroSettings::default().focus_color);
+        assert_eq!(s.brightness, 4);
     }
 }

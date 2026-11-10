@@ -3,4 +3,4 @@
 /**
  * What the UI asks the timer to do.
  */
-export type PomodoroAction = "start" | "pause" | "skip" | "stop";
+export type PomodoroAction = "start" | "pause" | "skip" | "stop" | "try";

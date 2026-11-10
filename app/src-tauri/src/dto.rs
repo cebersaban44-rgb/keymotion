@@ -1059,6 +1059,38 @@ pub enum PomodoroStatus {
     Paused,
 }
 
+/// How the light leaves the keyboard while a phase runs. The keyboard is
+/// full at the start of a phase and empties towards its end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum PomodoroMotion {
+    /// The right side goes dark first; the light ends on the left.
+    #[default]
+    RightToLeft,
+    /// The left side goes dark first.
+    LeftToRight,
+    /// The top rows go dark first, like a level falling.
+    TopToBottom,
+    /// Both sides go dark first; the light ends in the middle.
+    ToCenter,
+    /// The whole keyboard dims evenly.
+    Fade,
+}
+
+/// What the keys do when a phase starts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum PomodoroTransition {
+    /// The whole keyboard blinks twice in the new colour.
+    #[default]
+    Blink,
+    /// The new colour washes over the keyboard from the side that stays
+    /// lit longest.
+    Wave,
+}
+
 /// Pomodoro settings (persisted in `pomodoro.json`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(default, rename_all = "camelCase")]
@@ -1076,11 +1108,38 @@ pub struct PomodoroSettings {
     pub lights: bool,
     /// A card on the screen when a phase starts (through the live mode).
     pub screen: bool,
+    pub motion: PomodoroMotion,
+    /// Phase colours (UI colours, sRGB).
+    pub focus_color: [u8; 3],
+    pub short_color: [u8; 3],
+    pub long_color: [u8; 3],
+    /// Light brightness in the keyboard's own steps, 1–5.
+    pub brightness: u8,
+    /// The light that is left breathes in the last minute of a phase.
+    pub pulse: bool,
+    pub transition: PomodoroTransition,
+    /// The Windows notification sound when a phase ends by itself.
+    pub sound: bool,
 }
 
 impl Default for PomodoroSettings {
     fn default() -> Self {
-        Self { focus_min: 25, short_min: 5, long_min: 15, rounds: 4, lights: true, screen: true }
+        Self {
+            focus_min: 25,
+            short_min: 5,
+            long_min: 15,
+            rounds: 4,
+            lights: true,
+            screen: true,
+            motion: PomodoroMotion::default(),
+            focus_color: [255, 80, 20],
+            short_color: [30, 220, 100],
+            long_color: [40, 140, 255],
+            brightness: 4,
+            pulse: true,
+            transition: PomodoroTransition::default(),
+            sound: false,
+        }
     }
 }
 
@@ -1091,7 +1150,16 @@ impl PomodoroSettings {
             short_min: self.short_min.clamp(1, 60),
             long_min: self.long_min.clamp(1, 60),
             rounds: self.rounds.clamp(1, 8),
+            brightness: self.brightness.clamp(1, 5),
             ..self
+        }
+    }
+
+    pub fn color(&self, phase: PomodoroPhase) -> [u8; 3] {
+        match phase {
+            PomodoroPhase::Focus => self.focus_color,
+            PomodoroPhase::ShortBreak => self.short_color,
+            PomodoroPhase::LongBreak => self.long_color,
         }
     }
 
@@ -1137,6 +1205,8 @@ pub struct PomodoroState {
     pub focus_done: u8,
     /// The last series, once the timer is idle again.
     pub last: Option<PomodoroSummary>,
+    /// "Klavyede dene" is showing a short run on the keys.
+    pub trying: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
