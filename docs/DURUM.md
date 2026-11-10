@@ -44,7 +44,9 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | Genel Bakış → **Klavye saati**: bağlanınca otomatik eşitleme (günde en fazla bir kez, kapatılabilir), "Şimdi eşitle", son eşitleme zamanı | ✅ Uygulamada uçtan uca denendi; kullanıcı ekrandaki saatin doğru olduğunu onayladı. |
 | **Tuş Atama**: temel ve Fn katmanı; tuş, kısayol (Ctrl/Shift/Alt/Win + tuş), medya, fare, tekerlek, devre dışı; taslak, kaydet, geri al, katmanı fabrika ayarına döndür; sayfada tuş testi kutusu | ✅ CLI ve uygulamayla klavyeye yazıldı; kullanıcı tuşlara basarak doğruladı (madde 19). |
 | **Makrolar**: liste, tuşlara basarak kayıt (konuma göre), adım düzenleyici (bekleme, sıralama, fare tıklaması), bellek göstergesi, kaydet ve geri al; Tuş Atama'da "Makro" seçici ve oynatma biçimi | ✅ Uygulamadan klavyeye yazıldı; kullanıcı basarak doğruladı (madde 20, 21). |
-| Ekran sayfası | ⏳ "Yapım aşamasında" yer tutucu |
+| **Ekran Stüdyosu**: dosyadan (resim, GIF, video; kırpma, süre), yazı kartları (5 şablon), slayt; önizleme, onay, kütüphane, fabrika animasyonuna dönüş | ✅ Kullanıcı klavyede hepsini denedi (maddeler 23–25). |
+| Ekran → **Işıkları uydur**: görselin paletinden tuş tasarımı (degrade, tek renk, görsel), Işıklar'da taslak | ✅ Kullanıcı mor kartta klavyede doğruladı (madde 26). |
+| Ekran → **Canlı ekran**: canlı mod, günlük yükleme bütçesi, "Çalan şarkı" kartı, kapatınca önceki görseli geri yükleme | ✅ Kullanıcı klavyede denedi (madde 27). |
 
 ## 3. Kronoloji: ne yaptık, neden
 
@@ -343,6 +345,13 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
         - Canlı mod zaten kapalıyken ekranda kart kaldıysa Canlı ekran bölümünde aynı seçenek bir satır olarak duruyor.
         - Kullanıcının mevcut durumu: ilk kart eski kodla yüklendiği için önceki görsel kaydedilmemişti. `library.json`'a elle `before = "Slayt · 3 görsel"` yazıldı (yedek: `library.json.bak-before-restore-fix`).
       - **"12 sn geç değil mi?":** Haklı. Bekleme 4 sn'ye indi. Kapak geç gelirse en çok 3 yoklama (3 sn) daha beklenir. Şarkının başlangıcından ekranda görünmesine kadar artık yaklaşık 7 sn (4 sn bekleme + 3 sn yükleme).
+      - **Kullanıcı ikisini de klavyede denedi, "başarılı":**
+        - Kart 4 sn beklemeyle geldi (yükleme 2,7 sn).
+        - Canlı mod kapanınca "Önceki görseli geri yükle" seçildi; kullanıcının elle yüklediği "cat" 37 sn'de geri geldi.
+    - **Arada bulunan hatalar:**
+      - CI'da rustfmt hatası. Ders §6: push etmeden önce CI adımlarını yerelde çalıştır.
+      - Uygulama dal değişimi sırasında açılınca pencere boş kaldı. Ders §6.
+    - **PR:** [#25](https://github.com/cebersaban44-rgb/klavye-studio/pull/25) (canlı mod, bütçe, çalan şarkı), [#26](https://github.com/cebersaban44-rgb/klavye-studio/pull/26) (kapatınca geri yükleme, 4 sn).
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -484,6 +493,11 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 32 | Yeni açılış kodu (klavye düzeni okuma) çalışmadı gibi göründü | Vite'ın anlık yenilemesi (HMR) `App`'in açılış etkilerini yeniden çalıştırmadı | Açılışta çalışan kodu denerken sayfayı yeniden yükle (`location.reload()`); yedeklenen `window` değişkenleri de silinir, karşılaştırmayı kayıtlı değerle yap. |
 | 33 | (incelemede yakalandı) Seçici her çağrıda yeni `Set` döndürüyordu | zustand + React 19 `useSyncExternalStore`: değişen anlık görüntü sonsuz yeniden çizime yol açar | Seçiciden yalnızca ilkel değer (sayı, metin) ya da depodaki nesnenin kendisini döndür; türetilmiş nesneyi bileşende kur. |
 | 34 | "Kaydet" düğmesi iki anlama geliyordu | Türkçede "kaydet" hem kayıt almak hem saklamak | Kayıt düğmesi "Kayda başla / Kaydı durdur"; saklama "Klavyeye kaydet". Arayüz metinlerini bağlam içinde, yan yana duran düğmelerle birlikte oku. |
+| 35 | "Işıkları uydur çalışmıyor" | Tuşlar yanıyordu; palete beyaz yazı giriyordu, ortalı kartta renk sırası rastgeleydi | "Çalışmıyor"un ne demek olduğunu önce kanıtla ayır: günlük, CLI ile donanım testi, sonra kullanıcıya kısa ve seçenekli bir soru. LED paletinde gerçek renk varken beyaz, gri ve siyahı ele. |
+| 36 | Slaytta yanlış küçük resim | Slayt anahtarları modül düzeyindeki bir sayaçtan geliyordu; HMR sayacı sıfırladı, anahtarlar çakıştı | Önbellek anahtarı olan kimlikleri bileşen başına (`useRef`) üret. Konsoldaki "same key" uyarısı bunun işaretidir. |
+| 37 | Canlı kart yüklenince GIF önizlemesi yenilenmedi | "İlk durum" `null` ile ayırt ediliyordu; ilk gerçek değişiklik de `null`'dan geliyordu | "Henüz bilinmiyor" için `undefined`, "yok" için `null` kullan. |
+| 38 | CI'da yalnızca rustfmt kırıldı | Push'tan önce `cargo fmt --check` çalıştırılmadı | Push'tan önce CI'ın adımlarını yerelde çalıştır: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `pnpm --dir app build`. |
+| 39 | Uygulama penceresi boş kaldı ("crash oldu herhalde") | Uygulama yeniden başlatıldıktan hemen sonra `git stash` + `switch` yapıldı; arayüz Vite'tan yüklenirken dosyalar geçici olarak eksikti | Önce dalı hazırla, uygulamayı en son başlat. Başlattıktan sonra çalışma ağacını değiştirme; şüphede CDP ile sayfanın çizildiğini doğrula (bkz. #25). |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 
@@ -491,7 +505,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 
 1. `git switch develop && git pull`, sonra yeni iş için dal aç. PR açınca auto-merge ve auto-fix'i aç (`gelistirme-akisi.md`).
 2. **Tuş atama ve makrolar bitti** (madde 19–21). Klavye fabrika durumunda: atama varsayılan, makro yok; `keymap.json` ve `macros.json` kayıtları da öyle.
-3. **Sıradaki iş: Ekran.** Derin araştırma bitti (2026-11-10): `research/ekran-derin-arastirma.md`.
+3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Sıradaki iş: Faz C'nin ikinci adımı, Pomodoro** (aşağıda).
    - **Kullanıcının isteği:** "Ürünün farkı burada ortaya çıkacak." Ayrıca: "Buradaki görüntüyü de kaybetmeyelim" (stok ana sayfa) ve "birden fazla ekran görüntüsü veya başka ne yapabiliriz".
    - **Kısa sonuçlar:**
      - Resim ve GIF: evet, en çok 140 kare.
@@ -507,10 +521,13 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
    - **Kullanıcının ilkesi (2026-11-10):** "Her ne yüklenirse yüklensin" dosya olduğu gibi gönderilmez. Uygulama onu klavyenin biçimine çevirir, önizletir, kullanıcı onaylarsa yükler. Ayrıntı: `research/ekran-derin-arastirma.md` §3.1.
    - **Sıradaki adımlar:**
      1. **Faz A bitti** (madde 23): Ekran Stüdyosu sayfası; kullanıcı kendi resim ve GIF'iyle denedi, E2 (kalıcılık) geçti.
-     2. **Faz B bitti** (maddeler 24–26): kaynak seçici, yazı kartları, slayt, ışıkları ekrana uydurma. Tarayıcıda sahte arka uçla doğrulandı.
-        - Klavyede denenmesi gerekiyor: bir yazı kartı, bir slayt ve "Işıkları uydur". Kullanıcının onayıyla ya da kendi yüklemesiyle yapılır.
-     3. **Faz C sürüyor:** ilk adım (bütçe + "Çalan şarkı", madde 27) yapıldı. Sırada Pomodoro (kart + LED), sonra LED canlı katmanı. E3 (panelin gerçek kare hızı) hâlâ ölçülmedi.
-     4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar 4 yükleme: E1, E4 ve kullanıcının 2 yüklemesi.
+     2. **Faz B bitti** (maddeler 24–26): kaynak seçici, yazı kartları, slayt, ışıkları ekrana uydurma. Kullanıcı klavyede denedi; "Işıkları uydur"un renkleri düzeltildi ve onaylandı.
+     3. **Faz C sürüyor:** ilk adım bitti ve kullanıcı klavyede denedi (madde 27): canlı mod, bütçe, "Çalan şarkı", kapatınca önceki görseli geri yükleme.
+        - **Sıradaki: Pomodoro.** Faz değişince ekranda kart ("Odak 25:00" / "Mola"); ilerleme tuş ışıklarında (`04 20`, flash'sız). Canlı modun kaynağı olarak, "Çalan şarkı" gibi.
+        - Ardından: LED canlı katmanı (CPU/GPU barı, ses düzeyi, mikrofon kapalı uyarısı), takvim, hatırlatıcı, oyun oturumu.
+        - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
+        - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.
+     4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar **13** yükleme: uygulamanın kaydında 11 (elle, canlı ve geri yükleme), CLI ile E1 ve E4.
    - **Faz B planı** (hepsi yapıldı, maddeler 24–26; plan kayıt için duruyor):
      - **Kullanıcının arayüz kuralı** (2026-11-10, Faz A geri bildirimi):
        - adımlar görünür olsun;
@@ -556,7 +573,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
        - Seçim Işıklar sayfasında **taslak** olarak açılır: `useLighting` `setTab` / `setEffect` / `setPerKey`. Canlı önizleme tuşlarda (RAM) görünür; flash'a yazım yalnızca kullanıcı orada kaydedince olur, mevcut akış ve kapatma uyarısı korunur.
        - Not: kullanıcının kayıtlı ışığı şu an mod 0 (Kapalı).
      - **Sıra:** yeniden düzenleme → B1 → B2 → B3. Her biri ayrı PR olabilir. Donanım testi yalnızca kullanıcının onayıyla ya da kullanıcının kendi yüklemesiyle yapılır.
-   - **Faz C planı** (bütçe ve "Çalan şarkı" yapıldı, madde 27; gerisi bekliyor). Ayrıntılı araştırma `research/ekran-ve-veri-kaynaklari.md`'de: tasarım §3.4, Windows veri kaynakları §5, plan "Faz 2".
+   - **Faz C planı** (bütçe, "Çalan şarkı" ve kapatınca geri yükleme yapıldı, madde 27; gerisi bekliyor). Not: "Çalan şarkı" bekleme süresi kullanıcının isteğiyle 4 sn; plandaki "Kapanışta iki seçenek" geri yükleme / kartı bırak olarak yapıldı. Ayrıntılı araştırma `research/ekran-ve-veri-kaynaklari.md`'de: tasarım §3.4, Windows veri kaynakları §5, plan "Faz 2".
      - **İlke:**
        - Ekran = olay tabanlı bağlam: bir sonraki olaya kadar doğru kalan içerik.
        - LED = gerçek zamanlı veri (`04 20`, RAM, flash'a yazmaz; 30–70 fps).
@@ -655,11 +672,13 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
   - [ ] Oynatma biçimleri "tekrar basana kadar" ve "basılı tuttukça" klavyede denenmedi.
   - [ ] Metinden makro (yazı yaz) sunulmuyor: HID kodları konuma göre; düzene göre karakter → tuş eşlemesi gerekir (Keyboard Map API'nin tersi).
   - [ ] Kayıt sırasında fare tıklamaları yakalanmıyor (yalnızca "+ tık" düğmeleri). Windows tuşu ve Alt+Tab gibi sistem kısayolları tarayıcıda yakalanamıyor.
-- [ ] **Ekran** (`04 72` + FF68). **Sıradaki iş.** Araştırma bitti: `research/ekran-derin-arastirma.md` ("Sıradaki oturum için", madde 3).
+- [ ] **Ekran** (`04 72` + FF68). Faz A, Faz B ve Faz C'nin ilk adımı bitti, kullanıcı klavyede denedi (maddeler 22–27). **Sıradaki: Pomodoro** ("Sıradaki oturum için", madde 3).
   - Paketler **WriteFile** ile gönderilir, SET_REPORT ile değil (kardeş kartı çökertmiş). `04 F0` asla gönderilmez.
   - En fazla 140 kare ve 2215 sayfa; gecikme 1–254.
-  - Yüklenen görüntü ayrı, tam ekran GIF sayfasında görünüyor (kaynaklar); E1 ile doğrulanacak.
-  - Ekran Stüdyosu: resim/GIF/video, slayt, kütüphane ve fabrika yedeği; sonra kartlar ve olay tabanlı canlı kartlar (günde 24 yükleme varsayılan bütçe).
+  - [x] Yüklenen görüntü ayrı, tam ekran GIF sayfasında görünüyor (E1).
+  - [x] Ekran Stüdyosu: resim/GIF/video, yazı kartları, slayt, kütüphane, fabrika yedeği, ışıkları ekrana uydurma.
+  - [x] Canlı mod: günlük bütçe (varsayılan 24), "Çalan şarkı", kapatınca önceki görsele dönüş.
+  - [ ] Faz C'nin geri kalanı: Pomodoro, LED canlı katmanı, takvim, hatırlatıcı, oyun oturumu.
 - [ ] **Kendi firmware katmanımız** (kullanıcının fikri, 2026-11-10; araştırma hattı, şimdilik yapılmıyor). Stok firmware'de olmayan canlı ekranı (RAM'den çizim) kendi firmware'imizle ya da stok firmware'e yamayla eklemek.
   - Emsal: kardeş AK820 Pro'da QMK portu ve Jackrabbit firmware'i; panoyu firmware çiziyor, flash aşınması yok.
   - Proje kuralıyla çakışıyor: klavyeye firmware, bootloader ya da ISP komutu gönderilmez. Bu kuralı yalnızca kullanıcı kaldırabilir.
@@ -722,7 +741,9 @@ Kullanıcıyla kararlaştırıldı (2026-11-10): Şu an her özellik yalnızca *
 
 ## 8. Açık sorular
 
-- Yüklenen ekran görüntüsünün yeri ve tek kare için gecikme baytı (`00` mı `01` mi).
+- ~~Yüklenen ekran görüntüsünün yeri ve tek kare için gecikme baytı.~~ GIF sayfası (Fn+Home); tek kare için bayt 50 (100 ms) kullanılıyor ve çalışıyor.
+- Ekran panelinin gerçek kare hızı (E3). Kayan yazı ve slayt şimdilik fabrika animasyonunun kanıtlanmış hızında (10 fps) varsayılıyor.
+- Saat paketi (`04 28`) flash'a yazıyor mu? Odak kronometresi fikri buna bağlı.
 - ~~Firmware efektleri rengi kendisi gamma'lıyor mu?~~ Hayır (madde 15).
 - `F5`'te kaybolan kırmızı üst bit başka bir yerden okunabilir mi? Okunabilirse aynadaki son belirsizlik de kalkar.
 - ~~`04 02` sağlama toplamı 16 bitte taşınca nasıl davranıyor?~~ Firmware 16 bitte sarıyor (97 beyaz tuşluk tabloyla doğrulandı).
