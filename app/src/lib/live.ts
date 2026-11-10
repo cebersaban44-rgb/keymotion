@@ -36,6 +36,7 @@ const mock = {
     nowPlaying: true,
     track: null,
     restore: null,
+    held: false,
   } as LiveState,
   /** What the mock GIF page showed before the first live card. */
   before: null as { id: string; name: string; frames: number; pages: number } | null,
@@ -47,6 +48,13 @@ const mock = {
 
 function mockEmit() {
   mock.emit?.({ ...mock.state });
+}
+
+/** The mock Pomodoro holds the screen (browser preview only). */
+export function mockLiveHeld(held: boolean) {
+  if (inTauri || mock.state.held === held) return;
+  mock.state.held = held;
+  mockEmit();
 }
 
 /** A pretend song, so the flow can be tried in the browser. */
@@ -81,7 +89,8 @@ async function mockTrackLoop() {
     const settled = { ...track, settled: true };
     mock.state.track = settled;
     mockEmit();
-    mock.onTrack?.(settled);
+    // Like the backend: no song card while the Pomodoro holds the screen.
+    if (!mock.state.held) mock.onTrack?.(settled);
     mock.timer = 0;
   }, 3000);
 }

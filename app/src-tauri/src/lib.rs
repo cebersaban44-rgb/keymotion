@@ -8,18 +8,20 @@ mod device;
 mod dto;
 mod live;
 mod now_playing;
+mod pomodoro;
 mod screen_lib;
 mod settings;
 
 use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request};
 use dto::{
     Calibration, CalibrationInfo, ClockStatus, EffectInfo, EffectRequest, KeyAssignment, KeyboardInfo, KeymapCatalog,
-    KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, ScreenItem,
-    ScreenItemKind, ScreenState, ThemePreference, UiEnvironment,
+    KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, PomodoroSettings,
+    PomodoroState, ScreenItem, ScreenItemKind, ScreenState, ThemePreference, UiEnvironment,
 };
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
 use live::LiveHandle;
 use now_playing::NowPlaying;
+use pomodoro::{PomodoroAction, PomodoroHandle};
 use screen_lib::ScreenLibrary;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -43,6 +45,7 @@ struct CloseGuard {
 type Device<'a> = State<'a, Arc<DeviceHandle>>;
 type Library<'a> = State<'a, Arc<Mutex<ScreenLibrary>>>;
 type Live<'a> = State<'a, Arc<LiveHandle>>;
+type Pomodoro<'a> = State<'a, Arc<PomodoroHandle>>;
 
 fn lock_library(lib: &Mutex<ScreenLibrary>) -> Result<std::sync::MutexGuard<'_, ScreenLibrary>, String> {
     lib.lock().map_err(|_| "screen library unavailable".to_string())
@@ -200,6 +203,26 @@ fn live_submit(live: Live<'_>, request: tauri::ipc::Request<'_>) -> Result<LiveS
 #[tauri::command]
 fn now_playing_cover(now_playing: State<'_, Arc<NowPlaying>>) -> Result<tauri::ipc::Response, String> {
     now_playing.cover().map(tauri::ipc::Response::new).ok_or_else(|| "no cover".to_string())
+}
+
+/// The Pomodoro timer.
+#[tauri::command]
+fn pomodoro_state(pomodoro: Pomodoro<'_>) -> Result<PomodoroState, String> {
+    pomodoro.state()
+}
+
+/// Start, pause, skip or stop the Pomodoro.
+#[tauri::command]
+fn pomodoro_control(pomodoro: Pomodoro<'_>, action: PomodoroAction) -> Result<PomodoroState, String> {
+    tracing::debug!(?action, "ipc: pomodoro_control");
+    pomodoro.control(action)
+}
+
+/// New Pomodoro settings (saved).
+#[tauri::command]
+fn pomodoro_configure(pomodoro: Pomodoro<'_>, settings: PomodoroSettings) -> Result<PomodoroState, String> {
+    tracing::debug!(?settings, "ipc: pomodoro_configure");
+    pomodoro.configure(settings)
 }
 
 #[tauri::command]
@@ -482,9 +505,10 @@ pub fn run() {
             let config_dir = app.path().app_config_dir().map_err(|e| tracing::warn!("no config directory: {e}")).ok();
             let calibration = config_dir.as_deref().map(settings::load_calibration).unwrap_or_default();
             let library = Arc::new(Mutex::new(ScreenLibrary::open(config_dir.as_deref())));
-            let device = Arc::new(device::spawn(app.handle().clone(), calibration, config_dir));
+            let device = Arc::new(device::spawn(app.handle().clone(), calibration, config_dir.clone()));
             let live = LiveHandle::spawn(app.handle().clone(), library.clone(), device.clone());
             app.manage(now_playing::spawn(app.handle().clone(), live.clone()));
+            app.manage(PomodoroHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir));
             app.manage(library);
             app.manage(device);
             app.manage(live);
@@ -523,7 +547,10 @@ pub fn run() {
             live_state,
             live_configure,
             live_submit,
-            now_playing_cover
+            now_playing_cover,
+            pomodoro_state,
+            pomodoro_control,
+            pomodoro_configure
         ])
         .run(tauri::generate_context!())
         .expect("error while running Klavye Stüdyo");

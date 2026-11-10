@@ -1034,4 +1034,136 @@ pub struct LiveState {
     /// A live card is on the GIF page and this library item was there
     /// before it.
     pub restore: Option<LiveRestore>,
+    /// The Pomodoro holds the screen while it runs: "Çalan şarkı" waits.
+    pub held: bool,
+}
+
+/// Pomodoro phase.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum PomodoroPhase {
+    #[default]
+    Focus,
+    ShortBreak,
+    LongBreak,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum PomodoroStatus {
+    #[default]
+    Idle,
+    Running,
+    Paused,
+}
+
+/// Pomodoro settings (persisted in `pomodoro.json`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct PomodoroSettings {
+    /// Minutes of one focus phase (1–120).
+    pub focus_min: u16,
+    /// Minutes of a short break (1–60).
+    pub short_min: u16,
+    /// Minutes of the long break that ends a series (1–60).
+    pub long_min: u16,
+    /// Focus phases in one series (1–8).
+    pub rounds: u8,
+    /// Progress on the key lights (RAM only, no flash write).
+    pub lights: bool,
+    /// A card on the screen when a phase starts (through the live mode).
+    pub screen: bool,
+}
+
+impl Default for PomodoroSettings {
+    fn default() -> Self {
+        Self { focus_min: 25, short_min: 5, long_min: 15, rounds: 4, lights: true, screen: true }
+    }
+}
+
+impl PomodoroSettings {
+    pub fn sanitized(self) -> Self {
+        Self {
+            focus_min: self.focus_min.clamp(1, 120),
+            short_min: self.short_min.clamp(1, 60),
+            long_min: self.long_min.clamp(1, 60),
+            rounds: self.rounds.clamp(1, 8),
+            ..self
+        }
+    }
+
+    pub fn minutes(&self, phase: PomodoroPhase) -> u16 {
+        match phase {
+            PomodoroPhase::Focus => self.focus_min,
+            PomodoroPhase::ShortBreak => self.short_min,
+            PomodoroPhase::LongBreak => self.long_min,
+        }
+    }
+}
+
+/// How the last series ended.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PomodoroSummary {
+    /// Focus phases finished (or skipped forward).
+    pub focus_done: u8,
+    /// Minutes actually spent in focus.
+    pub focus_min: u32,
+    /// All rounds done, the long break included.
+    pub complete: bool,
+    pub ended_ms: f64,
+}
+
+/// Pomodoro state (`pomodoro` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PomodoroState {
+    pub settings: PomodoroSettings,
+    pub status: PomodoroStatus,
+    pub phase: PomodoroPhase,
+    /// Focus round the current phase belongs to (1-based).
+    pub round: u8,
+    /// Length of the current phase.
+    pub phase_ms: f64,
+    /// Time left in the phase as of `at_ms` (counts down from there while
+    /// running).
+    pub remaining_ms: f64,
+    pub at_ms: f64,
+    pub focus_done: u8,
+    /// The last series, once the timer is idle again.
+    pub last: Option<PomodoroSummary>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum PomodoroCardKind {
+    /// A phase started.
+    Phase,
+    /// The timer stopped: a summary that stays true afterwards.
+    Done,
+}
+
+/// A card the UI should draw and hand to the live mode
+/// (`pomodoro-card` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PomodoroCard {
+    pub kind: PomodoroCardKind,
+    pub phase: PomodoroPhase,
+    pub round: u8,
+    pub rounds: u8,
+    /// Phase length in minutes.
+    pub minutes: u16,
+    pub focus_done: u8,
+    pub focus_min: u32,
+    /// Summary: every round was done, the long break included.
+    pub complete: bool,
+    pub ended_ms: f64,
 }
