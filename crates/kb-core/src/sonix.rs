@@ -60,11 +60,7 @@ pub trait FeaturePort {
 /// Back-off between GET_FEATURE attempts. The keyboard occasionally
 /// STALLs the control request (Windows: ERROR_GEN_FAILURE 0x1F, seen in the
 /// app on 2026-11-10); a short retry succeeds. Same policy as S2 hid.rs.
-const GET_RETRY: [Duration; 3] = [
-    Duration::from_millis(5),
-    Duration::from_millis(10),
-    Duration::from_millis(15),
-];
+const GET_RETRY: [Duration; 3] = [Duration::from_millis(5), Duration::from_millis(10), Duration::from_millis(15)];
 
 impl FeaturePort for HidChannel {
     fn set_feature(&mut self, report: &[u8; REPORT_LEN]) -> Result<()> {
@@ -145,10 +141,7 @@ impl<P: FeaturePort> SonixFf13<P> {
         // read on a connection works; the session never closes, every later
         // F5 is ignored and following commands are swallowed. With 09 every
         // read succeeds and the commit echoes status 01.
-        self.write(
-            &header(Op::ReadColors, 0, proto::COLOR_TABLE_PACKETS as u16),
-            PacketKind::Header,
-        )?;
+        self.write(&header(Op::ReadColors, 0, proto::COLOR_TABLE_PACKETS as u16), PacketKind::Header)?;
 
         // 1. Wait for the echo to report 01 (accepted) or FF (refused).
         let mut table = Vec::with_capacity(proto::COLOR_TABLE_PACKETS * PAYLOAD);

@@ -1,8 +1,9 @@
 //! `kb` — developer and QA tool.
 //!
-//! No command in this binary writes the keyboard's flash. `live` streams
-//! RAM-only real-time LED frames; everything else only reads. Flash-writing
-//! commands are added only after they are verified against a USB capture.
+//! Only `effect` and `per-key` write the keyboard's flash, and both need
+//! `--yes`. `live` and `live-probe` stream RAM-only real-time LED frames;
+//! everything else only reads. Flash-writing commands are added only after
+//! they are verified on the hardware.
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -57,6 +58,9 @@ enum Cmd {
         #[arg(long, default_value_t = 30)]
         fps: u32,
     },
+    /// Diagnose real-time frames (RAM only): does `04 F5` see the live
+    /// overlay, and do LEDs left out of a frame keep their last colour?
+    LiveProbe,
     /// List the firmware lighting effects.
     Effects,
     /// Store per-key colours: KEY=RRGGBB pairs (key ids from the model).
@@ -120,6 +124,7 @@ fn main() -> Result<()> {
         }
         Cmd::ReadColors { .. } => read_colors(),
         Cmd::Live { pattern, color, seconds, fps } => live(&pattern, &color, seconds, fps),
+        Cmd::LiveProbe => live_probe(),
         Cmd::Effects => {
             for e in kb_protocol::sonix::EFFECTS {
                 println!("{:>3}  {:<12} caps=0x{:02X}", e.id, e.name, e.caps);
@@ -190,11 +195,8 @@ fn peek() -> Result<()> {
 fn read_colors() -> Result<()> {
     let (mut drv, model) = open_command()?;
     let colors = drv.read_colors()?;
-    let names: std::collections::HashMap<u8, &str> = model
-        .geometry
-        .iter()
-        .flat_map(|g| g.keys.iter().map(|k| (k.led, k.id.as_str())))
-        .collect();
+    let names: std::collections::HashMap<u8, &str> =
+        model.geometry.iter().flat_map(|g| g.keys.iter().map(|k| (k.led, k.id.as_str()))).collect();
     println!("{}: {} LED rengi okundu", model.name, colors.len());
     for (led, [r, g, b]) in colors {
         println!("  {:>3} {:<10} #{r:02X}{g:02X}{b:02X}", led, names.get(&led).copied().unwrap_or("?"));
@@ -259,8 +261,7 @@ fn live(pattern: &str, color: &str, seconds: f32, fps: u32) -> Result<()> {
         let gamma_row = |id: &str| -> Option<[u8; 3]> {
             let raw = ["1", "2", "3", "4", "5", "6"].iter().position(|r| *r == id);
             let fixed = ["q", "w", "e", "r", "t", "y"].iter().position(|r| *r == id);
-            raw.map(|i| PALETTE[i])
-                .or_else(|| fixed.map(|i| kb_core::color::LedCalibration::DEFAULT.apply(PALETTE[i])))
+            raw.map(|i| PALETTE[i]).or_else(|| fixed.map(|i| kb_core::color::LedCalibration::DEFAULT.apply(PALETTE[i])))
         };
         let leds = geo.keys.iter().map(|k| {
             let rgb = match pattern {
@@ -289,6 +290,75 @@ fn live(pattern: &str, color: &str, seconds: f32, fps: u32) -> Result<()> {
     }
     let secs = start.elapsed().as_secs_f32();
     println!("{frames} kare gönderildi, {errors} hata, ortalama {:.1} fps", frames as f32 / secs);
+    Ok(())
+}
+
+/// Three phases of 0.6 s each, with an `04 F5` read at the end of each:
+/// A every key blue; B only Esc red (other keys not given); C Esc red and
+/// every other key sent explicitly as black.
+fn live_probe() -> Result<()> {
+    let (mut drv, model) = open_command()?;
+    let geo = model.geometry.as_ref().context("modelde geometri yok")?;
+    let esc = geo.keys.iter().find(|k| k.id == "esc").context("esc yok")?.led;
+    let keys: Vec<u8> = geo.keys.iter().map(|k| k.led).collect();
+    type Frame = Vec<(u8, [u8; 3])>;
+    let phases: [(&str, Frame); 3] = [
+        ("A: tüm tuşlar mavi", keys.iter().map(|&l| (l, [0, 0, 255])).collect()),
+        ("B: yalnızca Esc kırmızı (diğer tuşlar verilmedi)", vec![(esc, [255, 0, 0])]),
+        (
+            "C: Esc kırmızı, diğerleri açıkça siyah",
+            keys.iter().map(|&l| (l, if l == esc { [255, 0, 0] } else { [0, 0, 0] })).collect(),
+        ),
+    ];
+    for (name, frame) in phases {
+        let start = std::time::Instant::now();
+        let mut sent = 0;
+        while start.elapsed() < std::time::Duration::from_millis(600) {
+            drv.realtime_frame(frame.iter().copied())?;
+            sent += 1;
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        }
+        let read = drv.read_colors()?;
+        let shown: std::collections::HashMap<u8, [u8; 3]> = read.into_iter().collect();
+        let mut counts: std::collections::BTreeMap<String, usize> = Default::default();
+        for l in &keys {
+            let [r, g, b] = shown.get(l).copied().unwrap_or([0, 0, 0]);
+            *counts.entry(format!("#{r:02X}{g:02X}{b:02X}")).or_default() += 1;
+        }
+        let mut top: Vec<_> = counts.into_iter().collect();
+        top.sort_by_key(|e| std::cmp::Reverse(e.1));
+        let [r, g, b] = shown.get(&esc).copied().unwrap_or([0, 0, 0]);
+        println!("{name}: {sent} kare; F5 → Esc #{r:02X}{g:02X}{b:02X}, tuşlar {top:?}");
+        // Keys that did not take the colour this frame gave them.
+        let off: Vec<String> = geo
+            .keys
+            .iter()
+            .filter_map(|k| {
+                let want = frame.iter().find(|(l, _)| *l == k.led).map(|(_, c)| *c);
+                let got = shown.get(&k.led).copied().unwrap_or([0, 0, 0]);
+                let close = |w: [u8; 3]| w.iter().zip(got).all(|(a, b)| a.abs_diff(b) <= 4);
+                match want {
+                    Some(w) if !close(w) => {
+                        Some(format!("{}(led {}) #{:02X}{:02X}{:02X}", k.id, k.led, got[0], got[1], got[2]))
+                    }
+                    _ => None,
+                }
+            })
+            .collect();
+        if !off.is_empty() {
+            println!("   karedeki rengi almayan tuşlar: {}", off.join(", "));
+        }
+        // LEDs F5 reports that are not keys of the model.
+        let extra: Vec<String> = shown
+            .iter()
+            .filter(|(l, c)| !keys.contains(l) && **c != [0, 0, 0])
+            .map(|(l, [r, g, b])| format!("led {l} #{r:02X}{g:02X}{b:02X}"))
+            .collect();
+        if !extra.is_empty() {
+            println!("   modelde olmayan LED'ler: {}", extra.join(", "));
+        }
+    }
+    println!("Akış bitti; klavye kayıtlı ışığına döner.");
     Ok(())
 }
 
@@ -427,7 +497,13 @@ fn models() -> Result<()> {
     for m in models {
         println!("{} ({}) — protokol {}, {} tuş, düzen %{}", m.name, m.id, m.protocol, m.key_count, m.layout);
         if let Some(s) = &m.screen {
-            println!("  ekran {}x{} {}{}", s.width, s.height, s.pixel_format, if s.verified { "" } else { " (doğrulanmadı)" });
+            println!(
+                "  ekran {}x{} {}{}",
+                s.width,
+                s.height,
+                s.pixel_format,
+                if s.verified { "" } else { " (doğrulanmadı)" }
+            );
         }
         for mode in &m.modes {
             println!(

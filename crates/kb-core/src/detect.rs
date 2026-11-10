@@ -81,10 +81,7 @@ pub fn detect(interfaces: &[HidInterface], ble: &[BlePeer]) -> Vec<DetectedKeybo
             },
         };
         let Some(m) = match_interface(models, &probe) else { continue };
-        let idx = match out
-            .iter()
-            .position(|k| k.model.id == m.model.id && k.connection == m.mode.kind)
-        {
+        let idx = match out.iter().position(|k| k.model.id == m.model.id && k.connection == m.mode.kind) {
             Some(i) => i,
             None => {
                 out.push(DetectedKeyboard {
@@ -109,10 +106,7 @@ pub fn detect(interfaces: &[HidInterface], ble: &[BlePeer]) -> Vec<DetectedKeybo
 
     for peer in ble {
         let Some((model, _)) = match_ble_name(models, &peer.name) else { continue };
-        if let Some(k) = out
-            .iter_mut()
-            .find(|k| k.model.id == model.id && k.connection == ConnectionKind::Bluetooth)
-        {
+        if let Some(k) = out.iter_mut().find(|k| k.model.id == model.id && k.connection == ConnectionKind::Bluetooth) {
             k.ble = Some(peer.clone());
         } else if peer.connected {
             out.push(DetectedKeyboard {

@@ -38,15 +38,31 @@ pub type Reply<T> = Sender<Result<T, String>>;
 pub enum Request {
     Refresh,
     ApplyEffect(EffectSettings, Reply<()>),
-    ApplyPerKey { colors: Vec<(u8, Rgb)>, brightness: u8, reply: Reply<()> },
+    ApplyPerKey {
+        colors: Vec<(u8, Rgb)>,
+        brightness: u8,
+        reply: Reply<()>,
+    },
     /// `Some` starts/updates the live frame, `None` stops streaming.
-    SetLive(Option<Vec<(u8, Rgb)>>),
+    SetLive(Option<LiveFrame>),
     SetMirror(bool),
+    /// New colour calibration; re-sends the live frame at once so sliders
+    /// give immediate feedback on the keys.
+    SetCalibration(LedCalibration),
+}
+
+/// A RAM-only frame in UI colours (sRGB). Calibration and the linear
+/// brightness `level` (0–1) are applied when the frame is sent, so a
+/// calibration change shows up on the next frame.
+pub struct LiveFrame {
+    pub colors: Vec<(u8, Rgb)>,
+    pub level: f32,
 }
 
 #[derive(Default)]
 pub struct Snapshot {
     pub keyboards: Vec<KeyboardInfo>,
+    pub calibration: LedCalibration,
 }
 
 pub struct DeviceHandle {
@@ -63,18 +79,17 @@ impl DeviceHandle {
     pub fn call<T>(&self, make: impl FnOnce(Reply<T>) -> Request) -> Result<T, String> {
         let (tx, rx) = mpsc::channel();
         self.send(make(tx))?;
-        rx.recv_timeout(Duration::from_secs(20))
-            .map_err(|_| "keyboard did not answer in time".to_string())?
+        rx.recv_timeout(Duration::from_secs(20)).map_err(|_| "keyboard did not answer in time".to_string())?
     }
 }
 
-pub fn spawn(app: AppHandle) -> DeviceHandle {
-    let snapshot = Arc::new(Mutex::new(Snapshot::default()));
+pub fn spawn(app: AppHandle, calibration: LedCalibration) -> DeviceHandle {
+    let snapshot = Arc::new(Mutex::new(Snapshot { keyboards: Vec::new(), calibration }));
     let (tx, rx) = mpsc::channel();
     let shared = snapshot.clone();
     std::thread::Builder::new()
         .name("device-actor".into())
-        .spawn(move || Actor::new(app, shared).run(rx))
+        .spawn(move || Actor::new(app, shared, calibration).run(rx))
         .expect("spawn device actor");
     DeviceHandle { snapshot, tx }
 }
@@ -94,11 +109,13 @@ struct Actor {
     /// Path of the wired command interface of the active keyboard, if any.
     command_path: Option<String>,
     command: Option<Command>,
-    live: Option<Vec<(u8, Rgb)>>,
+    live: Option<LiveFrame>,
     mirror: bool,
     /// UI colours are monitor sRGB; LEDs are linear. Applied to every
-    /// host-provided colour (live frames, per-key tables). Verified by eye
-    /// on 2026-11-10: gamma 2.2 matches the UI palette, raw values wash out.
+    /// host-provided colour (live frames, per-key tables) and inverted for
+    /// the mirror. Verified by eye on 2026-11-10: gamma 2.2 matches the UI
+    /// palette, raw values wash out. Firmware effect colours (`04 13`) are
+    /// sent unchanged until an eye test shows whether they need it too.
     calibration: LedCalibration,
     next_enumerate: Instant,
     next_live: Instant,
@@ -106,7 +123,7 @@ struct Actor {
 }
 
 impl Actor {
-    fn new(app: AppHandle, shared: Arc<Mutex<Snapshot>>) -> Self {
+    fn new(app: AppHandle, shared: Arc<Mutex<Snapshot>>, calibration: LedCalibration) -> Self {
         let hid = Hid::new().map_err(|e| tracing::error!("HID init failed: {e}")).ok();
         let now = Instant::now();
         Self {
@@ -120,7 +137,7 @@ impl Actor {
             command: None,
             live: None,
             mirror: false,
-            calibration: LedCalibration::default(),
+            calibration,
             next_enumerate: now,
             next_live: now,
             next_mirror: now,
@@ -176,22 +193,32 @@ impl Actor {
             }
             Request::SetLive(frame) => {
                 if let Some(f) = &frame {
-                    let sample: Vec<String> =
-                        f.iter().take(6).map(|(l, [r, g, b])| format!("{l}=#{r:02X}{g:02X}{b:02X}")).collect();
-                    tracing::debug!(leds = f.len(), ?sample, "live frame");
+                    let lit: Vec<String> = f
+                        .colors
+                        .iter()
+                        .filter(|(_, c)| *c != [0, 0, 0])
+                        .map(|(l, [r, g, b])| format!("{l}=#{r:02X}{g:02X}{b:02X}"))
+                        .collect();
+                    tracing::trace!(lit = lit.len(), sample = ?&lit[..lit.len().min(6)], level = f.level, "live frame");
                 }
                 match (&frame, &self.live) {
-                    (None, Some(_)) => tracing::info!("live stream stopped; keyboard reverts to its saved effect"),
-                    (Some(f), None) => tracing::info!(leds = f.len(), "live stream started"),
+                    (None, Some(_)) => {
+                        tracing::debug!("live stream stopped; keyboard reverts to its saved effect")
+                    }
+                    (Some(f), None) => tracing::debug!(leds = f.colors.len(), level = f.level, "live stream started"),
                     _ => {}
                 }
-                let cal = self.calibration;
-                self.live = frame.map(|f| f.into_iter().map(|(l, c)| (l, cal.apply(c))).collect());
+                self.live = frame;
                 self.next_live = Instant::now();
             }
             Request::SetMirror(on) => {
                 self.mirror = on;
                 self.next_mirror = Instant::now();
+            }
+            Request::SetCalibration(cal) => {
+                tracing::debug!(?cal, "calibration changed");
+                self.calibration = cal.sanitized();
+                self.next_live = Instant::now();
             }
         }
     }
@@ -208,11 +235,7 @@ impl Actor {
             .ok_or_else(|| "Klavye USB modunda değil. Kabloyu takıp anahtarı ortaya (USB) alın.".to_string())?;
         if self.command.as_ref().is_none_or(|c| c.path != path) {
             let hid = self.hid.as_ref().ok_or("HID unavailable")?;
-            let iface = hid
-                .interfaces()
-                .into_iter()
-                .find(|i| i.path == path)
-                .ok_or("command interface disappeared")?;
+            let iface = hid.interfaces().into_iter().find(|i| i.path == path).ok_or("command interface disappeared")?;
             let channel = hid.open(&iface).map_err(|e| e.to_string())?;
             self.command = Some(Command { path, driver: SonixFf13::new(channel) });
         }
@@ -230,10 +253,12 @@ impl Actor {
     }
 
     fn send_live(&mut self) {
-        let Some(frame) = self.live.clone() else { return };
+        let Some(live) = &self.live else { return };
         if self.command_path.is_none() {
             return;
         }
+        let cal = self.calibration;
+        let frame: Vec<(u8, Rgb)> = live.colors.iter().map(|&(l, c)| (l, cal.apply_dimmed(c, live.level))).collect();
         if let Err(e) = self.with_command(|d| d.realtime_frame(frame)) {
             tracing::warn!("live frame skipped: {e}");
         }
@@ -245,9 +270,14 @@ impl Actor {
         }
         match self.with_command(|d| d.read_colors()) {
             Ok(colors) => {
+                // Show what the keys look like, in monitor colours.
+                let cal = self.calibration;
                 let payload: Vec<LedColor> = colors
                     .into_iter()
-                    .map(|(led, [r, g, b])| LedColor { led, r, g, b })
+                    .map(|(led, c)| {
+                        let [r, g, b] = cal.inverse(c);
+                        LedColor { led, r, g, b }
+                    })
                     .collect();
                 let _ = self.app.emit(EVENT_MIRROR, payload);
             }
@@ -287,10 +317,7 @@ impl Actor {
         for k in &detected {
             let battery = match (&k.ble, k.connection) {
                 (Some(peer), ConnectionKind::Bluetooth) if peer.connected && !busy => {
-                    let stale = self
-                        .batteries
-                        .get(&peer.address)
-                        .is_none_or(|(_, at)| at.elapsed() >= BATTERY_REFRESH);
+                    let stale = self.batteries.get(&peer.address).is_none_or(|(_, at)| at.elapsed() >= BATTERY_REFRESH);
                     if stale {
                         if let Some(b) = read_battery(peer.address) {
                             self.batteries.insert(peer.address, (b, Instant::now()));
@@ -351,10 +378,7 @@ fn read_battery(address: u64) -> Option<Battery> {
     match kb_transport::ble::read_battery(address) {
         Ok(percent) => Some(Battery {
             percent,
-            read_at_ms: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_millis() as u64)
-                .unwrap_or_default(),
+            read_at_ms: SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or_default(),
         }),
         Err(e) => {
             tracing::warn!("battery read failed: {e}");

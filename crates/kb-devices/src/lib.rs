@@ -12,10 +12,7 @@ use serde::Deserialize;
 use std::sync::OnceLock;
 
 /// Embedded model files. Keep sorted by id.
-const MODEL_SOURCES: &[(&str, &str)] = &[(
-    "ajazz-ak980-pro",
-    include_str!("../models/ajazz-ak980-pro.toml"),
-)];
+const MODEL_SOURCES: &[(&str, &str)] = &[("ajazz-ak980-pro", include_str!("../models/ajazz-ak980-pro.toml"))];
 
 #[derive(Debug, thiserror::Error)]
 pub enum ModelError {
@@ -210,13 +207,9 @@ pub fn catalogue() -> Result<&'static [Model], &'static ModelError> {
             MODEL_SOURCES
                 .iter()
                 .map(|(file, src)| {
-                    let model: Model = toml::from_str(src)
-                        .map_err(|source| ModelError::Parse { file, source })?;
+                    let model: Model = toml::from_str(src).map_err(|source| ModelError::Parse { file, source })?;
                     if model.id != *file {
-                        return Err(ModelError::IdMismatch {
-                            file,
-                            found: model.id,
-                        });
+                        return Err(ModelError::IdMismatch { file, found: model.id });
                     }
                     Ok(model)
                 })
@@ -244,9 +237,7 @@ pub fn match_interface<'m>(models: &'m [Model], probe: &InterfaceProbe<'_>) -> O
                 continue;
             }
             if let Some(needle) = &mode.product_contains {
-                let hit = probe
-                    .product
-                    .is_some_and(|p| p.to_ascii_lowercase().contains(&needle.to_ascii_lowercase()));
+                let hit = probe.product.is_some_and(|p| p.to_ascii_lowercase().contains(&needle.to_ascii_lowercase()));
                 if !hit {
                     continue;
                 }
@@ -309,13 +300,7 @@ mod tests {
 
     #[test]
     fn dongle_and_bluetooth_split_by_bus() {
-        let base = InterfaceProbe {
-            vid: 0x0C45,
-            pid: 0xFEFE,
-            usage_page: 0xFF60,
-            product: None,
-            bus: Bus::Usb,
-        };
+        let base = InterfaceProbe { vid: 0x0C45, pid: 0xFEFE, usage_page: 0xFF60, product: None, bus: Bus::Usb };
         let dongle = match_interface(models(), &base).unwrap();
         assert_eq!(dongle.mode.kind, ConnectionKind::Dongle);
         assert_eq!(dongle.role, InterfaceRole::Command);

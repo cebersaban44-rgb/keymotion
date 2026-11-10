@@ -148,7 +148,98 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
   );
 }
 
-export type SwatchVariant = "static" | "wave" | "breath" | "sparkle" | "ripple" | "spectrum" | "off";
+/** Pill-shaped single choice (radio group). */
+export function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+  label,
+  disabled,
+}: {
+  value: T;
+  options: { value: T; label: string; icon?: ReactNode }[];
+  onChange: (v: T) => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label={label}
+      aria-disabled={disabled}
+      className={`inline-flex rounded-xl border border-line bg-bg-raise p-1 ${disabled ? "opacity-40" : ""}`}
+    >
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={o.value === value}
+          disabled={disabled}
+          onClick={() => onChange(o.value)}
+          className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[12.5px] transition-colors disabled:cursor-not-allowed ${
+            o.value === value ? "bg-surface-2 text-ink shadow-[inset_0_0_0_1px_var(--line)]" : "text-ink-2 hover:text-ink"
+          }`}
+        >
+          {o.icon}
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Labelled range input; the filled part of the track uses `accent`. */
+export function Slider({
+  label,
+  hint,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  format = (v) => String(v),
+  accent = "var(--signal)",
+  disabled,
+}: {
+  label: string;
+  hint?: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+  format?: (v: number) => string;
+  accent?: string;
+  disabled?: boolean;
+}) {
+  const pct = ((value - min) / (max - min)) * 100;
+  return (
+    <label className={`flex flex-col gap-1.5 ${disabled ? "opacity-40" : ""}`}>
+      <span className="flex items-baseline justify-between gap-3">
+        <span className="text-[12.5px] font-medium">
+          {label}
+          {hint && <span className="ml-2 font-normal text-ink-3">{hint}</span>}
+        </span>
+        <span className="num text-[12px] text-ink-2">{format(value)}</span>
+      </span>
+      <input
+        type="range"
+        className="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        disabled={disabled}
+        aria-valuetext={format(value)}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ "--pct": `${pct}%`, "--fill": accent } as CSSProperties}
+      />
+    </label>
+  );
+}
+
+export type SwatchVariant ="static" | "wave" | "breath" | "sparkle" | "ripple" | "spectrum" | "off";
 
 /** Tiny animated preview of a firmware effect (approximation, not a render). */
 export function EffectSwatch({ variant, color, rainbow }: { variant: SwatchVariant; color: string; rainbow: boolean }) {
