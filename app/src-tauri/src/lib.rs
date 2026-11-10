@@ -6,15 +6,19 @@
 
 mod device;
 mod dto;
+mod live;
+mod now_playing;
 mod screen_lib;
 mod settings;
 
 use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request};
 use dto::{
     Calibration, CalibrationInfo, ClockStatus, EffectInfo, EffectRequest, KeyAssignment, KeyboardInfo, KeymapCatalog,
-    KeymapLayer, KeymapState, LedColor, MacroInfo, MacrosState, MirrorHint, ScreenItem, ScreenItemKind, ScreenState,
-    ThemePreference, UiEnvironment,
+    KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, ScreenItem,
+    ScreenItemKind, ScreenState, ThemePreference, UiEnvironment,
 };
+use live::LiveHandle;
+use now_playing::NowPlaying;
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
 use screen_lib::ScreenLibrary;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -38,6 +42,7 @@ struct CloseGuard {
 
 type Device<'a> = State<'a, Arc<DeviceHandle>>;
 type Library<'a> = State<'a, Arc<Mutex<ScreenLibrary>>>;
+type Live<'a> = State<'a, Arc<LiveHandle>>;
 
 fn lock_library(lib: &Mutex<ScreenLibrary>) -> Result<std::sync::MutexGuard<'_, ScreenLibrary>, String> {
     lib.lock().map_err(|_| "screen library unavailable".to_string())
@@ -121,6 +126,7 @@ fn screen_remove(library: Library<'_>, model_id: String, id: String) -> Result<S
 async fn screen_upload(
     device: Device<'_>,
     library: Library<'_>,
+    live: Live<'_>,
     model_id: String,
     id: String,
 ) -> Result<ScreenState, String> {
@@ -135,17 +141,63 @@ async fn screen_upload(
     match &result.error {
         None => lib.uploaded(&model, &id).map_err(|e| e.to_string())?,
         Some(_) if result.flash_written => {
-            lib.count_upload();
+            lib.count_upload(true);
             if let Err(e) = lib.save() {
                 tracing::warn!("upload count not saved: {e}");
             }
         }
         Some(_) => {}
     }
+    let state = lib.state(&model_id);
+    drop(lib);
+    // The upload used the live budget.
+    live.changed();
     match result.error {
-        None => Ok(lib.state(&model_id)),
+        None => Ok(state),
         Some(e) => Err(e),
     }
+}
+
+/// Live mode, budget and sources.
+#[tauri::command]
+fn live_state(live: Live<'_>) -> Result<LiveState, String> {
+    live.state()
+}
+
+/// Change the live mode switch, the budget plan or a source switch (fields
+/// left out stay as they are).
+#[tauri::command]
+fn live_configure(
+    live: Live<'_>,
+    enabled: Option<bool>,
+    plan: Option<LivePlan>,
+    now_playing: Option<bool>,
+) -> Result<LiveState, String> {
+    tracing::debug!(?enabled, ?plan, ?now_playing, "ipc: live_configure");
+    live.configure(enabled, plan, now_playing)
+}
+
+/// A finished live card from the UI: the blob as body (validated here),
+/// headers `x-source` and `x-name` (URI encoded). It waits for the budget
+/// and the cable; the newest card wins.
+#[tauri::command]
+fn live_submit(live: Live<'_>, request: tauri::ipc::Request<'_>) -> Result<LiveState, String> {
+    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
+        return Err("expected binary data".into());
+    };
+    let anim = kb_protocol::sonix::screen::from_blob(data).map_err(|e| e.to_string())?;
+    let header = |name: &str| request.headers().get(name).and_then(|v| v.to_str().ok()).unwrap_or("");
+    let source = header("x-source").to_string();
+    if source.is_empty() || source.len() > 32 || !source.bytes().all(|b| b.is_ascii_lowercase() || b == b'-') {
+        return Err("bad live source".into());
+    }
+    live.submit(anim, &source, &percent_decode(header("x-name")))
+}
+
+/// Cover art of the announced track (JPEG or PNG bytes).
+#[tauri::command]
+fn now_playing_cover(now_playing: State<'_, Arc<NowPlaying>>) -> Result<tauri::ipc::Response, String> {
+    now_playing.cover().map(tauri::ipc::Response::new).ok_or_else(|| "no cover".to_string())
 }
 
 #[tauri::command]
@@ -427,8 +479,13 @@ pub fn run() {
             app.manage(UiEnvironment { app_version: app.package_info().version.to_string(), mica, os_build: build });
             let config_dir = app.path().app_config_dir().map_err(|e| tracing::warn!("no config directory: {e}")).ok();
             let calibration = config_dir.as_deref().map(settings::load_calibration).unwrap_or_default();
-            app.manage(Arc::new(Mutex::new(ScreenLibrary::open(config_dir.as_deref()))));
-            app.manage(Arc::new(device::spawn(app.handle().clone(), calibration, config_dir)));
+            let library = Arc::new(Mutex::new(ScreenLibrary::open(config_dir.as_deref())));
+            let device = Arc::new(device::spawn(app.handle().clone(), calibration, config_dir));
+            let live = LiveHandle::spawn(app.handle().clone(), library.clone(), device.clone());
+            app.manage(now_playing::spawn(app.handle().clone(), live.clone()));
+            app.manage(library);
+            app.manage(device);
+            app.manage(live);
             window.show()?;
             Ok(())
         })
@@ -460,7 +517,11 @@ pub fn run() {
             screen_data,
             screen_rename,
             screen_remove,
-            screen_upload
+            screen_upload,
+            live_state,
+            live_configure,
+            live_submit,
+            now_playing_cover
         ])
         .run(tauri::generate_context!())
         .expect("error while running Klavye Stüdyo");

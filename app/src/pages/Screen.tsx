@@ -4,8 +4,9 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { ScreenItem } from "../bindings/ScreenItem";
 import { useT } from "../lib/i18n";
-import { useScreen } from "../lib/screen";
-import { uploadSeconds, type Source } from "../lib/screenImport";
+import { useLive } from "../lib/live";
+import { itemData, useScreen } from "../lib/screen";
+import { fromBlob, uploadSeconds, type Source } from "../lib/screenImport";
 import { useApp } from "../lib/store";
 import {
   ConfirmUpload,
@@ -20,6 +21,7 @@ import {
   type Done,
 } from "./screen/common";
 import { FileFlow, FileTile } from "./screen/FileFlow";
+import { LivePanel } from "./screen/LivePanel";
 import { MatchLightsDialog } from "./screen/MatchLights";
 import { SlideFlow, SlideTile } from "./screen/SlideFlow";
 import { TextFlow, TextTile } from "./screen/TextFlow";
@@ -68,6 +70,7 @@ export function Screen({ kb }: { kb: KeyboardInfo }) {
       <KeyboardScreens />
 
       <Studio kb={kb} usb={usb} loaded={loaded} />
+      <LivePanel usb={usb} />
       <LibraryCard kb={kb} usb={usb} />
     </div>
   );
@@ -166,19 +169,22 @@ function KeyboardScreens() {
   const state = useScreen((s) => s.state);
   const shownId = state?.shown ?? null;
   const factory = state?.items.find((i) => i.kind === "factory") ?? null;
+  const liveLast = useLive((s) => s.state?.last ?? null);
+  const showsLive = shownId === "live";
   const shown = state?.items.find((i) => i.id === shownId) ?? null;
   const item = shown ?? factory;
   const [frames, setFrames] = useState<{ frames: Uint16Array[]; delaysMs: number[] } | null>(null);
 
   useEffect(() => {
     setFrames(null);
-    if (!item) return;
     let live = true;
-    loadFrames(item.id).then((f) => live && setFrames(f), console.error);
+    // A live card changes under the same id: read it fresh each time.
+    const load = showsLive ? itemData("live").then(fromBlob) : item ? loadFrames(item.id) : null;
+    load?.then((f) => live && setFrames(f), console.error);
     return () => {
       live = false;
     };
-  }, [item?.id]);
+  }, [item?.id, showsLive, liveLast?.atMs]);
 
   return (
     <section className="card grid grid-cols-[1fr_1fr_minmax(220px,0.8fr)] items-start gap-6 p-5">
@@ -187,10 +193,22 @@ function KeyboardScreens() {
       </Panel>
       <Panel
         label={t("sc.page.gif")}
-        sub={shown ? shown.name : factory ? t("sc.page.gif.maybeFactory") : t("sc.page.gif.unknown")}
+        sub={
+          showsLive
+            ? `${t("sc.page.gif.live")}: ${liveLast?.name ?? ""}`
+            : shown
+              ? shown.name
+              : factory
+                ? t("sc.page.gif.maybeFactory")
+                : t("sc.page.gif.unknown")
+        }
       >
         {frames ? (
-          <FramePlayer frames={frames.frames} delaysMs={frames.delaysMs} className={`h-full w-full ${shown ? "" : "opacity-60"}`} />
+          <FramePlayer
+            frames={frames.frames}
+            delaysMs={frames.delaysMs}
+            className={`h-full w-full ${shown || showsLive ? "" : "opacity-60"}`}
+          />
         ) : (
           <div className="flex h-full items-center justify-center text-[12px] text-ink-3">
             {item ? <Loader2 size={16} className="animate-spin" /> : t("sc.page.gif.unknown")}
