@@ -118,27 +118,27 @@ fn run(app: AppHandle, live: Arc<LiveHandle>, state: Arc<NowPlaying>) {
                     live.set_track(current.as_ref().map(|c| c.info.clone()));
                 } else {
                     let c = current.as_mut().expect("same track");
-                let was_playing = c.info.playing;
-                c.info.playing = t.playing;
-                if t.playing {
-                    c.played += elapsed.min(POLL * 3);
-                }
-                if !c.info.settled && t.playing && c.played >= SETTLE && !c.info.title.trim().is_empty() {
-                    let cover = source.cover().unwrap_or_else(|e| {
-                        tracing::debug!("no cover: {e}");
-                        None
-                    });
-                    c.info.has_cover = cover.is_some();
-                    c.info.settled = true;
-                    if let Ok(mut slot) = state.cover.lock() {
-                        *slot = cover;
+                    let was_playing = c.info.playing;
+                    c.info.playing = t.playing;
+                    if t.playing {
+                        c.played += elapsed.min(POLL * 3);
                     }
-                    tracing::info!(app = %c.info.app, "track settled");
-                    let _ = app.emit(EVENT_NOW_PLAYING, c.info.clone());
-                    live.set_track(Some(c.info.clone()));
-                } else if was_playing != t.playing {
-                    live.set_track(Some(c.info.clone()));
-                }
+                    if !c.info.settled && t.playing && c.played >= SETTLE && !c.info.title.trim().is_empty() {
+                        let cover = source.cover().unwrap_or_else(|e| {
+                            tracing::debug!("no cover: {e}");
+                            None
+                        });
+                        c.info.has_cover = cover.is_some();
+                        c.info.settled = true;
+                        if let Ok(mut slot) = state.cover.lock() {
+                            *slot = cover;
+                        }
+                        tracing::info!(app = %c.info.app, "track settled");
+                        let _ = app.emit(EVENT_NOW_PLAYING, c.info.clone());
+                        live.set_track(Some(c.info.clone()));
+                    } else if was_playing != t.playing {
+                        live.set_track(Some(c.info.clone()));
+                    }
                 }
             }
             Ok(None) => {

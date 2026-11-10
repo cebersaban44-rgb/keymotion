@@ -17,9 +17,9 @@ use dto::{
     KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, ScreenItem,
     ScreenItemKind, ScreenState, ThemePreference, UiEnvironment,
 };
+use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
 use live::LiveHandle;
 use now_playing::NowPlaying;
-use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
 use screen_lib::ScreenLibrary;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;

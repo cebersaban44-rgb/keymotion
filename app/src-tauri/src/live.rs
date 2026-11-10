@@ -169,15 +169,13 @@ impl LiveHandle {
         let worker = handle.clone();
         std::thread::Builder::new()
             .name("live-screen".into())
-            .spawn(move || {
-                loop {
-                    let wait = worker.next_wait();
-                    match rx.recv_timeout(wait) {
-                        Ok(Msg::Wake) | Err(RecvTimeoutError::Timeout) => {}
-                        Err(RecvTimeoutError::Disconnected) => break,
-                    }
-                    worker.try_upload(&device);
+            .spawn(move || loop {
+                let wait = worker.next_wait();
+                match rx.recv_timeout(wait) {
+                    Ok(Msg::Wake) | Err(RecvTimeoutError::Timeout) => {}
+                    Err(RecvTimeoutError::Disconnected) => break,
                 }
+                worker.try_upload(&device);
             })
             .expect("spawn live-screen thread");
         handle
@@ -200,7 +198,12 @@ impl LiveHandle {
         }
     }
 
-    pub fn configure(&self, enabled: Option<bool>, plan: Option<LivePlan>, now_playing: Option<bool>) -> Result<LiveState, String> {
+    pub fn configure(
+        &self,
+        enabled: Option<bool>,
+        plan: Option<LivePlan>,
+        now_playing: Option<bool>,
+    ) -> Result<LiveState, String> {
         {
             let mut lib = self.library.lock().map_err(|_| "screen library unavailable")?;
             let now = now_ms();
