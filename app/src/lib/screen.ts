@@ -45,12 +45,26 @@ function mockState(): ScreenState {
   };
 }
 
-/** Browser preview: a live card reached the GIF page. */
+/** Browser preview: a live card reached the GIF page. Returns what it
+ *  replaced the first time (`undefined` when a live card was there). */
 export function mockLiveUploaded(blob: Uint8Array) {
+  const prev = mock.shown;
   mock.data.set("live", blob);
   mock.shown = "live";
   mock.today++;
   mock.total++;
+  if (prev === "live") return undefined;
+  const item = mock.items.find((i) => i.id === prev);
+  return item ? { id: item.id, name: item.name, frames: item.frames, pages: item.pages } : null;
+}
+
+/** Browser preview: a library item was put back on the GIF page. */
+export function mockRestored(id: string) {
+  mock.shown = id;
+  mock.today++;
+  mock.total++;
+  const modelId = useScreen.getState().modelId;
+  if (modelId) void useScreen.getState().load(modelId);
 }
 
 export function getScreenState(modelId: string): Promise<ScreenState> {
