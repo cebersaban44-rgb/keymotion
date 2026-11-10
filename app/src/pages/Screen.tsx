@@ -11,6 +11,7 @@ import {
   ConfirmUpload,
   FramePlayer,
   Stepper,
+  Thumb,
   fmtSeconds,
   loadFrames,
   pickThumb,
@@ -19,6 +20,7 @@ import {
   type Done,
 } from "./screen/common";
 import { FileFlow, FileTile } from "./screen/FileFlow";
+import { SlideFlow, SlideTile } from "./screen/SlideFlow";
 import { TextFlow, TextTile } from "./screen/TextFlow";
 
 // -------------------------------------------------------------- the page
@@ -210,7 +212,7 @@ function KeyboardScreens() {
 
 // ------------------------------------------------------------- the studio
 
-type Flow = { kind: "file"; source: Source } | { kind: "text" };
+type Flow = { kind: "file"; source: Source } | { kind: "text" } | { kind: "slides" };
 
 /** Step 1 picks a source; each source runs steps 2–4 in its own flow and
  *  comes back here with what it did. */
@@ -235,6 +237,7 @@ function Studio({ usb, loaded }: { usb: boolean; loaded: boolean }) {
 
   if (flow?.kind === "file") return <FileFlow key={flow.source.name + flow.source.durationMs} source={flow.source} {...common} />;
   if (flow?.kind === "text") return <TextFlow {...common} />;
+  if (flow?.kind === "slides") return <SlideFlow {...common} />;
 
   return (
     <section className="card flex flex-col gap-4 p-5">
@@ -273,31 +276,16 @@ function Studio({ usb, loaded }: { usb: boolean; loaded: boolean }) {
         </h2>
         <p className="mt-1 max-w-[70ch] text-[13px] text-ink-2">{t("sc.src.body")}</p>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <FileTile onOpened={(source) => start({ kind: "file", source })} />
         <TextTile onStart={() => start({ kind: "text" })} />
+        <SlideTile onStart={() => start({ kind: "slides" })} />
       </div>
     </section>
   );
 }
 
 // --------------------------------------------------------------- library
-
-function Thumb({ item }: { item: ScreenItem }) {
-  const [f, setF] = useState<Uint16Array | null>(null);
-  useEffect(() => {
-    let live = true;
-    loadFrames(item.id, item.frames === 1).then((d) => live && setF(pickThumb(d.frames)), console.error);
-    return () => {
-      live = false;
-    };
-  }, [item.id, item.frames]);
-  return f ? (
-    <FramePlayer frames={[f]} delaysMs={[100]} className="h-[68px] w-[120px] shrink-0 rounded-md bg-black" />
-  ) : (
-    <div className="h-[68px] w-[120px] shrink-0 rounded-md bg-black" />
-  );
-}
 
 function LibraryCard({ usb }: { usb: boolean }) {
   const t = useT();
