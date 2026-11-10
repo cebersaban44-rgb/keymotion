@@ -1,8 +1,10 @@
 //! Types shared with the UI. `cargo test` exports them to
 //! `app/src/bindings/*.ts` through ts-rs, so the UI never re-declares them.
 
+use crate::settings::{StoredKeymap, StoredLayer};
 use kb_core::DetectedKeyboard;
 use kb_devices::{Capability, ConnectionKind, Model};
+use kb_protocol::sonix::keymap::{KeyAction, Layer, MouseButton, UsageGroup};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -81,6 +83,8 @@ pub struct KeyGeo {
     pub id: String,
     pub label: String,
     pub led: u8,
+    /// Default HID usage; 0xAF is the Fn key (never remapped).
+    pub hid: u8,
     pub x: f32,
     pub y: f32,
     pub w: f32,
@@ -132,6 +136,7 @@ impl GeometryInfo {
                     id: k.id.clone(),
                     label: k.label.clone(),
                     led: k.led,
+                    hid: k.hid,
                     x: k.x,
                     y: k.y,
                     w: k.w,
@@ -217,7 +222,7 @@ impl KeyboardInfo {
 
 #[cfg(test)]
 mod tests {
-    use super::{EffectInfo, GeometryInfo};
+    use super::{EffectInfo, GeometryInfo, KeymapCatalog};
 
     /// Writes each model's geometry and the effect catalog for the UI's
     /// browser-only mock backend, so the mock never drifts from Rust.
@@ -227,6 +232,8 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let catalog = serde_json::to_string_pretty(&EffectInfo::catalog()).unwrap();
         std::fs::write(dir.join("lighting-catalog.json"), catalog + "\n").unwrap();
+        let keymap = serde_json::to_string_pretty(&KeymapCatalog::build()).unwrap();
+        std::fs::write(dir.join("keymap-catalog.json"), keymap + "\n").unwrap();
         for m in kb_devices::catalogue().unwrap() {
             let Some(g) = &m.geometry else { continue };
             let json = serde_json::to_string_pretty(&GeometryInfo::from_model(g)).unwrap();
@@ -437,4 +444,231 @@ pub enum ThemePreference {
     System,
     Dark,
     Light,
+}
+
+// ------------------------------------------------------------------ keymap
+
+/// Which keymap layer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum KeymapLayer {
+    Base,
+    Fn,
+}
+
+impl From<KeymapLayer> for Layer {
+    fn from(l: KeymapLayer) -> Self {
+        match l {
+            KeymapLayer::Base => Layer::Base,
+            KeymapLayer::Fn => Layer::Fn,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum MouseButtonName {
+    Left,
+    Right,
+    Middle,
+    /// Side button 4: browser back.
+    Back,
+    /// Side button 5: browser forward.
+    Forward,
+    DoubleClick,
+}
+
+impl From<MouseButton> for MouseButtonName {
+    fn from(b: MouseButton) -> Self {
+        match b {
+            MouseButton::Left => Self::Left,
+            MouseButton::Right => Self::Right,
+            MouseButton::Middle => Self::Middle,
+            MouseButton::Back => Self::Back,
+            MouseButton::Forward => Self::Forward,
+            MouseButton::DoubleClick => Self::DoubleClick,
+        }
+    }
+}
+
+impl From<MouseButtonName> for MouseButton {
+    fn from(b: MouseButtonName) -> Self {
+        match b {
+            MouseButtonName::Left => Self::Left,
+            MouseButtonName::Right => Self::Right,
+            MouseButtonName::Middle => Self::Middle,
+            MouseButtonName::Back => Self::Back,
+            MouseButtonName::Forward => Self::Forward,
+            MouseButtonName::DoubleClick => Self::DoubleClick,
+        }
+    }
+}
+
+/// What a key does, as the UI edits it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Serialize, TS)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+#[ts(export)]
+pub enum KeyActionInfo {
+    /// The firmware's own function.
+    Default,
+    /// The key does nothing.
+    Disabled,
+    /// A keyboard usage with modifier bits (`code` 0: modifiers only).
+    Key {
+        modifiers: u8,
+        code: u8,
+    },
+    /// A consumer-control usage (media, volume, apps).
+    Media {
+        usage: u16,
+    },
+    Mouse {
+        button: MouseButtonName,
+    },
+    /// One wheel notch.
+    Wheel {
+        up: bool,
+    },
+}
+
+impl From<KeyAction> for KeyActionInfo {
+    fn from(a: KeyAction) -> Self {
+        match a {
+            KeyAction::Default => Self::Default,
+            KeyAction::Disabled => Self::Disabled,
+            KeyAction::Key { mods, code } => Self::Key { modifiers: mods, code },
+            KeyAction::Consumer(usage) => Self::Media { usage },
+            KeyAction::Mouse(b) => Self::Mouse { button: b.into() },
+            KeyAction::Wheel { up } => Self::Wheel { up },
+        }
+    }
+}
+
+impl From<KeyActionInfo> for KeyAction {
+    fn from(a: KeyActionInfo) -> Self {
+        match a {
+            KeyActionInfo::Default => Self::Default,
+            KeyActionInfo::Disabled => Self::Disabled,
+            KeyActionInfo::Key { modifiers, code } => Self::Key { mods: modifiers, code },
+            KeyActionInfo::Media { usage } => Self::Consumer(usage),
+            KeyActionInfo::Mouse { button } => Self::Mouse(button.into()),
+            KeyActionInfo::Wheel { up } => Self::Wheel { up },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Serialize, TS)]
+#[ts(export)]
+pub struct KeyAssignment {
+    pub led: u8,
+    pub action: KeyActionInfo,
+}
+
+/// One layer as last written by this app.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct KeymapLayerState {
+    /// Keys that differ from the firmware default.
+    pub assignments: Vec<KeyAssignment>,
+    /// Unix ms of the last write; `null` when the app never wrote this
+    /// layer (taken to be the factory default).
+    pub written_ms: Option<f64>,
+}
+
+impl From<&StoredLayer> for KeymapLayerState {
+    fn from(l: &StoredLayer) -> Self {
+        Self {
+            assignments: l.actions().into_iter().map(|(led, a)| KeyAssignment { led, action: a.into() }).collect(),
+            written_ms: l.written_ms.map(|ms| ms as f64),
+        }
+    }
+}
+
+/// What the app last wrote to a model's keymap. The keyboard cannot report
+/// its keymap, so this is the app's own record.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct KeymapState {
+    pub base: KeymapLayerState,
+    #[serde(rename = "fn")]
+    pub fn_layer: KeymapLayerState,
+}
+
+impl From<&StoredKeymap> for KeymapState {
+    fn from(k: &StoredKeymap) -> Self {
+        Self { base: (&k.base).into(), fn_layer: (&k.fn_layer).into() }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum KeyUsageGroup {
+    Letter,
+    Digit,
+    Function,
+    Editing,
+    Navigation,
+    Symbol,
+    Keypad,
+    Modifier,
+}
+
+impl From<UsageGroup> for KeyUsageGroup {
+    fn from(g: UsageGroup) -> Self {
+        match g {
+            UsageGroup::Letter => Self::Letter,
+            UsageGroup::Digit => Self::Digit,
+            UsageGroup::Function => Self::Function,
+            UsageGroup::Editing => Self::Editing,
+            UsageGroup::Navigation => Self::Navigation,
+            UsageGroup::Symbol => Self::Symbol,
+            UsageGroup::Keypad => Self::Keypad,
+            UsageGroup::Modifier => Self::Modifier,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct KeyUsageInfo {
+    pub code: u8,
+    pub id: String,
+    /// Keycap legend (US positions).
+    pub label: String,
+    pub group: KeyUsageGroup,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct MediaUsageInfo {
+    pub usage: u16,
+    /// Stable id; the UI translates it.
+    pub id: String,
+}
+
+/// Everything a key can be assigned.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct KeymapCatalog {
+    pub keys: Vec<KeyUsageInfo>,
+    pub media: Vec<MediaUsageInfo>,
+    pub mouse: Vec<MouseButtonName>,
+}
+
+impl KeymapCatalog {
+    pub fn build() -> Self {
+        use kb_protocol::sonix::keymap::{CONSUMER, USAGES};
+        Self {
+            keys: USAGES
+                .iter()
+                .map(|u| KeyUsageInfo { code: u.code, id: u.id.into(), label: u.label.into(), group: u.group.into() })
+                .collect(),
+            media: CONSUMER.iter().map(|c| MediaUsageInfo { usage: c.code, id: c.id.into() }).collect(),
+            mouse: MouseButton::ALL.into_iter().map(MouseButtonName::from).collect(),
+        }
+    }
 }

@@ -260,6 +260,55 @@ body::after {
   outline-offset: 1px;
 }
 
+/* Keymap view: reassigned keys, pending edits and the locked Fn key. */
+.kb-keymap .kb-key {
+  cursor: pointer;
+  box-shadow:
+    inset 0 calc(var(--u) * -0.06) 0 0 var(--c, transparent),
+    0 calc(var(--u) * 0.03) calc(var(--u) * 0.06) rgb(0 0 0 / 0.35);
+}
+.kb-key .kb-legend {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 0.04);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--key-legend-strong, #fff7ee);
+  font-weight: 600;
+}
+.kb-key .kb-legend svg {
+  width: calc(var(--u) * 0.3);
+  height: calc(var(--u) * 0.3);
+  flex: none;
+}
+.kb-key.is-pending::after {
+  content: "";
+  position: absolute;
+  top: calc(var(--u) * 0.09);
+  right: calc(var(--u) * 0.09);
+  width: calc(var(--u) * 0.11);
+  height: calc(var(--u) * 0.11);
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 calc(var(--u) * 0.12) var(--signal);
+}
+.kb-key.is-locked {
+  cursor: not-allowed;
+  opacity: 0.5;
+  /* Stripes over the keycap's own gradient (kept from .kb-key). */
+  background-image:
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0 calc(var(--u) * 0.08),
+      rgb(127 127 127 / 0.12) calc(var(--u) * 0.08) calc(var(--u) * 0.16)
+    ),
+    linear-gradient(180deg, var(--key-top) 0%, var(--key-top) 62%, var(--key-side) 100%);
+}
+[data-theme="light"] .kb-key .kb-legend {
+  color: var(--key-legend-strong, #16171a);
+}
+
 .kb-stage {
   container-type: inline-size;
 }

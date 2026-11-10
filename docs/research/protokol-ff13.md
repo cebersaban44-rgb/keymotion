@@ -393,6 +393,7 @@ Kaynak: stok `layouts/rgb-keyboard.xml`. S1 `ak980-layout.json` ve S2 `data/layo
 - 144 giriş × 4 bayt; giriş idx×4'te. Bayt 574–575 = `AA 55`. Geçerli idx 1..142.
 - **Bir katmanı yazmak katmanın tamamını değiştirir**: tabloda olmayan tuş firmware varsayılanına döner.
 - [AK980-HW: S1 :300-315; S2 PROTOCOL.md:212, 2026-10-30'da base ve Fn katmanı doğrulandı] [KARDEŞ-HW: S4:514-516 replug sonrası kalıcı; S7].
+- [AK980 PRO-HW: bu proje, 2026-11-10] Ölçüldü: iki katman da yazıldı, `04 02` toplamı 576 baytla tuttu, `04 F0` yankısı geldi. `02` tuş + değiştirici, `03` consumer, `01 01` fare, `05 03` devre dışı ve sıfır tabloyla varsayılana dönüş doğrulandı. Fare `08` Windows'ta 4. düğme (geri). Ayrıntı: `docs/donanim-dogrulama.md`, "Tuş atama".
 
 ### 6.2 Giriş kodlaması
 

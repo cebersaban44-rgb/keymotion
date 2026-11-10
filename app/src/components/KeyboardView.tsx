@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { Connection } from "../bindings/Connection";
 import type { GeometryInfo } from "../bindings/GeometryInfo";
 
@@ -21,6 +21,20 @@ interface Props {
   selected?: ReadonlySet<number>;
   /** Pointer and ARIA semantics: painting (default) or selecting keys. */
   tool?: "brush" | "select";
+  /**
+   * led → legend shown instead of the keycap label, with the original
+   * label small underneath (keymap view).
+   */
+  legends?: Record<number, Legend>;
+  /** led → extra class on the key (`is-pending`, `is-locked`, …). */
+  keyClass?: Record<number, string>;
+}
+
+export interface Legend {
+  main: ReactNode;
+  /** Text for assistive technology when `main` is an icon. */
+  text: string;
+  sub?: ReactNode;
 }
 
 export type KeyAction = "press" | "drag";
@@ -42,7 +56,17 @@ type Vars = CSSProperties & Record<`--${string}`, string | number>;
  * LEDs sit under the south edge of each key like the real south-facing
  * RGB, so light bleeds below the legend.
  */
-export function KeyboardView({ geometry: g, battery, connection, colors, onKeyAction, selected, tool = "brush" }: Props) {
+export function KeyboardView({
+  geometry: g,
+  battery,
+  connection,
+  colors,
+  onKeyAction,
+  selected,
+  tool = "brush",
+  legends,
+  keyClass,
+}: Props) {
   const stage: Vars = { "--u": `calc(100cqw / ${g.width})`, "--rows": g.height };
   const box = (x: number, y: number, w: number, h: number, led?: number): Vars => {
     const v: Vars = { "--x": x, "--y": y, "--w": w, "--h": h };
@@ -72,9 +96,13 @@ export function KeyboardView({ geometry: g, battery, connection, colors, onKeyAc
             <button
               key={k.id}
               type="button"
-              className={`kb-key ${selected?.has(k.led) ? "is-selected" : ""}`}
+              className={`kb-key ${selected?.has(k.led) ? "is-selected" : ""} ${keyClass?.[k.led] ?? ""}`}
               style={box(k.x, k.y, k.w, k.h, k.led)}
-              aria-label={`${k.label || k.id} ${colors?.[k.led] ?? ""}`}
+              aria-label={
+                legends?.[k.led]
+                  ? `${k.label || k.id} → ${legends[k.led]?.text ?? ""}`
+                  : `${k.label || k.id} ${colors?.[k.led] ?? ""}`
+              }
               aria-pressed={tool === "select" ? (selected?.has(k.led) ?? false) : undefined}
               onPointerDown={(e) => {
                 e.preventDefault();
@@ -90,7 +118,7 @@ export function KeyboardView({ geometry: g, battery, connection, colors, onKeyAc
                 }
               }}
             >
-              <span>{k.label}</span>
+              <KeyLegend label={k.label} legend={legends?.[k.led]} />
             </button>
           ) : (
             <div key={k.id} className="kb-key" style={box(k.x, k.y, k.w, k.h, k.led)}>
@@ -111,6 +139,16 @@ export function KeyboardView({ geometry: g, battery, connection, colors, onKeyAc
         )}
       </div>
     </div>
+  );
+}
+
+function KeyLegend({ label, legend }: { label: string; legend?: Legend }) {
+  if (!legend) return <span>{label}</span>;
+  return (
+    <>
+      <span className="kb-legend">{legend.main}</span>
+      {legend.sub !== undefined && <span className="sub">{legend.sub}</span>}
+    </>
   );
 }
 

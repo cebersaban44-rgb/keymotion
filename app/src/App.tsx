@@ -15,8 +15,10 @@ import {
 } from "./lib/ipc";
 import { useUnsaved } from "./lib/unsaved";
 import { useT } from "./lib/i18n";
+import { useKeymap } from "./lib/keymap";
 import { useActiveKeyboard, useApp } from "./lib/store";
 import { ComingSoon } from "./pages/ComingSoon";
+import { Keymap } from "./pages/Keymap";
 import { Lighting } from "./pages/Lighting";
 import { Overview } from "./pages/Overview";
 import { Settings } from "./pages/Settings";
@@ -54,6 +56,17 @@ function useThemeSync() {
   useEffect(() => {
     document.documentElement.lang = locale;
   }, [locale]);
+}
+
+/**
+ * Load the app's keymap record for the connected model, so unsaved keymap
+ * edits are known (and guarded) before the keymap page is opened.
+ */
+function useKeymapRecord() {
+  const modelId = useActiveKeyboard()?.modelId;
+  useEffect(() => {
+    if (modelId) useKeymap.getState().load(modelId).catch(console.error);
+  }, [modelId]);
 }
 
 /**
@@ -104,6 +117,7 @@ function EmptyState() {
 export default function App() {
   useBootstrap();
   useThemeSync();
+  useKeymapRecord();
   const guard = useCloseGuard();
   const page = useApp((s) => s.page);
   const loaded = useApp((s) => s.loaded);
@@ -119,7 +133,7 @@ export default function App() {
       case "lighting":
         return <Lighting kb={kb} />;
       case "keymap":
-        return <ComingSoon title="nav.keymap" features={["keymap", "options"]} />;
+        return <Keymap kb={kb} />;
       case "macros":
         return <ComingSoon title="nav.macros" features={["macros"]} />;
       case "screen":

@@ -244,6 +244,36 @@ Kırmızı değerler `2·r mod 256` baytından çözüldü. 40 değerin hepsi `v
 - **Kullanıcı denemesi:** Kullanıcı yön düğmelerini uygulamada seçip klavyede gördü: yazdığı gibi çalışıyor.
 - **Yan gözlem:** Akış efekti geri yönde katarın başına (indeks ~0–20) geldiğinde, `F5` modelde tuşu olmayan yaklaşık 45 LED indeksini de yanık döndürdü. İndeksler: 0, 14–18, 35, 36, 53, 54, 71, 72, 89, 90, 95, 97, 107–109, 112–116, 120, 124–143. Bunlar yan ışık şeridi ya da firmware'in boş indeksleri olabilir (açık soru, DURUM.md §8).
 
+### Tuş atama (`04 11` / `04 27`) — 2026-11-10
+
+**Soru:** Kaynaklardaki keymap biçimi (§6) bu klavyede çalışıyor mu? Hangi girişler ne gönderiyor, varsayılana dönüş nasıl?
+
+**Önce:** Kullanıcı atamayı hiç değiştirmediğini söyledi (fabrika ayarı). Klavye keymap'i geri okuyamadığı için test sonunda iki katman da sıfır tabloyla yazıldı.
+
+**Yöntem 1 (CLI, `kb keymap`):**
+- Temel katman: Num / → `02 00 04 00` (A), Num * → `03 E9 00 00` (Ses+), Num − → `02 02 04 00` (Shift+A), Num + → `01 01 08 00` (fare `08`).
+- Fn katmanı: Num / → `02 00 05 00` (B).
+- Her yazım: `04 18` → `04 11`/`04 27` (`[8]=09`) → 9 veri → `04 02` → `04 F0`. 608 ms. `04 02` yankısındaki toplam gönderilen 576 baytla aynı; `04 F0` yankısı da geldi (durum `01`).
+- Kullanıcı tuşlara tarayıcıdaki bir test sayfasında bastı. Sayfa `keydown`/`keyup`, fare ve tekerlek olaylarını zaman damgasıyla kaydetti.
+
+| Tuş | Gelen olay | Sonuç |
+|---|---|---|
+| Num / | `KeyA`, `"a"` | ✅ |
+| Num * | `key="AudioVolumeUp"`; Windows ses göstergesi açıldı | ✅ medya (consumer) |
+| Num − | `ShiftLeft` basıldı, sonra `KeyA` `"A"` (shift) | ✅ değiştirici + tuş |
+| Num + | `mousedown button=3` (tarayıcıda "geri") | ✅ `08` = 4. düğme, yani **geri** |
+| Fn + Num / | `KeyB`, `"b"` | ✅ Fn katmanı |
+
+- Sıfır tabloyla yazdıktan sonra Num / yine `NumpadDivide "/"`, Num * yine `NumpadMultiply "*"` gönderdi ve ses açılmadı: **varsayılana dönüş = bütün girişler sıfır** doğrulandı.
+
+**Yöntem 2 (uygulama):** Aynı atamalar (Num + bu kez "Devre dışı", `05 03 00 00`) Tuş Atama sayfasının "Klavyeye kaydet" düğmesiyle yazıldı (631 ms). Kullanıcı sayfadaki tuş testi kutusunda bastı: A, Sesi aç, Shift + A geldi; Num + hiçbir şey göndermedi. Sonra "Bu katmanı fabrika ayarına döndür" ile kaydedildi. `keymap.json`'da temel katman boş, son yazım zamanı işli.
+
+**Sonuçlar:**
+- §6.2'deki giriş kodları bu klavyede geçerli: `02` tuş + değiştirici, `03` consumer, `01 01` fare, `05 03` devre dışı, sıfır = varsayılan.
+- Fare yan tuşları: satıcı tablosu (S1 KeyMap.cs) `10` için "tuş 4", `08` için "tuş 5" diyor. Ölçümde `08`, Windows'ta 4. düğme (geri) olarak geldi; yani HID bit sırası geçerli: `08` geri, `10` ileri. `10` ayrıca denenmedi.
+- Fn katmanı, kendi Fn işlevi olmayan bir tuşta (Num /) çalışıyor.
+- **Ders:** Talimattaki "Num /" yazısı "Num Lock + /" diye okundu ve ilk denemede her basıştan önce bir `NumLock` göründü. Zaman damgaları, Num Lock'un test tuşuyla birlikte basılı tutulduğunu gösterdi; ikinci denemede tuşlar ayrı ayrı doğrulandı.
+
 ### Ekran: stok ana sayfa (fotoğraf, 2026-11-10 08:29)
 
 - **Yerleşim:** Panel yatay ve topuzun hemen solunda. Panelin sol yarısı mavi bir durum kartı, sağ yarısı siyah zemin üzerinde çizgi çizimi dağlar ve kuşlar.
