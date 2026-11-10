@@ -221,22 +221,25 @@ pub const TRAILER: [u8; 2] = [0xAA, 0x55];
 /// Highest brightness/speed level.
 pub const MAX_LEVEL: u8 = 5;
 /// The firmware's brightness scale: at level `n` a colour value `v` is
-/// driven as `v * LEVEL_SCALE[n] >> 8`. Measured 2026-11-10 with the
-/// Static effect and `04 F5`: white read back as 47, 95, 142, 190 and 253
-/// at levels 1–5, and #8B5CF6 at level 5 as 137, 91, 244. Close to linear,
-/// but not `n / 5`.
-pub const LEVEL_SCALE: [u16; MAX_LEVEL as usize + 1] = [0, 48, 96, 143, 191, 254];
+/// driven as `v * LEVEL_SCALE[n] >> 10`, i.e. `191·n / 1024` for levels 1–4
+/// and `1016 / 1024` at level 5. Close to linear, but not `n / 5`.
+///
+/// Measured 2026-11-10 with `04 F5`: six colours stored as a per-key table
+/// at every level 1–5, and the Static effect at levels 1–5 (white) and 5
+/// (#8B5CF6). Effects and per-key tables use the same scale, and every
+/// reading matches this table exactly (e.g. #808080 at level 2 → 47).
+pub const LEVEL_SCALE: [u16; MAX_LEVEL as usize + 1] = [0, 191, 382, 573, 764, 1016];
 
 /// `v` at brightness `level`, as the firmware drives it.
 pub fn scale_to_level(v: u8, level: u8) -> u8 {
-    let m = LEVEL_SCALE[level.min(MAX_LEVEL) as usize];
-    ((u16::from(v) * m) >> 8) as u8
+    let m = u32::from(LEVEL_SCALE[level.min(MAX_LEVEL) as usize]);
+    ((u32::from(v) * m) >> 10) as u8
 }
 
 /// Brightness `level` as a linear factor (0–1), for host-side dimming that
 /// should match the firmware's own scale.
 pub fn level_factor(level: u8) -> f32 {
-    f32::from(LEVEL_SCALE[level.min(MAX_LEVEL) as usize]) / 256.0
+    f32::from(LEVEL_SCALE[level.min(MAX_LEVEL) as usize]) / 1024.0
 }
 /// Mode byte that selects the per-key colour table.
 pub const MODE_PER_KEY: u8 = 0x80;
@@ -567,12 +570,26 @@ mod tests {
 
     #[test]
     fn level_scale_matches_measurements() {
-        // Static white at levels 1–5 and #8B5CF6 at level 5, read back on 2026-11-10.
-        assert_eq!((1..=5).map(|l| scale_to_level(255, l)).collect::<Vec<_>>(), [47, 95, 142, 190, 253]);
-        assert_eq!([0x8B, 0x5C, 0xF6].map(|v| scale_to_level(v, 5)), [137, 91, 244]);
+        // Per-key table read back with 04 F5 on 2026-11-10: colour stored → value
+        // driven at levels 1..=5 (red decoded from the 2·r byte).
+        let measured: [(u8, [u8; 5]); 8] = [
+            (0xFF, [47, 95, 142, 190, 253]),
+            (0x80, [23, 47, 71, 95, 127]),
+            (0x8B, [25, 51, 77, 103, 137]),
+            (0x5C, [17, 34, 51, 68, 91]),
+            (0xF6, [45, 91, 137, 183, 244]),
+            (0x40, [11, 23, 35, 47, 63]),
+            (0xC0, [35, 71, 107, 143, 190]),
+            (0x10, [2, 5, 8, 11, 15]),
+        ];
+        for (v, want) in measured {
+            let got: Vec<u8> = (1..=5).map(|l| scale_to_level(v, l)).collect();
+            assert_eq!(got, want, "{v:#04X}");
+        }
         assert_eq!(scale_to_level(255, 0), 0);
         assert_eq!(scale_to_level(255, 9), 253, "levels above the maximum are clamped");
         assert!((level_factor(5) - 0.992).abs() < 0.001);
+        assert!((level_factor(3) - 0.5596).abs() < 0.001);
     }
 
     #[test]

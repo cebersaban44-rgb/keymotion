@@ -41,6 +41,8 @@ cargo test --workspace
 pnpm --dir app typecheck
 git push -u origin feature/kisa-konu
 gh pr create --base develop
+# CI yeşil olunca:
+gh pr merge --squash --delete-branch
 ```
 
 **PR açmadan önce:**
@@ -131,7 +133,8 @@ Bir düzeltme `develop`'a girince issue kapanır ama kullanıcıya bir sonraki s
   - Her işi ayrı bir dalda yapar.
   - Kontrolleri çalıştırır ve gerekirse cihazda dener.
   - PR açar ve açıklamasını yazar.
-  - `main`'e hiçbir zaman doğrudan yazmaz.
+  - CI yeşil olunca PR'ı `develop`'a kendisi birleştirir (squash) ve dalı siler. Proje sahibinin onayını beklemez (karar 2026-11-10: her PR için onay beklemek geliştirmeyi yavaşlatıyordu).
+  - `main`'e hiçbir zaman doğrudan yazmaz; sürüm PR'ını onaysız birleştirmez.
 - **Proje sahibi:**
-  - PR'ları inceler ve onaylar. Küçük işlerde birleştirmeyi asistana bırakabilir.
+  - PR'ları istediği zaman inceler. Beğenmediği bir şey olursa yeni bir PR ile düzeltilir.
   - Sürümün `main`'e çıkışına ve yayına karar verir.

@@ -126,10 +126,11 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - [#4](https://github.com/cebersaban44-rgb/klavye-studio/pull/4): CI
 15. **Efekt rengi, parlaklık ölçeği ve ayna kırmızısı.** P1'deki "efekt rengine gamma gerekiyor mu?" sorusu göz yerine ölçümle cevaplandı. Ayrıntı: `donanim-dogrulama.md`, "Efekt rengi, parlaklık ölçeği ve F5'in kırmızı baytı".
     - **Efekt rengi:** Firmware gamma uygulamıyor. Uygulamanın kalibrasyonu artık efekt rengine de uygulanıyor.
-    - **Parlaklık:** Firmware ölçeği ölçüldü (`m = [0, 48, 96, 143, 191, 254] / 256`). Canlı önizleme `n/5` yerine bunu kullanıyor.
+    - **Parlaklık:** Firmware ölçeği ölçüldü: `v·m[n] >> 10`, `m = [0, 191, 382, 573, 764, 1016]`. Efektler ve tuş başına tablo aynı ölçeği kullanıyor. Canlı önizleme `n/5` yerine bunu kullanıyor.
     - **Ayna:** `04 F5` kırmızıyı `2·r mod 256` bildiriyor. Ayna artık kırmızıyı uygulamanın kayıtlı durumuna göre çözüyor (`kb-core/src/readback.rs`). Model dosyasına firmware göstergeleri (Num Lock, Fn) eklendi.
     - **Yan hata:** Tuş başına sekmesi açıldıktan sonraki 40 ms içinde başka sekmeye geçilirse bekleyen canlı kare akışı yeniden başlatıyordu ve akış bir daha durmuyordu. Kapanışta zamanlayıcı artık temizleniyor.
-    - **Ölçülemeyen:** Tuş başına tablonun parlaklık ölçeği. CLI ile art arda flash yazma izin sınıflandırıcısına takıldı; P1'de açık.
+    - **Tuş başına ölçek:** İlk denemede CLI ile art arda flash yazma izin sınıflandırıcısına takıldı. Kullanıcının isteğiyle ayrıca ölçüldü: 5 seviyede 6 renk, 40 değerin hepsi tabloya uyuyor.
+    - **Kalibrasyon metinleri:** Ayarlar'daki not, efekt rengine uygulanmadığını söylüyordu; düzeltildi. "Gri basamaklar" ipucu artık soldaki koyu basamakların klavyede de soluk görünmesinin normal olduğunu söylüyor.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -246,7 +247,9 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
    - Saat senkronu (P2, kolay).
    - Yön kodları (P1).
    - Tuş atama (P2, büyük iş).
-3. **Kullanıcının kalibrasyonu:** Ayarlar'da gamma **1.0 (ham)** kayıtlı; kullanıcı kalibrasyonu denerken kendisi seçti. Ölçüm, firmware'in hiçbir yolda gamma uygulamadığını gösterdi (madde 15). Yani gamma tamamen algı tercihi. İlk göz testinde paletle en uyumlu değer 2.2 çıkmıştı. Kullanıcıyla bir kez daha birlikte bakılabilir; ayarını sormadan değiştirme.
+3. **Kullanıcının kalibrasyonu:** Ayarlar'da gamma **1.0 (ham)** kayıtlı. Kullanıcı bunu bilerek seçti: 2.2'de "Gri basamaklar" deseninin sol tarafı soluk kalıyordu, bütün klavyenin yanmasını istedi.
+   - **Açıklama (kullanıcıya iletildi):** Soldaki basamaklar desenin en koyu grileri (#202020, #404040); 2.2'de LED'de %1 ve %5'e düşüyorlar. Gamma parlaklığı değil ara tonları ayarlar. Beyaz ve saf renkler her gamma'da aynı yanar. 1.0'da ara tonlu renkler (mor, pembe, açık mavi) ekrandakinden daha soluk ve beyazımsı görünür. İlk göz testinde paletle en uyumlu değer 2.2 çıkmıştı.
+   - **Karar kullanıcının:** Ayarını sormadan değiştirme.
 
 ### P0 — Hemen
 - [x] Kullanıcı tuş başına renk akışını yeniden denedi: Fırça ve Seç araçları, kaydetme ve kapatma uyarısı.
@@ -262,8 +265,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 - [x] Ayna kırmızıyı doğru gösteriyor (`F5` kırmızıyı `2·r mod 256` bildiriyor; madde 15).
 - [x] Ayarlar'a **renk kalibrasyonu**: kanal başına gamma ve kazanç, beyaz dengesi, klavyede test desenleri, kalıcı ayar.
 - [x] Ayna ters kalibrasyonla gösteriyor.
-- [x] Firmware'in parlaklık eğrisi: efektte ölçüldü (`v·m[n] >> 8`, `m = [0, 48, 96, 143, 191, 254]`). Canlı önizleme bu tabloyu kullanıyor.
-- [ ] Tuş başına tablonun parlaklık ölçeğini de ölç: aynı tasarımı 3 ve 1 parlaklıkta kaydedip `F5` ile oku. Flash yazdığı için kullanıcıyla yap.
+- [x] Firmware'in parlaklık eğrisi: efektte ve tuş başına tabloda ölçüldü (`v·m[n] >> 10`, `m = [0, 191, 382, 573, 764, 1016]`). Canlı önizleme bu tabloyu kullanıyor.
 - [ ] Yön kodlarını doğrula (özellikle mod 10). "Kapalı" (mod 0) sonrası Fn+X davranışını doğrula.
 - [ ] Host tarafı canlı efektler (RAM, 20–40 fps): dalga, nefes, ses tepkili (WASAPI loopback, `cpal`), sistem metrikleri.
 - [ ] Profiller (kaydet/yükle) ve uygulamaya göre otomatik profil (ön plandaki pencere).

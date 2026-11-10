@@ -180,11 +180,23 @@ CDP ile gerçek uygulamada, klavye USB modundayken denendi:
 
 **Sonuçlar:**
 1. **Efekt rengi doğrusal:** Firmware efekt rengini gamma'lamıyor; tuş başına tablo ve canlı kareyle aynı biçimde sürüyor. Uygulama artık kullanıcının kalibrasyonunu efekt rengine de uyguluyor. Böylece aynı palet rengi her modda aynı görünüyor.
-2. **Parlaklık ölçeği:** Seviye `n`'de değer `v·m[n] >> 8`, `m = [0, 48, 96, 143, 191, 254]`. Doğrusala yakın ama `n/5` değil (3. seviye %55,9, %60 değil). Canlı önizleme artık bu tabloyu kullanıyor. **Tuş başına tablonun** aynı ölçeği kullandığı varsayıldı; ölçülmedi (P1).
+2. **Parlaklık ölçeği:** Seviye `n`'de değer `v·m[n] >> 10`, `m = [0, 191, 382, 573, 764, 1016]`. Yani 1–4. seviyeler `191·n / 1024`, 5. seviye `1016 / 1024`. Doğrusala yakın ama `n/5` değil (3. seviye %56, %60 değil). Canlı önizleme artık bu tabloyu kullanıyor. Tuş başına tablo da aynı ölçeği kullanıyor (aşağıdaki ölçüm).
 3. **`F5` kırmızıyı `2·r mod 256` bildiriyor:** Kırmızının üst biti kayboluyor; her bayt iki değere karşılık geliyor (`b/2` ya da `b/2 + 128`). Yeşil ve mavi olduğu gibi geliyor. Göstergeler de aynı: Num Lock `FE FF FF` (beyaz), Fn `FE 00 00` (kırmızı).
    - **Etkisi:** Ayna kırmızı ara tonları yanlış gösteriyordu. Örneğin mor #8B5CF6 lacivert (#125BF4) görünüyordu. Daha önceki "Nefes mavi #3A5BFF → ayna mor" gözlemi de bu.
    - **Çözüm:** `kb_protocol::sonix::readback_red_candidates` iki adayı veriyor. `kb_core::readback` uygulamanın beklediği renge göre birini seçiyor. Beklenen renk, kayıtlı tasarım, efekt rengi ya da modeldeki gösterge rengi olabilir. Beklenti yoksa (gökkuşağı efektleri) karedeki en parlak kanala göre tahmin ediyor. Gökkuşağında yeşil ya da mavi zaten tepedeyken kırmızı belirsiz kalıyor; bu bilinen bir sınır.
    - **Uygulamada doğrulandı (CDP):** Static #8B5CF6 uygulandı. Ayna tuşları `#895BF4` (137, 91, 244) gösterdi, göstergeleri `#FFFFFF` ve `#FF0000`. Sonra kullanıcının durumu geri yüklendi.
+
+**Tuş başına tablonun parlaklık ölçeği** (kullanıcının isteğiyle, CLI ile, aynı gün): Altı tuş 5'ten 1'e her seviyede kaydedildi ve `F5` ile okundu. Ardından kullanıcının tasarımı (hepsi siyah, parlaklık 5) geri yazıldı ve `F5` ile eşleşti.
+
+| Kaydedilen renk | 1. seviye | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| #FFFFFF | 47 | 95 | 142 | 190 | 253 |
+| #808080 | 23 | 47 | 71 | 95 | 127 |
+| #8B5CF6 (R, G, B) | 25, 17, 45 | 51, 34, 91 | 77, 51, 137 | 103, 68, 183 | 137, 91, 244 |
+| #404040 | 11 | 23 | 35 | 47 | 63 |
+| #10C0FF (R, G) | 2, 35 | 5, 71 | 8, 107 | 11, 143 | 15, 190 |
+
+Kırmızı değerler `2·r mod 256` baytından çözüldü. 40 değerin hepsi `v·m[n] >> 10` tablosuna birebir uyuyor; efektlerdeki beyaz ölçümleri de aynı. İlk tahmindeki `m/256` tablosu (`48, 96, …`) 1. ve 2. seviyede bir birim şaşıyordu (örneğin #808080 2. seviyede 47 okunuyor, 48 değil).
 
 ### Ekran: stok ana sayfa (fotoğraf, 2026-11-10 08:29)
 
