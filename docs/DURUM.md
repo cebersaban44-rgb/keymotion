@@ -35,7 +35,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | Cihaz tespiti (USB, 2.4G, BT), takma/çıkarma izleme (2 sn yoklama) | ✅ |
 | BT pil seviyesi (GATT 0x180F) | ✅ |
 | Genel Bakış sayfası: ölçülmüş 97 tuşlu düzen, ekran taklidi, mod anahtarı, pil | ✅ |
-| Işıklar → **Efektler**: 20 firmware efekti, renk, gökkuşağı, parlaklık, hız, yön; "Klavyeye uygula" (flash) | ✅ (kullanıcı onayladı) |
+| Işıklar → **Efektler**: 20 firmware efekti, renk, gökkuşağı, parlaklık, hız, yön (ölçülmüş, hareketiyle adlandırılmış iki yön); "Klavyeye uygula" (flash) | ✅ Kullanıcı onayladı; yönleri klavyede de denedi. |
 | Işıklar → **Ayna**: klavyenin gerçek renklerini saniyede yaklaşık 4 kez `04 F5` ile okuyup gösterir | ✅ |
 | Işıklar → **Tuş başına renk**: Fırça ve Seç araçları, hazır desenler, canlı önizleme (RAM), kalıcı kayıt, kayıt durumu ve "Kayıtlıya dön" | ✅ Eksik tuş hatası düzeltildi, akış uygulamada uçtan uca doğrulandı. Kullanıcının son denemesi bekleniyor. |
 | Ayarlar: tema (sistem/koyu/açık), dil (TR/EN), Mica | ✅ |
@@ -145,6 +145,8 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - Beş yönlü efektin (10, 11, 12, 16, 18) her birinde yalnızca iki yön var; kod 2 ve 3, 1 ve 0'ı tekrarlıyor. Mod 10'un "4 yön"ü bu firmware'de yok.
     - Katalog her efektin hareketini taşıyor (`Motion`: dikey, yatay, dönme, yol, çapraz). Arayüz yön düğmelerini buna göre adlandırıyor; eski kayıtlardaki 2/3 değerleri doğru düğmede görünüyor.
     - Ölçüm aracı: F5 karelerinden desen kaymasını hesaplayan `kb-cli/src/motion.rs` (eksen izdüşümü ve iki boyutlu eşleştirme, birim testli).
+    - Kullanıcı yön düğmelerini uygulamada seçip klavyede denedi: doğru çalışıyor.
+    - **PR'lar:** [#6](https://github.com/cebersaban44-rgb/klavye-studio/pull/6) madde 15, [#7](https://github.com/cebersaban44-rgb/klavye-studio/pull/7) madde 16, [#8](https://github.com/cebersaban44-rgb/klavye-studio/pull/8) madde 17, [#9](https://github.com/cebersaban44-rgb/klavye-studio/pull/9) bağlantı modları listesi, [#10](https://github.com/cebersaban44-rgb/klavye-studio/pull/10) madde 18.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -259,10 +261,27 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 
 ### Sıradaki oturum için
 
-1. `git switch develop && git pull`, sonra yeni iş için dal aç (örneğin `feature/direction-codes`).
-2. Önerilen sıra:
-   - Yön kodları (P1).
-   - Tuş atama (P2, büyük iş).
+1. `git switch develop && git pull`, sonra yeni iş için dal aç (örneğin `feature/keymap`). PR açınca auto-merge ve auto-fix'i aç (`gelistirme-akisi.md`).
+2. **Sıradaki iş: Tuş atama** (P2, büyük iş; kullanıcı 2026-11-10'da seçti). Başlamadan önce bilinenler (`research/protokol-ff13.md` §6):
+   - **Akış:** `04 18` → `04 11` (temel katman) ya da `04 27` (Fn katmanı), `[8]=09` → 9 veri paketi (576 bayt, giriş `idx×4`'te, 574–575 `AA 55`) → `04 02` → `04 F0`. Tuş başına renk tablosuyla aynı biçim; `per_key_table` ve sağlama toplamı doğrulaması yeniden kullanılabilir.
+   - **Giriş kodları:**
+     - `00 00 00 00` firmware varsayılanı, `05 03 00 00` kapalı.
+     - `02 MODS CODE 00` HID tuşu ve değiştiriciler; `03 LO HI 00` medya (consumer).
+     - `01 01 BTN 00` fare tuşu, `01 03 DIR 00` tekerlek.
+     - `06 SLOT MODE COUNT` makro, `07 K1 K2 K3` en fazla üç tuş birlikte.
+   - **Önemli kısıtlar:**
+     - Bir katmanı yazmak katmanın **tamamını** değiştirir; tabloda olmayan tuş varsayılana döner.
+     - Klavyeden keymap **okunamaz** (resmi sürücüde okuma yok). Uygulama kendi kopyasını tutup her seferinde tam tabloyu göndermeli.
+     - "Varsayılana dön" = bütün girişler sıfır.
+     - **Fn tuşu (`0xAF`) asla yeniden atanmaz.** Kendi Fn işlevi olan tuşlar Fn katmanı atamasını yok sayabilir.
+     - BT kanal değiştirme ve mod seçimi gibi firmware işlevlerinin giriş kodu bilinmiyor; bunlara yalnızca varsayılanla dönülür.
+     - `05 02 ID` (program/URL) yalnızca uygulama çalışırken işler; ilk sürümde sunma.
+   - **Doğrulama:**
+     - Önce CLI ile tek bir zararsız atama (ör. F13 ya da bir harf değişimi) ve sağlama toplamı.
+     - Tuşa basınca Windows'a giden kodu kullanıcıyla ya da bir tuş dinleyicisiyle kontrol et.
+     - Sonra tam tabloyla varsayılana dönüşü dene. Kullanıcının mevcut ataması bilinmediği için ilk yazımdan önce kullanıcıya sor; büyük olasılıkla fabrika varsayılanı.
+   - **Arayüz:** Tuş Atama sayfası şu an yer tutucu. Klavye görünümünde tuş seçme; temel ve Fn katmanı; kategoriler (tuşlar, medya, fare, kapalı); taslak, kaydet, kayıtlıya dön (ışıktaki akışla aynı). Kaydedilmemiş değişiklik uyarısı için `useUnsaved` kancası eklenmeli.
+3. Bekleyen küçük iş: "Kapalı" (mod 0) sonrası Fn+X ile ışığın geri açılıp açılmadığı. Kullanıcıyla, klavyede (P1).
 3. **Kullanıcının kalibrasyonu:** Ayarlar'da gamma **1.0 (ham)** kayıtlı. Kullanıcı bunu bilerek seçti: 2.2'de "Gri basamaklar" deseninin sol tarafı soluk kalıyordu, bütün klavyenin yanmasını istedi.
    - **Açıklama (kullanıcıya iletildi):** Soldaki basamaklar desenin en koyu grileri (#202020, #404040); 2.2'de LED'de %1 ve %5'e düşüyorlar. Gamma parlaklığı değil ara tonları ayarlar. Beyaz ve saf renkler her gamma'da aynı yanar. 1.0'da ara tonlu renkler (mor, pembe, açık mavi) ekrandakinden daha soluk ve beyazımsı görünür. İlk göz testinde paletle en uyumlu değer 2.2 çıkmıştı.
    - **Karar kullanıcının:** Ayarını sormadan değiştirme.
@@ -290,7 +309,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 ### P2 — Diğer özellikler
 - [x] **Saat senkronu** (`04 28`): bağlanınca günde en fazla bir kez ve elle (madde 17). Kullanıcı ekrandaki saatin doğru olduğunu onayladı.
 - [ ] **Seçenekler** (`04 17`): uyku süresi, Win kilidi, Alt+Tab ve Alt+F4 kilidi, tepki süresi. Bayt sırası yakalamayla doğrulanmalı.
-- [ ] **Tuş atama** (`04 11` temel, `04 27` Fn; 9 paket, 576 bayt): HID kodları, medya, fare, makro bağlama; varsayılana dönme; yazmadan önce yedek.
+- [ ] **Tuş atama** (`04 11` temel, `04 27` Fn; 9 paket, 576 bayt): HID kodları, medya, fare, makro bağlama; varsayılana dönme. Klavyeden okunamıyor; uygulama kendi kopyasını tutar. Hazırlık notu: "Sıradaki oturum için".
 - [ ] **Makrolar** (`04 19` → `04 15`): `04 19` makro tablosunu siler, dikkat.
 - [ ] **Ekran** (`04 72` + FF68):
   - Paketler **WriteFile** ile gönderilir, SET_REPORT ile değil (kardeş kartı çökertmiş). `04 F0` asla gönderilmez.
