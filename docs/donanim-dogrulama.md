@@ -216,6 +216,33 @@ Kırmızı değerler `2·r mod 256` baytından çözüldü. 40 değerin hepsi `v
 - Genel Bakış → "Klavye saati" → "Şimdi eşitle": 250 ms, "Saat eşitlendi". "Bağlanınca eşitle" anahtarı dosyaya kaydedildi.
 - **Gözle doğrulama:** Kullanıcı klavyenin ekranındaki saatin bilgisayarla aynı olduğunu onayladı (2026-11-10).
 
+### Efekt yönleri — 2026-11-10
+
+**Soru:** Yön kodları (ışık paketinin 11. baytı) hangi efektte ne yapıyor? Kaynaklar çelişiyordu (0 = sol, 1 = aşağı, 2 = yukarı, 3 = sağ; ya da yalnızca 0/1; mod 10 için 4 yön).
+
+**Yöntem (`kb direction-probe`):**
+- Her yönlü efekt gökkuşağı modunda her yön koduyla kaydedildi (flash, toplam yaklaşık 30 yazım).
+- 1,2 sn sonra `04 F5` ile 6–10 kare art arda okundu.
+- Desenin kayması iki yolla hesaplandı:
+  - Kareler x, y ve merkeze göre açı eksenlerine izdüşürüldü.
+  - Ayrıca iki boyutlu bir eşleştirme yapıldı.
+- Kırmızı belirsiz okunduğu için yalnızca yeşil ve mavi kullanıldı.
+- Akış (Flowing) için yanan LED indeksleri kare kare listelendi.
+- Sonunda kullanıcının efekti (Launch, #8B5CF6, parlaklık 5, hız 3) geri yazıldı.
+
+| Mod | Kod 0 | Kod 1 | Kod 2 | Kod 3 | Ölçüm |
+|---|---|---|---|---|---|
+| 10 Scrolling | ↓ aşağı | ↑ yukarı | ↑ yukarı | ↓ aşağı | y ekseni: hız 0–1'de ±0,4, hız 4'te ±1,2 tuş/sn; x'te hareket yok |
+| 11 Rolling | → sağa | ← sola | ← sola | → sağa | x ekseni: ±5,7 tuş/sn (hız 1), güven 2,3–3,2 |
+| 12 Rotating | ↺ saatin tersi | ↻ saat yönü | ↻ saat yönü | ↺ saatin tersi | açı ekseni: −16,5 / +25 °/sn |
+| 16 Flowing | ileri | geri | geri | ileri | 6 LED'lik bir katar **LED indeks sırasıyla** ilerliyor: kod 0'da indeks artıyor (22–27 → 26–31 → …), kod 1'de azalıyor. Ekranda satır satır, soldan sağa ve yukarıdan aşağı. |
+| 18 Tilt | ↗ sağ yukarı | ↙ sol aşağı | ↙ sol aşağı | ↗ sağ yukarı | iki boyutlu eşleştirme: (+4, −2) / (−2, +4) tuş/sn |
+
+**Sonuçlar:**
+- Her yönlü efektin **iki** yönü var. Kod 2, 1 gibi; kod 3, 0 gibi davranıyor. Satıcı tablosunda mod 10 dört yönlü (`caps` 0x3B) görünüyordu; bu firmware'de öyle değil.
+- Uygulama her efekt için iki seçenek gösteriyor ve bunları hareketin kendisiyle adlandırıyor (Aşağı/Yukarı, Sağa/Sola, Saat yönü/Saatin tersi, İleri/Geri, Sağ yukarı/Sol aşağı). Katalog bilgisi: `kb_protocol::sonix::Motion`.
+- **Yan gözlem:** Akış efekti geri yönde katarın başına (indeks ~0–20) geldiğinde, `F5` modelde tuşu olmayan yaklaşık 45 LED indeksini de yanık döndürdü. İndeksler: 0, 14–18, 35, 36, 53, 54, 71, 72, 89, 90, 95, 97, 107–109, 112–116, 120, 124–143. Bunlar yan ışık şeridi ya da firmware'in boş indeksleri olabilir (açık soru, DURUM.md §8).
+
 ### Ekran: stok ana sayfa (fotoğraf, 2026-11-10 08:29)
 
 - **Yerleşim:** Panel yatay ve topuzun hemen solunda. Panelin sol yarısı mavi bir durum kartı, sağ yarısı siyah zemin üzerinde çizgi çizimi dağlar ve kuşlar.
