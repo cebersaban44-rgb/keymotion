@@ -1,0 +1,85 @@
+# Checks every pull request and every merge into develop and main.
+# The same checks are listed in docs/gelistirme-akisi.md; branch protection
+# requires the "Build and test" job before a PR can be merged.
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR cancels the run in progress.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  build-and-test:
+    name: Build and test
+    # The app targets Windows (WinRT Bluetooth, HID, WebView2), so it is
+    # built and tested there.
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Keep LF line endings so rustfmt and the bindings check see the files
+      # exactly as they are committed.
+      - name: Keep LF line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: app/package.json
+          cache: true
+          cache_dependency_path: app/pnpm-lock.yaml
+
+      - name: Install UI dependencies
+        run: pnpm --dir app install --frozen-lockfile
+
+      - name: Typecheck and build the UI
+        run: pnpm --dir app build
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace
+
+      # `cargo test` regenerates the TypeScript bindings from the Rust types.
+      # They must be committed and up to date, or the UI and the backend
+      # disagree about the data they exchange.
+      - name: Bindings are up to date
+        run: |
+          new="$(git ls-files --others --exclude-standard -- app/src/bindings)"
+          if ! git diff --quiet -- app/src/bindings || [ -n "$new" ]; then
+            echo "::error::app/src/bindings is out of date. Run 'cargo test --workspace' and commit the changes."
+            git diff -- app/src/bindings
+            [ -n "$new" ] && printf 'Not committed:\n%s\n' "$new"
+            exit 1
+          fi
