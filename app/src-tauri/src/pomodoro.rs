@@ -50,8 +50,9 @@ const IDLE: Duration = Duration::from_secs(60);
 /// so the upload (which pauses the live layer) does not cut it short.
 const FLASH_MS: f64 = 1_000.0;
 
-/// Keys the light has left: dim, so the empty part stays visible.
-const TRACK: f32 = 0.08;
+/// Keys the light has left: barely lit, so the empty part stays visible.
+/// 8 % looked like the light was still waiting there (owner, 2026-11-10).
+const TRACK: f32 = 0.03;
 /// Width of the edge between lit and dark keys, as a share of the keyboard:
 /// the key on the edge dims slowly instead of switching off.
 const EDGE: f32 = 0.04;
