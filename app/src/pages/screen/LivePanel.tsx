@@ -1,15 +1,19 @@
-// "Canlı ekran": the live mode switch, its upload budget and the sources
-// (phase C). The backend runs the live mode; this only shows and sets it.
+// "Canlı ekran": the live mode switch, what shows on the screen in which
+// order (focus timer, the song, the user's own picture), and the upload
+// budget (phase C). The backend runs the live mode; this only shows and
+// sets it.
 
-import { AlertTriangle, Clock3, Loader2, Music2, Radio, RotateCcw, Upload, X } from "lucide-react";
+import { AlertTriangle, Clock3, Hourglass, ImageIcon, Loader2, Music2, Radio, RotateCcw, Upload, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { LivePlan } from "../../bindings/LivePlan";
 import type { LiveRestore } from "../../bindings/LiveRestore";
 import type { LiveState } from "../../bindings/LiveState";
+import type { SongStop } from "../../bindings/SongStop";
 import { Segmented, Toggle } from "../../components/controls";
 import { useT, type MessageKey } from "../../lib/i18n";
-import { fmtWait, useLive } from "../../lib/live";
+import { NOW_PLAYING_SOURCE, fmtWait, useLive } from "../../lib/live";
+import { POMODORO_SOURCE, usePomodoro } from "../../lib/pomodoro";
 import { uploadSeconds } from "../../lib/screenImport";
 import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useNow } from "./common";
 
@@ -55,36 +59,23 @@ export function LivePanel({ usb }: { usb: boolean }) {
         </label>
       </div>
 
-      <div className="grid grid-cols-[minmax(300px,1fr)_minmax(300px,1fr)] gap-6">
-        <div className="flex flex-col gap-3">
-          <span className="text-[12.5px] font-medium">{t("sc.live.plan")}</span>
+      <ScreenOrder s={s} set={set} />
+
+      <div className="flex flex-col gap-3 border-t border-line pt-4" data-live-budget>
+        <span className="text-[12.5px] font-medium">{t("sc.live.plan")}</span>
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] items-start gap-x-6 gap-y-3">
           <Segmented<LivePlan>
             label={t("sc.live.plan")}
             value={s.plan}
             onChange={(p) => set({ plan: p })}
             options={PLANS.map((p) => ({ value: p.id, label: t(p.label) }))}
           />
-          <BudgetLine s={s} />
-          <p className="text-[11.5px] text-ink-3">{t(plan.years)}</p>
-          {s.plan === "heavy" && <Hint tone="warn">{t("sc.live.heavyWarn")}</Hint>}
-        </div>
-
-        <div className="flex flex-col gap-3">
-          <span className="text-[12.5px] font-medium">{t("sc.live.sources")}</span>
-          <div className="flex flex-col gap-2 rounded-xl border border-line p-3">
-            <div className="flex items-start justify-between gap-3">
-              <span className="flex items-start gap-2.5">
-                <Music2 size={16} className="mt-0.5 shrink-0 text-signal" />
-                <span className="flex flex-col">
-                  <span className="text-[13px] font-semibold">{t("sc.live.np")}</span>
-                  <span className="text-[11.5px] text-ink-3">{t("sc.live.np.body")}</span>
-                </span>
-              </span>
-              <Toggle checked={s.nowPlaying} onChange={(nowPlaying) => set({ nowPlaying })} label={t("sc.live.np")} />
-            </div>
-            {s.enabled && s.nowPlaying && <TrackLine s={s} />}
+          <div className="flex flex-col gap-1.5">
+            <BudgetLine s={s} />
+            <p className="text-[11.5px] text-ink-3">{t(plan.years)}</p>
           </div>
         </div>
+        {s.plan === "heavy" && <Hint tone="warn">{t("sc.live.heavyWarn")}</Hint>}
       </div>
 
       <StatusLine s={s} usb={usb} />
@@ -125,6 +116,204 @@ export function LivePanel({ usb }: { usb: boolean }) {
       </AnimatePresence>
     </section>
   );
+}
+
+type Patch = Parameters<ReturnType<typeof useLive.getState>["configure"]>[0];
+
+/** Which layer is on the GIF page now: 1 the focus timer, 2 the song,
+ *  3 the user's own picture. */
+function onScreen(s: LiveState): 1 | 2 | 3 {
+  if (s.uploading?.source === "restore" || !s.restore) return 3;
+  if (s.last?.source === POMODORO_SOURCE) return 1;
+  if (s.last?.source === NOW_PLAYING_SOURCE) return 2;
+  return 3;
+}
+
+/** "12 sn", "4 dk". */
+function fmtSoon(ms: number, units: { s: string; h: string; m: string }) {
+  return ms < 60_000 ? `${Math.max(1, Math.ceil(ms / 1000))} ${units.s}` : fmtWait(ms, units);
+}
+
+/** The order the sources use the screen in, what each does now, and the
+ *  user's own picture at the bottom (owner's design, 2026-11-10). */
+function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) {
+  const t = useT();
+  const p = usePomodoro((x) => x.state);
+  const on = onScreen(s);
+  const units = { s: t("sc.live.s"), h: t("sc.live.h"), m: t("sc.live.m") };
+  const playing = !!s.track?.playing;
+
+  const pomo: MessageKey = !s.enabled
+    ? "sc.live.st.liveOff"
+    : p && !p.settings.screen
+      ? "sc.live.st.cardsOff"
+      : on === 1
+        ? "sc.live.st.showing"
+        : p?.status === "running"
+          ? "sc.live.st.running"
+          : p?.status === "paused"
+            ? "sc.live.st.paused"
+            : "sc.live.st.idle";
+  const song: MessageKey = !s.enabled
+    ? "sc.live.st.liveOff"
+    : !s.nowPlaying
+      ? "sc.live.st.sourceOff"
+      : on === 2
+        ? "sc.live.st.showing"
+        : s.held && playing
+          ? "sc.live.st.waiting"
+          : playing
+            ? "sc.live.st.playing"
+            : "sc.live.st.silent";
+  const goingBack = s.enabled && s.goingBack ? Math.max(0, s.goingBack.atMs - Date.now()) : null;
+
+  return (
+    <div className="flex flex-col gap-3" data-live-order>
+      <div className="flex flex-col gap-0.5">
+        <h3 className="text-[14px] font-semibold">{t("sc.live.order")}</h3>
+        <p className="text-[12px] text-ink-2">{t("sc.live.order.body")}</p>
+        {!s.enabled && <p className="text-[11.5px] text-ink-3">{t("sc.live.order.off")}</p>}
+      </div>
+      <ol className="flex flex-col divide-y divide-line rounded-2xl border border-line">
+        <Layer n={1} icon={<Hourglass size={16} />} title={t("sc.live.pomo")} body={t("sc.live.pomo.body")} status={t(pomo)} active={on === 1} data="pomodoro" />
+        <Layer
+          n={2}
+          icon={<Music2 size={16} />}
+          title={t("sc.live.np")}
+          body={t("sc.live.np.body")}
+          status={t(song)}
+          active={on === 2}
+          data="now-playing"
+          right={<Toggle checked={s.nowPlaying} onChange={(nowPlaying) => set({ nowPlaying })} label={t("sc.live.np")} />}
+        >
+          {s.nowPlaying && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <span className="text-[12px] text-ink-2">{t("sc.live.np.stop")}</span>
+              <Segmented<SongStop>
+                label={t("sc.live.np.stop")}
+                value={s.songStop}
+                onChange={(songStop) => set({ songStop })}
+                options={[
+                  { value: "back", label: t("sc.live.np.stop.back") },
+                  { value: "keep", label: t("sc.live.np.stop.keep") },
+                ]}
+              />
+            </div>
+          )}
+          {s.enabled && s.nowPlaying && <TrackLine s={s} />}
+        </Layer>
+        <Layer
+          n={3}
+          icon={<ImageIcon size={16} />}
+          title={t("sc.live.own")}
+          body={s.own ? t("sc.live.own.body") : t("sc.live.own.unknown")}
+          status={on === 3 ? t("sc.live.st.showing") : t("sc.live.st.turn")}
+          active={on === 3}
+          data="own"
+        >
+          {s.own && (
+            <div className="flex flex-wrap items-center gap-4">
+              <OwnThumb own={s.own} />
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="truncate text-[13px] font-semibold">{s.own.name}</span>
+                <span className="num text-[11.5px] text-ink-3">
+                  {s.own.frames} {t("sc.frames")} · {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(s.own.frames))}
+                </span>
+                {goingBack != null && (
+                  <span className="flex items-center gap-1.5 text-[12px] text-signal" data-going-back>
+                    <Clock3 size={13} />
+                    {t("sc.live.goingBack.a")} {fmtSoon(goingBack, units)} {t("sc.live.goingBack.b")}
+                  </span>
+                )}
+              </div>
+              {s.enabled && s.restore && !s.uploading && (
+                <button
+                  type="button"
+                  onClick={() => set({ restore: true })}
+                  className="ml-auto flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[12.5px] font-semibold text-signal hover:bg-signal/10"
+                  data-own-back
+                >
+                  <RotateCcw size={14} /> {t("sc.live.own.back")}
+                </button>
+              )}
+            </div>
+          )}
+        </Layer>
+      </ol>
+    </div>
+  );
+}
+
+function Layer({
+  n,
+  icon,
+  title,
+  body,
+  status,
+  active,
+  right,
+  data,
+  children,
+}: {
+  n: number;
+  icon: ReactNode;
+  title: string;
+  body: string;
+  status: string;
+  active: boolean;
+  right?: ReactNode;
+  data: string;
+  children?: ReactNode;
+}) {
+  const nested = Array.isArray(children) ? children.some(Boolean) : !!children;
+  return (
+    <li
+      className={`flex flex-col gap-3 p-4 first:rounded-t-2xl last:rounded-b-2xl ${active ? "bg-ok/[0.07]" : ""}`}
+      data-layer={data}
+      data-active={active || undefined}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <span className="flex min-w-0 items-start gap-3">
+          <span
+            className={`num flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11.5px] font-semibold ${
+              active ? "bg-ok text-bg" : "bg-surface-2 text-ink-2"
+            }`}
+          >
+            {n}
+          </span>
+          <span className={`mt-0.5 shrink-0 ${active ? "text-ok" : "text-signal"}`}>{icon}</span>
+          <span className="flex min-w-0 flex-col">
+            <span className="text-[13px] font-semibold">{title}</span>
+            <span className="text-[11.5px] text-ink-3">{body}</span>
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-3">
+          <span
+            className={`rounded-md px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${
+              active ? "bg-ok/15 text-ok" : "bg-surface-2 text-ink-2"
+            }`}
+          >
+            {status}
+          </span>
+          {right}
+        </span>
+      </div>
+      {nested && <div className="ml-[60px] flex flex-col gap-3">{children}</div>}
+    </li>
+  );
+}
+
+function OwnThumb({ own }: { own: LiveRestore }) {
+  const [frame, setFrame] = useState<Uint16Array | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadFrames(own.id, own.frames === 1).then((d) => live && setFrame(pickThumb(d.frames) ?? null), console.error);
+    return () => {
+      live = false;
+    };
+  }, [own.id, own.frames]);
+  const box = "h-[68px] w-[120px] shrink-0 rounded-md bg-black";
+  return frame ? <FramePlayer frames={[frame]} delaysMs={[100]} className={box} /> : <div className={box} />;
 }
 
 /** Live mode off while a live card is on the screen: put the previous
@@ -299,7 +488,8 @@ function StatusLine({ s, usb }: { s: LiveState; usb: boolean }) {
       {s.last ? (
         <p className={`${row} text-ink-2`}>
           <Upload size={14} className="text-ok" />
-          {t("sc.live.last")}: <span className="truncate font-medium">{s.last.name}</span>
+          {/* After going back to the own picture the card is not on the screen any more. */}
+          {s.restore ? t("sc.live.last") : t("sc.live.lastCard")}: <span className="truncate font-medium">{s.last.name}</span>
           <span className="num text-ink-3">
             · {new Date(s.last.atMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>

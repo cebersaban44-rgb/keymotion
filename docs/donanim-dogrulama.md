@@ -456,6 +456,11 @@ Uygulamanın Ekran sayfası; kullanıcı kendi dosyalarıyla denedi.
 - **Kullanıcının denemesi (2026-11-10):** Kullanıcı odak zamanlayıcısını klavyede denedi: ışıklar (boşalma, renkler), Windows bildirim sesi, geçiş efektleri ve süreler çalışıyor ("oldukça güzel çalışıyor").
   - Tek istek: boşalan tuşlarda kalan soluk iz %8 "beklemede kalıyor" gibi görünüyordu, %3'e indi. Değişiklikten sonra bir "Klavyede dene" turu klavyede çalıştı (97 LED, 12 sn, sonra kendi ışığına döndü).
   - Canlı mod denemede kapalıydı, yani faz kartları klavyeye yüklenmedi. Uygulamanın kaydındaki son canlı kart 11:50'deki "Çalan şarkı" kartı.
+- **Kullanıcının ikinci denemesi (2026-11-10 akşam, canlı mod açık):** Faz kartları klavyenin ekranına geldi (uygulama günlüğü, yerel saat):
+  - 20:25 "Odak 1/2" ve 20:26 mola kartı: 16'şar sayfa, 2'şer sn.
+  - 20:26:43 Durdur: "Erken bitti · 1 dk" özet kartı (16 sayfa, 2 sn). Kullanıcı bunu ekranda kalan "tur görseli" olarak gördü.
+  - 20:28 canlı mod kapatıldı ve "cat" geri yüklendi: 254 sayfa, 37 sn. Hata yok.
+  - Bu denemeden sonra ekran sırası ve kendi görseline dönüş yapıldı (DURUM madde 31); onun klavyede denemesi bekliyor.
 
 ### Sonuçlar
 

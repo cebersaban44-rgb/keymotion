@@ -204,12 +204,18 @@ impl ScreenLibrary {
 
     /// Record an upload the keyboard confirmed.
     pub fn uploaded(&mut self, model_id: &str, id: &str) -> io::Result<()> {
+        self.uploaded_with(model_id, id, true)
+    }
+
+    /// `charge`: take it from the live budget (false when the live mode
+    /// took its token before uploading).
+    pub fn uploaded_with(&mut self, model_id: &str, id: &str, charge: bool) -> io::Result<()> {
         let now = now_ms();
         if let Some(item) = self.index.items.iter_mut().find(|i| i.id == id) {
             item.uploaded_ms = Some(now);
         }
         self.index.shown.insert(model_id.to_string(), id.to_string());
-        self.count_upload(true);
+        self.count_upload(charge);
         self.save_index()
     }
 
@@ -248,6 +254,21 @@ impl ScreenLibrary {
         }
         let id = self.index.live.before.as_deref()?;
         let item = self.index.items.iter().find(|i| i.id == id)?;
+        Some(LiveRestore { id: item.id.clone(), name: item.name.clone(), frames: item.frames, pages: item.pages })
+    }
+
+    /// The user's own picture: what the live mode replaced while a live
+    /// card shows, else the library item on the GIF page now. Unknown
+    /// means the factory animation, as in `live_uploaded`.
+    pub fn live_own(&self) -> Option<LiveRestore> {
+        if let Some(r) = self.live_restore_target() {
+            return Some(r);
+        }
+        let shown = self.index.shown.values().find(|v| v.as_str() != LIVE_ID);
+        let item = match shown {
+            Some(id) => self.index.items.iter().find(|i| &i.id == id),
+            None => self.index.items.iter().find(|i| i.kind == ScreenItemKind::Factory),
+        }?;
         Some(LiveRestore { id: item.id.clone(), name: item.name.clone(), frames: item.frames, pages: item.pages })
     }
 
@@ -367,6 +388,7 @@ mod tests {
         let mine = lib.add("Benim", ScreenItemKind::Image, &ScreenAnimation::still(test_pattern())).unwrap();
         lib.uploaded("m", &mine.id).unwrap();
         assert!(lib.live_restore_target().is_none(), "no live card on the page yet");
+        assert_eq!(lib.live_own().map(|o| o.id), Some(mine.id.clone()), "own picture: the one on the page");
 
         let card = ScreenAnimation::still(Frame::filled(rgb565(0, 0, 255)));
         let item = LiveItem { source: "now-playing".into(), name: "Şarkı".into() };
@@ -374,12 +396,19 @@ mod tests {
         lib.live_uploaded("m", &card, "c2", &item).unwrap();
         let back = lib.live_restore_target().expect("the user's picture can be put back");
         assert_eq!(back.id, mine.id, "the second card does not overwrite what the first replaced");
+        assert_eq!(lib.live_own().map(|o| o.id), Some(mine.id.clone()), "own picture: the one replaced");
+        assert!(lib.live_source_showing("now-playing") && !lib.live_source_showing("pomodoro"));
         assert_eq!(lib.state("m").shown.as_deref(), Some(LIVE_ID));
         assert!(lib.data(LIVE_ID).is_ok(), "the live card is kept for the preview");
 
         // Putting it back (or any manual upload) leaves nothing to restore.
-        lib.uploaded("m", &mine.id).unwrap();
+        // The live mode going back by itself took its token already.
+        let tokens = lib.live_mut().budget.tokens(now_ms());
+        lib.uploaded_with("m", &mine.id, false).unwrap();
         assert!(lib.live_restore_target().is_none());
+        assert!(!lib.live_source_showing("now-playing"), "the song card is gone from the page");
+        assert!((lib.live_mut().budget.tokens(now_ms()) - tokens).abs() < 0.01, "not charged twice");
+        assert_eq!(lib.live_own().map(|o| o.id), Some(mine.id.clone()));
         let reopened = ScreenLibrary::open(Some(&dir));
         assert_eq!(reopened.state("m").uploads_today, 4);
         let _ = fs::remove_dir_all(&dir);

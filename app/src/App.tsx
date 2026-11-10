@@ -18,7 +18,7 @@ import { tNow, useT } from "./lib/i18n";
 import { useKeymap } from "./lib/keymap";
 import { useLayout } from "./lib/layout";
 import { startLive } from "./lib/live";
-import { nowPlayingCard, pomodoroCard, type PomodoroWords } from "./lib/liveCards";
+import { nowPlayingCard, pomodoroCard, pomodoroWords } from "./lib/liveCards";
 import { startPomodoro, usePomodoro, DEFAULT_SETTINGS } from "./lib/pomodoro";
 import { useMacros } from "./lib/macros";
 import { useScreen } from "./lib/screen";
@@ -89,24 +89,6 @@ function useKeyboardRecords() {
 }
 
 /** Words of the Pomodoro cards in the current language. */
-function pomodoroWords(): PomodoroWords {
-  return {
-    label: tNow("pomo.card.label"),
-    name: tNow("pomo.card.name"),
-    phase: { focus: tNow("pomo.phase.focus"), shortBreak: tNow("pomo.phase.shortBreak"), longBreak: tNow("pomo.phase.longBreak") },
-    round: tNow("pomo.card.round"),
-    min: tNow("pomo.card.min"),
-    next: tNow("pomo.card.next"),
-    nextFocus: tNow("pomo.card.nextFocus"),
-    nextShort: tNow("pomo.card.nextShort"),
-    nextLong: tNow("pomo.card.nextLong"),
-    lastBreak: tNow("pomo.card.lastBreak"),
-    doneComplete: tNow("pomo.card.doneComplete"),
-    doneStopped: tNow("pomo.card.doneStopped"),
-    ended: tNow("pomo.card.ended"),
-  };
-}
-
 /** The live screen and the Pomodoro run for the whole session, whatever
  *  page is open. */
 function useLiveScreen() {
@@ -114,7 +96,7 @@ function useLiveScreen() {
   useEffect(
     () =>
       startPomodoro((card) =>
-        pomodoroCard(card, usePomodoro.getState().state?.settings ?? DEFAULT_SETTINGS, pomodoroWords()),
+        pomodoroCard(card, usePomodoro.getState().state?.settings ?? DEFAULT_SETTINGS, pomodoroWords(tNow)),
       ),
     [],
   );

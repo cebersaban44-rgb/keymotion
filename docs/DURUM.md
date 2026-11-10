@@ -46,8 +46,8 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | **Makrolar**: liste, tuşlara basarak kayıt (konuma göre), adım düzenleyici (bekleme, sıralama, fare tıklaması), bellek göstergesi, kaydet ve geri al; Tuş Atama'da "Makro" seçici ve oynatma biçimi | ✅ Uygulamadan klavyeye yazıldı; kullanıcı basarak doğruladı (madde 20, 21). |
 | **Ekran Stüdyosu**: dosyadan (resim, GIF, video; kırpma, süre), yazı kartları (5 şablon), slayt; önizleme, onay, kütüphane, fabrika animasyonuna dönüş | ✅ Kullanıcı klavyede hepsini denedi (maddeler 23–25). |
 | Ekran → **Işıkları uydur**: görselin paletinden tuş tasarımı (degrade, tek renk, görsel), Işıklar'da taslak | ✅ Kullanıcı mor kartta klavyede doğruladı (madde 26). |
-| Ekran → **Canlı ekran**: canlı mod, günlük yükleme bütçesi, "Çalan şarkı" kartı, kapatınca önceki görseli geri yükleme | ✅ Kullanıcı klavyede denedi (madde 27). |
-| Araçlar → **Odak zamanlayıcısı** (Pomodoro tekniği): odak ve mola süreleri; bütün klavye fazın rengiyle dolu başlar ve süre azaldıkça seçilen yönde boşalır (flash'sız; yön, renkler, parlaklık, nabız, faz geçişi, ses seçilebilir; "Klavyede dene"); faz başında ekran kartı; kenar çubuğunda kalan süre | ✅ Kullanıcı klavyede denedi: ışıklar, bildirim sesi, geçiş efektleri ve süreler çalışıyor (maddeler 28–30). Faz kartları yalnız sahte arka uçta denendi; canlı mod açıkken klavyede henüz yüklenmedi. |
+| Ekran → **Canlı ekran**: canlı mod, günlük yükleme bütçesi, "Çalan şarkı" kartı, kapatınca önceki görseli geri yükleme; "Ekranda ne görünür?" sırası (zamanlayıcı → şarkı → kendi görselin), kaynak bitince kendi görseline dönüş | ✅ Kullanıcı klavyede denedi (madde 27). Sıra ve dönüş (madde 31) sahte arka uçta ve gerçek uygulamada (canlı mod kapalı) denendi; klavyede denemesi bekliyor. |
+| Araçlar → **Odak zamanlayıcısı** (Pomodoro tekniği): odak ve mola süreleri; bütün klavye fazın rengiyle dolu başlar ve süre azaldıkça seçilen yönde boşalır (flash'sız; yön, renkler, parlaklık, nabız, faz geçişi, ses seçilebilir; "Klavyede dene"); faz başında ekran kartı; kenar çubuğunda kalan süre | ✅ Kullanıcı klavyede denedi: ışıklar, bildirim sesi, geçiş efektleri ve süreler çalışıyor (maddeler 28–30). Canlı mod açıkken faz kartları da klavyede çalışıyor (madde 31). |
 
 ## 3. Kronoloji: ne yaptık, neden
 
@@ -456,6 +456,43 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - [#31](https://github.com/cebersaban44-rgb/klavye-studio/pull/31): Ekran sekmeleri, tek kart, sayfalı kütüphane.
       - [#32](https://github.com/cebersaban44-rgb/klavye-studio/pull/32): kendi sayfası (Araçlar), Canlı ekrandaki satırın kaldırılması.
 
+31. **Ekranı kim kullanır: sıra ve kendi görseline dönüş.**
+    - **Kullanıcının denemesi (2026-11-10, klavyede, canlı mod açık):** Faz kartları ekrana geliyor, "oldukça güzel çalışıyor". Ama tur bitince ya da durdurunca ekranda "tur görseli" kalıyordu; önceki görsel ancak canlı mod kapatılınca geri geliyordu.
+    - **Günlükte olan (yerel saat):**
+      - 20:25 "Odak 1/2" kartı, 20:26 mola kartı yüklendi (16'şar sayfa, 2'şer sn).
+      - 20:26:43 Durdur: "Erken bitti · 1 dk" **özet kartı** yüklendi. Kullanıcının "tur görseli" dediği bu.
+      - 20:28 canlı mod kapatıldı; kedi görseli geri yüklendi (254 sayfa, 37 sn).
+    - **Asıl sorun:** Canlı mod kalıcı bir anahtar, kaynaklar geçici (zamanlayıcı biter, şarkı durur). "Kaynağın gösterecek bir şeyi kalmayınca ne olur?" kuralı yoktu. Geri dönüş yalnızca canlı mod kapanınca vardı. Ayarlar da iki sayfaya dağılmıştı.
+    - **Karar (kullanıcı önizlemeyle onayladı, "Uygula"):** Ekranda tek bir sıra var; en üstteki dolu kaynak görünür, o bitince ekran bir alttakine iner.
+      1. **Odak zamanlayıcısı:** çalışırken faz kartları.
+      2. **Çalan şarkı:** şarkı çalarken.
+      3. **Kendi görselin:** Görseller'den en son yüklenen (canlı kart gelince yerine geçtiği; bilinmiyorsa fabrika animasyonu).
+    - **Yerleşim:**
+      - **Odak zamanlayıcısı → Ayarlar → "Klavye ekranı"** ("Faz başında ekran kartı"nın yerine):
+        - "Ekranda sırayla" şeridi: odak kartı → mola kartı → bitince ne gelecek. Kartlar gerçek çizim koduyla (`pomodoroCard`), kullanıcının süreleri ve renkleriyle çizilir. Sonda kendi görselinin küçük resmi ya da özet kartı.
+        - Canlı mod kapalıysa uyarı ve doğrudan **"Canlı modu aç"** düğmesi (başka sayfaya göndermez). "Çalan şarkı" açıksa onun da çalışacağı yazılır.
+        - **"Seri bitince ya da durdurunca"**: "Önceki görsele dön" (varsayılan) ya da "Özet kartı kalsın". Dönülecek görselin adı ve yükleme süresi yazar (kullanıcınınki: cat, ~37 sn).
+        - Bütçe satırı bir seriyi `2 × tur + 1` yükleme sayar (bitişteki dahil).
+      - **Ekran → Canlı ekran → "Ekranda ne görünür?"**: üç katman, her birinin durumu ("şu an ekranda", "çalışıyor", "bekliyor"…). Ekrandaki katman yeşil.
+        - Zamanlayıcı katmanında düğme yok, yalnızca durum ve ayarın yeri; şarkının neden beklediğini açıklıyor (madde 30'daki "işlevsiz satır" dersine dikkat edildi).
+        - "Çalan şarkı" katmanında anahtar ve **"Şarkı durunca"**: "5 dk sonra kendi görselin" (varsayılan) ya da "Kart kalsın".
+        - "Kendi görselin" katmanında küçük resim, ad, yükleme süresi, geri sayım ("Kendi görseline dönüş: 12 sn sonra") ve canlı kart ekrandayken **"Şimdi dön"**.
+        - Bütçe bunun altında. Durum satırı, kendi görseline dönülünce son kartı "Ekranda" değil "Son canlı kart" diye yazar.
+    - **Kurallar (arka uç):**
+      - Zamanlayıcı bitince ya da durdurulunca: şarkı çalıyorsa şarkının kartı gelir (eskisi gibi). Yoksa seçime göre 15 sn sonra kendi görseline dönülür (`pomodoro.rs` `BACK_AFTER`) ya da özet kartı gider. Bu arada yeniden başlatılırsa dönüş iptal olur (yükleme yok).
+      - Zamanlayıcı çalışırken ekran kartları kapatılırsa kartı da çekilir (şarkı ya da kendi görseli).
+      - Şarkı durunca (oynatıcı duraklatıldı ya da kapandı) ve kartı ekrandaysa 5 dk sonra kendi görseline dönülür (`now_playing.rs` `BACK_AFTER`). Müzik yeniden başlarsa iptal.
+      - `LiveHandle::return_after` / `cancel_return`: dönüş yalnızca o kaynağın kartı ekrandayken kurulur. Zamanı gelince yine kontrol edilir (`back_step`): başka bir kart bekliyorsa ya da kaynağın kartı artık ekranda değilse dönüş düşer. Yeni kart gelince de düşer.
+      - Otomatik dönüş bütçeden düşer (jeton baştan alınır); bütçe boşsa sırasını bekler. Elle dönüş (canlı mod kapatma, "Şimdi dön") eskisi gibi hiç beklemez.
+      - Dönüş tam başlarken yeni bir kart beklemeye girmişse dönüş atlanır, jeton geri verilir.
+      - Yeni ayarlar: `PomodoroSettings.end_screen` (`back` | `summary`), `LiveStored.song_stop` (`back` | `keep`). Eski dosyalar varsayılanı alır (testli). `LiveState`'e `own`, `going_back`, `song_stop` eklendi.
+    - **Doğrulama:**
+      - Birim testleri: dönüş kararı (`back_step`), kendi görseli ve çifte bütçe düşmemesi (`screen_lib`), eski ayar dosyaları. Uygulama paketinde 93 test geçti (1 yoksayılan); clippy ve rustfmt temiz.
+      - Tarayıcıda sahte arka uçla (`?pomofast`): durdurunca geri sayım ve dönüş, özet kartı seçimi, bekleme içinde yeniden başlatınca dönüş yok, çalışırken kartları kapatınca dönüş, şarkı durunca dönüş ve müzik yeniden başlayınca iptal (`window.__ksMockTrack(false|true)`).
+      - Gerçek uygulamada (CDP, canlı mod kapalı, klavyeye yazmadan): kendi görseli "cat" ve küçük resmi, kullanıcının ayarlarıyla (1 dk, 2 tur) çizilmiş kartlar, "Canlı modu aç" uyarısı.
+      - **Bekleyen:** Kullanıcının klavyede denemesi (canlı mod açık; seri bitince 15 sn sonra cat geri gelir, ~37 sn yükleme).
+    - PR: [#35](https://github.com/cebersaban44-rgb/klavye-studio/pull/35).
+
 ## 4. Sistem nasıl kurulu (as-built)
 
 ```
@@ -478,8 +515,8 @@ app/
                 settings.rs: Rust'ın sahip olduğu kalıcı ayarlar (calibration.json, clock.json, keymap.json,
                 macros.json; uygulama yapılandırma klasörü). keymap.json ve macros.json, klavyeye son yazılan
                 atamanın ve makroların tek kaydıdır. screen_lib.rs: ekran kütüphanesi (screen/library.json,
-                library/<id>.bin, live.bin). live.rs: canlı mod, yükleme bütçesi, bekleyen kart işçisi.
-                now_playing.rs: Windows medya oturumlarından "Çalan şarkı".
+                library/<id>.bin, live.bin). live.rs: canlı mod, yükleme bütçesi, bekleyen kart işçisi, kendi görseline zamanlı dönüş.
+                now_playing.rs: Windows medya oturumlarından "Çalan şarkı" (müzik durunca 5 dk sonra dönüş).
                 pomodoro.rs: odak zamanlayıcısı (süre, bütün klavyede boşalan ışık katmanı, "Klavyede dene", Windows bildirim sesi, faz kartı isteği).
   src/          React 19 + TS 7 + Tailwind 4 + motion. lib/ipc.ts (tipli köprü, seri kuyruk), lib/lighting.ts
                 (Işıklar durumu), lib/mirror.ts, components/KeyboardView.tsx (geometriden çizim, boyama),
@@ -511,7 +548,7 @@ rustfmt.toml, .gitattributes   120 sütun biçim; LF satır sonu.
 ## 5. Nasıl çalıştırılır ve test edilir
 
 ```bash
-cargo test --workspace            # 182 test; TS tiplerini ve mock JSON'ları da üretir
+cargo test --workspace            # 186 test; TS tiplerini ve mock JSON'ları da üretir
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check        # rustfmt.toml: 120 sütun
 cd app && pnpm typecheck
@@ -615,6 +652,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 42 | Uygulamadaki odak önizlemesinde renk neredeyse görünmedi | Klavye çizimi ışığı gerçekteki gibi tuşun altından hafif bir parlama olarak gösteriyor; küçük boyutta bu sönük kalıyor | Amaç bir hareketi anlatmaksa tuşları düz renkle çiz (sohbetteki önizlemenin onaylanan hâli). Gerçekçi çizim, ışığın tasarımına bakılan yerde kalsın. |
 | 43 | Tarayıcı testinde eklenen deneme görselleri sayfada görünmedi | `import('/src/lib/screen.ts')` uygulamanın kullandığı modül değildi: oturumda değişen dosyaları Vite `?t=…` ile yüklüyor, düz adres ayrı bir kopya açıyor | Test için modül alırken uygulamanın yüklediği adresi kullan: `performance.getEntriesByType('resource')` içinden bul. |
 | 44 | Canlı ekranda işlevsiz bir zamanlayıcı satırı kaldı | Çift anahtar kaldırıldı ama satır "bilgi" diye bırakıldı; yalnızca yönlendiriyordu | Bir şeyi taşırken eski yerde bir kalıntı bırakma: o yerde kullanıcının yapabileceği bir şey yoksa satır da olmasın. Bilgi zaten iş başındayken görünüyorsa (durum satırı) yeter. |
+| 45 | Zamanlayıcı bitince ekranda "tur görseli" kaldı | Canlı mod kalıcı bir anahtar, kaynaklar geçici; "kaynağın gösterecek bir şeyi kalmayınca ne olur" kuralı yoktu. Özet kartı da kullanıcıya tur kartı gibi göründü | Ekranı (ya da ışığı) paylaşan her kaynak için baştan "bitince ne olur" sorusunu cevapla: bir sıra ve en altta kullanıcının kendi hâli. Kullanıcının "ne gördüm" tarifini önce günlükle eşleştir (burada: Durdur → özet kartı yüklendi). |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 
@@ -622,7 +660,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 
 1. `git switch develop && git pull`, sonra yeni iş için dal aç. PR açınca auto-merge ve auto-fix'i aç (`gelistirme-akisi.md`).
 2. **Tuş atama ve makrolar bitti** (madde 19–21). Klavye fabrika durumunda: atama varsayılan, makro yok; `keymap.json` ve `macros.json` kayıtları da öyle.
-3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Odak zamanlayıcısı yapıldı ve kullanıcı denedi (maddeler 28–30); sıradaki iş LED canlı katmanı** (aşağıda).
+3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Odak zamanlayıcısı yapıldı ve kullanıcı denedi (maddeler 28–30); ekran sırası ve kendi görseline dönüş yapıldı (madde 31, klavyede denemesi bekliyor); sıradaki iş LED canlı katmanı** (aşağıda).
    - **Kullanıcının isteği:** "Ürünün farkı burada ortaya çıkacak." Ayrıca: "Buradaki görüntüyü de kaybetmeyelim" (stok ana sayfa) ve "birden fazla ekran görüntüsü veya başka ne yapabiliriz".
    - **Kısa sonuçlar:**
      - Resim ve GIF: evet, en çok 140 kare.
@@ -642,16 +680,17 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
      3. **Faz C sürüyor:** ilk adım bitti ve kullanıcı klavyede denedi (madde 27): canlı mod, bütçe, "Çalan şarkı", kapatınca önceki görseli geri yükleme.
         - **Odak zamanlayıcısı yapıldı** (maddeler 28–30). Kenar çubuğunda Araçlar → Odak zamanlayıcısı.
           - **Kullanıcı klavyede denedi (2026-11-10):** ışıklar, ses, geçiş efektleri, süreler çalışıyor. Soluk iz isteğiyle %8'den %3'e indi. Konu kapandı.
-          - Küçük açık: canlı mod açıkken faz kartları klavyede henüz yüklenmedi (flash yazar; kullanıcının kendi denemesiyle, ihtiyaç olunca).
+          - Canlı mod açıkken faz kartları da klavyede çalışıyor (kullanıcı denedi). Bitince ekranda özet kartı kalması sorun oldu; madde 31 ile çözüldü.
+        - **Ekran sırası** (madde 31): "Ekranda ne görünür?" (zamanlayıcı → şarkı → kendi görselin). Kullanıcının klavyede denemesi bekliyor: canlı mod açık, seri bitince ya da durdurunca 15 sn sonra kendi görseli (cat, ~37 sn); şarkı durunca 5 dk sonra.
           - Kullanıcının ayarı `pomodoro.json`'da: 1/1/1 dk, 2 tur, ses açık. Testler bu ayarı okuyup aynen geri yazar.
         - **Ekran sayfası düzeni** (maddeler 29–30): Görseller ve Canlı ekran sekmeleri; kütüphane sayfalı; Odak zamanlayıcısı kendi sayfasında.
         - **Sıradaki: LED canlı katmanı** (CPU/GPU barı, ses düzeyi, mikrofon kapalı uyarısı). Sonra takvim, hatırlatıcı, oyun oturumu.
           - Yer: Araçlar grubunda yeni bir sayfa (zamanlayıcı gibi). Çıktısı tuş ışıkları; canlı moda bağlı değil.
-          - Aynı arka plan ışık katmanını (`SetAmbient`) kullanacak. **Karar gerekiyor:** odak zamanlayıcısı ile aynı anda çalışırsa tuşları hangisi kullanır? Seçenekler: sırayla öncelik (zamanlayıcı üstte), ya da tuş bölgelerini paylaşmak. Işıklar sayfası önizlemesi her zaman en üstte kalır.
+          - Aynı arka plan ışık katmanını (`SetAmbient`) kullanacak. **Karar gerekiyor:** odak zamanlayıcısı ile aynı anda çalışırsa tuşları hangisi kullanır? Seçenekler: sırayla öncelik (zamanlayıcı üstte), ya da tuş bölgelerini paylaşmak. Işıklar sayfası önizlemesi her zaman en üstte kalır. Ekrandaki gibi (madde 31) baştan "bitince ne olur" kuralı da konmalı (ders §6, 45): en altta kullanıcının kayıtlı ışığı.
           - Tasarımı önce kullanıcıya etkileşimli bir önizlemeyle göster. Odak zamanlayıcısında bu yol işe yaradı (sohbette gerçek tuş dizilimiyle).
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.
-     4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar **13** yükleme: uygulamanın kaydında 11 (elle, canlı ve geri yükleme), CLI ile E1 ve E4.
+     4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar **17** yükleme: uygulamanın kaydında 15 (elle, canlı ve geri yükleme), CLI ile E1 ve E4.
    - **Faz B planı** (hepsi yapıldı, maddeler 24–26; plan kayıt için duruyor):
      - **Kullanıcının arayüz kuralı** (2026-11-10, Faz A geri bildirimi):
        - adımlar görünür olsun;
