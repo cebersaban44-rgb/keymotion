@@ -149,6 +149,11 @@ body::after {
   box-shadow: var(--shadow);
 }
 
+/* Screen previews: one panel pixel per CSS block, no smoothing. */
+.pixelated {
+  image-rendering: pixelated;
+}
+
 /* Range slider: filled track up to --pct in --fill, ring thumb. */
 .range {
   appearance: none;

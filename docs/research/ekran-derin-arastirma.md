@@ -221,12 +221,12 @@ Kullanıcının sorusu: "Mevcut yazılımlarda, katmanlarda, çekirdekte veya si
 | 2 | Gerçek kare hızı sınırı? | 2 ms gecikme oynuyor; panelin sınırı bilinmiyor (AK820'de ~60 ms). | E3 |
 | 3 | Tek karede gecikme `00` mı `01` mi? | İkisi de çalışıyor. Resmi sürücü `max(1, ms/2)` yazıyor [doğrulandı: A `ak980pro_tft_protocol.md:100`]. Biz tek karede **50** (100 ms) gönderiyoruz: S1'in AK980'de kullandığı değer, kareyi 2 ms'de bir yeniden çizdirmiyor. | **Doğrulandı (E1)** |
 | 4 | Kısa yükleme eski kareleri bırakıyor mu? | Başlıktaki kare sayısı neyin oynayacağını belirliyor; eski kareler büyük olasılıkla oynamıyor **[çıkarım]**. "Hayalet piksel" bildirimi başlıksız ve `04 F0`'lı bir yüklemeden geliyor [S7 0x5k]. | E3'te yan gözlem |
-| 5 | Yükleme sırasında ne oluyor? | Ekranda "LOADING %" gösteriliyor [doğrulandı: N1 dd46c24; **bu klavye, E4**]. Işıkların söndüğü bildiriliyor [N12; W satıcı yorumu]. Yazma bilinmiyor. Yarıda kalırsa yalnızca GIF sayfası bozulur; saat paketi "loading" durumundan çıkarır [doğrulandı: S8 `pantalla.md:38-40`], yeniden yükleme düzeltir. | E1 |
+| 5 | Yükleme sırasında ne oluyor? | Ekranda "LOADING %" gösteriliyor [doğrulandı: N1 dd46c24; **bu klavye, E4**]. Işıkların söndüğü bildiriliyor [N12; W satıcı yorumu]; bu klavyede gözlenmedi (ışık kapalıydı). **Klavye yazmaya devam ediyor** [bu klavye, kullanıcı]. Yarıda kalırsa yalnızca GIF sayfası bozulur; saat paketi "loading" durumundan çıkarır [doğrulandı: S8 `pantalla.md:38-40`], yeniden yükleme düzeltir. | **Doğrulandı** (ışıklar hariç) |
 | 6 | Daha hızlı yükleme mümkün mü? | Hayır. Onayı beklemeden göndermek görüntüyü bozuyor ya da kalıcı olmuyor [doğrulandı: N1 README:142-143; N7 README:67,76]. Süreyi büyük olasılıkla 4 KiB sektör silme belirliyor **[çıkarım]**. | Kapandı |
 | 7 | Flash'sız yol var mı? | Stok firmware'de yok (§4.1). Sayfa süresi ~143 ms, flash yazımıyla uyumlu. | **Kapandı (E1, E4)** |
 | 8 | Resmi yazılım ne sunuyor, farkımız ne? | GIF içe aktarma, fırça, silgi, metin ve kare kopyala/sil içeren basit editör, saat senkronu, yükleme. Video, tema, saat stili, varsayılana dönüş, kütüphane yok. Yalnızca Windows. Kullanıcılar sürücüyü bulmakta zorlanıyor ve uygulama ekranı ele geçiriyor [A; W4; S3]. Farkımız: §7. | Kapandı |
 
-**Çelişkili kaynak (E2 ile çözülecek):** Fişi çekip takmak ya da mod değiştirmek yüklenen görseli siliyor mu?
+**Çelişkili kaynak, çözüldü (E2, 2026-11-10):** Fişi çekip takmak ya da mod değiştirmek yüklenen görseli siliyor mu? **Bu klavyede hayır:** kullanıcı kabloyu çıkarıp taktı ve 2.4G'ye geçip döndü, görsel kaldı.
 - Silindiğini söyleyenler: N1 README:64-67; N13 (TH99).
 - Kaldığını söyleyenler: S1; N8:533 (AK35i'de güç kesintisinden sonra kaldı).
 - Büyük olasılıkla açılışta ana sayfa gösteriliyor ve görsel flash'ta duruyor **[çıkarım]**.

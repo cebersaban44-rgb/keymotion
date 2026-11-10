@@ -1,12 +1,13 @@
 // Changes the user made in the app that are not stored on the keyboard yet.
 // Every page with such state contributes one hook below; the close guard
-// (UnsavedDialog) and the sidebar read the combined list. The screen studio
-// plugs in here when it exists.
+// (UnsavedDialog) and the sidebar read the combined list. A running screen
+// upload counts too: closing would leave the GIF page half written.
 
 import type { MessageKey } from "./i18n";
 import { dirtyLayers, useKeymap } from "./keymap";
 import { dirtySlots, useMacros } from "./macros";
 import { lightingUnsaved, useLighting } from "./lighting";
+import { useScreen } from "./screen";
 import type { PageId } from "./store";
 
 export interface UnsavedItem {
@@ -72,10 +73,26 @@ function useMacrosItem(): UnsavedItem | null {
   };
 }
 
+/** Screen: an upload is running. "Save" waits for it to finish. */
+function useScreenItem(): UnsavedItem | null {
+  const uploading = useScreen((s) => s.upload !== null);
+  if (!uploading) return null;
+  return {
+    id: "screen",
+    page: "screen",
+    area: "nav.screen",
+    detail: "unsaved.screen",
+    needsUsb: true,
+    save: () => useScreen.getState().running ?? Promise.resolve(),
+    discard: () => {},
+  };
+}
+
 /** Every area with unsaved changes, in sidebar order. */
 export function useUnsaved(): UnsavedItem[] {
   const lighting = useLightingItem();
   const keymap = useKeymapItem();
   const macros = useMacrosItem();
-  return [lighting, keymap, macros].filter((i): i is UnsavedItem => i !== null);
+  const screen = useScreenItem();
+  return [lighting, keymap, macros, screen].filter((i): i is UnsavedItem => i !== null);
 }
