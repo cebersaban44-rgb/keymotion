@@ -295,7 +295,20 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **Gerçek uygulamada (CDP):**
       - Bir yazı kartı ve iki görsellik bir slayt "Yüklemeden kaydet" ile kütüphaneye kaydedildi; Rust tarafı (`screen_add`) ikisini de kabul etti. Klavyeye yazılmadı; deneme öğeleri sonra silindi.
       - Bulunan kusur düzeltildi: slaytın paletine geçiş karelerinin karışım renkleri giriyordu (kırmızı + mavi → pembe, mor). Palet artık uzun duran karelerden çıkarılıyor (≥300 ms; daha kısa kare varsa).
-      - Klavyede (tuş ışıkları) henüz denenmedi.
+    - **Klavyede (kullanıcı, 2026-11-10):** Işıklar yandı ama renkler görsele benzemedi; "cat" doğruydu, mor "Günaydın" kartı (Neon) değildi.
+      - **Teşhis:**
+        - Klavye canlı kareleri kabul ediyor; kayıtlı ışık "Kapalı" iken de (`kb live-probe`, F5 ile doğrulandı).
+        - Uygulama günlüğündeki birkaç `04 20` reddi, bilinen ara sıra görülen `FF`.
+        - Asıl sorun paletteydi:
+          - beyaz yazı palete giriyordu, degradenin ortası beyaz yanıyordu;
+          - renkler görseldeki yatay yerlerine göre sıralanıyordu, ortalı yazı kartında bu sıra rastgele;
+          - "Görsel" en parlak yere (beyaz yazıya) göre ölçeklendiği için koyu mor alanlar sönük kalıyordu.
+      - **Düzeltme:**
+        - Görselde gerçek renk varsa (doygunluk ≥ 0,2, pay ≥ %1) beyaz, gri ve siyaha yakın kutular palete alınmıyor.
+        - Sıralama puanı doygunluğu daha çok tartıyor.
+        - Degrade, renkler görselde birbirinden ayrık durmuyorsa (yatay yayılım < 0,25) tona göre diziliyor; en geniş ton boşluğundan başlanıyor.
+        - "Görsel" seçeneği parlaklığı %90'lık dilime göre, karekök eğrisiyle kaldırıyor.
+      - **Sonuç:** "Günaydın" paleti mor #791BFF, pembe #FF3FD7, açık pembe #FA8CFF. Kullanıcı klavyede degradeyi gözle "karta benziyor" diye doğruladı. Testten sonra kullanıcının ışık tasarımı (kayıtlı 16 tuş) geri yüklendi.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
