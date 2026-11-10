@@ -183,6 +183,13 @@ fn live_configure(
     live.configure(enabled, plan, now_playing, restore, song_stop)
 }
 
+/// Send the waiting live card now instead of waiting for the budget.
+#[tauri::command]
+fn live_send_now(live: Live<'_>) -> Result<LiveState, String> {
+    tracing::debug!("ipc: live_send_now");
+    live.send_now()
+}
+
 /// A finished live card from the UI: the blob as body (validated here),
 /// headers `x-source` and `x-name` (URI encoded). It waits for the budget
 /// and the cable; the newest card wins.
@@ -548,6 +555,7 @@ pub fn run() {
             live_state,
             live_configure,
             live_submit,
+            live_send_now,
             now_playing_cover,
             pomodoro_state,
             pomodoro_control,

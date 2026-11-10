@@ -483,15 +483,48 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Zamanlayıcı çalışırken ekran kartları kapatılırsa kartı da çekilir (şarkı ya da kendi görseli).
       - Şarkı durunca (oynatıcı duraklatıldı ya da kapandı) ve kartı ekrandaysa 5 dk sonra kendi görseline dönülür (`now_playing.rs` `BACK_AFTER`). Müzik yeniden başlarsa iptal.
       - `LiveHandle::return_after` / `cancel_return`: dönüş yalnızca o kaynağın kartı ekrandayken kurulur. Zamanı gelince yine kontrol edilir (`back_step`): başka bir kart bekliyorsa ya da kaynağın kartı artık ekranda değilse dönüş düşer. Yeni kart gelince de düşer.
-      - Otomatik dönüş bütçeden düşer (jeton baştan alınır); bütçe boşsa sırasını bekler. Elle dönüş (canlı mod kapatma, "Şimdi dön") eskisi gibi hiç beklemez.
-      - Dönüş tam başlarken yeni bir kart beklemeye girmişse dönüş atlanır, jeton geri verilir.
+      - Dönüş bütçeden düşer ama bütçeyi beklemez (madde 32'de değişti; önce bekliyordu).
+      - Dönüş tam başlarken hemen gidebilecek yeni bir kart varsa dönüş atlanır.
       - Yeni ayarlar: `PomodoroSettings.end_screen` (`back` | `summary`), `LiveStored.song_stop` (`back` | `keep`). Eski dosyalar varsayılanı alır (testli). `LiveState`'e `own`, `going_back`, `song_stop` eklendi.
     - **Doğrulama:**
       - Birim testleri: dönüş kararı (`back_step`), kendi görseli ve çifte bütçe düşmemesi (`screen_lib`), eski ayar dosyaları. Uygulama paketinde 93 test geçti (1 yoksayılan); clippy ve rustfmt temiz.
       - Tarayıcıda sahte arka uçla (`?pomofast`): durdurunca geri sayım ve dönüş, özet kartı seçimi, bekleme içinde yeniden başlatınca dönüş yok, çalışırken kartları kapatınca dönüş, şarkı durunca dönüş ve müzik yeniden başlayınca iptal (`window.__ksMockTrack(false|true)`).
       - Gerçek uygulamada (CDP, canlı mod kapalı, klavyeye yazmadan): kendi görseli "cat" ve küçük resmi, kullanıcının ayarlarıyla (1 dk, 2 tur) çizilmiş kartlar, "Canlı modu aç" uyarısı.
-      - **Bekleyen:** Kullanıcının klavyede denemesi (canlı mod açık; seri bitince 15 sn sonra cat geri gelir, ~37 sn yükleme).
+      - Kullanıcının klavyede denemesi: madde 32.
     - PR: [#35](https://github.com/cebersaban44-rgb/klavye-studio/pull/35).
+
+32. **Ekran "takılı kaldı": günlük bütçe bitince kartlar ve dönüş sessizce bekliyordu.**
+    - **Kullanıcının denemesi (2026-11-10, 21:02–21:08 yerel saat, canlı mod açık):**
+      - Işıklar doğru davrandı.
+      - Durdurunca eski resim gelmedi; mola kartı kaldı.
+      - Yeniden başlatınca da resim değişmedi.
+      - Canlı ekranda zamanlayıcı "şu an ekranda" görünüyordu.
+    - **Günlükte olan:**
+      - 21:02 odak kartı ve 21:03 mola kartı yüklendi. Bütçede 0,63 kaldı (Dengeli: saatte 1 dolar). Gün içindeki denemelerle uygulamanın kaydında 17 yükleme olmuştu.
+      - 21:04'ten sonra her faz kartı "bekliyor" oldu, hiçbiri gitmedi.
+      - Durdurunca dönüş kuruldu. 15 sn sonra bütçe olmadığı için kendini yaklaşık bir saat sonraya erteledi; bunu günlüğe yazmadı.
+      - Yeniden başlatma dönüşü iptal etti, yeni kart da bütçe bekledi.
+      - 21:08:49'da Chrome'da çalan bir şarkının kartı da bekleyişe girdi. O da (bütçeyi beklediği hâlde) zamanlayıcının dönüşünü sildi.
+    - **Asıl sorunlar:**
+      1. Dönüş bütçeyi bekliyordu. Kaynağı bitmiş bir kart ekranda kaldıkça yanlış bilgi veriyor ("Mola", oysa zamanlayıcı durdu).
+      2. Bütçeyi bekleyen bir kart da "ekranı zaten değiştirecek" sayılıp dönüşü iptal ediyordu.
+      3. Kullanıcının baktığı yerde (zamanlayıcı sayfası) kartın beklediği hiç yazmıyordu. Canlı ekranın en altındaki durum satırında vardı, o kadar.
+      4. Uygulama yeniden açılınca kurulmuş dönüş kayboluyordu; eski kart kalıyordu.
+    - **Düzeltme:**
+      - **Dönüş bütçeyi beklemez.** Yine bütçeden düşer, elle yükleme gibi. Bir seri ya da müzik duruşu başına en çok bir dönüş olur. Test: `going_back_does_not_wait_for_an_empty_budget`.
+      - **Bekleyen kart dönüşü yalnızca hemen gidebiliyorsa iptal eder** (bütçe var ya da "Şimdi gönder"). Bütçe bekleyen kart varken eski kart yerine kendi görseli gelir; kart bütçe gelince onun yerine geçer. `back_step`'in `ready` parametresi, `card_ready`.
+      - **Zamanlayıcı bitince şarkı çalıyorsa da dönüş kurulur.** Şarkının kartı hemen gidebilirse dönüşü iptal eder, gidemezse önce kendi görseli gelir. Önceden şarkı çalıyorsa hiçbir şey kurulmuyordu.
+      - **"Şimdi gönder":** bekleyen kartı bütçeyi beklemeden gönderir (bütçeden düşer, hiç reddedilmez; `live_send_now`).
+      - **Görünürlük:**
+        - Zamanlayıcı sayfasında düğmelerin altında uyarı: "Bu fazın ekran kartı günlük yükleme bütçesini bekliyor; 47 dk sonra kendiliğinden gider…" ve "Şimdi gönder". Kablo yoksa ya da sıradaysa ona göre yazar.
+        - Canlı ekranda zamanlayıcı ve şarkı katmanında "kartı bütçeyi bekliyor". Durum satırındaki bekleyen kartın yanında da "Şimdi gönder".
+      - **Açılışta:** Zamanlayıcı çalışmıyorken ekranda onun kartı varsa (uygulama seri sürerken kapandıysa ya da dönüşten önce), açılışta 15 sn'lik dönüş yeniden kurulur. Yalnızca seçim "Önceki görsele dön" ise.
+    - **Doğrulama:**
+      - Birim testi yukarıda (eski kodda başarısız olur); bütün testler 187 geçti, clippy ve rustfmt temiz.
+      - Tarayıcıda sahte arka uçla kullanıcının durumu kuruldu (bütçe 0, mola kartı ekranda, şarkı kartı bekliyor): uyarı ve "Şimdi gönder" göründü. Durdurunca kendi görseli bütçe yokken de geldi.
+      - Gerçek uygulamada (CDP) katman durumları doğru göründü. Bu sırada da şarkı kartı 7 dk bütçe bekliyordu.
+      - Uygulama yeni sürümle açılınca açılış kontrolü eski mola kartını buldu. 15 sn sonra, bütçe boşken, "cat" klavyeye geri yüklendi (37 sn, hata yok; `donanim-dogrulama.md`).
+    - **Not (bütçe):** Dengeli planda (günde 24, en çok 6 birikir) 4 turluk bir seri 9 yükleme ister. Bir seriye bile ancak yetiyor; gün içinde birkaç seri ve şarkılarla kartlar gecikir. Bu tasarımın sonucu (ekran belleğini korumak için). Kullanıcı isterse Yoğun plana geçebilir ya da "Şimdi gönder"i kullanabilir. Varsayılanı değiştirmek kullanıcının kararı.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -548,7 +581,7 @@ rustfmt.toml, .gitattributes   120 sütun biçim; LF satır sonu.
 ## 5. Nasıl çalıştırılır ve test edilir
 
 ```bash
-cargo test --workspace            # 186 test; TS tiplerini ve mock JSON'ları da üretir
+cargo test --workspace            # 187 test; TS tiplerini ve mock JSON'ları da üretir
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check        # rustfmt.toml: 120 sütun
 cd app && pnpm typecheck
@@ -653,6 +686,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 43 | Tarayıcı testinde eklenen deneme görselleri sayfada görünmedi | `import('/src/lib/screen.ts')` uygulamanın kullandığı modül değildi: oturumda değişen dosyaları Vite `?t=…` ile yüklüyor, düz adres ayrı bir kopya açıyor | Test için modül alırken uygulamanın yüklediği adresi kullan: `performance.getEntriesByType('resource')` içinden bul. |
 | 44 | Canlı ekranda işlevsiz bir zamanlayıcı satırı kaldı | Çift anahtar kaldırıldı ama satır "bilgi" diye bırakıldı; yalnızca yönlendiriyordu | Bir şeyi taşırken eski yerde bir kalıntı bırakma: o yerde kullanıcının yapabileceği bir şey yoksa satır da olmasın. Bilgi zaten iş başındayken görünüyorsa (durum satırı) yeter. |
 | 45 | Zamanlayıcı bitince ekranda "tur görseli" kaldı | Canlı mod kalıcı bir anahtar, kaynaklar geçici; "kaynağın gösterecek bir şeyi kalmayınca ne olur" kuralı yoktu. Özet kartı da kullanıcıya tur kartı gibi göründü | Ekranı (ya da ışığı) paylaşan her kaynak için baştan "bitince ne olur" sorusunu cevapla: bir sıra ve en altta kullanıcının kendi hâli. Kullanıcının "ne gördüm" tarifini önce günlükle eşleştir (burada: Durdur → özet kartı yüklendi). |
+| 46 | Ekran "takılı kaldı" | Günlük bütçe bitmişti; kartlar ve dönüş sessizce bekliyordu, ertelenme günlüğe bile yazılmıyordu. Bütçeyi bekleyen kart da dönüşü iptal ediyordu | Bir şey bir sebeple bekliyorsa, sebebi ve süresi kullanıcının o an baktığı yerde görünsün; yanında elle geçme yolu olsun ("Şimdi gönder"). Yanlış bilgi veren içeriği (biten kaynağın kartı) kaldırma işi kotaya takılmasın. "Bir şey gelecek" diye beklerken onun gerçekten gidebildiğini kontrol et. |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 
@@ -681,7 +715,10 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
         - **Odak zamanlayıcısı yapıldı** (maddeler 28–30). Kenar çubuğunda Araçlar → Odak zamanlayıcısı.
           - **Kullanıcı klavyede denedi (2026-11-10):** ışıklar, ses, geçiş efektleri, süreler çalışıyor. Soluk iz isteğiyle %8'den %3'e indi. Konu kapandı.
           - Canlı mod açıkken faz kartları da klavyede çalışıyor (kullanıcı denedi). Bitince ekranda özet kartı kalması sorun oldu; madde 31 ile çözüldü.
-        - **Ekran sırası** (madde 31): "Ekranda ne görünür?" (zamanlayıcı → şarkı → kendi görselin). Kullanıcının klavyede denemesi bekliyor: canlı mod açık, seri bitince ya da durdurunca 15 sn sonra kendi görseli (cat, ~37 sn); şarkı durunca 5 dk sonra.
+        - **Ekran sırası** (maddeler 31–32): "Ekranda ne görünür?" (zamanlayıcı → şarkı → kendi görselin).
+          - Kullanıcının ilk denemesinde bütçe bitti ve ekran "takılı" göründü. Madde 32 ile düzeltildi: dönüş bütçe beklemiyor, bekleyen kart görünüyor, "Şimdi gönder" var.
+          - Kullanıcının yeniden denemesi bekliyor: canlı mod açık, durdurunca 15 sn sonra cat (~37 sn).
+          - Bütçe bir seriye ancak yetiyor (madde 32 not). Plan ya da varsayılan değişikliği kullanıcıya sorulmalı.
           - Kullanıcının ayarı `pomodoro.json`'da: 1/1/1 dk, 2 tur, ses açık. Testler bu ayarı okuyup aynen geri yazar.
         - **Ekran sayfası düzeni** (maddeler 29–30): Görseller ve Canlı ekran sekmeleri; kütüphane sayfalı; Odak zamanlayıcısı kendi sayfasında.
         - **Sıradaki: LED canlı katmanı** (CPU/GPU barı, ses düzeyi, mikrofon kapalı uyarısı). Sonra takvim, hatırlatıcı, oyun oturumu.
@@ -690,7 +727,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
           - Tasarımı önce kullanıcıya etkileşimli bir önizlemeyle göster. Odak zamanlayıcısında bu yol işe yaradı (sohbette gerçek tuş dizilimiyle).
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.
-     4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar **17** yükleme: uygulamanın kaydında 15 (elle, canlı ve geri yükleme), CLI ile E1 ve E4.
+     4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar **20** yükleme: uygulamanın kaydında 18 (elle, canlı ve geri yükleme), CLI ile E1 ve E4.
    - **Faz B planı** (hepsi yapıldı, maddeler 24–26; plan kayıt için duruyor):
      - **Kullanıcının arayüz kuralı** (2026-11-10, Faz A geri bildirimi):
        - adımlar görünür olsun;
