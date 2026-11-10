@@ -9,7 +9,7 @@ import type { LivePlan } from "../bindings/LivePlan";
 import type { LiveState } from "../bindings/LiveState";
 import type { TrackInfo } from "../bindings/TrackInfo";
 import { inTauri } from "./ipc";
-import { mockLiveUploaded, useScreen } from "./screen";
+import { mockLiveUploaded, mockRestored, useScreen } from "./screen";
 import { toBlob, type Prepared } from "./screenImport";
 
 // ------------------------------------------------------------------- ipc
@@ -35,7 +35,10 @@ const mock = {
     lastError: null,
     nowPlaying: true,
     track: null,
+    restore: null,
   } as LiveState,
+  /** What the mock GIF page showed before the first live card. */
+  before: null as { id: string; name: string; frames: number; pages: number } | null,
   emit: null as ((s: LiveState) => void) | null,
   onTrack: null as ((t: TrackInfo) => void) | null,
   cover: null as Blob | null,
@@ -88,9 +91,28 @@ export function getLiveState(): Promise<LiveState> {
   return invoke<LiveState>("live_state");
 }
 
-export async function configureLive(patch: { enabled?: boolean; plan?: LivePlan; nowPlaying?: boolean }): Promise<LiveState> {
+export interface LivePatch {
+  enabled?: boolean;
+  plan?: LivePlan;
+  nowPlaying?: boolean;
+  /** With `enabled: false`: put back what the GIF page showed before. */
+  restore?: boolean;
+}
+
+export async function configureLive(patch: LivePatch): Promise<LiveState> {
   if (!inTauri) {
     const s = mock.state;
+    if (patch.enabled === false && patch.restore && s.restore) {
+      const back = s.restore;
+      s.restore = null;
+      s.uploading = { source: "restore", name: back.name };
+      window.setTimeout(() => {
+        s.uploading = null;
+        mock.before = null;
+        mockRestored(back.id);
+        mockEmit();
+      }, 1500);
+    }
     if (patch.enabled !== undefined) s.enabled = patch.enabled;
     if (patch.nowPlaying !== undefined) s.nowPlaying = patch.nowPlaying;
     if (patch.plan) {
@@ -111,6 +133,7 @@ export async function configureLive(patch: { enabled?: boolean; plan?: LivePlan;
     enabled: patch.enabled ?? null,
     plan: patch.plan ?? null,
     nowPlaying: patch.nowPlaying ?? null,
+    restore: patch.restore ?? null,
   });
 }
 
@@ -135,7 +158,9 @@ export async function submitLive(p: Prepared, source: string): Promise<LiveState
     await new Promise((r) => setTimeout(r, 1200));
     s.uploading = null;
     s.last = { ...item, atMs: Date.now() };
-    mockLiveUploaded(blob);
+    const prev = mockLiveUploaded(blob);
+    if (prev !== undefined) mock.before = prev;
+    s.restore = mock.before;
     mockEmit();
     return { ...s };
   }
@@ -162,7 +187,7 @@ interface LiveStore {
   /** Card drawing failed (shown on the Screen page). */
   drawError: string | null;
   load: () => Promise<void>;
-  configure: (patch: { enabled?: boolean; plan?: LivePlan; nowPlaying?: boolean }) => Promise<void>;
+  configure: (patch: LivePatch) => Promise<void>;
 }
 
 export const useLive = create<LiveStore>((set) => ({

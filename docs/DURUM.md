@@ -334,7 +334,15 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Bütçe birim testleri (dolum, art arda sınır, elle yükleme borcu, iade, plan değişimi, eski kayıt).
       - Tarayıcıda sahte arka uçla örnek şarkı: kart çizildi, bütçeden düştü, GIF sayfası önizlemesi kartı gösterdi.
       - Bu PC'de GSMTC okundu (salt okuma testi, `now_playing_probe`): Chrome'da duraklatılmış bir YouTube videosu, başlık, kanal ve 24 KB kapak; duraklatılmış olduğu için "çalıyor" sayılmadı.
-      - Klavyede gerçek canlı yükleme henüz yapılmadı; kullanıcının açması bekleniyor.
+      - **Klavyede (kullanıcı, 2026-11-10):** Chrome'da çalan bir video kartı "çok güzel" geldi. Günlükte 12 sn beklemeden sonra kart 55 ms'de çizildi, yükleme 2,8 sn sürdü (16 sayfa).
+    - **Kullanıcının geri bildirimi ve düzeltmeleri (aynı gün):**
+      - **"Canlı mod kapanınca eski görsel geri gelmeli":**
+        - İlk canlı kart, GIF sayfasında önceden ne olduğunu hatırlıyor (`live.before`; bilinmiyorsa fabrika animasyonu).
+        - Canlı mod kapatılırken ekranda canlı kart varsa bir pencere soruyor: "Önceki görseli geri yükle" (birincil) ya da "Kartı bırak". Görselin adı, kare sayısı ve yükleme süresi gösteriliyor.
+        - Geri yükleme kullanıcının isteği sayılır: bütçeden düşer ama bütçeyi beklemez. Kablo yoksa bekler ve sonra yapılır.
+        - Canlı mod zaten kapalıyken ekranda kart kaldıysa Canlı ekran bölümünde aynı seçenek bir satır olarak duruyor.
+        - Kullanıcının mevcut durumu: ilk kart eski kodla yüklendiği için önceki görsel kaydedilmemişti. `library.json`'a elle `before = "Slayt · 3 görsel"` yazıldı (yedek: `library.json.bak-before-restore-fix`).
+      - **"12 sn geç değil mi?":** Haklı. Bekleme 4 sn'ye indi. Kapak geç gelirse en çok 3 yoklama (3 sn) daha beklenir. Şarkının başlangıcından ekranda görünmesine kadar artık yaklaşık 7 sn (4 sn bekleme + 3 sn yükleme).
 
 ## 4. Sistem nasıl kurulu (as-built)
 

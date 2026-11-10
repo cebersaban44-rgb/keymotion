@@ -6,7 +6,7 @@
 //! Files live in `<config>/screen/`: `library.json` and `library/<id>.bin`.
 //! The id is a hash of the data, so the same content is stored once.
 
-use crate::dto::{LiveItem, ScreenItem, ScreenItemKind, ScreenLimits, ScreenState};
+use crate::dto::{LiveItem, LiveRestore, ScreenItem, ScreenItemKind, ScreenLimits, ScreenState};
 use crate::live::LiveStored;
 use kb_protocol::sonix::screen::{self, from_blob, ScreenAnimation};
 use serde::{Deserialize, Serialize};
@@ -240,6 +240,17 @@ impl ScreenLibrary {
         &mut self.index.live
     }
 
+    /// The library item to put back when the live mode is turned off: what
+    /// the GIF page showed before a live card replaced it.
+    pub fn live_restore_target(&self) -> Option<LiveRestore> {
+        if !self.index.shown.values().any(|v| v == LIVE_ID) {
+            return None;
+        }
+        let id = self.index.live.before.as_deref()?;
+        let item = self.index.items.iter().find(|i| i.id == id)?;
+        Some(LiveRestore { id: item.id.clone(), name: item.name.clone(), frames: item.frames, pages: item.pages })
+    }
+
     /// The GIF page shows this live card already (as far as the app knows).
     pub fn live_is_showing(&self, content: &str) -> bool {
         self.index.live.last_content.as_deref() == Some(content) && self.index.shown.values().any(|v| v == LIVE_ID)
@@ -262,6 +273,14 @@ impl ScreenLibrary {
             fs::rename(&tmp, &path)?;
         }
         if !model_id.is_empty() {
+            // Remember what the live mode replaced (the first time only), so
+            // it can be put back. Unknown means the factory animation the
+            // keyboard shipped with, as far as the app can tell.
+            let prev = self.index.shown.get(model_id).cloned();
+            if prev.as_deref() != Some(LIVE_ID) {
+                let factory = self.index.items.iter().find(|i| i.kind == ScreenItemKind::Factory).map(|i| i.id.clone());
+                self.index.live.before = prev.or(factory);
+            }
             self.index.shown.insert(model_id.to_string(), LIVE_ID.to_string());
         }
         let live = &mut self.index.live;
@@ -332,6 +351,31 @@ mod tests {
         assert_eq!(lib.state("m").items.len(), 1);
         assert!(lib.animation(&a.id).is_err());
         assert!(lib.data("../../etc").is_err());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn live_cards_remember_what_they_replaced() {
+        let dir = temp_dir("live");
+        let mut lib = ScreenLibrary::open(Some(&dir));
+        let mine = lib.add("Benim", ScreenItemKind::Image, &ScreenAnimation::still(test_pattern())).unwrap();
+        lib.uploaded("m", &mine.id).unwrap();
+        assert!(lib.live_restore_target().is_none(), "no live card on the page yet");
+
+        let card = ScreenAnimation::still(Frame::filled(rgb565(0, 0, 255)));
+        let item = LiveItem { source: "now-playing".into(), name: "Şarkı".into() };
+        lib.live_uploaded("m", &card, "c1", &item).unwrap();
+        lib.live_uploaded("m", &card, "c2", &item).unwrap();
+        let back = lib.live_restore_target().expect("the user's picture can be put back");
+        assert_eq!(back.id, mine.id, "the second card does not overwrite what the first replaced");
+        assert_eq!(lib.state("m").shown.as_deref(), Some(LIVE_ID));
+        assert!(lib.data(LIVE_ID).is_ok(), "the live card is kept for the preview");
+
+        // Putting it back (or any manual upload) leaves nothing to restore.
+        lib.uploaded("m", &mine.id).unwrap();
+        assert!(lib.live_restore_target().is_none());
+        let reopened = ScreenLibrary::open(Some(&dir));
+        assert_eq!(reopened.state("m").uploads_today, 4);
         let _ = fs::remove_dir_all(&dir);
     }
 
