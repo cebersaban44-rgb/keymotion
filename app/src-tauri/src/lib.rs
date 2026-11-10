@@ -10,8 +10,8 @@ mod settings;
 
 use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request};
 use dto::{
-    Calibration, CalibrationInfo, ClockStatus, EffectInfo, EffectRequest, KeyboardInfo, LedColor, MirrorHint,
-    ThemePreference, UiEnvironment,
+    Calibration, CalibrationInfo, ClockStatus, EffectInfo, EffectRequest, KeyAssignment, KeyboardInfo, KeymapCatalog,
+    KeymapLayer, KeymapState, LedColor, MirrorHint, ThemePreference, UiEnvironment,
 };
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -82,6 +82,39 @@ fn set_live_frame(device: Device<'_>, colors: Option<Vec<LedColor>>, brightness:
     let level = kb_protocol::sonix::level_factor(brightness.unwrap_or(5));
     let frame = colors.map(|c| LiveFrame { colors: c.into_iter().map(|c| (c.led, [c.r, c.g, c.b])).collect(), level });
     device.send(Request::SetLive(frame))
+}
+
+/// Everything a key can be assigned.
+#[tauri::command]
+fn keymap_catalog() -> KeymapCatalog {
+    KeymapCatalog::build()
+}
+
+/// What the app last wrote to this model's keymap. The keyboard cannot
+/// report its keymap; layers never written are the factory default.
+#[tauri::command]
+fn keymap_state(device: Device<'_>, model_id: String) -> KeymapState {
+    let snap = device.snapshot.lock();
+    snap.ok().and_then(|s| s.keymaps.models.get(&model_id).map(KeymapState::from)).unwrap_or_default()
+}
+
+/// Write one keymap layer of the USB keyboard (flash write) and record it.
+/// The whole layer is replaced: keys not listed go back to the default.
+#[tauri::command]
+async fn apply_keymap(
+    device: Device<'_>,
+    layer: KeymapLayer,
+    assignments: Vec<KeyAssignment>,
+) -> Result<KeymapState, String> {
+    tracing::debug!(?layer, keys = assignments.len(), "ipc: apply_keymap");
+    let entries = assignments.into_iter().map(|a| (a.led, a.action.into())).collect();
+    let handle = device.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        handle.call(|reply| Request::ApplyKeymap { layer: layer.into(), entries, reply })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map(|k| KeymapState::from(&k))
 }
 
 /// Keyboard clock sync state (`clock-changed` events report updates).
@@ -279,7 +312,10 @@ pub fn run() {
             set_window_theme,
             clock_status,
             sync_clock,
-            set_clock_auto
+            set_clock_auto,
+            keymap_catalog,
+            keymap_state,
+            apply_keymap
         ])
         .run(tauri::generate_context!())
         .expect("error while running Klavye Stüdyo");

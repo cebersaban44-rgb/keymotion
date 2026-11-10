@@ -3,6 +3,7 @@
 pub mod clock;
 pub mod color;
 pub mod detect;
+pub mod keymap;
 pub mod readback;
 pub mod sonix;
 

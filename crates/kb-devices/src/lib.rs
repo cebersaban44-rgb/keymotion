@@ -100,6 +100,8 @@ pub struct KeySpec {
     pub label: String,
     /// LED index; equals the keymap index on SONiX boards.
     pub led: u8,
+    /// Default HID usage (keyboard page 0x07; 0xAF is the vendor Fn key).
+    pub hid: u8,
     pub x: f32,
     pub y: f32,
     #[serde(default = "one")]
@@ -340,6 +342,10 @@ mod tests {
             ids.sort_unstable();
             ids.dedup();
             assert_eq!(ids.len(), g.keys.len(), "{}: duplicate key id", m.id);
+            let mut hids: Vec<u8> = g.keys.iter().map(|k| k.hid).collect();
+            hids.sort_unstable();
+            hids.dedup();
+            assert_eq!(hids.len(), g.keys.len(), "{}: duplicate HID usage", m.id);
             for k in &g.keys {
                 assert!(k.x >= 0.0 && k.x + k.w <= g.width + 0.01, "{}: {} out of bounds", m.id, k.id);
                 assert!(k.y >= 0.0 && k.y + k.h <= g.height + 0.01, "{}: {} out of bounds", m.id, k.id);

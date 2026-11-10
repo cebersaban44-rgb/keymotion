@@ -15,8 +15,13 @@ import type { MirrorHint } from "../bindings/MirrorHint";
 import type { ClockStatus } from "../bindings/ClockStatus";
 import type { Calibration } from "../bindings/Calibration";
 import type { CalibrationInfo } from "../bindings/CalibrationInfo";
+import type { KeyAssignment } from "../bindings/KeyAssignment";
+import type { KeymapCatalog } from "../bindings/KeymapCatalog";
+import type { KeymapLayer } from "../bindings/KeymapLayer";
+import type { KeymapState } from "../bindings/KeymapState";
 // Generated from Rust by `cargo test` (dto.rs export_mock_geometry).
 import ak980Geometry from "../bindings/geometry-ajazz-ak980-pro.json";
+import mockKeymapCatalog from "../bindings/keymap-catalog.json";
 import mockCatalog from "../bindings/lighting-catalog.json";
 
 export const inTauri = isTauri();
@@ -172,6 +177,41 @@ export function setClockAuto(enabled: boolean): Promise<ClockStatus> {
 export async function onClockChanged(cb: (status: ClockStatus) => void): Promise<UnlistenFn> {
   if (!inTauri) return () => {};
   return listen<ClockStatus>("clock-changed", (e) => cb(e.payload));
+}
+
+// ------------------------------------------------------------------ keymap
+
+export async function getKeymapCatalog(): Promise<KeymapCatalog> {
+  if (!inTauri) return mockKeymapCatalog as KeymapCatalog;
+  return invoke<KeymapCatalog>("keymap_catalog");
+}
+
+// Browser-only stand-in for the app's keymap record.
+let mockKeymap: KeymapState = {
+  base: { assignments: [], writtenMs: null },
+  fn: { assignments: [], writtenMs: null },
+};
+
+/**
+ * What the app last wrote to this model's keymap. The keyboard cannot
+ * report its keymap; layers never written are the factory default.
+ */
+export function getKeymapState(modelId: string): Promise<KeymapState> {
+  if (!inTauri) return Promise.resolve(mockKeymap);
+  return invoke<KeymapState>("keymap_state", { modelId });
+}
+
+/**
+ * Write one whole keymap layer (flash write); keys not listed go back to
+ * the default. Resolves with the app's updated record.
+ */
+export async function applyKeymap(layer: KeymapLayer, assignments: KeyAssignment[]): Promise<KeymapState> {
+  if (!inTauri) {
+    await mockDelay(700);
+    mockKeymap = { ...mockKeymap, [layer]: { assignments, writtenMs: Date.now() } };
+    return mockKeymap;
+  }
+  return serial(() => invoke<KeymapState>("apply_keymap", { layer, assignments }));
 }
 
 // ------------------------------------------------------------- calibration
