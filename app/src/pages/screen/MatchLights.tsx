@@ -31,12 +31,17 @@ export function MatchLightsDialog({
 }) {
   const t = useT();
   const [frames, setFrames] = useState<Uint16Array[] | null>(null);
+  const [delays, setDelays] = useState<number[]>([]);
   const [kind, setKind] = useState<LightMatch>("gradient");
   const geometry = kb.geometry;
 
   useEffect(() => {
     let live = true;
-    loadFrames(item.id, item.frames === 1).then((d) => live && setFrames(d.frames), console.error);
+    loadFrames(item.id, item.frames === 1).then((d) => {
+      if (!live) return;
+      setDelays(d.delaysMs);
+      setFrames(d.frames);
+    }, console.error);
     return () => {
       live = false;
     };
@@ -50,7 +55,7 @@ export function MatchLightsDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const palette = useMemo(() => (frames ? extractPalette(frames) : []), [frames]);
+  const palette = useMemo(() => (frames ? extractPalette(frames, delays) : []), [frames, delays]);
   const design = useMemo(
     () => (frames && geometry ? lightDesign(kind, geometry, palette, frames) : null),
     [frames, geometry, kind, palette],

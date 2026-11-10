@@ -71,7 +71,7 @@ function SlideStackArt() {
   return (
     <div className="relative h-[90px] w-[200px]">
       {[0, 1, 2].map((k) => {
-        // The front (middle) card gets the newest picture.
+        // The front (middle) card gets the library's first picture.
         const it = picks[k === 1 ? 0 : k === 0 ? 1 : 2];
         return (
           <div

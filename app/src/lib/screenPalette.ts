@@ -77,10 +77,15 @@ function medianCut(samples: Sample[], n: number): Sample[][] {
   return boxes;
 }
 
-/** The picture's five most telling colours, most important first. */
-export function extractPalette(frames: Uint16Array[], size = 5): Swatch[] {
+/** The picture's five most telling colours, most important first. With
+ *  `delaysMs`, short in-between frames (a slideshow's soft transitions)
+ *  are left out when longer frames exist: they only blend two pictures. */
+export function extractPalette(frames: Uint16Array[], delaysMs?: number[], size = 5): Swatch[] {
   if (frames.length === 0) return [];
-  const picks = frames.length <= 6 ? frames : Array.from({ length: 6 }, (_, k) => frames[Math.floor((k * frames.length) / 6)]!);
+  const longest = delaysMs ? Math.max(...delaysMs) : 0;
+  const held = delaysMs && longest >= 300 ? frames.filter((_, i) => (delaysMs[i] ?? 0) >= 300) : frames;
+  const pool = held.length ? held : frames;
+  const picks = pool.length <= 6 ? pool : Array.from({ length: 6 }, (_, k) => pool[Math.floor((k * pool.length) / 6)]!);
   const lit: Sample[] = [];
   const all: Sample[] = [];
   for (const f of picks) {

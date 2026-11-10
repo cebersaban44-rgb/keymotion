@@ -292,7 +292,10 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - üç seçeneğin önizlemesi;
       - Işıklar'da açınca 97 tuşluk taslak ve canlı önizleme göstergesi;
       - kütüphaneden açma, Vazgeç, Esc.
-      - Klavyede henüz denenmedi.
+    - **Gerçek uygulamada (CDP):**
+      - Bir yazı kartı ve iki görsellik bir slayt "Yüklemeden kaydet" ile kütüphaneye kaydedildi; Rust tarafı (`screen_add`) ikisini de kabul etti. Klavyeye yazılmadı; deneme öğeleri sonra silindi.
+      - Bulunan kusur düzeltildi: slaytın paletine geçiş karelerinin karışım renkleri giriyordu (kırmızı + mavi → pembe, mor). Palet artık uzun duran karelerden çıkarılıyor (≥300 ms; daha kısa kare varsa).
+      - Klavyede (tuş ışıkları) henüz denenmedi.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
