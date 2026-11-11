@@ -30,6 +30,7 @@ import type { KeymapCatalog } from "../bindings/KeymapCatalog";
 import type { KeyUsageInfo } from "../bindings/KeyUsageInfo";
 import type { MouseButtonName } from "../bindings/MouseButtonName";
 import type { MessageKey } from "./i18n";
+import { useApp } from "./store";
 
 type T = (key: MessageKey) => string;
 
@@ -158,7 +159,7 @@ export function actionText(
       const name = names?.(a.slot) || `${t("km.macro")} ${a.slot + 1}`;
       if (a.mode === "times") return `${name} × ${a.count}`;
       const suffix = PLAY_SUFFIX[a.mode];
-      return suffix ? `${name} (${t(suffix).toLocaleLowerCase()})` : name;
+      return suffix ? `${name} (${t(suffix).toLocaleLowerCase(useApp.getState().locale)})` : name;
     }
   }
 }

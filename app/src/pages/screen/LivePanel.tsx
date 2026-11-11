@@ -20,6 +20,7 @@ import { useApp } from "../../lib/store";
 import { uploadSeconds } from "../../lib/screenImport";
 import { CalendarBody, calendarStatus } from "./CalendarPanel";
 import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useNow } from "./common";
+import { friendlyError } from "../../lib/errors";
 
 const PLANS: { id: LivePlan; label: MessageKey; years: MessageKey }[] = [
   { id: "saver", label: "sc.live.plan.saver", years: "sc.live.years.saver" },
@@ -42,14 +43,13 @@ export function LivePanel({ usb }: { usb: boolean }) {
     <section className="card flex flex-col gap-5 p-5" data-live-panel>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-[72ch]">
-          <div className="mb-1.5 flex items-center gap-2">
-            <Radio size={14} className={s.enabled ? "text-ok" : "text-ink-3"} />
-            <span className="eyebrow">{t("sc.live.eyebrow")}</span>
-          </div>
-          <h2 className="font-display text-[22px] font-semibold tracking-[-0.02em]">{t("sc.live.title")}</h2>
-          <p className="mt-1 text-[12.5px] text-ink-2">{t("sc.live.body")}</p>
+          <h2 className="flex items-center gap-2 text-[18px] font-semibold">
+            <Radio size={16} className={s.enabled ? "text-ok" : "text-ink-3"} aria-hidden />
+            {t("sc.live.title")}
+          </h2>
+          <p className="mt-1 text-[13px] text-ink-2">{t("sc.live.body")}</p>
         </div>
-        <label className="flex items-center gap-3 rounded-xl border border-line px-3 py-2">
+        <label className="flex items-center gap-3 rounded-lg border border-line px-3 py-2">
           <span className="text-[13px] font-semibold">{t("sc.live.mode")}</span>
           <Toggle
             checked={s.enabled}
@@ -66,7 +66,7 @@ export function LivePanel({ usb }: { usb: boolean }) {
       <ScreenOrder s={s} set={set} />
 
       <div className="flex flex-col gap-3 border-t border-line pt-4" data-live-budget>
-        <span className="text-[12.5px] font-medium">{t("sc.live.plan")}</span>
+        <span className="text-[13px] font-medium">{t("sc.live.plan")}</span>
         <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] items-start gap-x-6 gap-y-3">
           <Segmented<LivePlan>
             label={t("sc.live.plan")}
@@ -76,7 +76,7 @@ export function LivePanel({ usb }: { usb: boolean }) {
           />
           <div className="flex flex-col gap-1.5">
             <BudgetLine s={s} />
-            <p className="text-[11.5px] text-ink-3">{t(plan.years)}</p>
+            <p className="text-[12px] text-ink-3">{t(plan.years)}</p>
           </div>
         </div>
         {s.plan === "heavy" && <Hint tone="warn">{t("sc.live.heavyWarn")}</Hint>}
@@ -84,20 +84,20 @@ export function LivePanel({ usb }: { usb: boolean }) {
 
       <StatusLine s={s} usb={usb} />
       {!s.enabled && s.restore && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line px-4 py-3" data-live-leftover>
-          <span className="text-[12.5px] text-ink-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line px-4 py-3" data-live-leftover>
+          <span className="text-[13px] text-ink-2">
             {t("sc.live.leftover")} <span className="font-medium text-ink">{s.restore.name}</span>
           </span>
           <button
             type="button"
             onClick={() => setClosing(true)}
-            className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[12.5px] font-semibold text-signal hover:bg-signal/10"
+            className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[13px] font-semibold text-signal hover:bg-signal/10"
           >
             <RotateCcw size={14} /> {t("sc.live.offRestore")}
           </button>
         </div>
       )}
-      {drawError && <Hint tone="error">{drawError}</Hint>}
+      {drawError && <Hint tone="error">{t("err.draw")}</Hint>}
       {s.enabled && (
         <div className="flex flex-col gap-1">
           <Hint tone="note">{t("sc.live.seeGif")}</Hint>
@@ -204,9 +204,9 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
       <div className="flex flex-col gap-0.5">
         <h3 className="text-[14px] font-semibold">{t("sc.live.order")}</h3>
         <p className="text-[12px] text-ink-2">{t("sc.live.order.body")}</p>
-        {!s.enabled && <p className="text-[11.5px] text-ink-3">{t("sc.live.order.off")}</p>}
+        {!s.enabled && <p className="text-[12px] text-ink-3">{t("sc.live.order.off")}</p>}
       </div>
-      <ol className="flex flex-col divide-y divide-line rounded-2xl border border-line">
+      <ol className="flex flex-col divide-y divide-line rounded-lg border border-line">
         <Layer
           n={1}
           icon={<CalendarDays size={16} />}
@@ -293,7 +293,7 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
               <OwnThumb own={s.own} />
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="truncate text-[13px] font-semibold">{s.own.name}</span>
-                <span className="num text-[11.5px] text-ink-3">
+                <span className="num text-[12px] text-ink-3">
                   {s.own.frames} {t("sc.frames")} · {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(s.own.frames))}
                 </span>
                 {goingBack != null && (
@@ -307,7 +307,7 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
                 <button
                   type="button"
                   onClick={() => set({ restore: true })}
-                  className="ml-auto flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[12.5px] font-semibold text-signal hover:bg-signal/10"
+                  className="ml-auto flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[13px] font-semibold text-signal hover:bg-signal/10"
                   data-own-back
                 >
                   <RotateCcw size={14} /> {t("sc.live.own.back")}
@@ -352,7 +352,7 @@ function Layer({
       <div className="flex items-start justify-between gap-3">
         <span className="flex min-w-0 items-start gap-3">
           <span
-            className={`num flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11.5px] font-semibold ${
+            className={`num flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold ${
               active ? "bg-ok text-bg" : "bg-surface-2 text-ink-2"
             }`}
           >
@@ -361,7 +361,7 @@ function Layer({
           <span className={`mt-0.5 shrink-0 ${active ? "text-ok" : "text-signal"}`}>{icon}</span>
           <span className="flex min-w-0 flex-col">
             <span className="text-[13px] font-semibold">{title}</span>
-            <span className="text-[11.5px] text-ink-3">{body}</span>
+            <span className="text-[12px] text-ink-3">{body}</span>
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-3">
@@ -435,7 +435,7 @@ function TurnOff({
     >
       <motion.div initial={{ scale: 0.97, y: 8 }} animate={{ scale: 1, y: 0 }} className="card flex w-[500px] flex-col gap-4 p-6">
         <div className="flex items-start justify-between gap-3">
-          <h2 id="live-off-title" className="font-display text-[22px] font-semibold tracking-[-0.02em]">
+          <h2 id="live-off-title" className="font-display text-[22px] font-semibold">
             {alreadyOff ? t("sc.live.restoreTitle") : t("sc.live.offTitle")}
           </h2>
           <button
@@ -447,8 +447,8 @@ function TurnOff({
             <X size={16} />
           </button>
         </div>
-        <p className="text-[12.5px] text-ink-2">{t("sc.live.offBody")}</p>
-        <div className="flex items-center gap-4 rounded-xl border border-line p-3">
+        <p className="text-[13px] text-ink-2">{t("sc.live.offBody")}</p>
+        <div className="flex items-center gap-4 rounded-lg border border-line p-3">
           {thumb ? (
             <FramePlayer frames={[thumb]} delaysMs={[100]} className="h-[68px] w-[120px] shrink-0 rounded-md bg-black" />
           ) : (
@@ -456,7 +456,7 @@ function TurnOff({
           )}
           <div className="flex min-w-0 flex-col gap-0.5">
             <span className="truncate text-[13px] font-semibold">{restore.name}</span>
-            <span className="num text-[11.5px] text-ink-3">
+            <span className="num text-[12px] text-ink-3">
               {restore.frames} {t("sc.frames")} · {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(restore.frames))}
             </span>
           </div>
@@ -466,7 +466,7 @@ function TurnOff({
           <button
             type="button"
             onClick={() => (alreadyOff ? onCancel() : onChoose(false))}
-            className="h-10 rounded-xl border border-line px-4 text-[13px] text-ink-2 hover:bg-surface-2"
+            className="h-10 rounded-lg border border-line px-4 text-[13px] text-ink-2 hover:bg-surface-2"
           >
             {alreadyOff ? t("sc.cancel") : t("sc.live.offKeep")}
           </button>
@@ -474,7 +474,7 @@ function TurnOff({
             type="button"
             autoFocus
             onClick={() => onChoose(true)}
-            className="flex h-10 items-center gap-2 rounded-xl bg-signal px-4 text-[13px] font-semibold text-signal-ink"
+            className="flex h-10 items-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink"
           >
             <RotateCcw size={15} /> {t("sc.live.offRestore")}
           </button>
@@ -494,7 +494,7 @@ function BudgetLine({ s }: { s: LiveState }) {
       <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
         <div className="h-full rounded-full bg-ok transition-[width]" style={{ width: `${pct}%` }} />
       </div>
-      <div className="num flex justify-between text-[11.5px] text-ink-2">
+      <div className="num flex justify-between text-[12px] text-ink-2">
         <span>
           {ready} / {s.burst} {t("sc.live.ready")}
         </span>
@@ -540,7 +540,7 @@ function TrackLine({ s }: { s: LiveState }) {
         : t("sc.live.np.settling");
   return (
     <div className="flex flex-col gap-0.5 rounded-lg bg-surface-2/60 px-2.5 py-2" data-track>
-      <span className="truncate text-[12.5px] font-medium">
+      <span className="truncate text-[13px] font-medium">
         {tr.artist ? `${tr.artist} — ${tr.title}` : tr.title}
       </span>
       <span className="text-[11px] text-ink-3">
@@ -554,8 +554,8 @@ function TrackLine({ s }: { s: LiveState }) {
 function StatusLine({ s, usb }: { s: LiveState; usb: boolean }) {
   const t = useT();
   const units = { h: t("sc.live.h"), m: t("sc.live.m") };
-  const row = "flex items-center gap-2 text-[12.5px]";
-  if (!s.enabled && !s.uploading) return <p className="text-[12.5px] text-ink-3">{t("sc.live.off")}</p>;
+  const row = "flex items-center gap-2 text-[13px]";
+  if (!s.enabled && !s.uploading) return <p className="text-[13px] text-ink-3">{t("sc.live.off")}</p>;
   return (
     <div className="flex flex-col gap-1.5 border-t border-line pt-4" data-live-status>
       {s.uploading && (
@@ -590,11 +590,11 @@ function StatusLine({ s, usb }: { s: LiveState; usb: boolean }) {
           </span>
         </p>
       ) : (
-        !s.pending && !s.uploading && <p className="text-[12.5px] text-ink-3">{t("sc.live.nothingYet")}</p>
+        !s.pending && !s.uploading && <p className="text-[13px] text-ink-3">{t("sc.live.nothingYet")}</p>
       )}
       {s.lastError && !s.uploading && (
         <p className={`${row} text-warn`}>
-          <AlertTriangle size={14} /> {t("sc.live.failed")}: {s.lastError}
+          <AlertTriangle size={14} /> {friendlyError(s.lastError, t, true)}
         </p>
       )}
     </div>

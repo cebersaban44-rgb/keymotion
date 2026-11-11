@@ -31,8 +31,7 @@
   --key-side: #1c1e22;
   --key-edge: rgb(255 255 255 / 0.06);
   --key-legend: #d9d6cf;
-  --shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 18px 40px -24px rgb(0 0 0 / 0.8);
-  --grain-opacity: 0.05;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.25);
   color-scheme: dark;
 }
 
@@ -56,8 +55,7 @@
   --key-side: #d9d5cc;
   --key-edge: rgb(0 0 0 / 0.08);
   --key-legend: #2a2b2f;
-  --shadow: 0 1px 0 rgb(255 255 255 / 0.8) inset, 0 18px 40px -26px rgb(40 30 20 / 0.45);
-  --grain-opacity: 0.035;
+  --shadow: 0 1px 2px rgb(40 30 20 / 0.08);
   color-scheme: light;
 }
 
@@ -72,8 +70,8 @@
 }
 
 @theme inline {
-  --font-display: "Bricolage Grotesque Variable", ui-sans-serif, sans-serif;
-  --font-sans: "Instrument Sans Variable", ui-sans-serif, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
 
   --color-bg: var(--bg);
@@ -106,20 +104,8 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  font-feature-settings: "ss01", "cv11";
   overflow: hidden;
   user-select: none;
-}
-
-/* Film grain over everything, very faint. */
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 100;
-  opacity: var(--grain-opacity);
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
 :focus-visible {
@@ -128,24 +114,52 @@ body::after {
   border-radius: 6px;
 }
 
+/* Numbers line up; the face stays the interface font. */
 .num {
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
 }
 
-.eyebrow {
+/* Code-like values only: colour codes, key codes. */
+.mono {
   font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Page title and its one-line description. */
+.page-title {
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.page-desc {
+  margin-top: 4px;
+  max-width: 80ch;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+/* Section label inside a page or card. */
+.eyebrow {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+/* Group label in the sidebar. */
+.nav-group {
+  font-size: 12px;
+  font-weight: 600;
   color: var(--ink-3);
 }
 
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 8px;
   box-shadow: var(--shadow);
 }
 
@@ -227,6 +241,14 @@ body::after {
   syntax: "<color>";
   inherits: true;
   initial-value: transparent;
+}
+
+/* A key held down on the keyboard (Overview): it sinks and shows a ring. */
+.kb-key.is-pressed {
+  transform: translateY(calc(var(--u) * 0.035));
+  filter: brightness(1.35);
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
 }
 
 /* Static colours (mirror / per-key): no idle animation, smooth changes. */
@@ -368,7 +390,7 @@ body::after {
     inset 0 calc(var(--u) * -0.05) 0 0 color-mix(in oklch, var(--c, transparent) 55%, transparent),
     0 calc(var(--u) * 0.03) calc(var(--u) * 0.06) rgb(0 0 0 / 0.35);
   color: var(--key-legend);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: calc(var(--u) * 0.2);
   line-height: 1.1;
   padding: calc(var(--u) * 0.1) calc(var(--u) * 0.12);
@@ -393,7 +415,6 @@ body::after {
   border-radius: calc(var(--u) * 0.12);
   background: #050607;
   border: calc(var(--u) * 0.05) solid #1f2125;
-  box-shadow: inset 0 0 calc(var(--u) * 0.3) rgb(255 138 61 / 0.12);
   overflow: hidden;
 }
 

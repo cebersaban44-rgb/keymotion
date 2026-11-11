@@ -28,6 +28,7 @@ import { useKeymap } from "../lib/keymap";
 import { budgetUsed, dirtySlots, duration, useMacros } from "../lib/macros";
 import { useLayoutLabel } from "../lib/layout";
 import { useApp } from "../lib/store";
+import { friendlyError } from "../lib/errors";
 
 type Status = { kind: "idle" } | { kind: "busy" } | { kind: "ok"; ms: number } | { kind: "error"; message: string };
 type Timing = "real" | "fixed";
@@ -84,14 +85,14 @@ export function Macros({ kb }: { kb: KeyboardInfo }) {
     <div className="flex flex-col gap-6">
       <header className="flex items-end justify-between gap-6">
         <div>
-          <div className="eyebrow mb-2">{t("mc.eyebrow")}</div>
-          <h1 className="font-display text-[40px] leading-none font-semibold tracking-[-0.035em]">{t("nav.macros")}</h1>
+          <h1 className="page-title">{t("nav.macros")}</h1>
+          <p className="page-desc">{t("mc.eyebrow")}</p>
         </div>
         <Memory used={used} budget={limits.budget} />
       </header>
 
       {!usb && (
-        <div className="flex items-center gap-3 rounded-2xl border border-signal/30 bg-signal/10 px-4 py-3 text-[13px]">
+        <div className="flex items-center gap-3 rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-[13px]">
           <Usb size={16} className="text-signal" />
           {t("mc.needsUsb")}
         </div>
@@ -135,7 +136,7 @@ function Memory({ used, budget }: { used: number; budget: number }) {
   const over = used > budget;
   return (
     <div className="flex w-[220px] flex-col gap-1.5" title={`${used} / ${budget} B`}>
-      <div className="flex items-baseline justify-between text-[11.5px]">
+      <div className="flex items-baseline justify-between text-[12px]">
         <span className="text-ink-2">{t("mc.memory")}</span>
         <span className={`num ${over ? "text-danger" : "text-ink-3"}`}>
           {used} / {budget} B
@@ -158,7 +159,7 @@ function MacroList({ selected, onSelect }: { selected: number | null; onSelect: 
   const dirtyKey = useMacros((s) => dirtySlots(s).join(","));
   const dirty = new Set(dirtyKey ? dirtyKey.split(",").map(Number) : []);
   const items = draft.map((m, slot) => ({ m, slot })).filter((x): x is { m: MacroInfo; slot: number } => !!x.m);
-  if (items.length === 0) return <p className="px-2 pb-2 text-[12.5px] text-ink-3">{t("mc.none")}</p>;
+  if (items.length === 0) return <p className="px-2 pb-2 text-[13px] text-ink-3">{t("mc.none")}</p>;
   return (
     <ul className="flex flex-col gap-1">
       {items.map(({ m, slot }) => (
@@ -167,7 +168,7 @@ function MacroList({ selected, onSelect }: { selected: number | null; onSelect: 
             type="button"
             aria-current={selected === slot}
             onClick={() => onSelect(slot)}
-            className={`flex w-full items-center gap-3 rounded-xl border px-2.5 py-2 text-left transition-colors ${
+            className={`flex w-full items-center gap-3 rounded-lg border px-2.5 py-2 text-left transition-colors ${
               selected === slot ? "border-signal bg-signal/10" : "border-transparent hover:bg-surface-2"
             }`}
           >
@@ -309,7 +310,7 @@ function Editor({
   return (
     <section className="card flex flex-col gap-5 p-5">
       <div className="flex items-center gap-3">
-        <span className="num flex h-10 w-11 shrink-0 items-center justify-center rounded-xl border border-line-strong bg-surface-2 text-[13px] font-semibold">
+        <span className="num flex h-10 w-11 shrink-0 items-center justify-center rounded-lg border border-line-strong bg-surface-2 text-[13px] font-semibold">
           M{slot + 1}
         </span>
         <input
@@ -319,14 +320,14 @@ function Editor({
           aria-label={t("mc.name")}
           placeholder={t("mc.unnamed")}
           disabled={recording}
-          className="h-10 flex-1 rounded-xl border border-line bg-bg-raise px-3 text-[15px] font-medium outline-none focus:border-signal"
+          className="h-10 flex-1 rounded-lg border border-line bg-bg-raise px-3 text-[15px] font-medium outline-none focus:border-signal"
         />
         {confirmDelete ? (
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={doDelete}
-              className="flex h-9 items-center gap-1.5 rounded-lg bg-danger px-3 text-[12.5px] font-semibold text-white"
+              className="flex h-9 items-center gap-1.5 rounded-lg bg-danger px-3 text-[13px] font-semibold text-white"
             >
               <Trash2 size={13} />
               {t("mc.delete")}
@@ -334,7 +335,7 @@ function Editor({
             <button
               type="button"
               onClick={() => setConfirmDelete(false)}
-              className="h-9 rounded-lg px-2 text-[12.5px] text-ink-2 hover:text-ink"
+              className="h-9 rounded-lg px-2 text-[13px] text-ink-2 hover:text-ink"
             >
               {t("unsaved.cancel")}
             </button>
@@ -359,7 +360,7 @@ function Editor({
         </p>
       )}
 
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-bg-raise p-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-bg-raise p-3">
         <button
           type="button"
           onClick={() => setRecording(!recording)}
@@ -409,14 +410,14 @@ function Editor({
         </span>
       </div>
       {recording && (
-        <p className="flex items-center gap-2 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-[12.5px]">
+        <p className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[13px]">
           <span className="h-2 w-2 animate-pulse rounded-full bg-danger" />
           {t("mc.recordingHint")}
         </p>
       )}
 
       {steps.length === 0 ? (
-        <p className="text-[12.5px] text-ink-3">{t("mc.noSteps")}</p>
+        <p className="text-[13px] text-ink-3">{t("mc.noSteps")}</p>
       ) : (
         <ol className="flex max-h-[460px] flex-col gap-1 overflow-y-auto pr-1">
           {steps.map((s, i) => {
@@ -434,9 +435,9 @@ function Editor({
                   <span className="num rounded-md border border-line bg-surface px-1.5 py-0.5 text-[12px]">
                     {label(s)}
                   </span>
-                  <span className="text-[11.5px] text-ink-3">{t(down ? "mc.press" : "mc.release")}</span>
+                  <span className="text-[12px] text-ink-3">{t(down ? "mc.press" : "mc.release")}</span>
                 </span>
-                <label className="flex items-center gap-1 text-[11.5px] text-ink-3">
+                <label className="flex items-center gap-1 text-[12px] text-ink-3">
                   <input
                     type="number"
                     min={limits.minDelayMs}
@@ -564,7 +565,7 @@ function SaveCard({ usb, loaded }: { usb: boolean; loaded: boolean }) {
       await save();
       setStatus({ kind: "ok", ms: Math.round(performance.now() - started) });
     } catch (e) {
-      setStatus({ kind: "error", message: String(e) });
+      setStatus({ kind: "error", message: friendlyError(e, t) });
     }
   };
 
@@ -574,7 +575,7 @@ function SaveCard({ usb, loaded }: { usb: boolean; loaded: boolean }) {
         type="button"
         disabled={!usb || !loaded || !dirty || over || status.kind === "busy"}
         onClick={run}
-        className="flex h-10 items-center justify-center gap-2 rounded-xl bg-signal text-[13.5px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex h-10 items-center justify-center gap-2 rounded-lg bg-signal text-[13.5px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
       >
         {status.kind === "busy" && <Loader2 size={15} className="animate-spin" />}
         {status.kind === "busy" ? t("km.saving") : t("km.save")}
@@ -590,7 +591,7 @@ function SaveCard({ usb, loaded }: { usb: boolean; loaded: boolean }) {
       ) : status.kind === "ok" && !dirty ? (
         <span className="flex items-center gap-2 text-[12px] text-ok">
           <Check size={13} />
-          {t("mc.saved")} <span className="num text-ink-3">· {status.ms} ms</span>
+          {t("mc.saved")}
         </span>
       ) : over ? (
         <span className="text-[12px] text-danger">{t("mc.overBudget")}</span>
@@ -606,7 +607,7 @@ function SaveCard({ usb, loaded }: { usb: boolean; loaded: boolean }) {
         <Undo2 size={12} />
         {t("km.revert")}
       </button>
-      <p className="flex gap-2 border-t border-line pt-3 text-[11.5px] text-ink-2">
+      <p className="flex gap-2 border-t border-line pt-3 text-[12px] text-ink-2">
         <Info size={13} className="mt-0.5 shrink-0 text-ink-3" />
         <span>
           {t("mc.readNote")}{" "}

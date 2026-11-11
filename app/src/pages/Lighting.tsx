@@ -32,6 +32,7 @@ import {
 import { useGauges } from "../lib/gauges";
 import { useMirror } from "../lib/mirror";
 import { useApp } from "../lib/store";
+import { friendlyError } from "../lib/errors";
 
 const VARIANT: Record<number, SwatchVariant> = {
   0: "off",
@@ -88,10 +89,9 @@ export function Lighting({ kb }: { kb: KeyboardInfo }) {
     <div className="flex flex-col gap-6">
       <header className="flex items-end justify-between gap-6">
         <div>
-          <div className="eyebrow mb-2">{t("light.eyebrow")}</div>
-          <h1 className="font-display text-[40px] leading-none font-semibold tracking-[-0.035em]">{t("nav.lighting")}</h1>
+          <h1 className="page-title">{t("nav.lighting")}</h1>
         </div>
-        <div role="tablist" className="inline-flex rounded-xl border border-line bg-bg-raise p-1">
+        <div role="tablist" className="inline-flex rounded-lg border border-line bg-bg-raise p-1">
           {(["effects", "per-key"] as const).map((id) => (
             <button
               key={id}
@@ -110,19 +110,19 @@ export function Lighting({ kb }: { kb: KeyboardInfo }) {
       </header>
 
       {!usb && (
-        <div className="flex items-center gap-3 rounded-2xl border border-signal/30 bg-signal/10 px-4 py-3 text-[13px]">
+        <div className="flex items-center gap-3 rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-[13px]">
           <Usb size={16} className="text-signal" />
           {t("light.needsUsb")}
         </div>
       )}
       {usb && gaugesOn && (
-        <div className="flex items-center gap-3 rounded-2xl border border-line bg-bg-raise/60 px-4 py-3 text-[13px]" data-light-gauges>
+        <div className="flex items-center gap-3 rounded-lg border border-line bg-bg-raise/60 px-4 py-3 text-[13px]" data-light-gauges>
           <Gauge size={16} className="shrink-0 text-signal" />
           <span className="flex-1 text-ink-2">{t("light.gaugesOn")}</span>
           <button
             type="button"
             onClick={() => setPage("gauges")}
-            className="shrink-0 rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+            className="shrink-0 rounded-lg border border-line px-3 py-1.5 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink"
           >
             {t("light.gaugesGo")}
           </button>
@@ -154,7 +154,7 @@ function Plate({ kb, colors, caption, live, onKeyAction, selected, tool, onBackg
       onPointerDown={(e) => {
         if (!(e.target as HTMLElement).closest(".kb-key")) onBackgroundPress?.();
       }}
-      className="relative overflow-hidden rounded-[26px] border border-line p-6 pb-4"
+      className="relative overflow-hidden rounded-lg border border-line p-6 pb-4"
       style={{ background: "linear-gradient(180deg, var(--plate), color-mix(in oklch, var(--plate) 80%, black))" }}
     >
       {kb.geometry && (
@@ -168,8 +168,8 @@ function Plate({ kb, colors, caption, live, onKeyAction, selected, tool, onBackg
           tool={tool}
         />
       )}
-      <div className="mt-4 flex items-center gap-2 text-[11.5px] text-[#8b8d92]">
-        <span className={`h-1.5 w-1.5 rounded-full ${live ? "bg-ok shadow-[0_0_8px_var(--ok)]" : "bg-white/25"}`} />
+      <div className="mt-4 flex items-center gap-2 text-[12px] text-[#8b8d92]">
+        <span className={`h-1.5 w-1.5 rounded-full ${live ? "bg-ok" : "bg-white/25"}`} />
         <span className="num">{caption}</span>
       </div>
     </section>
@@ -190,7 +190,7 @@ function StatusLine({ status, okText }: { status: Status; okText: string }) {
     return (
       <span className="flex items-center gap-2 text-[12px] text-ok">
         <Check size={13} />
-        {okText} <span className="num text-ink-3">· {status.ms} ms</span>
+        {okText}
       </span>
     );
   return (
@@ -223,7 +223,7 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
       await applyEffectDraft();
       setStatus({ kind: "ok", ms: Math.round(performance.now() - started) });
     } catch (e) {
-      setStatus({ kind: "error", message: String(e) });
+      setStatus({ kind: "error", message: friendlyError(e, t) });
     }
   };
 
@@ -236,7 +236,7 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
         type="button"
         onClick={() => setEffect({ mode: fx.id })}
         aria-pressed={selected}
-        className={`group relative flex flex-col gap-3 rounded-2xl border p-3 text-left transition-all ${
+        className={`group relative flex flex-col gap-3 rounded-lg border p-3 text-left transition-all ${
           selected
             ? "border-signal bg-surface-2 shadow-[0_0_0_3px_color-mix(in_oklch,var(--signal)_20%,transparent)]"
             : "border-line bg-surface hover:border-line-strong"
@@ -248,10 +248,10 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
           rainbow={fx.rainbow ? effect.rainbow || !fx.color : !fx.color}
         />
         <div className="flex items-center gap-1.5">
-          <span className="truncate text-[12.5px] font-medium">{t(`fx.${fx.id}` as MessageKey)}</span>
+          <span className="truncate text-[13px] font-medium">{t(`fx.${fx.id}` as MessageKey)}</span>
           {isApplied && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-ok" aria-hidden />}
         </div>
-        <div className="num -mt-2 flex gap-1.5 text-[10px] text-ink-3">
+        <div className="num -mt-2 flex gap-1.5 text-[11px] text-ink-3">
           {REACTIVE_EFFECTS.has(fx.id) && <span>{t("light.reactive")}</span>}
           {fx.factoryDefault && <span>{t("light.factory")}</span>}
         </div>
@@ -282,7 +282,7 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
           </div>
 
           {current && current.id === 0 && (
-            <div className="flex gap-2.5 rounded-xl border border-warn/30 bg-warn/10 p-3 text-[12px] text-ink-2">
+            <div className="flex gap-2.5 rounded-lg border border-warn/30 bg-warn/10 p-3 text-[12px] text-ink-2">
               <AlertTriangle size={15} className="mt-0.5 shrink-0 text-warn" />
               {t("light.offWarning")}
             </div>
@@ -300,7 +300,7 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
           )}
           {current?.rainbow && current.color && (
             <div className="flex items-center justify-between">
-              <span className="text-[12.5px] font-medium">{t("light.rainbow")}</span>
+              <span className="text-[13px] font-medium">{t("light.rainbow")}</span>
               <Toggle label={t("light.rainbow")} checked={effect.rainbow} onChange={(rainbow) => setEffect({ rainbow })} />
             </div>
           )}
@@ -326,7 +326,7 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
                       role="radio"
                       aria-checked={on}
                       onClick={() => setEffect({ direction: v })}
-                      className={`h-8 rounded-lg border text-[12.5px] transition-colors ${
+                      className={`h-8 rounded-lg border text-[13px] transition-colors ${
                         on ? "border-signal bg-signal/15 text-ink" : "border-line bg-bg-raise text-ink-2 hover:text-ink"
                       }`}
                     >
@@ -338,7 +338,7 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
             </Field>
           )}
           {current && current.id !== 0 && !current.brightness && !current.speed && !current.color && (
-            <p className="text-[12.5px] text-ink-3">{t("light.noSettings")}</p>
+            <p className="text-[13px] text-ink-3">{t("light.noSettings")}</p>
           )}
 
           <div className="flex flex-col gap-2.5 border-t border-line pt-4">
@@ -346,7 +346,7 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
               type="button"
               disabled={!usb || status.kind === "busy" || !current}
               onClick={apply}
-              className="flex h-10 items-center justify-center gap-2 rounded-xl bg-signal text-[13.5px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-10 items-center justify-center gap-2 rounded-lg bg-signal text-[13.5px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {status.kind === "busy" ? <Loader2 size={15} className="animate-spin" /> : null}
               {status.kind === "busy" ? t("light.applying") : t("light.apply")}
@@ -503,7 +503,7 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
       await savePerKeyDraft();
       setStatus({ kind: "ok", ms: Math.round(performance.now() - started) });
     } catch (e) {
-      setStatus({ kind: "error", message: String(e) });
+      setStatus({ kind: "error", message: friendlyError(e, t) });
     }
   };
 
@@ -525,27 +525,25 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
         tool={tool}
         onBackgroundPress={() => tool === "select" && selection.size > 0 && select(new Set())}
       />
-      <p className="-mt-3 text-[12px] text-ink-3">
+      <div className="-mt-3 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 text-[12px] text-ink-3">
         {tool === "select" && selection.size > 0 ? (
           <span className="text-ink-2">
-            <span className="num">{`${selection.size} ${t("light.keysSelected")}`}</span>
-            <span className="mx-1.5 text-ink-3">·</span>
-            {t("light.selectShortcuts")}
+            <span className="num font-medium">{`${selection.size} ${t(selection.size === 1 ? "light.keySelected" : "light.keysSelected")}`}</span>
+            <span className="ml-3">{t("light.selectShortcuts")}</span>
           </span>
         ) : (
-          t(tool === "brush" ? "light.paintHint" : "light.selectEmptyHint")
+          <span>{t(tool === "brush" ? "light.paintHint" : "light.selectEmptyHint")}</span>
         )}
-        <span className="mx-1.5">·</span>
         <span className="num">
-          {painted} {t("light.keysPainted")}
+          {painted} {t(painted === 1 ? "light.keyPainted" : "light.keysPainted")}
         </span>
-      </p>
+      </div>
 
       <div className="grid grid-cols-[1fr_360px] items-start gap-5">
         <section className="card flex flex-col gap-5 p-5">
-          <div className="flex flex-col gap-2.5 rounded-xl border border-line bg-bg-raise/60 p-3.5">
+          <div className="flex flex-col gap-2.5 rounded-lg border border-line bg-bg-raise/60 p-3.5">
             <div className="flex items-center justify-between gap-4">
-              <span className="text-[12.5px] font-medium">{t("light.tool")}</span>
+              <span className="text-[13px] font-medium">{t("light.tool")}</span>
               <Segmented<PaintTool>
                 label={t("light.tool")}
                 value={tool}
@@ -565,7 +563,7 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
               tool === "brush"
                 ? t("light.brush")
                 : selection.size
-                  ? `${t("light.selectedColor")} · ${selection.size}`
+                  ? t("light.selectedColor")
                   : t("light.colorPickFirst")
             }
           >
@@ -606,8 +604,8 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
         <section className="card sticky top-4 flex flex-col gap-5 p-5">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <div className="text-[12.5px] font-medium">{t("light.livePreview")}</div>
-              <div className="text-[11.5px] text-ink-3">{t("light.livePreviewHint")}</div>
+              <div className="text-[13px] font-medium">{t("light.livePreview")}</div>
+              <div className="text-[12px] text-ink-3">{t("light.livePreviewHint")}</div>
             </div>
             <Toggle label={t("light.livePreview")} checked={livePreview} onChange={setLivePreview} disabled={!usb} />
           </div>
@@ -615,10 +613,10 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
             <Steps label={t("light.brightness")} value={perKeyBrightness} onChange={setPerKeyBrightness} />
           </Field>
           <div className="flex flex-col gap-2.5 border-t border-line pt-4">
-            <div role="status" className="flex items-center gap-2 text-[12.5px]">
+            <div role="status" className="flex items-center gap-2 text-[13px]">
               <span
                 className={`h-2 w-2 shrink-0 rounded-full ${
-                  matchesSaved ? "bg-ok shadow-[0_0_8px_var(--ok)]" : "bg-warn shadow-[0_0_8px_var(--warn)]"
+                  matchesSaved ? "bg-ok" : "bg-warn"
                 }`}
               />
               <span className={matchesSaved ? "text-ink-2" : "text-ink"}>{t(saveState)}</span>
@@ -627,7 +625,7 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
               type="button"
               disabled={!usb || status.kind === "busy"}
               onClick={save}
-              className="flex h-10 items-center justify-center gap-2 rounded-xl bg-signal text-[13.5px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-10 items-center justify-center gap-2 rounded-lg bg-signal text-[13.5px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {status.kind === "busy" && <Loader2 size={15} className="animate-spin" />}
               {status.kind === "busy" ? t("light.saving") : t("light.save")}
@@ -637,14 +635,14 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
                 type="button"
                 onClick={revertPerKey}
                 disabled={status.kind === "busy"}
-                className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-line bg-bg-raise text-[12.5px] text-ink-2 transition-colors hover:border-line-strong hover:text-ink disabled:opacity-40"
+                className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-line bg-bg-raise text-[13px] text-ink-2 transition-colors hover:border-line-strong hover:text-ink disabled:opacity-40"
               >
                 <RotateCcw size={13} />
                 {t("light.revert")}
               </button>
             )}
             <StatusLine status={status} okText={t("light.saved")} />
-            <p className="text-[11.5px] leading-relaxed text-ink-3">{t("light.indicatorNote")}</p>
+            <p className="text-[12px] leading-relaxed text-ink-3">{t("light.indicatorNote")}</p>
           </div>
         </section>
       </div>
@@ -664,7 +662,7 @@ function ToolButton({ icon, label, onClick }: { icon?: React.ReactNode; label: s
     <button
       type="button"
       onClick={onClick}
-      className="flex h-8 items-center gap-1.5 rounded-lg border border-line bg-bg-raise px-3 text-[12.5px] text-ink-2 transition-colors hover:border-line-strong hover:text-ink"
+      className="flex h-8 items-center gap-1.5 rounded-lg border border-line bg-bg-raise px-3 text-[13px] text-ink-2 transition-colors hover:border-line-strong hover:text-ink"
     >
       {icon}
       {label}

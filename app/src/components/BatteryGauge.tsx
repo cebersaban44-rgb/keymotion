@@ -1,4 +1,5 @@
 import { useApp } from "../lib/store";
+import { percent as fmtPercent } from "../lib/i18n";
 
 /** Ten-segment arc gauge; segments light up from the left. */
 export function BatteryGauge({ percent }: { percent: number | null }) {
@@ -24,7 +25,7 @@ export function BatteryGauge({ percent }: { percent: number | null }) {
   };
 
   return (
-    <svg viewBox="0 0 120 100" className="w-full max-w-[220px]" role="img" aria-label={percent == null ? "—" : `%${percent}`}>
+    <svg viewBox="0 0 120 100" className="w-full max-w-[220px]" role="img" aria-label={percent == null ? "—" : fmtPercent(percent)}>
       {Array.from({ length: segments }, (_, i) => {
         const from = start + i * (seg + gap);
         const on = i < lit;

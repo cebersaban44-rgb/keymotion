@@ -84,10 +84,10 @@ export function MatchLightsDialog({
       <motion.div initial={{ scale: 0.97, y: 8 }} animate={{ scale: 1, y: 0 }} className="card flex w-[720px] max-w-[94vw] flex-col gap-4 p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 id="lm-title" className="font-display text-[22px] font-semibold tracking-[-0.02em]">
+            <h2 id="lm-title" className="font-display text-[22px] font-semibold">
               {t("sc.lm.title")}
             </h2>
-            <p className="mt-1 text-[12.5px] text-ink-2">{t("sc.lm.body")}</p>
+            <p className="mt-1 text-[13px] text-ink-2">{t("sc.lm.body")}</p>
           </div>
           <button
             type="button"
@@ -132,26 +132,26 @@ export function MatchLightsDialog({
                   aria-checked={kind === o.id}
                   data-match={o.id}
                   onClick={() => setKind(o.id)}
-                  className={`flex flex-col items-start gap-0.5 rounded-xl border p-3 text-left transition-colors ${
+                  className={`flex flex-col items-start gap-0.5 rounded-lg border p-3 text-left transition-colors ${
                     kind === o.id ? "border-signal bg-signal/10" : "border-line hover:bg-surface-2"
                   }`}
                 >
                   <span className="text-[13px] font-semibold">{t(o.title)}</span>
-                  <span className="text-[11.5px] text-ink-2">{t(o.body)}</span>
+                  <span className="text-[12px] text-ink-2">{t(o.body)}</span>
                 </button>
               ))}
             </div>
 
             {geometry && design && (
               <div
-                className="overflow-hidden rounded-2xl border border-line p-4"
+                className="overflow-hidden rounded-lg border border-line p-4"
                 style={{ background: "linear-gradient(180deg, var(--plate), color-mix(in oklch, var(--plate) 80%, black))" }}
               >
                 <KeyboardView geometry={geometry} connection={kb.connection} colors={design} />
               </div>
             )}
 
-            <p className="text-[11.5px] text-ink-3">{t("sc.lm.note")}</p>
+            <p className="text-[12px] text-ink-3">{t("sc.lm.note")}</p>
           </>
         )}
 
@@ -160,7 +160,7 @@ export function MatchLightsDialog({
             type="button"
             autoFocus
             onClick={onClose}
-            className="h-10 rounded-xl border border-line px-4 text-[13px] text-ink-2 hover:bg-surface-2"
+            className="h-10 rounded-lg border border-line px-4 text-[13px] text-ink-2 hover:bg-surface-2"
           >
             {t("sc.cancel")}
           </button>
@@ -168,7 +168,7 @@ export function MatchLightsDialog({
             type="button"
             disabled={!design}
             onClick={open}
-            className="flex h-10 items-center gap-2 rounded-xl bg-signal px-4 text-[13px] font-semibold text-signal-ink disabled:opacity-40"
+            className="flex h-10 items-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink disabled:opacity-40"
           >
             <Palette size={15} /> {t("sc.lm.open")}
           </button>
