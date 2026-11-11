@@ -1,5 +1,5 @@
 //! Settings the backend owns and persists in the app config directory
-//! (`%APPDATA%\dev.klavye.studio`). UI-only preferences (theme, language,
+//! (`%APPDATA%\dev.keymotion`). UI-only preferences (theme, language,
 //! the current lighting design) stay in the webview's local storage.
 
 use kb_core::color::LedCalibration;

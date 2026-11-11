@@ -1,4 +1,4 @@
-# Klavye Stüdyo
+# Keymotion
 
 AJAZZ AK980 PRO (ve ileride benzer SONiX tabanlı klavyeler) için Windows kontrol uygulaması. Rust çekirdek, Tauri 2 kabuğu, React arayüz.
 

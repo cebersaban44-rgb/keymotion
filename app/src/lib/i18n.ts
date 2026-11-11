@@ -5,7 +5,7 @@ import type { Feature } from "../bindings/Feature";
 export type Locale = "tr" | "en";
 
 const tr = {
-  "app.name": "Klavye Stüdyo",
+  "app.name": "Keymotion",
   "nav.overview": "Genel bakış",
   "nav.lighting": "Işıklar",
   "nav.keymap": "Tuş atama",
@@ -692,7 +692,7 @@ const tr = {
   "sc.tx.t.mountain": "Dağ teması",
   "sc.tx.t.badge": "Rozet",
   "sc.tx.sample.name.t": "Merhaba",
-  "sc.tx.sample.name.s": "Klavye Stüdyo",
+  "sc.tx.sample.name.s": "Keymotion",
   "sc.tx.sample.quote.t": "Az olsun, öz olsun.",
   "sc.tx.sample.quote.s": "Atasözü",
   "sc.tx.sample.marquee.t": "Merhaba",
@@ -1056,7 +1056,7 @@ const tr = {
 export type MessageKey = keyof typeof tr;
 
 const en: Record<MessageKey, string> = {
-  "app.name": "Klavye Studio",
+  "app.name": "Keymotion",
   "nav.overview": "Overview",
   "nav.lighting": "Lighting",
   "nav.keymap": "Key mapping",
@@ -1743,7 +1743,7 @@ const en: Record<MessageKey, string> = {
   "sc.tx.t.mountain": "Mountains",
   "sc.tx.t.badge": "Badge",
   "sc.tx.sample.name.t": "Hello",
-  "sc.tx.sample.name.s": "Klavye Studio",
+  "sc.tx.sample.name.s": "Keymotion",
   "sc.tx.sample.quote.t": "Less is more.",
   "sc.tx.sample.quote.s": "Proverb",
   "sc.tx.sample.marquee.t": "Hello",
