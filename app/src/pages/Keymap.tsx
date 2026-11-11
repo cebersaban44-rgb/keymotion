@@ -60,6 +60,7 @@ export function Keymap({ kb }: { kb: KeyboardInfo }) {
       <header className="flex items-end justify-between gap-6">
         <div>
           <h1 className="page-title">{t("nav.keymap")}</h1>
+          <p className="page-desc">{t("km.eyebrow")}</p>
         </div>
         <div role="tablist" className="inline-flex rounded-lg border border-line bg-bg-raise p-1">
           {(["base", "fn"] as const).map((id) => (
@@ -285,7 +286,7 @@ function Picker({
             const items = catalog.keys.filter((k) => k.group === g);
             return (
               <div key={g} className="flex flex-col gap-2">
-                <div className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">
+                <div className="text-[12px] font-semibold text-ink-3">
                   {t(`km.group.${g}` as MessageKey)}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -677,7 +678,7 @@ function StatusLine({ status, dirty, changed }: { status: Status; dirty: boolean
     return (
       <span className="flex items-center gap-2 text-[12px] text-ok">
         <Check size={13} />
-        {t("km.saved")} <span className="num text-ink-3">· {status.ms} ms</span>
+        {t("km.saved")}
       </span>
     );
   return <span className="text-[12px] text-ink-3">{t("km.persistNote")}</span>;

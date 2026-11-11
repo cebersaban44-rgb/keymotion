@@ -86,6 +86,7 @@ export function Macros({ kb }: { kb: KeyboardInfo }) {
       <header className="flex items-end justify-between gap-6">
         <div>
           <h1 className="page-title">{t("nav.macros")}</h1>
+          <p className="page-desc">{t("mc.eyebrow")}</p>
         </div>
         <Memory used={used} budget={limits.budget} />
       </header>
@@ -590,7 +591,7 @@ function SaveCard({ usb, loaded }: { usb: boolean; loaded: boolean }) {
       ) : status.kind === "ok" && !dirty ? (
         <span className="flex items-center gap-2 text-[12px] text-ok">
           <Check size={13} />
-          {t("mc.saved")} <span className="num text-ink-3">· {status.ms} ms</span>
+          {t("mc.saved")}
         </span>
       ) : over ? (
         <span className="text-[12px] text-danger">{t("mc.overBudget")}</span>

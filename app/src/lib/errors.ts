@@ -19,9 +19,9 @@ const RULES: [RegExp, MessageKey][] = [
 ];
 
 /** A short, translated message for an error from the backend. */
-export function friendlyError(e: unknown, t: (key: MessageKey) => string): string {
+export function friendlyError(e: unknown, t: (key: MessageKey) => string, quiet = false): string {
   const raw = e instanceof Error ? e.message : String(e);
-  console.error(raw);
+  if (!quiet) console.error(raw);
   const hit = RULES.find(([re]) => re.test(raw));
   return t(hit ? hit[1] : "err.generic");
 }

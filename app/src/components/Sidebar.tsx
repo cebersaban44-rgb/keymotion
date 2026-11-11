@@ -5,6 +5,7 @@ import { connectionKey, useT, type MessageKey } from "../lib/i18n";
 import { fmtClock, phaseColor, remainingNow, usePomodoro } from "../lib/pomodoro";
 import { useActiveKeyboard, useApp, type PageId } from "../lib/store";
 import { useUnsaved } from "../lib/unsaved";
+import { percent } from "../lib/i18n";
 
 interface NavItem {
   id: PageId;
@@ -105,7 +106,7 @@ export function Sidebar() {
           <div className="truncate text-[13px] font-medium">{kb ? kb.modelName : t("device.none.title")}</div>
           {kb && <div className="num truncate text-[11px] text-ink-3">{t(connectionKey(kb.connection))}</div>}
         </div>
-        {kb?.battery && <span className="num text-[12px] text-ink-2">%{kb.battery.percent}</span>}
+        {kb?.battery && <span className="num text-[12px] text-ink-2">{percent(kb.battery.percent)}</span>}
       </div>
     </aside>
   );

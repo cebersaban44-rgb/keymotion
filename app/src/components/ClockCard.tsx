@@ -60,7 +60,7 @@ export function ClockCard({ usb }: { usb: boolean }) {
   const lastText =
     last === null
       ? t("clock.never")
-      : `${new Date(last).toLocaleString(locale === "tr" ? "tr-TR" : "en-GB", {
+      : `${new Date(last).toLocaleString(locale === "tr" ? "tr-TR" : "en-US", {
           dateStyle: "medium",
           timeStyle: "short",
         })} · ${ago(last)} ${t("clock.ago")}`;

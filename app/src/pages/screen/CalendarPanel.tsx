@@ -29,6 +29,7 @@ import type { Prepared } from "../../lib/screenImport";
 import { useApp } from "../../lib/store";
 import { tNow, useT, type MessageKey } from "../../lib/i18n";
 import { FramePlayer, Hint } from "./common";
+import { friendlyError } from "../../lib/errors";
 
 const PROVIDERS: { id: CalendarProvider; label: MessageKey; steps: MessageKey[]; note?: MessageKey }[] = [
   { id: "google", label: "calendar.p.google", steps: ["calendar.help.google.1", "calendar.help.google.2", "calendar.help.google.3", "calendar.help.google.4"], note: "calendar.help.google.note" },
@@ -49,10 +50,10 @@ function errText(e: string, t: (k: MessageKey) => string) {
     const code = Number(http[1]);
     if (code === 404) return t("calendar.err.notFound");
     if (code === 401 || code === 403) return t("calendar.err.denied");
-    return `${t("calendar.err.http")} (${code})`;
+    return t("calendar.err.http");
   }
   if (e === "calendar too large") return t("calendar.err.large");
-  return e;
+  return friendlyError(e, t, true);
 }
 
 /** The calendar layer's status pill. */

@@ -403,8 +403,9 @@ function LayerList({
             data-layer-on={l.on || undefined}
           >
             <span className="num w-4 text-right text-[11px]">{i + 1}</span>
-            <span className="flex-1">
-              {t(l.title)} <span className="text-ink-3">· {t(l.note)}</span>
+            <span className="flex flex-1 flex-col">
+              <span>{t(l.title)}</span>
+              <span className="text-[12px] text-ink-3">{t(l.note)}</span>
             </span>
             {l.on && <span className="text-[11px] font-semibold text-signal">{t("gauges.layer.now")}</span>}
           </li>

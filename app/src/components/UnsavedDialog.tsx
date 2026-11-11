@@ -133,7 +133,7 @@ export function UnsavedDialog({ items, onCancel }: { items: UnsavedItem[]; onCan
               {busy ? t("unsaved.saving") : t("unsaved.saveExit")}
             </button>
           </div>
-          <p className="text-right text-[12px] text-ink-3">{t("unsaved.discardNote")}</p>
+          
         </div>
       </motion.div>
     </motion.div>

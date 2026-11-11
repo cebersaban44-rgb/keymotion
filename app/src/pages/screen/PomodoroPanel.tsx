@@ -250,7 +250,7 @@ function Dial({ s }: { s: PomodoroState }) {
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5">
-        <span className="text-[11px] font-semibold tracking-[0.12em] uppercase" style={{ color: idle ? "var(--ink-3)" : color }}>
+        <span className="text-[13px] font-semibold" style={{ color: idle ? "var(--ink-3)" : color }}>
           {idle ? t("pomo.idle") : t(PHASE_KEY[s.phase])}
         </span>
         <span className="num font-display text-[44px] leading-none font-semibold" data-time>
@@ -440,9 +440,9 @@ function LastLine({ s }: { s: PomodoroState }) {
   const l = s.last!;
   return (
     <p className="num text-[12px] text-ink-2" data-pomo-last>
-      {t("pomo.last")}: {l.focusDone} {t("pomo.round").toLocaleLowerCase()} · {l.focusMin} {t("pomo.last.focus")} ·{" "}
-      {l.complete ? t("pomo.last.complete") : t("pomo.last.stopped")} ·{" "}
-      {new Date(l.endedMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+      {t("pomo.last")}: {l.focusDone} {t(l.focusDone === 1 ? "pomo.last.round" : "pomo.last.rounds")}, {l.focusMin}{" "}
+      {t("pomo.last.focus")}, {l.complete ? t("pomo.last.complete") : t("pomo.last.stopped")} (
+      {new Date(l.endedMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})
     </p>
   );
 }
@@ -629,8 +629,8 @@ function EndChoice({
               <span className="text-[12px] text-ink-3">{t(c.body)}</span>
               {c.id === "back" && own && (
                 <span className="text-[12px] text-ink-2">
-                  {t("pomo.end.own")}: <span className="font-medium text-ink">{own.name}</span> · {t("sc.uploadTime")}{" "}
-                  <span className="num">~{fmtSeconds(uploadSeconds(own.frames))}</span>
+                  {t("pomo.end.own")}: <span className="font-medium text-ink">{own.name}</span> ({t("sc.uploadTime")}{" "}
+                  <span className="num">~{fmtSeconds(uploadSeconds(own.frames))}</span>)
                 </span>
               )}
             </span>
@@ -715,6 +715,7 @@ function LengthField({
   limits: readonly [number, number];
   onChange: (v: number) => void;
 }) {
+  const t = useT();
   const [lo, hi] = limits;
   const [text, setText] = useState(String(value));
   useEffect(() => setText(String(value)), [value]);
@@ -728,7 +729,7 @@ function LengthField({
     <div className="flex items-center justify-between gap-2 rounded-lg border border-line py-1 pr-1 pl-3">
       <span className="truncate text-[13px] text-ink-2">{label}</span>
       <span className="flex shrink-0 items-center gap-0.5">
-        <button type="button" className={btn} onClick={() => commit(value - 1)} disabled={value <= lo} aria-label={`${label} −`}>
+        <button type="button" className={btn} onClick={() => commit(value - 1)} disabled={value <= lo} aria-label={`${label}, ${t("common.decrease")}`}>
           <Minus size={14} />
         </button>
         <input
@@ -743,7 +744,7 @@ function LengthField({
           }}
         />
         {unit && <span className="w-5 text-[11px] text-ink-3">{unit}</span>}
-        <button type="button" className={btn} onClick={() => commit(value + 1)} disabled={value >= hi} aria-label={`${label} +`}>
+        <button type="button" className={btn} onClick={() => commit(value + 1)} disabled={value >= hi} aria-label={`${label}, ${t("common.increase")}`}>
           <Plus size={14} />
         </button>
       </span>

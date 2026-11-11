@@ -480,7 +480,7 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
                     onBlur={(e) => {
                       setEditing(null);
                       const v = e.target.value.trim();
-                      if (v && v !== it.name) useScreen.getState().rename(it.id, v).catch((x) => setNotice({ ok: false, text: String(x) }));
+                      if (v && v !== it.name) useScreen.getState().rename(it.id, v).catch((x) => setNotice({ ok: false, text: friendlyError(x, t) }));
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") (e.target as HTMLInputElement).blur();
@@ -553,7 +553,7 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
                       onClick={() => {
                         if (deleting !== it.id) return setDeleting(it.id);
                         setDeleting(null);
-                        useScreen.getState().remove(it.id).catch((x) => setNotice({ ok: false, text: String(x) }));
+                        useScreen.getState().remove(it.id).catch((x) => setNotice({ ok: false, text: friendlyError(x, t) }));
                       }}
                       className={`flex h-7 items-center justify-center gap-1 rounded-md px-1.5 text-[12px] ${
                         deleting === it.id ? "bg-danger/15 text-danger" : "text-ink-3 hover:bg-surface hover:text-danger"

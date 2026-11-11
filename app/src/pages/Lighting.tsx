@@ -190,7 +190,7 @@ function StatusLine({ status, okText }: { status: Status; okText: string }) {
     return (
       <span className="flex items-center gap-2 text-[12px] text-ok">
         <Check size={13} />
-        {okText} <span className="num text-ink-3">· {status.ms} ms</span>
+        {okText}
       </span>
     );
   return (
@@ -525,21 +525,19 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
         tool={tool}
         onBackgroundPress={() => tool === "select" && selection.size > 0 && select(new Set())}
       />
-      <p className="-mt-3 text-[12px] text-ink-3">
+      <div className="-mt-3 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 text-[12px] text-ink-3">
         {tool === "select" && selection.size > 0 ? (
           <span className="text-ink-2">
-            <span className="num">{`${selection.size} ${t("light.keysSelected")}`}</span>
-            <span className="mx-1.5 text-ink-3">·</span>
-            {t("light.selectShortcuts")}
+            <span className="num font-medium">{`${selection.size} ${t(selection.size === 1 ? "light.keySelected" : "light.keysSelected")}`}</span>
+            <span className="ml-3">{t("light.selectShortcuts")}</span>
           </span>
         ) : (
-          t(tool === "brush" ? "light.paintHint" : "light.selectEmptyHint")
+          <span>{t(tool === "brush" ? "light.paintHint" : "light.selectEmptyHint")}</span>
         )}
-        <span className="mx-1.5">·</span>
         <span className="num">
-          {painted} {t("light.keysPainted")}
+          {painted} {t(painted === 1 ? "light.keyPainted" : "light.keysPainted")}
         </span>
-      </p>
+      </div>
 
       <div className="grid grid-cols-[1fr_360px] items-start gap-5">
         <section className="card flex flex-col gap-5 p-5">
@@ -565,7 +563,7 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
               tool === "brush"
                 ? t("light.brush")
                 : selection.size
-                  ? `${t("light.selectedColor")} · ${selection.size}`
+                  ? t("light.selectedColor")
                   : t("light.colorPickFirst")
             }
           >

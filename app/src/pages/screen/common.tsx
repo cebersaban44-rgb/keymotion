@@ -15,7 +15,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ScreenItem } from "../../bindings/ScreenItem";
 import { Field } from "../../components/controls";
-import { useT, type MessageKey } from "../../lib/i18n";
+import { decimal, percent, tNow, useT, type MessageKey } from "../../lib/i18n";
 import { itemData, useScreen } from "../../lib/screen";
 import {
   H,
@@ -34,9 +34,9 @@ import { friendlyError } from "../../lib/errors";
 // ---------------------------------------------------------------- helpers
 
 export function fmtSeconds(s: number) {
-  if (s < 60) return `${s < 10 ? s.toFixed(1) : Math.round(s)} sn`;
+  if (s < 60) return `${s < 10 ? decimal(s) : Math.round(s)} ${tNow("time.s")}`;
   const m = Math.floor(s / 60);
-  return `${m} dk ${Math.round(s - m * 60)} sn`;
+  return `${m} ${tNow("time.m")} ${Math.round(s - m * 60)} ${tNow("time.s")}`;
 }
 
 /** Loop length as the keyboard plays it (delays are stored in 2 ms units). */
@@ -473,7 +473,7 @@ function InlineProgress() {
       </div>
       <div className="num flex justify-between text-[12px] text-ink-2">
         <span>
-          {upload.done}/{upload.total} {t("sc.pages")} · %{pct}
+          {percent(pct)}
         </span>
         <span>{left ? `${left} ${t("sc.left")}` : ""}</span>
       </div>

@@ -20,6 +20,7 @@ import { useApp } from "../../lib/store";
 import { uploadSeconds } from "../../lib/screenImport";
 import { CalendarBody, calendarStatus } from "./CalendarPanel";
 import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useNow } from "./common";
+import { friendlyError } from "../../lib/errors";
 
 const PLANS: { id: LivePlan; label: MessageKey; years: MessageKey }[] = [
   { id: "saver", label: "sc.live.plan.saver", years: "sc.live.years.saver" },
@@ -42,11 +43,10 @@ export function LivePanel({ usb }: { usb: boolean }) {
     <section className="card flex flex-col gap-5 p-5" data-live-panel>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-[72ch]">
-          <div className="mb-1.5 flex items-center gap-2">
-            <Radio size={14} className={s.enabled ? "text-ok" : "text-ink-3"} />
-            <span className="eyebrow">{t("sc.live.eyebrow")}</span>
-          </div>
-          <h2 className="font-display text-[22px] font-semibold">{t("sc.live.title")}</h2>
+          <h2 className="flex items-center gap-2 text-[18px] font-semibold">
+            <Radio size={16} className={s.enabled ? "text-ok" : "text-ink-3"} aria-hidden />
+            {t("sc.live.title")}
+          </h2>
           <p className="mt-1 text-[13px] text-ink-2">{t("sc.live.body")}</p>
         </div>
         <label className="flex items-center gap-3 rounded-lg border border-line px-3 py-2">
@@ -594,7 +594,7 @@ function StatusLine({ s, usb }: { s: LiveState; usb: boolean }) {
       )}
       {s.lastError && !s.uploading && (
         <p className={`${row} text-warn`}>
-          <AlertTriangle size={14} /> {t("sc.live.failed")}: {s.lastError}
+          <AlertTriangle size={14} /> {friendlyError(s.lastError, t, true)}
         </p>
       )}
     </div>
