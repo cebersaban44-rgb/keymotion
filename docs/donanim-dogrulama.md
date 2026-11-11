@@ -513,7 +513,7 @@ Araçlar: `kb descriptors`, `kb listen` (yeni), `kb read-colors`. Klavyeye yazma
 | FF68 tanımlayıcısı | 35 bayt: 64 bayt giriş, **4096 bayt çıkış**. |
 | `FFFF` koleksiyonu | 23 bayt: rapor 05, 3 bayt giriş. |
 | Pasif dinleme, 20 sn (FF13 ve FFFF giriş raporları) | **Hiç rapor gelmedi.** Klavye USB'de kendiliğinden pil ya da şarj bilgisi göndermiyor. |
-| `04 F5`: Fn (LED 96) | `#000000`. Klavye uzun süredir kablodaydı. 2026-11-10'da şarj olurken kırmızıydı; büyük olasılıkla şarj bitince sönüyor (kullanıcıyla doğrulanacak). |
+| `04 F5`: Fn (LED 96) | `#000000`. Klavye uzun süredir kablodaydı. 2026-11-10'da şarj olurken kırmızıydı. Kullanıcı aynı anda klavyenin ekranında pilin dolu olduğunu, şimşek olmadığını gördü: **Fn şarj bitince söner.** |
 
 - Tanımlayıcılar `crates/kb-core/src/shape.rs` testlerinde duruyor. Uygulama komut ve ekran kanalını açarken bu şekli denetliyor; gerçek uygulamada (CDP) komut kanalı açıldı ve ayna çalıştı.
 
