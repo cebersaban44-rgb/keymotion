@@ -260,6 +260,47 @@ export function refreshCalendars(): Promise<CalendarState> {
   return invoke<CalendarState>("calendar_refresh");
 }
 
+/** After a tried card went to the live mode: send it now, own picture
+ *  back after a minute. */
+export function tryCardBack(): Promise<void> {
+  if (!inTauri) {
+    mockReturnAfter(CALENDAR_SOURCE, 60_000);
+    return Promise.resolve();
+  }
+  return invoke("calendar_try_card");
+}
+
+/** The card to preview: the next meeting, or a sample one when there is none. */
+export function previewCard(
+  c: CalendarState,
+  sample: { title: string; location: string },
+): { card: CalendarCard; sample: boolean } {
+  const timed = c.upcoming.filter((e) => !e.allDay);
+  const first = timed.find((e) => e.endMs > Date.now());
+  if (first) {
+    const next = timed.find((n) => n.startMs > first.startMs && n.startMs < first.startMs + 12 * 60 * MIN) ?? null;
+    return { card: { event: first, next }, sample: false };
+  }
+  const quarter = 15 * MIN;
+  const start = Math.ceil(Date.now() / quarter) * quarter + quarter;
+  const src = c.sources[0];
+  return {
+    card: {
+      event: {
+        title: sample.title,
+        location: sample.location,
+        startMs: start,
+        endMs: start + 30 * MIN,
+        allDay: false,
+        color: src?.color ?? [66, 133, 244],
+        source: src?.id ?? "",
+      },
+      next: null,
+    },
+    sample: true,
+  };
+}
+
 export function tryReminder(): Promise<void> {
   if (!inTauri) return Promise.resolve();
   return invoke("calendar_try_reminder");
