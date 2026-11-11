@@ -4,20 +4,26 @@
 //! the `kb-*` crates. All keyboard logic lives in those crates, and all
 //! hardware access goes through the single device actor.
 
+mod backup;
 mod calendar;
 mod device;
+mod diagnostics;
 mod dto;
 mod gauges;
 mod ics;
+mod lighting;
 mod live;
+mod logging;
 mod now_playing;
 mod pomodoro;
 mod reminders;
 mod screen_lib;
 mod settings;
 
+use backup::{BackupExported, BackupImported, BackupSection, BackupSummary, PendingImport};
 use calendar::CalendarHandle;
 use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request};
+use diagnostics::{AppFolder, LastExport};
 use dto::{
     CalendarSettings, CalendarState, Calibration, CalibrationInfo, ClockStatus, EffectInfo, EffectRequest,
     GaugesSettings, GaugesState, KeyAssignment, KeyboardInfo, KeymapCatalog, KeymapLayer, KeymapState, LedColor,
@@ -577,6 +583,155 @@ fn set_window_theme(window: WebviewWindow, theme: ThemePreference) -> Result<(),
     window.set_theme(t).map_err(|e| e.to_string())
 }
 
+// ------------------------------------------------------ data and diagnostics
+
+/// The Lighting page's saved state (`lighting.ts`); `null` when none was
+/// saved here yet (the UI then moves its old local copy over).
+#[tauri::command]
+fn lighting_state(app: AppHandle) -> Option<serde_json::Value> {
+    let dir = app.path().app_config_dir().ok()?;
+    lighting::load(&dir).map(serde_json::Value::Object)
+}
+
+#[tauri::command]
+fn lighting_save(app: AppHandle, state: serde_json::Value) -> Result<(), String> {
+    let state = lighting::check(state)?;
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    lighting::save(&dir, state).map_err(|e| format!("lighting not saved: {e}"))
+}
+
+/// A UI failure (a page that crashed, an action that failed) for the log.
+#[tauri::command]
+fn log_ui_error(message: String) {
+    let message: String = message.chars().take(4_000).collect();
+    tracing::error!(target: "ui", "{message}");
+}
+
+/// The diagnostics report, plain text for the clipboard.
+#[tauri::command]
+async fn diagnostics_report(app: AppHandle, language: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let keyboards: Vec<String> = app
+            .state::<Arc<DeviceHandle>>()
+            .snapshot
+            .lock()
+            .map(|s| s.keyboards.iter().map(diagnostics::keyboard_line).collect())
+            .unwrap_or_default();
+        let facts = diagnostics::Facts {
+            app_name: app.package_info().name.clone(),
+            app_version: app.package_info().version.to_string(),
+            time: chrono::Local::now().to_rfc3339(),
+            windows: kb_winsys::os::windows_release()
+                .map_or_else(|| format!("unknown (build {})", os_build()), |r| r.describe()),
+            webview: tauri::webview_version().unwrap_or_else(|e| format!("unknown ({e})")),
+            ui_language: language.chars().take(8).collect(),
+            keyboards,
+            data_files: app.path().app_config_dir().map(|d| diagnostics::data_files(&d)).unwrap_or_default(),
+            log_lines: app
+                .path()
+                .app_log_dir()
+                .map(|d| logging::recent_lines(&d, diagnostics::LOG_LINES))
+                .unwrap_or_default(),
+        };
+        diagnostics::report(&facts)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Open the log or the data folder in Explorer.
+#[tauri::command]
+fn open_folder(app: AppHandle, folder: AppFolder) -> Result<(), String> {
+    let dir = match folder {
+        AppFolder::Logs => app.path().app_log_dir(),
+        AppFolder::Data => app.path().app_config_dir(),
+    }
+    .map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("folder not opened: {e}"))?;
+    diagnostics::reveal(&dir, false)
+}
+
+/// Write a backup file into the Downloads folder (`backup.rs` has the
+/// format). Calendar addresses go in only with `with_addresses`.
+#[tauri::command]
+async fn backup_export(app: AppHandle, with_addresses: bool, file_name: String) -> Result<BackupExported, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let bytes = backup::collect(&app, with_addresses)?.encode()?;
+        let downloads = app.path().download_dir().ok();
+        let in_downloads = downloads.is_some();
+        let dir = downloads
+            .or_else(|| app.path().document_dir().ok())
+            .or_else(|| app.path().home_dir().ok())
+            .ok_or("no folder to save the backup in")?;
+        let path = backup::write_new(&dir, &file_name, &bytes).map_err(|e| format!("backup not saved: {e}"))?;
+        tracing::info!(bytes = bytes.len(), with_addresses, "backup exported");
+        let file = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        if let Ok(mut last) = app.state::<LastExport>().0.lock() {
+            *last = Some(path);
+        }
+        Ok(BackupExported { file, in_downloads })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Show the last exported file in Explorer.
+#[tauri::command]
+fn backup_reveal(last: State<'_, LastExport>) -> Result<(), String> {
+    let path = last.0.lock().map_err(|_| "export unavailable")?.clone().ok_or("nothing exported yet")?;
+    diagnostics::reveal(&path, true)
+}
+
+/// Read and check a backup file (the body is its bytes) and keep it for
+/// `backup_import`. Nothing changes yet.
+#[tauri::command]
+async fn backup_inspect(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<BackupSummary, String> {
+    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
+        return Err("expected binary data".into());
+    };
+    if data.len() > backup::MAX_BYTES {
+        return Err(backup::ERR_TOO_LARGE.into());
+    }
+    let data = data.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let parsed = backup::parse(&data)?;
+        drop(data);
+        let library = app.state::<Arc<Mutex<ScreenLibrary>>>();
+        let ids: std::collections::HashSet<String> =
+            lock_library(&library)?.state("").items.into_iter().map(|i| i.id).collect();
+        let (pending, summary) = backup::check(parsed, &|id| ids.contains(id))?;
+        *app.state::<PendingImport>().0.lock().map_err(|_| "import unavailable")? = Some(pending);
+        tracing::info!(sections = summary.sections.len(), "backup read");
+        Ok(summary)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Restore the chosen parts of the backup `backup_inspect` read. Nothing is
+/// written to the keyboard (see `backup.rs`).
+#[tauri::command]
+async fn backup_import(app: AppHandle, sections: Vec<BackupSection>) -> Result<BackupImported, String> {
+    let pending = app
+        .state::<PendingImport>()
+        .0
+        .lock()
+        .map_err(|_| "import unavailable")?
+        .take()
+        .ok_or(backup::ERR_NOTHING_PENDING)?;
+    tauri::async_runtime::spawn_blocking(move || backup::apply(&app, pending, &sections))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// The user closed the import without restoring anything.
+#[tauri::command]
+fn backup_cancel(pending: State<'_, PendingImport>) {
+    if let Ok(mut p) = pending.0.lock() {
+        *p = None;
+    }
+}
+
 #[cfg(windows)]
 fn os_build() -> u32 {
     windows_version::OsVersion::current().build
@@ -603,15 +758,12 @@ fn apply_backdrop(window: &WebviewWindow, build: u32) -> bool {
 }
 
 pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+    logging::init();
 
     tauri::Builder::default()
         .manage(CloseGuard::default())
+        .manage(PendingImport::default())
+        .manage(LastExport::default())
         .on_window_event(|window, event| {
             let tauri::WindowEvent::CloseRequested { api, .. } = event else { return };
             let guard = window.state::<CloseGuard>();
@@ -633,8 +785,14 @@ pub fn run() {
             });
         })
         .setup(|app| {
+            let version = app.package_info().version.to_string();
+            match app.path().app_log_dir() {
+                Ok(dir) => logging::set_dir(&dir, &version),
+                Err(e) => tracing::warn!("no log folder: {e}"),
+            }
             let window = app.get_webview_window("main").expect("main window is declared in tauri.conf.json");
             let build = os_build();
+            tracing::info!(%version, os_build = build, "app started");
             let mica = apply_backdrop(&window, build);
             app.manage(UiEnvironment { app_version: app.package_info().version.to_string(), mica, os_build: build });
             let config_dir = app.path().app_config_dir().map_err(|e| tracing::warn!("no config directory: {e}")).ok();
@@ -706,7 +864,17 @@ pub fn run() {
             reminders_save,
             reminders_remove,
             reminders_try,
-            reminders_try_card
+            reminders_try_card,
+            lighting_state,
+            lighting_save,
+            log_ui_error,
+            diagnostics_report,
+            open_folder,
+            backup_export,
+            backup_reveal,
+            backup_inspect,
+            backup_import,
+            backup_cancel
         ])
         .run(tauri::generate_context!())
         .expect("error while running Klavye Stüdyo");

@@ -684,7 +684,8 @@ crates/
                 keymap.rs (katmanı modele göre denetler: Fn kilidi, bilinmeyen tuş, kanonik biçim).
   kb-winsys/    Windows okumaları (göstergeler için): işlemci, ekran kartı (PDH), bellek, hoparlör ses düzeyi ve
                 mikrofon sessizliği (Core Audio); son girdiden bu yana geçen süre (hatırlatıcılar). `unsafe` yalnız
-                burada; examples/probe.rs bu PC'nin değerlerini yazar.
+                burada; examples/probe.rs bu PC'nin değerlerini yazar. os.rs: Windows sürümü (tanılama için);
+                secret.rs: kullanıcıya özel şifreleme (DPAPI; takvim adresleri).
   kb-cli/       `kb` geliştirici aracı (bkz. §5).
 app/
   src-tauri/    İnce kabuk. device.rs: TEK cihaz aktörü (HID'e dokunan tek yer; istek kuyruğu, canlı akış
@@ -701,6 +702,11 @@ app/
                 reminders.rs: hatırlatıcılar (zamanlama, dalga katmanı, kartla ekranı tutma, reminders.json). Işık katmanları
                 device.rs'te: Göstergeler → Zamanlayıcı → Uyarılar → Hatırlatmalar → Dalga (`Nudges`), en üstte Işıklar
                 önizlemesi (`LightLayer`, `compose`).
+                logging.rs: günlük dosyası (uygulamanın log klasöründe günde bir dosya, 7 gün, 4 MB; adresler ve
+                kullanıcı adı yazılmadan çıkarılır) ve çökme notu. diagnostics.rs: "Tanılama bilgisini kopyala" metni,
+                klasörleri açma. lighting.rs: Işıklar sayfasının durumu (lighting.json; eskiden localStorage'daydı).
+                backup.rs: dışa/içe aktarma (tek JSON dosya, biçim dosyanın başında; içe aktarma klavyeye yazmaz).
+                calendar.json'daki takvim adresleri DPAPI ile şifreli (`dpapi:` öneki).
   src/          React 19 + TS 7 + Tailwind 4 + motion. lib/ipc.ts (tipli köprü, seri kuyruk), lib/lighting.ts
                 (Işıklar durumu), lib/mirror.ts, components/KeyboardView.tsx (geometriden çizim, boyama),
                 components/CalibrationCard.tsx, components/UnsavedDialog.tsx, lib/unsaved.ts (kaydedilmemiş
@@ -789,7 +795,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 - **Sayfanın kendi modülleri:** Test için bir modülü `import()` ile alırken, uygulamanın yüklediği adresi kullan (`performance.getEntriesByType('resource')`). Oturumda değişen dosyaları Vite `?t=…` ile yükler; düz adres ayrı bir kopya açar (ders 43).
 - **Kullanıcının uygulaması** Vite'tan, yani çalışma ağacından yüklenir. Önce dalı hazırla, uygulamayı en son başlat (ders 39). Rust değişince uygulamayı durdur, `cargo build -p klavye-studio`, yeniden başlat.
 
-**Klavyeye yazan testler:** Kullanıcının kayıtlı tasarımını ve uygulama durumunu (`localStorage` içindeki `ks.lighting.v1`, `ks.keymap.v1`) önce yedekle, testten sonra geri yükle. Yalnızca gereken kadar flash yazımı yap.
+**Klavyeye yazan testler:** Kullanıcının kayıtlı tasarımını ve uygulama durumunu (veri klasöründeki `lighting.json`, `localStorage` içindeki `ks.keymap.v1`) önce yedekle, testten sonra geri yükle. Yalnızca gereken kadar flash yazımı yap.
 - **Tuş atama** klavyeden okunamaz: yazmadan önce kullanıcıya mevcut atamasını sor. Testten sonra katmanı fabrika ayarına döndür. CLI yazımı uygulamanın `keymap.json` kaydına girmez; uygulamayla çalışırken atamayı uygulamadan yaz.
 - Kullanıcıdan tuşa basmasını isterken tuşu belirsizliksiz adlandır ("sayı tuş takımındaki / tuşu, Num Lock'a dokunmadan"). Uygulamadaki tuş testi kutusu ya da zaman damgalı bir dinleyici, kullanıcının kendi basışlarını ayırmaya yarar.
 

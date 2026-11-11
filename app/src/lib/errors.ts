@@ -1,8 +1,10 @@
 // What a failed action says to the user. The backend's error text is
 // technical and English; the user gets what happened and what to do, in
-// the UI language (docs/arayuz-dili.md). The original goes to the console.
+// the UI language (docs/arayuz-dili.md). The original goes to the console
+// and to the app's log, so "Copy diagnostics" can carry it.
 
 import type { MessageKey } from "./i18n";
+import { logUiError } from "./ipc";
 
 const RULES: [RegExp, MessageKey][] = [
   [/blocked by safety guard/i, "err.guard"],
@@ -22,7 +24,10 @@ const RULES: [RegExp, MessageKey][] = [
 /** A short, translated message for an error from the backend. */
 export function friendlyError(e: unknown, t: (key: MessageKey) => string, quiet = false): string {
   const raw = e instanceof Error ? e.message : String(e);
-  if (!quiet) console.error(raw);
+  if (!quiet) {
+    console.error(raw);
+    void logUiError(`action failed: ${raw}`);
+  }
   const hit = RULES.find(([re]) => re.test(raw));
   return t(hit ? hit[1] : "err.generic");
 }

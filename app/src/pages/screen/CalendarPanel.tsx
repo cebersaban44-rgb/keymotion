@@ -53,6 +53,7 @@ function errText(e: string, t: (k: MessageKey) => string) {
     return t("calendar.err.http");
   }
   if (e === "calendar too large") return t("calendar.err.large");
+  if (e === "address unavailable") return t("calendar.err.sealed");
   return friendlyError(e, t, true);
 }
 

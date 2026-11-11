@@ -1,6 +1,7 @@
 //! Settings the backend owns and persists in the app config directory
-//! (`%APPDATA%\dev.klavye.studio`). UI-only preferences (theme, language,
-//! the current lighting design) stay in the webview's local storage.
+//! (Tauri's `app_config_dir`, `%APPDATA%\<identifier>`). UI-only preferences
+//! (theme, language, unsaved editor drafts) stay in the webview's local
+//! storage; the Lighting page's state is here too (`lighting.rs`).
 
 use kb_core::color::LedCalibration;
 use kb_core::keymap::LayerMap;

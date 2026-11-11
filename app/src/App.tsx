@@ -1,6 +1,7 @@
 import { RefreshCw } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Sidebar } from "./components/Sidebar";
 import { UnsavedDialog } from "./components/UnsavedDialog";
 import {
@@ -215,7 +216,8 @@ export default function App() {
               transition={{ duration: 0.18 }}
               className="mx-auto min-h-full max-w-[1240px] px-10 pt-9 pb-12"
             >
-              {content()}
+              {/* A page that fails to draw leaves the sidebar usable. */}
+              <ErrorBoundary>{content()}</ErrorBoundary>
             </motion.div>
           </AnimatePresence>
         </main>

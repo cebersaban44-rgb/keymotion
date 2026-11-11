@@ -150,6 +150,16 @@ export const useMacros = create<MacroStore>((set, get) => {
   };
 });
 
+/**
+ * Macros from a backup, opened as unsaved edits for `modelId`: nothing is
+ * written to the keyboard until the user saves them on the Macros page.
+ */
+export function stageMacrosImport(modelId: string, slots: Slots) {
+  const draft = clone(trim(slots));
+  if (useMacros.getState().modelId === modelId) useMacros.setState({ draft, selected: null });
+  persist({ modelId, draft, selected: null });
+}
+
 function sameStep(a: MacroStepInfo, b: MacroStepInfo): boolean {
   return a.kind === b.kind && a.code === b.code && a.delayMs === b.delayMs;
 }

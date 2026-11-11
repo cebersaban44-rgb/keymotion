@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { EffectRequest } from "../bindings/EffectRequest";
 import type { LedColor } from "../bindings/LedColor";
-import { applyEffect, applyPerKey } from "./ipc";
+import { applyEffect, applyPerKey, lightingLoad, lightingSave } from "./ipc";
 
 export type LightingTab = "effects" | "per-key";
 /** Per-key tools: paint what you touch, or select keys and then colour them. */
@@ -52,7 +52,11 @@ export interface LightingState {
   discardDraft: () => void;
 }
 
-const KEY = "ks.lighting.v1";
+/**
+ * Where the state lived before it moved to the backend (`lighting.json`,
+ * lighting.rs). `initLighting` moves it over once and removes it.
+ */
+const LEGACY_KEY = "ks.lighting.v1";
 
 const defaults = {
   tab: "effects" as LightingTab,
@@ -69,19 +73,55 @@ const defaults = {
 
 type Persisted = typeof defaults;
 
-function load(): Persisted {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return defaults;
-    const stored = JSON.parse(raw) as Partial<Persisted>;
-    const state = { ...defaults, ...stored };
-    // State saved before drafts were tracked: infer pending edits once, so
-    // changes left unsaved then are still flagged.
-    if (!("draft" in stored)) state.draft = inferDraft(state);
-    return state;
-  } catch {
-    return defaults;
+const HEX = /^#[0-9a-f]{6}$/i;
+
+const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+const isByte = (v: unknown, max = 255): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= max;
+const isHex = (v: unknown): v is string => typeof v === "string" && HEX.test(v);
+
+function cleanEffect(v: unknown): EffectRequest | null {
+  if (!isObject(v)) return null;
+  const { mode, color, rainbow, brightness, speed, direction } = v;
+  if (!isByte(mode) || !isHex(color) || typeof rainbow !== "boolean") return null;
+  if (!isByte(brightness, 5) || !isByte(speed) || !isByte(direction)) return null;
+  return { mode, color, rainbow, brightness, speed, direction };
+}
+
+function cleanColors(v: unknown): ColorMap {
+  const out: ColorMap = {};
+  if (!isObject(v)) return out;
+  for (const [led, hex] of Object.entries(v)) {
+    const n = Number(led);
+    if (isByte(n) && isHex(hex)) out[n] = hex;
   }
+  return out;
+}
+
+/**
+ * Saved lighting state from any source (the backend, the old local copy, a
+ * backup): each field checked, anything odd back to its default.
+ */
+function sanitize(raw: unknown): Persisted {
+  const s = isObject(raw) ? raw : {};
+  const saved = isObject(s.savedPerKey) ? s.savedPerKey : null;
+  const state: Persisted = {
+    tab: s.tab === "per-key" ? "per-key" : "effects",
+    effect: cleanEffect(s.effect) ?? defaults.effect,
+    appliedEffect: cleanEffect(s.appliedEffect),
+    perKey: cleanColors(s.perKey),
+    perKeyBrightness: isByte(s.perKeyBrightness, 5) ? s.perKeyBrightness : defaults.perKeyBrightness,
+    savedPerKey: saved
+      ? { colors: cleanColors(saved.colors), brightness: isByte(saved.brightness, 5) ? saved.brightness : 5 }
+      : null,
+    brush: isHex(s.brush) ? s.brush : defaults.brush,
+    tool: s.tool === "select" ? "select" : "brush",
+    livePreview: typeof s.livePreview === "boolean" ? s.livePreview : defaults.livePreview,
+    draft: s.draft === "effect" || s.draft === "per-key" ? s.draft : null,
+  };
+  // State saved before drafts were tracked: infer pending edits once, so
+  // changes left unsaved then are still flagged.
+  if (!("draft" in s)) state.draft = inferDraft(state);
+  return state;
 }
 
 function inferDraft(s: Persisted): LightingDraft {
@@ -91,12 +131,83 @@ function inferDraft(s: Persisted): LightingDraft {
   return null;
 }
 
-function persist(s: Persisted) {
+function readLegacy(): Persisted | null {
   try {
-    localStorage.setItem(KEY, JSON.stringify(s));
+    const raw = localStorage.getItem(LEGACY_KEY);
+    return raw ? sanitize(JSON.parse(raw)) : null;
   } catch {
-    /* per-machine convenience only */
+    return null;
   }
+}
+
+function removeLegacy() {
+  try {
+    localStorage.removeItem(LEGACY_KEY);
+  } catch {
+    /* nothing to clean up */
+  }
+}
+
+// Saving: the newest state goes to the backend, one write at a time and at
+// most every SAVE_MS (painting changes the state on every key touched).
+const SAVE_MS = 150;
+let ready = false;
+let pending: Persisted | null = null;
+let timer: ReturnType<typeof setTimeout> | null = null;
+let writing = false;
+
+function persist(s: Persisted) {
+  // Before `initLighting` the store holds defaults, not the saved state.
+  if (!ready) return;
+  pending = s;
+  if (!timer && !writing) timer = setTimeout(flush, SAVE_MS);
+}
+
+async function flush() {
+  timer = null;
+  if (writing || !pending) return;
+  const next = pending;
+  pending = null;
+  writing = true;
+  try {
+    await lightingSave(next);
+  } catch (e) {
+    console.error(e);
+  } finally {
+    writing = false;
+    if (pending && !timer) timer = setTimeout(flush, SAVE_MS);
+  }
+}
+
+/**
+ * Load the saved state from the backend before the first render. The first
+ * time, the copy the app kept in local storage before is moved over (and
+ * removed once the backend has it). Safe to call again (after an import).
+ */
+export async function initLighting(): Promise<void> {
+  // A write still waiting would put back what is being replaced.
+  pending = null;
+  if (timer) clearTimeout(timer);
+  timer = null;
+  let state: Persisted | null = null;
+  try {
+    const saved = await lightingLoad();
+    if (saved) {
+      state = sanitize(saved);
+      removeLegacy();
+    } else {
+      state = readLegacy();
+      if (state) {
+        await lightingSave(state);
+        removeLegacy();
+      }
+    }
+  } catch (e) {
+    console.error(e);
+    state ??= readLegacy();
+  }
+  if (state) useLighting.setState(state);
+  ready = true;
 }
 
 export const useLighting = create<LightingState>((set, get) => {
@@ -109,7 +220,7 @@ export const useLighting = create<LightingState>((set, get) => {
     save();
   };
   return {
-    ...load(),
+    ...defaults,
     setTab: (tab) => update({ tab }),
     setTool: (tool) => update({ tool }),
     setEffect: (patch) => update({ effect: { ...get().effect, ...patch }, draft: "effect" }),
