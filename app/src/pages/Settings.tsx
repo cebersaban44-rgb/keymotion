@@ -20,7 +20,7 @@ export function Settings() {
   const themes: ThemePreference[] = ["system", "dark", "light"];
   return (
     <div className="flex max-w-[760px] flex-col gap-6">
-      <h1 className="font-display text-[40px] leading-none font-semibold tracking-[-0.035em]">{t("nav.settings")}</h1>
+      <h1 className="page-title">{t("nav.settings")}</h1>
 
       <section className="card px-5 py-1">
         <div className="eyebrow pt-4 pb-1">{t("settings.appearance")}</div>
@@ -50,10 +50,10 @@ export function Settings() {
       <section className="card px-5 py-1">
         <div className="eyebrow pt-4 pb-1">{t("settings.about")}</div>
         <Row label={t("settings.version")}>
-          <span className="num text-[12.5px] text-ink-2">{env?.appVersion ?? "—"}</span>
+          <span className="num text-[13px] text-ink-2">{env?.appVersion ?? "—"}</span>
         </Row>
         <Row label={t("settings.backdrop")}>
-          <span className="num text-[12.5px] text-ink-2">
+          <span className="num text-[13px] text-ink-2">
             {env?.mica ? t("settings.backdrop.mica") : t("settings.backdrop.solid")}
             {env && env.osBuild > 0 ? ` · build ${env.osBuild}` : ""}
           </span>

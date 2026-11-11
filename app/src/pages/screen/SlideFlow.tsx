@@ -46,17 +46,17 @@ export function SlideTile({ onStart }: { onStart: () => void }) {
   return (
     <div
       data-tile="slides"
-      className="flex min-h-[260px] flex-col items-center justify-center gap-4 rounded-2xl border border-line bg-surface-2/30 p-6 text-center"
+      className="flex min-h-[260px] flex-col items-center justify-center gap-4 rounded-lg border border-line bg-surface-2/30 p-6 text-center"
     >
       <SlideStackArt />
       <div>
-        <h3 className="font-display text-[19px] font-semibold tracking-[-0.02em]">{t("sc.src.slides")}</h3>
-        <p className="mt-1 max-w-[40ch] text-[12.5px] text-ink-2">{t("sc.src.slidesBody")}</p>
+        <h3 className="font-display text-[19px] font-semibold">{t("sc.src.slides")}</h3>
+        <p className="mt-1 max-w-[40ch] text-[13px] text-ink-2">{t("sc.src.slidesBody")}</p>
       </div>
       <button
         type="button"
         onClick={onStart}
-        className="flex items-center gap-2 rounded-xl border border-signal/50 px-4 py-2 text-[13px] font-semibold text-signal hover:bg-signal/10"
+        className="flex items-center gap-2 rounded-lg border border-signal/50 px-4 py-2 text-[13px] font-semibold text-signal hover:bg-signal/10"
       >
         <Images size={15} /> {t("sc.src.slidesGo")}
       </button>
@@ -265,7 +265,7 @@ export function SlideFlow({
               {show ? (
                 <FramePlayer frames={show.frames} delaysMs={show.delaysMs} className="h-full w-full" />
               ) : (
-                <div className="flex h-full items-center justify-center text-[12.5px] text-white/60">
+                <div className="flex h-full items-center justify-center text-[13px] text-white/60">
                   {slides.length ? <Loader2 size={18} className="animate-spin" /> : t("sc.sl.noSlides")}
                 </div>
               )}
@@ -275,7 +275,7 @@ export function SlideFlow({
                 </div>
               )}
             </div>
-            <p className="text-[11.5px] text-ink-3">{t("sc.sl.liveNote")}</p>
+            <p className="text-[12px] text-ink-3">{t("sc.sl.liveNote")}</p>
             <BudgetMeter frames={plan.frames} />
           </div>
 
@@ -296,13 +296,13 @@ export function SlideFlow({
                 </span>
               </Field>
               <span className="flex items-center gap-2.5 pb-1.5" title={t("sc.dither.hint")}>
-                <span className="text-[12.5px] text-ink-2">{t("sc.dither")}</span>
+                <span className="text-[13px] text-ink-2">{t("sc.dither")}</span>
                 <Toggle checked={dither} onChange={setDither} label={t("sc.dither")} />
               </span>
             </div>
 
             {slides.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-[12.5px] text-ink-3">
+              <p className="rounded-lg border border-dashed border-line px-4 py-6 text-center text-[13px] text-ink-3">
                 {t("sc.sl.empty")}
               </p>
             ) : (
@@ -328,7 +328,7 @@ export function SlideFlow({
                 type="button"
                 disabled={full || !!adding}
                 onClick={() => input.current?.click()}
-                className="flex h-9 items-center gap-2 rounded-lg border border-line px-3 text-[12.5px] font-medium hover:bg-surface-2 disabled:opacity-40"
+                className="flex h-9 items-center gap-2 rounded-lg border border-line px-3 text-[13px] font-medium hover:bg-surface-2 disabled:opacity-40"
               >
                 {adding ? <Loader2 size={14} className="animate-spin" /> : <FilePlus2 size={14} />}
                 {adding ? `${t("sc.sl.adding")} ${adding.done}/${adding.total}` : t("sc.sl.addFiles")}
@@ -338,7 +338,7 @@ export function SlideFlow({
                 disabled={full}
                 aria-expanded={picker}
                 onClick={() => setPicker((v) => !v)}
-                className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-[12.5px] font-medium disabled:opacity-40 ${
+                className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] font-medium disabled:opacity-40 ${
                   picker ? "border-signal text-signal" : "border-line hover:bg-surface-2"
                 }`}
               >
@@ -438,18 +438,18 @@ function SlideRow({
   const t = useT();
   const icon = "flex h-7 w-7 items-center justify-center rounded-md text-ink-3 hover:bg-surface hover:text-ink disabled:opacity-30";
   return (
-    <li data-slide={index} className="flex gap-3 rounded-xl border border-line p-2">
+    <li data-slide={index} className="flex gap-3 rounded-lg border border-line p-2">
       <div className="relative h-[54px] w-[96px] shrink-0 overflow-hidden rounded-md bg-black">
         {still && <FramePlayer frames={[still]} delaysMs={[100]} className="h-full w-full" />}
-        <span className="num absolute top-1 left-1 rounded bg-black/70 px-1 text-[10px] text-white">{index + 1}</span>
+        <span className="num absolute top-1 left-1 rounded bg-black/70 px-1 text-[11px] text-white">{index + 1}</span>
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div className="flex items-center gap-2">
-          <span className="truncate text-[12.5px] font-medium" title={slide.name}>
+          <span className="truncate text-[13px] font-medium" title={slide.name}>
             {slide.name}
           </span>
           {slide.kind === "library" && (
-            <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-px text-[10px] text-ink-3">{t("sc.library")}</span>
+            <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-px text-[11px] text-ink-3">{t("sc.library")}</span>
           )}
           <span className="ml-auto flex shrink-0">
             <button type="button" className={icon} disabled={index === 0} onClick={() => onMove(-1)} aria-label={t("sc.sl.up")} title={t("sc.sl.up")}>
@@ -478,7 +478,7 @@ function SlideRow({
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <label className="flex min-w-[150px] flex-1 items-center gap-2">
-            <span className="text-[11.5px] text-ink-3">{t("sc.sl.duration")}</span>
+            <span className="text-[12px] text-ink-3">{t("sc.sl.duration")}</span>
             <input
               type="range"
               className="range flex-1"
@@ -495,7 +495,7 @@ function SlideRow({
                 } as CSSProperties
               }
             />
-            <span className="num w-12 text-right text-[11.5px] whitespace-nowrap text-ink-2">
+            <span className="num w-12 text-right text-[12px] whitespace-nowrap text-ink-2">
               {slide.seconds} {t("sc.sl.s")}
             </span>
           </label>
@@ -528,7 +528,7 @@ function LibraryPicker({
   const t = useT();
   const items = useScreen((s) => s.state?.items ?? []);
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2/40 p-3">
+    <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2/40 p-3">
       <div className="flex items-center justify-between">
         <span className="text-[12px] font-medium">{t("sc.sl.pickTitle")}</span>
         <button

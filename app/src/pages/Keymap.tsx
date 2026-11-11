@@ -16,6 +16,7 @@ import { dirtySlots, useMacros } from "../lib/macros";
 import { layoutLabel, useLayout, useLayoutLabel } from "../lib/layout";
 import { useApp } from "../lib/store";
 import type { MacroPlayMode } from "../bindings/MacroPlayMode";
+import { friendlyError } from "../lib/errors";
 
 type Status = { kind: "idle" } | { kind: "busy" } | { kind: "ok"; ms: number } | { kind: "error"; message: string };
 type Category = "keys" | "media" | "mouse" | "macro" | "special";
@@ -58,10 +59,10 @@ export function Keymap({ kb }: { kb: KeyboardInfo }) {
     <div className="flex flex-col gap-6">
       <header className="flex items-end justify-between gap-6">
         <div>
-          <div className="eyebrow mb-2">{t("km.eyebrow")}</div>
-          <h1 className="font-display text-[40px] leading-none font-semibold tracking-[-0.035em]">{t("nav.keymap")}</h1>
+          <h1 className="page-title">{t("nav.keymap")}</h1>
+          <p className="page-desc">{t("km.eyebrow")}</p>
         </div>
-        <div role="tablist" className="inline-flex rounded-xl border border-line bg-bg-raise p-1">
+        <div role="tablist" className="inline-flex rounded-lg border border-line bg-bg-raise p-1">
           {(["base", "fn"] as const).map((id) => (
             <button
               key={id}
@@ -83,7 +84,7 @@ export function Keymap({ kb }: { kb: KeyboardInfo }) {
       </header>
 
       {!usb && (
-        <div className="flex items-center gap-3 rounded-2xl border border-signal/30 bg-signal/10 px-4 py-3 text-[13px]">
+        <div className="flex items-center gap-3 rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-[13px]">
           <Usb size={16} className="text-signal" />
           {t("km.needsUsb")}
         </div>
@@ -156,7 +157,7 @@ function Plate({
       onPointerDown={(e) => {
         if (!(e.target as HTMLElement).closest(".kb-key")) onSelect(null);
       }}
-      className="kb-keymap relative overflow-hidden rounded-[26px] border border-line p-6 pb-4"
+      className="kb-keymap relative overflow-hidden rounded-lg border border-line p-6 pb-4"
       style={{ background: "linear-gradient(180deg, var(--plate), color-mix(in oklch, var(--plate) 80%, black))" }}
     >
       {kb.geometry && (
@@ -174,14 +175,14 @@ function Plate({
           }}
         />
       )}
-      <div className="mt-4 flex items-center gap-4 text-[11.5px] text-[#8b8d92]">
+      <div className="mt-4 flex items-center gap-4 text-[12px] text-[#8b8d92]">
         <span className="flex items-center gap-2">
           <Keyboard size={13} />
           {t(layer === "base" ? "km.layer.base.caption" : "km.layer.fn.caption")}
         </span>
         {pendingCount > 0 && (
           <span className="flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-signal shadow-[0_0_8px_var(--signal)]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-signal" />
             <span>
               <span className="num">{pendingCount}</span> {t("km.legend.pending")}
             </span>
@@ -231,7 +232,7 @@ function Picker({
   const isCurrent = (a: KeyActionInfo) => !off && !!keyGeo && sameAction(normalize(layer, keyGeo.hid, a), current);
 
   const chip = (active: boolean) =>
-    `flex h-8 min-w-9 items-center justify-center gap-1.5 rounded-lg border px-2.5 text-[12.5px] transition-colors disabled:cursor-not-allowed ${
+    `flex h-8 min-w-9 items-center justify-center gap-1.5 rounded-lg border px-2.5 text-[13px] transition-colors disabled:cursor-not-allowed ${
       active
         ? "border-signal bg-signal/15 text-ink"
         : "border-line bg-surface-2 text-ink-2 hover:border-line-strong hover:text-ink"
@@ -257,7 +258,7 @@ function Picker({
       </div>
 
       {!keyGeo && (
-        <p className="flex items-center gap-2 text-[12.5px] text-ink-2">
+        <p className="flex items-center gap-2 text-[13px] text-ink-2">
           <Info size={14} className="shrink-0 text-ink-3" />
           {t("km.selectHint")}
         </p>
@@ -265,7 +266,7 @@ function Picker({
 
       {category === "keys" && catalog && (
         <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-bg-raise px-3 py-2.5">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-bg-raise px-3 py-2.5">
             <span className="mr-1 text-[12px] font-medium">{t("km.with")}</span>
             {MOD_TOGGLES.map((m) => (
               <button
@@ -285,7 +286,7 @@ function Picker({
             const items = catalog.keys.filter((k) => k.group === g);
             return (
               <div key={g} className="flex flex-col gap-2">
-                <div className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">
+                <div className="text-[12px] font-semibold text-ink-3">
                   {t(`km.group.${g}` as MessageKey)}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -380,7 +381,7 @@ function Picker({
                 {icon}
                 {t(label)}
               </span>
-              <span className="text-[11.5px] text-ink-3">{t(hint)}</span>
+              <span className="text-[12px] text-ink-3">{t(hint)}</span>
             </button>
           ))}
         </div>
@@ -442,7 +443,7 @@ function MacroPicker({
 
   if (macros.length === 0) {
     return (
-      <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-bg-raise px-4 py-3 text-[12.5px] text-ink-2">
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-bg-raise px-4 py-3 text-[13px] text-ink-2">
         {t("km.macro.none")}
         <button
           type="button"
@@ -534,7 +535,7 @@ function SelectedCard({
     <section className="card flex flex-col gap-3 p-5">
       <div className="eyebrow">{t("km.selected")}</div>
       <div className="flex items-center gap-3">
-        <span className="num flex h-11 min-w-11 items-center justify-center rounded-xl border border-line-strong bg-surface-2 px-2.5 text-[14px] font-semibold">
+        <span className="num flex h-11 min-w-11 items-center justify-center rounded-lg border border-line-strong bg-surface-2 px-2.5 text-[14px] font-semibold">
           {keyGeo.label || "␣"}
         </span>
         <span className="text-ink-3">→</span>
@@ -580,7 +581,7 @@ function SaveCard({ usb, loaded, layer }: { usb: boolean; loaded: boolean; layer
       await save();
       setStatus({ kind: "ok", ms: Math.round(performance.now() - started) });
     } catch (e) {
-      setStatus({ kind: "error", message: String(e) });
+      setStatus({ kind: "error", message: friendlyError(e, t) });
     }
   };
 
@@ -590,7 +591,7 @@ function SaveCard({ usb, loaded, layer }: { usb: boolean; loaded: boolean; layer
         type="button"
         disabled={!usb || !loaded || !dirty || status.kind === "busy"}
         onClick={run}
-        className="flex h-10 items-center justify-center gap-2 rounded-xl bg-signal text-[13.5px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex h-10 items-center justify-center gap-2 rounded-lg bg-signal text-[13.5px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
       >
         {status.kind === "busy" && <Loader2 size={15} className="animate-spin" />}
         {status.kind === "busy" ? t("km.saving") : t("km.save")}
@@ -621,7 +622,7 @@ function SaveCard({ usb, loaded, layer }: { usb: boolean; loaded: boolean; layer
       </div>
       <div className="flex flex-col gap-2.5 border-t border-line pt-4 text-[12px] text-ink-2">
         {layer === "fn" && (
-          <p className="flex gap-2 rounded-xl border border-warn/30 bg-warn/10 p-3">
+          <p className="flex gap-2 rounded-lg border border-warn/30 bg-warn/10 p-3">
             <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" />
             {t("km.fnNote")}
           </p>
@@ -677,7 +678,7 @@ function StatusLine({ status, dirty, changed }: { status: Status; dirty: boolean
     return (
       <span className="flex items-center gap-2 text-[12px] text-ok">
         <Check size={13} />
-        {t("km.saved")} <span className="num text-ink-3">· {status.ms} ms</span>
+        {t("km.saved")}
       </span>
     );
   return <span className="text-[12px] text-ink-3">{t("km.persistNote")}</span>;
@@ -724,7 +725,7 @@ function KeyTester() {
     <section className="card flex flex-col gap-3 p-5">
       <div className="flex items-baseline justify-between">
         <div className="eyebrow">{t("km.test.title")}</div>
-        <span className="text-[11.5px] text-ink-3">{t("km.test.hint")}</span>
+        <span className="text-[12px] text-ink-3">{t("km.test.hint")}</span>
       </div>
       <div
         tabIndex={0}
@@ -742,10 +743,10 @@ function KeyTester() {
         onAuxClick={(e) => e.preventDefault()}
         onContextMenu={(e) => e.preventDefault()}
         onWheel={(e) => push(`${t("km.test.wheel")} ${e.deltaY < 0 ? "↑" : "↓"}`)}
-        className="flex min-h-14 flex-wrap items-center gap-1.5 rounded-xl border border-dashed border-line-strong bg-bg-raise px-3 py-2.5 outline-none focus:border-signal"
+        className="flex min-h-14 flex-wrap items-center gap-1.5 rounded-lg border border-dashed border-line-strong bg-bg-raise px-3 py-2.5 outline-none focus:border-signal"
       >
         {events.length === 0 ? (
-          <span className="text-[12.5px] text-ink-3">{t("km.test.empty")}</span>
+          <span className="text-[13px] text-ink-3">{t("km.test.empty")}</span>
         ) : (
           events.map((ev, i) => (
             <span

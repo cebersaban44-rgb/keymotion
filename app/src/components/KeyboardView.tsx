@@ -121,7 +121,7 @@ export function KeyboardView({
               <KeyLegend label={k.label} legend={legends?.[k.led]} />
             </button>
           ) : (
-            <div key={k.id} className="kb-key" style={box(k.x, k.y, k.w, k.h, k.led)}>
+            <div key={k.id} className={`kb-key ${keyClass?.[k.led] ?? ""}`} style={box(k.x, k.y, k.w, k.h, k.led)}>
               <span>{k.label}</span>
             </div>
           ),

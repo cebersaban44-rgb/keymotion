@@ -25,6 +25,7 @@ import { LivePanel } from "./screen/LivePanel";
 import { MatchLightsDialog } from "./screen/MatchLights";
 import { SlideFlow, SlideTile } from "./screen/SlideFlow";
 import { TextFlow, TextTile } from "./screen/TextFlow";
+import { friendlyError } from "../lib/errors";
 
 // -------------------------------------------------------------- the page
 
@@ -57,10 +58,9 @@ export function Screen({ kb }: { kb: KeyboardInfo }) {
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-6">
         <div>
-          <div className="eyebrow mb-2">{t("sc.eyebrow")}</div>
-          <h1 className="font-display text-[40px] leading-none font-semibold tracking-[-0.035em]">{t("sc.title")}</h1>
+          <h1 className="page-title">{t("sc.title")}</h1>
         </div>
-        <div role="tablist" aria-label={t("sc.title")} className="inline-flex rounded-xl border border-line bg-bg-raise p-1">
+        <div role="tablist" aria-label={t("sc.title")} className="inline-flex rounded-lg border border-line bg-bg-raise p-1">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -81,7 +81,7 @@ export function Screen({ kb }: { kb: KeyboardInfo }) {
       </header>
 
       {!usb && (
-        <div className="flex items-center gap-3 rounded-2xl border border-signal/30 bg-signal/10 px-4 py-3 text-[13px]">
+        <div className="flex items-center gap-3 rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-[13px]">
           <Usb size={16} className="text-signal" />
           {t("sc.needsUsb")}
         </div>
@@ -107,6 +107,7 @@ function pad(n: number) {
 
 /** The firmware's home page (clock), as on the owner's keyboard photo. */
 function ClockPage() {
+  const t = useT();
   const now = useNow();
   const mono = "JetBrains Mono Variable, monospace";
   const chips = [
@@ -119,7 +120,7 @@ function ClockPage() {
     { l: "1", c: "#e8d24a", on: false },
   ];
   return (
-    <svg viewBox="0 0 240 135" className="block h-full w-full" role="img" aria-label="clock page">
+    <svg viewBox="0 0 240 135" className="block h-full w-full" role="img" aria-label={t("sc.page.home")}>
       <defs>
         <linearGradient id="sc-home" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="#0d2a5a" />
@@ -176,11 +177,11 @@ function ClockPage() {
 function Panel({ label, sub, children }: { label: string; sub: string; children: ReactNode }) {
   return (
     <figure className="flex flex-col gap-2">
-      <div className="relative aspect-[240/135] w-full overflow-hidden rounded-xl bg-black shadow-[0_0_0_6px_#0b0c0e,0_0_0_7px_var(--line)]">
+      <div className="relative aspect-[240/135] w-full overflow-hidden rounded-lg bg-black shadow-[0_0_0_6px_#0b0c0e,0_0_0_7px_var(--line)]">
         {children}
       </div>
       <figcaption className="flex items-baseline justify-between gap-2 px-1">
-        <span className="text-[12.5px] font-medium">{label}</span>
+        <span className="text-[13px] font-medium">{label}</span>
         <span className="text-[11px] text-ink-3">{sub}</span>
       </figcaption>
     </figure>
@@ -238,9 +239,9 @@ function KeyboardScreens() {
           </div>
         )}
       </Panel>
-      <div className="flex flex-col gap-3 text-[12.5px] text-ink-2">
+      <div className="flex flex-col gap-3 text-[13px] text-ink-2">
         {state && (
-          <div className="num flex flex-col gap-0.5 text-[11.5px] text-ink-3" title={t("sc.wear.hint")}>
+          <div className="num flex flex-col gap-0.5 text-[12px] text-ink-3" title={t("sc.wear.hint")}>
             <span>
               {t("sc.uploads.today")}: <span className="text-ink-2">{state.uploadsToday}</span> · {t("sc.uploads.total")}:{" "}
               <span className="text-ink-2">{state.uploadsTotal}</span>
@@ -302,7 +303,7 @@ function Studio({ kb, usb, loaded }: { kb: KeyboardInfo; usb: boolean; loaded: b
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             role="status"
-            className="flex items-start gap-3 rounded-2xl border border-ok/30 bg-ok/10 px-4 py-3"
+            className="flex items-start gap-3 rounded-lg border border-ok/30 bg-ok/10 px-4 py-3"
           >
             <Check size={18} className="mt-0.5 shrink-0 text-ok" />
             <div className="flex-1 text-[13px]">
@@ -333,7 +334,7 @@ function Studio({ kb, usb, loaded }: { kb: KeyboardInfo; usb: boolean; loaded: b
         )}
       </AnimatePresence>
       <div>
-        <h2 className="font-display text-[22px] font-semibold tracking-[-0.02em]">
+        <h2 className="font-display text-[22px] font-semibold">
           {done ? t("sc.src.titleNext") : t("sc.src.title")}
         </h2>
         <p className="mt-1 max-w-[70ch] text-[13px] text-ink-2">{t("sc.src.body")}</p>
@@ -398,7 +399,7 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
       await useScreen.getState().uploadToKeyboard(it, "library");
       setNotice({ ok: true, text: `“${it.name}” ${t("sc.done.uploaded")}. ${t("sc.done.fnHome")}` });
     } catch (e) {
-      setNotice({ ok: false, text: `${t("sc.uploadFailed")}: ${String(e)}` });
+      setNotice({ ok: false, text: friendlyError(e, t) });
     }
   };
 
@@ -410,7 +411,7 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
           <div className="eyebrow">{t("sc.library")}</div>
           <span className="num text-[11px] text-ink-3">{all.length}</span>
         </div>
-        <span className="text-[11.5px] text-ink-3">{t("sc.library.note")}</span>
+        <span className="text-[12px] text-ink-3">{t("sc.library.note")}</span>
       </div>
       {all.length > LIBRARY_PAGE && (
         <div className="flex flex-wrap items-center gap-2 px-1">
@@ -438,7 +439,7 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t("sc.lib.search")}
                 aria-label={t("sc.lib.search")}
-                className="min-w-0 flex-1 bg-transparent text-[12.5px] outline-none"
+                className="min-w-0 flex-1 bg-transparent text-[13px] outline-none"
               />
               {query && (
                 <button type="button" onClick={() => setQuery("")} aria-label={t("sc.close")} className="text-ink-3 hover:text-ink">
@@ -450,13 +451,13 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
         </div>
       )}
       {notice && (
-        <p className={`flex items-start gap-2 px-1 text-[12.5px] ${notice.ok ? "text-ok" : "text-danger"}`} role="status">
+        <p className={`flex items-start gap-2 px-1 text-[13px] ${notice.ok ? "text-ok" : "text-danger"}`} role="status">
           {notice.ok ? <Check size={14} className="mt-0.5 shrink-0" /> : <X size={14} className="mt-0.5 shrink-0" />}
           {notice.text}
         </p>
       )}
-      {all.length === 0 && <p className="px-1 pb-1 text-[12.5px] text-ink-3">{t("sc.library.empty")}</p>}
-      {all.length > 0 && items.length === 0 && <p className="px-1 pb-1 text-[12.5px] text-ink-3">{t("sc.lib.none")}</p>}
+      {all.length === 0 && <p className="px-1 pb-1 text-[13px] text-ink-3">{t("sc.library.empty")}</p>}
+      {all.length > 0 && items.length === 0 && <p className="px-1 pb-1 text-[13px] text-ink-3">{t("sc.lib.none")}</p>}
       <ul className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-2" data-library>
         {visible.map((it) => {
           const onKeyboard = state?.shown === it.id;
@@ -464,7 +465,7 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
           return (
             <li
               key={it.id}
-              className={`flex gap-3 rounded-xl border p-3 transition-colors ${
+              className={`flex gap-3 rounded-lg border p-3 transition-colors ${
                 onKeyboard ? "border-ok/40 bg-ok/5" : "border-line hover:bg-surface-2/60"
               }`}
             >
@@ -479,13 +480,13 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
                     onBlur={(e) => {
                       setEditing(null);
                       const v = e.target.value.trim();
-                      if (v && v !== it.name) useScreen.getState().rename(it.id, v).catch((x) => setNotice({ ok: false, text: String(x) }));
+                      if (v && v !== it.name) useScreen.getState().rename(it.id, v).catch((x) => setNotice({ ok: false, text: friendlyError(x, t) }));
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                       if (e.key === "Escape") setEditing(null);
                     }}
-                    className="h-7 rounded-md border border-signal bg-bg-raise px-2 text-[12.5px] outline-none"
+                    className="h-7 rounded-md border border-signal bg-bg-raise px-2 text-[13px] outline-none"
                   />
                 ) : (
                   <span className="truncate text-[13px] font-semibold" title={it.name}>
@@ -501,10 +502,10 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
                 </span>
                 <span className="flex gap-1.5 pt-1">
                   {it.kind === "factory" && (
-                    <span className="rounded-full bg-surface-2 px-2 py-px text-[10.5px] text-ink-2">{t("sc.badge.factory")}</span>
+                    <span className="rounded-full bg-surface-2 px-2 py-px text-[11px] text-ink-2">{t("sc.badge.factory")}</span>
                   )}
                   {onKeyboard && (
-                    <span className="rounded-full bg-ok/15 px-2 py-px text-[10.5px] text-ok">{t("sc.badge.onKeyboard")}</span>
+                    <span className="rounded-full bg-ok/15 px-2 py-px text-[11px] text-ok">{t("sc.badge.onKeyboard")}</span>
                   )}
                 </span>
               </div>
@@ -552,9 +553,9 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
                       onClick={() => {
                         if (deleting !== it.id) return setDeleting(it.id);
                         setDeleting(null);
-                        useScreen.getState().remove(it.id).catch((x) => setNotice({ ok: false, text: String(x) }));
+                        useScreen.getState().remove(it.id).catch((x) => setNotice({ ok: false, text: friendlyError(x, t) }));
                       }}
-                      className={`flex h-7 items-center justify-center gap-1 rounded-md px-1.5 text-[11.5px] ${
+                      className={`flex h-7 items-center justify-center gap-1 rounded-md px-1.5 text-[12px] ${
                         deleting === it.id ? "bg-danger/15 text-danger" : "text-ink-3 hover:bg-surface hover:text-danger"
                       }`}
                     >
@@ -574,7 +575,7 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
             <button
               type="button"
               onClick={() => setLimit((n) => n + LIBRARY_MORE)}
-              className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-[12.5px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink"
               data-library-more
             >
               <ChevronDown size={14} /> {t("sc.lib.more")}
@@ -587,7 +588,7 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
             <button
               type="button"
               onClick={() => setLimit(LIBRARY_PAGE)}
-              className="h-8 rounded-lg px-3 text-[12.5px] text-ink-3 hover:bg-surface-2 hover:text-ink"
+              className="h-8 rounded-lg px-3 text-[13px] text-ink-3 hover:bg-surface-2 hover:text-ink"
             >
               {t("sc.lib.less")}
             </button>
@@ -652,7 +653,7 @@ export function ScreenUploadToast() {
               style={{ width: `${Math.round((upload.done / Math.max(1, upload.total)) * 100)}%` }}
             />
           </div>
-          <div className="num flex justify-between text-[11.5px] text-ink-3">
+          <div className="num flex justify-between text-[12px] text-ink-3">
             <span>
               {upload.done}/{upload.total} {t("sc.pages")}
             </span>
@@ -660,7 +661,7 @@ export function ScreenUploadToast() {
               {remaining(upload, now) ? `${remaining(upload, now)} ${t("sc.left")}` : ""}
             </span>
           </div>
-          <p className="text-[11.5px] text-ink-2">{t("sc.uploading.note")}</p>
+          <p className="text-[12px] text-ink-2">{t("sc.uploading.note")}</p>
         </motion.div>
       )}
     </AnimatePresence>

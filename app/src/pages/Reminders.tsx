@@ -105,23 +105,22 @@ export function Reminders({ kb }: { kb: KeyboardInfo }) {
   return (
     <div className="flex flex-col gap-6" data-reminders>
       <header className="flex flex-col gap-2">
-        <div className="eyebrow">{t("reminder.eyebrow")}</div>
-        <h1 className="font-display text-[40px] leading-none font-semibold tracking-[-0.035em]">{t("nav.reminders")}</h1>
-        <p className="max-w-[78ch] text-[13px] text-ink-2">{t("reminder.body")}</p>
+        <h1 className="page-title">{t("nav.reminders")}</h1>
+        <p className="page-desc">{t("reminder.body")}</p>
       </header>
 
       <section className="card flex flex-col gap-6 p-5">
-        <div className="flex flex-col gap-4 rounded-2xl border border-line bg-bg-raise/50 p-5">
+        <div className="flex flex-col gap-4 rounded-lg border border-line bg-bg-raise/50 p-5">
           <div className="flex items-start justify-between gap-4">
             <span className="flex flex-col gap-1">
               <span className="text-[14px] font-semibold">{t("reminder.on")}</span>
-              <span className="max-w-[80ch] text-[11.5px] text-ink-3">{t("reminder.on.body")}</span>
+              <span className="max-w-[80ch] text-[12px] text-ink-3">{t("reminder.on.body")}</span>
             </span>
             <Toggle checked={s.settings.enabled} onChange={(enabled) => set({ enabled })} label={t("reminder.on")} />
           </div>
           <div className="flex items-center gap-2 text-[12px]" data-reminders-status>
             <span
-              className={`h-2 w-2 shrink-0 rounded-full ${s.settings.enabled && next ? "bg-ok shadow-[0_0_8px_var(--ok)]" : "bg-ink-3"}`}
+              className={`h-2 w-2 shrink-0 rounded-full ${s.settings.enabled && next ? "bg-ok" : "bg-ink-3"}`}
               aria-hidden
             />
             <span className={s.settings.enabled ? "text-ink-2" : "text-ink-3"}>{status}</span>
@@ -142,10 +141,10 @@ export function Reminders({ kb }: { kb: KeyboardInfo }) {
         </div>
 
         <div className="flex flex-col gap-2">
-          <span className="text-[12.5px] font-medium">{t("reminder.list")}</span>
+          <span className="text-[13px] font-medium">{t("reminder.list")}</span>
           {list.length === 0 && !editing && <p className="text-[12px] text-ink-3">{t("reminder.list.empty")}</p>}
           {list.length > 0 && (
-            <ul className="flex flex-col divide-y divide-line rounded-xl border border-line" data-reminder-list>
+            <ul className="flex flex-col divide-y divide-line rounded-lg border border-line" data-reminder-list>
               {list.map((i) => (
                 <Row
                   key={i.reminder.id}
@@ -183,7 +182,7 @@ export function Reminders({ kb }: { kb: KeyboardInfo }) {
                   setDone(null);
                   setEditing({ draft: null, step: 0 });
                 }}
-                className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[12.5px] font-semibold text-signal hover:bg-signal/10"
+                className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[13px] font-semibold text-signal hover:bg-signal/10"
                 data-reminder-add
               >
                 <Plus size={14} /> {t("reminder.add")}
@@ -193,7 +192,7 @@ export function Reminders({ kb }: { kb: KeyboardInfo }) {
         </div>
 
         <div className="flex flex-col gap-3" data-reminder-settings>
-          <span className="text-[12.5px] font-medium">{t("reminder.settings")}</span>
+          <span className="text-[13px] font-medium">{t("reminder.settings")}</span>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <span className="text-[12px] text-ink-2">{t("reminder.stay")}</span>
             <Segmented<string>
@@ -210,7 +209,7 @@ export function Reminders({ kb }: { kb: KeyboardInfo }) {
             <Toggle checked={s.settings.awayWait} onChange={(awayWait) => set({ awayWait })} label={t("reminder.away")} />
           </SettingRow>
         </div>
-        {drawError && <Hint tone="error">{drawError}</Hint>}
+        {drawError && <Hint tone="error">{t("err.draw")}</Hint>}
       </section>
     </div>
   );
@@ -224,10 +223,10 @@ function when(ms: number, t: (k: MessageKey) => string, locale: string) {
 
 function SettingRow({ title, body, children }: { title: string; body: string; children: ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-xl border border-line px-4 py-3">
+    <div className="flex items-start justify-between gap-3 rounded-lg border border-line px-4 py-3">
       <span className="flex min-w-0 max-w-[70ch] flex-1 flex-col">
-        <span className="text-[12.5px] font-medium">{title}</span>
-        <span className="text-[11.5px] text-ink-3">{body}</span>
+        <span className="text-[13px] font-medium">{title}</span>
+        <span className="text-[12px] text-ink-3">{body}</span>
       </span>
       {children}
     </div>
@@ -273,7 +272,7 @@ function Row({ info, showing, away, onEdit }: { info: ReminderInfo; showing: boo
         <IconDot icon={r.icon} color={r.color} />
         <span className="flex min-w-[160px] flex-1 flex-col">
           <span className={`truncate text-[13px] font-semibold ${r.enabled ? "" : "text-ink-3"}`}>{r.title}</span>
-          <span className="text-[11.5px] text-ink-3">{whenText(r.when, t, locale)}</span>
+          <span className="text-[12px] text-ink-3">{whenText(r.when, t, locale)}</span>
         </span>
         <span className="flex items-center gap-1.5 text-ink-3" aria-label={t("reminder.how")}>
           <Waves size={14} aria-label={t("reminder.badge.light")} />
@@ -404,13 +403,13 @@ function Editor({
   };
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-signal/40 bg-signal/[0.04] p-4" data-reminder-editing={step}>
+    <div className="flex flex-col gap-4 rounded-lg border border-signal/40 bg-signal/[0.04] p-4" data-reminder-editing={step}>
       <div className="flex items-center justify-between gap-3">
-        <ol className="flex flex-wrap items-center gap-2 text-[11.5px]">
+        <ol className="flex flex-wrap items-center gap-2 text-[12px]">
           {steps.map((k, i) => (
             <li key={k} className={`flex items-center gap-1.5 ${i === step ? "font-semibold text-ink" : "text-ink-3"}`}>
               <span
-                className={`num flex h-5 w-5 items-center justify-center rounded-full text-[10.5px] ${
+                className={`num flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${
                   i < step ? "bg-ok text-bg" : i === step ? "bg-signal text-signal-ink" : "bg-surface-2"
                 }`}
               >
@@ -441,7 +440,7 @@ function Editor({
                 setError(null);
                 setStep(1);
               }}
-              className="flex items-center gap-2.5 rounded-xl border border-line bg-bg-raise/60 px-3 py-3 text-left hover:border-signal/60 hover:bg-surface-2"
+              className="flex items-center gap-2.5 rounded-lg border border-line bg-bg-raise/60 px-3 py-3 text-left hover:border-signal/60 hover:bg-surface-2"
               data-reminder-template={tpl.id}
             >
               <IconDot icon={tpl.icon} color={tpl.color} size={28} />
@@ -472,7 +471,7 @@ function Editor({
                 setError(null);
                 setStep((step - 1) as Step);
               }}
-              className="h-9 rounded-lg border border-line px-3 text-[12.5px] text-ink-2 hover:bg-surface-2"
+              className="h-9 rounded-lg border border-line px-3 text-[13px] text-ink-2 hover:bg-surface-2"
               data-reminder-back
             >
               {t("reminder.back")}
@@ -486,7 +485,7 @@ function Editor({
                 if (bad) setError(bad);
                 else setStep(2);
               }}
-              className="h-9 rounded-lg bg-signal px-4 text-[12.5px] font-semibold text-signal-ink hover:brightness-110"
+              className="h-9 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink hover:brightness-110"
               data-reminder-forward
             >
               {t("reminder.nextStep")}
@@ -496,7 +495,7 @@ function Editor({
               type="button"
               onClick={() => void submit()}
               disabled={busy}
-              className="flex h-9 items-center gap-2 rounded-lg bg-signal px-4 text-[12.5px] font-semibold text-signal-ink hover:brightness-110"
+              className="flex h-9 items-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink hover:brightness-110"
               data-reminder-save
             >
               {busy && <Loader2 size={14} className="animate-spin" />} {t("reminder.save")}
@@ -525,7 +524,7 @@ function joinLocal(date: string, time: string): number | null {
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Math.floor(minute / 60), minute % 60).getTime();
 }
 
-const input = "num h-9 rounded-lg border border-line bg-bg-raise px-3 text-[12.5px] outline-none focus:border-signal";
+const input = "num h-9 rounded-lg border border-line bg-bg-raise px-3 text-[13px] outline-none focus:border-signal";
 
 function Labeled({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -692,7 +691,7 @@ function WhenForm({ r, patch }: { r: Reminder; patch: (p: Partial<Reminder>) => 
             <TimeInput value={w.to} onChange={(to) => setWhen({ ...w, to })} label={t("reminder.to")} data="to" />
             <DayChips days={w.days} onChange={(days) => setWhen({ ...w, days })} />
           </div>
-          <p className="max-w-[80ch] text-[11.5px] text-ink-3">{t("reminder.every.hint")}</p>
+          <p className="max-w-[80ch] text-[12px] text-ink-3">{t("reminder.every.hint")}</p>
         </div>
       )}
     </div>
@@ -818,19 +817,19 @@ function CardPreview({ r }: { r: Reminder }) {
 
   return (
     <div className="flex flex-col gap-2" data-reminder-preview>
-      <span className="text-[12.5px] font-medium">{t("reminder.preview")}</span>
+      <span className="text-[13px] font-medium">{t("reminder.preview")}</span>
       <div className="flex flex-wrap items-start gap-4">
         <div className="overflow-hidden rounded-lg border border-line bg-black">
           {card ? <FramePlayer frames={card.frames} delaysMs={card.delaysMs} className="block h-[135px] w-[240px]" /> : <div className="h-[135px] w-[240px]" />}
         </div>
         <div className="flex min-w-[220px] flex-1 flex-col gap-2">
-          <span className="text-[11.5px] text-ink-3">{t("reminder.preview.tryBody")}</span>
+          <span className="text-[12px] text-ink-3">{t("reminder.preview.tryBody")}</span>
           {liveOn ? (
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => void tryOnKeyboard()}
-                className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[12.5px] font-semibold text-signal hover:bg-signal/10"
+                className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[13px] font-semibold text-signal hover:bg-signal/10"
                 data-reminder-try-card
               >
                 {sent === "sending" ? <Loader2 size={14} className="animate-spin" /> : <BellRing size={14} />} {t("reminder.preview.try")}

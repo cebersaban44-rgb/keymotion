@@ -63,7 +63,7 @@ export function FileTile({ onOpened }: { onOpened: (s: Source) => void }) {
   return (
     <div
       data-tile="file"
-      className={`flex min-h-[260px] flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed p-6 text-center transition-colors ${
+      className={`flex min-h-[260px] flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
         over ? "border-signal bg-signal/5" : "border-line"
       }`}
       onDragOver={(e) => {
@@ -84,14 +84,14 @@ export function FileTile({ onOpened }: { onOpened: (s: Source) => void }) {
         <Film size={24} />
       </div>
       <div>
-        <h3 className="font-display text-[19px] font-semibold tracking-[-0.02em]">{t("sc.src.file")}</h3>
-        <p className="mt-1 max-w-[40ch] text-[12.5px] text-ink-2">{t("sc.src.fileBody")}</p>
+        <h3 className="font-display text-[19px] font-semibold">{t("sc.src.file")}</h3>
+        <p className="mt-1 max-w-[40ch] text-[13px] text-ink-2">{t("sc.src.fileBody")}</p>
       </div>
       <button
         type="button"
         disabled={opening !== null}
         onClick={() => input.current?.click()}
-        className="flex items-center gap-2 rounded-xl bg-signal px-4 py-2 text-[13px] font-semibold text-signal-ink disabled:opacity-50"
+        className="flex items-center gap-2 rounded-lg bg-signal px-4 py-2 text-[13px] font-semibold text-signal-ink disabled:opacity-50"
       >
         {opening !== null ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
         {opening !== null ? `${t("sc.drop.opening")} ${Math.round(opening * 100)}%` : t("sc.drop.choose")}
@@ -222,7 +222,7 @@ function FileEditor({ source, onPrepared }: { source: Source; onPrepared: (p: Pr
       <div className="grid grid-cols-[480px_minmax(280px,1fr)] gap-6">
         <div className="flex flex-col gap-2">
           <CropCanvas source={source} framing={framing} onFraming={setFraming} atMs={cursor} dither={dither} />
-          <p className="text-[11.5px] text-ink-3">{t("sc.preview.editNote")}</p>
+          <p className="text-[12px] text-ink-3">{t("sc.preview.editNote")}</p>
           {!still && (
             <Slider
               label={t("sc.cursor")}
@@ -312,8 +312,8 @@ function FileEditor({ source, onPrepared }: { source: Source; onPrepared: (p: Pr
 
           <div className="flex items-center justify-between gap-3">
             <span className="flex flex-col">
-              <span className="text-[12.5px] font-medium">{t("sc.dither")}</span>
-              <span className="text-[11.5px] text-ink-3">{t("sc.dither.hint")}</span>
+              <span className="text-[13px] font-medium">{t("sc.dither")}</span>
+              <span className="text-[12px] text-ink-3">{t("sc.dither.hint")}</span>
             </span>
             <Toggle checked={dither} onChange={setDither} label={t("sc.dither")} />
           </div>

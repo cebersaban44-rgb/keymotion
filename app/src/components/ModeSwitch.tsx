@@ -17,7 +17,7 @@ export function ModeSwitch({ value }: { value: Connection }) {
       className="relative grid h-12 grid-cols-3 rounded-full border border-line-strong bg-bg-raise p-1"
     >
       {POSITIONS.map((p) => (
-        <span key={p} className="num flex items-center justify-center text-[11px] tracking-[0.12em] text-ink-3">
+        <span key={p} className="num flex items-center justify-center text-[12px] text-ink-3">
           {t(connectionKey(p, true))}
         </span>
       ))}
@@ -28,8 +28,8 @@ export function ModeSwitch({ value }: { value: Connection }) {
         animate={{ x: `${index * 100}%` }}
         transition={{ type: "spring", stiffness: 420, damping: 34 }}
       >
-        <span className="h-1.5 w-1.5 rounded-full bg-signal shadow-[0_0_10px_var(--signal)]" />
-        <span className="num text-[11px] font-semibold tracking-[0.12em] text-ink">{t(connectionKey(value, true))}</span>
+        <span className="h-1.5 w-1.5 rounded-full bg-signal" />
+        <span className="num text-[12px] font-semibold text-ink">{t(connectionKey(value, true))}</span>
       </motion.div>
     </div>
   );

@@ -21,6 +21,8 @@ const KEYMAP_FILE: &str = "keymap.json";
 const KEYMAP_VERSION: u32 = 1;
 const MACROS_FILE: &str = "macros.json";
 const MACROS_VERSION: u32 = 1;
+const BATTERY_FILE: &str = "battery.json";
+const BATTERY_VERSION: u32 = 1;
 
 #[derive(Serialize, Deserialize)]
 struct Versioned<T> {
@@ -87,6 +89,17 @@ impl Default for ClockSettings {
     fn default() -> Self {
         Self { auto_sync: true, last_sync_ms: None }
     }
+}
+
+/// The last battery reading of each model (by model id). Only Bluetooth
+/// reports the battery; over the USB cable the keyboard cannot, so the app
+/// shows the last reading with its age.
+pub fn load_batteries(dir: &Path) -> BTreeMap<String, crate::dto::Battery> {
+    load(dir, BATTERY_FILE, BATTERY_VERSION).unwrap_or_default()
+}
+
+pub fn save_batteries(dir: &Path, batteries: &BTreeMap<String, crate::dto::Battery>) -> io::Result<()> {
+    save(dir, BATTERY_FILE, BATTERY_VERSION, batteries)
 }
 
 pub fn load_clock(dir: &Path) -> ClockSettings {
