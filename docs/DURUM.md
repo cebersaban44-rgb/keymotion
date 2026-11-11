@@ -48,7 +48,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | **Ekran Stüdyosu**: dosyadan (resim, GIF, video; kırpma, süre), yazı kartları (5 şablon), slayt; önizleme, onay, kütüphane, fabrika animasyonuna dönüş | ✅ Kullanıcı klavyede hepsini denedi (maddeler 23–25). |
 | Ekran → **Işıkları uydur**: görselin paletinden tuş tasarımı (degrade, tek renk, görsel), Işıklar'da taslak | ✅ Kullanıcı mor kartta klavyede doğruladı (madde 26). |
 | Ekran → **Canlı ekran**: canlı mod, günlük yükleme bütçesi, "Çalan şarkı" kartı, kapatınca önceki görseli geri yükleme; "Ekranda ne görünür?" sırası (zamanlayıcı → şarkı → kendi görselin), kaynak bitince kendi görseline dönüş | ✅ Kullanıcı klavyede denedi (madde 27). Sıra, kendi görseline dönüş, bekleyen kartın gösterilmesi ve "Şimdi gönder" de klavyede denendi, çalışıyor (maddeler 31–32). |
-| Ekran → Canlı ekran → **Takvim**: Google, Outlook ve Apple iCloud takvimleri (paylaşım adresiyle, yalnız okuma); toplantıdan 10 dk önce ekrana kart (saat, ad, yer, sonraki toplantı), başladıktan 5 dk sonra gider; ekran sırasında en üstte; başlamadan 1 dk önce Esc turuncu yanıp söner (RAM) | 🟡 Okuma ve tekrarlar testli; sahte arka uçla kart ve ekleme akışı, gerçek uygulamada gerçek bir Google takviminin okunması ve tuş hatırlatması denendi (madde 34). Kullanıcının kendi takvimiyle denemesi bekleniyor. |
+| Ekran → Canlı ekran → **Takvim**: Google, Outlook ve Apple iCloud takvimleri (paylaşım adresiyle, yalnız okuma); toplantıdan 10 dk önce ekrana kart (saat, ad, yer, sonraki toplantı), başladıktan 5 dk sonra gider; ekran sırasında en üstte; başlamadan 1 dk önce Esc turuncu yanıp söner (RAM) | ✅ Okuma ve tekrarlar testli; gerçek uygulamada gerçek bir Google takviminin okunması ve tuş hatırlatması denendi. Kullanıcı kendi Google takvimini gizli adresle ekledi, kartı "Klavyede 1 dk göster" ile klavyede gördü, 1 dk sonra kendi görseli döndü (madde 34). Toplantıdan önce kendiliğinden gelen kart gerçek bir toplantıda henüz gözlenmedi. |
 | Araçlar → **Sistem göstergeleri**: işlemci (1…0), ekran kartı (Q…P) ve bellek (A…;) yükü tuş sıralarında çubuk; ses düzeyi topuz çevrilince F1…F12'de 1,5 sn; Windows'ta mikrofon sessizken seçilen tuş kırmızı; Isı ya da kendi rengi, soluk iz, geri kalan tuşlar karanlık ya da soluk renk, parlaklık (flash'sız). Zamanlayıcı çubukların üstünde, ses ve mikrofon zamanlayıcının üstünde | ✅ Uygulamada uçtan uca denendi (CDP); kullanıcı klavyede denedi: "Çalışıyor" (madde 33). |
 | Araçlar → **Odak zamanlayıcısı** (Pomodoro tekniği): odak ve mola süreleri; bütün klavye fazın rengiyle dolu başlar ve süre azaldıkça seçilen yönde boşalır (flash'sız; yön, renkler, parlaklık, nabız, faz geçişi, ses seçilebilir; "Klavyede dene"); faz başında ekran kartı; kenar çubuğunda kalan süre | ✅ Kullanıcı klavyede denedi: ışıklar, bildirim sesi, geçiş efektleri ve süreler çalışıyor (maddeler 28–30). Canlı mod açıkken faz kartları da klavyede çalışıyor (madde 31). |
 
@@ -588,7 +588,9 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Takvim katmanında sıradaki toplantının kartı (toplantı yoksa örnek bir toplantı) uygulamada çiziliyor; yükleme yok.
       - "Klavyede 1 dk göster": kart canlı mod üzerinden hemen gider (bütçe beklemez, elle yükleme gibi sayılır; `calendar_try_card` → `send_now` + 60 sn sonra `return_after`), 1 dk sonra kendi görsel döner: 2 yükleme. Canlı mod kapalıyken "canlı modu aç" yazar.
       - Sahte arka uçla denendi: önizleme çizildi, deneme kartı sahte ekrana gitti.
-    - **Bekleyen:** Kullanıcının gizli adresle kendi takvimini eklemesi; önizleme ve "Klavyede 1 dk göster" ile kartı klavyede görmesi.
+    - **Kullanıcının üçüncü denemesi (2026-11-11, klavyede):** Google'ın "iCal biçiminde gizli adres"ini ekledi; takvim okundu, sıradaki toplantı listede ve önizlemede göründü. "Klavyede 1 dk göster" ile kart 04:17'de klavyeye gitti, 04:19'da kendi görseli geri yüklendi (2 yükleme, canlı mod açık, Yoğun plan). Kullanıcı: "1 dakikalık takvim göstermesi başarılı." Ayrıntı: `donanim-dogrulama.md`, "Takvim".
+      - Toplantı adları kullanıcının özel bilgisi: belgelere ve repoya yazılmaz.
+    - **Henüz gözlenmedi:** Gerçek bir toplantıdan 10 dk önce kartın kendiliğinden gelmesi ve 1 dk önce Esc'in yanıp sönmesi. Kullanıcı bir toplantıda görürse kaydedilir; sorun çıkarsa önce takvim satırındaki hata metnine ve canlı modun açık olduğuna bakılır.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -770,7 +772,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 
 1. `git switch develop && git pull`, sonra yeni iş için dal aç. PR açınca auto-merge ve auto-fix'i aç (`gelistirme-akisi.md`).
 2. **Tuş atama ve makrolar bitti** (madde 19–21). Klavye fabrika durumunda: atama varsayılan, makro yok; `keymap.json` ve `macros.json` kayıtları da öyle.
-3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Odak zamanlayıcısı yapıldı ve kullanıcı denedi (maddeler 28–30); ekran sırası ve kendi görseline dönüş yapıldı ve kullanıcı denedi (maddeler 31–32); LED canlı katmanı "Sistem göstergeleri" olarak yapıldı ve kullanıcı klavyede denedi (madde 33). Takvim yapıldı (madde 34); kullanıcının kendi takvimiyle denemesi bekleniyor.**
+3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Odak zamanlayıcısı yapıldı ve kullanıcı denedi (maddeler 28–30); ekran sırası ve kendi görseline dönüş yapıldı ve kullanıcı denedi (maddeler 31–32); LED canlı katmanı "Sistem göstergeleri" olarak yapıldı ve kullanıcı klavyede denedi (madde 33). Takvim yapıldı ve kullanıcı kendi takvimiyle klavyede denedi (madde 34). Sıradaki: hatırlatıcı.**
    - **Kullanıcının isteği:** "Ürünün farkı burada ortaya çıkacak." Ayrıca: "Buradaki görüntüyü de kaybetmeyelim" (stok ana sayfa) ve "birden fazla ekran görüntüsü veya başka ne yapabiliriz".
    - **Kısa sonuçlar:**
      - Resim ve GIF: evet, en çok 140 kare.
@@ -800,11 +802,12 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
         - **LED canlı katmanı yapıldı: Araçlar → Sistem göstergeleri** (madde 33). İşlemci, ekran kartı, bellek çubukları; topuzla ses düzeyi; mikrofon sessiz uyarısı. Zamanlayıcı çubukların üstünde, ses ve mikrofon zamanlayıcının üstünde (kullanıcının kararı).
           - **Kullanıcı klavyede denedi (2026-11-11): "Çalışıyor."** Kullanıcının ayarı: göstergeler açık, bellek dahil, Isı, Karanlık, parlaklık 4.
         - **Takvim yapıldı** (madde 34): Ekran → Canlı ekran'da en üstteki katman. Google, Outlook, Apple iCloud ya da herhangi bir paylaşım adresi; toplantıdan önce kart, 1 dk önce Esc yanıp söner.
-          - **Bekleyen (kalınan yer, 2026-11-11):** kullanıcı Google takvimini önce bir etkinlik bağlantısıyla, sonra herkese açık adresle ekledi; ikisi de çalışmaz (uygulama artık ikisini de açıklıyor). Doğru adres "iCal biçiminde gizli adres" (`…/private-…/basic.ics`). Kullanıcı gizli adresi ekleyip kartı önizlemede ve "Klavyede 1 dk göster" ile klavyede deneyecek. Sorun çıkarsa: kayıtlı adres `calendar.json`'da (gizli; sohbete yazdırma), hata metni takvim satırında.
-          - **Sıradaki:** hatırlatıcı, oyun oturumu. Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
+          - **Kullanıcı klavyede denedi (2026-11-11):** önce bir etkinlik bağlantısı, sonra herkese açık adres çalışmadı (uygulama artık ikisini de açıklıyor); "iCal biçiminde gizli adres" (`…/private-…/basic.ics`) çalıştı. Kart "Klavyede 1 dk göster" ile klavyeye gitti ve 1 dk sonra kendi görseli döndü: "1 dakikalık takvim göstermesi başarılı." Konu kapandı; yalnız gerçek bir toplantıda kendiliğinden gelen kart henüz gözlenmedi.
+          - Kayıtlı adres `calendar.json`'da (gizli; sohbete ve belgelere yazdırma). Toplantı adları da yazılmaz.
+          - **Kalınan yer (2026-11-11):** takvim bitti. **Sıradaki: hatırlatıcı** (sıra önerisindeki bir sonraki kaynak), sonra oyun oturumu. Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.
-     4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar **20** yükleme: uygulamanın kaydında 18 (elle, canlı ve geri yükleme), CLI ile E1 ve E4.
+     4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar **28** yükleme: uygulamanın kaydında 26 (elle, canlı ve geri yükleme; 2026-11-10'da 24, 2026-11-11'de 2), CLI ile E1 ve E4.
    - **Faz B planı** (hepsi yapıldı, maddeler 24–26; plan kayıt için duruyor):
      - **Kullanıcının arayüz kuralı** (2026-11-10, Faz A geri bildirimi):
        - adımlar görünür olsun;
@@ -955,10 +958,10 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
   - [x] Yüklenen görüntü ayrı, tam ekran GIF sayfasında görünüyor (E1).
   - [x] Ekran Stüdyosu: resim/GIF/video, yazı kartları, slayt, kütüphane, fabrika yedeği, ışıkları ekrana uydurma.
   - [x] Canlı mod: günlük bütçe (varsayılan 24), "Çalan şarkı", kapatınca önceki görsele dönüş.
-  - [x] Odak zamanlayıcısı (maddeler 28–30; kullanıcı klavyede denedi). Açık: faz kartları canlı mod açıkken klavyede denenmedi.
+  - [x] Odak zamanlayıcısı (maddeler 28–30; kullanıcı klavyede denedi, canlı mod açıkken faz kartları dahil).
   - [x] Ekran sayfası sekmeleri ve sayfalı kütüphane (madde 29).
   - [x] LED canlı katmanı: Sistem göstergeleri (madde 33; kullanıcı klavyede denedi).
-  - [x] Takvim (madde 34; kullanıcının kendi takvimiyle denemesi bekleniyor).
+  - [x] Takvim (madde 34; kullanıcı kendi takvimiyle klavyede denedi).
   - [ ] Faz C'nin geri kalanı: hatırlatıcı, oyun oturumu; ses spektrumu.
 - [ ] **Kendi firmware katmanımız** (kullanıcının fikri, 2026-11-10; araştırma hattı, şimdilik yapılmıyor). Stok firmware'de olmayan canlı ekranı (RAM'den çizim) kendi firmware'imizle ya da stok firmware'e yamayla eklemek.
   - Emsal: kardeş AK820 Pro'da QMK portu ve Jackrabbit firmware'i; panoyu firmware çiziyor, flash aşınması yok.
