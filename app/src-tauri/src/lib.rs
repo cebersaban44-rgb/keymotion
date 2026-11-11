@@ -12,6 +12,7 @@ mod ics;
 mod live;
 mod now_playing;
 mod pomodoro;
+mod reminders;
 mod screen_lib;
 mod settings;
 
@@ -20,14 +21,15 @@ use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request};
 use dto::{
     CalendarSettings, CalendarState, Calibration, CalibrationInfo, ClockStatus, EffectInfo, EffectRequest,
     GaugesSettings, GaugesState, KeyAssignment, KeyboardInfo, KeymapCatalog, KeymapLayer, KeymapState, LedColor,
-    LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, PomodoroSettings, PomodoroState, ScreenItem,
-    ScreenItemKind, ScreenState, SongStop, ThemePreference, UiEnvironment,
+    LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, PomodoroSettings, PomodoroState, Reminder,
+    ReminderSettings, ReminderState, ScreenItem, ScreenItemKind, ScreenState, SongStop, ThemePreference, UiEnvironment,
 };
 use gauges::GaugesHandle;
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
 use live::LiveHandle;
 use now_playing::NowPlaying;
 use pomodoro::{PomodoroAction, PomodoroHandle};
+use reminders::RemindersHandle;
 use screen_lib::ScreenLibrary;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -54,6 +56,7 @@ type Live<'a> = State<'a, Arc<LiveHandle>>;
 type Pomodoro<'a> = State<'a, Arc<PomodoroHandle>>;
 type Gauges<'a> = State<'a, Arc<GaugesHandle>>;
 type Calendar<'a> = State<'a, Arc<CalendarHandle>>;
+type Reminders<'a> = State<'a, Arc<RemindersHandle>>;
 
 fn lock_library(lib: &Mutex<ScreenLibrary>) -> Result<std::sync::MutexGuard<'_, ScreenLibrary>, String> {
     lib.lock().map_err(|_| "screen library unavailable".to_string())
@@ -298,6 +301,43 @@ fn calendar_try_reminder(calendar: Calendar<'_>) {
 #[tauri::command]
 fn calendar_try_card(calendar: Calendar<'_>) {
     calendar.try_card();
+}
+
+/// The reminders and when each goes off next.
+#[tauri::command]
+fn reminders_state(reminders: Reminders<'_>) -> Result<ReminderState, String> {
+    reminders.state()
+}
+
+/// New reminder settings (saved).
+#[tauri::command]
+fn reminders_configure(reminders: Reminders<'_>, settings: ReminderSettings) -> Result<ReminderState, String> {
+    tracing::debug!(?settings, "ipc: reminders_configure");
+    reminders.configure(settings)
+}
+
+/// Add a reminder (empty id) or change one.
+#[tauri::command]
+fn reminders_save(reminders: Reminders<'_>, reminder: Reminder) -> Result<ReminderState, String> {
+    reminders.save_reminder(reminder)
+}
+
+#[tauri::command]
+fn reminders_remove(reminders: Reminders<'_>, id: String) -> Result<ReminderState, String> {
+    reminders.remove(&id)
+}
+
+/// "Dene": the reminder's wave on the keys (and the sound), now.
+#[tauri::command]
+fn reminders_try(reminders: Reminders<'_>, color: [u8; 3], sound: bool) {
+    reminders.try_light(color, sound);
+}
+
+/// A card the UI just handed to the live mode is a try: send it now and
+/// bring the own picture back after a minute.
+#[tauri::command]
+fn reminders_try_card(reminders: Reminders<'_>) {
+    reminders.try_card();
 }
 
 /// The system gauges.
@@ -605,7 +645,8 @@ pub fn run() {
             app.manage(now_playing::spawn(app.handle().clone(), live.clone()));
             app.manage(PomodoroHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir.clone()));
             app.manage(GaugesHandle::spawn(app.handle().clone(), device.clone(), config_dir.clone()));
-            app.manage(CalendarHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir));
+            app.manage(CalendarHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir.clone()));
+            app.manage(RemindersHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir));
             app.manage(library);
             app.manage(device);
             app.manage(live);
@@ -659,7 +700,13 @@ pub fn run() {
             calendar_remove,
             calendar_refresh,
             calendar_try_reminder,
-            calendar_try_card
+            calendar_try_card,
+            reminders_state,
+            reminders_configure,
+            reminders_save,
+            reminders_remove,
+            reminders_try,
+            reminders_try_card
         ])
         .run(tauri::generate_context!())
         .expect("error while running Klavye Stüdyo");
