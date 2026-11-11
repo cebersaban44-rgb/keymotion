@@ -4,7 +4,7 @@
 // key. The backend reads the calendars and decides; this sets it up.
 
 import { AlertTriangle, CalendarDays, Check, Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CalendarProvider } from "../../bindings/CalendarProvider";
 import type { CalendarState } from "../../bindings/CalendarState";
 import type { CalendarUntil } from "../../bindings/CalendarUntil";
@@ -17,12 +17,18 @@ import {
   calendarColor,
   hhmm,
   linkProblem,
+  previewCard,
   providerOf,
+  tryCardBack,
   tryReminder,
   useCalendar,
 } from "../../lib/calendar";
-import { useT, type MessageKey } from "../../lib/i18n";
-import { Hint } from "./common";
+import { calendarCard, calendarWords } from "../../lib/liveCards";
+import { submitLive, useLive } from "../../lib/live";
+import type { Prepared } from "../../lib/screenImport";
+import { useApp } from "../../lib/store";
+import { tNow, useT, type MessageKey } from "../../lib/i18n";
+import { FramePlayer, Hint } from "./common";
 
 const PROVIDERS: { id: CalendarProvider; label: MessageKey; steps: MessageKey[]; note?: MessageKey }[] = [
   { id: "google", label: "calendar.p.google", steps: ["calendar.help.google.1", "calendar.help.google.2", "calendar.help.google.3", "calendar.help.google.4"], note: "calendar.help.google.note" },
@@ -77,6 +83,7 @@ export function CalendarBody() {
   return (
     <div className="flex flex-col gap-4" data-calendar>
       {!empty && <Upcoming c={c} />}
+      {!empty && <CardPreview c={c} />}
 
       <div className="flex flex-col gap-2">
         <span className="text-[12.5px] font-medium">{t("calendar.sources")}</span>
@@ -217,6 +224,83 @@ function Upcoming({ c }: { c: CalendarState }) {
         </p>
       )}
       {c.upcoming.some((e) => e.allDay) && <p className="text-[11.5px] text-ink-3">{t("calendar.allDay.note")}</p>}
+    </div>
+  );
+}
+
+/**
+ * The card the screen will show, drawn here (no upload), and a try on the
+ * keyboard: the card goes now and the own picture comes back after a
+ * minute (owner's request, 2026-11-11: the card only showed before a
+ * meeting, so its look could not be checked).
+ */
+function CardPreview({ c }: { c: CalendarState }) {
+  const t = useT();
+  const locale = useApp((s) => s.locale);
+  const liveOn = useLive((s) => !!s.state?.enabled);
+  const [card, setCard] = useState<Prepared | null>(null);
+  const [sent, setSent] = useState<"idle" | "sending" | "sent" | "failed">("idle");
+  const { card: target, sample } = previewCard(c, {
+    title: t("calendar.preview.sampleTitle"),
+    location: t("calendar.preview.sampleRoom"),
+  });
+  const name = c.sources.find((s) => s.id === target.event.source)?.name ?? "";
+  // Draw again only when what the card says changes.
+  const key = JSON.stringify([target.event.title, target.event.location, target.event.startMs, target.event.endMs, target.event.color, target.next?.title, target.next?.startMs, name, locale]);
+  const stable = useMemo(() => target, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    let off = false;
+    calendarCard(stable, name, calendarWords(tNow, locale))
+      .then((p) => !off && setCard(p))
+      .catch(console.error);
+    return () => {
+      off = true;
+    };
+  }, [stable, name, locale]);
+
+  const tryOnKeyboard = async () => {
+    if (!card) return;
+    setSent("sending");
+    try {
+      useLive.setState({ state: await submitLive(card, CALENDAR_SOURCE) });
+      await tryCardBack();
+      setSent("sent");
+    } catch (e) {
+      console.error(e);
+      setSent("failed");
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2" data-calendar-preview>
+      <span className="text-[12.5px] font-medium">{t("calendar.preview")}</span>
+      <div className="flex flex-wrap items-start gap-4">
+        <div className="overflow-hidden rounded-lg border border-line bg-black">
+          {card ? <FramePlayer frames={card.frames} delaysMs={card.delaysMs} className="block h-[135px] w-[240px]" /> : <div className="h-[135px] w-[240px]" />}
+        </div>
+        <div className="flex min-w-[220px] flex-1 flex-col gap-2">
+          <span className="text-[12px] text-ink-2">
+            {sample ? t("calendar.preview.sample") : `${t("calendar.preview.next")} ${hhmm(target.event.startMs)} ${target.event.title}`}
+          </span>
+          <span className="text-[11.5px] text-ink-3">{t("calendar.preview.tryBody")}</span>
+          {liveOn ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void tryOnKeyboard()}
+                className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[12.5px] font-semibold text-signal hover:bg-signal/10"
+                data-calendar-try-card
+              >
+                {sent === "sending" ? <Loader2 size={14} className="animate-spin" /> : <CalendarDays size={14} />} {t("calendar.preview.try")}
+              </button>
+              {sent === "sent" && <span className="text-[12px] text-ok">{t("calendar.preview.sent")}</span>}
+              {sent === "failed" && <span className="text-[12px] text-danger">{t("calendar.preview.failed")}</span>}
+            </div>
+          ) : (
+            <span className="text-[12px] text-ink-3">{t("calendar.preview.needsLive")}</span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
