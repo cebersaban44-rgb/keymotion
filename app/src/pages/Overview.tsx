@@ -1,10 +1,10 @@
-// Genel BakÄ±ÅŸ: the connected keyboard at a glance. Its drawing shows the
+// Genel Bakış: the connected keyboard at a glance. Its drawing shows the
 // keyboard's real light (read back over USB about four times a second) and
 // the keys held down while the app is in front; below, the connection,
 // the battery and what this connection allows.
 
-import { BatteryCharging, Check, ChevronRight, Lock, Usb } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { BatteryCharging, BatteryFull, Check, ChevronRight, Lock, Usb } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Feature } from "../bindings/Feature";
 import type { GeometryInfo } from "../bindings/GeometryInfo";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
@@ -60,17 +60,33 @@ const isRed = (c: string | undefined) => {
   return byte(1) > 180 && byte(3) < 60 && byte(5) < 60;
 };
 
-/** Whether the keyboard is charging, read from its Fn light. The firmware
- *  lights Fn red while the battery charges, whatever the effect (seen on the
- *  AK980 PRO, 2026-11-10); the USB read-back shows it. There is no battery
- *  level over USB, but this tells "charging" apart. A red effect would light
- *  the keys next to Fn too, so those must not be red. */
-function isCharging(kb: KeyboardInfo, mirror: Record<number, string> | null): boolean {
+/** Readings in a row (about 2 s at four a second) before the charge state
+ *  is shown, so a passing red in a moving effect does not count. */
+const CHARGE_STEADY = 8;
+
+/** Charging or fully charged, read from the Fn light over USB. The firmware
+ *  lights Fn red while the battery charges and turns it off when it is full,
+ *  whatever the effect (AK980 PRO: red while charging on 2026-11-10; off with
+ *  a full battery on the keyboard's own screen, owner, 2026-11-11). There is
+ *  no battery level over USB, but this tells the two apart. A red effect
+ *  would light the keys next to Fn too, so those must not be red. */
+function useChargeState(kb: KeyboardInfo, mirror: Record<number, string> | null): "charging" | "full" | null {
+  const [state, setState] = useState<"charging" | "full" | null>(null);
+  const run = useRef<{ red: boolean; n: number }>({ red: false, n: 0 });
   const led = (id: string) => kb.geometry?.keys.find((k) => k.id === id)?.led;
   const [fn, space, rctrl] = [led("fn"), led("space"), led("rctrl")];
-  if (!mirror || fn == null) return false;
-  const neighboursRed = [space, rctrl].every((l) => l != null && isRed(mirror[l]));
-  return isRed(mirror[fn]) && !neighboursRed;
+  useEffect(() => {
+    if (!mirror || fn == null || Object.keys(mirror).length === 0) {
+      run.current = { red: false, n: 0 };
+      setState(null);
+      return;
+    }
+    const neighboursRed = [space, rctrl].every((l) => l != null && isRed(mirror[l]));
+    const red = isRed(mirror[fn]) && !neighboursRed;
+    run.current = run.current.red === red ? { red, n: run.current.n + 1 } : { red, n: 1 };
+    if (run.current.n >= CHARGE_STEADY) setState(red ? "charging" : "full");
+  }, [mirror, fn, space, rctrl]);
+  return state;
 }
 
 export function Overview({ kb }: { kb: KeyboardInfo }) {
@@ -84,7 +100,7 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
   // Off when nothing but the indicator keys (Num Lock, Caps Lock, Fn) is lit.
   const lit = mirror ? Object.values(mirror).filter((c) => c !== "#000000").length : 0;
   const lightsOff = !!mirror && Object.keys(mirror).length > 0 && lit <= 3;
-  const charging = isCharging(kb, live ? mirror : null);
+  const charge = useChargeState(kb, live ? mirror : null);
   const setPage = useApp((s) => s.setPage);
   const ConnIcon = CONNECTION_ICON[kb.connection];
   const usbFeatures = kb.modes.find((m) => m.connection === "usb")?.features ?? [];
@@ -93,7 +109,7 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
   const specs = [
     `${t("overview.spec.layout")} %${kb.layout}`,
     `${kb.keyCount} ${t("overview.specs.keys")}`,
-    kb.screen ? `${kb.screen.width}Ã—${kb.screen.height} ${t("overview.specs.screen")}` : null,
+    kb.screen ? `${kb.screen.width}×${kb.screen.height} ${t("overview.specs.screen")}` : null,
     kb.hasKnob ? t("overview.specs.knob") : null,
   ].filter(Boolean) as string[];
 
@@ -164,9 +180,13 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
             <BatteryGauge percent={kb.battery?.percent ?? null} />
           </div>
           {usb && (
-            <p className="flex items-start gap-2 text-[13px] text-ink-2">
-              <BatteryCharging size={16} className="mt-0.5 shrink-0 text-ok" aria-hidden />
-              {t(charging ? "overview.bat.charging" : "overview.bat.cable")}
+            <p className="flex items-start gap-2 text-[13px] text-ink-2" data-overview-charge={charge ?? "unknown"}>
+              {charge === "full" ? (
+                <BatteryFull size={16} className="mt-0.5 shrink-0 text-ok" aria-hidden />
+              ) : (
+                <BatteryCharging size={16} className="mt-0.5 shrink-0 text-ok" aria-hidden />
+              )}
+              {t(charge === "charging" ? "overview.bat.charging" : charge === "full" ? "overview.bat.full" : "overview.bat.cable")}
             </p>
           )}
           <p className="text-[13px] text-ink-3">
