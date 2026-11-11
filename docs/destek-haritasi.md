@@ -64,7 +64,7 @@ Notlar:
 
 - **Bluetooth:** Ölçüldü (2026-11-10). Klavyenin Bluetooth'ta üreticiye özel bir kanalı yok, yalnızca standart HID ve pil servisi var. Bu bir donanım sınırı; uygulama ne yaparsa yapsın Bluetooth'ta ayar yapılamaz. `FEE0/FEE1` (ürün yazılımı güncelleme kanalı) asla yazılmaz.
 - **2.4 GHz alıcı:** Uygulamada sürücüsü yok. Başka projeler AK980 için pil (`20 01`) ve saat (`0C 10`) komutlarını doğrulamış; ışık, tuş atama ve ekran komutları yalnızca kardeş klavyelerde görülmüş. Resmi sürücünün yapılandırması (`menu_wireless`) alıcı üzerinden makro, ışık efekti, tuş başına renk ve müzik ışığı sunuyor, ekranı sunmuyor. Kullanıcıyla kararlaştırıldığı gibi 2.4G ve Bluetooth işi, bütün özellikler bittikten sonra ele alınacak (`DURUM.md`, "Sona bırakılan").
-- **USB'de pil:** Klavyenin yazılımı USB'de pil düzeyi bildirmiyor (bölüm 5). Uygulama son Bluetooth okumasını yaşıyla birlikte gösteriyor ve klavyenin şarj olduğunu Fn ışığından anlıyor.
+- **USB'de pil:** Klavyenin yazılımı USB'de pil düzeyi bildirmiyor (bölüm 5). Uygulama son Bluetooth okumasını yaşıyla birlikte gösteriyor; şarj olup olmadığını ya da şarjın bittiğini Fn ışığından anlıyor.
 
 ## 5. Pil: USB'de neden yok, ne yapılabilir
 
@@ -79,13 +79,12 @@ Bilgisayar tarafına yazılacak bir katman, klavyenin göndermediği bir bilgiyi
 | Kablolu `20 01` deneyen projeler | Gelen `FF`, pil değil "tanınmayan komut" yankısı. Göndermiyoruz. |
 | Klavyenin USB HID tanımlayıcıları | Pil kullanımı (Battery Strength) yok. Windows'un pil göstergesi de bu yüzden okuyamaz. |
 | **Pasif dinleme (yeni, 2026-11-11, `kb listen`)** | Komut (`FF13`) ve üreticiye özel `FFFF` koleksiyonu 20 saniye dinlendi, hiçbir şey gönderilmedi. Klavye kendiliğinden **hiç rapor göndermedi**. |
-| **Fn ışığı (yeni)** | Ürün yazılımı şarj olurken Fn tuşunu kırmızı yakıyor (2026-11-10, ışık kapalıyken bile). Bu ışık USB'deki renk okumasıyla (`04 F5`) görülebiliyor. Uzun süre takılı kalan klavyede 2026-11-11'de Fn sönüktü; büyük olasılıkla şarj bitmişti. |
+| **Fn ışığı (yeni)** | Ürün yazılımı şarj olurken Fn tuşunu kırmızı yakıyor (2026-11-10, ışık kapalıyken bile). Bu ışık USB'deki renk okumasıyla (`04 F5`) görülebiliyor. Uzun süre takılı kalan klavyede 2026-11-11'de Fn sönüktü ve kullanıcı klavyenin ekranında pilin dolu olduğunu, şimşek işareti olmadığını gördü: **şarj bitince Fn söner.** |
 
 Sonuç ve yapılanlar:
 
 - **USB'de pil yüzdesi okunamaz.** Bu bir uygulama eksikliği değil; klavyenin yazılımı bu bilgiyi kabloda dışarı vermiyor. Resmi sürücü de kabloda pil göstermiyor.
-- **Yapıldı: "Şarj oluyor" bilgisi.** Genel Bakış, Fn ışığı kırmızıyken (ve yanındaki tuşlar kırmızı değilken, yani kırmızı bir efekt değilse) "Klavye şu an şarj oluyor." diyor. Okuma zaten çalışan canlı aynadan geliyor, klavyeye yeni bir komut gitmiyor.
-- **Kullanıcıyla doğrulanacak:** Fn'nin şarj bitince söndüğü. Doğrulanırsa kart "Şarj tamamlandı" da diyebilir.
+- **Yapıldı: şarj durumu.** Genel Bakış, kabloda Fn ışığı kırmızıyken "Klavye şu an şarj oluyor.", sönükken "Şarj tamamlandı." diyor. Yanındaki tuşlar da kırmızıysa bu bir efekttir, sayılmaz; ışık yaklaşık 2 saniye aynı kalmadan durum gösterilmez (hareketli efektlerdeki geçici kırmızı yanıltmasın). Okuma zaten çalışan canlı aynadan geliyor, klavyeye yeni bir komut gitmiyor. Gerçek uygulamada "Şarj tamamlandı" doğru göründü (2026-11-11).
 - **İleride: 2.4 GHz alıcıyla gerçek yüzde.** Alıcının `20 01` komutu AK980'de başkalarınca doğrulanmış; alıcı sürücüsü yazılınca pil yüzdesi o modda canlı okunur.
 - **Yapılmayacaklar:** Yalnızca klavyenin yazılımını değiştirmek USB'de yüzdeyi verebilirdi; projenin kuralı gereği klavyeye yazılım (firmware) gönderilmez. Henüz denenmemiş okuma komutları (`04 10/12/16/22/26`) yanlış çıkarsa ayarları silebilir, bu yüzden ayrı bir risk değerlendirmesi ve kullanıcı onayı olmadan denenmez.
 
@@ -147,7 +146,6 @@ Bilinmeyenler: AK870 V2 (ekranlı), AK820 MAX Ultra, AK870/873/966, AULA F99 Max
 
 ## 9. Açık sorular
 
-- Fn ışığı şarj bitince sönüyor mu (bölüm 5)?
 - Bluetooth kanal ve eşleştirme kısayolları (Fn+Q/W/E, Fn+R) bu klavyede denenmedi.
 - Bluetooth modunda kablo takılıyken klavyenin USB arayüzleri gerçekten kayboluyor mu? 2.4G için kaynaklar evet diyor, BT için ölçülmedi.
 - Bir AK980 V2 projesi (d991d/ajazz-control) ekran yüklemesinin yuva baytı için `03` kullanıyor; biz `01` kullanıyoruz ve kullanıcının klavyesinde 33 yükleme sorunsuz çalıştı. Fark ürün yazılımı sürümünden olabilir.
