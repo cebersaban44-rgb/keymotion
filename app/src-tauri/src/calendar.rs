@@ -565,7 +565,8 @@ impl CalendarHandle {
                         }
                         Err(e) => {
                             tracing::info!(%id, "calendar not understood: {e}");
-                            read.error = Some("not a calendar".into());
+                            read.events.clear();
+                            read.error = Some(if e == ics::WEB_PAGE { e } else { ics::NOT_A_CALENDAR.into() });
                         }
                     }
                 }

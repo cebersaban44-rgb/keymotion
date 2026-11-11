@@ -13,6 +13,7 @@ import type { CalendarEvent } from "../bindings/CalendarEvent";
 import type { CalendarProvider } from "../bindings/CalendarProvider";
 import type { CalendarSettings } from "../bindings/CalendarSettings";
 import type { CalendarState } from "../bindings/CalendarState";
+import type { MessageKey } from "./i18n";
 import { inTauri } from "./ipc";
 import { mockLiveHold, mockReturnAfter, submitLive, useLive } from "./live";
 import type { Prepared } from "./screenImport";
@@ -41,6 +42,36 @@ export function providerOf(url: string): CalendarProvider {
 /** The backend takes `https://` and `webcal://` addresses only. */
 export function addressOk(url: string) {
   return /^(https|webcals?):\/\/[^\s/?#]+/i.test(url.trim());
+}
+
+/**
+ * Links people paste by mistake: an event's link, the calendar's page, a
+ * published calendar's web page. `blocks`: it can never work, so it is
+ * not added; otherwise only a warning (owner's first try, 2026-11-11: an
+ * event's "invite by link" address).
+ */
+export function linkProblem(url: string): { key: MessageKey; blocks: boolean } | null {
+  let u: URL;
+  try {
+    u = new URL(url.trim().replace(/^webcals?:/i, "https:"));
+  } catch {
+    return null;
+  }
+  const host = u.hostname.toLowerCase();
+  const path = u.pathname.toLowerCase();
+  if (host.endsWith("google.com")) {
+    if (path.includes("/calendar/ical/")) {
+      return path.includes("/public/") ? { key: "calendar.link.googlePublic", blocks: false } : null;
+    }
+    if (path.includes("/calendar/event") || u.searchParams.has("eid") || u.searchParams.get("action") === "TEMPLATE") {
+      return { key: "calendar.link.googleEvent", blocks: true };
+    }
+    return { key: "calendar.link.googlePage", blocks: true };
+  }
+  const outlook = host.includes("outlook.") || host.endsWith("office365.com") || host.endsWith("live.com");
+  if (outlook && path.endsWith(".html")) return { key: "calendar.link.outlookHtml", blocks: true };
+  if (host.endsWith("icloud.com") && !path.includes("/published/")) return { key: "calendar.link.applePage", blocks: true };
+  return null;
 }
 
 const rgb = (c: readonly number[]) => `rgb(${c[0]},${c[1]},${c[2]})`;

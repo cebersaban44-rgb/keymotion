@@ -34,14 +34,69 @@ pub struct Occurrence {
 /// Most repeats a single event may open up into within the span.
 const MAX_REPEATS: u16 = 1_000;
 
+/// The address gave a web page (a sign-in page, an event's or the
+/// calendar's page) instead of a calendar.
+pub const WEB_PAGE: &str = "web page";
+/// The address gave something else that is not a calendar.
+pub const NOT_A_CALENDAR: &str = "not a calendar";
+
+/// The events and time zones of a feed, each read on its own: one line
+/// the parser does not take spoils only its own event, not the calendar
+/// (and not the events after it).
+fn blocks(unfolded: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut open: Option<(String, Vec<&str>)> = None;
+    for line in unfolded.lines() {
+        let l = line.trim_end_matches('\r');
+        let upper = l.trim().to_ascii_uppercase();
+        if let Some((name, lines)) = &mut open {
+            lines.push(l);
+            if upper == format!("END:{name}") {
+                let mut block = lines.join("\r\n");
+                block.push_str("\r\n");
+                out.push(block);
+                open = None;
+            }
+        } else if let Some(name) = upper.strip_prefix("BEGIN:") {
+            if name == "VEVENT" || name == "VTIMEZONE" {
+                open = Some((name.to_string(), vec![l]));
+            }
+        }
+    }
+    out
+}
+
 /// Events of `text` that overlap `from_ms..to_ms`, sorted by start.
 /// `local`: the zone of floating times and whole days (the PC's zone).
+/// Errors: [`WEB_PAGE`], [`NOT_A_CALENDAR`].
 pub fn occurrences(text: &str, from_ms: f64, to_ms: f64, local: Tz) -> Result<Vec<Occurrence>, String> {
     let unfolded = unfold(text);
-    let cal = read_calendar(&unfolded).map_err(|e| format!("not a calendar: {}", e.lines().next().unwrap_or("")))?;
-    let zones = Zones::new(&cal.components, local);
+    let head = unfolded.trim_start_matches('\u{feff}').trim_start();
+    if head.starts_with('<') {
+        return Err(WEB_PAGE.into());
+    }
+    if !head.get(..15).is_some_and(|h| h.eq_ignore_ascii_case("BEGIN:VCALENDAR")) {
+        return Err(NOT_A_CALENDAR.into());
+    }
+    let blocks = blocks(&unfolded);
+    let mut skipped = 0;
+    let components: Vec<Component> = blocks
+        .iter()
+        .filter_map(|b| match read_calendar(b) {
+            Ok(cal) => Some(cal.components),
+            Err(_) => {
+                skipped += 1;
+                None
+            }
+        })
+        .flatten()
+        .collect();
+    if skipped > 0 {
+        tracing::debug!(skipped, "calendar entries not understood; left out");
+    }
+    let zones = Zones::new(&components, local);
     let events: Vec<&Component> =
-        cal.components.iter().filter(|c| c.name.as_str().eq_ignore_ascii_case("VEVENT")).collect();
+        components.iter().filter(|c| c.name.as_str().eq_ignore_ascii_case("VEVENT")).collect();
 
     // Instances moved or changed by an override, by (UID, original start).
     let mut overridden: HashSet<(String, i64)> = HashSet::new();
@@ -514,9 +569,23 @@ END:VCALENDAR\n";
     }
 
     #[test]
-    fn bad_input_is_an_error_not_a_panic() {
-        let page = occurrences("<html>not a calendar</html>", 0.0, 1.0, ist());
-        assert!(page.is_err() || page.unwrap().is_empty());
+    fn web_pages_and_odd_entries() {
+        // A sign-in page or an event's page, not a calendar.
+        assert_eq!(occurrences("<!DOCTYPE html><html>…</html>", 0.0, 1.0, ist()), Err(WEB_PAGE.into()));
+        assert_eq!(occurrences("\u{feff}  <html>", 0.0, 1.0, ist()), Err(WEB_PAGE.into()));
+        assert_eq!(occurrences("Not found", 0.0, 1.0, ist()), Err(NOT_A_CALENDAR.into()));
+        // One entry the parser does not take is left out; the ones after it stay.
+        let feed = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n\
+BEGIN:VEVENT\r\nUID:bad\r\nTHIS LINE HAS NO COLON\r\nDTSTART:20261111T070000Z\r\nSUMMARY:Bozuk\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:good\r\nDTSTART:20261111T090000Z\r\nDTEND:20261111T093000Z\r\nSUMMARY:Sağlam\r\n\
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN=\"Şaban Çeber\";X-NUM-GUESTS=0:mailto:a@b.c\r\n\
+DESCRIPTION:Bu etkinlik bir e-postadan otomatik olarak oluşturuldu.\\n<a href=\"https://x\">x</a>\r\n\
+BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-P0DT0H30M0S\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let (from, to) = day(2026, 11, 11);
+        let o = occurrences(feed, from, to, ist()).unwrap();
+        let good: Vec<&Occurrence> = o.iter().filter(|o| o.title == "Sağlam").collect();
+        assert_eq!(good.len(), 1);
+        assert_eq!(good[0].start_ms, at(2026, 11, 11, 12, 0));
         let broken = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:x\nDTSTART:nonsense\nSUMMARY:x\nEND:VEVENT\nEND:VCALENDAR\n";
         assert_eq!(occurrences(broken, 0.0, f64::MAX / 4.0, ist()).unwrap(), vec![]);
     }
