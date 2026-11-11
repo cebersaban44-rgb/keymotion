@@ -48,7 +48,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | **Ekran Stüdyosu**: dosyadan (resim, GIF, video; kırpma, süre), yazı kartları (5 şablon), slayt; önizleme, onay, kütüphane, fabrika animasyonuna dönüş | ✅ Kullanıcı klavyede hepsini denedi (maddeler 23–25). |
 | Ekran → **Işıkları uydur**: görselin paletinden tuş tasarımı (degrade, tek renk, görsel), Işıklar'da taslak | ✅ Kullanıcı mor kartta klavyede doğruladı (madde 26). |
 | Ekran → **Canlı ekran**: canlı mod, günlük yükleme bütçesi, "Çalan şarkı" kartı, kapatınca önceki görseli geri yükleme; "Ekranda ne görünür?" sırası (zamanlayıcı → şarkı → kendi görselin), kaynak bitince kendi görseline dönüş | ✅ Kullanıcı klavyede denedi (madde 27). Sıra, kendi görseline dönüş, bekleyen kartın gösterilmesi ve "Şimdi gönder" de klavyede denendi, çalışıyor (maddeler 31–32). |
-| Araçlar → **Sistem göstergeleri**: işlemci (1…0), ekran kartı (Q…P) ve bellek (A…;) yükü tuş sıralarında çubuk; ses düzeyi topuz çevrilince F1…F12'de 1,5 sn; Windows'ta mikrofon sessizken seçilen tuş kırmızı; Isı ya da kendi rengi, soluk iz, geri kalan tuşlar karanlık ya da soluk renk, parlaklık (flash'sız). Zamanlayıcı çubukların üstünde, ses ve mikrofon zamanlayıcının üstünde | 🟡 Uygulamada uçtan uca denendi (CDP): kareler klavyeye gidiyor, zamanlayıcı denemesi üstüne çıkıyor, bitince göstergeler geri geliyor (madde 33). Kullanıcı uygulamada açtı; klavyede gözle onayı bekleniyor. |
+| Araçlar → **Sistem göstergeleri**: işlemci (1…0), ekran kartı (Q…P) ve bellek (A…;) yükü tuş sıralarında çubuk; ses düzeyi topuz çevrilince F1…F12'de 1,5 sn; Windows'ta mikrofon sessizken seçilen tuş kırmızı; Isı ya da kendi rengi, soluk iz, geri kalan tuşlar karanlık ya da soluk renk, parlaklık (flash'sız). Zamanlayıcı çubukların üstünde, ses ve mikrofon zamanlayıcının üstünde | ✅ Uygulamada uçtan uca denendi (CDP); kullanıcı klavyede denedi: "Çalışıyor" (madde 33). |
 | Araçlar → **Odak zamanlayıcısı** (Pomodoro tekniği): odak ve mola süreleri; bütün klavye fazın rengiyle dolu başlar ve süre azaldıkça seçilen yönde boşalır (flash'sız; yön, renkler, parlaklık, nabız, faz geçişi, ses seçilebilir; "Klavyede dene"); faz başında ekran kartı; kenar çubuğunda kalan süre | ✅ Kullanıcı klavyede denedi: ışıklar, bildirim sesi, geçiş efektleri ve süreler çalışıyor (maddeler 28–30). Canlı mod açıkken faz kartları da klavyede çalışıyor (madde 31). |
 
 ## 3. Kronoloji: ne yaptık, neden
@@ -558,7 +558,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Gerçek uygulamada (CDP): göstergeler açılınca `Gauges` katmanı 97 LED'le başladı; "Klavyede dene" sırasında `Timer` katmanı üstüne çıktı ve bitince göstergeler kaldı (klavye kayıtlı ışığa dönmedi); kapatınca "no light layer left". Ayrıntı: `donanim-dogrulama.md`.
       - İlk denemede sayfa açılınca değerler 2–3 sn "okunamadı" kaldı: ekran kartı sayacının ilk açılışı kilidi tutuyordu (ders 48). Düzeltildi; yeni açılan uygulamada değerler 0,5 sn içinde geliyor.
     - **Kullanıcı (2026-11-10, 22:50):** Uygulamada göstergeleri kendisi açtı, belleği de açtı, parlaklığı denedi (son 4), soluk rengi denedi ve Karanlık'a döndü. Deneme betiğim bir kez anahtara körlemesine tıklayıp göstergeleri kapattı; aynı ayarla geri açıldı (ders 47).
-    - **Bekleyen:** Kullanıcının klavyede gözle denemesi: çubuk renkleri, topuzla ses çubuğu, mikrofon tuşu.
+    - **Kullanıcının denemesi (2026-11-11):** Klavyede denedi: "Çalışıyor." Konu kapandı.
     - **Sonraya:** ses spektrumu (WASAPI loopback) ayrı ve daha büyük iş; ekran kartı sıcaklığı (NVIDIA) isteğe bağlı.
 
 ## 4. Sistem nasıl kurulu (as-built)
@@ -736,7 +736,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 
 1. `git switch develop && git pull`, sonra yeni iş için dal aç. PR açınca auto-merge ve auto-fix'i aç (`gelistirme-akisi.md`).
 2. **Tuş atama ve makrolar bitti** (madde 19–21). Klavye fabrika durumunda: atama varsayılan, makro yok; `keymap.json` ve `macros.json` kayıtları da öyle.
-3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Odak zamanlayıcısı yapıldı ve kullanıcı denedi (maddeler 28–30); ekran sırası ve kendi görseline dönüş yapıldı ve kullanıcı denedi (maddeler 31–32); LED canlı katmanı "Sistem göstergeleri" olarak yapıldı (madde 33), kullanıcının klavyede denemesi bekleniyor.**
+3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Odak zamanlayıcısı yapıldı ve kullanıcı denedi (maddeler 28–30); ekran sırası ve kendi görseline dönüş yapıldı ve kullanıcı denedi (maddeler 31–32); LED canlı katmanı "Sistem göstergeleri" olarak yapıldı ve kullanıcı klavyede denedi (madde 33).**
    - **Kullanıcının isteği:** "Ürünün farkı burada ortaya çıkacak." Ayrıca: "Buradaki görüntüyü de kaybetmeyelim" (stok ana sayfa) ve "birden fazla ekran görüntüsü veya başka ne yapabiliriz".
    - **Kısa sonuçlar:**
      - Resim ve GIF: evet, en çok 140 kare.
@@ -764,7 +764,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
           - Kullanıcının ayarı `pomodoro.json`'da: 1/1/1 dk, 2 tur, ses açık. Testler bu ayarı okuyup aynen geri yazar.
         - **Ekran sayfası düzeni** (maddeler 29–30): Görseller ve Canlı ekran sekmeleri; kütüphane sayfalı; Odak zamanlayıcısı kendi sayfasında.
         - **LED canlı katmanı yapıldı: Araçlar → Sistem göstergeleri** (madde 33). İşlemci, ekran kartı, bellek çubukları; topuzla ses düzeyi; mikrofon sessiz uyarısı. Zamanlayıcı çubukların üstünde, ses ve mikrofon zamanlayıcının üstünde (kullanıcının kararı).
-          - **Bekleyen:** kullanıcının klavyede gözle denemesi (renkler, topuzla ses çubuğu, mikrofon tuşu). Kullanıcı uygulamada göstergeleri açtı (bellek dahil, parlaklık 4).
+          - **Kullanıcı klavyede denedi (2026-11-11): "Çalışıyor."** Kullanıcının ayarı: göstergeler açık, bellek dahil, Isı, Karanlık, parlaklık 4.
           - **Sıradaki:** takvim, hatırlatıcı, oyun oturumu. Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.
@@ -921,7 +921,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
   - [x] Canlı mod: günlük bütçe (varsayılan 24), "Çalan şarkı", kapatınca önceki görsele dönüş.
   - [x] Odak zamanlayıcısı (maddeler 28–30; kullanıcı klavyede denedi). Açık: faz kartları canlı mod açıkken klavyede denenmedi.
   - [x] Ekran sayfası sekmeleri ve sayfalı kütüphane (madde 29).
-  - [x] LED canlı katmanı: Sistem göstergeleri (madde 33; kullanıcının klavyede denemesi bekleniyor).
+  - [x] LED canlı katmanı: Sistem göstergeleri (madde 33; kullanıcı klavyede denedi).
   - [ ] Faz C'nin geri kalanı: takvim, hatırlatıcı, oyun oturumu; ses spektrumu.
 - [ ] **Kendi firmware katmanımız** (kullanıcının fikri, 2026-11-10; araştırma hattı, şimdilik yapılmıyor). Stok firmware'de olmayan canlı ekranı (RAM'den çizim) kendi firmware'imizle ya da stok firmware'e yamayla eklemek.
   - Emsal: kardeş AK820 Pro'da QMK portu ve Jackrabbit firmware'i; panoyu firmware çiziyor, flash aşınması yok.
