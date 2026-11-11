@@ -12,15 +12,16 @@ mod ics;
 mod live;
 pub mod migrate;
 mod now_playing;
+mod official_driver;
 mod pomodoro;
 mod reminders;
 mod screen_lib;
 mod settings;
 
 use calendar::CalendarHandle;
-use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request};
+use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request, ScreenWriteStep};
 use dto::{
-    CalendarSettings, CalendarState, Calibration, CalibrationInfo, ClockStatus, EffectInfo, EffectRequest,
+    CalendarSettings, CalendarState, Calibration, CalibrationInfo, ClockStatus, EffectInfo, EffectRequest, FlashWrite,
     GaugesSettings, GaugesState, KeyAssignment, KeyboardInfo, KeymapCatalog, KeymapLayer, KeymapState, LedColor,
     LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, PomodoroSettings, PomodoroState, Reminder,
     ReminderSettings, ReminderState, ScreenItem, ScreenItemKind, ScreenState, SettingsReset, SongStop, ThemePreference,
@@ -33,16 +34,18 @@ use now_playing::NowPlaying;
 use pomodoro::{PomodoroAction, PomodoroHandle};
 use reminders::RemindersHandle;
 use screen_lib::ScreenLibrary;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 
 /// Event asking the UI to confirm closing while changes are unsaved.
 const EVENT_CLOSE_REQUESTED: &str = "close-requested";
 /// If the UI does not acknowledge a close request in time (for example a
-/// crashed webview), the window closes anyway so the app can always quit.
+/// crashed webview), the window closes anyway so the app can always quit;
+/// a flash write in progress is waited for first.
 const CLOSE_ACK_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Whether the UI holds changes that are not stored on the keyboard yet.
@@ -50,6 +53,31 @@ const CLOSE_ACK_TIMEOUT: Duration = Duration::from_secs(2);
 struct CloseGuard {
     unsaved: AtomicBool,
     acked: AtomicBool,
+}
+
+/// A flash write runs (closing asks first, as with unsaved changes).
+fn flash_busy(app: &AppHandle) -> bool {
+    app.try_state::<Arc<DeviceHandle>>().is_some_and(|d| d.flash.current().is_some())
+}
+
+/// The official driver's copy of the factory animation: searched once per
+/// run, on first ask (`None` until then).
+#[derive(Default)]
+struct DriverGif(Mutex<Option<Option<PathBuf>>>);
+
+/// Search for the official driver's GIF (blocking; the first call reads
+/// the program folders, later calls return the answer kept).
+fn driver_gif(found: &DriverGif) -> Option<PathBuf> {
+    let mut kept = found.0.lock().ok()?;
+    if let Some(path) = kept.as_ref() {
+        return path.clone();
+    }
+    use kb_protocol::sonix::screen::{HEIGHT, WIDTH};
+    let started = Instant::now();
+    let path = official_driver::find_factory_gif(&official_driver::search_roots(), WIDTH as u16, HEIGHT as u16);
+    tracing::info!(found = path.is_some(), ms = started.elapsed().as_millis() as u64, "official driver searched");
+    *kept = Some(path.clone());
+    path
 }
 
 type Device<'a> = State<'a, Arc<DeviceHandle>>;
@@ -174,10 +202,69 @@ async fn screen_upload(
     }
 }
 
+/// Whether AJAZZ's official driver left a copy of the factory animation on
+/// this PC. The first call searches the program folders (off the UI
+/// thread); the answer is kept for the run.
+#[tauri::command]
+async fn screen_find_driver_backup(found: State<'_, Arc<DriverGif>>) -> Result<bool, String> {
+    let found = found.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || driver_gif(&found).is_some()).await.map_err(|e| e.to_string())
+}
+
+/// Back up the factory animation from the official driver's copy: kept as
+/// the factory backup and added to the library as the factory item.
+#[tauri::command]
+async fn screen_backup_from_driver(
+    found: State<'_, Arc<DriverGif>>,
+    library: Library<'_>,
+    live: Live<'_>,
+    model_id: String,
+) -> Result<ScreenState, String> {
+    tracing::debug!("ipc: screen_backup_from_driver");
+    let found = found.inner().clone();
+    let (gif, anim) = tauri::async_runtime::spawn_blocking(move || {
+        let path = driver_gif(&found).ok_or("no official driver copy found")?;
+        let gif = std::fs::read(&path).map_err(|e| e.to_string())?;
+        let anim = screen_lib::factory_animation(&gif)?;
+        Ok::<_, String>((gif, anim))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let state = {
+        let mut lib = lock_library(&library)?;
+        lib.store_factory(&gif, &anim)?;
+        lib.state(&model_id)
+    };
+    // The live mode no longer needs to ask about the factory animation.
+    live.changed();
+    Ok(state)
+}
+
+/// The flash write in progress, if any (`flash-write` events follow it).
+#[tauri::command]
+fn flash_write_state(device: Device<'_>) -> Option<FlashWrite> {
+    device.flash.current()
+}
+
+/// The text Windows shows if the user shuts down during a flash write, in
+/// the UI language.
+#[tauri::command]
+fn set_write_reason(device: Device<'_>, reason: String) {
+    device.flash.set_reason(&reason);
+}
+
 /// Live mode, budget and sources.
 #[tauri::command]
 fn live_state(live: Live<'_>) -> Result<LiveState, String> {
     live.state()
+}
+
+/// The user accepted, once, that live cards erase the factory animation
+/// (there is no backup of it).
+#[tauri::command]
+fn live_ack_factory(live: Live<'_>) -> Result<LiveState, String> {
+    tracing::debug!("ipc: live_ack_factory");
+    live.ack_factory()
 }
 
 /// Change the live mode switch, the budget plan or a source switch (fields
@@ -625,6 +712,24 @@ fn apply_backdrop(window: &WebviewWindow, build: u32) -> bool {
     }
 }
 
+/// Keeps the library's "incomplete" mark in step with the device actor's
+/// screen uploads. The item to offer again: the one uploaded, or for a
+/// live card the user's own picture.
+fn screen_journal(library: &Arc<Mutex<ScreenLibrary>>) -> device::ScreenWriteHook {
+    let library = library.clone();
+    Box::new(move |step: ScreenWriteStep<'_>| {
+        let Ok(mut lib) = library.lock() else { return };
+        match step {
+            ScreenWriteStep::Starting { label, model_id } => {
+                let retry =
+                    if label.starts_with("live:") { lib.live_own().map(|o| o.id) } else { Some(label.to_string()) };
+                lib.write_starting(model_id, retry);
+            }
+            ScreenWriteStep::Ended { flash_written, ok } => lib.write_ended(flash_written, ok),
+        }
+    })
+}
+
 pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -644,10 +749,14 @@ pub fn run() {
             }
         }))
         .manage(CloseGuard::default())
+        .manage(Arc::new(DriverGif::default()))
         .on_window_event(|window, event| {
             let tauri::WindowEvent::CloseRequested { api, .. } = event else { return };
             let guard = window.state::<CloseGuard>();
-            if !guard.unsaved.load(Ordering::SeqCst) {
+            // A flash write (a live card, going back to the own picture)
+            // asks too, even if the UI has not heard of it yet.
+            let writing = flash_busy(window.app_handle());
+            if !guard.unsaved.load(Ordering::SeqCst) && !writing {
                 return;
             }
             api.prevent_close();
@@ -659,6 +768,11 @@ pub fn run() {
             std::thread::spawn(move || {
                 std::thread::sleep(CLOSE_ACK_TIMEOUT);
                 if !window.state::<CloseGuard>().acked.load(Ordering::SeqCst) {
+                    // Never cut a write short: wait for it, then close.
+                    let since = Instant::now();
+                    while flash_busy(window.app_handle()) && since.elapsed() < device::SCREEN_UPLOAD_TIMEOUT {
+                        std::thread::sleep(Duration::from_millis(250));
+                    }
                     tracing::warn!("UI did not answer the close request; closing anyway");
                     let _ = window.destroy();
                 }
@@ -672,7 +786,12 @@ pub fn run() {
             let config_dir = app.path().app_config_dir().map_err(|e| tracing::warn!("no config directory: {e}")).ok();
             let calibration = config_dir.as_deref().map(settings::load_calibration).unwrap_or_default();
             let library = Arc::new(Mutex::new(ScreenLibrary::open(config_dir.as_deref())));
-            let device = Arc::new(device::spawn(app.handle().clone(), calibration, config_dir.clone()));
+            let device = Arc::new(device::spawn(
+                app.handle().clone(),
+                calibration,
+                config_dir.clone(),
+                screen_journal(&library),
+            ));
             let live = LiveHandle::spawn(app.handle().clone(), library.clone(), device.clone());
             app.manage(now_playing::spawn(app.handle().clone(), live.clone()));
             app.manage(PomodoroHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir.clone()));
@@ -717,7 +836,12 @@ pub fn run() {
             screen_rename,
             screen_remove,
             screen_upload,
+            screen_find_driver_backup,
+            screen_backup_from_driver,
+            flash_write_state,
+            set_write_reason,
             live_state,
+            live_ack_factory,
             live_configure,
             live_submit,
             live_send_now,

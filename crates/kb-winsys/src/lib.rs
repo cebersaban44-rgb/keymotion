@@ -18,6 +18,8 @@
 //! * Running programs: a Toolhelp snapshot, with each program's path where
 //!   Windows gives it, so the app can refuse to write to the keyboard while
 //!   another program talks to it.
+//! * Shutdown: while the app writes the keyboard's flash, Windows is told
+//!   why shutting down now is a bad idea (`ShutdownBlockReasonCreate`).
 //!
 //! Types holding COM or PDH handles are not `Send`: make them on the thread
 //! that uses them.
@@ -118,6 +120,21 @@ pub fn gpu_busiest<'a>(items: impl IntoIterator<Item = (&'a str, f64)>) -> Optio
         }
     }
     engines.into_values().reduce(f64::max).map(|v| v.clamp(0.0, 100.0) as f32)
+}
+
+/// Tell Windows that the app is writing to the keyboard: if the user shuts
+/// down or signs out meanwhile, Windows lists the app with `reason`
+/// (`ShutdownBlockReasonCreate`). `hwnd` is the main window's handle; the
+/// call only works on the thread that created that window. False when
+/// Windows refused.
+pub fn block_shutdown(hwnd: isize, reason: &str) -> bool {
+    sys::block_shutdown(hwnd, reason)
+}
+
+/// The write is over: shutting down is fine again
+/// (`ShutdownBlockReasonDestroy`). Same thread rule as [`block_shutdown`].
+pub fn unblock_shutdown(hwnd: isize) -> bool {
+    sys::unblock_shutdown(hwnd)
 }
 
 /// Graphics load from the performance counters.
@@ -231,6 +248,28 @@ mod sys {
         // SAFETY: the handle came from CreateToolhelp32Snapshot and is closed once.
         let _ = unsafe { CloseHandle(snapshot) };
         out
+    }
+
+    // Declared here rather than through the `windows` crate: its
+    // `Win32_System_Shutdown` feature would rebuild the whole crate for two
+    // functions. Both live in user32, which every window links anyway.
+    #[link(name = "user32")]
+    extern "system" {
+        fn ShutdownBlockReasonCreate(hwnd: *mut core::ffi::c_void, reason: *const u16) -> i32;
+        fn ShutdownBlockReasonDestroy(hwnd: *mut core::ffi::c_void) -> i32;
+    }
+
+    pub fn block_shutdown(hwnd: isize, reason: &str) -> bool {
+        let wide: Vec<u16> = reason.encode_utf16().chain(std::iter::once(0)).collect();
+        // SAFETY: `wide` is NUL-terminated UTF-16 and outlives the call
+        // (Windows copies it). A wrong handle only makes the call fail.
+        unsafe { ShutdownBlockReasonCreate(hwnd as *mut core::ffi::c_void, wide.as_ptr()) != 0 }
+    }
+
+    pub fn unblock_shutdown(hwnd: isize) -> bool {
+        // SAFETY: no pointers besides the handle; a wrong handle only makes
+        // the call fail.
+        unsafe { ShutdownBlockReasonDestroy(hwnd as *mut core::ffi::c_void) != 0 }
     }
 
     pub fn idle_ms() -> Option<u64> {
@@ -455,6 +494,14 @@ mod sys {
 
     pub fn idle_ms() -> Option<u64> {
         None
+    }
+
+    pub fn block_shutdown(_hwnd: isize, _reason: &str) -> bool {
+        false
+    }
+
+    pub fn unblock_shutdown(_hwnd: isize) -> bool {
+        false
     }
 
     pub struct Gpu;

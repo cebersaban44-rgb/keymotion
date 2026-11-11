@@ -904,6 +904,32 @@ pub struct ScreenState {
     pub uploads_today: u32,
     pub uploads_total: u32,
     pub limits: ScreenLimits,
+    /// The last upload to the GIF page stopped partway (an error, a quit, a
+    /// crash): the page holds part of it. `shown` is `null` meanwhile.
+    pub incomplete: Option<ScreenIncomplete>,
+}
+
+/// An upload that was cut short (see [`ScreenState::incomplete`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ScreenIncomplete {
+    /// Library item to upload again: the one cut short, or for a live card
+    /// the user's own picture. `null` when there is none.
+    pub id: Option<String>,
+    /// When the upload started (Unix ms).
+    pub at_ms: f64,
+}
+
+/// A write to the keyboard's flash in progress (`flash-write` event).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum FlashWrite {
+    /// A screen upload (up to ~5 minutes).
+    Screen,
+    /// Lighting, keymap or macros (under a second or two).
+    Settings,
 }
 
 /// `screen-upload-progress` event payload.
@@ -1069,6 +1095,10 @@ pub struct LiveState {
     pub own: Option<LiveRestore>,
     /// The screen goes back to the user's own picture at this time.
     pub going_back: Option<LiveBack>,
+    /// Turning the live mode on asks first: there is no factory backup and
+    /// the GIF page probably still shows the factory animation, which the
+    /// first card erases for good. Asked once.
+    pub factory_ack_needed: bool,
 }
 
 /// What the "Çalan şarkı" source does when the music stops.

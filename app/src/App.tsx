@@ -36,6 +36,7 @@ import { Reminders } from "./pages/Reminders";
 import { Lighting } from "./pages/Lighting";
 import { Overview } from "./pages/Overview";
 import { Screen, ScreenUploadToast } from "./pages/Screen";
+import { ScreenNotices } from "./pages/screen/Safety";
 import { Settings } from "./pages/Settings";
 
 function useBootstrap() {
@@ -224,6 +225,7 @@ export default function App() {
       </div>
       <ScreenUploadToast />
       <SafetyDialogs />
+      <ScreenNotices />
       <AnimatePresence>
         {guard.asking && <UnsavedDialog items={guard.items} onCancel={guard.cancel} />}
       </AnimatePresence>

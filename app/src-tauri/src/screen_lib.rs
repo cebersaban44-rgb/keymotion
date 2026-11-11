@@ -5,8 +5,12 @@
 //! The keyboard cannot give its animation back, so this is the only copy.
 //! Files live in `<config>/screen/`: `library.json` and `library/<id>.bin`.
 //! The id is a hash of the data, so the same content is stored once.
+//!
+//! An upload that starts writing the GIF page is marked "incomplete" on
+//! disk until it finishes, so a failure, a quit or a crash midway is known
+//! afterwards and the page is not shown as holding the old picture.
 
-use crate::dto::{LiveItem, LiveRestore, ScreenItem, ScreenItemKind, ScreenLimits, ScreenState};
+use crate::dto::{LiveItem, LiveRestore, ScreenIncomplete, ScreenItem, ScreenItemKind, ScreenLimits, ScreenState};
 use crate::live::LiveStored;
 use kb_protocol::sonix::screen::{self, from_blob, ScreenAnimation};
 use serde::{Deserialize, Serialize};
@@ -17,9 +21,12 @@ use std::path::{Path, PathBuf};
 
 const INDEX_FILE: &str = "library.json";
 const INDEX_VERSION: u32 = 1;
-/// Factory animation backup taken from the official driver package
-/// (docs/donanim-dogrulama.md, "Ekran yüklemesi").
+/// Factory animation backup taken from the official driver
+/// (docs/donanim-dogrulama.md, "Ekran yüklemesi"; `official_driver.rs`).
 const FACTORY_FILE: &str = "factory/ak980-pro-factory.gif";
+/// Name stored for the factory backup. The UI shows its own, translated
+/// label for the factory item (older libraries hold a Turkish name).
+pub const FACTORY_NAME: &str = "AJAZZ factory animation";
 /// The last card the live mode uploaded (not a library item).
 const LIVE_FILE: &str = "live.bin";
 /// What `shown` holds while the GIF page shows a live card.
@@ -40,11 +47,37 @@ struct Index {
     /// Live mode settings, budget and its last card.
     #[serde(default)]
     live: LiveStored,
+    /// An upload that started writing the GIF page and has not finished
+    /// (set before the first page, cleared when one finishes).
+    #[serde(default)]
+    incomplete: Option<IncompleteWrite>,
+}
+
+/// See [`Index::incomplete`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct IncompleteWrite {
+    /// Model written to; empty when not known.
+    model_id: String,
+    /// Library item to offer for uploading again.
+    id: Option<String>,
+    at_ms: f64,
 }
 
 pub struct ScreenLibrary {
     dir: Option<PathBuf>,
     index: Index,
+    /// `Some` while an upload writes the GIF page, holding the mark from
+    /// before it (put back if the flash was not touched after all).
+    writing: Option<Option<IncompleteWrite>>,
+}
+
+/// Decode the factory animation GIF (the official driver's copy) into the
+/// keyboard's format; only a 240×135 GIF the keyboard can play passes.
+pub fn factory_animation(gif: &[u8]) -> Result<ScreenAnimation, String> {
+    kb_core::screen_import::decode_gif(gif)
+        .and_then(|d| kb_core::screen_import::exact_size_animation(&d, None))
+        .map_err(|e| e.to_string())
 }
 
 /// FNV-1a 64: a stable content id (std's hasher may change between Rust
@@ -87,21 +120,30 @@ impl ScreenLibrary {
         if let Some(d) = &dir {
             index.items.retain(|i| d.join("library").join(format!("{}.bin", i.id)).is_file());
         }
-        let mut lib = Self { dir, index };
+        let mut lib = Self { dir, index, writing: None };
         lib.import_factory();
         lib
     }
 
+    pub fn has_factory(&self) -> bool {
+        self.index.items.iter().any(|i| i.kind == ScreenItemKind::Factory)
+    }
+
+    /// No factory backup, and the app never wrote the GIF page: the keyboard
+    /// probably still shows its factory animation, and the next upload
+    /// erases it for good.
+    pub fn factory_at_risk(&self) -> bool {
+        !self.has_factory() && self.index.shown.is_empty() && self.index.incomplete.is_none()
+    }
+
     fn import_factory(&mut self) {
-        if self.index.items.iter().any(|i| i.kind == ScreenItemKind::Factory) {
+        if self.has_factory() {
             return;
         }
         let Some(path) = self.dir.as_ref().map(|d| d.join(FACTORY_FILE)) else { return };
         let Ok(bytes) = fs::read(&path) else { return };
-        let anim = kb_core::screen_import::decode_gif(&bytes)
-            .and_then(|d| kb_core::screen_import::exact_size_animation(&d, None));
-        match anim {
-            Ok(anim) => match self.add("AJAZZ fabrika animasyonu", ScreenItemKind::Factory, &anim) {
+        match factory_animation(&bytes) {
+            Ok(anim) => match self.add_factory(&anim) {
                 Ok(item) => {
                     tracing::info!(id = %item.id, frames = item.frames, "factory animation added to the library")
                 }
@@ -109,6 +151,82 @@ impl ScreenLibrary {
             },
             Err(e) => tracing::warn!("factory backup unreadable: {e}"),
         }
+    }
+
+    /// Add the factory item. The same picture may be in the library already
+    /// (the user imported the GIF by hand): it becomes the factory item.
+    fn add_factory(&mut self, anim: &ScreenAnimation) -> io::Result<ScreenItem> {
+        let item = self.add(FACTORY_NAME, ScreenItemKind::Factory, anim)?;
+        if item.kind == ScreenItemKind::Factory {
+            return Ok(item);
+        }
+        let Some(stored) = self.index.items.iter_mut().find(|i| i.id == item.id) else { return Ok(item) };
+        stored.kind = ScreenItemKind::Factory;
+        stored.name = FACTORY_NAME.to_string();
+        let item = stored.clone();
+        self.save_index()?;
+        Ok(item)
+    }
+
+    /// Keep `gif`, the official driver's copy of the factory animation
+    /// (`anim` is it decoded, [`factory_animation`]), where [`Self::open`]
+    /// looks for the backup, and add it to the library as the factory item.
+    /// A library that has the factory item already keeps it.
+    pub fn store_factory(&mut self, gif: &[u8], anim: &ScreenAnimation) -> Result<ScreenItem, String> {
+        if let Some(item) = self.index.items.iter().find(|i| i.kind == ScreenItemKind::Factory) {
+            return Ok(item.clone());
+        }
+        let path = self.dir.as_ref().map(|d| d.join(FACTORY_FILE)).ok_or("library has no storage")?;
+        let write = || -> io::Result<()> {
+            fs::create_dir_all(path.parent().expect("factory dir"))?;
+            let tmp = path.with_extension("tmp");
+            fs::write(&tmp, gif)?;
+            fs::rename(&tmp, &path)
+        };
+        write().map_err(|e| format!("factory backup not saved: {e}"))?;
+        let item = self.add_factory(anim).map_err(|e| format!("factory backup not saved: {e}"))?;
+        tracing::info!(id = %item.id, frames = item.frames, "factory animation backed up from the official driver");
+        Ok(item)
+    }
+
+    /// An upload is about to write the GIF page: until it ends the page
+    /// counts as incomplete, on disk too (a crash or a quit leaves it so).
+    /// `retry` is the library item to offer for uploading again.
+    pub fn write_starting(&mut self, model_id: Option<&str>, retry: Option<String>) {
+        let before = self.index.incomplete.take();
+        self.writing = Some(before);
+        self.index.incomplete =
+            Some(IncompleteWrite { model_id: model_id.unwrap_or_default().to_string(), id: retry, at_ms: now_ms() });
+        if let Err(e) = self.save_index() {
+            tracing::warn!("upload mark not saved: {e}");
+        }
+    }
+
+    /// How the upload ended. Finished: the page is whole. Failed before
+    /// touching the flash: the mark from before comes back. Failed after:
+    /// the mark stays, the page holds part of the upload.
+    pub fn write_ended(&mut self, flash_written: bool, ok: bool) {
+        let before = self.writing.take();
+        if ok {
+            self.index.incomplete = None;
+        } else if !flash_written {
+            if let Some(before) = before {
+                self.index.incomplete = before;
+            }
+        } else if let Some(w) = &self.index.incomplete {
+            tracing::warn!(id = ?w.id, "GIF page left incomplete");
+        }
+        if let Err(e) = self.save_index() {
+            tracing::warn!("upload mark not saved: {e}");
+        }
+    }
+
+    /// The cut-short upload for this model, if any (not while one runs).
+    fn incomplete_for(&self, model_id: &str) -> Option<&IncompleteWrite> {
+        if self.writing.is_some() {
+            return None;
+        }
+        self.index.incomplete.as_ref().filter(|w| w.model_id.is_empty() || w.model_id == model_id)
     }
 
     fn data_path(&self, id: &str) -> Option<PathBuf> {
@@ -266,9 +384,12 @@ impl ScreenLibrary {
         Some(LiveRestore { id: item.id.clone(), name: item.name.clone(), frames: item.frames, pages: item.pages })
     }
 
-    /// The GIF page shows this live card already (as far as the app knows).
+    /// The GIF page shows this live card already (as far as the app knows;
+    /// not while it holds part of an upload).
     pub fn live_is_showing(&self, content: &str) -> bool {
-        self.index.live.last_content.as_deref() == Some(content) && self.index.shown.values().any(|v| v == LIVE_ID)
+        self.index.live.last_content.as_deref() == Some(content)
+            && self.index.shown.values().any(|v| v == LIVE_ID)
+            && self.index.incomplete.is_none()
     }
 
     /// The GIF page shows a live card from this source (as far as the app
@@ -321,12 +442,18 @@ impl ScreenLibrary {
                 .cmp(&(a.kind == ScreenItemKind::Factory))
                 .then(b.created_ms.total_cmp(&a.created_ms))
         });
+        let incomplete = self.incomplete_for(model_id).map(|w| ScreenIncomplete {
+            id: w.id.clone().filter(|id| items.iter().any(|i| &i.id == id)),
+            at_ms: w.at_ms,
+        });
         ScreenState {
+            // A page holding part of an upload does not show the old item.
+            shown: if incomplete.is_some() { None } else { self.index.shown.get(model_id).cloned() },
             items,
-            shown: self.index.shown.get(model_id).cloned(),
             uploads_today: self.index.uploads_by_day.get(&today()).copied().unwrap_or(0),
             uploads_total: self.index.total_uploads,
             limits: ScreenLimits::new(),
+            incomplete,
         }
     }
 }
@@ -407,12 +534,8 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    #[test]
-    fn factory_backup_is_imported_once_and_kept() {
-        let dir = temp_dir("factory");
-        let factory = dir.join("screen").join(FACTORY_FILE);
-        fs::create_dir_all(factory.parent().unwrap()).unwrap();
-        // A one-frame 240×135 GIF.
+    /// A one-frame 240×135 GIF.
+    fn factory_gif() -> Vec<u8> {
         let mut gif = Vec::new();
         {
             let mut enc = gif::Encoder::new(&mut gif, 240, 135, &[0, 0, 0]).unwrap();
@@ -424,7 +547,84 @@ mod tests {
             };
             enc.write_frame(&f).unwrap();
         }
-        fs::write(&factory, gif).unwrap();
+        gif
+    }
+
+    #[test]
+    fn a_cut_upload_marks_the_page_incomplete_until_one_finishes() {
+        let dir = temp_dir("incomplete");
+        let mut lib = ScreenLibrary::open(Some(&dir));
+        assert!(lib.factory_at_risk(), "nothing uploaded, no backup");
+        let a = lib.add("A", ScreenItemKind::Image, &ScreenAnimation::still(test_pattern())).unwrap();
+        let b = lib.add("B", ScreenItemKind::Image, &ScreenAnimation::still(Frame::filled(rgb565(0, 0, 255)))).unwrap();
+        lib.write_starting(Some("m"), Some(a.id.clone()));
+        lib.write_ended(true, true);
+        lib.uploaded("m", &a.id).unwrap();
+        assert!(!lib.factory_at_risk(), "the app wrote the GIF page already");
+        assert_eq!(lib.state("m").shown.as_deref(), Some(a.id.as_str()));
+
+        // B starts: not shown as incomplete while it runs.
+        lib.write_starting(Some("m"), Some(b.id.clone()));
+        let s = lib.state("m");
+        assert!(s.incomplete.is_none() && s.shown.as_deref() == Some(a.id.as_str()), "running, not cut");
+        // It fails after the first page: the page holds part of B.
+        lib.write_ended(true, false);
+        let s = lib.state("m");
+        assert_eq!(s.incomplete.as_ref().and_then(|i| i.id.as_deref()), Some(b.id.as_str()));
+        assert!(s.shown.is_none(), "A is not on the keyboard any more");
+        assert!(lib.state("other").incomplete.is_none(), "another model's page is fine");
+
+        // Kept on disk; a try that never touched the flash changes nothing.
+        let mut lib = ScreenLibrary::open(Some(&dir));
+        assert_eq!(lib.state("m").incomplete.and_then(|i| i.id), Some(b.id.clone()));
+        lib.write_starting(Some("m"), Some(a.id.clone()));
+        lib.write_ended(false, false);
+        assert_eq!(lib.state("m").incomplete.and_then(|i| i.id), Some(b.id.clone()));
+
+        // Quit or crash midway: the mark written before the first page stays.
+        lib.write_starting(Some("m"), Some(a.id.clone()));
+        drop(lib);
+        let mut lib = ScreenLibrary::open(Some(&dir));
+        assert_eq!(lib.state("m").incomplete.and_then(|i| i.id), Some(a.id.clone()), "offered on the next start");
+
+        // A finished upload clears it.
+        lib.write_starting(Some("m"), Some(a.id.clone()));
+        lib.write_ended(true, true);
+        lib.uploaded("m", &a.id).unwrap();
+        let s = ScreenLibrary::open(Some(&dir)).state("m");
+        assert!(s.incomplete.is_none());
+        assert_eq!(s.shown.as_deref(), Some(a.id.as_str()));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_drivers_copy_becomes_the_factory_backup() {
+        let dir = temp_dir("driver");
+        let gif = factory_gif();
+        let anim = factory_animation(&gif).unwrap();
+        assert!(factory_animation(b"GIF89a\x10\0\x10\0").is_err(), "a broken file is refused");
+        let mut lib = ScreenLibrary::open(Some(&dir));
+        // The user imported the same GIF by hand before.
+        let mine = lib.add("logo", ScreenItemKind::Animation, &anim).unwrap();
+        let item = lib.store_factory(&gif, &anim).unwrap();
+        assert_eq!((item.id.as_str(), item.kind), (mine.id.as_str(), ScreenItemKind::Factory));
+        assert_eq!(item.name, FACTORY_NAME);
+        assert_eq!(lib.state("m").items.len(), 1, "one entry, now the factory item");
+        assert!(dir.join("screen").join(FACTORY_FILE).is_file(), "kept where the backup is looked for");
+        assert!(!lib.factory_at_risk());
+        assert_eq!(lib.store_factory(&gif, &anim).unwrap().id, item.id, "a second backup changes nothing");
+        let lib = ScreenLibrary::open(Some(&dir));
+        assert_eq!(lib.state("m").items.iter().filter(|i| i.kind == ScreenItemKind::Factory).count(), 1);
+        assert!(ScreenLibrary::open(None).store_factory(&gif, &anim).is_err(), "nowhere to keep it");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn factory_backup_is_imported_once_and_kept() {
+        let dir = temp_dir("factory");
+        let factory = dir.join("screen").join(FACTORY_FILE);
+        fs::create_dir_all(factory.parent().unwrap()).unwrap();
+        fs::write(&factory, factory_gif()).unwrap();
         let mut lib = ScreenLibrary::open(Some(&dir));
         let items = lib.state("m").items;
         assert_eq!(items.len(), 1);

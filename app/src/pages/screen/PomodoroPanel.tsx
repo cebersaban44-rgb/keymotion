@@ -44,7 +44,7 @@ import { useApp } from "../../lib/store";
 import { LIMITS, POMODORO_SOURCE, fmtClock, phaseColor, remainingNow, usePomodoro } from "../../lib/pomodoro";
 import { TRY_MS, fromHex, keyPositions, lightColors, tryColors, viewOf } from "../../lib/pomodoroLights";
 import { uploadSeconds } from "../../lib/screenImport";
-import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb } from "./common";
+import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useItemName } from "./common";
 import { SendNow } from "./LivePanel";
 
 const MOTIONS: { id: PomodoroMotion; label: MessageKey; icon: LucideIcon }[] = [
@@ -516,6 +516,7 @@ function ScreenSettings({ s, set }: { s: PomodoroState; set: (patch: Partial<Pom
  *  with the user's lengths and colours, and what comes at the end. */
 function CardStrip({ settings, own }: { settings: PomodoroSettings; own: LiveRestore | null }) {
   const t = useT();
+  const name = useItemName();
   const locale = useApp((x) => x.locale);
   const [cards, setCards] = useState<Uint16Array[] | null>(null);
   const { focusMin, shortMin, longMin, rounds, focusColor, shortColor, longColor, endScreen } = settings;
@@ -563,7 +564,7 @@ function CardStrip({ settings, own }: { settings: PomodoroSettings; own: LiveRes
     endScreen === "summary"
       ? cards?.[2]
       : ownFrame;
-  const endLabel = `${t("pomo.screen.atEnd")}: ${endScreen === "summary" ? t("pomo.end.summary.short") : own?.name ?? t("pomo.end.own")}`;
+  const endLabel = `${t("pomo.screen.atEnd")}: ${endScreen === "summary" ? t("pomo.end.summary.short") : (own ? name(own) : t("pomo.end.own"))}`;
   return (
     <div className="flex flex-col gap-1.5" data-pomo-strip>
       <span className="text-[12px] text-ink-3">{t("pomo.screen.example")}</span>
@@ -603,6 +604,7 @@ function EndChoice({
   onChange: (v: PomodoroEndScreen) => void;
 }) {
   const t = useT();
+  const name = useItemName();
   return (
     <div className="flex flex-col gap-1.5" role="radiogroup" aria-label={t("pomo.end")} data-pomo-end>
       <span className="text-[13px] font-medium">{t("pomo.end")}</span>
@@ -629,7 +631,7 @@ function EndChoice({
               <span className="text-[12px] text-ink-3">{t(c.body)}</span>
               {c.id === "back" && own && (
                 <span className="text-[12px] text-ink-2">
-                  {t("pomo.end.own")}: <span className="font-medium text-ink">{own.name}</span> ({t("sc.uploadTime")}{" "}
+                  {t("pomo.end.own")}: <span className="font-medium text-ink">{name(own)}</span> ({t("sc.uploadTime")}{" "}
                   <span className="num">~{fmtSeconds(uploadSeconds(own.frames))}</span>)
                 </span>
               )}
