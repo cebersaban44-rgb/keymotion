@@ -18,10 +18,11 @@ import { tNow, useT } from "./lib/i18n";
 import { useKeymap } from "./lib/keymap";
 import { useLayout } from "./lib/layout";
 import { startLive } from "./lib/live";
-import { calendarCard, calendarWords, nowPlayingCard, pomodoroCard, pomodoroWords } from "./lib/liveCards";
+import { calendarCard, calendarWords, nowPlayingCard, pomodoroCard, pomodoroWords, reminderCard, reminderWords } from "./lib/liveCards";
 import { startPomodoro, usePomodoro, DEFAULT_SETTINGS } from "./lib/pomodoro";
 import { useGauges } from "./lib/gauges";
 import { startCalendar, useCalendar } from "./lib/calendar";
+import { startReminders } from "./lib/reminders";
 import { useMacros } from "./lib/macros";
 import { useScreen } from "./lib/screen";
 import { useActiveKeyboard, useApp } from "./lib/store";
@@ -29,6 +30,7 @@ import { Keymap } from "./pages/Keymap";
 import { Macros } from "./pages/Macros";
 import { Focus } from "./pages/Focus";
 import { Gauges } from "./pages/Gauges";
+import { Reminders } from "./pages/Reminders";
 import { Lighting } from "./pages/Lighting";
 import { Overview } from "./pages/Overview";
 import { Screen, ScreenUploadToast } from "./pages/Screen";
@@ -111,6 +113,7 @@ function useLiveScreen() {
       }),
     [],
   );
+  useEffect(() => startReminders((card) => reminderCard(card, reminderWords(tNow, useApp.getState().locale))), []);
   // Whether the system gauges are on (the Lighting page says so).
   useEffect(() => {
     useGauges.getState().load().catch(console.error);
@@ -191,6 +194,8 @@ export default function App() {
         return <Focus kb={kb} />;
       case "gauges":
         return <Gauges kb={kb} />;
+      case "reminders":
+        return <Reminders kb={kb} />;
     }
   };
 

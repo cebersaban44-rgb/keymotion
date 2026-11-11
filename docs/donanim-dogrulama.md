@@ -460,6 +460,13 @@ Uygulamanın Ekran sayfası; kullanıcı kendi dosyalarıyla denedi.
 - **Yükleme sayısı:** Uygulamanın kaydında toplam **26** (2026-11-10'da 24, 2026-11-11'de 2). CLI ile yapılan E1 ve E4 de eklenince **28**.
 - **Henüz gözlenmedi:** Gerçek bir toplantıdan 10 dk önce kartın kendiliğinden gelmesi ve 1 dk önce Esc'in yanıp sönmesi.
 
+### Hatırlatıcı dalgası (`04 20`, yalnızca RAM) — 2026-11-11
+
+- **Nasıl:** Gerçek uygulama (debug), CDP ile. Klavye USB'de. Kartsız (yalnız ışık) deneme: ekrana yükleme yok, flash'a yazma yok. Kullanıcının göstergeleri kendi ayarında kapalıydı; altta başka katman yoktu.
+- **"Dene":** 12:49:06 UTC'de `Nudges` katmanı başladı (ilk karede 0 LED: şerit klavyenin solundan giriyor), 12:49:09'da durdu ("no light layer left; keyboard reverts to its saved effect"). 3 sn'de 2 kare `FF` ile reddedildi (bilinen ara sıra `FF`).
+- **Zamanlanmış hatırlatma:** 13:50 (yerel) için kurulan yalnız ışıklı, tek seferlik bir hatırlatma 12:50:00.89 UTC'de çaldı (`late_s=1`: saniyelik tik), dalga 3 sn sürdü; hatırlatma kapandı, satırda "geçti" yazdı. Sonra silindi.
+- **Bekleyen:** Kullanıcının gözle denemesi (dalganın rengi ve hızı) ve kartlı bir hatırlatmanın ekrana gelmesi (2 yükleme).
+
 ### Sistem göstergeleri ışık katmanı (`04 20`, yalnızca RAM) — 2026-11-10
 
 - **Nasıl:** Gerçek uygulama (debug, `target/debug/klavye-studio.exe`), CDP ile. Klavye USB'de. Flash'a yazma yok; ekrana yükleme yok.

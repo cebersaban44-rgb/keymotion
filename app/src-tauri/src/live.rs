@@ -165,8 +165,8 @@ struct Runtime {
     /// picture at this time, unless another card comes first.
     back: Option<LiveBack>,
     /// Sources holding the screen while they have something to show: the
-    /// calendar (around a meeting) over the focus timer, both over "Çalan
-    /// şarkı", which waits while anyone holds.
+    /// calendar (around a meeting) over a reminder's card, both over the
+    /// focus timer, all over "Çalan şarkı", which waits while anyone holds.
     holders: Vec<String>,
 }
 
@@ -363,6 +363,12 @@ impl LiveHandle {
 
     pub fn enabled(&self) -> bool {
         self.library.lock().map(|l| l.live().enabled).unwrap_or(false)
+    }
+
+    /// A card could go now without waiting for the budget. A reminder's card
+    /// that would have to wait is not sent at all: late, it means nothing.
+    pub fn budget_ready(&self) -> bool {
+        self.library.lock().map(|mut l| l.live_mut().budget.tokens(now_ms()) >= 1.0).unwrap_or(false)
     }
 
     /// `source` holds the screen (`on`) or lets go. Lower sources wait
