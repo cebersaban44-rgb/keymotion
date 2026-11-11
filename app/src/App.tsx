@@ -26,6 +26,7 @@ import { startReminders } from "./lib/reminders";
 import { useMacros } from "./lib/macros";
 import { useScreen } from "./lib/screen";
 import { useActiveKeyboard, useApp } from "./lib/store";
+import { Connection } from "./pages/Connection";
 import { Keymap } from "./pages/Keymap";
 import { Macros } from "./pages/Macros";
 import { Focus } from "./pages/Focus";
@@ -180,8 +181,9 @@ export default function App() {
     if (!kb) return loaded ? <EmptyState /> : null;
     switch (page) {
       case "overview":
-      case "connection":
         return <Overview kb={kb} />;
+      case "connection":
+        return <Connection kb={kb} />;
       case "lighting":
         return <Lighting kb={kb} />;
       case "keymap":

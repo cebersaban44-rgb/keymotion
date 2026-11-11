@@ -6,6 +6,7 @@ pub mod detect;
 pub mod keymap;
 pub mod readback;
 pub mod screen_import;
+pub mod shape;
 pub mod sonix;
 
-pub use detect::{detect, DetectedKeyboard};
+pub use detect::{app_capabilities, detect, DetectedKeyboard};

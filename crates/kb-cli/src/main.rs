@@ -37,6 +37,13 @@ enum Cmd {
     Models,
     /// Passively read the command channel's feature report (sends nothing).
     Peek,
+    /// Print input reports the wired keyboard sends on its own, on every
+    /// vendor collection except the screen's (sends nothing).
+    Listen {
+        /// How long to listen, in seconds.
+        #[arg(long, default_value_t = 20)]
+        seconds: u64,
+    },
     /// Read the colours currently shown on the keys (`04 F5`, read-only).
     ReadColors {
         /// Read N times on the same handle (diagnostics).
@@ -196,6 +203,7 @@ fn main() -> Result<()> {
     match cli.cmd {
         Cmd::List => list(),
         Cmd::HidAll => hid_all(),
+        Cmd::Listen { seconds } => listen(seconds),
         Cmd::Descriptors => descriptors(),
         Cmd::Battery => battery(),
         Cmd::Models => models(),
@@ -953,6 +961,53 @@ fn list() -> Result<()> {
             );
         }
     }
+    Ok(())
+}
+
+/// Listen to the wired keyboard's vendor collections. Only input reports are
+/// read; nothing is written and no feature report is requested. The screen
+/// collection (FF68) is left alone.
+fn listen(seconds: u64) -> Result<()> {
+    let models = catalogue().map_err(|e| anyhow::anyhow!("{e}"))?;
+    let hid = Hid::new()?;
+    let mut channels = Vec::new();
+    for iface in hid.interfaces() {
+        let Some(m) = match_interface(models, &probe(&iface)) else { continue };
+        if m.mode.kind != kb_devices::ConnectionKind::Usb
+            || !iface.is_vendor_defined()
+            || iface.usage_page == hid::DISPLAY_USAGE_PAGE
+        {
+            continue;
+        }
+        match hid.open(&iface) {
+            Ok(ch) => {
+                println!("dinleniyor: UP=0x{:04X} U=0x{:04X}", iface.usage_page, iface.usage);
+                channels.push(ch);
+            }
+            Err(e) => println!("açılamadı UP=0x{:04X}: {e}", iface.usage_page),
+        }
+    }
+    anyhow::ensure!(!channels.is_empty(), "USB'de üreticiye özel arayüz bulunamadı");
+    let start = std::time::Instant::now();
+    let mut count = 0;
+    while start.elapsed().as_secs() < seconds {
+        for ch in &channels {
+            match ch.read_input(65, 20) {
+                Ok(r) => {
+                    count += 1;
+                    println!(
+                        "{:>6} ms UP=0x{:04X} {}",
+                        start.elapsed().as_millis(),
+                        ch.info().usage_page,
+                        hid::hex(&r)
+                    );
+                }
+                Err(kb_transport::TransportError::Timeout(_)) => {}
+                Err(e) => println!("okuma hatası UP=0x{:04X}: {e}", ch.info().usage_page),
+            }
+        }
+    }
+    println!("{seconds} sn içinde {count} rapor geldi.");
     Ok(())
 }
 

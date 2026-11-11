@@ -240,17 +240,13 @@ export function Stats({ frames, loopMs }: { frames: number; loopMs: number }) {
   const t = useT();
   return (
     <div className="num flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-ink-2">
-      <span>
-        {frames} {t("sc.frames")}
-      </span>
+      <span>{t("sc.frames", { count: frames })}</span>
       {frames > 1 && (
         <span>
           {t("sc.loop")}: {fmtSeconds(loopMs / 1000)}
         </span>
       )}
-      <span>
-        {pagesFor(frames)} {t("sc.pages")}
-      </span>
+      <span>{t("sc.pages", { count: pagesFor(frames) })}</span>
       <span>
         {t("sc.uploadTime")}: ~{fmtSeconds(uploadSeconds(frames))}
       </span>
@@ -283,7 +279,7 @@ export function EditFooter({
         className="flex h-10 items-center gap-2 rounded-lg bg-signal px-5 text-[13px] font-semibold text-signal-ink disabled:opacity-50"
       >
         {preparing ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
-        {preparing ? `${t("sc.preparing")} ${preparing.done}/${preparing.total}` : t("sc.prepare")}
+        {preparing ? t("sc.preparing", { done: preparing.done, total: preparing.total }) : t("sc.prepare")}
       </button>
     </div>
   );
@@ -475,7 +471,7 @@ function InlineProgress() {
         <span>
           {percent(pct)}
         </span>
-        <span>{left ? `${left} ${t("sc.left")}` : ""}</span>
+        <span>{left ? t("sc.left", { time: left }) : ""}</span>
       </div>
     </div>
   );
@@ -519,11 +515,11 @@ export function ConfirmUpload({
           <FramePlayer frames={[preview]} delaysMs={[100]} className="h-[68px] w-[120px] shrink-0 rounded-md bg-black" />
           <div className="num flex flex-col gap-0.5 text-[13px] text-ink-2">
             <span>
-              {frames} {t("sc.frames")}
+              {t("sc.frames", { count: frames })}
               {frames > 1 ? ` · ${t("sc.loop")} ${fmtSeconds(loopMs / 1000)}` : ""}
             </span>
             <span>
-              {pagesFor(frames)} {t("sc.pages")} · ~{fmtSeconds(uploadSeconds(frames))}
+              {t("sc.pages", { count: pagesFor(frames) })} · ~{fmtSeconds(uploadSeconds(frames))}
             </span>
             <span>
               {t("sc.confirm.todayCount")}: {(state?.uploadsToday ?? 0) + 1}

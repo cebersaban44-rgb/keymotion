@@ -178,7 +178,7 @@ function MacroList({ selected, onSelect }: { selected: number | null; onSelect: 
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-[13px] font-medium">{m.name || t("mc.unnamed")}</span>
               <span className="num text-[11px] text-ink-3">
-                {m.steps.length} {t("mc.steps")} · {(duration(m, minDelay) / 1000).toFixed(2)} s
+                {t("mc.steps", { count: m.steps.length })} · {(duration(m, minDelay) / 1000).toFixed(2)} s
               </span>
             </span>
             {dirty.has(slot) && (
@@ -355,7 +355,7 @@ function Editor({
       {confirmDelete && (
         <p className="-mt-2 text-[12px] text-ink-2">
           {bound.length
-            ? `${t("mc.deleteBound")} ${bound.map((b) => b.label).join(", ")}`
+            ? t("mc.deleteBound", { keys: bound.map((b) => b.label).join(", ") })
             : t("mc.deleteHint")}
         </p>
       )}
@@ -483,7 +483,7 @@ function Editor({
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line pt-4 text-[12px] text-ink-2">
         <span className="num">
-          {steps.length} {t("mc.steps")} · {(duration(macro, limits.minDelayMs) / 1000).toFixed(2)} s
+          {t("mc.steps", { count: steps.length })} · {(duration(macro, limits.minDelayMs) / 1000).toFixed(2)} s
         </span>
         {steps.length > 0 && (
           <button
@@ -612,7 +612,7 @@ function SaveCard({ usb, loaded }: { usb: boolean; loaded: boolean }) {
         <span>
           {t("mc.readNote")}{" "}
           <span className="text-ink-3">
-            {writtenMs ? `${t("mc.record.at")}: ${ago(writtenMs)} ${t("km.record.ago")}.` : t("mc.record.never")}
+            {writtenMs ? t("mc.record.at", { ago: ago(writtenMs) }) : t("mc.record.never")}
           </span>
         </span>
       </p>
