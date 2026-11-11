@@ -5,6 +5,8 @@ import type { CalendarCard } from "../bindings/CalendarCard";
 import type { PomodoroCard } from "../bindings/PomodoroCard";
 import type { PomodoroPhase } from "../bindings/PomodoroPhase";
 import type { PomodoroSettings } from "../bindings/PomodoroSettings";
+import type { ReminderCard } from "../bindings/ReminderCard";
+import type { ReminderIcon } from "../bindings/ReminderIcon";
 import type { TrackInfo } from "../bindings/TrackInfo";
 import type { MessageKey } from "./i18n";
 import { phaseColor } from "./pomodoro";
@@ -453,6 +455,176 @@ export async function calendarCard(c: CalendarCard, calendarName: string, w: Cal
     fitFont(fg, foot, (p) => `500 ${p}px ${SANS}`, maxW, 10.5, 8);
     const cut = lines(fg, foot, maxW, 1)[0] ?? "";
     fg.fillText(cut, left, tl.length > 1 ? 127 : 122);
+  }
+
+  const px565 = compose565(bg.getImageData(0, 0, W, H).data, fg.getImageData(0, 0, W, H).data, true);
+  return {
+    frames: [px565],
+    delaysMs: [STILL_DELAY_MS],
+    name: `${w.name} · ${time} ${title}`,
+    kind: "image",
+  };
+}
+
+// ------------------------------------------------------------- reminders
+
+/** Words the reminder cards need, in the UI language. */
+export interface ReminderWords {
+  locale: string;
+  /** Small caps line: "Hatırlatma". */
+  label: string;
+  today: string;
+  tomorrow: string;
+  /** "Sonraki 11:30". */
+  next: string;
+  /** Name of the feature, for the card's name in the app. */
+  name: string;
+}
+
+export function reminderWords(tNow: (key: MessageKey) => string, locale: string): ReminderWords {
+  return {
+    locale,
+    label: tNow("reminder.card.label"),
+    today: tNow("reminder.today"),
+    tomorrow: tNow("reminder.tomorrow"),
+    next: tNow("reminder.card.next"),
+    name: tNow("reminder.card.name"),
+  };
+}
+
+/** The reminder's picture, drawn in `color` around (cx, cy), `s` wide. */
+export function drawReminderIcon(ctx: CanvasRenderingContext2D, icon: ReminderIcon, cx: number, cy: number, s: number, color: string) {
+  const r = s / 2;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = Math.max(2, s / 11);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  switch (icon) {
+    case "drop":
+      ctx.moveTo(cx, cy - r);
+      ctx.bezierCurveTo(cx + r * 0.2, cy - r * 0.5, cx + r * 0.75, cy - r * 0.05, cx + r * 0.75, cy + r * 0.3);
+      ctx.arc(cx, cy + r * 0.3, r * 0.75, 0, Math.PI);
+      ctx.bezierCurveTo(cx - r * 0.75, cy - r * 0.05, cx - r * 0.2, cy - r * 0.5, cx, cy - r);
+      ctx.fill();
+      break;
+    case "stand":
+      // Someone stretching, arms up.
+      ctx.arc(cx, cy - r * 0.62, r * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r * 0.3);
+      ctx.lineTo(cx, cy + r * 0.3);
+      ctx.moveTo(cx - r * 0.6, cy - r * 0.75);
+      ctx.lineTo(cx, cy - r * 0.2);
+      ctx.lineTo(cx + r * 0.6, cy - r * 0.75);
+      ctx.moveTo(cx - r * 0.4, cy + r);
+      ctx.lineTo(cx, cy + r * 0.3);
+      ctx.lineTo(cx + r * 0.4, cy + r);
+      ctx.stroke();
+      break;
+    case "eye":
+      ctx.moveTo(cx - r, cy);
+      ctx.quadraticCurveTo(cx, cy - r * 1.1, cx + r, cy);
+      ctx.quadraticCurveTo(cx, cy + r * 1.1, cx - r, cy);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case "pill":
+      ctx.translate(cx, cy);
+      ctx.rotate(-Math.PI / 4);
+      ctx.roundRect(-r, -r * 0.38, 2 * r, r * 0.76, r * 0.38);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.roundRect(-r, -r * 0.38, r, r * 0.76, [r * 0.38, 0, 0, r * 0.38]);
+      ctx.fill();
+      break;
+    default:
+      // A bell.
+      ctx.moveTo(cx - r * 0.7, cy + r * 0.45);
+      ctx.quadraticCurveTo(cx - r * 0.55, cy + r * 0.2, cx - r * 0.55, cy - r * 0.1);
+      ctx.arc(cx, cy - r * 0.1, r * 0.55, Math.PI, 0);
+      ctx.quadraticCurveTo(cx + r * 0.55, cy + r * 0.2, cx + r * 0.7, cy + r * 0.45);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx, cy + r * 0.62, r * 0.16, 0, Math.PI * 2);
+      ctx.fill();
+  }
+  ctx.restore();
+}
+
+/**
+ * Reminder card ("saat önde", owner's choice 2026-11-11): the time large,
+ * the picture, the title, its note and when it comes again. Only absolute
+ * times, like the calendar card, which it sits next to in the order.
+ */
+export async function reminderCard(c: ReminderCard, w: ReminderWords): Promise<Prepared> {
+  const r = c.reminder;
+  const tone = [r.color[0], r.color[1], r.color[2]] as [number, number, number];
+  const light = tone.map((v) => Math.round(v + (255 - v) * 0.45)) as [number, number, number];
+  const day = (ms: number) => {
+    const d = new Date(ms);
+    const today = new Date();
+    const tomorrow = new Date(today.getTime() + 86_400_000);
+    if (d.toDateString() === today.toDateString()) return w.today;
+    if (d.toDateString() === tomorrow.toDateString()) return w.tomorrow;
+    return d.toLocaleDateString(w.locale, { day: "numeric", month: "short" });
+  };
+  const label = `${w.label} · ${day(c.atMs)}`.toLocaleUpperCase(w.locale);
+  const time = clock(c.atMs);
+  const title = r.title.trim() || "—";
+  const sameDay = c.nextMs != null && new Date(c.nextMs).toDateString() === new Date(c.atMs).toDateString();
+  const next = c.nextMs == null ? "" : sameDay ? `${w.next} ${clock(c.nextMs)}` : `${w.next} ${day(c.nextMs).toLocaleLowerCase(w.locale)} ${clock(c.nextMs)}`;
+  const foot = [r.note.trim(), next].filter(Boolean).join("  ·  ");
+  await Promise.all([fonts(`${label} ${title} ${foot}`), document.fonts.load(`700 34px ${MONO}`, time).catch(() => [])]);
+
+  const { bg, fg } = makeLayers();
+  const grad = bg.createLinearGradient(0, 0, W * 0.6, H);
+  grad.addColorStop(0, rgb(tone, 0.34));
+  grad.addColorStop(1, rgb(tone, 0.07));
+  bg.fillStyle = grad;
+  bg.fillRect(0, 0, W, H);
+
+  fg.clearRect(0, 0, W, H);
+  fg.textBaseline = "alphabetic";
+  fg.textAlign = "left";
+  fg.fillStyle = rgb(tone);
+  fg.fillRect(0, 0, 4, H);
+  drawReminderIcon(fg, r.icon, W - 34, 44, 34, rgb(light));
+
+  const left = 16;
+  const maxW = W - left - 12;
+  fg.letterSpacing = "1px";
+  fg.fillStyle = rgb(light);
+  fitFont(fg, label, (px) => `600 ${px}px ${SANS}`, maxW - 50, 9, 7);
+  fg.fillText(label, left, 24);
+  fg.letterSpacing = "0px";
+  fg.font = `700 34px ${MONO}`;
+  fg.fillText(time, left, 61);
+
+  // Title: as large as fits in two lines.
+  let px = 20;
+  let tl: string[] = [];
+  for (; px >= 12; px--) {
+    fg.font = `700 ${px}px ${DISPLAY}`;
+    tl = lines(fg, title, maxW, 2);
+    if (!tl.some((l) => l.endsWith("…")) || px === 12) break;
+  }
+  fg.fillStyle = "#ffffff";
+  let y = 86 + px * 0.1;
+  for (const l of tl) {
+    fg.fillText(l, left, y);
+    y += Math.round(px * 1.12);
+  }
+  if (foot) {
+    fg.fillStyle = "rgba(255,255,255,0.62)";
+    fitFont(fg, foot, (p) => `500 ${p}px ${SANS}`, maxW, 10.5, 8);
+    fg.fillText(lines(fg, foot, maxW, 1)[0] ?? "", left, tl.length > 1 ? 127 : 121);
   }
 
   const px565 = compose565(bg.getImageData(0, 0, W, H).data, fg.getImageData(0, 0, W, H).data, true);

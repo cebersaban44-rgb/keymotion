@@ -275,13 +275,15 @@ impl Timer {
 // ----------------------------------------------------------------- lights
 
 /// Where each key sits, as a share (0–1) of the span of the key centres.
+/// Also the reminders' wave.
 #[derive(Debug, Clone, Default, PartialEq)]
-struct KeyMap {
-    keys: Vec<(u8, f32, f32)>,
+pub(crate) struct KeyMap {
+    /// (LED, x, y).
+    pub(crate) keys: Vec<(u8, f32, f32)>,
 }
 
 impl KeyMap {
-    fn of(model: &Model) -> Self {
+    pub(crate) fn of(model: &Model) -> Self {
         let Some(g) = &model.geometry else { return Self::default() };
         let centres: Vec<(u8, f32, f32)> = g.keys.iter().map(|k| (k.led, k.x + k.w / 2.0, k.y + k.h / 2.0)).collect();
         let span = |pick: fn(&(u8, f32, f32)) -> f32| {
@@ -424,10 +426,11 @@ fn try_frame(map: &KeyMap, s: &PomodoroSettings, start: f64, now: f64) -> Option
     }
 }
 
-/// The Windows notification sound, without waiting for it.
-fn play_sound() {
+/// The Windows notification sound, without waiting for it (the timer's
+/// phases and the reminders).
+pub(crate) fn play_sound() {
     std::thread::Builder::new()
-        .name("pomodoro-sound".into())
+        .name("notify-sound".into())
         .spawn(|| {
             if let Err(e) = sound::play() {
                 tracing::debug!("notification sound not played: {e}");
@@ -480,8 +483,9 @@ struct Inner {
     /// The first tick looked for a card left on the screen from before the
     /// app started.
     startup_checked: bool,
-    /// The calendar held the screen on the last tick (a meeting's card goes
-    /// over the timer's; when it lets go, the timer's card comes back).
+    /// The calendar or a reminder held the screen on the last tick (their
+    /// cards go over the timer's; when they let go, the timer's card comes
+    /// back).
     cal_held: bool,
     /// The series ended at this time: the green blink shows until then + FLASH_MS.
     done_at: Option<f64>,
@@ -713,9 +717,9 @@ impl PomodoroHandle {
         }
         inner.cards_wanted = wanted;
         self.live.set_hold(SOURCE, wanted);
-        // A meeting's card goes over the timer's: phase cards wait while the
-        // calendar holds the screen, and the current one comes back after.
-        let cal_holds = self.live.held_by(crate::calendar::SOURCE);
+        // A meeting's or a reminder's card goes over the timer's: phase cards
+        // wait while one holds the screen, and the current one comes back after.
+        let cal_holds = self.live.held_by(crate::calendar::SOURCE) || self.live.held_by(crate::reminders::SOURCE);
         if inner.cal_held && !cal_holds && wanted && inner.card_at.is_none() {
             inner.card_at = Some(now);
         }

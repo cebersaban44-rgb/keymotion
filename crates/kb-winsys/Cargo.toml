@@ -1,6 +1,6 @@
 [package]
 name = "kb-winsys"
-description = "Readings from Windows for the key-light gauges: processor, graphics and memory load, speaker volume, microphone mute. The only crate that calls Win32/COM directly."
+description = "Readings from Windows for the key-light gauges and reminders: processor, graphics and memory load, speaker volume, microphone mute, time since the last input. The only crate that calls Win32/COM directly."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -20,6 +20,7 @@ windows = { workspace = true, features = [
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
     "Win32_System_Variant",
+    "Win32_UI_Input_KeyboardAndMouse",
 ] }
 
 [lints]
