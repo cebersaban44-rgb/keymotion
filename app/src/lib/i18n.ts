@@ -886,6 +886,13 @@ const tr = {
   "calendar.card.tomorrow": "Yarın",
   "calendar.card.next": "Sonra",
   "calendar.card.name": "Takvim",
+  "calendar.help.google.4": "Doğru adres …/calendar/ical/…/private-…/basic.ics biçimindedir. Bir etkinliğin paylaşım bağlantısı ya da tarayıcının adres çubuğundaki adres işe yaramaz.",
+  "calendar.link.googleEvent": "Bu bir etkinliğin bağlantısı, takvimin değil. Takvim ayarlarında \"Takvimi entegre et\" bölümündeki \"iCal biçiminde gizli adres\"i kopyala.",
+  "calendar.link.googlePage": "Bu Google Takvim'in sayfa adresi, takvim dosyası değil. Doğru adres /calendar/ical/ içerir ve basic.ics ile biter.",
+  "calendar.link.googlePublic": "Bu herkese açık adres: takvimin herkese açık değilse okunamaz. \"iCal biçiminde gizli adres\"i kullan.",
+  "calendar.link.outlookHtml": "Bu, yayımlanan takvimin HTML bağlantısı. Hemen altındaki ICS bağlantısını kopyala.",
+  "calendar.link.applePage": "Bu iCloud web sayfasının adresi. Ortak Takvim bağlantısı webcal:// ile başlar.",
+  "calendar.err.webPage": "Adres bir web sayfası açtı, takvim değil. Takvimin iCal (.ics) adresini kullan.",
 } as const;
 
 export type MessageKey = keyof typeof tr;
@@ -1771,6 +1778,13 @@ const en: Record<MessageKey, string> = {
   "calendar.card.tomorrow": "Tomorrow",
   "calendar.card.next": "Then",
   "calendar.card.name": "Calendar",
+  "calendar.help.google.4": "The right address looks like …/calendar/ical/…/private-…/basic.ics. An event's sharing link or the address in the browser's address bar will not work.",
+  "calendar.link.googleEvent": "This is an event's link, not the calendar's. In the calendar's settings, copy \"Secret address in iCal format\" under \"Integrate calendar\".",
+  "calendar.link.googlePage": "This is the Google Calendar page's address, not a calendar file. The right one contains /calendar/ical/ and ends in basic.ics.",
+  "calendar.link.googlePublic": "This is the public address: it cannot be read unless your calendar is public. Use \"Secret address in iCal format\".",
+  "calendar.link.outlookHtml": "This is the published calendar's HTML link. Copy the ICS link right below it.",
+  "calendar.link.applePage": "This is the iCloud web page's address. A public calendar link starts with webcal://.",
+  "calendar.err.webPage": "The address opened a web page, not a calendar. Use the calendar's iCal (.ics) address.",
 };
 
 const messages: Record<Locale, Record<MessageKey, string>> = { tr, en };

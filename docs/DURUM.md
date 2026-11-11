@@ -580,6 +580,9 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Tarayıcıda sahte arka uçla: ekleme adımları, yanlış adres uyarısı, eklenen takvim, yaklaşan toplantılar, "kart zamanı", sıradaki kart saati; kart çizildi ve sahte ekrana gitti ("GOOGLE TAKVİM · BUGÜN", 02:48 – 03:03, "Günlük toplantı", "Meet · Sonra 04:45 Tasarım incelemesi").
       - Gerçek uygulamada (CDP): Google'ın herkese açık Türkiye resmi tatiller takvimi yaklaşık 1 sn'de okundu (yalnız gün boyu etkinlikler; kart ve yükleme yok). "Dene" ile Esc 4 sn yanıp söndü (`Reminders` katmanı 1 LED). Takvim kaldırıldı; günlükte adres değil yalnız sunucu adı var.
       - Kullanıcının canlı modu kapalıydı; gerçek bir toplantı kartı klavyeye yüklenmedi (flash'a yazma yok).
+    - **Kullanıcının ilk denemesi (2026-11-11):** Google'dan bir etkinliğin "Bağlantı ile davet et" adresini (`/calendar/event?action=TEMPLATE…`) yapıştırdı; adres bir web sayfası döndürdüğü için "takvim döndürmedi" dendi. Düzeltme:
+      - Arayüz yanlış bağlantıyı eklemeden tanıyor ve doğru adresi tarif ediyor: Google etkinlik bağlantısı ya da sayfa adresi, Outlook'un HTML bağlantısı, iCloud web sayfası (engeller); Google'ın herkese açık adresi (uyarı). Google yardımına doğru adresin biçimi eklendi.
+      - Okuyucu takvimi etkinlik etkinlik okuyor: anlaşılmayan bir giriş yalnız kendini düşürüyor, sonrakileri değil. Web sayfası dönerse "web sayfası açtı" diye ayrıca söylüyor.
     - **Bekleyen:** Kullanıcının kendi takvimiyle denemesi (canlı mod açıkken bir toplantı kartı ve tuş hatırlatması).
 
 ## 4. Sistem nasıl kurulu (as-built)
