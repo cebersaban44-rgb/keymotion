@@ -1,0 +1,7 @@
+# The Rust release used locally and in CI. Raise it on purpose, in its own PR,
+# after `cargo clippy` and `cargo test` pass with the new release.
+# (`rust-version` in Cargo.toml is the oldest release the code must build with.)
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
