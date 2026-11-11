@@ -135,7 +135,7 @@ export async function flashWrite<T>(run: () => Promise<T>): Promise<T> {
   } catch (e) {
     const version = (e instanceof Error ? e.message : String(e)).match(UNTESTED)?.[1];
     if (!version) throw e;
-    if (!(await firmwareGate(version, true))) throw new Error("write cancelled by the user");
+    if (!(await firmwareGate(version, true))) throw new Error("write cancelled by the user", { cause: e });
     return run();
   }
 }
@@ -485,7 +485,7 @@ async function mockInspect(bytes: ArrayBuffer): Promise<BackupSummary> {
   await mockDelay(200);
   let b: Record<string, unknown>;
   try {
-    b = JSON.parse(new TextDecoder().decode(bytes).replace(/^﻿/, "")) as Record<string, unknown>;
+    b = JSON.parse(new TextDecoder().decode(bytes).replace(/^\uFEFF/, "")) as Record<string, unknown>;
   } catch {
     throw new Error("not a backup");
   }

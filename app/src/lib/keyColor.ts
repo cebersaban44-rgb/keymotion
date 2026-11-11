@@ -55,7 +55,7 @@ export function colorNameKey(rgb: Rgb | null): MessageKey | null {
   const d = max - min;
   const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
   if (s < 0.18 || d < 0.08) return l > 0.78 ? "color.white" : "color.gray";
-  let h = 0;
+  let h: number;
   if (max === r) h = ((g - b) / d) % 6;
   else if (max === g) h = (b - r) / d + 2;
   else h = (r - g) / d + 4;
