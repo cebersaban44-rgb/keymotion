@@ -446,6 +446,14 @@ Uygulamanın Ekran sayfası; kullanıcı kendi dosyalarıyla denedi.
   - 66 sn'de 15 `04 20` karesi `FF` ile reddedildi (saniyede 20 karede yaklaşık %1). Bir sonraki kare 50 ms sonra gidiyor; bilinen ara sıra `FF`.
 - **Bekleyen:** Kullanıcının çubuğu ve renkleri gözle doğrulaması; canlı mod açıkken faz kartlarının yüklenmesi.
 
+### Takvim: okuma ve tuş hatırlatması — 2026-11-11
+
+- **Nasıl:** Gerçek uygulama (debug), CDP ile. Klavye USB'de. Canlı mod kapalıydı: ekrana yükleme yok, flash'a yazma yok.
+- **Okuma:** Google'ın herkese açık "Türkiye'deki tatiller" takvimi (`calendar.google.com`, herkese açık adres) eklendi. Windows HTTP istemcisiyle yaklaşık 1 sn'de okundu, iki günlük aralıkta 1 etkinlik (gün boyu; kart yok). Sağlayıcı "google" olarak tanındı. Günlükte adres yok, yalnız sunucu adı.
+- **Tuş hatırlatması:** "Dene" ile `Reminders` katmanı 1 LED'le (Esc) başladı, 4 sn sonra durdu; başka katman olmadığı için klavye kendi kayıtlı ışığına döndü.
+- Takvim sonra kaldırıldı; `calendar.json`'da takvim yok.
+- **Bekleyen:** Kullanıcının kendi takvimiyle, canlı mod açıkken bir toplantı kartının klavyeye gitmesi.
+
 ### Sistem göstergeleri ışık katmanı (`04 20`, yalnızca RAM) — 2026-11-10
 
 - **Nasıl:** Gerçek uygulama (debug, `target/debug/klavye-studio.exe`), CDP ile. Klavye USB'de. Flash'a yazma yok; ekrana yükleme yok.

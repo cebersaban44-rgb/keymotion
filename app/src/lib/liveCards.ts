@@ -1,6 +1,7 @@
 // Live cards drawn for the keyboard screen (phase C). Same rules as the
 // text cards: fonts loaded first, background dithered, text sharp.
 
+import type { CalendarCard } from "../bindings/CalendarCard";
 import type { PomodoroCard } from "../bindings/PomodoroCard";
 import type { PomodoroPhase } from "../bindings/PomodoroPhase";
 import type { PomodoroSettings } from "../bindings/PomodoroSettings";
@@ -344,6 +345,121 @@ export async function pomodoroCard(c: PomodoroCard, s: PomodoroSettings, w: Pomo
     frames: [px565],
     delaysMs: [STILL_DELAY_MS],
     name: done ? `${w.name} · ${title}` : `${w.name} · ${title} ${c.round}/${c.rounds}`,
+    kind: "image",
+  };
+}
+
+// -------------------------------------------------------------- calendar
+
+/** Words the calendar cards need, in the UI language. */
+export interface CalendarWords {
+  locale: string;
+  today: string;
+  tomorrow: string;
+  /** "Sonra 16:30 …". */
+  next: string;
+  /** Name of the feature, for the card's name in the app. */
+  name: string;
+}
+
+export function calendarWords(tNow: (key: MessageKey) => string, locale: string): CalendarWords {
+  return {
+    locale,
+    today: tNow("calendar.card.today"),
+    tomorrow: tNow("calendar.card.tomorrow"),
+    next: tNow("calendar.card.next"),
+    name: tNow("calendar.card.name"),
+  };
+}
+
+const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+/**
+ * Calendar card ("Sıradaki", owner's choice 2026-11-11): the start large,
+ * the end, the title, where it is and the meeting after it. Only absolute
+ * times and the day word, so it stays true from before the meeting until
+ * after it starts and goes up once.
+ */
+export async function calendarCard(c: CalendarCard, calendarName: string, w: CalendarWords): Promise<Prepared> {
+  const e = c.event;
+  const tone = [e.color[0], e.color[1], e.color[2]] as [number, number, number];
+  const light = tone.map((v) => Math.round(v + (255 - v) * 0.45)) as [number, number, number];
+  const start = new Date(e.startMs);
+  const today = new Date();
+  const tomorrow = new Date(today.getTime() + 86_400_000);
+  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  const day = sameDay(start, today)
+    ? w.today
+    : sameDay(start, tomorrow)
+      ? w.tomorrow
+      : start.toLocaleDateString(w.locale, { day: "numeric", month: "short" });
+  const label = (calendarName ? `${calendarName} · ${day}` : day).toLocaleUpperCase(w.locale);
+  const time = clock(e.startMs);
+  const end = e.endMs > e.startMs ? `– ${clock(e.endMs)}` : "";
+  const title = e.title.trim() || "—";
+  const foot = [e.location.trim(), c.next ? `${w.next} ${clock(c.next.startMs)} ${c.next.title.trim()}` : ""]
+    .filter(Boolean)
+    .join("  ·  ");
+  await Promise.all([fonts(`${label} ${title} ${foot}`), document.fonts.load(`700 34px ${MONO}`, `${time} ${end}`).catch(() => [])]);
+
+  const { bg, fg } = makeLayers();
+  const grad = bg.createLinearGradient(0, 0, W * 0.6, H);
+  grad.addColorStop(0, rgb(tone, 0.34));
+  grad.addColorStop(1, rgb(tone, 0.07));
+  bg.fillStyle = grad;
+  bg.fillRect(0, 0, W, H);
+
+  fg.clearRect(0, 0, W, H);
+  fg.textBaseline = "alphabetic";
+  fg.textAlign = "left";
+  // A stripe in the calendar's colour on the left edge.
+  fg.fillStyle = rgb(tone);
+  fg.fillRect(0, 0, 4, H);
+
+  const left = 16;
+  const maxW = W - left - 12;
+  fg.letterSpacing = "1px";
+  fg.fillStyle = rgb(light);
+  fitFont(fg, label, (px) => `600 ${px}px ${SANS}`, maxW, 9, 7);
+  fg.fillText(label, left, 24);
+  fg.letterSpacing = "0px";
+
+  fg.fillStyle = rgb(light);
+  fg.font = `700 34px ${MONO}`;
+  fg.fillText(time, left, 61);
+  if (end) {
+    const tw = fg.measureText(time).width;
+    fg.font = `500 12px ${MONO}`;
+    fg.fillStyle = "rgba(255,255,255,0.55)";
+    fg.fillText(end, left + tw + 7, 61);
+  }
+
+  // Title: as large as fits in two lines.
+  let px = 18;
+  let tl: string[] = [];
+  for (; px >= 12; px--) {
+    fg.font = `700 ${px}px ${DISPLAY}`;
+    tl = lines(fg, title, maxW, 2);
+    if (!tl.some((l) => l.endsWith("…")) || px === 12) break;
+  }
+  fg.fillStyle = "#ffffff";
+  let y = 84 + px * 0.2;
+  for (const l of tl) {
+    fg.fillText(l, left, y);
+    y += Math.round(px * 1.12);
+  }
+  if (foot) {
+    fg.fillStyle = "rgba(255,255,255,0.62)";
+    fitFont(fg, foot, (p) => `500 ${p}px ${SANS}`, maxW, 10.5, 8);
+    const cut = lines(fg, foot, maxW, 1)[0] ?? "";
+    fg.fillText(cut, left, tl.length > 1 ? 127 : 122);
+  }
+
+  const px565 = compose565(bg.getImageData(0, 0, W, H).data, fg.getImageData(0, 0, W, H).data, true);
+  return {
+    frames: [px565],
+    delaysMs: [STILL_DELAY_MS],
+    name: `${w.name} · ${time} ${title}`,
     kind: "image",
   };
 }
