@@ -256,3 +256,23 @@ Büyük açık kaynak masaüstü uygulamalarının repoları incelenip örnek al
 5. **Profiller:** ilk sürümde olacak (E). Tasarımı önce önizlemeyle gösterilecek.
 6. **Bütün "Şart" ve "Olmalı" maddeleri yapılacak.** Açılış ekranı dahil. Kullanıcı, alt ajanların kullanılabileceğini ve dış referanslara bakılabileceğini söyledi; amaç ürünün en üst seviyede olması.
 7. **Açık kalan:** tepsi modunda canlı kartların nasıl çizileceği (Rust'ta mı, gizli pencerede mi) ürünleştirme başlarken kararlaştırılacak (F).
+
+## Uygulama durumu (2026-11-12)
+
+Ayrıntı ve yardımcıların listesi: `DURUM.md` madde 38.
+
+| Bölüm | Maddeler | Durum |
+|---|---|---|
+| A. Kimlik | İsim, logo, simgeler, uygulama kimliği, veri taşıma | **Bitti** (PR #53). Repo ve Rust paket adı kullanıcıya sorulacak. |
+| B. Güven | B4, B5, B7, B10 | **Kodlandı**, birleştirilmedi (dal `worktree-agent-aef20208906d41455`) |
+| B. Güven | B1, B2, B3, B6 | Yardımcıda, sürüyor |
+| B. Güven | B8 (denenmemiş atamalar), B9 (kurtarma rehberi), B11 (140 kare: kalıyor) | B8 kullanıcıyla klavyede denenecek; B9 GitHub belgeleriyle birlikte |
+| C. Görünüm | C1, C2, C5, C6 (açılış, dar pencere, adlar, Genel Bakış) | Yardımcıda, sürüyor |
+| C. Görünüm | C3, C4, C7, C8, C9 (klavye çizimi, kaydetme çubuğu, okunurluk, tutarlılık, hareket) | Yardımcıda, sürüyor |
+| D. İçerik | Bütün maddeler | Yardımcıda (iskelet ve içerik), sürüyor |
+| E. Veri ve tanılama | Günlük, tanılama, ErrorBoundary, dışa/içe aktarma, ışık durumu, takvim şifresi, gizlilik belgesi | Yardımcıda, sürüyor |
+| E. Profiller | Profiller sayfası, Genel Bakış kartı | İlk birleştirmeden sonra yeni yardımcı |
+| F. Ürünleştirme | Tepsi, NSIS, imza, sürüm hattı, güncelleyici, güç | Görsel tur ve birleştirme bittikten sonra |
+| G. Repo ve hukuk | Lisans, NOTICE, üçüncü taraf lisansları, CI denetimleri, ESLint, Dependabot, cargo-deny, CHANGELOG | **Bitti**, PR #54 (CI bekleniyor). Kalan: ESLint'in 15 uyarısı, `?mock` anahtarlarının kurulu sürümden çıkarılması |
+| H. GitHub sayfası | İki dilli README ve belgeler, ekran görüntüleri, issue formları, topluluk dosyaları | Ürünleştirmeden sonra |
+| Keymotion açılış animasyonu | Fabrika yedeği olmayanlar için özgün görsel | Profillerle birlikte ya da hemen sonra |

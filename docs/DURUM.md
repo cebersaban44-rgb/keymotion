@@ -665,6 +665,83 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Tarama (sahte arka uç, Playwright, 17 sayfa ve sekme, TR ve EN): Türkçede İngilizce, İngilizcede Türkçe (Windows düzeninin Ğ/Ü/Ş tuş adları hariç), boş yer tutucu, "undefined" ya da "1 frames" yok. Alıcı ve Bluetooth modunda kilitler doğru.
     - **Pil (kullanıcının sorusu: "kendimiz bir katman yazıp USB'de pili okuyabilir miyiz?"):** Klavye USB'de pil bilgisini hiçbir yoldan vermiyor: resmi sürücünün yapılandırması, kardeş yazılım incelemesi, HID tanımlayıcıları ve 20 sn pasif dinleme (`kb listen`, yeni; hiç rapor gelmedi). Bilgisayar tarafındaki bir katman olmayan veriyi okuyamaz. Yapılan: Fn ışığı şarjda kırmızı yanıyor, şarj bitince sönüyor (kullanıcı klavyenin ekranında dolu pili gördü, 2026-11-11). Genel Bakış aynadan bunu okuyup "Klavye şu an şarj oluyor." ya da "Şarj tamamlandı." diyor (komşu tuşlar kırmızıysa efekttir; ışık ~2 sn aynı kalmalı). Gerçek yüzde ileride 2.4 GHz alıcıyla (`20 01`) gelir.
     - **Doğrulama:** 242 Rust testi, clippy, tsc; gerçek uygulamada (CDP) şekil denetimi komut kanalını açtı, Genel Bakış aynası çalıştı ("Klavyenin ışığı kapalı"), Bağlantı sayfası USB'de doğru.
+38. **Ürünleşme öncesi büyük tur: isim, güven, tanılama, repo, görsel tur (2026-11-11/12, sürüyor).** Ayrıntılı liste ve kararlar: `docs/urun-eksikleri.md`.
+    - **Kullanıcının kararları:**
+      - İsim **Keymotion**; logo üç çizgili "K", alt sağ çizgi turuncu.
+      - Lisans "MIT OR Apache-2.0".
+      - Ekran kare sınırı 140.
+      - Profiller ilk sürümde.
+      - Eksik listesindeki bütün "Şart" ve "Olmalı" maddeleri yapılacak, açılış ekranı dahil.
+      - GitHub sayfası iki dilli olacak (sırası gelince, bölüm H).
+      - AJAZZ'ın fabrika animasyonu paketlenmez. Uygulama, kullanıcının kendi kurduğu resmi sürücüden yedek alır; Keymotion'ın kendi özgün açılış animasyonu yapılacak.
+    - **Çalışma şekli:** Kullanıcı, alt ajanları serbestçe kullanmamı ve benim "şef gibi" dağıtıp kontrol etmemi istedi (bağlam büyük).
+      - Her yardımcı kendi worktree'sinde çalışır: `.claude/worktrees/agent-<id>`, dal `worktree-agent-<id>`, push edilmez.
+      - Ortak hedef klasörü ve ayar: `CARGO_TARGET_DIR=C:\dev\klavye\target`, `CARGO_INCREMENTAL=0` (disk dar).
+      - Uygulama ikili dosyası derlenmez. Yardımcılar klavyeye hiçbir şey göndermez.
+      - Her ajan yeni metinlerini `i18n.ts` bloklarının sonunda, kendi yorum satırı altında tutar.
+    - **Birleşenler:**
+      - PR #51: şarj durumu (Fn ışığı) ve bozuk karakter onarımı.
+      - PR #52: eksik listesi.
+      - PR #53: Keymotion adı, logo ve simgeler.
+        - Kimlik `dev.keymotion`; eski `dev.klavye.studio` klasörleri ilk açılışta `migrate.rs` ile taşınıyor.
+        - Gerçek uygulamada doğrulandı: ayarlar, kayıtlar, ekran kütüphanesi ve WebView verisi taşındı.
+    - **Açık PR:** #54 (lisans ve CI), auto-merge açık, CI bekleniyordu. İçeriği:
+      - LICENSE-MIT/APACHE ve NOTICE;
+      - üçüncü taraf lisansları: `node tools/notices.mjs` → `app/public/third-party-notices.txt`; önce bir kez `cargo install --locked --features cli cargo-about`;
+      - CI'da engelleyen denetimler: `tools/check-text.mjs` (BOM ve bozuk karakter), `check-vendor-files.mjs`, `check-version.mjs`;
+      - ESLint `tools/eslint` içinde (typescript-eslint TS 7'yi desteklemiyor), `pnpm --dir app lint`, engellemiyor; 15 `exhaustive-deps` uyarısı;
+      - `rust-toolchain.toml` (1.99.1), Dependabot, ayrı ve zorunlu olmayan cargo-deny işi, CHANGELOG.md.
+    - **Yardımcılar** (2026-11-12 itibarıyla):
+
+      | Alan (eksik listesi) | Ajan id | Durum | Ne yapıyor |
+      |---|---|---|---|
+      | Cihaz güvenliği (B4, B5, B7, B10) | aef20208906d41455 | **Bitti**, commit `7d765cf` | Ayrıntısı tablonun altında. |
+      | Ekran güvenliği (B1, B2, B3, B6) | aee38f5d748799452 | Çalışıyor | Resmi sürücüden fabrika GIF'ini bulup yedekleme; canlı modu açarken onay; yarım kalan yüklemeyi işaretleme; yükleme sürerken kapatma koruması ve `ShutdownBlockReasonCreate`; dürüst ömür metni; fabrika etiketinin çevirisi. |
+      | Günlük, tanılama, veri (E) | aec6769c6efcff3ff | Çalışıyor | Günlük dosyası ve panik notu; "Tanılama bilgisini kopyala"; ErrorBoundary; dışa/içe aktarma; ışık durumunu arka uca taşıma; takvim adresi DPAPI; `PRIVACY.md` ve `docs/gizlilik.md`. |
+      | Görsel tur: ortak parçalar (C3, C4, C7–C9) | a9b9fd62f33be953b | Çalışıyor | Tek `KeyboardView` (gerçek renk, sönük tuş koyu); `ActionBar` (Işıklar, Tuş atama, Makrolar); kontrast; `MotionConfig`; kart içinde kart temizliği; efekt küçük resimleri. |
+      | Görsel tur: iskelet ve içerik (C1, C2, C5, C6, D, hatırlatıcı bildirimi) | a8d589af398a32a3a | Çalışıyor | Açılış ekranı; kenar çubuğu (Profiller `PROFILES_ENABLED=false` arkasında, ayrı Takvim sayfası); dar pencere ve en küçük boyut; yeni Genel Bakış; içerik düzeltmeleri; hatırlatıcılar için Windows bildirimi. |
+      | Repo ve lisans (G) | a84c1a27b55bfcb20 | **Bitti** → PR #54 | |
+
+      Cihaz güvenliği yardımcısının yaptıkları:
+      - tek örnek (`tauri-plugin-single-instance`);
+      - çakışan programlar yazmayı engeller: `DeviceDriver.exe`, yolunda "ak980" geçen exe, `SignalRgb.exe`, `OpenRGB.exe`, `kb.exe` (`kb-core/conflicts.rs`, `device.rs` `may_write`);
+      - birden fazla klavye takılıysa yazma yok;
+      - `KeyboardInfo.firmware` ("1.06") ve modelde `verified_firmware`;
+      - bozuk ayar dosyası `.bak-…` olarak saklanır ve bir kez bildirilir;
+      - yeni dosyalar `lib/safety.ts`, `components/SafetyDialogs.tsx`; sahte arka uçta `?fw=1.07` ve `?reset=keymap,macros`.
+
+      Görsel turun tasarımı onaylı. Tuval: https://claude.ai/artifact/EdVTxhZYprdoGeiHPB1QuS; yerel kopyası scratchpad'deki `ui-canvas/project/*.dc.html`, yardımcılar oradan okuyor.
+    - **Sıradaki adımlar:**
+      1. **Birleştirme.** Kalan dört yardımcı bitince dallar, develop'tan açılan tek bir entegrasyon dalında birleştirilir (bir entegrasyon ajanı yapabilir).
+         - Sıra: cihaz → ekran → tanılama → ortak parçalar → iskelet.
+         - `i18n.ts` çatışmalarında iki taraf da korunur; geçici `merge=union` kullanılabilir, sonra tsc çift anahtarı yakalar.
+         - Bazı worktree'ler yeniden adlandırmadan önceki `8260281`'den açıldı. Develop'taki Keymotion adı, simgeler ve `dev.keymotion` korunmalı, ajan dallarındaki eski değerler bunları ezmemeli.
+      2. **Denetimler:** cargo test/clippy/fmt, tsc, `node tools/check-*.mjs`, `pnpm --dir app lint`.
+      3. **Gerçek uygulamada doğrulama (CDP):**
+         - ikinci açılış eski pencereyi öne getiriyor;
+         - kullanıcının klavyesinde kayıt çalışıyor (fw 1.06, tek klavye);
+         - SignalRGB açıkken uyarı çıkıyor;
+         - bozuk `keymap.json` için bildirim ve `.bak` dosyası;
+         - klavye yokken açılış ekranı;
+         - yeni Genel Bakış, tek klavye çizimi, kaydetme çubuğu, 1024×640 pencere;
+         - günlük dosyası, tanılama ve dışa/içe aktarma;
+         - takvim adresi şifreli ve okunuyor;
+         - hatırlatıcı Windows bildirimi;
+         - fabrika yedeği bulma ve canlı mod onayı.
+      4. **Profiller** (yeni ajan, ilk birleştirmeden sonra): `profiles.rs`, `Profiles.tsx` ve Genel Bakış'ta profil kartı; `PROFILES_ENABLED` açılır. Tasarım tuvalin 4. ekranında.
+      5. **Keymotion'ın kendi açılış animasyonu:** fabrika yedeği olmayanların dönebileceği özgün görsel.
+      6. **Küçükler:**
+         - ESLint uyarıları;
+         - ders 40'ı güncellemek (ESLint artık var);
+         - Dependabot'tan sonra notices dosyasını yenilemek.
+      7. **Sonra ürünleştirme (F):**
+         - tepsi ve arka plan: canlı kartlar WebView'da çiziliyor, bunun için önce karar gerekli;
+         - NSIS ayarları ve imza (SignPath Foundation ya da Azure Artifact Signing);
+         - sürüm hattı ve güncelleyici;
+         - güç kullanımı.
+
+         Ardından GitHub sayfası (H): iki dilli, TR/EN ve açık/koyu ekran görüntüleriyle.
+      8. **Kullanıcıya sorulacak:** GitHub repo adının `keymotion` olması ve Rust paket adı.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -851,6 +928,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 50 | `cargo build` ve bir test koşusu çıktısız "exit 101" verdi (2026-11-11) | C: sürücüsü dolmuştu (0 MB boş); `target` 35 GB, bunun 17 GB'ı `debug\incremental` | Çıktısız derleme hatasında önce boş yere bak (`Get-PSDrive C`). Silmeden önce kullanıcıya sor; `target\debug\incremental` güvenle silinir, kendiliğinden yeniden oluşur. |
 | 51 | Tarayıcı panelinde sayfa sayfa metin taraması ilerlemedi (2026-11-11) | Sayfa geçişleri animasyonlu; panel gizliyken tarayıcı animasyonları çalıştırmıyor, yeni sayfa hiç açılmıyor | Bütün sayfaları gezen denetimleri gerçek uygulamada (CDP, görünür pencere) yap. Panel gizliyse ekran görüntüsü de zaman aşımına uğrar; `get_page_text` ya da CDP kullan. |
 | 52 | Genel Bakış'ta "240×135" yerine bozuk karakter çıktı; PR #50 develop'a öyle birleşti (2026-11-11) | Bir dosyada küçük bir değişiklik PowerShell 5.1'in `Get-Content -Raw` / `Set-Content -Encoding utf8` ikilisiyle yapıldı. `Get-Content` kodlama verilmezse dosyayı ANSI (cp1254) okur; Türkçe harfler ve × bozulup UTF-8 (BOM'lu) yazıldı. Tarama bunu yakalamadı: aranan kelimeler değil, bozuk harf dizisiydi | Dosya içeriğini PowerShell'de okuyup yazma; Edit aracını ya da `python -I` (açık `encoding="utf-8"`) kullan. Taramaya bozuk kodlama denetimi ekle (`Ã`, `Ä±`, `ÅŸ` gibi diziler). Bozulan dosya `metin.encode("cp1254").decode("utf-8")` ile birebir geri döndü. |
+| 53 | Claude Design tuvalinde artboard'lar hata verdi (2026-11-11/12) | Tuval aracı `.dc.html` betiğini kaçış karakterlerine duyarlı bir metnin içine koyuyor: betikteki ters eğik çizgi, ters tırnak ve `${` kodu bozdu (`Unexpected token ';'`). Ayrıca SVG öznitelikleri tireli yazılmıştı (`stroke-width`; React `strokeWidth` ister), stil delikleri metin olarak verilmişti (React stil nesnesi ister), form alanlarında `value`/`checked` vardı | Tuval betiklerinde bu karakterleri yazma, `String.fromCharCode` ile üret. SVG özniteliklerini camelCase yaz, `style="{{x}}"` deliğine nesne ver, statik form alanında `defaultValue`/`defaultChecked` kullan. Tuvali kendin göremiyorsan (claude.ai girişi) kullanıcıdan hatanın ekran görüntüsünü iste. |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 
@@ -898,7 +976,8 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
           - **Kalınan yer (2026-11-11):** kullanıcı yeni özellikleri şimdilik durdurdu ("bu kadar özellik yeter"). Sıradaki iş **ürünleştirme** (P3): kurulum dosyası, imza, güncelleyici, tepsi servisi, ilk sürüm belgeleri. Ondan önce bağlam sıkıştırılacak.
           - **Destek haritası yapıldı** (madde 37, `docs/destek-haritasi.md`): desteklenen ve eklenebilecek klavyeler, bağlantı modlarına göre özellikler, Bağlantı sayfası, 2.4G'de yanlış açık görünen sayfalar düzeltildi, HID şekil denetimi, arayüz metin borçları kapandı, USB'de pil araştırması (yüzde yok; Fn ışığından "şarj oluyor" / "şarj tamamlandı").
           - **İlk sürüm öncesi eksik listesi** (2026-11-11, `docs/urun-eksikleri.md`): iki bağımsız inceleme (tasarım ve kullanım; ürün hazırlığı) ve bu oturumun gözlemleri, ciddi olanlar kodda doğrulandı. Sıra: kimlik (isim, logo, uygulama kimliği) → güven → görsel ve içerik turu → veri ve tanılama → ürünleştirme ve repo. İsim adayları ve logo konseptleri Claude Design tuvalinde (Keypane önerildi).
-          - **Kalınan yer (2026-11-11):** kullanıcı isim ve logoyu seçecek; sonra eksik listesindeki "Şart" maddeleri, görsel tur, ardından ürünleştirme. Kullanıcının kararını bekleyenler listenin sonunda. Kullanıcıyla klavyede denenecekler: Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri.
+          - Kullanıcı isim ve logoyu seçti (Keymotion, E konsepti). Ardından eksik listesinin tamamı başladı (madde 38).
+          - **Kalınan yer (2026-11-12): madde 38'deki "Sıradaki adımlar"** — çalışan yardımcıların bitmesini beklemek, dalları birleştirmek, gerçek uygulamada doğrulamak, sonra profiller. Kullanıcıyla klavyede denenecekler: Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri.
           - Sonraya: oyun oturumu (ön plandaki uygulama: açılınca kart, kapanınca özet). Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.
