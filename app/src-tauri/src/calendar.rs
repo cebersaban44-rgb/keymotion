@@ -66,6 +66,9 @@ const BLINK_MS: f64 = 500.0;
 const REMIND_COLOR: Rgb = [255, 159, 26];
 /// "Dene": the reminder blinks this long.
 const TRY_MS: f64 = 4_000.0;
+/// "Klavyede 1 dk göster": the tried card stays this long, then the own
+/// picture comes back (owner's request, 2026-11-11).
+const TRY_CARD_BACK: Duration = Duration::from_secs(60);
 const TICK: Duration = Duration::from_secs(1);
 const TICK_BLINK: Duration = Duration::from_millis(100);
 const MAX_SOURCES: usize = 8;
@@ -485,6 +488,15 @@ impl CalendarHandle {
         }
         self.wake_reader();
         self.state()
+    }
+
+    /// The UI handed in a card to try on the keyboard: it goes now (counted
+    /// like a manual upload, never waiting for the budget) and the own
+    /// picture comes back after a minute.
+    pub fn try_card(&self) {
+        tracing::info!("calendar card tried on the keyboard");
+        let _ = self.live.send_now();
+        self.live.return_after(SOURCE, TRY_CARD_BACK);
     }
 
     /// Blink the reminder key for a few seconds.

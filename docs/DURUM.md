@@ -583,7 +583,12 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **Kullanıcının ilk denemesi (2026-11-11):** Google'dan bir etkinliğin "Bağlantı ile davet et" adresini (`/calendar/event?action=TEMPLATE…`) yapıştırdı; adres bir web sayfası döndürdüğü için "takvim döndürmedi" dendi. Düzeltme:
       - Arayüz yanlış bağlantıyı eklemeden tanıyor ve doğru adresi tarif ediyor: Google etkinlik bağlantısı ya da sayfa adresi, Outlook'un HTML bağlantısı, iCloud web sayfası (engeller); Google'ın herkese açık adresi (uyarı). Google yardımına doğru adresin biçimi eklendi.
       - Okuyucu takvimi etkinlik etkinlik okuyor: anlaşılmayan bir giriş yalnız kendini düşürüyor, sonrakileri değil. Web sayfası dönerse "web sayfası açtı" diye ayrıca söylüyor.
-    - **Bekleyen:** Kullanıcının kendi takvimiyle denemesi (canlı mod açıkken bir toplantı kartı ve tuş hatırlatması).
+    - **Kullanıcının ikinci denemesi (2026-11-11):** Google'ın herkese açık adresini (`…/public/basic.ics`) yapıştırdı; takvimi herkese açık olmadığı için Google 404 verdi, uygulama Windows'un ham mesajını gösterdi. Düzeltme (PR #44): HTTP durumu (`0x8019xxxx`) ayrıştırılıyor; 404 → "herkese açık adres kullanılmış olabilir, gizli adresi (private-) kullan", 401/403 → "adres sıfırlanmış olabilir". Herkese açık adres uyarısı da bunu söylüyor.
+    - **Kartın önizlemesi ve "Klavyede 1 dk göster" (kullanıcının isteği, 2026-11-11):** Kart yalnız toplantıdan önce geldiği için görünüşü denenemiyordu.
+      - Takvim katmanında sıradaki toplantının kartı (toplantı yoksa örnek bir toplantı) uygulamada çiziliyor; yükleme yok.
+      - "Klavyede 1 dk göster": kart canlı mod üzerinden hemen gider (bütçe beklemez, elle yükleme gibi sayılır; `calendar_try_card` → `send_now` + 60 sn sonra `return_after`), 1 dk sonra kendi görsel döner: 2 yükleme. Canlı mod kapalıyken "canlı modu aç" yazar.
+      - Sahte arka uçla denendi: önizleme çizildi, deneme kartı sahte ekrana gitti.
+    - **Bekleyen:** Kullanıcının gizli adresle kendi takvimini eklemesi; önizleme ve "Klavyede 1 dk göster" ile kartı klavyede görmesi.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -795,7 +800,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
         - **LED canlı katmanı yapıldı: Araçlar → Sistem göstergeleri** (madde 33). İşlemci, ekran kartı, bellek çubukları; topuzla ses düzeyi; mikrofon sessiz uyarısı. Zamanlayıcı çubukların üstünde, ses ve mikrofon zamanlayıcının üstünde (kullanıcının kararı).
           - **Kullanıcı klavyede denedi (2026-11-11): "Çalışıyor."** Kullanıcının ayarı: göstergeler açık, bellek dahil, Isı, Karanlık, parlaklık 4.
         - **Takvim yapıldı** (madde 34): Ekran → Canlı ekran'da en üstteki katman. Google, Outlook, Apple iCloud ya da herhangi bir paylaşım adresi; toplantıdan önce kart, 1 dk önce Esc yanıp söner.
-          - **Bekleyen:** kullanıcının kendi takvimini ekleyip canlı mod açıkken denemesi.
+          - **Bekleyen (kalınan yer, 2026-11-11):** kullanıcı Google takvimini önce bir etkinlik bağlantısıyla, sonra herkese açık adresle ekledi; ikisi de çalışmaz (uygulama artık ikisini de açıklıyor). Doğru adres "iCal biçiminde gizli adres" (`…/private-…/basic.ics`). Kullanıcı gizli adresi ekleyip kartı önizlemede ve "Klavyede 1 dk göster" ile klavyede deneyecek. Sorun çıkarsa: kayıtlı adres `calendar.json`'da (gizli; sohbete yazdırma), hata metni takvim satırında.
           - **Sıradaki:** hatırlatıcı, oyun oturumu. Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.
