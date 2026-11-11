@@ -221,7 +221,7 @@ function Upcoming({ c }: { c: CalendarState }) {
       )}
       {next && c.nextCardMs != null && (
         <p className="text-[12px] text-ink-3" data-calendar-next>
-          {t("calendar.next.a")} {hhmm(c.nextCardMs)} {t("calendar.next.b")} ({hhmm(next.startMs)} {next.title})
+          {t("calendar.next", { time: hhmm(c.nextCardMs), start: hhmm(next.startMs), title: next.title })}
         </p>
       )}
       {c.upcoming.some((e) => e.allDay) && <p className="text-[12px] text-ink-3">{t("calendar.allDay.note")}</p>}
@@ -281,7 +281,7 @@ function CardPreview({ c }: { c: CalendarState }) {
         </div>
         <div className="flex min-w-[220px] flex-1 flex-col gap-2">
           <span className="text-[12px] text-ink-2">
-            {sample ? t("calendar.preview.sample") : `${t("calendar.preview.next")} ${hhmm(target.event.startMs)} ${target.event.title}`}
+            {sample ? t("calendar.preview.sample") : t("calendar.preview.next", { time: hhmm(target.event.startMs), title: target.event.title })}
           </span>
           <span className="text-[12px] text-ink-3">{t("calendar.preview.tryBody")}</span>
           {liveOn ? (
@@ -328,7 +328,7 @@ function SourceRow({ s }: { s: CalendarState["sources"][number] }) {
             </span>
           ) : s.lastOkMs != null ? (
             <span className="text-ink-3">
-              {t("calendar.read.at")} {hhmm(s.lastOkMs)} · {s.events} {t("calendar.read.events")}
+              {t("calendar.read.at", { time: hhmm(s.lastOkMs) })} · {t("calendar.read.events", { count: s.events })}
             </span>
           ) : (
             <span className="flex items-center gap-1 text-ink-3">
@@ -387,7 +387,7 @@ function AddCalendar({ onCancel, onDone }: { onCancel: () => void; onDone: (msg:
   useEffect(() => {
     if (step.at !== "reading" || !reading) return;
     if (reading.lastOkMs != null && !reading.error) {
-      onDone(`${reading.name} ${t("calendar.added")} · ${reading.events} ${t("calendar.read.events")}`);
+      onDone(t("calendar.added", { name: reading.name, events: t("calendar.read.events", { count: reading.events }) }));
     }
   }, [step, reading, onDone, t]);
 
@@ -553,7 +553,7 @@ function AddCalendar({ onCancel, onDone }: { onCancel: () => void; onDone: (msg:
                 >
                   {t("calendar.fix")}
                 </button>
-                <button type="button" onClick={() => onDone(`${reading.name} ${t("calendar.addedFailing")}`)} className="h-9 rounded-lg border border-line px-3 text-[13px] text-ink-2 hover:bg-surface-2">
+                <button type="button" onClick={() => onDone(t("calendar.addedFailing", { name: reading.name }))} className="h-9 rounded-lg border border-line px-3 text-[13px] text-ink-2 hover:bg-surface-2">
                   {t("calendar.keep")}
                 </button>
               </div>

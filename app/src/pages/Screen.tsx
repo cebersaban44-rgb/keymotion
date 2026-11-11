@@ -308,7 +308,7 @@ function Studio({ kb, usb, loaded }: { kb: KeyboardInfo; usb: boolean; loaded: b
             <Check size={18} className="mt-0.5 shrink-0 text-ok" />
             <div className="flex-1 text-[13px]">
               <div className="font-semibold">
-                “{done.name}” {done.kind === "uploaded" ? t("sc.done.uploaded") : t("sc.done.saved")}
+                {t(done.kind === "uploaded" ? "sc.done.uploaded" : "sc.done.saved", { name: done.name })}
                 {done.seconds != null && <span className="num ml-2 font-normal text-ink-3">{fmtSeconds(done.seconds)}</span>}
               </div>
               <div className="text-ink-2">{done.kind === "uploaded" ? t("sc.done.uploadedHint") : t("sc.done.savedHint")}</div>
@@ -397,7 +397,7 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
     setNotice(null);
     try {
       await useScreen.getState().uploadToKeyboard(it, "library");
-      setNotice({ ok: true, text: `“${it.name}” ${t("sc.done.uploaded")}. ${t("sc.done.fnHome")}` });
+      setNotice({ ok: true, text: `${t("sc.done.uploaded", { name: it.name })}. ${t("sc.done.fnHome")}` });
     } catch (e) {
       setNotice({ ok: false, text: friendlyError(e, t) });
     }
@@ -494,7 +494,7 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
                   </span>
                 )}
                 <span className="num text-[11px] text-ink-3">
-                  {it.frames} {t("sc.frames")}
+                  {t("sc.frames", { count: it.frames })}
                   {it.frames > 1 ? ` · ${t("sc.loop")} ${fmtSeconds(it.loopMs / 1000)}` : ""}
                 </span>
                 <span className="num text-[11px] text-ink-3">
@@ -580,7 +580,7 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
             >
               <ChevronDown size={14} /> {t("sc.lib.more")}
               <span className="num text-ink-3">
-                · {rest} {t("sc.lib.left")}
+                · {t("sc.lib.left", { count: rest })}
               </span>
             </button>
           )}
@@ -631,6 +631,7 @@ export function ScreenUploadToast() {
     return () => window.clearInterval(id);
   }, [running]);
   const visible = !!upload && !(page === "screen" && upload.origin === "editor");
+  const left = upload ? remaining(upload, now) : null;
   return (
     <AnimatePresence>
       {visible && upload && (
@@ -655,10 +656,10 @@ export function ScreenUploadToast() {
           </div>
           <div className="num flex justify-between text-[12px] text-ink-3">
             <span>
-              {upload.done}/{upload.total} {t("sc.pages")}
+              {t("sc.pagesDone", { done: upload.done, count: upload.total })}
             </span>
             <span>
-              {remaining(upload, now) ? `${remaining(upload, now)} ${t("sc.left")}` : ""}
+              {left ? t("sc.left", { time: left }) : ""}
             </span>
           </div>
           <p className="text-[12px] text-ink-2">{t("sc.uploading.note")}</p>

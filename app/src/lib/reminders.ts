@@ -13,7 +13,7 @@ import type { ReminderIcon } from "../bindings/ReminderIcon";
 import type { ReminderSettings } from "../bindings/ReminderSettings";
 import type { ReminderState } from "../bindings/ReminderState";
 import type { ReminderWhen } from "../bindings/ReminderWhen";
-import type { MessageKey } from "./i18n";
+import type { MessageKey, Translate } from "./i18n";
 import { inTauri } from "./ipc";
 import { mockLiveHold, mockReturnAfter, submitLive, useLive } from "./live";
 import type { Prepared } from "./screenImport";
@@ -130,14 +130,14 @@ export function dayWord(ms: number, t: (k: MessageKey) => string, locale: string
 }
 
 /** How a reminder repeats, in words. */
-export function whenText(w: ReminderWhen, t: (k: MessageKey) => string, locale: string) {
+export function whenText(w: ReminderWhen, t: Translate, locale: string) {
   switch (w.kind) {
     case "once":
       return `${dayWord(w.at, t, locale)} ${hhmm(w.at)} · ${t("reminder.once")}`;
     case "daily":
       return `${daysText(w.days, t)} ${minuteText(w.minute)}`;
     case "every":
-      return `${t("reminder.every.a")} ${w.every} ${t("sc.live.m")}${t("reminder.every.b")} · ${minuteText(w.from)}–${minuteText(w.to)} · ${daysText(w.days, t).toLocaleLowerCase(locale)}`;
+      return `${t("reminder.everyMin", { min: w.every })} · ${minuteText(w.from)}–${minuteText(w.to)} · ${daysText(w.days, t).toLocaleLowerCase(locale)}`;
   }
 }
 

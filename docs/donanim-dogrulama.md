@@ -503,6 +503,20 @@ Uygulamanın Ekran sayfası; kullanıcı kendi dosyalarıyla denedi.
   - 21:20:33'te bütçe boşken de dönüş başladı. 21:21:11'de "cat" geri yüklendi: 254 sayfa, 37 sn, hata yok. O sırada Chrome'daki şarkının kartı bütçe bekliyordu; bütçe gelince ya da "Şimdi gönder"le gider.
   - Kullanıcı canlı planını Yoğun'a aldı ve odak zamanlayıcısını canlı modla yeniden denedi: "Sorun çözüldü, çalışıyor." (2026-11-10)
 
+### USB'de pil izi ve HID tanımlayıcı şekli — 2026-11-11
+
+Araçlar: `kb descriptors`, `kb listen` (yeni), `kb read-colors`. Klavyeye yazma yok; yalnızca okuma. Kablolu, fw 0x0106. Ayrıntı: `destek-haritasi.md` §5.
+
+| Ölçüm | Sonuç |
+|---|---|
+| FF13 tanımlayıcısı | 48 bayt: 64 bayt giriş, 64 bayt çıkış, 64 bayt feature; rapor kimliği yok. |
+| FF68 tanımlayıcısı | 35 bayt: 64 bayt giriş, **4096 bayt çıkış**. |
+| `FFFF` koleksiyonu | 23 bayt: rapor 05, 3 bayt giriş. |
+| Pasif dinleme, 20 sn (FF13 ve FFFF giriş raporları) | **Hiç rapor gelmedi.** Klavye USB'de kendiliğinden pil ya da şarj bilgisi göndermiyor. |
+| `04 F5`: Fn (LED 96) | `#000000`. Klavye uzun süredir kablodaydı. 2026-11-10'da şarj olurken kırmızıydı; büyük olasılıkla şarj bitince sönüyor (kullanıcıyla doğrulanacak). |
+
+- Tanımlayıcılar `crates/kb-core/src/shape.rs` testlerinde duruyor. Uygulama komut ve ekran kanalını açarken bu şekli denetliyor; gerçek uygulamada (CDP) komut kanalı açıldı ve ayna çalıştı.
+
 ### Sonuçlar
 
 1. **Durum baytı kuralı:** Yalnızca `FF` ret demektir. `00` ve `01` kabul olarak sayılır.

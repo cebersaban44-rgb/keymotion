@@ -35,6 +35,8 @@ Metinler `app/src/lib/i18n.ts`'te durur. Her anahtarın Türkçesi ve İngilizce
 - **"Ekran kartı" grafik kartı demektir.** Klavye ekranına giden kartlar için yalnız "kart" denir; "ekran kartı" yalnız Sistem göstergelerindeki grafik kartı içindir.
 - Sayı ve birim için `percent()`, `decimal()`, `fmtSeconds`, `useAgo` kullanılır; `%` ve `sn` elle yazılmaz.
 - Arka uç hatası kullanıcıya gösterilmez; `friendlyError` (lib/errors.ts) kısa bir mesaja çevirir.
+- **Cümle parça parça kurulmaz.** Sayı ya da ad içeren cümle tek anahtardır ve yer tutucu taşır: `t("calendar.next", { time, start, title })`. Kelime sırası dilden dile değiştiği için `t("x.a") + sayı + t("x.b")` yazılmaz.
+- **Sayı + isim:** `t("sc.frames", { count })`. İngilizcede tekil için `<anahtar>.one` eklenir ("1 frame"); Türkçede `.one` çoğuldan farksızdır ("1 kare").
 
 ### Yabancı kelime
 - Türkçe karşılığı yerleşmiş olan kullanılır (TDK'ya bakılır). Marka, ürün, dosya biçimi ve tuş adları olduğu gibi kalır: USB, Bluetooth, Windows, GIF, PNG, Fn, Num Lock.
