@@ -136,6 +136,17 @@ export const useKeymap = create<KeymapStore>((set, get) => {
   };
 });
 
+/**
+ * A keymap from a backup, opened as unsaved edits for `modelId`: nothing is
+ * written to the keyboard until the user saves it on the Key mapping page.
+ */
+export function stageKeymapImport(modelId: string, state: KeymapState) {
+  const draft = layersOf(state);
+  const store = useKeymap.getState();
+  if (store.modelId === modelId) useKeymap.setState({ draft });
+  persist({ modelId, draft, layer: store.layer });
+}
+
 function clone(l: Layers): Layers {
   return { base: { ...l.base }, fn: { ...l.fn } };
 }

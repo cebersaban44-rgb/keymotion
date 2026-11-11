@@ -2,9 +2,13 @@
 //! and a key that blinks in the minute before it starts.
 //!
 //! * Calendars are published feeds (`ics.rs`): Google, Outlook and Apple
-//!   iCloud all give one an address. The address is a secret: it stays in
-//!   `calendar.json`, is never logged and never goes to the UI (only its
-//!   host does).
+//!   iCloud all give one an address. The address is a secret: it is never
+//!   logged and never goes to the UI (only its host does). In
+//!   `calendar.json` it is sealed for the Windows user (DPAPI, `dpapi:` +
+//!   base64); a plain address from an older version is sealed on start.
+//!   An address that cannot be opened here (another user or computer) stays
+//!   as it is and the calendar reports `address unavailable`. Systems
+//!   without DPAPI keep the plain address.
 //! * A reader thread reads each calendar every 15 minutes (or when asked)
 //!   with the Windows HTTP client, and opens up two days of events.
 //! * The ticker decides what the screen shows (owner's choices,
@@ -41,7 +45,15 @@ pub const SOURCE: &str = "calendar";
 pub const EVENT_CALENDAR: &str = "calendar";
 pub const EVENT_CALENDAR_CARD: &str = "calendar-card";
 const FILE: &str = "calendar.json";
+/// Version 1 throughout: a sealed address is marked by its prefix, so an
+/// older version reading the file keeps it (it only cannot read the feed).
 const VERSION: u32 = 1;
+/// A sealed address on disk: this prefix, then base64 of the DPAPI blob.
+const SEAL_PREFIX: &str = "dpapi:";
+/// Binds a sealed address to this purpose.
+const SEAL_ENTROPY: &[u8] = b"kb calendar address";
+/// A calendar's error when its address cannot be opened on this computer.
+pub const ADDRESS_UNAVAILABLE: &str = "address unavailable";
 
 const MINUTE_MS: f64 = 60_000.0;
 const HOUR_MS: f64 = 60.0 * MINUTE_MS;
@@ -98,6 +110,89 @@ struct StoredSource {
     url: String,
     color: [u8; 3],
     enabled: bool,
+}
+
+/// A calendar in a backup file (`backup.rs`): settings always, the
+/// calendars only when the user chose to include their addresses.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarBackup {
+    pub settings: CalendarSettings,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sources: Option<Vec<CalendarSourceBackup>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarSourceBackup {
+    pub name: String,
+    /// The secret address, in the open: the file is the user's to guard.
+    pub url: String,
+    pub color: [u8; 3],
+    pub enabled: bool,
+}
+
+// ----------------------------------------------------------------- sealing
+
+fn is_sealed(url: &str) -> bool {
+    url.starts_with(SEAL_PREFIX)
+}
+
+/// The address as it goes to disk: sealed where the system can, else as
+/// it is. An address that could not be opened stays sealed as it was.
+fn seal(url: &str) -> String {
+    use base64::Engine;
+    if is_sealed(url) {
+        return url.to_string();
+    }
+    match kb_winsys::secret::protect(url.as_bytes(), SEAL_ENTROPY) {
+        Ok(blob) => format!("{SEAL_PREFIX}{}", base64::engine::general_purpose::STANDARD.encode(blob)),
+        Err(kb_winsys::secret::SecretError::Unsupported) => url.to_string(),
+        Err(e) => {
+            tracing::warn!("calendar address kept unsealed: {e}");
+            url.to_string()
+        }
+    }
+}
+
+/// The address from disk, and whether it was stored in the open. One that
+/// cannot be opened here comes back sealed (see [`is_sealed`]).
+fn unseal(stored: &str) -> (String, bool) {
+    use base64::Engine;
+    let Some(text) = stored.strip_prefix(SEAL_PREFIX) else { return (stored.to_string(), true) };
+    let opened = base64::engine::general_purpose::STANDARD
+        .decode(text)
+        .map_err(|e| e.to_string())
+        .and_then(|blob| kb_winsys::secret::unprotect(&blob, SEAL_ENTROPY).map_err(|e| e.to_string()))
+        .and_then(|plain| String::from_utf8(plain).map_err(|e| e.to_string()));
+    match opened {
+        Ok(url) => (url, false),
+        Err(e) => {
+            tracing::warn!("a calendar address cannot be opened on this computer: {e}");
+            (stored.to_string(), false)
+        }
+    }
+}
+
+/// The calendars as they go to disk (addresses sealed).
+fn for_disk(stored: &Stored) -> Stored {
+    let mut out = stored.clone();
+    for s in &mut out.sources {
+        s.url = seal(&s.url);
+    }
+    out
+}
+
+/// The calendars from disk with their addresses opened, and whether any
+/// address was stored in the open (to be sealed now).
+fn from_disk(mut stored: Stored) -> (Stored, bool) {
+    let mut plain = false;
+    for s in &mut stored.sources {
+        let (url, was_plain) = unseal(&s.url);
+        plain |= was_plain;
+        s.url = url;
+    }
+    (stored, plain)
 }
 
 /// `webcal://` → `https://`; only secure addresses (a plain `http://`
@@ -280,11 +375,19 @@ impl CalendarHandle {
         device: Arc<DeviceHandle>,
         config_dir: Option<PathBuf>,
     ) -> Arc<Self> {
-        let mut stored =
-            config_dir.as_deref().and_then(|d| settings::load::<Stored>(d, FILE, VERSION)).unwrap_or_default();
+        let (mut stored, plain) = from_disk(
+            config_dir.as_deref().and_then(|d| settings::load::<Stored>(d, FILE, VERSION)).unwrap_or_default(),
+        );
         stored.settings = stored.settings.sanitized();
         if !stored.sources.is_empty() {
             tracing::info!(calendars = stored.sources.len(), "calendars");
+        }
+        // Addresses saved in the open by an older version: seal them now.
+        if let (true, true, Some(dir)) = (plain, kb_winsys::secret::AVAILABLE, config_dir.as_deref()) {
+            match settings::save(dir, FILE, VERSION, for_disk(&stored)) {
+                Ok(()) => tracing::info!("calendar addresses sealed"),
+                Err(e) => tracing::warn!("calendar addresses not sealed: {e}"),
+            }
         }
         let inner = Arc::new(Mutex::new(Inner {
             stored,
@@ -352,7 +455,7 @@ impl CalendarHandle {
                 .iter()
                 .map(|src| {
                     let read = inner.reads.get(&src.id);
-                    let host = host_of(&src.url);
+                    let host = if is_sealed(&src.url) { String::new() } else { host_of(&src.url) };
                     CalendarSourceInfo {
                         id: src.id.clone(),
                         name: src.name.clone(),
@@ -389,9 +492,73 @@ impl CalendarHandle {
 
     fn save(&self, stored: &Stored) -> Result<(), String> {
         match &self.config_dir {
-            Some(dir) => settings::save(dir, FILE, VERSION, stored).map_err(|e| e.to_string()),
+            Some(dir) => settings::save(dir, FILE, VERSION, for_disk(stored)).map_err(|e| e.to_string()),
             None => Ok(()),
         }
+    }
+
+    /// The calendars for a backup file; addresses only when asked (they
+    /// leave the sealed store in the open). Unopenable addresses are left out.
+    pub fn export(&self, with_addresses: bool) -> Result<CalendarBackup, String> {
+        let inner = self.inner.lock().map_err(|_| "calendar unavailable")?;
+        let sources = with_addresses.then(|| {
+            inner
+                .stored
+                .sources
+                .iter()
+                .filter(|s| !is_sealed(&s.url))
+                .map(|s| CalendarSourceBackup {
+                    name: s.name.clone(),
+                    url: s.url.clone(),
+                    color: s.color,
+                    enabled: s.enabled,
+                })
+                .collect()
+        });
+        Ok(CalendarBackup { settings: inner.stored.settings.clone(), sources })
+    }
+
+    /// Settings from a backup, and its calendars (when it has their
+    /// addresses) in place of these. Returns how many calendars were left
+    /// out (bad address, duplicate, over the limit). New calendars are read
+    /// at once.
+    pub fn import(&self, backup: CalendarBackup) -> Result<u32, String> {
+        let mut skipped = 0;
+        let stored = {
+            let mut inner = self.inner.lock().map_err(|_| "calendar unavailable")?;
+            inner.stored.settings = backup.settings.sanitized();
+            if let Some(list) = backup.sources {
+                let base = now_ms() as u64;
+                let mut sources: Vec<StoredSource> = Vec::new();
+                for (i, s) in list.into_iter().enumerate() {
+                    let Ok(url) = normalize_url(&s.url) else {
+                        skipped += 1;
+                        continue;
+                    };
+                    if sources.len() >= MAX_SOURCES || sources.iter().any(|x| x.url == url) {
+                        skipped += 1;
+                        continue;
+                    }
+                    let host = host_of(&url);
+                    sources.push(StoredSource {
+                        id: format!("c{base:x}{i}"),
+                        name: clean_name(&s.name, &host),
+                        url,
+                        color: s.color,
+                        enabled: s.enabled,
+                    });
+                }
+                tracing::info!(calendars = sources.len(), skipped, "calendars restored from a backup");
+                inner.reads.clear();
+                inner.stored.sources = sources;
+            }
+            inner.stored.clone()
+        };
+        self.save(&stored)?;
+        self.wake_reader();
+        self.wake();
+        self.emit();
+        Ok(skipped)
     }
 
     pub fn configure(&self, settings: CalendarSettings) -> Result<CalendarState, String> {
@@ -525,6 +692,16 @@ impl CalendarHandle {
                 .iter()
                 .find(|s| s.enabled && inner.reads.get(&s.id).is_none_or(|r| r.next_ms <= now))
                 .map(|s| (s.id.clone(), s.url.clone()));
+            // An address that cannot be opened here is not sent anywhere.
+            if let Some((id, _)) = due.as_ref().filter(|(_, url)| is_sealed(url)) {
+                if let Some(read) = inner.reads.get_mut(id) {
+                    read.error = Some(ADDRESS_UNAVAILABLE.into());
+                    read.next_ms = now + READ_EVERY_MS;
+                }
+                drop(inner);
+                self.emit();
+                return Duration::ZERO;
+            }
             if due.is_some() {
                 inner.reading = true;
             }
@@ -863,6 +1040,53 @@ mod tests {
         assert_eq!(http_status(0x8019_0191), Some(401));
         assert_eq!(http_status(0x8007_0005), None);
         assert_eq!(http_status(0x8019_0000), None);
+    }
+
+    fn src(id: &str, url: &str) -> StoredSource {
+        StoredSource { id: id.into(), name: "İş".into(), url: url.into(), color: [1, 2, 3], enabled: true }
+    }
+
+    #[test]
+    fn addresses_are_sealed_on_disk_and_open_again() {
+        let url = "https://calendar.google.com/calendar/ical/x%40gmail.com/private-abc/basic.ics";
+        let stored = Stored { settings: CalendarSettings::default(), sources: vec![src("c1", url)] };
+        let disk = for_disk(&stored);
+        let json = serde_json::to_string(&disk).unwrap();
+        if kb_winsys::secret::AVAILABLE {
+            assert!(disk.sources[0].url.starts_with(SEAL_PREFIX), "{json}");
+            assert!(!json.contains("private-abc") && !json.contains("google"), "{json}");
+        } else {
+            assert_eq!(disk.sources[0].url, url, "no DPAPI: kept as it is");
+        }
+        let (back, plain) = from_disk(disk.clone());
+        assert_eq!(back.sources[0].url, url);
+        assert_eq!(plain, !kb_winsys::secret::AVAILABLE);
+        assert_eq!(for_disk(&back).sources[0].url.starts_with(SEAL_PREFIX), kb_winsys::secret::AVAILABLE);
+
+        // An older version's file: plain, sealed on the next save.
+        let (old, plain) = from_disk(stored.clone());
+        assert!(plain);
+        assert_eq!(old.sources[0].url, url);
+    }
+
+    #[test]
+    fn an_address_that_cannot_be_opened_is_kept_and_never_read() {
+        let damaged = format!("{SEAL_PREFIX}AAAA");
+        let (back, plain) =
+            from_disk(Stored { settings: CalendarSettings::default(), sources: vec![src("c1", &damaged)] });
+        assert!(!plain);
+        assert_eq!(back.sources[0].url, damaged, "kept for the computer that can open it");
+        assert_eq!(for_disk(&back).sources[0].url, damaged, "not sealed twice");
+        assert!(is_sealed(&back.sources[0].url));
+    }
+
+    #[test]
+    fn backups_carry_addresses_only_when_asked() {
+        let b = CalendarBackup { settings: CalendarSettings::default(), sources: None };
+        let json = serde_json::to_string(&b).unwrap();
+        assert!(!json.contains("sources"), "{json}");
+        let back: CalendarBackup = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, b);
     }
 
     #[test]

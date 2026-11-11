@@ -1,6 +1,7 @@
 //! Settings the backend owns and persists in the app config directory
 //! (`%APPDATA%\dev.keymotion`). UI-only preferences (theme, language,
-//! the current lighting design) stay in the webview's local storage.
+//! unsaved editor drafts) stay in the webview's local storage; the Lighting
+//! page's state is here too (`lighting.rs`).
 //!
 //! A file that cannot be used (damaged, unreadable, or written by a newer
 //! version of the app) gives the defaults, but it is never lost: it is first

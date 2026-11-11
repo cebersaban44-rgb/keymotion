@@ -26,6 +26,9 @@
 
 #![allow(unsafe_code)]
 
+pub mod os;
+pub mod secret;
+
 use std::collections::HashMap;
 
 /// Volume of the default speakers.

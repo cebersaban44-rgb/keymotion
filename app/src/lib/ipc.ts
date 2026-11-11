@@ -22,6 +22,11 @@ import type { KeymapState } from "../bindings/KeymapState";
 import type { MacroInfo } from "../bindings/MacroInfo";
 import type { MacrosState } from "../bindings/MacrosState";
 import type { SettingsReset } from "../bindings/SettingsReset";
+import type { AppFolder } from "../bindings/AppFolder";
+import type { BackupExported } from "../bindings/BackupExported";
+import type { BackupImported } from "../bindings/BackupImported";
+import type { BackupSection } from "../bindings/BackupSection";
+import type { BackupSummary } from "../bindings/BackupSummary";
 // Generated from Rust by `cargo test` (dto.rs export_mock_geometry).
 import ak980Geometry from "../bindings/geometry-ajazz-ak980-pro.json";
 import mockKeymapCatalog from "../bindings/keymap-catalog.json";
@@ -361,6 +366,163 @@ export function setCalibration(calibration: Calibration, persist: boolean): Prom
       calibrationInFlight = false;
     }
   });
+}
+
+// ---------------------------------------------------- data and diagnostics
+
+/** The Lighting page's saved state (lighting.ts owns the fields); `null` when none was saved yet. */
+export async function lightingLoad(): Promise<Record<string, unknown> | null> {
+  if (!inTauri) {
+    try {
+      const raw = localStorage.getItem(MOCK_LIGHTING);
+      return raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  }
+  return invoke<Record<string, unknown> | null>("lighting_state");
+}
+
+export async function lightingSave(state: Record<string, unknown>): Promise<void> {
+  if (!inTauri) {
+    try {
+      localStorage.setItem(MOCK_LIGHTING, JSON.stringify(state));
+    } catch {
+      /* browser preview only */
+    }
+    return;
+  }
+  await invoke("lighting_save", { state });
+}
+
+const MOCK_LIGHTING = "ks.mock.lighting";
+
+/** Put a UI failure into the app's log (the backend removes addresses). */
+export function logUiError(message: string): Promise<void> {
+  if (!inTauri) return Promise.resolve();
+  return invoke<void>("log_ui_error", { message }).catch(() => undefined);
+}
+
+/** The diagnostics report as plain text (versions, keyboards, last log lines). */
+export async function getDiagnostics(language: string): Promise<string> {
+  if (!inTauri) {
+    await mockDelay(150);
+    return `Browser preview diagnostics\nUI language: ${language}\nUser agent: ${navigator.userAgent}\n`;
+  }
+  return invoke<string>("diagnostics_report", { language });
+}
+
+/** Open the app's log or data folder in Explorer. */
+export async function openFolder(folder: AppFolder): Promise<void> {
+  if (!inTauri) return;
+  await invoke("open_folder", { folder });
+}
+
+/**
+ * Write a backup file into the Downloads folder. Calendar addresses go in
+ * only with `withAddresses`. In the browser preview the file downloads.
+ */
+export async function exportBackup(withAddresses: boolean, fileName: string): Promise<BackupExported> {
+  if (!inTauri) {
+    const lighting = await lightingLoad();
+    const backup = { kind: "kb-backup", version: 1, createdMs: Date.now(), appVersion: "0.1.0-dev", lighting };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: `${fileName}.json` });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return { file: `${fileName}.json`, inDownloads: true };
+  }
+  return invoke<BackupExported>("backup_export", { withAddresses, fileName });
+}
+
+/** Show the last exported file in Explorer. */
+export async function revealExport(): Promise<void> {
+  if (!inTauri) return;
+  await invoke("backup_reveal");
+}
+
+// Browser-only stand-in for the backup waiting to be imported.
+let mockPending: Record<string, unknown> | null = null;
+
+/** Read and check a backup file; it waits for `importBackup`. Nothing changes yet. */
+export async function inspectBackup(bytes: ArrayBuffer): Promise<BackupSummary> {
+  if (!inTauri) return mockInspect(bytes);
+  return invoke<BackupSummary>("backup_inspect", bytes);
+}
+
+/** Restore the chosen parts of the inspected backup. Nothing is written to the keyboard. */
+export async function importBackup(sections: BackupSection[]): Promise<BackupImported> {
+  if (!inTauri) {
+    await mockDelay(300);
+    const lighting = mockPending?.lighting;
+    if (sections.includes("lighting") && lighting && typeof lighting === "object") {
+      const local = (await lightingLoad()) ?? {};
+      const tab = (lighting as Record<string, unknown>).tab;
+      await lightingSave({
+        ...(lighting as Record<string, unknown>),
+        appliedEffect: local.appliedEffect ?? null,
+        savedPerKey: local.savedPerKey ?? null,
+        draft: tab === "per-key" ? "per-key" : "effect",
+      });
+    }
+    mockPending = null;
+    return { keymaps: [], macros: [], failed: [], skipped: 0 };
+  }
+  return invoke<BackupImported>("backup_import", { sections });
+}
+
+/** Forget the inspected backup. */
+export async function cancelImport(): Promise<void> {
+  if (!inTauri) {
+    mockPending = null;
+    return;
+  }
+  await invoke("backup_cancel");
+}
+
+/** Browser preview: the same checks and counts as backup.rs, roughly. */
+async function mockInspect(bytes: ArrayBuffer): Promise<BackupSummary> {
+  await mockDelay(200);
+  let b: Record<string, unknown>;
+  try {
+    b = JSON.parse(new TextDecoder().decode(bytes).replace(/^﻿/, "")) as Record<string, unknown>;
+  } catch {
+    throw new Error("not a backup");
+  }
+  if (!b || b.kind !== "kb-backup") throw new Error("not a backup");
+  if (typeof b.version !== "number") throw new Error("backup damaged");
+  if (b.version > 1) throw new Error("backup from a newer version");
+  const sections: BackupSummary["sections"] = [];
+  const list = (v: unknown, key: string) => {
+    const x = v && typeof v === "object" ? (v as Record<string, unknown>)[key] : undefined;
+    return Array.isArray(x) ? x.length : 0;
+  };
+  // Keymaps and macros count only when something was written (as in Rust).
+  const models = (v: unknown) =>
+    Object.values(((v ?? {}) as { models?: Record<string, Record<string, unknown>> }).models ?? {});
+  const written = (l: unknown) => !!l && typeof l === "object" && (l as { writtenMs?: unknown }).writtenMs != null;
+  const layers = models(b.keymaps).flatMap((m) => [m.base, m.fn]).filter(written).length;
+  const macroModels = models(b.macros);
+  if (b.lighting) sections.push({ section: "lighting", count: 0 });
+  if (layers > 0) sections.push({ section: "keymap", count: layers });
+  if (macroModels.some(written)) {
+    const count = macroModels.reduce((n, m) => n + (Array.isArray(m.slots) ? m.slots.filter(Boolean).length : 0), 0);
+    sections.push({ section: "macros", count });
+  }
+  if (list(b.screen, "items")) sections.push({ section: "screen", count: list(b.screen, "items") });
+  if (b.calibration) sections.push({ section: "calibration", count: 0 });
+  if (b.clock) sections.push({ section: "clock", count: 0 });
+  if (b.pomodoro) sections.push({ section: "focus", count: 0 });
+  if (b.gauges) sections.push({ section: "gauges", count: 0 });
+  if (b.reminders) sections.push({ section: "reminders", count: list(b.reminders, "reminders") });
+  if (b.calendar) sections.push({ section: "calendar", count: list(b.calendar, "sources") });
+  mockPending = b;
+  return {
+    createdMs: typeof b.createdMs === "number" ? b.createdMs : 0,
+    appVersion: typeof b.appVersion === "string" ? b.appVersion : "",
+    sections,
+    screenNew: list(b.screen, "items"),
+  };
 }
 
 const mockDelay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
