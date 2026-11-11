@@ -700,6 +700,13 @@ impl CalendarHandle {
     }
 }
 
+/// The HTTP status inside a Windows HTTP error (`HTTP_E_STATUS_*`,
+/// `0x8019xxxx`): Windows words it in the system language and says little
+/// ("… 404 ()"), so the UI words it itself.
+fn http_status(hresult: u32) -> Option<u16> {
+    (hresult & 0xFFFF_0000 == 0x8019_0000).then_some((hresult & 0xFFFF) as u16).filter(|s| (100..600).contains(s))
+}
+
 #[cfg(windows)]
 mod net {
     use super::MAX_FEED_BYTES;
@@ -712,6 +719,9 @@ mod net {
     /// as the system has them; nothing cached).
     pub fn fetch(url: &str) -> Result<String, String> {
         let short = |e: windows::core::Error| {
+            if let Some(status) = super::http_status(e.code().0 as u32) {
+                return format!("http {status}");
+            }
             let m = e.message();
             let m = m.trim();
             let m: String = if m.is_empty() { format!("0x{:08X}", e.code().0) } else { m.chars().take(160).collect() };
@@ -833,6 +843,14 @@ mod tests {
         assert_eq!(provider_of("cal.example.org"), CalendarProvider::Other);
         assert_eq!(clean_name("  İş   takvimi ", "x"), "İş takvimi");
         assert_eq!(clean_name("", "calendar.google.com"), "calendar.google.com");
+    }
+
+    #[test]
+    fn http_errors_give_their_status() {
+        assert_eq!(http_status(0x8019_0194), Some(404));
+        assert_eq!(http_status(0x8019_0191), Some(401));
+        assert_eq!(http_status(0x8007_0005), None);
+        assert_eq!(http_status(0x8019_0000), None);
     }
 
     #[test]
