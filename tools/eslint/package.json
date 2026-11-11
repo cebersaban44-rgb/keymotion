@@ -1,0 +1,16 @@
+{
+  "name": "keymotion-eslint",
+  "private": true,
+  "description": "ESLint for app/. Kept apart from the app because typescript-eslint does not support TypeScript 7 yet; this package pins TypeScript 6 for the parser only. Run it with `pnpm --dir app lint`.",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "packageManager": "pnpm@10.14.0",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.14.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.14.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.2"
+  }
+}
