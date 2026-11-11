@@ -97,7 +97,7 @@ export function Reminders({ kb }: { kb: KeyboardInfo }) {
     : s.away && s.settings.awayWait && list.some((i) => i.reminder.enabled && i.reminder.when.kind === "every")
       ? t("reminder.status.away")
       : next
-        ? `${t("reminder.status.next")} ${when(next.nextMs!, t, locale)} · ${next.reminder.title}`
+        ? t("reminder.status.next", { when: when(next.nextMs!, t, locale), title: next.reminder.title })
         : list.length
           ? t("reminder.status.none")
           : t("reminder.status.empty");
@@ -394,7 +394,7 @@ function Editor({
     setBusy(true);
     try {
       await save(r);
-      onDone(`${r.title.trim()} ${isNew ? t("reminder.added") : t("reminder.saved")}`);
+      onDone(t(isNew ? "reminder.added" : "reminder.saved", { title: r.title.trim() }));
     } catch (e) {
       setError(reminderError(e, t));
     } finally {
@@ -763,12 +763,12 @@ function HowForm({ r, patch }: { r: Reminder; patch: (p: Partial<Reminder>) => v
           {t("reminder.try")}
         </button>
       </SettingRow>
-      <SettingRow title={t("reminder.card")} body={`${t("reminder.card.body.a")} ${stay} ${t("sc.live.m")} ${t("reminder.card.body.b")}`}>
+      <SettingRow title={t("reminder.card")} body={t("reminder.card.body", { min: stay })}>
         <Toggle checked={r.card} onChange={(card) => patch({ card })} label={t("reminder.card")} />
       </SettingRow>
       {r.card && (
         <p className={`text-[12px] ${uploads > MANY_UPLOADS ? "text-warn" : "text-ink-3"}`} data-reminder-cost>
-          {t("reminder.card.cost.a")} {uploads} {t("reminder.card.cost.b")}
+          {t("reminder.card.cost", { count: uploads })}
           {uploads > MANY_UPLOADS ? ` ${t("reminder.card.many")}` : ""}
         </p>
       )}

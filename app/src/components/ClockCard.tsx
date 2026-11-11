@@ -63,7 +63,7 @@ export function ClockCard({ usb }: { usb: boolean }) {
       : `${new Date(last).toLocaleString(locale === "tr" ? "tr-TR" : "en-US", {
           dateStyle: "medium",
           timeStyle: "short",
-        })} · ${ago(last)} ${t("clock.ago")}`;
+        })} · ${t("clock.ago", { ago: ago(last) })}`;
 
   return (
     <div className="card flex items-center gap-5 p-5">

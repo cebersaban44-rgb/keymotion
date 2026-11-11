@@ -57,8 +57,8 @@ impl From<Capability> for Feature {
     }
 }
 
-/// What one connection mode of a model offers, for "switch to USB to
-/// unlock" guidance in the UI.
+/// What the app offers in one connection mode of a model, for the
+/// connection map and "switch to USB to unlock" guidance in the UI.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -207,7 +207,7 @@ impl KeyboardInfo {
                 .iter()
                 .map(|mode| ModeInfo {
                     connection: mode.kind.into(),
-                    features: mode.capabilities.iter().copied().map(Feature::from).collect(),
+                    features: kb_core::app_capabilities(m, mode.kind).into_iter().map(Feature::from).collect(),
                     verified: mode.verified,
                 })
                 .collect(),

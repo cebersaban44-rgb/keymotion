@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Calibration } from "../bindings/Calibration";
 import type { CalibrationInfo } from "../bindings/CalibrationInfo";
 import type { GeometryInfo } from "../bindings/GeometryInfo";
-import { useT, type MessageKey } from "../lib/i18n";
+import { percent, useT, type MessageKey } from "../lib/i18n";
 import { getCalibration, setCalibration, setLiveFrame } from "../lib/ipc";
 import { SWATCHES, toLedColors, type ColorMap } from "../lib/lighting";
 import { useActiveKeyboard } from "../lib/store";
@@ -201,7 +201,7 @@ export function CalibrationCard() {
                 max={1}
                 step={0.01}
                 accent={c.color}
-                format={(v) => `${Math.round(v * 100)}%`}
+                format={(v) => percent(Math.round(v * 100))}
                 onChange={(v) => setGain(i, v)}
               />
             ))}

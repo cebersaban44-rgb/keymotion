@@ -266,7 +266,7 @@ export function TextFlow({
             </Field>
             <Slider
               label={t("sc.tx.size")}
-              hint={layout?.shrunkTo ? `${t("sc.tx.shrunk")} ${layout.shrunkTo} px` : undefined}
+              hint={layout?.shrunkTo ? t("sc.tx.shrunk", { size: layout.shrunkTo }) : undefined}
               value={spec.size}
               min={SIZES[spec.template].min}
               max={SIZES[spec.template].max}
@@ -297,7 +297,7 @@ export function TextFlow({
                   max={200}
                   step={5}
                   onChange={(speed) => set({ speed })}
-                  format={(v) => `${v} ${t("sc.tx.pxs")}`}
+                  format={(v) => t("sc.tx.pxs", { speed: v })}
                 />
                 <Field label={t("sc.fps")} hint={`${Math.round(1000 / spec.fps)} ms / ${t("sc.frame")}`}>
                   <Segmented<string>
@@ -317,7 +317,7 @@ export function TextFlow({
         {contrast < 2.2 && <Hint tone="warn">{t("sc.tx.lowContrast")}</Hint>}
         {raised && (
           <Hint tone="note">
-            {t("sc.tx.speedRaised")} {layout!.speed} {t("sc.tx.pxs")}
+            {t("sc.tx.speedRaised", { speed: t("sc.tx.pxs", { speed: layout!.speed! }) })}
           </Hint>
         )}
         {frames > PROVEN_FRAMES && <Hint tone="note">{t("sc.warn.unproven")}</Hint>}

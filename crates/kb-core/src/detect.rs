@@ -33,20 +33,41 @@ pub struct DetectedKeyboard {
     pub ble: Option<BlePeer>,
 }
 
+/// Features this app drives in `kind`, out of what the model file says the
+/// keyboard offers there.
+///
+/// - USB: the FF13 command channel and the FF68 screen channel. Keyboard
+///   options (`04 17`) are not built yet, and the firmware has no battery
+///   reading over USB.
+/// - Bluetooth: no vendor channel; only the standard GATT battery service.
+/// - 2.4 GHz receiver: no driver yet (docs/DURUM.md, "Sona bırakılan"), so
+///   nothing is offered even though the model file lists what the receiver
+///   is said to carry.
+pub fn app_capabilities(model: &Model, kind: ConnectionKind) -> Vec<Capability> {
+    let Some(mode) = model.mode(kind) else {
+        return Vec::new();
+    };
+    mode.capabilities
+        .iter()
+        .copied()
+        .filter(|c| match kind {
+            ConnectionKind::Usb => !matches!(c, Capability::Options | Capability::Battery),
+            ConnectionKind::Bluetooth => *c == Capability::Battery,
+            ConnectionKind::Dongle => false,
+        })
+        .collect()
+}
+
 impl DetectedKeyboard {
-    /// Features usable right now, given the connection mode and the vendor
-    /// interfaces the OS actually exposed.
+    /// Features usable right now: what the app drives in this connection
+    /// mode, given the interfaces the OS actually exposed.
     pub fn capabilities(&self) -> Vec<Capability> {
-        let Some(mode) = self.model.mode(self.connection) else {
-            return Vec::new();
-        };
-        mode.capabilities
-            .iter()
-            .copied()
+        app_capabilities(self.model, self.connection)
+            .into_iter()
             .filter(|c| match c {
-                Capability::Battery => self.connection != ConnectionKind::Bluetooth || self.ble.is_some(),
+                Capability::Battery => self.ble.is_some(),
                 Capability::Screen => self.display.is_some(),
-                _ => self.connection == ConnectionKind::Bluetooth || self.command.is_some(),
+                _ => self.command.is_some(),
             })
             .collect()
     }
@@ -179,5 +200,29 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].product, None);
         assert_eq!(found[0].capabilities(), vec![Capability::Battery]);
+    }
+
+    #[test]
+    fn wired_offers_only_what_the_app_drives() {
+        let list = [
+            iface(0x8009, 0xFF13, hid::Bus::Usb, "SONiX AK980 PRO"),
+            iface(0x8009, 0xFF68, hid::Bus::Usb, "SONiX AK980 PRO"),
+        ];
+        let caps = detect(&list, &[])[0].capabilities();
+        assert!(!caps.contains(&Capability::Options), "keyboard options are not built");
+        assert!(!caps.contains(&Capability::Battery), "no battery reading over USB");
+        assert!(caps.contains(&Capability::Lighting) && caps.contains(&Capability::Clock));
+    }
+
+    #[test]
+    fn receiver_offers_nothing_until_its_driver_exists() {
+        // The receiver's vendor channel is found, but the app has no driver
+        // for it: no page may unlock and no command may be sent.
+        let list = [iface(0xFEFE, 0xFF60, hid::Bus::Usb, "")];
+        let found = detect(&list, &[]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].connection, ConnectionKind::Dongle);
+        assert!(found[0].command.is_some());
+        assert!(found[0].capabilities().is_empty());
     }
 }

@@ -1,4 +1,3 @@
-import { motion } from "motion/react";
 import type { Connection } from "../bindings/Connection";
 import { connectionKey, useT } from "../lib/i18n";
 
@@ -6,31 +5,27 @@ import { connectionKey, useT } from "../lib/i18n";
 // left to right as printed: 2.4G · USB · BT (verified from a photo).
 const POSITIONS: Connection[] = ["dongle", "usb", "bluetooth"];
 
-/** Mirror of the hardware slide switch; read-only, it reflects the device. */
+/** Drawing of the hardware slide switch at its current position. It is not
+ *  a control: the mode changes only with the switch on the keyboard. */
 export function ModeSwitch({ value }: { value: Connection }) {
   const t = useT();
-  const index = Math.max(0, POSITIONS.indexOf(value));
   return (
     <div
       role="img"
-      aria-label={t(connectionKey(value))}
-      className="relative grid h-12 grid-cols-3 rounded-full border border-line-strong bg-bg-raise p-1"
+      aria-label={t("conn.switch.at", { mode: t(connectionKey(value, true)) })}
+      className="grid grid-cols-3 overflow-hidden rounded-md border border-line-strong"
+      data-mode-switch={value}
     >
       {POSITIONS.map((p) => (
-        <span key={p} className="num flex items-center justify-center text-[12px] text-ink-3">
+        <span
+          key={p}
+          className={`num py-1.5 text-center text-[12px] ${
+            p === value ? "bg-surface-2 font-semibold text-ink" : "text-ink-3"
+          } ${p !== POSITIONS[0] ? "border-l border-line" : ""}`}
+        >
           {t(connectionKey(p, true))}
         </span>
       ))}
-      <motion.div
-        className="absolute top-1 bottom-1 left-1 flex items-center justify-center gap-2 rounded-full bg-surface-2 shadow-[0_6px_16px_-8px_rgb(0_0_0/0.6),inset_0_1px_0_rgb(255_255_255/0.08),0_0_0_1px_var(--line)]"
-        style={{ width: "calc((100% - 8px) / 3)" }}
-        initial={false}
-        animate={{ x: `${index * 100}%` }}
-        transition={{ type: "spring", stiffness: 420, damping: 34 }}
-      >
-        <span className="h-1.5 w-1.5 rounded-full bg-signal" />
-        <span className="num text-[12px] font-semibold text-ink">{t(connectionKey(value, true))}</span>
-      </motion.div>
     </div>
   );
 }

@@ -153,7 +153,7 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
   const setPage = useApp((x) => x.setPage);
   const on = onScreen(s);
   const calKey = calendarStatus(s, cal, on === "calendar");
-  const calStatus = calKey === "calendar.st.next" && cal?.nextCardMs != null ? `${t(calKey)} ${hhmm(cal.nextCardMs)}` : t(calKey);
+  const calStatus = calKey === "calendar.st.next" && cal?.nextCardMs != null ? t(calKey, { time: hhmm(cal.nextCardMs) }) : t(calKey);
   const units = { s: t("sc.live.s"), h: t("sc.live.h"), m: t("sc.live.m") };
   const playing = !!s.track?.playing;
 
@@ -196,7 +196,7 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
       : on === "reminder"
         ? t("sc.live.st.showing")
         : nextCard
-          ? `${t("reminder.st.next")} ${hhmm(nextCard.nextMs!)}`
+          ? t("reminder.st.next", { time: hhmm(nextCard.nextMs!) })
           : t("reminder.st.none");
 
   return (
@@ -294,12 +294,12 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="truncate text-[13px] font-semibold">{s.own.name}</span>
                 <span className="num text-[12px] text-ink-3">
-                  {s.own.frames} {t("sc.frames")} · {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(s.own.frames))}
+                  {t("sc.frames", { count: s.own.frames })} · {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(s.own.frames))}
                 </span>
                 {goingBack != null && (
                   <span className="flex items-center gap-1.5 text-[12px] text-signal" data-going-back>
                     <Clock3 size={13} />
-                    {t("sc.live.goingBack.a")} {fmtSoon(goingBack, units)} {t("sc.live.goingBack.b")}
+                    {t("sc.live.goingBack", { wait: fmtSoon(goingBack, units) })}
                   </span>
                 )}
               </div>
@@ -457,7 +457,7 @@ function TurnOff({
           <div className="flex min-w-0 flex-col gap-0.5">
             <span className="truncate text-[13px] font-semibold">{restore.name}</span>
             <span className="num text-[12px] text-ink-3">
-              {restore.frames} {t("sc.frames")} · {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(restore.frames))}
+              {t("sc.frames", { count: restore.frames })} · {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(restore.frames))}
             </span>
           </div>
         </div>
@@ -500,10 +500,10 @@ function BudgetLine({ s }: { s: LiveState }) {
         </span>
         <span>
           {s.nextTokenMs != null
-            ? `${t("sc.live.next")} ${fmtWait(s.nextTokenMs, units)}`
+            ? t("sc.live.next", { wait: fmtWait(s.nextTokenMs, units) })
             : ready >= s.burst
               ? t("sc.live.full")
-              : `${t("sc.live.refill")} ${fmtWait(3_600_000 / (s.perDay / 24), units)}`}
+              : t("sc.live.refill", { wait: fmtWait(3_600_000 / (s.perDay / 24), units) })}
         </span>
       </div>
     </div>
@@ -574,7 +574,7 @@ function StatusLine({ s, usb }: { s: LiveState; usb: boolean }) {
             {!usb
               ? t("sc.live.waitCable")
               : s.nextTokenMs != null
-                ? `${t("sc.live.waitBudget")} ${fmtWait(s.nextTokenMs, units)}`
+                ? t("sc.live.waitBudget", { wait: fmtWait(s.nextTokenMs, units) })
                 : t("sc.live.waitTurn")}
           </span>
           {usb && s.nextTokenMs != null && <SendNow />}

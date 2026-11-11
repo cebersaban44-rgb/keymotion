@@ -165,7 +165,7 @@ export function SlideFlow({
     [ready, version, slides, transition, dither],
   );
   const full = slides.length >= MAX_SLIDES;
-  const fallbackName = `${t("sc.src.slides")} · ${slides.length} ${t("sc.sl.images")}`;
+  const fallbackName = `${t("sc.src.slides")} · ${t("sc.sl.images", { count: slides.length })}`;
 
   const addFiles = async (files: File[]) => {
     const room = MAX_SLIDES - slides.length;
@@ -242,7 +242,7 @@ export function SlideFlow({
       locked={busy}
       onCancel={onCancel}
       title={t("sc.src.slides")}
-      detail={`${slides.length} ${t("sc.sl.images")}`}
+      detail={t("sc.sl.images", { count: slides.length })}
     >
       <div
         className={prepared ? "hidden" : "flex flex-col gap-5"}
@@ -331,7 +331,7 @@ export function SlideFlow({
                 className="flex h-9 items-center gap-2 rounded-lg border border-line px-3 text-[13px] font-medium hover:bg-surface-2 disabled:opacity-40"
               >
                 {adding ? <Loader2 size={14} className="animate-spin" /> : <FilePlus2 size={14} />}
-                {adding ? `${t("sc.sl.adding")} ${adding.done}/${adding.total}` : t("sc.sl.addFiles")}
+                {adding ? t("sc.sl.adding", { done: adding.done, total: adding.total }) : t("sc.sl.addFiles")}
               </button>
               <button
                 type="button"
@@ -375,7 +375,7 @@ export function SlideFlow({
         {full && <Hint tone="note">{t("sc.sl.full")}</Hint>}
         {failed.length > 0 && (
           <Hint tone="error">
-            {t("sc.sl.failed")} {failed.join(", ")}
+            {t("sc.sl.failed", { files: failed.join(", ") })}
           </Hint>
         )}
       </div>
@@ -406,7 +406,7 @@ function BudgetMeter({ frames }: { frames: number }) {
       <div className="flex items-baseline justify-between text-[12px]">
         <span className="font-medium">{t("sc.sl.budget")}</span>
         <span className={`num ${over ? "text-danger" : "text-ink-2"}`}>
-          {frames} / {MAX_FRAMES} {t("sc.frames")}
+          {t("sc.framesOfMax", { frames, max: MAX_FRAMES })}
         </span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">

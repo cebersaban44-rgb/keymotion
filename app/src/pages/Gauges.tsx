@@ -14,14 +14,12 @@ import type { GeometryInfo } from "../bindings/GeometryInfo";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import { ColorPicker, Segmented, Slider, Toggle } from "../components/controls";
 import { OWN_COLORS, heatRgb, rgbCss, useGauges, watchGauges } from "../lib/gauges";
-import { useT, type MessageKey } from "../lib/i18n";
+import { percent, useT, type MessageKey } from "../lib/i18n";
 import { fromHex, toHex } from "../lib/pomodoroLights";
 import { usePomodoro } from "../lib/pomodoro";
-import { useApp } from "../lib/store";
 
 export function Gauges({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
-  const locale = useApp((s) => s.locale);
   const usb = kb.connection === "usb" && kb.hasCommandChannel;
   const s = useGauges((x) => x.state);
   const configure = useGauges((x) => x.configure);
@@ -64,7 +62,7 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
         : s.frame.length === 0
           ? "gauges.status.empty"
           : "gauges.status.on";
-  const pct = (v: number | null) => (v == null ? t("gauges.r.none") : locale === "tr" ? `%${Math.round(v)}` : `${Math.round(v)}%`);
+  const pct = (v: number | null) => (v == null ? t("gauges.r.none") : percent(Math.round(v)));
   const micKey = geometry?.keys.find((k) => k.id === shown.micKey);
   const micLed = micKey?.led;
   const bars = shown.cpu || shown.gpu || shown.ram;

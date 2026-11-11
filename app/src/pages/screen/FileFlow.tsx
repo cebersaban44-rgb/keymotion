@@ -12,7 +12,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { Field, Segmented, Slider, Toggle } from "../../components/controls";
-import { useT } from "../../lib/i18n";
+import { percent, useT } from "../../lib/i18n";
 import {
   DEFAULT_FRAMING,
   H,
@@ -94,7 +94,7 @@ export function FileTile({ onOpened }: { onOpened: (s: Source) => void }) {
         className="flex items-center gap-2 rounded-lg bg-signal px-4 py-2 text-[13px] font-semibold text-signal-ink disabled:opacity-50"
       >
         {opening !== null ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-        {opening !== null ? `${t("sc.drop.opening")} ${Math.round(opening * 100)}%` : t("sc.drop.choose")}
+        {opening !== null ? t("sc.drop.opening", { percent: percent(Math.round(opening * 100)) }) : t("sc.drop.choose")}
       </button>
       <input
         ref={input}
@@ -140,7 +140,7 @@ export function FileFlow({
     source.kind === "image"
       ? t("sc.kind.image")
       : `${source.kind === "video" ? t("sc.kind.video") : t("sc.kind.animated")} · ${fmtSeconds(source.durationMs / 1000)}${
-          source.kind === "animated" ? ` · ${source.frameStarts.length} ${t("sc.frames")}` : ""
+          source.kind === "animated" ? ` · ${t("sc.frames", { count: source.frameStarts.length })}` : ""
         }`;
 
   return (

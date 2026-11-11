@@ -46,6 +46,29 @@ pub const SCREEN_UPLOAD_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// Progress events at most this often.
 const SCREEN_PROGRESS_EVERY: Duration = Duration::from_millis(150);
 
+/// Error when a request needs the cable. English, like every backend error;
+/// the UI shows its own text for it (lib/errors.ts).
+const NO_USB: &str = "no keyboard on the USB cable";
+
+/// Open a vendor channel only if its report layout is the "04 xx" family's
+/// (kb_core::shape): the same IDs also belong to boards that speak another
+/// protocol, and nothing may be sent to those.
+fn open_checked(hid: &Hid, path: &str, display: bool) -> Result<HidChannel, String> {
+    let iface = hid.interfaces().into_iter().find(|i| i.path == path).ok_or("keyboard disconnected")?;
+    let channel = hid.open(&iface).map_err(|e| e.to_string())?;
+    let desc = channel.report_descriptor().map_err(|e| e.to_string())?;
+    let ok = if display { kb_core::shape::is_display_shape(&desc) } else { kb_core::shape::is_command_shape(&desc) };
+    if !ok {
+        tracing::warn!(
+            usage_page = format_args!("{:04X}", iface.usage_page),
+            shape = ?kb_core::shape::report_shape(&desc),
+            "unexpected report layout; channel not used"
+        );
+        return Err("unsupported keyboard firmware: unexpected report layout".into());
+    }
+    Ok(channel)
+}
+
 const ENUMERATE_EVERY: Duration = Duration::from_secs(2);
 const BLE_RESCAN: Duration = Duration::from_secs(10);
 const BATTERY_REFRESH: Duration = Duration::from_secs(60);
@@ -531,12 +554,12 @@ impl Actor {
             flash_written,
             error: Some(e),
         };
-        const NO_USB: &str = "Klavye USB modunda değil. Kabloyu takıp anahtarı ortaya (USB) alın.";
         let Some(path) = self.display_path.clone() else { return fail(model_id, false, NO_USB.into()) };
-        let display = self.hid.as_ref().ok_or_else(|| "HID unavailable".to_string()).and_then(|hid| {
-            let iface = hid.interfaces().into_iter().find(|i| i.path == path).ok_or("display channel disappeared")?;
-            hid.open(&iface).map_err(|e| e.to_string())
-        });
+        let display = self
+            .hid
+            .as_ref()
+            .ok_or_else(|| "HID unavailable".to_string())
+            .and_then(|hid| open_checked(hid, &path, true));
         let mut display = match display {
             Ok(d) => d,
             Err(e) => return fail(model_id, false, e),
@@ -574,9 +597,7 @@ impl Actor {
     /// Write every macro, then record them (names included). Like the
     /// keymap, the record changes only after the keyboard confirmed the data.
     fn apply_macros(&mut self, mut slots: Vec<Option<StoredMacro>>) -> Result<StoredMacros, String> {
-        let model = self
-            .usb_model
-            .ok_or_else(|| "Klavye USB modunda değil. Kabloyu takıp anahtarı ortaya (USB) alın.".to_string())?;
+        let model = self.usb_model.ok_or_else(|| NO_USB.to_string())?;
         while slots.last().is_some_and(Option::is_none) {
             slots.pop();
         }
@@ -602,9 +623,7 @@ impl Actor {
     /// the keyboard confirmed the data (checksum), so it never claims a
     /// layout the keyboard did not get.
     fn apply_keymap(&mut self, layer: Layer, entries: Vec<(u8, KeyAction)>) -> Result<StoredKeymap, String> {
-        let model = self
-            .usb_model
-            .ok_or_else(|| "Klavye USB modunda değil. Kabloyu takıp anahtarı ortaya (USB) alın.".to_string())?;
+        let model = self.usb_model.ok_or_else(|| NO_USB.to_string())?;
         let map = kb_core::keymap::canonical(model, layer, entries).map_err(|e| e.to_string())?;
         self.with_command(|d| d.apply_keymap(layer, map.iter().map(|(&l, &a)| (l, a))))?;
         tracing::info!(?layer, keys = map.len(), model = %model.id, "keymap layer written");
@@ -665,14 +684,10 @@ impl Actor {
         &mut self,
         f: impl FnOnce(&mut SonixFf13<HidChannel>) -> kb_core::sonix::Result<T>,
     ) -> Result<T, String> {
-        let path = self
-            .command_path
-            .clone()
-            .ok_or_else(|| "Klavye USB modunda değil. Kabloyu takıp anahtarı ortaya (USB) alın.".to_string())?;
+        let path = self.command_path.clone().ok_or_else(|| NO_USB.to_string())?;
         if self.command.as_ref().is_none_or(|c| c.path != path) {
             let hid = self.hid.as_ref().ok_or("HID unavailable")?;
-            let iface = hid.interfaces().into_iter().find(|i| i.path == path).ok_or("command interface disappeared")?;
-            let channel = hid.open(&iface).map_err(|e| e.to_string())?;
+            let channel = open_checked(hid, &path, false)?;
             self.command = Some(Command { path, driver: SonixFf13::new(channel) });
         }
         let cmd = self.command.as_mut().expect("opened above");

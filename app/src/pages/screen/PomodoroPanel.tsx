@@ -440,8 +440,8 @@ function LastLine({ s }: { s: PomodoroState }) {
   const l = s.last!;
   return (
     <p className="num text-[12px] text-ink-2" data-pomo-last>
-      {t("pomo.last")}: {l.focusDone} {t(l.focusDone === 1 ? "pomo.last.round" : "pomo.last.rounds")}, {l.focusMin}{" "}
-      {t("pomo.last.focus")}, {l.complete ? t("pomo.last.complete") : t("pomo.last.stopped")} (
+      {t("pomo.last")}: {t("pomo.last.rounds", { count: l.focusDone })}, {t("pomo.last.focus", { min: l.focusMin })},{" "}
+      {l.complete ? t("pomo.last.complete") : t("pomo.last.stopped")} (
       {new Date(l.endedMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})
     </p>
   );
@@ -463,7 +463,7 @@ function CardWaiting({ usb }: { usb: boolean }) {
           {!usb
             ? t("pomo.wait.cable")
             : budget
-              ? `${t("pomo.wait.budget.a")} ${fmtWait(live.nextTokenMs!, units)}${t("pomo.wait.budget.b")}`
+              ? t("pomo.wait.budget", { wait: fmtWait(live.nextTokenMs!, units) })
               : t("pomo.wait.turn")}
         </span>
       </p>
@@ -656,7 +656,7 @@ function CostLine({ s }: { s: PomodoroState }) {
   return (
     <div className="flex flex-col gap-1">
       <p className="text-[12px] text-ink-2">
-        {t("pomo.cost.a")} {need} {t("pomo.cost.b")} {ready} {t("pomo.cost.c")}
+        {t("pomo.cost", { need, ready })}
       </p>
       {need > live.tokens + refill && (
         <p className="text-[12px] text-warn">{t("pomo.cost.short")}</p>

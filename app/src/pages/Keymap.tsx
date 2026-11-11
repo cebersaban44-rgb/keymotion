@@ -487,7 +487,7 @@ function MacroPicker({
               }}
               className="num h-8 w-16 rounded-lg border border-line bg-surface px-2 text-right outline-none focus:border-signal"
             />
-            {t("km.play.count")}
+            {t("km.play.count", { count })}
           </label>
         )}
       </div>
@@ -632,7 +632,7 @@ function SaveCard({ usb, loaded, layer }: { usb: boolean; loaded: boolean; layer
           <span>
             {t("km.readNote")}{" "}
             <span className="text-ink-3">
-              {writtenMs ? `${t("km.record.at")}: ${ago(writtenMs)} ${t("km.record.ago")}.` : t("km.record.never")}
+              {writtenMs ? t("km.record.at", { ago: ago(writtenMs) }) : t("km.record.never")}
             </span>
           </span>
         </p>
@@ -670,7 +670,7 @@ function StatusLine({ status, dirty, changed }: { status: Status; dirty: boolean
   if (dirty)
     return (
       <span className="text-[12px] text-ink-2">
-        <span className="num">{changed}</span> {t("km.changed")} ·{" "}
+        <span className="num">{t("km.changed", { count: changed })}</span> ·{" "}
         <span className="text-ink-3">{t("km.persistNote")}</span>
       </span>
     );
