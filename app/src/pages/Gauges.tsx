@@ -72,12 +72,11 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
   return (
     <div className="flex flex-col gap-6" data-gauges>
       <header className="flex flex-col gap-2">
-        <div className="eyebrow">{t("gauges.eyebrow")}</div>
-        <h1 className="font-display text-[40px] leading-none font-semibold tracking-[-0.035em]">{t("nav.gauges")}</h1>
-        <p className="max-w-[78ch] text-[13px] text-ink-2">{t("gauges.body")}</p>
+        <h1 className="page-title">{t("nav.gauges")}</h1>
+        <p className="page-desc">{t("gauges.body")}</p>
       </header>
       {!usb && (
-        <div className="flex items-center gap-3 rounded-2xl border border-signal/30 bg-signal/10 px-4 py-3 text-[13px]">
+        <div className="flex items-center gap-3 rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-[13px]">
           <Usb size={16} className="text-signal" />
           {t("gauges.noUsb")}
         </div>
@@ -85,24 +84,24 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
 
       <section className="card flex flex-col gap-6 p-5">
         {/* On or off, what the keys show, and the readings. */}
-        <div className="flex flex-col gap-5 rounded-2xl border border-line bg-bg-raise/50 p-5">
+        <div className="flex flex-col gap-5 rounded-lg border border-line bg-bg-raise/50 p-5">
           <div className="flex items-start justify-between gap-4">
             <span className="flex flex-col gap-1">
               <span className="text-[14px] font-semibold">{t("gauges.on")}</span>
-              <span className="max-w-[80ch] text-[11.5px] text-ink-3">{t("gauges.on.body")}</span>
+              <span className="max-w-[80ch] text-[12px] text-ink-3">{t("gauges.on.body")}</span>
             </span>
             <Toggle checked={shown.enabled} onChange={(enabled) => set({ enabled })} label={t("gauges.on")} />
           </div>
           <div className="flex items-center gap-2 text-[12px]" data-gauges-status={status}>
             <span
-              className={`h-2 w-2 shrink-0 rounded-full ${shown.enabled && usb ? "bg-ok shadow-[0_0_8px_var(--ok)]" : "bg-ink-3"}`}
+              className={`h-2 w-2 shrink-0 rounded-full ${shown.enabled && usb ? "bg-ok" : "bg-ink-3"}`}
               aria-hidden
             />
             <span className={shown.enabled ? "text-ink-2" : "text-ink-3"}>{t(status)}</span>
           </div>
           {geometry && colors && (
             <div className="flex flex-col gap-2">
-              <span className="text-[11.5px] text-ink-3">{picking ? t("gauges.mic.pick") : t("gauges.preview")}</span>
+              <span className="text-[12px] text-ink-3">{picking ? t("gauges.mic.pick") : t("gauges.preview")}</span>
               <KeysPreview
                 geometry={geometry}
                 colors={colors}
@@ -139,14 +138,14 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
         </div>
 
         {/* Settings. */}
-        <div className="flex flex-col divide-y divide-line rounded-2xl border border-line" data-gauges-settings>
+        <div className="flex flex-col divide-y divide-line rounded-lg border border-line" data-gauges-settings>
           <Row icon={Activity} title={t("gauges.bars")} body={t("gauges.bars.body")}>
             <div className="grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-2">
               <GaugeSwitch label={t("gauges.r.cpu")} where={t("gauges.cpu.where")} on={shown.cpu} onChange={(cpu) => set({ cpu })} />
               <GaugeSwitch label={t("gauges.r.gpu")} where={t("gauges.gpu.where")} on={shown.gpu} onChange={(gpu) => set({ gpu })} />
               <GaugeSwitch label={t("gauges.r.ram")} where={t("gauges.ram.where")} on={shown.ram} onChange={(ram) => set({ ram })} />
             </div>
-            <p className="text-[11.5px] text-ink-3">{t("gauges.gpu.note")}</p>
+            <p className="text-[12px] text-ink-3">{t("gauges.gpu.note")}</p>
           </Row>
           <Row
             icon={Volume2}
@@ -157,7 +156,7 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
           />
           <Row icon={MicOff} title={t("gauges.mic")} body={t("gauges.mic.body")} checked={shown.mic} onChange={(mic) => set({ mic })}>
             {shown.mic && (
-              <div className="flex flex-wrap items-center gap-3 text-[12.5px]">
+              <div className="flex flex-wrap items-center gap-3 text-[13px]">
                 <span className="text-ink-2">{t("gauges.mic.key")}</span>
                 <span className="num rounded-md border border-line bg-bg-raise px-2 py-0.5 font-medium" data-gauges-mic-key>
                   {micKey?.label || shown.micKey}
@@ -165,7 +164,7 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
                 <button
                   type="button"
                   onClick={() => setPicking((p) => !p)}
-                  className="rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+                  className="rounded-lg border border-line px-3 py-1.5 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink"
                   data-gauges-pick
                 >
                   {picking ? t("gauges.cancel") : t("gauges.mic.change")}
@@ -177,7 +176,7 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
             <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6">
               <div className="flex min-w-0 flex-col gap-4">
                 <div className="flex flex-col gap-2">
-                  <span className="text-[12.5px] font-medium">{t("gauges.style")}</span>
+                  <span className="text-[13px] font-medium">{t("gauges.style")}</span>
                   <Segmented<GaugeStyle>
                     label={t("gauges.style")}
                     value={shown.style}
@@ -191,8 +190,8 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
                 </div>
                 <div className="flex items-start justify-between gap-3">
                   <span className="flex flex-col">
-                    <span className="text-[12.5px] font-medium">{t("gauges.track")}</span>
-                    <span className="text-[11.5px] text-ink-3">{t("gauges.track.body")}</span>
+                    <span className="text-[13px] font-medium">{t("gauges.track")}</span>
+                    <span className="text-[12px] text-ink-3">{t("gauges.track.body")}</span>
                   </span>
                   <Toggle checked={shown.track} onChange={(track) => set({ track })} label={t("gauges.track")} />
                 </div>
@@ -207,7 +206,7 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
                 />
               </div>
               <div className="flex min-w-0 flex-col gap-2">
-                <span className="text-[12.5px] font-medium">{t("gauges.base")}</span>
+                <span className="text-[13px] font-medium">{t("gauges.base")}</span>
                 <Segmented<GaugeBase>
                   label={t("gauges.base")}
                   value={shown.base}
@@ -253,7 +252,7 @@ function KeysPreview({
   return (
     <svg
       viewBox={`${-pad} ${-pad} ${g.width + 2 * pad} ${g.height + 2 * pad}`}
-      className="w-full max-w-[760px] rounded-xl"
+      className="w-full max-w-[760px] rounded-lg"
       role={onPick ? "group" : "img"}
       aria-label={t("gauges.preview")}
       data-gauges-preview
@@ -321,8 +320,8 @@ function Reading({
   alert?: boolean;
 }) {
   return (
-    <div className={`flex flex-col gap-1.5 rounded-xl border px-3 py-2.5 ${alert ? "border-danger/40 bg-danger/10" : lit ? "border-signal/50" : "border-line"}`}>
-      <span className="flex items-center gap-1.5 text-[11.5px] text-ink-3">
+    <div className={`flex flex-col gap-1.5 rounded-lg border px-3 py-2.5 ${alert ? "border-danger/40 bg-danger/10" : lit ? "border-signal/50" : "border-line"}`}>
+      <span className="flex items-center gap-1.5 text-[12px] text-ink-3">
         <Icon size={13} className={alert ? "text-danger" : ""} />
         {label}
       </span>
@@ -338,10 +337,10 @@ function Reading({
 
 function GaugeSwitch({ label, where, on, onChange }: { label: string; where: string; on: boolean; onChange: (v: boolean) => void }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-line px-3 py-2.5">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-line px-3 py-2.5">
       <span className="flex flex-col">
-        <span className="text-[12.5px] font-medium">{label}</span>
-        <span className="text-[11.5px] text-ink-3">{where}</span>
+        <span className="text-[13px] font-medium">{label}</span>
+        <span className="text-[12px] text-ink-3">{where}</span>
       </span>
       <Toggle checked={on} onChange={onChange} label={label} />
     </div>
@@ -363,7 +362,7 @@ function StyleLegend({ style, note }: { style: GaugeStyle; note: string }) {
           ))}
         </span>
       ))}
-      <span className="text-[11.5px] text-ink-3">{note}</span>
+      <span className="text-[12px] text-ink-3">{note}</span>
     </div>
   );
 }
@@ -391,16 +390,16 @@ function LayerList({
     { title: "gauges.layer.saved", note: "gauges.layer.saved.note", on: !timerFront && !(enabled && lit) },
   ];
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-line p-4" data-gauges-layers>
+    <div className="flex flex-col gap-3 rounded-lg border border-line p-4" data-gauges-layers>
       <span className="flex flex-col">
         <span className="text-[13px] font-semibold">{t("gauges.layers")}</span>
-        <span className="text-[11.5px] text-ink-3">{t("gauges.layers.body")}</span>
+        <span className="text-[12px] text-ink-3">{t("gauges.layers.body")}</span>
       </span>
       <ol className="flex flex-col gap-1">
         {layers.map((l, i) => (
           <li
             key={l.title}
-            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-[12.5px] ${l.on ? "bg-signal/10 text-ink" : "text-ink-3"}`}
+            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] ${l.on ? "bg-signal/10 text-ink" : "text-ink-3"}`}
             data-layer-on={l.on || undefined}
           >
             <span className="num w-4 text-right text-[11px]">{i + 1}</span>
@@ -417,7 +416,7 @@ function LayerList({
 }
 
 function Note({ children }: { children: ReactNode }) {
-  return <p className="text-[11.5px] text-ink-3">{children}</p>;
+  return <p className="text-[12px] text-ink-3">{children}</p>;
 }
 
 /** One group of settings: a title and what it does, its switch, and what
@@ -445,7 +444,7 @@ function Row({
           <Icon size={16} className="mt-0.5 shrink-0 text-signal" />
           <span className="flex max-w-[80ch] flex-col">
             <span className="text-[13px] font-semibold">{title}</span>
-            <span className="text-[11.5px] text-ink-3">{body}</span>
+            <span className="text-[12px] text-ink-3">{body}</span>
           </span>
         </span>
         {onChange && checked !== undefined && <Toggle checked={checked} onChange={onChange} label={title} />}

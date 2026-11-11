@@ -29,6 +29,7 @@ import {
 } from "../../lib/screenText";
 import { useApp } from "../../lib/store";
 import { EditFooter, Hint, PreviewPanel, StudioFrame, type Done, type Step } from "./common";
+import { friendlyError } from "../../lib/errors";
 
 type T = (k: MessageKey) => string;
 
@@ -127,17 +128,17 @@ export function TextTile({ onStart }: { onStart: () => void }) {
   return (
     <div
       data-tile="text"
-      className="flex min-h-[260px] flex-col items-center justify-center gap-4 rounded-2xl border border-line bg-surface-2/30 p-6 text-center"
+      className="flex min-h-[260px] flex-col items-center justify-center gap-4 rounded-lg border border-line bg-surface-2/30 p-6 text-center"
     >
       <CardCanvas spec={spec} className="h-[90px] w-[160px] rounded-md shadow-[0_0_0_4px_#0b0c0e,0_0_0_5px_var(--line)]" />
       <div>
-        <h3 className="font-display text-[19px] font-semibold tracking-[-0.02em]">{t("sc.src.text")}</h3>
-        <p className="mt-1 max-w-[40ch] text-[12.5px] text-ink-2">{t("sc.src.textBody")}</p>
+        <h3 className="font-display text-[19px] font-semibold">{t("sc.src.text")}</h3>
+        <p className="mt-1 max-w-[40ch] text-[13px] text-ink-2">{t("sc.src.textBody")}</p>
       </div>
       <button
         type="button"
         onClick={onStart}
-        className="flex items-center gap-2 rounded-xl border border-signal/50 px-4 py-2 text-[13px] font-semibold text-signal hover:bg-signal/10"
+        className="flex items-center gap-2 rounded-lg border border-signal/50 px-4 py-2 text-[13px] font-semibold text-signal hover:bg-signal/10"
       >
         <Type size={15} /> {t("sc.src.textGo")}
       </button>
@@ -203,7 +204,7 @@ export function TextFlow({
         setPrepared(r);
       }
     } catch (e) {
-      if ((e as Error).name !== "AbortError") setError(String(e));
+      if ((e as Error).name !== "AbortError") setError(friendlyError(e, t));
     } finally {
       if (abort.current === ctrl) setPreparing(null);
     }
@@ -236,7 +237,7 @@ export function TextFlow({
         <div className="grid grid-cols-[480px_minmax(280px,1fr)] gap-6">
           <div className="flex flex-col gap-2">
             <CardCanvas spec={spec} className="h-[270px] w-[480px] rounded-lg" onLayout={setLayout} />
-            <p className="text-[11.5px] text-ink-3">{t("sc.tx.liveNote")}</p>
+            <p className="text-[12px] text-ink-3">{t("sc.tx.liveNote")}</p>
             <div className="mt-3">
               <Colors spec={spec} set={set} />
             </div>
@@ -258,7 +259,7 @@ export function TextFlow({
                   ]}
                 />
                 <span className="flex items-center gap-2.5">
-                  <span className="text-[12.5px] text-ink-2">{t("sc.tx.upper")}</span>
+                  <span className="text-[13px] text-ink-2">{t("sc.tx.upper")}</span>
                   <Toggle checked={spec.upper} onChange={(upper) => set({ upper })} label={t("sc.tx.upper")} />
                 </span>
               </div>
@@ -360,7 +361,7 @@ function TemplateThumb({
       aria-checked={selected}
       data-template={id}
       onClick={onPick}
-      className={`flex flex-col items-center gap-1.5 rounded-xl p-1.5 transition-colors ${
+      className={`flex flex-col items-center gap-1.5 rounded-lg p-1.5 transition-colors ${
         selected ? "bg-signal/10 shadow-[inset_0_0_0_1.5px_var(--signal)]" : "hover:bg-surface-2"
       }`}
     >
@@ -472,12 +473,12 @@ function Colors({ spec, set }: { spec: CardSpec; set: (p: Partial<CardSpec>) => 
                 aria-checked={on}
                 title={t(PALETTE_KEY[p.id]!)}
                 onClick={() => set({ gradient: p.gradient, bg1: p.bg1, bg2: p.bg2, dir: p.dir, fg: p.fg, accent: p.accent })}
-                className={`flex items-center gap-2 rounded-lg border px-2 py-1 text-[11.5px] ${
+                className={`flex items-center gap-2 rounded-lg border px-2 py-1 text-[12px] ${
                   on ? "border-signal text-ink" : "border-line text-ink-2 hover:border-line-strong"
                 }`}
               >
                 <span
-                  className="flex h-5 w-8 items-center justify-center rounded-[4px] text-[10px] font-bold"
+                  className="flex h-5 w-8 items-center justify-center rounded-[4px] text-[11px] font-bold"
                   style={{
                     background: p.gradient ? `linear-gradient(${p.dir === "h" ? "90deg" : p.dir === "d" ? "135deg" : "180deg"}, ${p.bg1}, ${p.bg2})` : p.bg1,
                     color: p.fg,
@@ -501,7 +502,7 @@ function Colors({ spec, set }: { spec: CardSpec; set: (p: Partial<CardSpec>) => 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
         <span className="flex items-center gap-2.5">
           <Toggle checked={spec.gradient} onChange={(gradient) => set({ gradient })} label={t("sc.tx.gradient")} />
-          <span className="text-[12.5px] font-medium">{t("sc.tx.gradient")}</span>
+          <span className="text-[13px] font-medium">{t("sc.tx.gradient")}</span>
         </span>
         {spec.gradient && (
           <Segmented<GradDir>
@@ -533,8 +534,8 @@ function ColorChip({ label, value, onChange }: { label: string; value: string; o
         />
       </span>
       <span className="flex flex-col leading-tight">
-        <span className="text-[11.5px] text-ink-2">{label}</span>
-        <span className="num text-[10.5px] text-ink-3">{value.toUpperCase()}</span>
+        <span className="text-[12px] text-ink-2">{label}</span>
+        <span className="num text-[11px] text-ink-3">{value.toUpperCase()}</span>
       </span>
     </label>
   );

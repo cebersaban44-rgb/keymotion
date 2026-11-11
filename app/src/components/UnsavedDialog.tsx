@@ -5,6 +5,7 @@ import { useT } from "../lib/i18n";
 import { closeWindow } from "../lib/ipc";
 import { useActiveKeyboard } from "../lib/store";
 import type { UnsavedItem } from "../lib/unsaved";
+import { friendlyError } from "../lib/errors";
 
 /**
  * Shown when the window is closed with changes not stored on the keyboard:
@@ -42,7 +43,7 @@ export function UnsavedDialog({ items, onCancel }: { items: UnsavedItem[]; onCan
       for (const item of items) await item.save();
       await closeWindow();
     } catch (e) {
-      setError(String(e));
+      setError(friendlyError(e, t));
       setBusy(false);
     }
   };
@@ -75,7 +76,7 @@ export function UnsavedDialog({ items, onCancel }: { items: UnsavedItem[]; onCan
             <TriangleAlert size={19} />
           </span>
           <div className="flex flex-col gap-1.5">
-            <h2 id="unsaved-title" className="font-display text-[20px] leading-tight font-semibold tracking-[-0.02em]">
+            <h2 id="unsaved-title" className="font-display text-[20px] leading-tight font-semibold">
               {t("unsaved.title")}
             </h2>
             <p id="unsaved-body" className="text-[13px] leading-relaxed text-ink-2">
@@ -84,19 +85,19 @@ export function UnsavedDialog({ items, onCancel }: { items: UnsavedItem[]; onCan
           </div>
         </div>
 
-        <ul className="flex flex-col gap-2 rounded-xl border border-line bg-bg-raise/60 p-3.5">
+        <ul className="flex flex-col gap-2 rounded-lg border border-line bg-bg-raise/60 p-3.5">
           {items.map((item) => (
             <li key={item.id} className="flex items-baseline gap-2.5 text-[13px]">
-              <span className="h-2 w-2 shrink-0 translate-y-[-1px] rounded-full bg-warn shadow-[0_0_8px_var(--warn)]" />
+              <span className="h-2 w-2 shrink-0 translate-y-[-1px] rounded-full bg-warn" />
               <span className="font-medium">{t(item.area)}</span>
               <span className="text-ink-2">{t(item.detail)}</span>
             </li>
           ))}
         </ul>
 
-        {!canSave && <p className="text-[12.5px] text-ink-2">{t("unsaved.needsUsb")}</p>}
+        {!canSave && <p className="text-[13px] text-ink-2">{t("unsaved.needsUsb")}</p>}
         {error && (
-          <p role="alert" className="flex items-start gap-2 text-[12.5px] text-danger">
+          <p role="alert" className="flex items-start gap-2 text-[13px] text-danger">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
             {error}
           </p>
@@ -109,7 +110,7 @@ export function UnsavedDialog({ items, onCancel }: { items: UnsavedItem[]; onCan
               type="button"
               onClick={onCancel}
               disabled={busy}
-              className="h-9 rounded-xl px-3.5 text-[13px] text-ink-2 transition-colors hover:text-ink disabled:opacity-40"
+              className="h-9 rounded-lg px-3.5 text-[13px] text-ink-2 transition-colors hover:text-ink disabled:opacity-40"
             >
               {t("unsaved.cancel")}
             </button>
@@ -117,7 +118,7 @@ export function UnsavedDialog({ items, onCancel }: { items: UnsavedItem[]; onCan
               type="button"
               onClick={discardAndQuit}
               disabled={busy}
-              className="h-9 rounded-xl border border-line bg-bg-raise px-3.5 text-[13px] text-ink transition-colors hover:border-line-strong disabled:opacity-40"
+              className="h-9 rounded-lg border border-line bg-bg-raise px-3.5 text-[13px] text-ink transition-colors hover:border-line-strong disabled:opacity-40"
             >
               {t("unsaved.discardExit")}
             </button>
@@ -126,13 +127,13 @@ export function UnsavedDialog({ items, onCancel }: { items: UnsavedItem[]; onCan
               type="button"
               onClick={saveAndQuit}
               disabled={busy || !canSave}
-              className="flex h-9 items-center gap-2 rounded-xl bg-signal px-4 text-[13px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-9 items-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
               {busy ? t("unsaved.saving") : t("unsaved.saveExit")}
             </button>
           </div>
-          <p className="text-right text-[11.5px] text-ink-3">{t("unsaved.discardNote")}</p>
+          <p className="text-right text-[12px] text-ink-3">{t("unsaved.discardNote")}</p>
         </div>
       </motion.div>
     </motion.div>

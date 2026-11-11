@@ -86,10 +86,10 @@ export function CalendarBody() {
       {!empty && <CardPreview c={c} />}
 
       <div className="flex flex-col gap-2">
-        <span className="text-[12.5px] font-medium">{t("calendar.sources")}</span>
+        <span className="text-[13px] font-medium">{t("calendar.sources")}</span>
         {empty && !adding && <p className="text-[12px] text-ink-3">{t("calendar.sources.empty")}</p>}
         {c.sources.length > 0 && (
-          <ul className="flex flex-col divide-y divide-line rounded-xl border border-line" data-calendar-sources>
+          <ul className="flex flex-col divide-y divide-line rounded-lg border border-line" data-calendar-sources>
             {c.sources.map((s) => (
               <SourceRow key={s.id} s={s} />
             ))}
@@ -116,7 +116,7 @@ export function CalendarBody() {
                 setDone(null);
                 setAdding(true);
               }}
-              className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[12.5px] font-semibold text-signal hover:bg-signal/10"
+              className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[13px] font-semibold text-signal hover:bg-signal/10"
               data-calendar-add
             >
               <Plus size={14} /> {t("calendar.add")}
@@ -125,7 +125,7 @@ export function CalendarBody() {
               <button
                 type="button"
                 onClick={() => refresh().catch(console.error)}
-                className="flex h-9 items-center gap-2 rounded-lg border border-line px-3 text-[12.5px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+                className="flex h-9 items-center gap-2 rounded-lg border border-line px-3 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink"
                 data-calendar-refresh
               >
                 {c.reading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} {t("calendar.refresh")}
@@ -137,7 +137,7 @@ export function CalendarBody() {
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-x-6 gap-y-3">
         <div className="flex flex-col gap-2">
-          <span className="text-[12.5px] font-medium">{t("calendar.lead")}</span>
+          <span className="text-[13px] font-medium">{t("calendar.lead")}</span>
           <Segmented<string>
             label={t("calendar.lead")}
             value={String(c.settings.leadMin)}
@@ -146,7 +146,7 @@ export function CalendarBody() {
           />
         </div>
         <div className="flex flex-col gap-2">
-          <span className="text-[12.5px] font-medium">{t("calendar.until")}</span>
+          <span className="text-[13px] font-medium">{t("calendar.until")}</span>
           <Segmented<CalendarUntil>
             label={t("calendar.until")}
             value={c.settings.until}
@@ -160,10 +160,10 @@ export function CalendarBody() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-line px-4 py-3" data-calendar-reminder>
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-line px-4 py-3" data-calendar-reminder>
         <span className="flex max-w-[70ch] flex-col">
-          <span className="text-[12.5px] font-medium">{t("calendar.reminder")}</span>
-          <span className="text-[11.5px] text-ink-3">{t("calendar.reminder.body")}</span>
+          <span className="text-[13px] font-medium">{t("calendar.reminder")}</span>
+          <span className="text-[12px] text-ink-3">{t("calendar.reminder.body")}</span>
         </span>
         <span className="flex items-center gap-2">
           {c.settings.reminder && (
@@ -179,7 +179,7 @@ export function CalendarBody() {
           <Toggle checked={c.settings.reminder} onChange={(reminder) => set({ reminder })} label={t("calendar.reminder")} />
         </span>
       </div>
-      {drawError && <Hint tone="error">{drawError}</Hint>}
+      {drawError && <Hint tone="error">{t("err.draw")}</Hint>}
     </div>
   );
 }
@@ -192,7 +192,7 @@ function Upcoming({ c }: { c: CalendarState }) {
   const next = c.upcoming.find((e) => !e.allDay && c.nextCardMs != null && e.startMs - c.settings.leadMin * 60_000 === c.nextCardMs);
   return (
     <div className="flex flex-col gap-2" data-calendar-upcoming>
-      <span className="text-[12.5px] font-medium">{t("calendar.upcoming")}</span>
+      <span className="text-[13px] font-medium">{t("calendar.upcoming")}</span>
       {list.length === 0 ? (
         <p className="text-[12px] text-ink-3">{t("calendar.upcoming.none")}</p>
       ) : (
@@ -202,7 +202,7 @@ function Upcoming({ c }: { c: CalendarState }) {
             return (
               <li
                 key={`${e.source}@${e.startMs}@${e.title}`}
-                className={`flex items-center gap-3 rounded-lg px-3 py-1.5 text-[12.5px] ${due ? "bg-signal/10" : ""}`}
+                className={`flex items-center gap-3 rounded-lg px-3 py-1.5 text-[13px] ${due ? "bg-signal/10" : ""}`}
               >
                 <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: calendarColor(e.color) }} aria-hidden />
                 <span className="num w-[92px] shrink-0 text-ink-2">
@@ -219,11 +219,11 @@ function Upcoming({ c }: { c: CalendarState }) {
         </ul>
       )}
       {next && c.nextCardMs != null && (
-        <p className="text-[11.5px] text-ink-3" data-calendar-next>
+        <p className="text-[12px] text-ink-3" data-calendar-next>
           {t("calendar.next.a")} {hhmm(c.nextCardMs)} {t("calendar.next.b")} ({hhmm(next.startMs)} {next.title})
         </p>
       )}
-      {c.upcoming.some((e) => e.allDay) && <p className="text-[11.5px] text-ink-3">{t("calendar.allDay.note")}</p>}
+      {c.upcoming.some((e) => e.allDay) && <p className="text-[12px] text-ink-3">{t("calendar.allDay.note")}</p>}
     </div>
   );
 }
@@ -273,7 +273,7 @@ function CardPreview({ c }: { c: CalendarState }) {
 
   return (
     <div className="flex flex-col gap-2" data-calendar-preview>
-      <span className="text-[12.5px] font-medium">{t("calendar.preview")}</span>
+      <span className="text-[13px] font-medium">{t("calendar.preview")}</span>
       <div className="flex flex-wrap items-start gap-4">
         <div className="overflow-hidden rounded-lg border border-line bg-black">
           {card ? <FramePlayer frames={card.frames} delaysMs={card.delaysMs} className="block h-[135px] w-[240px]" /> : <div className="h-[135px] w-[240px]" />}
@@ -282,13 +282,13 @@ function CardPreview({ c }: { c: CalendarState }) {
           <span className="text-[12px] text-ink-2">
             {sample ? t("calendar.preview.sample") : `${t("calendar.preview.next")} ${hhmm(target.event.startMs)} ${target.event.title}`}
           </span>
-          <span className="text-[11.5px] text-ink-3">{t("calendar.preview.tryBody")}</span>
+          <span className="text-[12px] text-ink-3">{t("calendar.preview.tryBody")}</span>
           {liveOn ? (
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => void tryOnKeyboard()}
-                className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[12.5px] font-semibold text-signal hover:bg-signal/10"
+                className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[13px] font-semibold text-signal hover:bg-signal/10"
                 data-calendar-try-card
               >
                 {sent === "sending" ? <Loader2 size={14} className="animate-spin" /> : <CalendarDays size={14} />} {t("calendar.preview.try")}
@@ -316,11 +316,11 @@ function SourceRow({ s }: { s: CalendarState["sources"][number] }) {
         <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: calendarColor(s.color) }} aria-hidden />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-[13px] font-medium">{s.name}</span>
-          <span className="truncate text-[11.5px] text-ink-3">
+          <span className="truncate text-[12px] text-ink-3">
             {t(providerLabel(s.provider))} · {s.host}
           </span>
         </span>
-        <span className="hidden shrink-0 text-[11.5px] sm:block">
+        <span className="hidden shrink-0 text-[12px] sm:block">
           {s.error ? (
             <span className="flex items-center gap-1 text-warn">
               <AlertTriangle size={12} /> {t("calendar.read.failed")}
@@ -346,7 +346,7 @@ function SourceRow({ s }: { s: CalendarState["sources"][number] }) {
           <Trash2 size={14} />
         </button>
       </div>
-      {s.error && <p className="text-[11.5px] text-warn">{errText(s.error, t)}</p>}
+      {s.error && <p className="text-[12px] text-warn">{errText(s.error, t)}</p>}
       {asking && (
         <div className="flex flex-wrap items-center gap-2 text-[12px]">
           <span className="text-ink-2">{t("calendar.remove.ask")}</span>
@@ -421,13 +421,13 @@ function AddCalendar({ onCancel, onDone }: { onCancel: () => void; onDone: (msg:
   };
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-signal/40 bg-signal/[0.04] p-4" data-calendar-adding={step.at}>
+    <div className="flex flex-col gap-4 rounded-lg border border-signal/40 bg-signal/[0.04] p-4" data-calendar-adding={step.at}>
       <div className="flex items-center justify-between gap-3">
-        <ol className="flex flex-wrap items-center gap-2 text-[11.5px]">
+        <ol className="flex flex-wrap items-center gap-2 text-[12px]">
           {steps.map((k, i) => (
             <li key={k} className={`flex items-center gap-1.5 ${i === index ? "font-semibold text-ink" : "text-ink-3"}`}>
               <span
-                className={`num flex h-5 w-5 items-center justify-center rounded-full text-[10.5px] ${
+                className={`num flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${
                   i < index ? "bg-ok text-bg" : i === index ? "bg-signal text-signal-ink" : "bg-surface-2"
                 }`}
               >
@@ -458,7 +458,7 @@ function AddCalendar({ onCancel, onDone }: { onCancel: () => void; onDone: (msg:
                 setName(t(p.label));
                 setError(null);
               }}
-              className="flex items-center gap-2 rounded-xl border border-line bg-bg-raise/60 px-3 py-3 text-left text-[13px] font-medium hover:border-signal/60 hover:bg-surface-2"
+              className="flex items-center gap-2 rounded-lg border border-line bg-bg-raise/60 px-3 py-3 text-left text-[13px] font-medium hover:border-signal/60 hover:bg-surface-2"
               data-calendar-provider={p.id}
             >
               <CalendarDays size={16} className="text-signal" /> {t(p.label)}
@@ -487,7 +487,7 @@ function AddCalendar({ onCancel, onDone }: { onCancel: () => void; onDone: (msg:
               placeholder={t(`calendar.placeholder.${provider.id}` as MessageKey)}
               spellCheck={false}
               autoComplete="off"
-              className="num h-9 rounded-lg border border-line bg-bg-raise px-3 text-[12.5px] outline-none focus:border-signal"
+              className="num h-9 rounded-lg border border-line bg-bg-raise px-3 text-[13px] outline-none focus:border-signal"
               data-calendar-url
             />
           </label>
@@ -497,7 +497,7 @@ function AddCalendar({ onCancel, onDone }: { onCancel: () => void; onDone: (msg:
             </p>
           )}
           {url && addressOk(url) && !problem && providerOf(url) !== provider.id && provider.id !== "other" && (
-            <p className="text-[11.5px] text-ink-3">{t("calendar.otherHost")}</p>
+            <p className="text-[12px] text-ink-3">{t("calendar.otherHost")}</p>
           )}
           <label className="flex flex-col gap-1.5">
             <span className="text-[12px] font-medium">{t("calendar.name")}</span>
@@ -506,17 +506,17 @@ function AddCalendar({ onCancel, onDone }: { onCancel: () => void; onDone: (msg:
               value={name}
               maxLength={40}
               onChange={(e) => setName(e.target.value)}
-              className="h-9 rounded-lg border border-line bg-bg-raise px-3 text-[12.5px] outline-none focus:border-signal"
+              className="h-9 rounded-lg border border-line bg-bg-raise px-3 text-[13px] outline-none focus:border-signal"
               data-calendar-name
             />
           </label>
-          <p className="text-[11.5px] text-ink-3">{t("calendar.private")}</p>
+          <p className="text-[12px] text-ink-3">{t("calendar.private")}</p>
           {error && <p className="text-[12px] text-danger" data-calendar-error>{error}</p>}
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => void submit()}
-              className="flex h-9 items-center gap-2 rounded-lg bg-signal px-4 text-[12.5px] font-semibold text-signal-ink"
+              className="flex h-9 items-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink"
               data-calendar-submit
             >
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} {t("calendar.add.do")}
@@ -524,7 +524,7 @@ function AddCalendar({ onCancel, onDone }: { onCancel: () => void; onDone: (msg:
             <button
               type="button"
               onClick={() => setStep({ at: "pick" })}
-              className="h-9 rounded-lg border border-line px-3 text-[12.5px] text-ink-2 hover:bg-surface-2"
+              className="h-9 rounded-lg border border-line px-3 text-[13px] text-ink-2 hover:bg-surface-2"
             >
               {t("calendar.back")}
             </button>
@@ -536,7 +536,7 @@ function AddCalendar({ onCancel, onDone }: { onCancel: () => void; onDone: (msg:
         <div className="flex flex-col gap-3" data-calendar-reading>
           {reading?.error ? (
             <>
-              <p className="flex items-center gap-2 text-[12.5px] text-warn">
+              <p className="flex items-center gap-2 text-[13px] text-warn">
                 <AlertTriangle size={14} /> {t("calendar.read.failedLong")}
               </p>
               <p className="text-[12px] text-ink-2">{errText(reading.error, t)}</p>
@@ -547,18 +547,18 @@ function AddCalendar({ onCancel, onDone }: { onCancel: () => void; onDone: (msg:
                     remove(step.id).catch(console.error);
                     setStep({ at: "paste", provider: step.provider });
                   }}
-                  className="h-9 rounded-lg border border-signal/50 px-3 text-[12.5px] font-semibold text-signal hover:bg-signal/10"
+                  className="h-9 rounded-lg border border-signal/50 px-3 text-[13px] font-semibold text-signal hover:bg-signal/10"
                   data-calendar-fix
                 >
                   {t("calendar.fix")}
                 </button>
-                <button type="button" onClick={() => onDone(`${reading.name} ${t("calendar.addedFailing")}`)} className="h-9 rounded-lg border border-line px-3 text-[12.5px] text-ink-2 hover:bg-surface-2">
+                <button type="button" onClick={() => onDone(`${reading.name} ${t("calendar.addedFailing")}`)} className="h-9 rounded-lg border border-line px-3 text-[13px] text-ink-2 hover:bg-surface-2">
                   {t("calendar.keep")}
                 </button>
               </div>
             </>
           ) : (
-            <p className="flex items-center gap-2 text-[12.5px] text-ink-2">
+            <p className="flex items-center gap-2 text-[13px] text-ink-2">
               <Loader2 size={14} className="animate-spin" /> {t("calendar.read.reading")}
             </p>
           )}

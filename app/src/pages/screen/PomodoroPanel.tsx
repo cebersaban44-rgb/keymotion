@@ -111,11 +111,11 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
   return (
     <section className="card flex flex-col gap-6 p-5" data-pomodoro>
       {/* What the timer shows: the time left, and the keys. */}
-      <div className="flex flex-col gap-5 rounded-2xl border border-line bg-bg-raise/50 p-5">
+      <div className="flex flex-col gap-5 rounded-lg border border-line bg-bg-raise/50 p-5">
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-6">
           <Dial s={s} />
           <div className="flex min-w-0 flex-col gap-2">
-            <span className="text-[11.5px] text-ink-3">{caption}</span>
+            <span className="text-[12px] text-ink-3">{caption}</span>
             {kb.geometry && <LightPreview kb={kb} s={s} settings={shown} loopStart={loopStart} />}
           </div>
         </div>
@@ -124,7 +124,7 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
             <button
               type="button"
               onClick={() => act(running ? "pause" : "start")}
-              className="flex h-10 min-w-[132px] items-center justify-center gap-2 rounded-xl bg-signal px-4 text-[13px] font-semibold text-signal-ink"
+              className="flex h-10 min-w-[132px] items-center justify-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink"
               data-pomo-main
             >
               {running ? <Pause size={15} /> : <Play size={15} />}
@@ -136,7 +136,7 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
                   type="button"
                   onClick={() => act("skip")}
                   title={t("pomo.skip.hint")}
-                  className="flex h-10 items-center gap-2 rounded-xl border border-line px-3.5 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+                  className="flex h-10 items-center gap-2 rounded-lg border border-line px-3.5 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink"
                   data-pomo-skip
                 >
                   <SkipForward size={15} /> {t("pomo.skip")}
@@ -145,7 +145,7 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
                   type="button"
                   onClick={() => act("stop")}
                   title={t("pomo.stop.hint")}
-                  className="flex h-10 items-center gap-2 rounded-xl border border-line px-3.5 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+                  className="flex h-10 items-center gap-2 rounded-lg border border-line px-3.5 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink"
                   data-pomo-stop
                 >
                   <Square size={13} /> {t("pomo.stop")}
@@ -162,7 +162,7 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
                 loopStart.current = Date.now();
                 act("try");
               }}
-              className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[12.5px] font-semibold text-signal hover:bg-signal/10"
+              className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[13px] font-semibold text-signal hover:bg-signal/10"
               data-pomo-try
             >
               {s.trying ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
@@ -177,7 +177,7 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
       {/* Settings of the timer; the key lights' own settings sit in their row. */}
       <div className="flex flex-col gap-2">
         <h3 className="text-[13px] font-semibold">{t("pomo.settings")}</h3>
-        <div className="flex flex-col divide-y divide-line rounded-2xl border border-line" data-pomo-settings>
+        <div className="flex flex-col divide-y divide-line rounded-lg border border-line" data-pomo-settings>
           <SettingRow icon={Clock3} title={t("pomo.lengths")} body={t("pomo.lengths.note")}>
             <div className="grid grid-cols-[repeat(auto-fit,minmax(196px,1fr))] gap-2">
               <LengthField label={t("pomo.len.focus")} unit={t("pomo.min")} value={s.settings.focusMin} limits={LIMITS.focusMin} onChange={(focusMin) => set({ focusMin })} />
@@ -195,7 +195,7 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
             data="lights"
           >
             {shown.lights && <LightSettings shown={shown} set={set} setDraft={setDraft} />}
-            {!usb && <p className="text-[11.5px] text-ink-3">{t("pomo.preview.noUsb")}</p>}
+            {!usb && <p className="text-[12px] text-ink-3">{t("pomo.preview.noUsb")}</p>}
           </SettingRow>
           <SettingRow
             icon={MonitorUp}
@@ -217,7 +217,7 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
         </div>
       </div>
 
-      {drawError && <Hint tone="error">{drawError}</Hint>}
+      {drawError && <Hint tone="error">{t("err.draw")}</Hint>}
     </section>
   );
 }
@@ -253,10 +253,10 @@ function Dial({ s }: { s: PomodoroState }) {
         <span className="text-[11px] font-semibold tracking-[0.12em] uppercase" style={{ color: idle ? "var(--ink-3)" : color }}>
           {idle ? t("pomo.idle") : t(PHASE_KEY[s.phase])}
         </span>
-        <span className="num font-display text-[44px] leading-none font-semibold tracking-[-0.03em]" data-time>
+        <span className="num font-display text-[44px] leading-none font-semibold" data-time>
           {fmtClock(left)}
         </span>
-        <span className="text-[11.5px] text-ink-3">
+        <span className="text-[12px] text-ink-3">
           {s.status === "paused"
             ? t("pomo.paused")
             : `${t("pomo.round")} ${idle ? 1 : s.round}/${s.settings.rounds}`}
@@ -282,7 +282,7 @@ function LightSettings({
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6" data-pomo-lights>
       <div className="flex min-w-0 flex-col gap-2">
-        <span className="text-[12.5px] font-medium">{t("pomo.motion")}</span>
+        <span className="text-[13px] font-medium">{t("pomo.motion")}</span>
         <div className="flex flex-col gap-1.5" role="radiogroup" aria-label={t("pomo.motion")}>
           {MOTIONS.map((m) => {
             const on = shown.motion === m.id;
@@ -294,7 +294,7 @@ function LightSettings({
                 role="radio"
                 aria-checked={on}
                 onClick={() => set({ motion: m.id })}
-                className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-[12.5px] transition-colors ${
+                className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-[13px] transition-colors ${
                   on ? "border-signal bg-signal/10 text-ink" : "border-line text-ink-2 hover:bg-surface-2 hover:text-ink"
                 }`}
               >
@@ -308,7 +308,7 @@ function LightSettings({
 
       <div className="flex min-w-0 flex-col gap-4">
         <div className="flex flex-col gap-2">
-          <span className="text-[12.5px] font-medium">{t("pomo.colors")}</span>
+          <span className="text-[13px] font-medium">{t("pomo.colors")}</span>
           <div className="flex flex-wrap gap-1.5">
             {COLOR_KEYS.map((c) => {
               const on = editing === c.phase;
@@ -318,7 +318,7 @@ function LightSettings({
                   type="button"
                   aria-expanded={on}
                   onClick={() => setEditing(on ? null : c.phase)}
-                  className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12.5px] ${
+                  className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[13px] ${
                     on ? "border-signal bg-signal/10 text-ink" : "border-line text-ink-2 hover:bg-surface-2"
                   }`}
                   data-pomo-color={c.phase}
@@ -349,7 +349,7 @@ function LightSettings({
         />
 
         <div className="flex flex-col gap-2">
-          <span className="text-[12.5px] font-medium">{t("pomo.transition")}</span>
+          <span className="text-[13px] font-medium">{t("pomo.transition")}</span>
           <Segmented<PomodoroTransition>
             label={t("pomo.transition")}
             value={shown.transition}
@@ -363,8 +363,8 @@ function LightSettings({
 
         <div className="flex items-start justify-between gap-3">
           <span className="flex flex-col">
-            <span className="text-[12.5px] font-medium">{t("pomo.pulse")}</span>
-            <span className="text-[11.5px] text-ink-3">{t("pomo.pulse.body")}</span>
+            <span className="text-[13px] font-medium">{t("pomo.pulse")}</span>
+            <span className="text-[12px] text-ink-3">{t("pomo.pulse.body")}</span>
           </span>
           <Toggle checked={shown.pulse} onChange={(pulse) => set({ pulse })} label={t("pomo.pulse")} />
         </div>
@@ -409,7 +409,7 @@ function LightPreview({
   return (
     <svg
       viewBox={`${-pad} ${-pad} ${g.width + 2 * pad} ${g.height + 2 * pad}`}
-      className="w-full max-w-[720px] rounded-xl"
+      className="w-full max-w-[720px] rounded-lg"
       role="img"
       aria-label={t("pomo.preview.idle")}
       data-pomo-preview
@@ -456,8 +456,8 @@ function CardWaiting({ usb }: { usb: boolean }) {
   const units = { h: t("sc.live.h"), m: t("sc.live.m") };
   const budget = usb && live.nextTokenMs != null;
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-warn/40 bg-warn/10 px-3.5 py-2.5" data-pomo-waiting>
-      <p className="flex min-w-0 flex-1 items-start gap-2 text-[12.5px] text-ink">
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-warn/40 bg-warn/10 px-3.5 py-2.5" data-pomo-waiting>
+      <p className="flex min-w-0 flex-1 items-start gap-2 text-[13px] text-ink">
         <Clock3 size={14} className="mt-0.5 shrink-0 text-warn" />
         <span>
           {!usb
@@ -486,17 +486,17 @@ function ScreenSettings({ s, set }: { s: PomodoroState; set: (patch: Partial<Pom
       {live.enabled ? (
         <CostLine s={s} />
       ) : (
-        <div className="flex flex-col gap-2 rounded-xl border border-warn/40 bg-warn/10 px-3.5 py-3" data-pomo-liveoff>
-          <p className="flex items-start gap-2 text-[12.5px] text-ink">
+        <div className="flex flex-col gap-2 rounded-lg border border-warn/40 bg-warn/10 px-3.5 py-3" data-pomo-liveoff>
+          <p className="flex items-start gap-2 text-[13px] text-ink">
             <Radio size={14} className="mt-0.5 shrink-0 text-warn" />
             {t("pomo.screen.liveOff")}
           </p>
-          {live.nowPlaying && <p className="text-[11.5px] text-ink-3">{t("pomo.screen.npToo")}</p>}
+          {live.nowPlaying && <p className="text-[12px] text-ink-3">{t("pomo.screen.npToo")}</p>}
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
               onClick={() => configureLive({ enabled: true }).catch(console.error)}
-              className="flex h-9 items-center gap-2 rounded-lg bg-signal px-3 text-[12.5px] font-semibold text-signal-ink"
+              className="flex h-9 items-center gap-2 rounded-lg bg-signal px-3 text-[13px] font-semibold text-signal-ink"
               data-pomo-liveon
             >
               <Radio size={14} /> {t("pomo.screen.liveOn")}
@@ -566,7 +566,7 @@ function CardStrip({ settings, own }: { settings: PomodoroSettings; own: LiveRes
   const endLabel = `${t("pomo.screen.atEnd")}: ${endScreen === "summary" ? t("pomo.end.summary.short") : own?.name ?? t("pomo.end.own")}`;
   return (
     <div className="flex flex-col gap-1.5" data-pomo-strip>
-      <span className="text-[11.5px] text-ink-3">{t("pomo.screen.example")}</span>
+      <span className="text-[12px] text-ink-3">{t("pomo.screen.example")}</span>
       <div className="flex flex-wrap items-center gap-2">
         {tile(cards?.[0], labels[0]!, "a")}
         {arrow("x")}
@@ -605,7 +605,7 @@ function EndChoice({
   const t = useT();
   return (
     <div className="flex flex-col gap-1.5" role="radiogroup" aria-label={t("pomo.end")} data-pomo-end>
-      <span className="text-[12.5px] font-medium">{t("pomo.end")}</span>
+      <span className="text-[13px] font-medium">{t("pomo.end")}</span>
       {END_CHOICES.map((c) => {
         const on = c.id === value;
         return (
@@ -615,7 +615,7 @@ function EndChoice({
             role="radio"
             aria-checked={on}
             onClick={() => onChange(c.id)}
-            className={`flex items-start gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-colors ${
+            className={`flex items-start gap-3 rounded-lg border px-3.5 py-2.5 text-left transition-colors ${
               on ? "border-signal/60 bg-signal/10" : "border-line hover:bg-surface-2"
             }`}
           >
@@ -625,10 +625,10 @@ function EndChoice({
               {on && <span className="h-1.5 w-1.5 rounded-full bg-signal" />}
             </span>
             <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-[12.5px] font-semibold">{t(c.label)}</span>
-              <span className="text-[11.5px] text-ink-3">{t(c.body)}</span>
+              <span className="text-[13px] font-semibold">{t(c.label)}</span>
+              <span className="text-[12px] text-ink-3">{t(c.body)}</span>
               {c.id === "back" && own && (
-                <span className="text-[11.5px] text-ink-2">
+                <span className="text-[12px] text-ink-2">
                   {t("pomo.end.own")}: <span className="font-medium text-ink">{own.name}</span> · {t("sc.uploadTime")}{" "}
                   <span className="num">~{fmtSeconds(uploadSeconds(own.frames))}</span>
                 </span>
@@ -655,11 +655,11 @@ function CostLine({ s }: { s: PomodoroState }) {
   const refill = (live.perDay / 24) * (seriesMin / 60);
   return (
     <div className="flex flex-col gap-1">
-      <p className="text-[11.5px] text-ink-2">
+      <p className="text-[12px] text-ink-2">
         {t("pomo.cost.a")} {need} {t("pomo.cost.b")} {ready} {t("pomo.cost.c")}
       </p>
       {need > live.tokens + refill && (
-        <p className="text-[11.5px] text-warn">{t("pomo.cost.short")}</p>
+        <p className="text-[12px] text-warn">{t("pomo.cost.short")}</p>
       )}
     </div>
   );
@@ -692,7 +692,7 @@ function SettingRow({
           <Icon size={16} className="mt-0.5 shrink-0 text-signal" />
           <span className="flex max-w-[80ch] flex-col">
             <span className="text-[13px] font-semibold">{title}</span>
-            <span className="text-[11.5px] text-ink-3">{body}</span>
+            <span className="text-[12px] text-ink-3">{body}</span>
           </span>
         </span>
         {onChange && checked !== undefined && <Toggle checked={checked} onChange={onChange} label={title} />}
@@ -725,8 +725,8 @@ function LengthField({
   };
   const btn = "flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 hover:bg-surface-2 hover:text-ink disabled:opacity-30";
   return (
-    <div className="flex items-center justify-between gap-2 rounded-xl border border-line py-1 pr-1 pl-3">
-      <span className="truncate text-[12.5px] text-ink-2">{label}</span>
+    <div className="flex items-center justify-between gap-2 rounded-lg border border-line py-1 pr-1 pl-3">
+      <span className="truncate text-[13px] text-ink-2">{label}</span>
       <span className="flex shrink-0 items-center gap-0.5">
         <button type="button" className={btn} onClick={() => commit(value - 1)} disabled={value <= lo} aria-label={`${label} −`}>
           <Minus size={14} />

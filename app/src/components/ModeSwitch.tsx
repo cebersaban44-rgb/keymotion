@@ -28,7 +28,7 @@ export function ModeSwitch({ value }: { value: Connection }) {
         animate={{ x: `${index * 100}%` }}
         transition={{ type: "spring", stiffness: 420, damping: 34 }}
       >
-        <span className="h-1.5 w-1.5 rounded-full bg-signal shadow-[0_0_10px_var(--signal)]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-signal" />
         <span className="num text-[11px] font-semibold tracking-[0.12em] text-ink">{t(connectionKey(value, true))}</span>
       </motion.div>
     </div>

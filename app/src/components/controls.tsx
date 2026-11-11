@@ -128,7 +128,7 @@ export function ColorPicker({
             const v = e.target.value.trim();
             if (/^#?[0-9a-fA-F]{6}$/.test(v)) onChange(`#${v.replace("#", "").toLowerCase()}`);
           }}
-          className="num h-8 w-28 rounded-lg border border-line bg-bg-raise px-2.5 text-[12.5px] outline-none focus:border-signal"
+          className="num h-8 w-28 rounded-lg border border-line bg-bg-raise px-2.5 text-[13px] outline-none focus:border-signal"
           aria-label={`${label} HEX`}
         />
       </label>
@@ -140,7 +140,7 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <span className="text-[12.5px] font-medium">{label}</span>
+        <span className="text-[13px] font-medium">{label}</span>
         {hint && <span className="num text-[11px] text-ink-3">{hint}</span>}
       </div>
       {children}
@@ -167,7 +167,7 @@ export function Segmented<T extends string>({
       role="radiogroup"
       aria-label={label}
       aria-disabled={disabled}
-      className={`inline-flex rounded-xl border border-line bg-bg-raise p-1 ${disabled ? "opacity-40" : ""}`}
+      className={`inline-flex rounded-lg border border-line bg-bg-raise p-1 ${disabled ? "opacity-40" : ""}`}
     >
       {options.map((o) => (
         <button
@@ -177,7 +177,7 @@ export function Segmented<T extends string>({
           aria-checked={o.value === value}
           disabled={disabled}
           onClick={() => onChange(o.value)}
-          className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[12.5px] transition-colors disabled:cursor-not-allowed ${
+          className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[13px] transition-colors disabled:cursor-not-allowed ${
             o.value === value ? "bg-surface-2 text-ink shadow-[inset_0_0_0_1px_var(--line)]" : "text-ink-2 hover:text-ink"
           }`}
         >
@@ -217,7 +217,7 @@ export function Slider({
   return (
     <label className={`flex flex-col gap-1.5 ${disabled ? "opacity-40" : ""}`}>
       <span className="flex items-baseline justify-between gap-3">
-        <span className="text-[12.5px] font-medium">
+        <span className="text-[13px] font-medium">
           {label}
           {hint && <span className="ml-2 font-normal text-ink-3">{hint}</span>}
         </span>

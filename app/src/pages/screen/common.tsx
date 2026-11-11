@@ -29,6 +29,7 @@ import {
   uploadSeconds,
   type Prepared,
 } from "../../lib/screenImport";
+import { friendlyError } from "../../lib/errors";
 
 // ---------------------------------------------------------------- helpers
 
@@ -187,7 +188,7 @@ export function Stepper({ step }: { step: Step }) {
             >
               {state === "done" ? <Check size={12} /> : n}
             </span>
-            <span className={`text-[12.5px] ${state === "now" ? "font-semibold text-ink" : "text-ink-3"}`}>{t(k)}</span>
+            <span className={`text-[13px] ${state === "now" ? "font-semibold text-ink" : "text-ink-3"}`}>{t(k)}</span>
           </li>
         );
       })}
@@ -221,14 +222,14 @@ export function StudioFrame({
           type="button"
           onClick={onCancel}
           disabled={locked}
-          className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink disabled:opacity-40"
+          className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink disabled:opacity-40"
         >
           <X size={14} /> {t("sc.cancel")}
         </button>
       </div>
       <div className="flex min-w-0 items-baseline gap-3">
         <span className="truncate text-[14px] font-semibold">{title}</span>
-        {detail && <span className="num truncate text-[11.5px] text-ink-3">{detail}</span>}
+        {detail && <span className="num truncate text-[12px] text-ink-3">{detail}</span>}
       </div>
       {children}
     </section>
@@ -279,7 +280,7 @@ export function EditFooter({
         type="button"
         disabled={!!preparing || disabled}
         onClick={onPreview}
-        className="flex h-10 items-center gap-2 rounded-xl bg-signal px-5 text-[13px] font-semibold text-signal-ink disabled:opacity-50"
+        className="flex h-10 items-center gap-2 rounded-lg bg-signal px-5 text-[13px] font-semibold text-signal-ink disabled:opacity-50"
       >
         {preparing ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
         {preparing ? `${t("sc.preparing")} ${preparing.done}/${preparing.total}` : t("sc.prepare")}
@@ -331,7 +332,7 @@ export function PreviewPanel({
       const item = await store();
       onFinished({ kind: "saved", name: finalName, id: item.id });
     } catch (e) {
-      setError(String(e));
+      setError(friendlyError(e, t));
     }
   };
 
@@ -347,7 +348,7 @@ export function PreviewPanel({
       onBusy(false);
       onFinished({ kind: "uploaded", name: finalName, seconds: (performance.now() - started) / 1000, id: item.id });
     } catch (e) {
-      setError(`${t("sc.uploadFailed")}: ${String(e)}`);
+      setError(friendlyError(e, t));
       setUploading(false);
       onBusy(false);
     }
@@ -363,12 +364,12 @@ export function PreviewPanel({
               <Play size={10} /> {t("sc.preview.result")}
             </span>
           </div>
-          <p className="text-[11.5px] text-ink-3">{t("sc.preview.resultNote")}</p>
+          <p className="text-[12px] text-ink-3">{t("sc.preview.resultNote")}</p>
         </div>
         <div className="flex flex-col gap-4">
           <div>
             <div className="text-[15px] font-semibold">{uploading ? t("sc.uploading") : t("sc.preview.ready")}</div>
-            <p className="mt-1 text-[12.5px] text-ink-2">{uploading ? t("sc.uploading.note") : t("sc.preview.check")}</p>
+            <p className="mt-1 text-[13px] text-ink-2">{uploading ? t("sc.uploading.note") : t("sc.preview.check")}</p>
           </div>
           <Field label={t("sc.name")}>
             <input
@@ -401,14 +402,14 @@ export function PreviewPanel({
             type="button"
             onClick={saveOnly}
             title={t("sc.saveOnly.hint")}
-            className="flex h-10 items-center gap-2 rounded-xl px-3 text-[12.5px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+            className="flex h-10 items-center gap-2 rounded-lg px-3 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink"
           >
             <Library size={14} /> {t("sc.saveOnly")}
           </button>
           <button
             type="button"
             onClick={onBack}
-            className="flex h-10 items-center gap-2 rounded-xl border border-line px-4 text-[13px] font-medium hover:bg-surface-2"
+            className="flex h-10 items-center gap-2 rounded-lg border border-line px-4 text-[13px] font-medium hover:bg-surface-2"
           >
             <Pencil size={14} /> {t("sc.backToEdit")}
           </button>
@@ -417,7 +418,7 @@ export function PreviewPanel({
             disabled={!usb || !loaded || !!upload}
             title={!usb ? t("sc.needsUsb") : undefined}
             onClick={() => setConfirm(true)}
-            className="flex h-10 items-center gap-2 rounded-xl bg-signal px-5 text-[13px] font-semibold text-signal-ink disabled:opacity-40"
+            className="flex h-10 items-center gap-2 rounded-lg bg-signal px-5 text-[13px] font-semibold text-signal-ink disabled:opacity-40"
           >
             <Upload size={15} /> {t("sc.uploadAction")}
           </button>
@@ -458,7 +459,7 @@ function InlineProgress() {
   const now = useNow();
   if (!upload) {
     return (
-      <div className="flex items-center gap-2 text-[12.5px] text-ink-2">
+      <div className="flex items-center gap-2 text-[13px] text-ink-2">
         <Loader2 size={14} className="animate-spin" /> {t("sc.saving")}
       </div>
     );
@@ -513,10 +514,10 @@ export function ConfirmUpload({
       aria-modal
     >
       <motion.div initial={{ scale: 0.97, y: 8 }} animate={{ scale: 1, y: 0 }} className="card flex w-[480px] flex-col gap-4 p-6">
-        <h2 className="font-display text-[22px] font-semibold tracking-[-0.02em]">{t("sc.confirm.title")}</h2>
+        <h2 className="font-display text-[22px] font-semibold">{t("sc.confirm.title")}</h2>
         <div className="flex gap-4">
           <FramePlayer frames={[preview]} delaysMs={[100]} className="h-[68px] w-[120px] shrink-0 rounded-md bg-black" />
-          <div className="num flex flex-col gap-0.5 text-[12.5px] text-ink-2">
+          <div className="num flex flex-col gap-0.5 text-[13px] text-ink-2">
             <span>
               {frames} {t("sc.frames")}
               {frames > 1 ? ` · ${t("sc.loop")} ${fmtSeconds(loopMs / 1000)}` : ""}
@@ -529,7 +530,7 @@ export function ConfirmUpload({
             </span>
           </div>
         </div>
-        <ul className="flex flex-col gap-2 text-[12.5px] text-ink-2">
+        <ul className="flex flex-col gap-2 text-[13px] text-ink-2">
           <li className="flex gap-2">
             <Check size={14} className="mt-0.5 shrink-0 text-ok" /> {t("sc.confirm.onlyGif")}
           </li>
@@ -553,14 +554,14 @@ export function ConfirmUpload({
             type="button"
             autoFocus
             onClick={onCancel}
-            className="h-10 rounded-xl border border-line px-4 text-[13px] text-ink-2 hover:bg-surface-2"
+            className="h-10 rounded-lg border border-line px-4 text-[13px] text-ink-2 hover:bg-surface-2"
           >
             {t("sc.cancel")}
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="flex h-10 items-center gap-2 rounded-xl bg-signal px-4 text-[13px] font-semibold text-signal-ink"
+            className="flex h-10 items-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink"
           >
             <Upload size={15} /> {t("sc.confirm.go")}
           </button>
