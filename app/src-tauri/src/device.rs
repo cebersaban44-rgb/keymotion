@@ -147,6 +147,8 @@ pub struct LiveFrame {
 ///   is the time left"), so the gauges wait while it shows.
 /// * `Alerts`: only the keys it names (volume bar for a moment, the
 ///   microphone key), on top of the timer or the gauges.
+/// * `Reminders`: only the keys it names (a key blinking before a meeting),
+///   on top of everything else.
 ///
 /// A preview the user edits on the Lighting page (`SetLive`) goes over all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -154,27 +156,48 @@ pub enum LightLayer {
     Gauges,
     Timer,
     Alerts,
+    Reminders,
 }
 
 /// One LED of a composed frame: UI colour and linear brightness (0–1).
 pub type LitKey = (u8, Rgb, f32);
 
+/// The background layers, as handed in.
+#[derive(Debug, Clone, Default)]
+pub struct Layers {
+    pub gauges: Option<LiveFrame>,
+    pub timer: Option<LiveFrame>,
+    pub alerts: Option<LiveFrame>,
+    pub reminders: Option<LiveFrame>,
+}
+
+impl Layers {
+    fn slot(&mut self, layer: LightLayer) -> &mut Option<LiveFrame> {
+        match layer {
+            LightLayer::Gauges => &mut self.gauges,
+            LightLayer::Timer => &mut self.timer,
+            LightLayer::Alerts => &mut self.alerts,
+            LightLayer::Reminders => &mut self.reminders,
+        }
+    }
+
+    fn any(&self) -> bool {
+        self.gauges.is_some() || self.timer.is_some() || self.alerts.is_some() || self.reminders.is_some()
+    }
+}
+
 /// What the keys show: the preview alone, or the timer (else the gauges)
-/// with the alerts' keys on top. `None` when nothing is set.
-pub fn compose(
-    live: Option<&LiveFrame>,
-    gauges: Option<&LiveFrame>,
-    timer: Option<&LiveFrame>,
-    alerts: Option<&LiveFrame>,
-) -> Option<Vec<LitKey>> {
+/// with the alerts' and then the reminders' keys on top. `None` when
+/// nothing is set.
+pub fn compose(live: Option<&LiveFrame>, l: &Layers) -> Option<Vec<LitKey>> {
     let keys = |f: &LiveFrame| f.colors.iter().map(|&(l, c)| (l, c, f.level)).collect::<Vec<_>>();
     if let Some(live) = live {
         return Some(keys(live));
     }
-    let mut out = timer.or(gauges).map(keys);
-    if let Some(alerts) = alerts {
+    let mut out = l.timer.as_ref().or(l.gauges.as_ref()).map(keys);
+    for over in [l.alerts.as_ref(), l.reminders.as_ref()].into_iter().flatten() {
         let base = out.get_or_insert_with(Vec::new);
-        for (led, c, level) in keys(alerts) {
+        for (led, c, level) in keys(over) {
             match base.iter_mut().find(|k| k.0 == led) {
                 Some(k) => *k = (led, c, level),
                 None => base.push((led, c, level)),
@@ -289,9 +312,7 @@ struct Actor {
     command: Option<Command>,
     live: Option<LiveFrame>,
     /// Background layers, shown while `live` is not set.
-    gauges: Option<LiveFrame>,
-    timer: Option<LiveFrame>,
-    alerts: Option<LiveFrame>,
+    layers: Layers,
     /// Live frames that failed in a row.
     live_failures: u32,
     /// `Some` while the UI shows the mirror.
@@ -339,9 +360,7 @@ impl Actor {
             usb_model: None,
             command: None,
             live: None,
-            gauges: None,
-            timer: None,
-            alerts: None,
+            layers: Layers::default(),
             live_failures: 0,
             mirror: None,
             indicators: Vec::new(),
@@ -443,11 +462,7 @@ impl Actor {
                 self.next_live = Instant::now();
             }
             Request::SetLayer(layer, frame) => {
-                let slot = match layer {
-                    LightLayer::Gauges => &mut self.gauges,
-                    LightLayer::Timer => &mut self.timer,
-                    LightLayer::Alerts => &mut self.alerts,
-                };
+                let slot = self.layers.slot(layer);
                 match (&frame, &slot) {
                     (None, Some(_)) => tracing::debug!(?layer, "light layer stopped"),
                     (Some(f), None) => tracing::debug!(?layer, leds = f.colors.len(), "light layer started"),
@@ -673,15 +688,14 @@ impl Actor {
     }
 
     fn has_layer(&self) -> bool {
-        self.gauges.is_some() || self.timer.is_some() || self.alerts.is_some()
+        self.layers.any()
     }
 
     fn send_live(&mut self) {
         if self.command_path.is_none() {
             return;
         }
-        let Some(keys) = compose(self.live.as_ref(), self.gauges.as_ref(), self.timer.as_ref(), self.alerts.as_ref())
-        else {
+        let Some(keys) = compose(self.live.as_ref(), &self.layers) else {
             return;
         };
         let cal = self.calibration;
@@ -866,17 +880,22 @@ mod tests {
         let gauges = frame(&[(1, 10), (2, 10), (3, 10)], 0.5);
         let timer = frame(&[(1, 20), (2, 20), (3, 20)], 0.8);
         let alerts = frame(&[(2, 99), (9, 99)], 1.0);
+        let only_gauges = Layers { gauges: Some(gauges.clone()), ..Layers::default() };
+        assert_eq!(compose(None, &only_gauges), Some(vec![(1, [10; 3], 0.5), (2, [10; 3], 0.5), (3, [10; 3], 0.5)]));
+        let all = Layers {
+            gauges: Some(gauges),
+            timer: Some(timer),
+            alerts: Some(alerts.clone()),
+            reminders: Some(frame(&[(9, 7)], 1.0)),
+        };
         assert_eq!(
-            compose(None, Some(&gauges), None, None),
-            Some(vec![(1, [10; 3], 0.5), (2, [10; 3], 0.5), (3, [10; 3], 0.5)])
-        );
-        assert_eq!(
-            compose(None, Some(&gauges), Some(&timer), Some(&alerts)),
-            Some(vec![(1, [20; 3], 0.8), (2, [99; 3], 1.0), (3, [20; 3], 0.8), (9, [99; 3], 1.0)])
+            compose(None, &all),
+            Some(vec![(1, [20; 3], 0.8), (2, [99; 3], 1.0), (3, [20; 3], 0.8), (9, [7; 3], 1.0)])
         );
         // Alerts alone light only their keys.
-        assert_eq!(compose(None, None, None, Some(&alerts)), Some(vec![(2, [99; 3], 1.0), (9, [99; 3], 1.0)]));
-        assert_eq!(compose(None, None, None, None), None);
+        let only_alerts = Layers { alerts: Some(alerts), ..Layers::default() };
+        assert_eq!(compose(None, &only_alerts), Some(vec![(2, [99; 3], 1.0), (9, [99; 3], 1.0)]));
+        assert_eq!(compose(None, &Layers::default()), None);
     }
 
     #[test]
@@ -884,6 +903,7 @@ mod tests {
         let live = frame(&[(5, 50)], 1.0);
         let timer = frame(&[(1, 20)], 0.8);
         let alerts = frame(&[(2, 99)], 1.0);
-        assert_eq!(compose(Some(&live), None, Some(&timer), Some(&alerts)), Some(vec![(5, [50; 3], 1.0)]));
+        let layers = Layers { timer: Some(timer), alerts: Some(alerts), ..Layers::default() };
+        assert_eq!(compose(Some(&live), &layers), Some(vec![(5, [50; 3], 1.0)]));
     }
 }

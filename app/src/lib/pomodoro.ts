@@ -11,7 +11,7 @@ import type { PomodoroPhase } from "../bindings/PomodoroPhase";
 import type { PomodoroSettings } from "../bindings/PomodoroSettings";
 import type { PomodoroState } from "../bindings/PomodoroState";
 import { inTauri } from "./ipc";
-import { mockCancelReturn, mockLiveHeld, mockReturnAfter, submitLive, useLive } from "./live";
+import { mockCancelReturn, mockLiveHold, mockReturnAfter, submitLive, useLive } from "./live";
 import { TRY_MS, phaseRgb, toHex } from "./pomodoroLights";
 import type { Prepared } from "./screenImport";
 
@@ -119,7 +119,7 @@ function mockCardsWanted() {
 }
 
 function mockSync() {
-  mockLiveHeld(mockCardsWanted());
+  mockLiveHold(POMODORO_SOURCE, mockCardsWanted());
   mock.emit?.(mockState());
 }
 

@@ -1,9 +1,9 @@
 // "Canlı ekran": the live mode switch, what shows on the screen in which
-// order (focus timer, the song, the user's own picture), and the upload
+// order (calendar, focus timer, the song, the user's own picture), and the upload
 // budget (phase C). The backend runs the live mode; this only shows and
 // sets it.
 
-import { AlertTriangle, Clock3, Hourglass, ImageIcon, Loader2, Music2, Radio, RotateCcw, Upload, X } from "lucide-react";
+import { AlertTriangle, CalendarDays, Clock3, Hourglass, ImageIcon, Loader2, Music2, Radio, RotateCcw, Upload, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { LivePlan } from "../../bindings/LivePlan";
@@ -11,10 +11,12 @@ import type { LiveRestore } from "../../bindings/LiveRestore";
 import type { LiveState } from "../../bindings/LiveState";
 import type { SongStop } from "../../bindings/SongStop";
 import { Segmented, Toggle } from "../../components/controls";
+import { CALENDAR_SOURCE, hhmm, useCalendar } from "../../lib/calendar";
 import { useT, type MessageKey } from "../../lib/i18n";
 import { NOW_PLAYING_SOURCE, fmtWait, useLive } from "../../lib/live";
 import { POMODORO_SOURCE, usePomodoro } from "../../lib/pomodoro";
 import { uploadSeconds } from "../../lib/screenImport";
+import { CalendarBody, calendarStatus } from "./CalendarPanel";
 import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useNow } from "./common";
 
 const PLANS: { id: LivePlan; label: MessageKey; years: MessageKey }[] = [
@@ -120,13 +122,15 @@ export function LivePanel({ usb }: { usb: boolean }) {
 
 type Patch = Parameters<ReturnType<typeof useLive.getState>["configure"]>[0];
 
-/** Which layer is on the GIF page now: 1 the focus timer, 2 the song,
- *  3 the user's own picture. */
-function onScreen(s: LiveState): 1 | 2 | 3 {
-  if (s.uploading?.source === "restore" || !s.restore) return 3;
-  if (s.last?.source === POMODORO_SOURCE) return 1;
-  if (s.last?.source === NOW_PLAYING_SOURCE) return 2;
-  return 3;
+type Layered = "calendar" | "pomodoro" | "song" | "own";
+
+/** Which layer is on the GIF page now. */
+function onScreen(s: LiveState): Layered {
+  if (s.uploading?.source === "restore" || !s.restore) return "own";
+  if (s.last?.source === CALENDAR_SOURCE) return "calendar";
+  if (s.last?.source === POMODORO_SOURCE) return "pomodoro";
+  if (s.last?.source === NOW_PLAYING_SOURCE) return "song";
+  return "own";
 }
 
 /** "12 sn", "4 dk". */
@@ -139,7 +143,11 @@ function fmtSoon(ms: number, units: { s: string; h: string; m: string }) {
 function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) {
   const t = useT();
   const p = usePomodoro((x) => x.state);
+  const cal = useCalendar((x) => x.state);
+  const configureCal = useCalendar((x) => x.configure);
   const on = onScreen(s);
+  const calKey = calendarStatus(s, cal, on === "calendar");
+  const calStatus = calKey === "calendar.st.next" && cal?.nextCardMs != null ? `${t(calKey)} ${hhmm(cal.nextCardMs)}` : t(calKey);
   const units = { s: t("sc.live.s"), h: t("sc.live.h"), m: t("sc.live.m") };
   const playing = !!s.track?.playing;
 
@@ -149,9 +157,11 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
       ? "sc.live.st.cardsOff"
       : s.pending?.source === POMODORO_SOURCE && s.nextTokenMs != null
         ? "sc.live.st.waitBudget"
-        : on === 1
+        : on === "pomodoro"
         ? "sc.live.st.showing"
-        : p?.status === "running"
+        : s.holders.includes(CALENDAR_SOURCE) && p?.status !== "idle"
+          ? "sc.live.st.waiting"
+          : p?.status === "running"
           ? "sc.live.st.running"
           : p?.status === "paused"
             ? "sc.live.st.paused"
@@ -162,7 +172,7 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
       ? "sc.live.st.sourceOff"
       : s.pending?.source === NOW_PLAYING_SOURCE && s.nextTokenMs != null
         ? "sc.live.st.waitBudget"
-        : on === 2
+        : on === "song"
           ? "sc.live.st.showing"
           : s.held && playing
             ? "sc.live.st.waiting"
@@ -179,14 +189,32 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
         {!s.enabled && <p className="text-[11.5px] text-ink-3">{t("sc.live.order.off")}</p>}
       </div>
       <ol className="flex flex-col divide-y divide-line rounded-2xl border border-line">
-        <Layer n={1} icon={<Hourglass size={16} />} title={t("sc.live.pomo")} body={t("sc.live.pomo.body")} status={t(pomo)} active={on === 1} data="pomodoro" />
         <Layer
-          n={2}
+          n={1}
+          icon={<CalendarDays size={16} />}
+          title={t("calendar.title")}
+          body={t("calendar.body")}
+          status={calStatus}
+          active={on === "calendar"}
+          data="calendar"
+          right={
+            <Toggle
+              checked={cal?.settings.screen ?? true}
+              onChange={(screen) => configureCal({ screen }).catch(console.error)}
+              label={t("calendar.title")}
+            />
+          }
+        >
+          <CalendarBody />
+        </Layer>
+        <Layer n={2} icon={<Hourglass size={16} />} title={t("sc.live.pomo")} body={t("sc.live.pomo.body")} status={t(pomo)} active={on === "pomodoro"} data="pomodoro" />
+        <Layer
+          n={3}
           icon={<Music2 size={16} />}
           title={t("sc.live.np")}
           body={t("sc.live.np.body")}
           status={t(song)}
-          active={on === 2}
+          active={on === "song"}
           data="now-playing"
           right={<Toggle checked={s.nowPlaying} onChange={(nowPlaying) => set({ nowPlaying })} label={t("sc.live.np")} />}
         >
@@ -207,12 +235,12 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
           {s.enabled && s.nowPlaying && <TrackLine s={s} />}
         </Layer>
         <Layer
-          n={3}
+          n={4}
           icon={<ImageIcon size={16} />}
           title={t("sc.live.own")}
           body={s.own ? t("sc.live.own.body") : t("sc.live.own.unknown")}
-          status={on === 3 ? t("sc.live.st.showing") : t("sc.live.st.turn")}
-          active={on === 3}
+          status={on === "own" ? t("sc.live.st.showing") : t("sc.live.st.turn")}
+          active={on === "own"}
           data="own"
         >
           {s.own && (

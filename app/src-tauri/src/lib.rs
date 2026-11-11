@@ -4,21 +4,24 @@
 //! the `kb-*` crates. All keyboard logic lives in those crates, and all
 //! hardware access goes through the single device actor.
 
+mod calendar;
 mod device;
 mod dto;
 mod gauges;
+mod ics;
 mod live;
 mod now_playing;
 mod pomodoro;
 mod screen_lib;
 mod settings;
 
+use calendar::CalendarHandle;
 use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request};
 use dto::{
-    Calibration, CalibrationInfo, ClockStatus, EffectInfo, EffectRequest, GaugesSettings, GaugesState, KeyAssignment,
-    KeyboardInfo, KeymapCatalog, KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState,
-    MirrorHint, PomodoroSettings, PomodoroState, ScreenItem, ScreenItemKind, ScreenState, SongStop, ThemePreference,
-    UiEnvironment,
+    CalendarSettings, CalendarState, Calibration, CalibrationInfo, ClockStatus, EffectInfo, EffectRequest,
+    GaugesSettings, GaugesState, KeyAssignment, KeyboardInfo, KeymapCatalog, KeymapLayer, KeymapState, LedColor,
+    LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, PomodoroSettings, PomodoroState, ScreenItem,
+    ScreenItemKind, ScreenState, SongStop, ThemePreference, UiEnvironment,
 };
 use gauges::GaugesHandle;
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
@@ -50,6 +53,7 @@ type Library<'a> = State<'a, Arc<Mutex<ScreenLibrary>>>;
 type Live<'a> = State<'a, Arc<LiveHandle>>;
 type Pomodoro<'a> = State<'a, Arc<PomodoroHandle>>;
 type Gauges<'a> = State<'a, Arc<GaugesHandle>>;
+type Calendar<'a> = State<'a, Arc<CalendarHandle>>;
 
 fn lock_library(lib: &Mutex<ScreenLibrary>) -> Result<std::sync::MutexGuard<'_, ScreenLibrary>, String> {
     lib.lock().map_err(|_| "screen library unavailable".to_string())
@@ -235,6 +239,58 @@ fn pomodoro_control(pomodoro: Pomodoro<'_>, action: PomodoroAction) -> Result<Po
 fn pomodoro_configure(pomodoro: Pomodoro<'_>, settings: PomodoroSettings) -> Result<PomodoroState, String> {
     tracing::debug!(?settings, "ipc: pomodoro_configure");
     pomodoro.configure(settings)
+}
+
+/// The calendars and the meetings ahead.
+#[tauri::command]
+fn calendar_state(calendar: Calendar<'_>) -> Result<CalendarState, String> {
+    calendar.state()
+}
+
+/// New calendar settings (saved).
+#[tauri::command]
+fn calendar_configure(calendar: Calendar<'_>, settings: CalendarSettings) -> Result<CalendarState, String> {
+    tracing::debug!(?settings, "ipc: calendar_configure");
+    calendar.configure(settings)
+}
+
+/// Add a calendar by its published (secret) address. The address is not
+/// logged.
+#[tauri::command]
+fn calendar_add(calendar: Calendar<'_>, url: String, name: String) -> Result<CalendarState, String> {
+    tracing::debug!("ipc: calendar_add");
+    calendar.add(&url, &name)
+}
+
+/// Rename, recolour, or turn a calendar on or off.
+#[tauri::command]
+fn calendar_update(
+    calendar: Calendar<'_>,
+    id: String,
+    name: Option<String>,
+    color: Option<[u8; 3]>,
+    enabled: Option<bool>,
+) -> Result<CalendarState, String> {
+    tracing::debug!(%id, ?enabled, "ipc: calendar_update");
+    calendar.update(&id, name, color, enabled)
+}
+
+#[tauri::command]
+fn calendar_remove(calendar: Calendar<'_>, id: String) -> Result<CalendarState, String> {
+    tracing::debug!(%id, "ipc: calendar_remove");
+    calendar.remove(&id)
+}
+
+/// Read every calendar now.
+#[tauri::command]
+fn calendar_refresh(calendar: Calendar<'_>) -> Result<CalendarState, String> {
+    calendar.refresh()
+}
+
+/// Blink the reminder key for a few seconds.
+#[tauri::command]
+fn calendar_try_reminder(calendar: Calendar<'_>) {
+    calendar.try_reminder();
 }
 
 /// The system gauges.
@@ -541,7 +597,8 @@ pub fn run() {
             let live = LiveHandle::spawn(app.handle().clone(), library.clone(), device.clone());
             app.manage(now_playing::spawn(app.handle().clone(), live.clone()));
             app.manage(PomodoroHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir.clone()));
-            app.manage(GaugesHandle::spawn(app.handle().clone(), device.clone(), config_dir));
+            app.manage(GaugesHandle::spawn(app.handle().clone(), device.clone(), config_dir.clone()));
+            app.manage(CalendarHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir));
             app.manage(library);
             app.manage(device);
             app.manage(live);
@@ -587,7 +644,14 @@ pub fn run() {
             pomodoro_configure,
             gauges_state,
             gauges_configure,
-            gauges_watch
+            gauges_watch,
+            calendar_state,
+            calendar_configure,
+            calendar_add,
+            calendar_update,
+            calendar_remove,
+            calendar_refresh,
+            calendar_try_reminder
         ])
         .run(tauri::generate_context!())
         .expect("error while running Klavye Stüdyo");
