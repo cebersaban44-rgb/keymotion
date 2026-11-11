@@ -38,7 +38,7 @@ export function Sidebar() {
   const page = useApp((s) => s.page);
   const setPage = useApp((s) => s.setPage);
   const kb = useActiveKeyboard();
-  const unsavedPages = new Set(useUnsaved().map((i) => i.page));
+  const unsavedPages = new Set(useUnsaved().filter((i) => !i.background).map((i) => i.page));
 
   const item = (it: NavItem) => {
     const active = page === it.id;

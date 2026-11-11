@@ -11,6 +11,8 @@ const RULES: [RegExp, MessageKey][] = [
   [/fn key cannot be reassigned/i, "err.fn"],
   [/unsupported keyboard firmware/i, "err.firmware"],
   [/factory backup cannot be removed/i, "err.factory"],
+  [/no official driver copy/i, "err.noDriver"],
+  [/factory animation; not acknowledged/i, "err.factoryAck"],
   [/larger than|too large|at most 4096|frames; the keyboard takes|more than \d+ frames/i, "err.tooLarge"],
   [/not a gif|not a readable gif|no frames|expected binary data|unsupported/i, "err.badFile"],
   [/echoed different data|checksum/i, "err.verify"],

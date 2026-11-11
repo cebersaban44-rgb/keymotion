@@ -13,11 +13,15 @@
 //! A screen upload (up to ~5 minutes) runs inside one request, so nothing
 //! else talks to the keyboard meanwhile; progress goes out as events.
 //!
+//! Every flash write (effects, per-key colours, keymap, macros, screen) is
+//! announced while it runs (`flash-write`): closing the window asks first,
+//! and Windows is told why shutting down now is a bad idea.
+//!
 //! It also keeps the app's record of each model's keymap (`keymap.json`)
 //! and macros (`macros.json`): the keyboard cannot report either, so a
 //! record is updated only after a write the keyboard confirmed.
 
-use crate::dto::{Battery, KeyboardInfo, LedColor};
+use crate::dto::{Battery, FlashWrite, KeyboardInfo, LedColor};
 use crate::settings::{
     self, ClockSettings, Keymaps, MacroRecord, StoredKeymap, StoredLayer, StoredMacro, StoredMacros,
 };
@@ -32,6 +36,7 @@ use kb_protocol::sonix::{scale_to_level, EffectSettings, Rgb, MAX_LEVEL};
 use kb_transport::hid::{Hid, HidChannel};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -41,6 +46,11 @@ pub const EVENT_KEYBOARDS_CHANGED: &str = "keyboards-changed";
 pub const EVENT_MIRROR: &str = "lighting-mirror";
 pub const EVENT_CLOCK: &str = "clock-changed";
 pub const EVENT_SCREEN_PROGRESS: &str = "screen-upload-progress";
+/// A flash write started (`"screen"` | `"settings"`) or ended (`null`).
+pub const EVENT_FLASH_WRITE: &str = "flash-write";
+/// What Windows shows when the user shuts down during a flash write, until
+/// the UI sends the text in its language.
+const WRITE_REASON: &str = "Saving to the keyboard. Shutting down now can leave it half written.";
 /// Longest wait for a screen upload (140 frames take ~5.4 min).
 pub const SCREEN_UPLOAD_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// Progress events at most this often.
@@ -270,8 +280,110 @@ pub struct Snapshot {
     pub macros: MacroRecord,
 }
 
+/// One step of a screen upload, in order (uploads run one at a time). The
+/// screen library uses it to keep an "incomplete" mark on disk while the
+/// GIF page is being written, so a crash or a quit midway shows up on the
+/// next start.
+pub enum ScreenWriteStep<'a> {
+    /// The upload session is about to open; nothing is written yet.
+    /// `label` is the request's id (a library item, or `live:<source>`).
+    Starting { label: &'a str, model_id: Option<&'a str> },
+    /// It ended: `ok` finished, else failed after (`flash_written`) or
+    /// before touching the flash.
+    Ended { flash_written: bool, ok: bool },
+}
+
+pub type ScreenWriteHook = Box<dyn Fn(ScreenWriteStep<'_>) + Send>;
+
+/// The flash write in progress, shared by the actor and the close guard.
+/// While one runs the UI is told (`flash-write`) and Windows is asked to
+/// hold a shutdown with a reason.
+#[derive(Clone)]
+pub struct FlashState {
+    /// 0: none, else a [`FlashWrite`] code.
+    kind: Arc<AtomicU8>,
+    reason: Arc<Mutex<String>>,
+    app: AppHandle,
+}
+
+impl FlashState {
+    fn new(app: AppHandle) -> Self {
+        Self { kind: Arc::new(AtomicU8::new(0)), reason: Arc::new(Mutex::new(WRITE_REASON.into())), app }
+    }
+
+    pub fn current(&self) -> Option<FlashWrite> {
+        match self.kind.load(Ordering::SeqCst) {
+            1 => Some(FlashWrite::Screen),
+            2 => Some(FlashWrite::Settings),
+            _ => None,
+        }
+    }
+
+    /// The text Windows shows during a write, in the UI language.
+    pub fn set_reason(&self, text: &str) {
+        let text: String = text.chars().filter(|c| !c.is_control()).take(200).collect();
+        if let (false, Ok(mut r)) = (text.trim().is_empty(), self.reason.lock()) {
+            *r = text;
+        }
+    }
+
+    /// A write starts; it ends when the guard drops. The event goes out
+    /// before the flag is set: a close request that sees the flag finds the
+    /// UI already told.
+    fn begin(&self, kind: FlashWrite) -> FlashWriteGuard {
+        let _ = self.app.emit(EVENT_FLASH_WRITE, Some(kind));
+        self.kind.store(if kind == FlashWrite::Screen { 1 } else { 2 }, Ordering::SeqCst);
+        let reason = self.reason.lock().map(|r| r.clone()).unwrap_or_else(|_| WRITE_REASON.into());
+        self.hold_shutdown(Some(reason));
+        FlashWriteGuard(self.clone())
+    }
+
+    fn end(&self) {
+        self.kind.store(0, Ordering::SeqCst);
+        let _ = self.app.emit(EVENT_FLASH_WRITE, None::<FlashWrite>);
+        self.hold_shutdown(None);
+    }
+
+    /// `ShutdownBlockReasonCreate` (with a reason) or `…Destroy` on the
+    /// main window. Windows takes these only from the window's own thread.
+    fn hold_shutdown(&self, reason: Option<String>) {
+        #[cfg(windows)]
+        {
+            use tauri::Manager;
+            let app = self.app.clone();
+            let r = self.app.run_on_main_thread(move || {
+                let Some(hwnd) = app.get_webview_window("main").and_then(|w| w.hwnd().ok()) else { return };
+                let hwnd = hwnd.0 as isize;
+                let ok = match &reason {
+                    Some(text) => kb_winsys::block_shutdown(hwnd, text),
+                    None => kb_winsys::unblock_shutdown(hwnd),
+                };
+                if !ok {
+                    tracing::debug!(hold = reason.is_some(), "shutdown hold not changed");
+                }
+            });
+            if let Err(e) = r {
+                tracing::warn!("shutdown hold not set: {e}");
+            }
+        }
+        #[cfg(not(windows))]
+        let _ = reason;
+    }
+}
+
+/// Ends the flash write when dropped (also on an early return).
+struct FlashWriteGuard(FlashState);
+
+impl Drop for FlashWriteGuard {
+    fn drop(&mut self) {
+        self.0.end();
+    }
+}
+
 pub struct DeviceHandle {
     pub snapshot: Arc<Mutex<Snapshot>>,
+    /// The flash write in progress (close guard, shutdown hold).
+    pub flash: FlashState,
     tx: Sender<Request>,
 }
 
@@ -302,8 +414,15 @@ impl DeviceHandle {
 }
 
 /// Start the actor. `config_dir` is where clock sync history and the keymap
-/// record are saved; without it they last only for this run.
-pub fn spawn(app: AppHandle, calibration: LedCalibration, config_dir: Option<PathBuf>) -> DeviceHandle {
+/// record are saved; without it they last only for this run. `screen_hook`
+/// hears each screen upload start and end.
+pub fn spawn(
+    app: AppHandle,
+    calibration: LedCalibration,
+    config_dir: Option<PathBuf>,
+    screen_hook: ScreenWriteHook,
+) -> DeviceHandle {
+    let flash = FlashState::new(app.clone());
     let clock = config_dir.as_deref().map(settings::load_clock).unwrap_or_default();
     let keymaps = config_dir.as_deref().map(settings::load_keymaps).unwrap_or_default();
     let macros = config_dir.as_deref().map(settings::load_macros).unwrap_or_default();
@@ -316,11 +435,17 @@ pub fn spawn(app: AppHandle, calibration: LedCalibration, config_dir: Option<Pat
     }));
     let (tx, rx) = mpsc::channel();
     let shared = snapshot.clone();
+    let actor_flash = flash.clone();
     std::thread::Builder::new()
         .name("device-actor".into())
-        .spawn(move || Actor::new(app, shared, calibration, clock, keymaps, macros, config_dir).run(rx))
+        .spawn(move || {
+            let mut actor = Actor::new(app, shared, calibration, clock, keymaps, macros, config_dir);
+            actor.flash = actor_flash;
+            actor.screen_hook = screen_hook;
+            actor.run(rx)
+        })
         .expect("spawn device actor");
-    DeviceHandle { snapshot, tx }
+    DeviceHandle { snapshot, flash, tx }
 }
 
 struct Command {
@@ -369,6 +494,9 @@ struct Actor {
     next_enumerate: Instant,
     next_live: Instant,
     next_mirror: Instant,
+    /// The flash write in progress (shared with [`DeviceHandle`]).
+    flash: FlashState,
+    screen_hook: ScreenWriteHook,
 }
 
 impl Actor {
@@ -384,6 +512,8 @@ impl Actor {
         let hid = Hid::new().map_err(|e| tracing::error!("HID init failed: {e}")).ok();
         let now = Instant::now();
         Self {
+            flash: FlashState::new(app.clone()),
+            screen_hook: Box::new(|_: ScreenWriteStep<'_>| {}),
             app,
             shared,
             hid,
@@ -464,11 +594,13 @@ impl Actor {
                 self.next_enumerate = Instant::now();
             }
             Request::ApplyEffect(mut settings, reply) => {
+                let _write = self.flash.begin(FlashWrite::Settings);
                 settings.color = self.calibration.apply(settings.color);
                 let r = self.with_command(|d| d.apply_effect(&settings));
                 let _ = reply.send(r);
             }
             Request::ApplyPerKey { colors, brightness, reply } => {
+                let _write = self.flash.begin(FlashWrite::Settings);
                 let cal = self.calibration;
                 let colors: Vec<(u8, Rgb)> = colors.into_iter().map(|(l, c)| (l, cal.apply(c))).collect();
                 let r = self.with_command(|d| d.apply_per_key(colors, brightness));
@@ -533,12 +665,15 @@ impl Actor {
                 let _ = reply.send(self.store_clock().map(|_| self.clock));
             }
             Request::ApplyKeymap { layer, entries, reply } => {
+                let _write = self.flash.begin(FlashWrite::Settings);
                 let _ = reply.send(self.apply_keymap(layer, entries));
             }
             Request::ApplyMacros { slots, reply } => {
+                let _write = self.flash.begin(FlashWrite::Settings);
                 let _ = reply.send(self.apply_macros(slots));
             }
             Request::UploadScreen { id, anim, reply } => {
+                let _write = self.flash.begin(FlashWrite::Screen);
                 let _ = reply.send(self.upload_screen(&id, &anim));
             }
         }
@@ -569,6 +704,7 @@ impl Actor {
         let mut last = Instant::now() - SCREEN_PROGRESS_EVERY;
         let mut started = false;
         let started_at = Instant::now();
+        (self.screen_hook)(ScreenWriteStep::Starting { label: id, model_id: model_id.as_deref() });
         let r = self.with_command(|d| {
             d.upload_screen(&mut display, anim, |done, total| {
                 started = true;
@@ -579,6 +715,7 @@ impl Actor {
                 }
             })
         });
+        (self.screen_hook)(ScreenWriteStep::Ended { flash_written: r.is_ok() || started, ok: r.is_ok() });
         match r {
             Ok(report) => {
                 tracing::info!(

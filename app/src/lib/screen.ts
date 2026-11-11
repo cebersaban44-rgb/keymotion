@@ -4,6 +4,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { create } from "zustand";
+import type { ScreenIncomplete } from "../bindings/ScreenIncomplete";
 import type { ScreenItem } from "../bindings/ScreenItem";
 import type { ScreenProgress } from "../bindings/ScreenProgress";
 import type { ScreenState } from "../bindings/ScreenState";
@@ -33,16 +34,56 @@ const mock = {
   shown: null as string | null,
   today: 0,
   total: 0,
+  incomplete: null as ScreenIncomplete | null,
 };
+
+/** Browser preview: `?mock=usb&driver` pretends AJAZZ's official driver is
+ *  installed, so its factory animation can be backed up. */
+const MOCK_DRIVER = typeof location !== "undefined" && /[?&]driver\b/.test(location.search);
 
 function mockState(): ScreenState {
   return {
-    items: [...mock.items].sort((a, b) => b.createdMs - a.createdMs),
-    shown: mock.shown,
+    // Like the backend: the factory backup first, then newest first.
+    items: [...mock.items].sort(
+      (a, b) => Number(b.kind === "factory") - Number(a.kind === "factory") || b.createdMs - a.createdMs,
+    ),
+    shown: mock.incomplete ? null : mock.shown,
     uploadsToday: mock.today,
     uploadsTotal: mock.total,
     limits: MOCK_LIMITS,
+    incomplete: mock.incomplete && {
+      ...mock.incomplete,
+      id: mock.items.some((i) => i.id === mock.incomplete?.id) ? mock.incomplete.id : null,
+    },
   };
+}
+
+/** Browser preview: the last upload stopped partway (`__ksMockIncomplete()`
+ *  in the console; an item id, or the newest item). */
+function mockCutUpload(id?: string) {
+  const item = id ? mock.items.find((i) => i.id === id) : [...mock.items].sort((a, b) => b.createdMs - a.createdMs)[0];
+  mock.incomplete = { id: item?.id ?? null, atMs: Date.now() - 3_600_000 };
+  const modelId = useScreen.getState().modelId;
+  if (modelId) void useScreen.getState().load(modelId);
+}
+if (!inTauri && typeof window !== "undefined") {
+  (window as unknown as { __ksMockIncomplete: (id?: string) => void }).__ksMockIncomplete = mockCutUpload;
+}
+
+/** Browser preview: a stand-in for the factory animation (a dark blue
+ *  screen with a light band), not AJAZZ's. */
+function mockFactoryItem(): ScreenItem {
+  const id = "fac70e1a0a0a0a0a";
+  const frame = new Uint16Array(FRAME_PIXELS).fill(0x10a6);
+  frame.fill(0xffff, FRAME_PIXELS / 2 - 240 * 4, FRAME_PIXELS / 2 + 240 * 4);
+  mock.data.set(id, toBlob({ frames: [frame], delaysMs: [100], name: "", kind: "image" }));
+  return { id, name: "AJAZZ factory animation", kind: "factory", frames: 135, loopMs: 13_500, pages: 2136, createdMs: 0, uploadedMs: null };
+}
+
+/** Browser preview: no factory backup and nothing uploaded yet (the live
+ *  mode asks before its first card, like `factory_at_risk`). */
+export function mockFactoryAtRisk() {
+  return !mock.items.some((i) => i.kind === "factory") && mock.shown === null && mock.incomplete === null;
 }
 
 /** Browser preview: a live card reached the GIF page. Returns what it
@@ -51,6 +92,7 @@ export function mockLiveUploaded(blob: Uint8Array) {
   const prev = mock.shown;
   mock.data.set("live", blob);
   mock.shown = "live";
+  mock.incomplete = null;
   mock.today++;
   mock.total++;
   if (prev === "live") return undefined;
@@ -68,6 +110,7 @@ export function mockShown(): "live" | { id: string; name: string; frames: number
 /** Browser preview: a library item was put back on the GIF page. */
 export function mockRestored(id: string) {
   mock.shown = id;
+  mock.incomplete = null;
   mock.today++;
   mock.total++;
   const modelId = useScreen.getState().modelId;
@@ -141,6 +184,7 @@ async function uploadItem(modelId: string, id: string, onProgress: (p: ScreenPro
     }
     onProgress({ id, done: total, total });
     mock.shown = id;
+    mock.incomplete = null;
     mock.today++;
     mock.total++;
     if (item) item.uploadedMs = Date.now();
@@ -156,6 +200,23 @@ async function uploadItem(modelId: string, id: string, onProgress: (p: ScreenPro
   }
 }
 
+/** Whether AJAZZ's official driver left its copy of the factory animation
+ *  on this PC (the backend searches once per run, off the UI thread). */
+async function findDriverBackup(): Promise<boolean> {
+  if (!inTauri) return MOCK_DRIVER;
+  return invoke<boolean>("screen_find_driver_backup");
+}
+
+/** Keep the official driver's copy as the factory backup. */
+async function backupFromDriver(modelId: string): Promise<ScreenState> {
+  if (!inTauri) {
+    await new Promise((r) => setTimeout(r, 600));
+    if (!mock.items.some((i) => i.kind === "factory")) mock.items.push(mockFactoryItem());
+    return mockState();
+  }
+  return invoke<ScreenState>("screen_backup_from_driver", { modelId });
+}
+
 // ----------------------------------------------------------------- store
 
 export interface Upload {
@@ -168,12 +229,20 @@ export interface Upload {
   startedMs: number;
 }
 
+/** The official driver's copy of the factory animation on this PC. */
+export type DriverBackup = "unknown" | "searching" | "found" | "none";
+
 interface ScreenStore {
   modelId: string | null;
   state: ScreenState | null;
   upload: Upload | null;
   /** Resolves when the running upload ends (for the close guard). */
   running: Promise<void> | null;
+  driver: DriverBackup;
+  /** Look for the official driver's copy (once per run). */
+  findDriver: () => void;
+  /** Keep the official driver's copy as the factory backup. */
+  backupFromDriver: () => Promise<void>;
   load: (modelId: string) => Promise<void>;
   add: (p: Prepared) => Promise<ScreenItem>;
   uploadToKeyboard: (item: ScreenItem, origin: Upload["origin"]) => Promise<void>;
@@ -186,6 +255,23 @@ export const useScreen = create<ScreenStore>((set, get) => ({
   state: null,
   upload: null,
   running: null,
+  driver: "unknown",
+  findDriver: () => {
+    if (get().driver !== "unknown") return;
+    set({ driver: "searching" });
+    findDriverBackup().then(
+      (found) => set({ driver: found ? "found" : "none" }),
+      (e) => {
+        console.error(e);
+        set({ driver: "none" });
+      },
+    );
+  },
+  backupFromDriver: async () => {
+    const modelId = get().modelId;
+    if (!modelId) return;
+    set({ state: await backupFromDriver(modelId) });
+  },
   load: async (modelId) => {
     const state = await getScreenState(modelId);
     set({ modelId, state });

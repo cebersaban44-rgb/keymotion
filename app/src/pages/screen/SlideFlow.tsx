@@ -29,6 +29,7 @@ import {
   Thumb,
   loadFrames,
   pickThumb,
+  useItemName,
   type Done,
   type Step,
 } from "./common";
@@ -105,6 +106,7 @@ export function SlideFlow({
   onFinished: (d: Done) => void;
 }) {
   const t = useT();
+  const itemName = useItemName();
   const [slides, setSlides] = useState<Slide[]>([]);
   const [transition, setTransition] = useState<Transition>("fade");
   const [dither, setDither] = useState(true);
@@ -200,10 +202,10 @@ export function SlideFlow({
       if (!still) return;
       const key = newKey();
       stills.current.set(key, still);
-      setSlides((s) => [...s, { key, kind: "library", name: item.name, seconds: SLIDE_DEFAULT_S }]);
+      setSlides((s) => [...s, { key, kind: "library", name: itemName(item), seconds: SLIDE_DEFAULT_S }]);
     } catch (e) {
       console.error(e);
-      setFailed([item.name]);
+      setFailed([itemName(item)]);
     }
   };
 
@@ -526,6 +528,7 @@ function LibraryPicker({
   disabled: boolean;
 }) {
   const t = useT();
+  const itemName = useItemName();
   const items = useScreen((s) => s.state?.items ?? []);
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2/40 p-3">
@@ -550,11 +553,11 @@ function LibraryPicker({
                 type="button"
                 disabled={disabled}
                 onClick={() => onPick(it)}
-                title={it.name}
+                title={itemName(it)}
                 className="flex w-full flex-col items-start gap-1 rounded-lg p-1 text-left hover:bg-surface disabled:opacity-40"
               >
                 <Thumb item={it} />
-                <span className="w-full truncate text-[11px] text-ink-2">{it.name}</span>
+                <span className="w-full truncate text-[11px] text-ink-2">{itemName(it)}</span>
               </button>
             </li>
           ))}
