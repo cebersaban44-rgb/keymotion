@@ -1,7 +1,7 @@
 //! Prints the gauge readings of this PC for a few seconds:
 //! `cargo run -p kb-winsys --example probe`.
 
-use kb_winsys::{memory_load, Audio, CpuMeter, GpuMeter};
+use kb_winsys::{idle_ms, memory_load, Audio, CpuMeter, GpuMeter};
 use std::time::Duration;
 
 fn main() {
@@ -21,12 +21,13 @@ fn main() {
         let took = t.elapsed();
         let (v, m) = audio.as_mut().map_or((None, None), |a| (a.speakers(), a.mic_muted()));
         println!(
-            "processor {:?}  graphics {:?} ({took:?})  memory {:?}  speakers {:?}  mic muted {:?}",
+            "processor {:?}  graphics {:?} ({took:?})  memory {:?}  speakers {:?}  mic muted {:?}  idle {:?} ms",
             cpu.sample().map(|v| v.round()),
             g.map(|v| v.round()),
             memory_load().map(|v| v.round()),
             v.map(|v| (format!("{:.0}%", v.level * 100.0), v.muted)),
             m,
+            idle_ms(),
         );
     }
 }

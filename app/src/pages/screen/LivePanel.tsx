@@ -1,9 +1,9 @@
 // "Canlı ekran": the live mode switch, what shows on the screen in which
-// order (calendar, focus timer, the song, the user's own picture), and the upload
+// order (calendar, reminders, focus timer, the song, the user's own picture), and the upload
 // budget (phase C). The backend runs the live mode; this only shows and
 // sets it.
 
-import { AlertTriangle, CalendarDays, Clock3, Hourglass, ImageIcon, Loader2, Music2, Radio, RotateCcw, Upload, X } from "lucide-react";
+import { AlertTriangle, BellRing, CalendarDays, Clock3, Hourglass, ImageIcon, Loader2, Music2, Radio, RotateCcw, Upload, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { LivePlan } from "../../bindings/LivePlan";
@@ -15,6 +15,8 @@ import { CALENDAR_SOURCE, hhmm, useCalendar } from "../../lib/calendar";
 import { useT, type MessageKey } from "../../lib/i18n";
 import { NOW_PLAYING_SOURCE, fmtWait, useLive } from "../../lib/live";
 import { POMODORO_SOURCE, usePomodoro } from "../../lib/pomodoro";
+import { REMINDER_SOURCE, useReminders } from "../../lib/reminders";
+import { useApp } from "../../lib/store";
 import { uploadSeconds } from "../../lib/screenImport";
 import { CalendarBody, calendarStatus } from "./CalendarPanel";
 import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useNow } from "./common";
@@ -122,12 +124,13 @@ export function LivePanel({ usb }: { usb: boolean }) {
 
 type Patch = Parameters<ReturnType<typeof useLive.getState>["configure"]>[0];
 
-type Layered = "calendar" | "pomodoro" | "song" | "own";
+type Layered = "calendar" | "reminder" | "pomodoro" | "song" | "own";
 
 /** Which layer is on the GIF page now. */
 function onScreen(s: LiveState): Layered {
   if (s.uploading?.source === "restore" || !s.restore) return "own";
   if (s.last?.source === CALENDAR_SOURCE) return "calendar";
+  if (s.last?.source === REMINDER_SOURCE) return "reminder";
   if (s.last?.source === POMODORO_SOURCE) return "pomodoro";
   if (s.last?.source === NOW_PLAYING_SOURCE) return "song";
   return "own";
@@ -145,6 +148,9 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
   const p = usePomodoro((x) => x.state);
   const cal = useCalendar((x) => x.state);
   const configureCal = useCalendar((x) => x.configure);
+  const rem = useReminders((x) => x.state);
+  const configureRem = useReminders((x) => x.configure);
+  const setPage = useApp((x) => x.setPage);
   const on = onScreen(s);
   const calKey = calendarStatus(s, cal, on === "calendar");
   const calStatus = calKey === "calendar.st.next" && cal?.nextCardMs != null ? `${t(calKey)} ${hhmm(cal.nextCardMs)}` : t(calKey);
@@ -180,6 +186,18 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
               ? "sc.live.st.playing"
               : "sc.live.st.silent";
   const goingBack = s.enabled && s.goingBack ? Math.max(0, s.goingBack.atMs - Date.now()) : null;
+  const nextCard = rem?.reminders
+    .filter((i) => i.reminder.card && i.nextMs != null)
+    .sort((a, b) => a.nextMs! - b.nextMs!)[0];
+  const remStatus = !s.enabled
+    ? t("sc.live.st.liveOff")
+    : !rem?.settings.enabled || !rem.settings.screen
+      ? t("sc.live.st.cardsOff")
+      : on === "reminder"
+        ? t("sc.live.st.showing")
+        : nextCard
+          ? `${t("reminder.st.next")} ${hhmm(nextCard.nextMs!)}`
+          : t("reminder.st.none");
 
   return (
     <div className="flex flex-col gap-3" data-live-order>
@@ -207,9 +225,36 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
         >
           <CalendarBody />
         </Layer>
-        <Layer n={2} icon={<Hourglass size={16} />} title={t("sc.live.pomo")} body={t("sc.live.pomo.body")} status={t(pomo)} active={on === "pomodoro"} data="pomodoro" />
         <Layer
-          n={3}
+          n={2}
+          icon={<BellRing size={16} />}
+          title={t("reminder.layer")}
+          body={t("reminder.layer.body")}
+          status={remStatus}
+          active={on === "reminder"}
+          data="reminder"
+          right={
+            <Toggle
+              checked={rem?.settings.screen ?? true}
+              onChange={(screen) => configureRem({ screen }).catch(console.error)}
+              label={t("reminder.layer")}
+            />
+          }
+        >
+          <div>
+            <button
+              type="button"
+              onClick={() => setPage("reminders")}
+              className="h-8 rounded-lg border border-line px-3 text-[12px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+              data-reminder-open
+            >
+              {t("reminder.layer.open")}
+            </button>
+          </div>
+        </Layer>
+        <Layer n={3} icon={<Hourglass size={16} />} title={t("sc.live.pomo")} body={t("sc.live.pomo.body")} status={t(pomo)} active={on === "pomodoro"} data="pomodoro" />
+        <Layer
+          n={4}
           icon={<Music2 size={16} />}
           title={t("sc.live.np")}
           body={t("sc.live.np.body")}
@@ -235,7 +280,7 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
           {s.enabled && s.nowPlaying && <TrackLine s={s} />}
         </Layer>
         <Layer
-          n={4}
+          n={5}
           icon={<ImageIcon size={16} />}
           title={t("sc.live.own")}
           body={s.own ? t("sc.live.own.body") : t("sc.live.own.unknown")}

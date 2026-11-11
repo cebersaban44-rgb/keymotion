@@ -148,7 +148,9 @@ pub struct LiveFrame {
 /// * `Alerts`: only the keys it names (volume bar for a moment, the
 ///   microphone key), on top of the timer or the gauges.
 /// * `Reminders`: only the keys it names (a key blinking before a meeting),
-///   on top of everything else.
+///   on top of those.
+/// * `Nudges`: only the keys it names (the wave of a reminder going off,
+///   for a few seconds), on top of everything else.
 ///
 /// A preview the user edits on the Lighting page (`SetLive`) goes over all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -157,6 +159,7 @@ pub enum LightLayer {
     Timer,
     Alerts,
     Reminders,
+    Nudges,
 }
 
 /// One LED of a composed frame: UI colour and linear brightness (0–1).
@@ -169,6 +172,7 @@ pub struct Layers {
     pub timer: Option<LiveFrame>,
     pub alerts: Option<LiveFrame>,
     pub reminders: Option<LiveFrame>,
+    pub nudges: Option<LiveFrame>,
 }
 
 impl Layers {
@@ -178,24 +182,29 @@ impl Layers {
             LightLayer::Timer => &mut self.timer,
             LightLayer::Alerts => &mut self.alerts,
             LightLayer::Reminders => &mut self.reminders,
+            LightLayer::Nudges => &mut self.nudges,
         }
     }
 
     fn any(&self) -> bool {
-        self.gauges.is_some() || self.timer.is_some() || self.alerts.is_some() || self.reminders.is_some()
+        self.gauges.is_some()
+            || self.timer.is_some()
+            || self.alerts.is_some()
+            || self.reminders.is_some()
+            || self.nudges.is_some()
     }
 }
 
 /// What the keys show: the preview alone, or the timer (else the gauges)
-/// with the alerts' and then the reminders' keys on top. `None` when
-/// nothing is set.
+/// with the alerts', the reminders' and then the nudges' keys on top.
+/// `None` when nothing is set.
 pub fn compose(live: Option<&LiveFrame>, l: &Layers) -> Option<Vec<LitKey>> {
     let keys = |f: &LiveFrame| f.colors.iter().map(|&(l, c)| (l, c, f.level)).collect::<Vec<_>>();
     if let Some(live) = live {
         return Some(keys(live));
     }
     let mut out = l.timer.as_ref().or(l.gauges.as_ref()).map(keys);
-    for over in [l.alerts.as_ref(), l.reminders.as_ref()].into_iter().flatten() {
+    for over in [l.alerts.as_ref(), l.reminders.as_ref(), l.nudges.as_ref()].into_iter().flatten() {
         let base = out.get_or_insert_with(Vec::new);
         for (led, c, level) in keys(over) {
             match base.iter_mut().find(|k| k.0 == led) {
@@ -887,10 +896,12 @@ mod tests {
             timer: Some(timer),
             alerts: Some(alerts.clone()),
             reminders: Some(frame(&[(9, 7)], 1.0)),
+            nudges: Some(frame(&[(3, 50)], 1.0)),
         };
+        // A reminder's wave goes over everything; a meeting's key over the alerts.
         assert_eq!(
             compose(None, &all),
-            Some(vec![(1, [20; 3], 0.8), (2, [99; 3], 1.0), (3, [20; 3], 0.8), (9, [7; 3], 1.0)])
+            Some(vec![(1, [20; 3], 0.8), (2, [99; 3], 1.0), (3, [50; 3], 1.0), (9, [7; 3], 1.0)])
         );
         // Alerts alone light only their keys.
         let only_alerts = Layers { alerts: Some(alerts), ..Layers::default() };

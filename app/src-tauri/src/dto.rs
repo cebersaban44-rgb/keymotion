@@ -1531,3 +1531,142 @@ pub struct CalendarCard {
     /// The meeting after it the same day.
     pub next: Option<CalendarEvent>,
 }
+
+// --------------------------------------------------------------- reminders
+
+/// The picture on a reminder's card.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ReminderIcon {
+    #[default]
+    Bell,
+    Drop,
+    Stand,
+    Eye,
+    Pill,
+}
+
+/// When a reminder goes off. Times of day are minutes after local
+/// midnight; `days`: bit 0 Monday … bit 6 Sunday.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(export)]
+pub enum ReminderWhen {
+    /// Once, at this moment (ms since the epoch).
+    Once { at: f64 },
+    /// At this time on the chosen days.
+    Daily { minute: u16, days: u8 },
+    /// Every `every` minutes from `from` to `to` on the chosen days: the
+    /// first `every` after `from`, the last at `to` at the latest. Counted
+    /// from the last time it went off (or from the user's return).
+    Every { every: u16, from: u16, to: u16, days: u8 },
+}
+
+impl Default for ReminderWhen {
+    fn default() -> Self {
+        Self::Daily { minute: 9 * 60, days: 0b001_1111 }
+    }
+}
+
+/// One reminder. The light always shows; the card and the sound are the
+/// user's choice.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct Reminder {
+    /// Empty when adding.
+    pub id: String,
+    pub title: String,
+    /// A short line under the title ("20 sn uzağa bak").
+    pub note: String,
+    pub icon: ReminderIcon,
+    pub color: [u8; 3],
+    pub when: ReminderWhen,
+    pub enabled: bool,
+    /// A card on the screen too (through the live mode).
+    pub card: bool,
+    /// The Windows notification sound.
+    pub sound: bool,
+}
+
+impl Default for Reminder {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            title: String::new(),
+            note: String::new(),
+            icon: ReminderIcon::default(),
+            color: [255, 176, 32],
+            when: ReminderWhen::default(),
+            enabled: true,
+            card: true,
+            sound: false,
+        }
+    }
+}
+
+/// Reminder settings (persisted in `reminders.json` with the reminders).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReminderSettings {
+    /// Reminders go off at all.
+    pub enabled: bool,
+    /// Cards on the screen (through the live mode).
+    pub screen: bool,
+    /// Minutes a card stays on the screen: 1, 2 or 5.
+    pub stay_min: u8,
+    /// Repeating reminders wait while nobody is at the computer and count
+    /// again from the return (owner's choice, 2026-11-11).
+    pub away_wait: bool,
+}
+
+impl Default for ReminderSettings {
+    fn default() -> Self {
+        Self { enabled: true, screen: true, stay_min: 2, away_wait: true }
+    }
+}
+
+impl ReminderSettings {
+    pub fn sanitized(self) -> Self {
+        Self { stay_min: if [1, 2, 5].contains(&self.stay_min) { self.stay_min } else { 2 }, ..self }
+    }
+}
+
+/// A reminder and when it goes off next.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReminderInfo {
+    pub reminder: Reminder,
+    /// `None`: off, or a one-time reminder that has gone by.
+    pub next_ms: Option<f64>,
+}
+
+/// Reminder state (`reminders` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReminderState {
+    pub settings: ReminderSettings,
+    pub reminders: Vec<ReminderInfo>,
+    /// The reminder whose card holds the screen now, and until when.
+    pub showing: Option<String>,
+    pub showing_until_ms: Option<f64>,
+    /// Nobody has touched the computer for a while: repeating reminders wait.
+    pub away: bool,
+}
+
+/// A card the UI should draw and hand to the live mode
+/// (`reminder-card` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReminderCard {
+    pub reminder: Reminder,
+    /// When it went off (the time on the card).
+    pub at_ms: f64,
+    /// When it goes off next, if it repeats.
+    pub next_ms: Option<f64>,
+}

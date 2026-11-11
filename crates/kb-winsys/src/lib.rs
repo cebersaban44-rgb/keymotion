@@ -68,6 +68,13 @@ pub fn memory_load() -> Option<f32> {
     sys::memory_load()
 }
 
+/// Milliseconds since the last keyboard or mouse input in this session
+/// (`GetLastInputInfo`); a locked screen gets no input, so it counts too.
+/// For the reminders' "nobody is at the computer".
+pub fn idle_ms() -> Option<u64> {
+    sys::idle_ms()
+}
+
 /// The `GPU Engine` counters' instance name parts: the card (LUID) and the
 /// engine type. Names look like
 /// `pid_1234_luid_0x00000000_0x0000D1F2_phys_0_eng_0_engtype_3D`.
@@ -151,8 +158,21 @@ mod sys {
         PDH_CSTATUS_NEW_DATA, PDH_CSTATUS_VALID_DATA, PDH_FMT_COUNTERVALUE_ITEM_W, PDH_FMT_DOUBLE, PDH_HCOUNTER,
         PDH_HQUERY, PDH_MORE_DATA,
     };
-    use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+    use windows::Win32::System::SystemInformation::{GetTickCount, GlobalMemoryStatusEx, MEMORYSTATUSEX};
     use windows::Win32::System::Threading::GetSystemTimes;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+
+    pub fn idle_ms() -> Option<u64> {
+        let mut info = LASTINPUTINFO { cbSize: size_of::<LASTINPUTINFO>() as u32, dwTime: 0 };
+        // SAFETY: a valid out pointer with its size set, as the API asks.
+        if !unsafe { GetLastInputInfo(&mut info) }.as_bool() {
+            return None;
+        }
+        // SAFETY: no arguments. Both counts are the same 32-bit tick
+        // counter, so the difference is right across its wrap.
+        let now = unsafe { GetTickCount() };
+        Some(u64::from(now.wrapping_sub(info.dwTime)))
+    }
 
     fn ticks(t: FILETIME) -> u64 {
         (u64::from(t.dwHighDateTime) << 32) | u64::from(t.dwLowDateTime)
@@ -355,6 +375,10 @@ mod sys {
     }
 
     pub fn memory_load() -> Option<f32> {
+        None
+    }
+
+    pub fn idle_ms() -> Option<u64> {
         None
     }
 
