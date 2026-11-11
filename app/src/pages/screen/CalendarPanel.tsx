@@ -10,12 +10,22 @@ import type { CalendarState } from "../../bindings/CalendarState";
 import type { CalendarUntil } from "../../bindings/CalendarUntil";
 import type { LiveState } from "../../bindings/LiveState";
 import { Segmented, Toggle } from "../../components/controls";
-import { CALENDAR_SOURCE, LEAD_CHOICES, addressOk, calendarColor, hhmm, providerOf, tryReminder, useCalendar } from "../../lib/calendar";
+import {
+  CALENDAR_SOURCE,
+  LEAD_CHOICES,
+  addressOk,
+  calendarColor,
+  hhmm,
+  linkProblem,
+  providerOf,
+  tryReminder,
+  useCalendar,
+} from "../../lib/calendar";
 import { useT, type MessageKey } from "../../lib/i18n";
 import { Hint } from "./common";
 
 const PROVIDERS: { id: CalendarProvider; label: MessageKey; steps: MessageKey[]; note?: MessageKey }[] = [
-  { id: "google", label: "calendar.p.google", steps: ["calendar.help.google.1", "calendar.help.google.2", "calendar.help.google.3"], note: "calendar.help.google.note" },
+  { id: "google", label: "calendar.p.google", steps: ["calendar.help.google.1", "calendar.help.google.2", "calendar.help.google.3", "calendar.help.google.4"], note: "calendar.help.google.note" },
   { id: "outlook", label: "calendar.p.outlook", steps: ["calendar.help.outlook.1", "calendar.help.outlook.2", "calendar.help.outlook.3"] },
   { id: "apple", label: "calendar.p.apple", steps: ["calendar.help.apple.1", "calendar.help.apple.2", "calendar.help.apple.3"], note: "calendar.help.apple.note" },
   { id: "other", label: "calendar.p.other", steps: ["calendar.help.other.1"] },
@@ -27,6 +37,7 @@ const providerLabel = (p: CalendarProvider): MessageKey => PROVIDERS.find((x) =>
  *  network messages in the system language already). */
 function errText(e: string, t: (k: MessageKey) => string) {
   if (e === "not a calendar") return t("calendar.err.notCal");
+  if (e === "web page") return t("calendar.err.webPage");
   if (e === "calendar too large") return t("calendar.err.large");
   return e;
 }
@@ -291,10 +302,16 @@ function AddCalendar({ onCancel, onDone }: { onCancel: () => void; onDone: (msg:
   const steps: MessageKey[] = ["calendar.step.pick", "calendar.step.paste", "calendar.step.read"];
   const index = step.at === "pick" ? 0 : step.at === "paste" ? 1 : 2;
 
+  const problem = url && addressOk(url) ? linkProblem(url) : null;
+
   const submit = async () => {
     if (!provider) return;
     if (!addressOk(url)) {
       setError(t("calendar.err.address"));
+      return;
+    }
+    if (problem?.blocks) {
+      setError(t(problem.key));
       return;
     }
     setBusy(true);
@@ -383,7 +400,12 @@ function AddCalendar({ onCancel, onDone }: { onCancel: () => void; onDone: (msg:
               data-calendar-url
             />
           </label>
-          {url && addressOk(url) && providerOf(url) !== provider.id && provider.id !== "other" && (
+          {problem && (
+            <p className={`text-[12px] ${problem.blocks ? "text-danger" : "text-warn"}`} data-calendar-link-problem>
+              {t(problem.key)}
+            </p>
+          )}
+          {url && addressOk(url) && !problem && providerOf(url) !== provider.id && provider.id !== "other" && (
             <p className="text-[11.5px] text-ink-3">{t("calendar.otherHost")}</p>
           )}
           <label className="flex flex-col gap-1.5">
