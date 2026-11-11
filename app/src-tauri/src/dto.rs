@@ -1034,8 +1034,11 @@ pub struct LiveState {
     /// A live card is on the GIF page and this library item was there
     /// before it.
     pub restore: Option<LiveRestore>,
-    /// The Pomodoro holds the screen while it runs: "Çalan şarkı" waits.
+    /// Someone holds the screen (the calendar around a meeting, the focus
+    /// timer while it runs): "Çalan şarkı" waits.
     pub held: bool,
+    /// Who holds it (`calendar`, `pomodoro`).
+    pub holders: Vec<String>,
     /// What "Çalan şarkı" does when the music stops.
     pub song_stop: SongStop,
     /// The user's own picture: what the screen goes back to when no source
@@ -1402,4 +1405,129 @@ pub struct GaugesState {
     pub frame: Vec<LedColor>,
     /// The volume bar shows (for a moment after a change).
     pub volume_showing: bool,
+}
+
+// ---------------------------------------------------------------- calendar
+
+/// Where a published calendar comes from (help text and icon only).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum CalendarProvider {
+    Google,
+    Outlook,
+    Apple,
+    Other,
+}
+
+/// How long a meeting's card stays on the screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum CalendarUntil {
+    /// Until the meeting starts.
+    Start,
+    /// Until 5 minutes after it starts (owner's choice, 2026-11-11).
+    #[default]
+    Shortly,
+    /// Until it ends.
+    End,
+}
+
+/// Calendar settings (persisted in `calendar.json` with the calendars).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct CalendarSettings {
+    /// A card on the screen before a meeting (through the live mode).
+    pub screen: bool,
+    /// Minutes before the start the card comes (1–60).
+    pub lead_min: u16,
+    pub until: CalendarUntil,
+    /// A key blinks in the minute before a meeting starts (RAM only).
+    pub reminder: bool,
+    /// Id of that key in the model's geometry.
+    pub reminder_key: String,
+}
+
+impl Default for CalendarSettings {
+    fn default() -> Self {
+        Self { screen: true, lead_min: 10, until: CalendarUntil::default(), reminder: true, reminder_key: "esc".into() }
+    }
+}
+
+impl CalendarSettings {
+    pub fn sanitized(self) -> Self {
+        let key_ok = !self.reminder_key.is_empty()
+            && self.reminder_key.len() <= 32
+            && self.reminder_key.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+        Self {
+            lead_min: self.lead_min.clamp(1, 60),
+            reminder_key: if key_ok { self.reminder_key } else { Self::default().reminder_key },
+            ..self
+        }
+    }
+}
+
+/// One calendar the user added. Its address is a secret and stays in the
+/// backend; the UI only sees where it is hosted.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CalendarSourceInfo {
+    pub id: String,
+    pub name: String,
+    pub provider: CalendarProvider,
+    pub host: String,
+    pub color: [u8; 3],
+    pub enabled: bool,
+    /// Last successful read.
+    pub last_ok_ms: Option<f64>,
+    /// Why the last read failed (none when it worked).
+    pub error: Option<String>,
+    /// Events read for the next two days.
+    pub events: u32,
+}
+
+/// One meeting (or an instance of a repeating one).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CalendarEvent {
+    pub title: String,
+    pub location: String,
+    pub start_ms: f64,
+    pub end_ms: f64,
+    pub all_day: bool,
+    /// Its calendar's colour.
+    pub color: [u8; 3],
+    pub source: String,
+}
+
+/// Calendar state (`calendar` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CalendarState {
+    pub settings: CalendarSettings,
+    pub sources: Vec<CalendarSourceInfo>,
+    /// From now (running ones included) to a day ahead, at most 12.
+    pub upcoming: Vec<CalendarEvent>,
+    /// The meeting whose card time it is now.
+    pub showing: Option<CalendarEvent>,
+    /// When the next card would come.
+    pub next_card_ms: Option<f64>,
+    /// A calendar is being read now.
+    pub reading: bool,
+}
+
+/// A card the UI should draw and hand to the live mode
+/// (`calendar-card` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CalendarCard {
+    pub event: CalendarEvent,
+    /// The meeting after it the same day.
+    pub next: Option<CalendarEvent>,
 }

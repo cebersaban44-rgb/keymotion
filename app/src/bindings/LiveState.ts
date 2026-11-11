@@ -30,9 +30,14 @@ nowPlaying: boolean, track: TrackInfo | null,
  */
 restore: LiveRestore | null, 
 /**
- * The Pomodoro holds the screen while it runs: "Çalan şarkı" waits.
+ * Someone holds the screen (the calendar around a meeting, the focus
+ * timer while it runs): "Çalan şarkı" waits.
  */
 held: boolean, 
+/**
+ * Who holds it (`calendar`, `pomodoro`).
+ */
+holders: Array<string>, 
 /**
  * What "Çalan şarkı" does when the music stops.
  */

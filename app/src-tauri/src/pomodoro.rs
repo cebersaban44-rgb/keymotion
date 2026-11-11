@@ -480,6 +480,9 @@ struct Inner {
     /// The first tick looked for a card left on the screen from before the
     /// app started.
     startup_checked: bool,
+    /// The calendar held the screen on the last tick (a meeting's card goes
+    /// over the timer's; when it lets go, the timer's card comes back).
+    cal_held: bool,
     /// The series ended at this time: the green blink shows until then + FLASH_MS.
     done_at: Option<f64>,
     /// "Klavyede dene" started at this time.
@@ -522,6 +525,7 @@ impl PomodoroHandle {
             card_at: None,
             cards_wanted: false,
             startup_checked: false,
+            cal_held: false,
             done_at: None,
             trying: None,
             try_sounded: false,
@@ -708,11 +712,18 @@ impl PomodoroHandle {
             self.live.return_after(SOURCE, BACK_AFTER);
         }
         inner.cards_wanted = wanted;
-        self.live.set_held(wanted);
+        self.live.set_hold(SOURCE, wanted);
+        // A meeting's card goes over the timer's: phase cards wait while the
+        // calendar holds the screen, and the current one comes back after.
+        let cal_holds = self.live.held_by(crate::calendar::SOURCE);
+        if inner.cal_held && !cal_holds && wanted && inner.card_at.is_none() {
+            inner.card_at = Some(now);
+        }
+        inner.cal_held = cal_holds;
         if let Some(at) = inner.card_at {
             if !wanted {
                 inner.card_at = None;
-            } else if now >= at {
+            } else if now >= at && !cal_holds {
                 inner.card_at = None;
                 let card = inner.timer.card(&s);
                 tracing::debug!(phase = ?card.phase, round = card.round, "pomodoro card wanted");
@@ -782,7 +793,9 @@ impl PomodoroHandle {
             wait = wait.min(Duration::from_millis(left.clamp(0.0, 1_000.0) as u64));
         }
         if let Some(at) = inner.card_at {
-            wait = wait.min(Duration::from_millis((at - now).clamp(0.0, 60_000.0) as u64));
+            // A due card waiting for the calendar to let go: look again soon.
+            let floor = if inner.cal_held { 1_000.0 } else { 0.0 };
+            wait = wait.min(Duration::from_millis((at - now).clamp(floor, 60_000.0) as u64));
         }
         if inner.done_at.is_some() {
             wait = wait.min(TICK);
