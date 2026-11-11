@@ -1,6 +1,6 @@
 [package]
 name = "klavye-studio"
-description = "Klavye Stüdyo — desktop control app"
+description = "Keymotion — desktop control app for keyboards with lights and a screen"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

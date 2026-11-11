@@ -1,6 +1,6 @@
 # Arayüz dili ve yazım kuralları
 
-Klavye Stüdyo'daki her metin bu kurallara uyar: yeni metinler de, mevcutların düzeltmesi de. Amaç, büyük bir yazılım şirketinin ürününde beklenen sade, tutarlı ve güven veren dil (kullanıcının isteği, 2026-11-11).
+Keymotion'daki her metin bu kurallara uyar: yeni metinler de, mevcutların düzeltmesi de. Amaç, büyük bir yazılım şirketinin ürününde beklenen sade, tutarlı ve güven veren dil (kullanıcının isteği, 2026-11-11).
 
 Metinler `app/src/lib/i18n.ts`'te durur. Her anahtarın Türkçesi ve İngilizcesi vardır; arayüze doğrudan yazılmış metin olmaz (marka, dosya biçimi ve tuş adları hariç).
 

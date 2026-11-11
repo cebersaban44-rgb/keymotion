@@ -18,7 +18,7 @@
 - **Kullanıcının istekleri** (aynı gün, ilk önerinin üstüne):
   1. **Tek, sağlam bir yapı.** "API + CLI + MCP" gibi yan yana birden çok yapı istemiyor.
   2. **Ajanın doğal olarak kullanacağı bir şey.** Ajan bir programı açıp tek tek tıklamamalı; terminalden ya da kendi doğal yolundan rahatça kullanmalı.
-  3. **Uygulamayı açmadan çalışmalı.** Örnek: kullanıcı Claude Code'un masaüstü sürümünü kullanıyor. Ajan, Klavye Stüdyo'nun penceresi (`.exe`) açılmadan klavyeyi kullanabilmeli.
+  3. **Uygulamayı açmadan çalışmalı.** Örnek: kullanıcı Claude Code'un masaüstü sürümünü kullanıyor. Ajan, Keymotion'ın penceresi (`.exe`) açılmadan klavyeyi kullanabilmeli.
   4. **Davranışı ajan kendisi belirlemeli.** Hazır kalıplar olacak, ama ajan da bir kullanıcı gibi istediğini yapabilmeli. "Bekleme sarıdır" gibi sabit kurallar ajanın davranışını yanlış yönlendirebilir.
   5. **Yalnızca bir beceri (skill) dosyası yetmez,** bağlamı da şişirmemeli.
   6. **Görseller:** Ajanların durmadan görsel göndermesi ekranın belleğini yıpratır ve şişirir. Sistem yapılırken kontroller ve testlerle bir yol çizilecek; bugünün konusu değil.
@@ -44,7 +44,7 @@ Ajanın tek ve asıl arayüzü bir **komut satırı aracı** olmalı (adı açı
   - "Ekranda ne görünür?" sırası;
   - firmware, bootloader ve OTA yasakları.
 - Bu süreç **motor**dur: bugünkü cihaz aktörü, ışık katmanları, odak zamanlayıcısı ve canlı mod.
-- **Penceresiz çalışır.** CLI motoru bulamazsa kendisi arka planda başlatır; kullanıcı hiçbir pencere görmez. Klavye Stüdyo penceresi açılınca o da aynı motora bağlanır. İnsan için pencere, ajan için CLI var; ikisinin arkasında aynı motor çalışır.
+- **Penceresiz çalışır.** CLI motoru bulamazsa kendisi arka planda başlatır; kullanıcı hiçbir pencere görmez. Keymotion penceresi açılınca o da aynı motora bağlanır. İnsan için pencere, ajan için CLI var; ikisinin arkasında aynı motor çalışır.
 - **CLI ile motor arasındaki bağ:** Windows'ta adlandırılmış kanal (named pipe) üzerinden kısa JSON mesajları. Ağ portu yok. Kanal kullanıcıya özel olduğu için başka kullanıcılar ve uzaktaki makineler erişemez.
 - **Bugünkü kodla bağlantı:**
   - Cihaz aktörü uygulamanın içinde (`app/src-tauri/src/device.rs`).

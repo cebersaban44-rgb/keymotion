@@ -1,4 +1,4 @@
-//! Klavye Stüdyo desktop shell.
+//! Keymotion desktop shell.
 //!
 //! This crate is deliberately thin: it wires Tauri commands and events to
 //! the `kb-*` crates. All keyboard logic lives in those crates, and all
@@ -10,6 +10,7 @@ mod dto;
 mod gauges;
 mod ics;
 mod live;
+pub mod migrate;
 mod now_playing;
 mod pomodoro;
 mod reminders;
@@ -709,7 +710,7 @@ pub fn run() {
             reminders_try_card
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Klavye Stüdyo");
+        .expect("error while running Keymotion");
 }
 
 #[cfg(test)]
