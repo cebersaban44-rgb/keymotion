@@ -1,10 +1,23 @@
+import { useEffect, useState } from "react";
 import { create } from "zustand";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { ThemePreference } from "../bindings/ThemePreference";
 import type { UiEnvironment } from "../bindings/UiEnvironment";
 import type { Locale } from "./i18n";
 
-export type PageId = "overview" | "lighting" | "keymap" | "macros" | "screen" | "connection" | "focus" | "gauges" | "reminders" | "settings";
+export type PageId =
+  | "overview"
+  | "lighting"
+  | "keymap"
+  | "macros"
+  | "screen"
+  | "profiles"
+  | "connection"
+  | "focus"
+  | "gauges"
+  | "reminders"
+  | "calendar"
+  | "settings";
 /** Tabs of the Screen page. */
 export type ScreenTab = "visuals" | "live";
 
@@ -72,6 +85,22 @@ export const useApp = create<AppState>((set) => ({
     set({ locale });
   },
 }));
+
+/** Below this window width the sidebar shrinks to icons. */
+const NARROW = "(max-width: 1199px)";
+
+/** Whether the window is narrow (sidebar as icons). */
+export function useNarrowWindow(): boolean {
+  const [narrow, setNarrow] = useState(() => matchMedia(NARROW).matches);
+  useEffect(() => {
+    const media = matchMedia(NARROW);
+    const update = () => setNarrow(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  return narrow;
+}
 
 /** The keyboard the UI is focused on: prefer the richest connection. */
 export function useActiveKeyboard(): KeyboardInfo | null {

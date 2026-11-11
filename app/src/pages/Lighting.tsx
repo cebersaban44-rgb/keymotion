@@ -90,6 +90,7 @@ export function Lighting({ kb }: { kb: KeyboardInfo }) {
       <header className="flex items-end justify-between gap-6">
         <div>
           <h1 className="page-title">{t("nav.lighting")}</h1>
+          <p className="page-desc">{t("light.desc")}</p>
         </div>
         <div role="tablist" className="inline-flex rounded-lg border border-line bg-bg-raise p-1">
           {(["effects", "per-key"] as const).map((id) => (

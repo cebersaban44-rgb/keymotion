@@ -1,4 +1,4 @@
-// The calendar's place in "Ekranda ne görünür?" (Canlı ekran): its status,
+// The calendar (Takvim page, and its status in the live screen's order):
 // the meetings ahead, the calendars added (Google, Outlook, Apple iCloud or
 // any published address), when the card comes and goes, and the reminder
 // key. The backend reads the calendars and decides; this sets it up.

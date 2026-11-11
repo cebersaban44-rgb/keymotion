@@ -1,9 +1,9 @@
-import { Check, ChevronDown, Images, Info, Library, Loader2, Palette, Pencil, Radio, Search, Trash2, Upload, Usb, X, type LucideIcon } from "lucide-react";
+import { Check, ChevronDown, ImageOff, Images, Info, Library, Loader2, Palette, Pencil, Radio, Search, Trash2, Upload, Usb, X, type LucideIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { ScreenItem } from "../bindings/ScreenItem";
-import { useT, type MessageKey } from "../lib/i18n";
+import { percent, useT, type MessageKey } from "../lib/i18n";
 import { useLive } from "../lib/live";
 import { itemData, useScreen } from "../lib/screen";
 import { fromBlob, uploadSeconds, type Source } from "../lib/screenImport";
@@ -59,6 +59,7 @@ export function Screen({ kb }: { kb: KeyboardInfo }) {
       <header className="flex flex-wrap items-end justify-between gap-6">
         <div>
           <h1 className="page-title">{t("sc.title")}</h1>
+          <p className="page-desc">{t("sc.desc")}</p>
         </div>
         <div role="tablist" aria-label={t("sc.title")} className="inline-flex rounded-lg border border-line bg-bg-raise p-1">
           {TABS.map(({ id, label, icon: Icon }) => (
@@ -174,10 +175,14 @@ function ClockPage() {
   );
 }
 
-function Panel({ label, sub, children }: { label: string; sub: string; children: ReactNode }) {
+function Panel({ label, sub, empty, children }: { label: string; sub: string; empty?: boolean; children: ReactNode }) {
   return (
     <figure className="flex flex-col gap-2">
-      <div className="relative aspect-[240/135] w-full overflow-hidden rounded-lg bg-black shadow-[0_0_0_6px_#0b0c0e,0_0_0_7px_var(--line)]">
+      <div
+        className={`relative aspect-[240/135] w-full overflow-hidden rounded-lg ${
+          empty ? "border border-dashed border-line-strong bg-surface-2/50" : "bg-black shadow-[0_0_0_6px_#0b0c0e,0_0_0_7px_var(--line)]"
+        }`}
+      >
         {children}
       </div>
       <figcaption className="flex items-baseline justify-between gap-2 px-1">
@@ -217,6 +222,7 @@ function KeyboardScreens() {
       </Panel>
       <Panel
         label={t("sc.page.gif")}
+        empty={!item && !showsLive}
         sub={
           showsLive
             ? `${t("sc.page.gif.live")}: ${liveLast?.name ?? ""}`
@@ -233,21 +239,22 @@ function KeyboardScreens() {
             delaysMs={frames.delaysMs}
             className={`h-full w-full ${shown || showsLive ? "" : "opacity-60"}`}
           />
+        ) : item || showsLive ? (
+          <div className="flex h-full items-center justify-center text-ink-3">
+            <Loader2 size={16} className="animate-spin" />
+          </div>
         ) : (
-          <div className="flex h-full items-center justify-center text-[12px] text-ink-3">
-            {item ? <Loader2 size={16} className="animate-spin" /> : t("sc.page.gif.unknown")}
+          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-[12px] text-ink-3" data-gif-empty>
+            <ImageOff size={18} aria-hidden />
+            {t("sc.page.gif.empty")}
           </div>
         )}
       </Panel>
       <div className="flex flex-col gap-3 text-[13px] text-ink-2">
         {state && (
-          <div className="num flex flex-col gap-0.5 text-[12px] text-ink-3" title={t("sc.wear.hint")}>
-            <span>
-              {t("sc.uploads.today")}: <span className="text-ink-2">{state.uploadsToday}</span> · {t("sc.uploads.total")}:{" "}
-              <span className="text-ink-2">{state.uploadsTotal}</span>
-            </span>
-            <span>{t("sc.wear.short")}</span>
-          </div>
+          <p className="num text-[12px] text-ink-3" title={t("sc.wear.hint")} data-upload-counts>
+            {t("sc.uploads.counts", { count: state.uploadsToday, total: state.uploadsTotal })}
+          </p>
         )}
         <p className="flex gap-2">
           <Info size={14} className="mt-0.5 shrink-0 text-signal" />
@@ -644,9 +651,7 @@ export function ScreenUploadToast() {
         >
           <div className="flex items-center gap-2 text-[13px] font-semibold">
             <Loader2 size={14} className="animate-spin text-signal" />
-            <span className="truncate">
-              {t("sc.uploading")}: {upload.name}
-            </span>
+            <span className="truncate">{t("sc.uploading.name", { name: upload.name })}</span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
             <div
@@ -655,9 +660,7 @@ export function ScreenUploadToast() {
             />
           </div>
           <div className="num flex justify-between text-[12px] text-ink-3">
-            <span>
-              {t("sc.pagesDone", { done: upload.done, count: upload.total })}
-            </span>
+            <span>{t("sc.uploaded.pct", { pct: percent(Math.round((upload.done / Math.max(1, upload.total)) * 100)) })}</span>
             <span>
               {left ? t("sc.left", { time: left }) : ""}
             </span>

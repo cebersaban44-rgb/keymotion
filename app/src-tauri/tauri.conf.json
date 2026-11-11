@@ -16,8 +16,8 @@
         "title": "Klavye Stüdyo",
         "width": 1320,
         "height": 860,
-        "minWidth": 1040,
-        "minHeight": 700,
+        "minWidth": 960,
+        "minHeight": 600,
         "center": true,
         "transparent": true,
         "visible": false

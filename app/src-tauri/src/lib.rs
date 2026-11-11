@@ -10,6 +10,7 @@ mod dto;
 mod gauges;
 mod ics;
 mod live;
+mod notify;
 mod now_playing;
 mod pomodoro;
 mod reminders;
@@ -562,6 +563,12 @@ fn close_window(window: WebviewWindow) -> Result<(), String> {
     window.destroy().map_err(|e| e.to_string())
 }
 
+/// Open one of the project's own pages (the support list) in the browser.
+#[tauri::command]
+fn open_link(url: String) -> Result<(), String> {
+    notify::open_project_page(&url)
+}
+
 #[tauri::command]
 fn ui_environment(env: State<'_, UiEnvironment>) -> UiEnvironment {
     env.inner().clone()
@@ -667,6 +674,7 @@ pub fn run() {
             ack_close_request,
             close_window,
             ui_environment,
+            open_link,
             set_window_theme,
             clock_status,
             sync_clock,

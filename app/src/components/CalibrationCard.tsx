@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Calibration } from "../bindings/Calibration";
 import type { CalibrationInfo } from "../bindings/CalibrationInfo";
 import type { GeometryInfo } from "../bindings/GeometryInfo";
-import { percent, useT, type MessageKey } from "../lib/i18n";
+import { decimal, percent, useT, type MessageKey } from "../lib/i18n";
 import { getCalibration, setCalibration, setLiveFrame } from "../lib/ipc";
 import { SWATCHES, toLedColors, type ColorMap } from "../lib/lighting";
 import { useActiveKeyboard } from "../lib/store";
@@ -161,7 +161,7 @@ export function CalibrationCard() {
       max={info.gammaMax}
       step={GAMMA_STEP}
       accent={accent}
-      format={(v) => v.toFixed(2)}
+      format={(v) => decimal(v, 2, true)}
       onChange={(v) => setGamma(channel, v)}
     />
   );

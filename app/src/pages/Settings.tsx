@@ -17,10 +17,14 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 export function Settings() {
   const t = useT();
   const { theme, setTheme, locale, setLocale, env } = useApp();
-  const themes: ThemePreference[] = ["system", "dark", "light"];
+  // The order Windows uses.
+  const themes: ThemePreference[] = ["light", "dark", "system"];
   return (
     <div className="flex max-w-[760px] flex-col gap-6">
-      <h1 className="page-title">{t("nav.settings")}</h1>
+      <header className="flex flex-col gap-2">
+        <h1 className="page-title">{t("nav.settings")}</h1>
+        <p className="page-desc">{t("settings.desc")}</p>
+      </header>
 
       <section className="card px-5 py-1">
         <div className="eyebrow pt-4 pb-1">{t("settings.appearance")}</div>
@@ -53,9 +57,8 @@ export function Settings() {
           <span className="num text-[13px] text-ink-2">{env?.appVersion ?? "—"}</span>
         </Row>
         <Row label={t("settings.backdrop")}>
-          <span className="num text-[13px] text-ink-2">
+          <span className="num text-[13px] text-ink-2" title={env && env.osBuild > 0 ? t("settings.build", { build: env.osBuild }) : undefined}>
             {env?.mica ? t("settings.backdrop.mica") : t("settings.backdrop.solid")}
-            {env && env.osBuild > 0 ? ` · build ${env.osBuild}` : ""}
           </span>
         </Row>
       </section>

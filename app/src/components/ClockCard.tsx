@@ -57,24 +57,21 @@ export function ClockCard({ usb }: { usb: boolean }) {
   };
 
   const last = status?.lastSyncMs ?? null;
-  const lastText =
+  const lastText = last === null ? t("clock.never") : t("clock.lastAt", { ago: ago(last) });
+  const lastDate =
     last === null
-      ? t("clock.never")
-      : `${new Date(last).toLocaleString(locale === "tr" ? "tr-TR" : "en-US", {
-          dateStyle: "medium",
-          timeStyle: "short",
-        })} · ${t("clock.ago", { ago: ago(last) })}`;
+      ? undefined
+      : new Date(last).toLocaleString(locale === "tr" ? "tr-TR" : "en-US", { dateStyle: "medium", timeStyle: "short" });
 
   return (
-    <div className="card flex items-center gap-5 p-5">
+    <div className="card flex flex-wrap items-center gap-x-5 gap-y-4 p-5" data-clock>
       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-ink-2">
         <Clock3 size={20} strokeWidth={1.8} />
       </div>
 
-      <div className="min-w-0 flex-1">
+      <div className="min-w-[220px] flex-1">
         <div className="eyebrow">{t("clock.title")}</div>
-        <div className="num mt-1 text-[13px] text-ink-2">
-          <span className="text-ink-3">{t("clock.last")}: </span>
+        <div className="num mt-1 text-[13px] text-ink-2" title={lastDate}>
           {status ? lastText : "…"}
         </div>
         <p className="mt-1 text-[12px] leading-relaxed text-ink-3">
@@ -86,7 +83,7 @@ export function ClockCard({ usb }: { usb: boolean }) {
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-3 border-l border-line pl-5">
+      <div className="flex shrink-0 items-center gap-3">
         <div className="text-right">
           <div className="text-[13px] font-medium">{t("clock.auto")}</div>
           <div className="max-w-[26ch] text-[11px] leading-snug text-ink-3">{t("clock.autoHint")}</div>
@@ -103,7 +100,7 @@ export function ClockCard({ usb }: { usb: boolean }) {
         type="button"
         onClick={() => void syncNow()}
         disabled={!usb || sync.kind === "busy"}
-        className="flex h-10 shrink-0 items-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex h-9 shrink-0 items-center gap-2 rounded-lg border border-line px-3 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
       >
         {sync.kind === "busy" ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={14} />}
         {sync.kind === "busy" ? t("clock.syncing") : t("clock.sync")}

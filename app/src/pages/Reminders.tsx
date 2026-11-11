@@ -202,6 +202,9 @@ export function Reminders({ kb }: { kb: KeyboardInfo }) {
               options={STAY_CHOICES.map((m) => ({ value: String(m), label: `${m} ${t("sc.live.m")}` }))}
             />
           </div>
+          <SettingRow title={t("reminder.notify")} body={t("reminder.notify.body")}>
+            <Toggle checked={s.settings.notify} onChange={(notify) => set({ notify })} label={t("reminder.notify")} />
+          </SettingRow>
           <SettingRow title={t("reminder.screen")} body={t("reminder.screen.body")}>
             <Toggle checked={s.settings.screen} onChange={(screen) => set({ screen })} label={t("reminder.screen")} />
           </SettingRow>

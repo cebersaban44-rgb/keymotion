@@ -1,4 +1,4 @@
-// "Canlı ekran": the live mode switch, what shows on the screen in which
+// "Canlı ekran": the live screen switch, what shows on the screen in which
 // order (calendar, reminders, focus timer, the song, the user's own picture), and the upload
 // budget (phase C). The backend runs the live mode; this only shows and
 // sets it.
@@ -18,7 +18,7 @@ import { POMODORO_SOURCE, usePomodoro } from "../../lib/pomodoro";
 import { REMINDER_SOURCE, useReminders } from "../../lib/reminders";
 import { useApp } from "../../lib/store";
 import { uploadSeconds } from "../../lib/screenImport";
-import { CalendarBody, calendarStatus } from "./CalendarPanel";
+import { calendarStatus } from "./CalendarPanel";
 import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useNow } from "./common";
 import { friendlyError } from "../../lib/errors";
 
@@ -223,7 +223,16 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
             />
           }
         >
-          <CalendarBody />
+          <div>
+            <button
+              type="button"
+              onClick={() => setPage("calendar")}
+              className="h-8 rounded-lg border border-line px-3 text-[12px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+              data-calendar-open
+            >
+              {t("calendar.layer.open")}
+            </button>
+          </div>
         </Layer>
         <Layer
           n={2}

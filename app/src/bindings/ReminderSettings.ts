@@ -20,4 +20,10 @@ stayMin: number,
  * Repeating reminders wait while nobody is at the computer and count
  * again from the return (owner's choice, 2026-11-11).
  */
-awayWait: boolean, };
+awayWait: boolean, 
+/**
+ * A Windows notification each time, too. Without the keyboard on the
+ * USB cable reminders always come as a notification, since the keys
+ * cannot light up.
+ */
+notify: boolean, };

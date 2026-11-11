@@ -23,7 +23,7 @@ import type { MacroStepInfo } from "../bindings/MacroStepInfo";
 import { Segmented } from "../components/controls";
 import { hidFromCode } from "../lib/hidCodes";
 import { getKeymapCatalog } from "../lib/ipc";
-import { useAgo, useT, type MessageKey } from "../lib/i18n";
+import { decimal, percent, useAgo, useT, type MessageKey } from "../lib/i18n";
 import { useKeymap } from "../lib/keymap";
 import { budgetUsed, dirtySlots, duration, useMacros } from "../lib/macros";
 import { useLayoutLabel } from "../lib/layout";
@@ -135,11 +135,11 @@ function Memory({ used, budget }: { used: number; budget: number }) {
   const pct = Math.min(100, Math.round((used / budget) * 100));
   const over = used > budget;
   return (
-    <div className="flex w-[220px] flex-col gap-1.5" title={`${used} / ${budget} B`}>
+    <div className="flex w-[220px] flex-col gap-1.5">
       <div className="flex items-baseline justify-between text-[12px]">
         <span className="text-ink-2">{t("mc.memory")}</span>
         <span className={`num ${over ? "text-danger" : "text-ink-3"}`}>
-          {used} / {budget} B
+          {percent(pct)}
         </span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
@@ -178,7 +178,7 @@ function MacroList({ selected, onSelect }: { selected: number | null; onSelect: 
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-[13px] font-medium">{m.name || t("mc.unnamed")}</span>
               <span className="num text-[11px] text-ink-3">
-                {t("mc.steps", { count: m.steps.length })} · {(duration(m, minDelay) / 1000).toFixed(2)} s
+                {t("mc.steps", { count: m.steps.length })} · {decimal(duration(m, minDelay) / 1000, 2)} {t("time.s")}
               </span>
             </span>
             {dirty.has(slot) && (
@@ -404,7 +404,8 @@ function Editor({
               onClick={() => addClick(m.mask)}
               className="flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface-2 px-2.5 text-[12px] text-ink-2 hover:text-ink disabled:opacity-40"
             >
-              <MousePointerClick size={13} />+ {t(m.key)}
+              <MousePointerClick size={13} aria-hidden />
+              {t(m.key)}
             </button>
           ))}
         </span>
@@ -483,7 +484,7 @@ function Editor({
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line pt-4 text-[12px] text-ink-2">
         <span className="num">
-          {t("mc.steps", { count: steps.length })} · {(duration(macro, limits.minDelayMs) / 1000).toFixed(2)} s
+          {t("mc.steps", { count: steps.length })} · {decimal(duration(macro, limits.minDelayMs) / 1000, 2)} {t("time.s")}
         </span>
         {steps.length > 0 && (
           <button
