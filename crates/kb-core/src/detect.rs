@@ -31,6 +31,14 @@ pub struct DetectedKeyboard {
     pub standard_collections: usize,
     /// Matching paired BLE device, for Bluetooth connections.
     pub ble: Option<BlePeer>,
+    /// Firmware version (USB `bcdDevice`) of a keyboard on the cable. Over
+    /// the receiver or Bluetooth the OS reports the receiver's or the radio's
+    /// version instead, so it is left out there.
+    pub firmware: Option<u16>,
+    /// Vendor channels found per role: (command, display). Identical
+    /// keyboards on the same connection share one entry, and each brings its
+    /// own channels, so these tell how many there are.
+    channels: (usize, usize),
 }
 
 /// Features this app drives in `kind`, out of what the model file says the
@@ -76,6 +84,19 @@ impl DetectedKeyboard {
     pub fn key(&self) -> String {
         format!("{}:{:?}", self.model.id, self.connection)
     }
+
+    /// How many physical keyboards stand behind this entry (at least one):
+    /// every keyboard has one command and one display channel at most.
+    pub fn units(&self) -> usize {
+        self.channels.0.max(self.channels.1).max(1)
+    }
+}
+
+/// Keyboards on the USB cable, counting identical ones separately. Writes
+/// go to one keyboard; with more than one on the cable the app cannot tell
+/// which one the user means, so it must not write at all.
+pub fn wired_count(found: &[DetectedKeyboard]) -> usize {
+    found.iter().filter(|k| k.connection == ConnectionKind::Usb).map(DetectedKeyboard::units).sum()
 }
 
 /// Group matching HID collections per (model, mode) and attach BLE peers.
@@ -113,14 +134,22 @@ pub fn detect(interfaces: &[HidInterface], ble: &[BlePeer]) -> Vec<DetectedKeybo
                     display: None,
                     standard_collections: 0,
                     ble: None,
+                    firmware: (m.mode.kind == ConnectionKind::Usb).then_some(iface.release),
+                    channels: (0, 0),
                 });
                 out.len() - 1
             }
         };
         let k = &mut out[idx];
         match m.role {
-            InterfaceRole::Command => k.command = Some(iface.clone()),
-            InterfaceRole::Display => k.display = Some(iface.clone()),
+            InterfaceRole::Command => {
+                k.command = Some(iface.clone());
+                k.channels.0 += 1;
+            }
+            InterfaceRole::Display => {
+                k.display = Some(iface.clone());
+                k.channels.1 += 1;
+            }
             InterfaceRole::Standard => k.standard_collections += 1,
         }
     }
@@ -138,6 +167,8 @@ pub fn detect(interfaces: &[HidInterface], ble: &[BlePeer]) -> Vec<DetectedKeybo
                 display: None,
                 standard_collections: 0,
                 ble: Some(peer.clone()),
+                firmware: None,
+                channels: (0, 0),
             });
         }
     }
@@ -169,6 +200,46 @@ mod tests {
             serial: None,
             path: format!("path-{pid:x}-{up:x}"),
         }
+    }
+
+    #[test]
+    fn wired_reports_firmware() {
+        let list = [iface(0x8009, 0xFF13, hid::Bus::Usb, "SONiX AK980 PRO")];
+        assert_eq!(detect(&list, &[])[0].firmware, Some(0x0138));
+        // The receiver's own version is not the keyboard's.
+        let list = [iface(0xFEFE, 0xFF60, hid::Bus::Usb, "")];
+        assert_eq!(detect(&list, &[])[0].firmware, None);
+    }
+
+    #[test]
+    fn two_identical_keyboards_on_the_cable_are_counted() {
+        let one = [
+            iface(0x8009, 0x0001, hid::Bus::Usb, "SONiX AK980 PRO"),
+            iface(0x8009, 0xFF13, hid::Bus::Usb, "SONiX AK980 PRO"),
+            iface(0x8009, 0xFF68, hid::Bus::Usb, "SONiX AK980 PRO"),
+        ];
+        assert_eq!(wired_count(&detect(&one, &[])), 1);
+
+        // A second keyboard of the same model: same IDs, other paths. It
+        // merges into the same entry, so only the channel count shows it.
+        let second = one.clone().map(|mut i| {
+            i.path.push_str("-second");
+            i
+        });
+        let both: Vec<_> = one.iter().chain(second.iter()).cloned().collect();
+        let found = detect(&both, &[]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].units(), 2);
+        assert_eq!(wired_count(&found), 2);
+
+        // The receiver and Bluetooth do not count: nothing is written there.
+        let mut mixed = one.to_vec();
+        mixed.push(iface(0xFEFE, 0xFF60, hid::Bus::Usb, ""));
+        assert_eq!(wired_count(&detect(&mixed, &[])), 1);
+
+        // A keyboard whose vendor channels did not show up still counts once.
+        let bare = [iface(0x8009, 0x0001, hid::Bus::Usb, "SONiX AK980 PRO")];
+        assert_eq!(wired_count(&detect(&bare, &[])), 1);
     }
 
     #[test]

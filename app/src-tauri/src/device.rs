@@ -16,12 +16,19 @@
 //! It also keeps the app's record of each model's keymap (`keymap.json`)
 //! and macros (`macros.json`): the keyboard cannot report either, so a
 //! record is updated only after a write the keyboard confirmed.
+//!
+//! Before anything is written to the keyboard's memory (effects, per-key
+//! colours, keymap, macros, screen uploads) [`write_block`] decides whether
+//! it may go: not with several keyboards on the cable, not while another
+//! program talks to the keyboard, and on firmware nobody tested only after
+//! the user said so in this session. Live frames and the clock skip it.
 
 use crate::dto::{Battery, KeyboardInfo, LedColor};
 use crate::settings::{
     self, ClockSettings, Keymaps, MacroRecord, StoredKeymap, StoredLayer, StoredMacro, StoredMacros,
 };
 use kb_core::color::LedCalibration;
+use kb_core::conflicts::Conflict;
 use kb_core::detect::BlePeer;
 use kb_core::readback;
 use kb_core::sonix::SonixFf13;
@@ -41,6 +48,10 @@ pub const EVENT_KEYBOARDS_CHANGED: &str = "keyboards-changed";
 pub const EVENT_MIRROR: &str = "lighting-mirror";
 pub const EVENT_CLOCK: &str = "clock-changed";
 pub const EVENT_SCREEN_PROGRESS: &str = "screen-upload-progress";
+/// A write was refused because the keyboard's firmware was not tested; the
+/// payload is its version ("1.07"). The UI asks the user (also for writes
+/// the live mode makes in the background).
+pub const EVENT_FIRMWARE_UNVERIFIED: &str = "firmware-unverified";
 /// Longest wait for a screen upload (140 frames take ~5.4 min).
 pub const SCREEN_UPLOAD_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// Progress events at most this often.
@@ -49,6 +60,74 @@ const SCREEN_PROGRESS_EVERY: Duration = Duration::from_millis(150);
 /// Error when a request needs the cable. English, like every backend error;
 /// the UI shows its own text for it (lib/errors.ts).
 const NO_USB: &str = "no keyboard on the USB cable";
+
+/// Why a write to the keyboard's memory may not go now. The texts are the
+/// backend's English errors; lib/errors.ts maps each to a message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WriteBlock {
+    /// More than one keyboard on the cable: which one would get it is up to
+    /// the order the OS lists them in.
+    SeveralKeyboards,
+    /// A known program talks to the same channel; commands would interleave.
+    Program(Conflict),
+    /// Firmware not in the model's tested list, not confirmed this session.
+    UnverifiedFirmware(String),
+}
+
+impl std::fmt::Display for WriteBlock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SeveralKeyboards => write!(f, "more than one keyboard on the USB cable"),
+            Self::Program(c) => write!(f, "another program is using the keyboard ({})", c.id()),
+            Self::UnverifiedFirmware(v) => write!(f, "untested keyboard firmware {v}"),
+        }
+    }
+}
+
+/// The wired keyboard's firmware, as far as writes are concerned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FirmwareCheck {
+    pub release: u16,
+    /// In the model file's `verified_firmware` list.
+    pub verified: bool,
+    /// The user said to go ahead on this version in this session.
+    pub confirmed: bool,
+}
+
+/// Whether a write to the keyboard's memory may go. `wired`: keyboards on
+/// the cable; `running`: looks for a conflicting program (asked only when
+/// the cheaper checks passed, it lists every process).
+pub fn write_block(
+    wired: usize,
+    firmware: Option<FirmwareCheck>,
+    running: impl FnOnce() -> Option<Conflict>,
+) -> Option<WriteBlock> {
+    if wired > 1 {
+        return Some(WriteBlock::SeveralKeyboards);
+    }
+    if let Some(c) = running() {
+        return Some(WriteBlock::Program(c));
+    }
+    match firmware {
+        Some(f) if !f.verified && !f.confirmed => {
+            Some(WriteBlock::UnverifiedFirmware(kb_devices::firmware_text(f.release)))
+        }
+        _ => None,
+    }
+}
+
+/// A known program talking to the keyboard, among those running now.
+fn running_conflict() -> Option<Conflict> {
+    let programs = kb_winsys::running_programs();
+    let found = kb_core::conflicts::find_conflict(
+        programs.iter().map(|p| (p.pid, p.name.as_str(), p.path.as_deref())),
+        std::process::id(),
+    );
+    if let Some(c) = found {
+        tracing::warn!(program = c.id(), "write refused: another program uses the keyboard");
+    }
+    found
+}
 
 /// Open a vendor channel only if its report layout is the "04 xx" family's
 /// (kb_core::shape): the same IDs also belong to boards that speak another
@@ -116,6 +195,9 @@ pub enum Request {
     SetCalibration(LedCalibration),
     /// Set the keyboard clock to the PC's local time now.
     SyncClock(Reply<ClockSettings>),
+    /// The user said to write on this firmware version ("1.07") anyway, for
+    /// the rest of the session.
+    ConfirmFirmware(String),
     /// Turn automatic clock sync on or off (persisted).
     SetClockAuto(bool, Reply<ClockSettings>),
     /// Write one keymap layer of the USB keyboard (flash) and record it.
@@ -344,6 +426,12 @@ struct Actor {
     display_path: Option<String>,
     /// Model of the keyboard behind `command_path`.
     usb_model: Option<&'static Model>,
+    /// Its firmware version (USB `bcdDevice`).
+    usb_firmware: Option<u16>,
+    /// Keyboards on the cable, identical ones counted separately.
+    wired: usize,
+    /// Firmware version the user confirmed writes on in this session.
+    firmware_confirmed: Option<u16>,
     command: Option<Command>,
     live: Option<LiveFrame>,
     /// Background layers, shown while `live` is not set.
@@ -394,6 +482,9 @@ impl Actor {
             command_path: None,
             display_path: None,
             usb_model: None,
+            usb_firmware: None,
+            wired: 0,
+            firmware_confirmed: None,
             command: None,
             live: None,
             layers: Layers::default(),
@@ -465,13 +556,13 @@ impl Actor {
             }
             Request::ApplyEffect(mut settings, reply) => {
                 settings.color = self.calibration.apply(settings.color);
-                let r = self.with_command(|d| d.apply_effect(&settings));
+                let r = self.may_write().and_then(|()| self.with_command(|d| d.apply_effect(&settings)));
                 let _ = reply.send(r);
             }
             Request::ApplyPerKey { colors, brightness, reply } => {
                 let cal = self.calibration;
                 let colors: Vec<(u8, Rgb)> = colors.into_iter().map(|(l, c)| (l, cal.apply(c))).collect();
-                let r = self.with_command(|d| d.apply_per_key(colors, brightness));
+                let r = self.may_write().and_then(|()| self.with_command(|d| d.apply_per_key(colors, brightness)));
                 let _ = reply.send(r);
             }
             Request::SetLive(frame) => {
@@ -525,6 +616,16 @@ impl Actor {
                 let r = self.sync_clock().map(|_| self.clock);
                 let _ = reply.send(r);
             }
+            Request::ConfirmFirmware(version) => {
+                match self.usb_firmware.filter(|&r| kb_devices::firmware_text(r) == version) {
+                    Some(release) => {
+                        tracing::info!(firmware = %version, "writes on untested firmware confirmed for this session");
+                        self.firmware_confirmed = Some(release);
+                    }
+                    // The keyboard changed while the user was asked.
+                    None => tracing::warn!(firmware = %version, "confirmed firmware is not the connected one"),
+                }
+            }
             Request::SetClockAuto(on, reply) => {
                 self.clock.auto_sync = on;
                 if !on {
@@ -555,6 +656,9 @@ impl Actor {
             error: Some(e),
         };
         let Some(path) = self.display_path.clone() else { return fail(model_id, false, NO_USB.into()) };
+        if let Err(e) = self.may_write() {
+            return fail(model_id, false, e);
+        }
         let display = self
             .hid
             .as_ref()
@@ -598,6 +702,7 @@ impl Actor {
     /// keymap, the record changes only after the keyboard confirmed the data.
     fn apply_macros(&mut self, mut slots: Vec<Option<StoredMacro>>) -> Result<StoredMacros, String> {
         let model = self.usb_model.ok_or_else(|| NO_USB.to_string())?;
+        self.may_write()?;
         while slots.last().is_some_and(Option::is_none) {
             slots.pop();
         }
@@ -625,6 +730,7 @@ impl Actor {
     fn apply_keymap(&mut self, layer: Layer, entries: Vec<(u8, KeyAction)>) -> Result<StoredKeymap, String> {
         let model = self.usb_model.ok_or_else(|| NO_USB.to_string())?;
         let map = kb_core::keymap::canonical(model, layer, entries).map_err(|e| e.to_string())?;
+        self.may_write()?;
         self.with_command(|d| d.apply_keymap(layer, map.iter().map(|(&l, &a)| (l, a))))?;
         tracing::info!(?layer, keys = map.len(), model = %model.id, "keymap layer written");
         let stored = self.keymaps.models.entry(model.id.clone()).or_default();
@@ -676,6 +782,31 @@ impl Actor {
         let last = UNIX_EPOCH + Duration::from_millis(last);
         // A clock set in the future (wrong PC time earlier) also counts as due.
         SystemTime::now().duration_since(last).map_or(true, |age| age >= CLOCK_SYNC_EVERY)
+    }
+
+    /// Whether a write to the keyboard's memory may go now (see
+    /// [`write_block`]). An untested firmware also tells the UI, so it can
+    /// ask the user even when the write came from the live mode.
+    fn may_write(&self) -> Result<(), String> {
+        // Without a keyboard on the cable the write fails on its own.
+        if self.command_path.is_none() {
+            return Ok(());
+        }
+        let firmware = self.usb_model.zip(self.usb_firmware).map(|(model, release)| FirmwareCheck {
+            release,
+            verified: model.mode(ConnectionKind::Usb).is_some_and(|mode| mode.firmware_verified(release)),
+            confirmed: self.firmware_confirmed == Some(release),
+        });
+        let Some(block) = write_block(self.wired, firmware, running_conflict) else { return Ok(()) };
+        match &block {
+            WriteBlock::UnverifiedFirmware(v) => {
+                tracing::warn!(firmware = %v, "write waits for the user: firmware not tested");
+                let _ = self.app.emit(EVENT_FIRMWARE_UNVERIFIED, v);
+            }
+            WriteBlock::SeveralKeyboards => tracing::warn!(keyboards = self.wired, "write refused: several keyboards"),
+            WriteBlock::Program(_) => {}
+        }
+        Err(block.to_string())
     }
 
     /// Run `f` against the wired command channel, opening it on demand.
@@ -809,6 +940,12 @@ impl Actor {
             self.clock_due = None;
         }
         self.usb_model = usb.filter(|k| k.command.is_some()).map(|k| k.model);
+        self.usb_firmware = usb.and_then(|k| k.firmware);
+        let wired = kb_core::wired_count(&detected);
+        if wired != self.wired && wired > 1 {
+            tracing::warn!(keyboards = wired, "several keyboards on the cable; writes are refused");
+        }
+        self.wired = wired;
         self.indicators =
             usb.map(|k| k.model.indicators.iter().map(|i| (i.led, i.color)).collect()).unwrap_or_default();
         if self.command_path.is_none() {
@@ -945,6 +1082,45 @@ mod tests {
         let only_alerts = Layers { alerts: Some(alerts), ..Layers::default() };
         assert_eq!(compose(None, &only_alerts), Some(vec![(2, [99; 3], 1.0), (9, [99; 3], 1.0)]));
         assert_eq!(compose(None, &Layers::default()), None);
+    }
+
+    #[test]
+    fn several_keyboards_refuse_before_anything_else() {
+        let untested = Some(FirmwareCheck { release: 0x0107, verified: false, confirmed: false });
+        let scanned = std::cell::Cell::new(false);
+        let scan = || {
+            scanned.set(true);
+            Some(Conflict::SignalRgb)
+        };
+        assert_eq!(write_block(2, untested, scan), Some(WriteBlock::SeveralKeyboards));
+        assert!(!scanned.get(), "no process scan when the answer is already no");
+        assert_eq!(WriteBlock::SeveralKeyboards.to_string(), "more than one keyboard on the USB cable");
+        assert_eq!(write_block(1, None, || None), None);
+        assert_eq!(write_block(0, None, || None), None, "no keyboard: the write fails on its own");
+    }
+
+    #[test]
+    fn a_program_on_the_channel_refuses_writes() {
+        let tested = Some(FirmwareCheck { release: 0x0106, verified: true, confirmed: false });
+        let block = write_block(1, tested, || Some(Conflict::AjazzDriver));
+        assert_eq!(block, Some(WriteBlock::Program(Conflict::AjazzDriver)));
+        assert_eq!(block.unwrap().to_string(), "another program is using the keyboard (ajazz-driver)");
+    }
+
+    #[test]
+    fn untested_firmware_needs_the_users_go_ahead() {
+        let check = |verified, confirmed| Some(FirmwareCheck { release: 0x0107, verified, confirmed });
+        let block = write_block(1, check(false, false), || None);
+        assert_eq!(block, Some(WriteBlock::UnverifiedFirmware("1.07".into())));
+        assert_eq!(block.unwrap().to_string(), "untested keyboard firmware 1.07");
+        assert_eq!(write_block(1, check(false, true), || None), None, "confirmed this session");
+        assert_eq!(write_block(1, check(true, false), || None), None, "tested");
+        // A program on the channel is reported first: asking about the
+        // firmware would not help while it runs.
+        assert_eq!(
+            write_block(1, check(false, false), || Some(Conflict::OpenRgb)),
+            Some(WriteBlock::Program(Conflict::OpenRgb))
+        );
     }
 
     #[test]

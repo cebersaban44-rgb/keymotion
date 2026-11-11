@@ -174,6 +174,8 @@ pub struct KeyboardInfo {
     pub screen: Option<ScreenInfo>,
     pub connection: Connection,
     pub product: Option<String>,
+    /// Firmware version over the cable, as people read it ("1.06").
+    pub firmware: Option<String>,
     /// Features usable right now in this connection mode.
     pub features: Vec<Feature>,
     /// What every connection mode of this model offers.
@@ -201,6 +203,7 @@ impl KeyboardInfo {
             screen: m.screen.as_ref().map(|s| ScreenInfo { width: s.width, height: s.height, verified: s.verified }),
             connection: k.connection.into(),
             product: k.product.clone(),
+            firmware: k.firmware.map(kb_devices::firmware_text),
             features: k.capabilities().into_iter().map(Feature::from).collect(),
             modes: m
                 .modes
@@ -240,6 +243,26 @@ mod tests {
             let json = serde_json::to_string_pretty(&GeometryInfo::from_model(g)).unwrap();
             std::fs::write(dir.join(format!("geometry-{}.json", m.id)), json + "\n").unwrap();
         }
+    }
+}
+
+/// A settings file that could not be read at start-up and went back to its
+/// defaults. The old file was kept beside it (`backup`); the UI names the
+/// record once.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SettingsReset {
+    /// File name, e.g. `keymap.json`.
+    pub file: String,
+    /// Name of the kept copy; `None` when it could not be moved aside (it is
+    /// then left in place and not overwritten).
+    pub backup: Option<String>,
+}
+
+impl From<crate::settings::Reset> for SettingsReset {
+    fn from(r: crate::settings::Reset) -> Self {
+        Self { file: r.file, backup: r.backup }
     }
 }
 
