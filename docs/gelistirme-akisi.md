@@ -39,6 +39,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 pnpm --dir app typecheck
+node tools/check-text.mjs && node tools/check-vendor-files.mjs && node tools/check-version.mjs
 git push -u origin feature/kisa-konu
 gh pr create --base develop
 gh pr merge --auto --squash   # CI yeşil olunca GitHub kendisi birleştirir ve dalı siler
@@ -49,7 +50,7 @@ gh pr merge --auto --squash   # CI yeşil olunca GitHub kendisi birleştirir ve 
 2. Davranışı değiştiren her iş **gerçek uygulamada** denenmeli (DURUM.md §5, CDP).
 3. Klavyeye yazan bir akış değiştiyse cihazda doğrulanmalı ve sonucu `docs/donanim-dogrulama.md`'ye tarihli yazılmalı.
 
-**PR açıklaması:** Ne değişti, neden değişti ve nasıl denendi. Kullanıcıya görünen bir değişiklikse `CHANGELOG.md`'ye de bir satır eklenir (dosya ilk sürümle birlikte gelecek).
+**PR açıklaması:** Ne değişti, neden değişti ve nasıl denendi. Kullanıcıya görünen bir değişiklikse `CHANGELOG.md`'nin "Unreleased" bölümüne de bir satır eklenir.
 
 ## Commit'ler
 
@@ -75,6 +76,8 @@ Sürüm numarası üç yerde tutulur ve hepsi aynı olmalıdır:
 - `Cargo.toml` (`[workspace.package] version`)
 - `app/package.json`
 - `app/src-tauri/tauri.conf.json`
+
+`node tools/check-version.mjs` üçünü ve `Cargo.lock`'u karşılaştırır; CI'da da çalışır.
 
 **Adımlar:**
 1. `chore/release-v0.x.0` dalında sürüm numaraları ve `CHANGELOG.md` güncellenir, PR ile `develop`'a alınır.
@@ -106,13 +109,40 @@ Yayındaki bir sürümde, bir sonraki sürümü bekleyemeyecek bir hata çıkars
 
 ### CI (otomatik kontroller)
 
-`.github/workflows/ci.yml`, `develop` ve `main`'e açılan her PR'da ve bu dallara yapılan her birleştirmede Windows üzerinde çalışır. Adımları:
+`.github/workflows/ci.yml`, `develop` ve `main`'e açılan her PR'da ve bu dallara yapılan her birleştirmede çalışır. İki işi var.
 
-1. Arayüz: bağımlılıkları kurar, typecheck ve derleme (`pnpm build`) yapar.
-2. Rust: rustfmt, clippy (`-D warnings`) ve `cargo test --workspace` çalıştırır.
-3. Bindings kontrolü: `cargo test` TypeScript tiplerini Rust'tan yeniden üretir. `app/src/bindings` commit'lenmiş halinden farklıysa ya da commit'lenmemiş yeni dosya varsa kontrol kırmızı olur.
+**Build and test** (Windows). Adımları:
+
+1. Depo denetimleri. Yalnız Node ister, yerelde de aynı komutla çalışır:
+   - `node tools/check-text.mjs`: BOM, geçersiz UTF-8 ve bozuk karakter (`Ä±` gibi diziler; DURUM.md ders 52). Kilit dosyaları ve `app/src/bindings` taranmaz.
+   - `node tools/check-vendor-files.mjs`: resmi sürücünün dosyaları, programlar (.exe, .dll), arşivler (.rar, .7z) ve fabrika animasyonu repoya giremez. GIF yalnız `docs/media/` altında olabilir.
+   - `node tools/check-version.mjs`: sürüm numarası üç dosyada aynı mı (aşağıda "Sürüm çıkarma").
+2. Arayüz: bağımlılıkları kurar, typecheck ve derleme (`pnpm build`) yapar.
+3. ESLint (`pnpm --dir app lint`): şimdilik yalnız rapor verir, kontrolü kırmızı yapmaz. Kurallar `tools/eslint/eslint.config.mjs`'de. ESLint ayrı bir pakette, çünkü typescript-eslint TypeScript 7'yi henüz desteklemiyor; o paket yalnız ayrıştırıcı için TypeScript 6 kurar.
+4. Rust: `rust-toolchain.toml`'daki sürümü kurar; rustfmt, clippy (`-D warnings`) ve `cargo test --workspace` çalıştırır.
+5. Bindings kontrolü: `cargo test` TypeScript tiplerini Rust'tan yeniden üretir. `app/src/bindings` commit'lenmiş halinden farklıysa ya da commit'lenmemiş yeni dosya varsa kontrol kırmızı olur.
 
 "Build and test" kontrolü iki dalda da **birleştirme şartıdır**: kırmızı PR birleştirilemez.
+
+**Supply chain (cargo-deny)** (Ubuntu): `cargo deny --locked check`, ayarı `deny.toml`. Lisans izin listesi, güvenlik duyuruları, bakımı bırakılmış doğrudan bağımlılıklar ve crate kaynakları denetlenir; aynı crate'in iki sürümü yalnız uyarıdır. Yeni bir güvenlik duyurusu depoda hiçbir şey değişmeden de bu işi kırmızı yapabilir, bu yüzden ayrı bir iş ve birleştirme şartı değil. Yerelde: `cargo install --locked cargo-deny`, sonra `cargo deny check`.
+
+GitHub Actions eylemleri commit SHA'sına sabitlenir; sürümü yanındaki yorumda yazar. Dependabot (`.github/dependabot.yml`) her hafta `develop`'a güncelleme PR'ı açar: cargo, npm (`app/` ve `tools/eslint/`) ve GitHub Actions. Küçük ve yama güncellemeleri her ekosistemde tek PR'da toplanır; büyük sürümler ayrı PR olarak gelir.
+
+Rust sürümü `rust-toolchain.toml`'da sabittir. rustup bu sürümü ilk `cargo` komutunda kendiliğinden kurar. Sürüm yükseltmesi ayrı bir PR'la yapılır.
+
+## Lisans ve üçüncü taraf bildirimleri
+
+- Proje MIT ya da Apache-2.0 lisanslıdır (`LICENSE-MIT`, `LICENSE-APACHE`). `NOTICE` dosyası projenin resmî olmadığını, markaların sahiplerine ait olduğunu ve fabrika animasyonuyla resmi sürücünün asla dağıtılmadığını söyler.
+- Uygulamayla dağıtılan üçüncü taraf yazılımların lisansları `app/public/third-party-notices.txt` dosyasındadır: Rust crate'leri, HIDAPI C kitaplığı, arayüze giren npm paketleri ve üç yazı tipinin tam OFL-1.1 metni. Dosya elle düzenlenmez. Bir bağımlılık eklenince, çıkarılınca ya da güncellenince (Dependabot PR'ları dahil) yeniden üretilip commit'lenir:
+
+  ```bash
+  cargo install --locked --features cli cargo-about   # bir kez
+  pnpm --dir app install
+  node tools/notices.mjs            # dosyayı yazar
+  node tools/notices.mjs --check    # dosya güncel mi?
+  ```
+
+- Ağaçta yeni bir lisans çıkarsa önce incelenir, sonra `deny.toml` ve `about.toml`'daki listeye bilerek eklenir.
 
 Depodaki `.gitattributes` bütün metin dosyalarını LF satır sonuyla tutar. Böylece Windows'ta da rustfmt, üretilen tipler ve CI aynı baytları görür.
 
