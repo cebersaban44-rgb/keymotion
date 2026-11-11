@@ -38,6 +38,13 @@ const providerLabel = (p: CalendarProvider): MessageKey => PROVIDERS.find((x) =>
 function errText(e: string, t: (k: MessageKey) => string) {
   if (e === "not a calendar") return t("calendar.err.notCal");
   if (e === "web page") return t("calendar.err.webPage");
+  const http = /^http (\d{3})$/.exec(e);
+  if (http) {
+    const code = Number(http[1]);
+    if (code === 404) return t("calendar.err.notFound");
+    if (code === 401 || code === 403) return t("calendar.err.denied");
+    return `${t("calendar.err.http")} (${code})`;
+  }
   if (e === "calendar too large") return t("calendar.err.large");
   return e;
 }
