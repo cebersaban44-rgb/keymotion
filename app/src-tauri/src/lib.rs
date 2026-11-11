@@ -293,6 +293,13 @@ fn calendar_try_reminder(calendar: Calendar<'_>) {
     calendar.try_reminder();
 }
 
+/// A card the UI just handed to the live mode is a try: send it now and
+/// bring the own picture back after a minute.
+#[tauri::command]
+fn calendar_try_card(calendar: Calendar<'_>) {
+    calendar.try_card();
+}
+
 /// The system gauges.
 #[tauri::command]
 fn gauges_state(gauges: Gauges<'_>) -> Result<GaugesState, String> {
@@ -651,7 +658,8 @@ pub fn run() {
             calendar_update,
             calendar_remove,
             calendar_refresh,
-            calendar_try_reminder
+            calendar_try_reminder,
+            calendar_try_card
         ])
         .run(tauri::generate_context!())
         .expect("error while running Klavye Stüdyo");
