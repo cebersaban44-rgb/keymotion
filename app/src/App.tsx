@@ -151,7 +151,7 @@ function EmptyState() {
         <span className="absolute inset-0 animate-ping rounded-full bg-signal/15" />
         <img src="/app-icon.svg" alt="" className="relative h-24 w-24 opacity-90" />
       </div>
-      <h1 className="font-display text-[30px] font-semibold tracking-[-0.03em]">{t("device.none.title")}</h1>
+      <h1 className="font-display text-[30px] font-semibold">{t("device.none.title")}</h1>
       <p className="max-w-[46ch] text-[13.5px] text-ink-2">{t("device.none.body")}</p>
       <button
         type="button"

@@ -312,6 +312,9 @@ struct Actor {
     peers: Vec<BlePeer>,
     last_ble_scan: Option<Instant>,
     batteries: HashMap<u64, (Battery, Instant)>,
+    /// Last battery reading per model, kept on disk: shown over USB, where
+    /// the keyboard cannot report it.
+    last_battery: std::collections::BTreeMap<String, Battery>,
     /// Path of the wired command interface of the active keyboard, if any.
     command_path: Option<String>,
     /// Path of its display channel (screen pages), if any.
@@ -364,6 +367,7 @@ impl Actor {
             peers: Vec::new(),
             last_ble_scan: None,
             batteries: HashMap::new(),
+            last_battery: config_dir.as_deref().map(settings::load_batteries).unwrap_or_default(),
             command_path: None,
             display_path: None,
             usb_model: None,
@@ -803,6 +807,7 @@ impl Actor {
                     let stale = self.batteries.get(&peer.address).is_none_or(|(_, at)| at.elapsed() >= BATTERY_REFRESH);
                     if stale {
                         if let Some(b) = read_battery(peer.address) {
+                            self.remember_battery(&k.model.id, &b);
                             self.batteries.insert(peer.address, (b, Instant::now()));
                         }
                     }
@@ -810,7 +815,8 @@ impl Actor {
                 }
                 (Some(peer), _) => self.batteries.get(&peer.address).map(|(b, _)| b.clone()),
                 _ => None,
-            };
+            }
+            .or_else(|| self.last_battery.get(&k.model.id).cloned());
             infos.push(KeyboardInfo::from_detected(k, battery));
         }
 
@@ -827,6 +833,23 @@ impl Actor {
             tracing::info!(count = infos.len(), "keyboards changed");
             if let Err(e) = self.app.emit(EVENT_KEYBOARDS_CHANGED, &infos) {
                 tracing::warn!("emit failed: {e}");
+            }
+        }
+    }
+}
+
+impl Actor {
+    /// Keep a battery reading for when the keyboard is on the cable. Written
+    /// to disk when the level changes or every half hour.
+    fn remember_battery(&mut self, model_id: &str, b: &Battery) {
+        let write = self
+            .last_battery
+            .get(model_id)
+            .is_none_or(|old| old.percent != b.percent || b.read_at_ms.saturating_sub(old.read_at_ms) >= 30 * 60_000);
+        self.last_battery.insert(model_id.to_string(), b.clone());
+        if let (true, Some(dir)) = (write, &self.config_dir) {
+            if let Err(e) = settings::save_batteries(dir, &self.last_battery) {
+                tracing::warn!("battery reading not saved: {e}");
             }
         }
     }

@@ -9,6 +9,7 @@ import { SWATCHES, toLedColors, type ColorMap } from "../lib/lighting";
 import { useActiveKeyboard } from "../lib/store";
 import { KeyboardView } from "./KeyboardView";
 import { Segmented, Slider, Toggle } from "./controls";
+import { friendlyError } from "../lib/errors";
 
 type Triple = [number, number, number];
 /** Channel `i` (0–2) of a per-channel triple. */
@@ -97,7 +98,7 @@ export function CalibrationCard() {
     setSave({ kind: "saving" });
     setCalibration(c, true)
       .then(() => setSave({ kind: "saved" }))
-      .catch((e) => setSave({ kind: "error", message: String(e) }));
+      .catch((e) => setSave({ kind: "error", message: friendlyError(e, t) }));
   };
   useEffect(
     () => () => {
@@ -170,7 +171,7 @@ export function CalibrationCard() {
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1.5">
           <div className="eyebrow">{t("cal.title")}</div>
-          <p className="max-w-[62ch] text-[12.5px] text-ink-2">{t("cal.intro")}</p>
+          <p className="max-w-[62ch] text-[13px] text-ink-2">{t("cal.intro")}</p>
         </div>
         <SaveBadge state={save} savedText={t("cal.saved")} />
       </div>
@@ -183,11 +184,11 @@ export function CalibrationCard() {
               : gammaSlider("all", t("cal.gamma"), undefined, t("cal.gammaHint"))}
             <div className="flex items-center gap-2.5">
               <Toggle label={t("cal.perChannel")} checked={perChannel} onChange={togglePerChannel} />
-              <span className="text-[12.5px] text-ink-2">{t("cal.perChannel")}</span>
+              <span className="text-[13px] text-ink-2">{t("cal.perChannel")}</span>
             </div>
           </div>
           <div className="flex flex-col gap-3.5 border-t border-line pt-4">
-            <div className="text-[12.5px] font-medium">
+            <div className="text-[13px] font-medium">
               {t("cal.balance")}
               <span className="ml-2 font-normal text-ink-3">{t("cal.balanceHint")}</span>
             </div>
@@ -225,7 +226,7 @@ export function CalibrationCard() {
         </p>
         {live && geometry && kb && (
           <div
-            className="flex flex-col gap-3 rounded-[22px] border border-line p-5 pb-3.5"
+            className="flex flex-col gap-3 rounded-lg border border-line p-5 pb-3.5"
             style={{ background: "linear-gradient(180deg, var(--plate), color-mix(in oklch, var(--plate) 80%, black))" }}
           >
             <div className="flex gap-1.5" aria-hidden>
@@ -236,7 +237,7 @@ export function CalibrationCard() {
                   style={{ background: c, boxShadow: `0 6px 22px -10px ${c}` }}
                 >
                   {pattern === "ramp" && (
-                    <span className="num text-[10px]" style={{ color: i < RAMP_STEPS / 2 ? "#ffffffaa" : "#000000aa" }}>
+                    <span className="num text-[11px]" style={{ color: i < RAMP_STEPS / 2 ? "#ffffffaa" : "#000000aa" }}>
                       {c.slice(1, 3).toUpperCase()}
                     </span>
                   )}
@@ -244,8 +245,8 @@ export function CalibrationCard() {
               ))}
             </div>
             <KeyboardView geometry={geometry} connection={kb.connection} colors={colors} />
-            <div className="flex items-center gap-2 text-[11.5px] text-[#8b8d92]">
-              <span className="h-1.5 w-1.5 rounded-full bg-ok shadow-[0_0_8px_var(--ok)]" />
+            <div className="flex items-center gap-2 text-[12px] text-[#8b8d92]">
+              <span className="h-1.5 w-1.5 rounded-full bg-ok" />
               <span className="num">{t("cal.target")}</span>
             </div>
           </div>
@@ -253,12 +254,12 @@ export function CalibrationCard() {
       </div>
 
       <div className="flex items-end justify-between gap-6 border-t border-line pt-4">
-        <p className="max-w-[64ch] text-[11.5px] leading-relaxed text-ink-3">{t("cal.note")}</p>
+        <p className="max-w-[64ch] text-[12px] leading-relaxed text-ink-3">{t("cal.note")}</p>
         <button
           type="button"
           onClick={reset}
           disabled={sameCalibration(cal, info.factory)}
-          className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-line bg-bg-raise px-3 text-[12.5px] text-ink-2 transition-colors hover:border-line-strong hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-line bg-bg-raise px-3 text-[13px] text-ink-2 transition-colors hover:border-line-strong hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
         >
           <RotateCcw size={13} />
           {t("cal.reset")}
@@ -298,7 +299,7 @@ function CurvePlot({ cal, label, rawLabel }: { cal: Calibration; label: string; 
     <figure className="flex flex-col gap-2">
       <svg
         viewBox="-3 -3 106 106"
-        className="aspect-square w-full rounded-xl border border-line bg-bg-raise"
+        className="aspect-square w-full rounded-lg border border-line bg-bg-raise"
         role="img"
         aria-label={label}
       >
