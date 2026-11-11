@@ -11,6 +11,7 @@ app/src-tauri/gen/
 
 # Local tooling output
 .playwright-mcp/
+.claude/worktrees/
 *.log
 *.pcapng
 

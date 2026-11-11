@@ -1,4 +1,4 @@
-# Klavye Stüdyo — Proje durumu ve devir notu
+# Keymotion — Proje durumu ve devir notu
 
 Son güncelleme: **2026-11-10**. Bu belge, bağlam sıfırlandığında ya da yeni biri projeye katıldığında okunacak **ilk dosyadır**. Ayrıntılar bağlantılı belgelerde.
 
@@ -82,7 +82,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
    - Yan nedenler: IPC sırası, GET_FEATURE stall. Ayrıntı §6.
 9. **Renk doğruluğu.** Palet renkleri soluk çıkıyordu. Neden gamma; çözüm `LedCalibration` (gamma 2.2).
 10. **Kalibrasyon arayüzü.**
-    - Kalibrasyon artık Rust tarafında kalıcı: `%APPDATA%\dev.klavye.studio\calibration.json` (sürümlü; bozuk ya da aralık dışı değerler güvenli varsayılana döner).
+    - Kalibrasyon artık Rust tarafında kalıcı: `%APPDATA%\dev.keymotion\calibration.json` (sürümlü; bozuk ya da aralık dışı değerler güvenli varsayılana döner).
     - Ayarlar sayfasında düzenleniyor. Kaydırıcılar canlı karede anında etki eder; değer 400 ms durunca kaydedilir.
     - Ayna ters kalibrasyonla gösteriyor. Böylece tuş başına modda boyanan renkler aynen geri okunur.
     - Canlı önizlemede parlaklık artık gamma'dan **sonra**, doğrusal uygulanıyor. Önceden sRGB'de ölçekleniyordu; 3/5 parlaklık, kayıtlı tasarımdan çok daha koyu görünüyordu (`0.6^2.2 ≈ 0.32`).
@@ -768,7 +768,7 @@ kb macros "text:ok" - "steps:click:right,wait:200,tap:x" --yes   # FLASH: BÜTÜ
 kb macros --yes                            # FLASH: bütün makroları siler
 kb screen-test --preview e1.png            # ekrana gidecek test desenini PNG olarak yazar (klavyeye dokunmaz)
 kb screen-test --yes                       # FLASH: GIF sayfasına test deseni (16 sayfa, ~2,7 s)
-kb screen-gif "%APPDATA%/dev.klavye.studio/screen/factory/ak980-pro-factory.gif" --yes   # FLASH: fabrika animasyonunu geri yükler (~5 dk)
+kb screen-gif "%APPDATA%/dev.keymotion/screen/factory/ak980-pro-factory.gif" --yes   # FLASH: fabrika animasyonunu geri yükler (~5 dk)
 kb keymap --layer base kp-slash=macro:0 kp-star=macro:0:times:3 --yes   # makroyu tuşa bağla
 ```
 
@@ -1112,7 +1112,7 @@ Kullanıcının fikirleri. Şimdi yapılmayacak; uygulamanın bütün özellikle
     - görsellerin kontrol ve testlerle sınırlanması.
   - Güncel öneri (karar değil):
     - **Tek bir CLI** ajanın tek arayüzü olur (adı açık, ör. `klavye`).
-    - Arkasında klavyeyi tek sahip olarak süren bir **motor** çalışır. Motor penceresizdir; CLI onu gerekince kendisi başlatır. Klavye Stüdyo penceresi de aynı motora bağlanır.
+    - Arkasında klavyeyi tek sahip olarak süren bir **motor** çalışır. Motor penceresizdir; CLI onu gerekince kendisi başlatır. Keymotion penceresi de aynı motora bağlanır.
     - Ajana üç düzeyde serbestlik verilir:
       - ilkel komutlar (renk, tuş, dalga, nabız, süre);
       - JSON sahne dosyası;
@@ -1164,5 +1164,5 @@ Kullanıcının fikirleri. Şimdi yapılmayacak; uygulamanın bütün özellikle
 ## 9. Ortam notları
 
 - Windows 11, Rust 1.99.1 (stable, MSVC), Node 24, pnpm 10, TypeScript 7, WebView2 157.
-- Uygulama adı geçici olarak "Klavye Stüdyo"; kimlik `dev.klavye.studio`.
+- Uygulamanın adı **Keymotion** (2026-11-11, kullanıcının seçimi; önceki geçici ad "Klavye Stüdyo"). Kimlik `dev.keymotion`; ayarlar `%APPDATA%\dev.keymotion`, WebView verisi `%LOCALAPPDATA%\dev.keymotion`. Eski `dev.klavye.studio` klasörleri ilk açılışta taşınır (`app/src-tauri/src/migrate.rs`). Rust paket adı (`klavye-studio`) ve repo adı şimdilik değişmedi.
 - `.claude/launch.json` → "ui" (Vite, 127.0.0.1:1420).

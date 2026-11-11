@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Klavye Stüdyo",
+  "productName": "Keymotion",
   "version": "0.1.0",
-  "identifier": "dev.klavye.studio",
+  "identifier": "dev.keymotion",
   "build": {
     "devUrl": "http://127.0.0.1:1420",
     "frontendDist": "../dist",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Klavye Stüdyo",
+        "title": "Keymotion",
         "width": 1320,
         "height": 860,
         "minWidth": 1040,
@@ -31,7 +31,7 @@
     "active": true,
     "targets": ["nsis"],
     "category": "Utility",
-    "shortDescription": "Klavye kontrol uygulaması",
+    "shortDescription": "Lighting, keys and screen for your keyboard",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

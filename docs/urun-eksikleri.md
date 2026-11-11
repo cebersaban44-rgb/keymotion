@@ -24,20 +24,21 @@ Kaynaklar:
 4. Veri ve tanılama (E).
 5. Ürünleştirme (F) ve repo (G).
 
-Kullanıcının kararını bekleyenler en sonda.
+GitHub sayfası planı (H) ve kullanıcının kararları en sonda.
 
 ## A. Kimlik: isim, logo, uygulama kimliği
 
-- **Şart:** İsim ve logo seçimi. Adaylar ve logo tuvali sohbette sunuldu: Keypane (öneri), Tessera, Keyglow, Keywright. KeyStage, Keylume ve KeyLoom adlarında uygulama zaten var.
-- **Şart ✔:** Uygulama kimliği `dev.klavye.studio` isimle birlikte ilk sürümden önce değişmeli. Kimliğe bağlı olanlar:
+- **Yapıldı (2026-11-11): isim Keymotion, logo üç çizgili "K"** (tuvaldeki E konsepti; kullanıcının seçimi). Elenen adlar: Keypane, Tessera, Keyglow, Keywright, Keystride; KeyStage, Keylume, KeyLoom, KeyPulse ve Keyflow adlarında uygulama zaten var.
+- **Yapıldı: uygulama kimliği** `dev.klavye.studio` → `dev.keymotion`. Kimliğe bağlı olanlar:
   - ayarların klasörü (`%APPDATA%`);
   - kurulumun kayıt defteri anahtarları;
   - güncelleyici;
   - bildirim kimliği.
 
-  Sonradan değişirse kullanıcı verisi eski klasörde kalır. Geliştirme makinesindeki veriler bir kez taşınmalı.
-- **Şart ✔:** İngilizce arayüzde ad yarım çevrilmiş ("Klavye Studio"; `app.name`, ekran kartı örneği). Pencere başlığı İngilizcede de "Klavye Stüdyo" kalıyor.
-- **Şart:** Simge Windows 11'e uygun yeniden çizilmeli. Bugünkü simge degradeli ve parlamalı; 32 pikselde "K" okunmuyor. Gerekenler: ICO (16–256), kurulum simgesi ve tepsi simgesi.
+  Eski klasörler ilk açılışta yeni ada taşınır (`migrate.rs`), WebView verisi de dahil.
+- **Yapıldı:** İngilizce arayüzde yarım çevrilmiş ad ("Klavye Studio"), pencere başlığı ve ekran kartı örneği artık Keymotion.
+- **Yapıldı:** Uygulama simgeleri (ICO 16–256 ve PNG'ler) yeni logodan üretildi. Logoda degrade ve parlama yok; 16 pikselde de okunuyor. Kurulum simgesi ve tepsi simgesi ürünleştirmede yapılacak.
+- **Sonra:** Rust paket adı (`klavye-studio`) ve GitHub repo adı (`klavye-studio`). Repo adının değişmesi dış bağlantıları etkiler; kullanıcıya sorulacak.
 - **Olmalı:** Bağlantı sayfasındaki "Aygıt: SONiX AK980 PRO" satırı çip üreticisinin adını gösteriyor. Model adı yeterli.
 
 ## B. Güven ve güvenlik
@@ -212,11 +213,46 @@ Kullanıcının kararını bekleyenler en sonda.
 - **Ekran stüdyosunun adımları:** Kaynak → Düzenle → Önizle → Yükle, her adımda Vazgeç. Ayrıca kart şablonları ve yazım kılavuzu.
 - **Küçük saldırı yüzeyi:** telemetri yok, sıkı CSP, yalnız `core:default` yetkisi.
 
-## Kullanıcının kararı gerekenler
+## H. GitHub sayfası ve topluluk (sırası gelince)
 
-1. **İsim ve logo** (A).
-2. **Lisans:** MIT/Apache-2.0 mi, GPL-3.0 mı (G)?
-3. **Fabrika animasyonu:** yalnız uyarı mı, yoksa kullanıcının resmi sürücü paketinden yedek alan bir adım mı (B1)?
-4. **Kare sınırı:** 140 mı, 135 mi (B11)?
-5. **Tepsi modunda canlı kartlar:** Rust'ta çizim mi, gizli pencere mi (F)?
-6. **Profiller:** ilk sürümde mi, sonra mı? Dışa/içe aktarma ilk sürümde olmalı (E).
+Kullanıcının notu (2026-11-11): Repo açık kaynak olacağı için sayfalar hem İngilizce hem Türkçe olacak. İçerik:
+
+- ekran görüntüleri: Türkçe ve İngilizce, açık ve koyu tema;
+- kullanım, ayarlar ve bütün özellikler;
+- uygulamanın denendiği ortam: Windows sürümü, klavye modeli ve yazılımı, bağlantı modları.
+
+Büyük açık kaynak masaüstü uygulamalarının repoları incelenip örnek alınacak.
+
+- **README:** İngilizce (`README.md`) ve Türkçe (`README.tr.md`), birbirine bağlantılı. Bölümleri:
+  - kısa tanım ve "son sürümü indir" bağlantısı;
+  - ekran görüntüleri;
+  - özellikler ve bağlantı modlarına göre tablo (`destek-haritasi.md`'den);
+  - desteklenen klavyeler;
+  - kurulum, ilk açılış ve sık sorulanlar;
+  - kurtarma ("bir şey ters giderse");
+  - gizlilik özeti;
+  - lisans ve resmî olmadığı notu.
+- **Kullanım belgeleri:** sayfa sayfa anlatım (Işıklar, Tuş atama, Makrolar, Ekran, Odak, Göstergeler, Hatırlatıcılar, Profiller, Ayarlar), iki dilde, ekran görüntüleriyle. GitHub Pages ya da `docs/` altında.
+- **Geri bildirim yolları:**
+  - issue formları: hata bildirimi (tanılama çıktısı, uygulama sürümü, Windows, klavye yazılımı, bağlantı), özellik isteği, yeni klavye desteği isteği (USB kimliği, HID tanımlayıcıları);
+  - Discussions: soru-cevap ve fikirler;
+  - güvenlik açıkları için `SECURITY.md` ve özel kanal.
+- **Topluluk dosyaları:** `CONTRIBUTING.md` (iki dilde; PR'lar `develop`'a, kontroller, donanım testi kuralları), davranış kuralları, PR şablonu, etiketler (`bug`, `enhancement`, `needs-hardware-test`, `model:…`), sürüm milestone'ları.
+- **Sürümler:** Releases sayfasında imzalı kurulum, SHA-256, değişiklik notu (CHANGELOG'dan), iki dilde kısa özet.
+- **Lisans ve haklar:** LICENSE-MIT ve LICENSE-APACHE, NOTICE (resmî olmadığı notu), üçüncü taraf lisansları, gizlilik (`PRIVACY.md` ve `docs/gizlilik.md`).
+- **Dış katkılar için denetim:** DURUM P3'teki plan (zorunlu inceleme, CODEOWNERS, fork PR'larında gizli bilgilere erişim yok).
+
+## Kararlar (kullanıcı, 2026-11-11)
+
+1. **İsim ve logo:** Keymotion; logo üç çizgili "K", biri turuncu yanıyor (A).
+2. **Lisans:** MIT ve Apache-2.0 ikili lisans ("MIT OR Apache-2.0") (G).
+3. **Fabrika animasyonu:** kullanıcı kararı bana bıraktı (B1). Karar ve gerekçe:
+   - AJAZZ'ın animasyonu (kendi logosu) paketlenmez ve repoya konmaz: telif ve marka hakkı onlara ait.
+   - Kullanıcı resmi sürücüyü kurduysa uygulama animasyonu kendi bilgisayarında bulup yedek alır.
+   - Yedek yoksa ilk yüklemede ve canlı modu açarken açık bir onay alınır.
+   - Resmi sürücünün fabrika animasyonunu geri yükleyebildiği söylenir.
+   - İlk sürüm için Keymotion'ın kendi özgün açılış animasyonu da hazırlanacak; herkes geri dönebileceği bir görsele sahip olur.
+4. **Kare sınırı:** 140, resmi sürücünün sınırı (B11).
+5. **Profiller:** ilk sürümde olacak (E). Tasarımı önce önizlemeyle gösterilecek.
+6. **Bütün "Şart" ve "Olmalı" maddeleri yapılacak.** Açılış ekranı dahil. Kullanıcı, alt ajanların kullanılabileceğini ve dış referanslara bakılabileceğini söyledi; amaç ürünün en üst seviyede olması.
+7. **Açık kalan:** tepsi modunda canlı kartların nasıl çizileceği (Rust'ta mı, gizli pencerede mi) ürünleştirme başlarken kararlaştırılacak (F).

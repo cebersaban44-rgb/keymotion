@@ -1,6 +1,6 @@
 # Destek haritası: klavyeler, bağlantı modları ve özellikler
 
-Bu belge Klavye Stüdyo'nun hangi klavyeleri tanıdığını, her bağlantı modunda neyin çalıştığını ve başka hangi klavyelerin sonradan eklenebileceğini anlatır. İlk sürümde README ve GitHub sayfası bu belgeden hazırlanacak (2026-11-11).
+Bu belge Keymotion'ın hangi klavyeleri tanıdığını, her bağlantı modunda neyin çalıştığını ve başka hangi klavyelerin sonradan eklenebileceğini anlatır. İlk sürümde README ve GitHub sayfası bu belgeden hazırlanacak (2026-11-11).
 
 İşaretler:
 
