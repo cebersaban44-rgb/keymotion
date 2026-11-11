@@ -628,6 +628,26 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Kullanıcı sonra canlı modu kapatıp önceki görseli geri yükledi (254 sayfa, 37 sn).
       - Konu kapandı. Aralıklı bir hatırlatmanın gün boyu çalışması ve "uzaktayken bekle" gerçek kullanımda gözlenecek.
 
+36. **Arayüzün profesyonelleştirilmesi (ürünleşme öncesi).**
+    - **Kullanıcının isteği (2026-11-11):** "Şimdilik uygulama için bu kadar özellik yeter." Küçük yazılar "AI slop" görünüyor; Türkçe sayfada İngilizce var mı bakılsın; tasarım büyük bir şirketin geliştirici ekibinden çıkmış gibi olsun; bütün arayüzler kontrol edilsin. Genel Bakış'taki klavye yalnız görsel, çalışır hâle gelsin; gelmeyen veriler (pil) incelensin. Sonra bağlam sıkıştırılıp ürünleştirmeye geçilecek.
+    - **Karar:** Sohbetteki önizlemeden sonra (Hatırlatıcılar sayfasının önce/sonra hâli, Türkçe ve İngilizce) "Evet, bütün tasarımı bu yönde uygula."
+    - **Dil:** `docs/arayuz-dili.md` yazıldı: "siz" hitabı, düğmeler fiil kökü, cümle düzeni, kısa açıklama, "·" zinciri ve "X: Y" kalıbı yok, iç işleyiş (RAM, flash, 04 20, RGB565) arayüze girmez; Amerikan İngilizcesi; terim sözlüğü (Hazır efektler, Günlük yükleme sınırı, Saat sayfası…).
+      - 988 anahtarın Türkçesi ve İngilizcesi bu kurallara göre yeniden yazıldı (dört yardımcı ajan alan alan öneri dosyası üretti, uygulanmadan önce gözden geçirildi).
+      - Türkçe ekranda İngilizce kalanlar: arka uçtan gelen ham hata metinleri (yaklaşık 15 yer), "clock page" ekran okuyucu etiketi, "Firmware", "Gamma". Hepsi giderildi.
+      - Hatalar `lib/errors.ts` ile kısa iki dilli mesaja çevriliyor ("Klavyeye ulaşılamadı. USB kablosunun takılı olduğundan emin olup tekrar deneyin."); ham metin konsola gider.
+    - **Görünüm:**
+      - Arayüz yazı tipi Windows'un kendi Segoe UI Variable'ı (önceden Bricolage Grotesque, Instrument Sans, JetBrains Mono). Tek genişlikli yazı yalnız onaltılık renk ve adres gibi değerlerde (`.mono`).
+      - Başlığın üstündeki büyük harfli, aralıklı küçük etiketler kalktı; sayfa başlığı tek stil (`.page-title`, 28 px), altında tek satır açıklama (`.page-desc`). Bölüm başlıkları cümle düzeninde, kalın 14 px (`.eyebrow` yeniden tanımlandı). Kenar çubuğu grup adları `.nav-group`.
+      - Kumlu doku, parlayan durum noktaları, eksi harf aralığı kalktı; köşeler 8 px; küçük yazılar bir basamak büyüdü (en küçük 11 px).
+    - **Genel Bakış:**
+      - Klavye çizimi artık gerçek: USB'de klavyenin o anki ışığı saniyede yaklaşık dört kez okunup gösteriliyor (Işıklar sayfasındaki ayna); uygulama öndeyken basılan tuşlar çizimde iner ve çerçevelenir. Işık kapalıysa "Klavyenin ışığı kapalı" yazar. USB dışında "Canlı görünüm yalnızca USB kablosuyla".
+      - Pil: Klavyenin yazılımı USB'de pil düzeyi vermiyor (`docs/research/protokol-ff13.md` §3, C15); yalnız Bluetooth (ve yapılmamış 2.4 GHz alıcı) veriyor. Uygulama son Bluetooth okumasını model başına `battery.json`'a yazıyor ve USB'de "Son okuma Bluetooth ile, N önce" diye gösteriyor; kablodayken klavyenin şarj olduğunu söylüyor. Hiç okunmadıysa "Henüz okunmadı".
+      - Özellik satırı: düzen, tuş sayısı, ekran, topuz; bağlantı kartında aygıt adı, Bluetooth adı/adresi.
+      - Pil kartı ve bağlantı kartı artık yalnız gerçek veriyi gösteriyor; uydurma değer yok.
+    - **Türkçede bir tuzak:** "ekran kartı" Türkçede grafik kartı demek. Ekrana giden kartlar için "kart" denir; "ekran kartı" yalnız Sistem göstergelerindeki grafik kartı için kalır.
+    - **Biçim yardımcıları:** `percent()` (%40 / 40%), `decimal()` (2,8 / 2.8), `fmtSeconds` dil birimleriyle; `useAgo` gün de söylüyor.
+    - **Bekleyen (sonraya):** Sayının cümle içinde yer değiştirdiği birkaç metin (ör. "{n} tuş kaydedilmedi") parçalı anahtarlarla kuruluyor; doğal sıra için `t()`'ye yer tutucu desteği eklenebilir. İngilizce çoğullar birkaç yerde düzeltildi, hepsi değil.
+
 ## 4. Sistem nasıl kurulu (as-built)
 
 ```
@@ -677,6 +697,7 @@ app/
                 lib/gauges.ts (göstergeler durumu; sahte arka uç için kuralların kopyası, gauges.rs ile birlikte değişir),
                 lib/calendar.ts (takvim durumu; sahte arka uçta örnek toplantılar ve kart zamanlarının kopyası),
                 lib/reminders.ts (hatırlatıcı durumu, şablonlar; sahte arka uçta zamanlamanın kopyası),
+                lib/errors.ts (arka uç hatası → kısa iki dilli mesaj), lib/i18n.ts (metinler; percent, decimal, useAgo),
                 pages/screen/ (Ekran Stüdyosu: common.tsx ortak adımlar, FileFlow.tsx, TextFlow.tsx, SlideFlow.tsx,
                 MatchLights.tsx, LivePanel.tsx, CalendarPanel.tsx takvim katmanı ve ekleme adımları; PomodoroPanel.tsx
                 odak zamanlayıcısının kartı, Focus.tsx'te).
@@ -806,6 +827,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 48 | Göstergeler sayfası açılınca değerler 2–3 sn "okunamadı" kaldı | Ekran kartı sayacının (PDH) ilk açılışı ~1 sn sürüyor; okuma paylaşılan kilit tutulurken yapılıyordu | Yavaş sistem çağrılarını paylaşılan kilidin dışında yap, yavaş açılanı hızlıların arkasına al. Yeni bir okuyucunun sürelerini önce ölç (`kb-winsys` probe). |
 | 49 | Kullanıcı "uygulama çöktü" dedi (2026-11-11) | Uygulama açıkken aynı klasörde `vite build` çalıştırıldı; arayüz sunucusu art arda onlarca yenileme gönderdi ve açık pencere takıldı (süreç ayaktaydı, Windows çökme kaydı yok) | Uygulama açıkken arayüzü derleme; denetim için `tsc --noEmit` yeter. Derleme gerekiyorsa önce uygulamayı kapat ya da başka bir klasöre derle. "Çöktü" denince önce süreç, arayüz sunucusu ve sunucunun günlüğüne bak. |
 | 50 | `cargo build` ve bir test koşusu çıktısız "exit 101" verdi (2026-11-11) | C: sürücüsü dolmuştu (0 MB boş); `target` 35 GB, bunun 17 GB'ı `debug\incremental` | Çıktısız derleme hatasında önce boş yere bak (`Get-PSDrive C`). Silmeden önce kullanıcıya sor; `target\debug\incremental` güvenle silinir, kendiliğinden yeniden oluşur. |
+| 51 | Tarayıcı panelinde sayfa sayfa metin taraması ilerlemedi (2026-11-11) | Sayfa geçişleri animasyonlu; panel gizliyken tarayıcı animasyonları çalıştırmıyor, yeni sayfa hiç açılmıyor | Bütün sayfaları gezen denetimleri gerçek uygulamada (CDP, görünür pencere) yap. Panel gizliyse ekran görüntüsü de zaman aşımına uğrar; `get_page_text` ya da CDP kullan. |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 
@@ -849,7 +871,9 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
         - **Hatırlatıcı yapıldı** (madde 35): Araçlar → Hatırlatıcılar. Bir kez, her gün belli saatte ya da aralıkla; tuşlarda dalga, istenirse ekranda kart (takvimin altında, zamanlayıcının üstünde), isteğe bağlı ses.
           - **Kullanıcı klavyede denedi (2026-11-11): "Denedim, çalışıyor."** Kartlı ve sesli tek seferlik hatırlatma vaktinde çaldı, 2 dk sonra şarkı kartı döndü. Konu kapandı.
           - **Kalınan yer (2026-11-11):** hatırlatıcı bitti. Kullanıcının `reminders.json`'unda kendi denemesi (tek seferlik, geçti) duruyor.
-          - **Sıradaki: oyun oturumu** (ön plandaki uygulama: açılınca kart, kapanınca özet). Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
+          - **Arayüz profesyonelleştirildi** (madde 36): bütün metinler `docs/arayuz-dili.md`'ye göre, Windows'un yazı tipi, sade başlıklar, canlı Genel Bakış klavyesi, son Bluetooth pil okuması.
+          - **Kalınan yer (2026-11-11):** kullanıcı yeni özellikleri şimdilik durdurdu ("bu kadar özellik yeter"). Sıradaki iş **ürünleştirme** (P3): kurulum dosyası, imza, güncelleyici, tepsi servisi, ilk sürüm belgeleri. Ondan önce bağlam sıkıştırılacak.
+          - Sonraya: oyun oturumu (ön plandaki uygulama: açılınca kart, kapanınca özet). Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.
      4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar **33** yükleme: uygulamanın kaydında 31 (elle, canlı ve geri yükleme; 2026-11-10'da 24, 2026-11-11'de 7), CLI ile E1 ve E4.

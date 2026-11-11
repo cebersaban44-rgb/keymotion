@@ -60,7 +60,9 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
   const mirror = useMirror(live);
   const pressed = usePressedKeys(kb.geometry ?? null);
   const pressedClass = useMemo(() => Object.fromEntries([...pressed].map((l) => [l, "is-pressed"])), [pressed]);
-  const lightsOff = !!mirror && Object.keys(mirror).length > 0 && Object.values(mirror).every((c) => c === "#000000");
+  // Off when nothing but the indicator keys (Num Lock, Caps Lock, Fn) is lit.
+  const lit = mirror ? Object.values(mirror).filter((c) => c !== "#000000").length : 0;
+  const lightsOff = !!mirror && Object.keys(mirror).length > 0 && lit <= 3;
   const bleChannel = kb.bleName?.match(/-(\d)$/)?.[1];
   const usbFeatures = kb.modes.find((m) => m.connection === "usb")?.features ?? [];
   const model = kb.modelName.replace(`${kb.vendor} `, "");

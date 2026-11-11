@@ -31,6 +31,11 @@ Metinler `app/src/lib/i18n.ts`'te durur. Her anahtarın Türkçesi ve İngilizce
 - Ne oldu + ne yapılmalı, en çok iki kısa cümle. Teknik kod ve İngilizce hata metni gösterilmez.
 - Örnek: "Klavyeye ulaşılamadı. USB kablosunun takılı olduğundan emin olup tekrar deneyin."
 
+### Tuzaklar
+- **"Ekran kartı" grafik kartı demektir.** Klavye ekranına giden kartlar için yalnız "kart" denir; "ekran kartı" yalnız Sistem göstergelerindeki grafik kartı içindir.
+- Sayı ve birim için `percent()`, `decimal()`, `fmtSeconds`, `useAgo` kullanılır; `%` ve `sn` elle yazılmaz.
+- Arka uç hatası kullanıcıya gösterilmez; `friendlyError` (lib/errors.ts) kısa bir mesaja çevirir.
+
 ### Yabancı kelime
 - Türkçe karşılığı yerleşmiş olan kullanılır (TDK'ya bakılır). Marka, ürün, dosya biçimi ve tuş adları olduğu gibi kalır: USB, Bluetooth, Windows, GIF, PNG, Fn, Num Lock.
 
