@@ -15,11 +15,14 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 chrono.workspace = true
+chrono-tz = "0.10"
+icalendar = { version = "0.17", default-features = false, features = ["parser"] }
 kb-core.workspace = true
 kb-devices.workspace = true
 kb-protocol.workspace = true
 kb-transport.workspace = true
 kb-winsys.workspace = true
+rrule = "0.14"
 serde.workspace = true
 serde_json.workspace = true
 tauri = { version = "2", features = [] }
@@ -31,7 +34,7 @@ ts-rs = "12"
 gif.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows.workspace = true
+windows = { workspace = true, features = ["Web_Http", "Web_Http_Filters", "Web_Http_Headers"] }
 windows-version = "0.100"
 
 [lints]

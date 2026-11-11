@@ -18,9 +18,10 @@ import { tNow, useT } from "./lib/i18n";
 import { useKeymap } from "./lib/keymap";
 import { useLayout } from "./lib/layout";
 import { startLive } from "./lib/live";
-import { nowPlayingCard, pomodoroCard, pomodoroWords } from "./lib/liveCards";
+import { calendarCard, calendarWords, nowPlayingCard, pomodoroCard, pomodoroWords } from "./lib/liveCards";
 import { startPomodoro, usePomodoro, DEFAULT_SETTINGS } from "./lib/pomodoro";
 import { useGauges } from "./lib/gauges";
+import { startCalendar, useCalendar } from "./lib/calendar";
 import { useMacros } from "./lib/macros";
 import { useScreen } from "./lib/screen";
 import { useActiveKeyboard, useApp } from "./lib/store";
@@ -100,6 +101,14 @@ function useLiveScreen() {
       startPomodoro((card) =>
         pomodoroCard(card, usePomodoro.getState().state?.settings ?? DEFAULT_SETTINGS, pomodoroWords(tNow)),
       ),
+    [],
+  );
+  useEffect(
+    () =>
+      startCalendar((card) => {
+        const name = useCalendar.getState().state?.sources.find((s) => s.id === card.event.source)?.name ?? "";
+        return calendarCard(card, name, calendarWords(tNow, useApp.getState().locale));
+      }),
     [],
   );
   // Whether the system gauges are on (the Lighting page says so).

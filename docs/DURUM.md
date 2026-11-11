@@ -48,6 +48,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | **Ekran Stüdyosu**: dosyadan (resim, GIF, video; kırpma, süre), yazı kartları (5 şablon), slayt; önizleme, onay, kütüphane, fabrika animasyonuna dönüş | ✅ Kullanıcı klavyede hepsini denedi (maddeler 23–25). |
 | Ekran → **Işıkları uydur**: görselin paletinden tuş tasarımı (degrade, tek renk, görsel), Işıklar'da taslak | ✅ Kullanıcı mor kartta klavyede doğruladı (madde 26). |
 | Ekran → **Canlı ekran**: canlı mod, günlük yükleme bütçesi, "Çalan şarkı" kartı, kapatınca önceki görseli geri yükleme; "Ekranda ne görünür?" sırası (zamanlayıcı → şarkı → kendi görselin), kaynak bitince kendi görseline dönüş | ✅ Kullanıcı klavyede denedi (madde 27). Sıra, kendi görseline dönüş, bekleyen kartın gösterilmesi ve "Şimdi gönder" de klavyede denendi, çalışıyor (maddeler 31–32). |
+| Ekran → Canlı ekran → **Takvim**: Google, Outlook ve Apple iCloud takvimleri (paylaşım adresiyle, yalnız okuma); toplantıdan 10 dk önce ekrana kart (saat, ad, yer, sonraki toplantı), başladıktan 5 dk sonra gider; ekran sırasında en üstte; başlamadan 1 dk önce Esc turuncu yanıp söner (RAM) | 🟡 Okuma ve tekrarlar testli; sahte arka uçla kart ve ekleme akışı, gerçek uygulamada gerçek bir Google takviminin okunması ve tuş hatırlatması denendi (madde 34). Kullanıcının kendi takvimiyle denemesi bekleniyor. |
 | Araçlar → **Sistem göstergeleri**: işlemci (1…0), ekran kartı (Q…P) ve bellek (A…;) yükü tuş sıralarında çubuk; ses düzeyi topuz çevrilince F1…F12'de 1,5 sn; Windows'ta mikrofon sessizken seçilen tuş kırmızı; Isı ya da kendi rengi, soluk iz, geri kalan tuşlar karanlık ya da soluk renk, parlaklık (flash'sız). Zamanlayıcı çubukların üstünde, ses ve mikrofon zamanlayıcının üstünde | ✅ Uygulamada uçtan uca denendi (CDP); kullanıcı klavyede denedi: "Çalışıyor" (madde 33). |
 | Araçlar → **Odak zamanlayıcısı** (Pomodoro tekniği): odak ve mola süreleri; bütün klavye fazın rengiyle dolu başlar ve süre azaldıkça seçilen yönde boşalır (flash'sız; yön, renkler, parlaklık, nabız, faz geçişi, ses seçilebilir; "Klavyede dene"); faz başında ekran kartı; kenar çubuğunda kalan süre | ✅ Kullanıcı klavyede denedi: ışıklar, bildirim sesi, geçiş efektleri ve süreler çalışıyor (maddeler 28–30). Canlı mod açıkken faz kartları da klavyede çalışıyor (madde 31). |
 
@@ -561,6 +562,26 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **Kullanıcının denemesi (2026-11-11):** Klavyede denedi: "Çalışıyor." Konu kapandı.
     - **Sonraya:** ses spektrumu (WASAPI loopback) ayrı ve daha büyük iş; ekran kartı sıcaklığı (NVIDIA) isteğe bağlı.
 
+34. **Takvim (Faz C, üçüncü kaynak).**
+    - **Kullanıcının kararları (2026-11-11):** Sohbetteki önizlemeden sonra "Plan güzel. Uygulayabilirsin." Google, Outlook ve Apple; hangileri eklenebiliyorsa.
+      - Kart biçimi "Sıradaki": iri başlangıç saati, bitişi, başlık, yer, sonraki toplantı.
+      - 10 dk önce gelir, başladıktan 5 dk sonra gider (seçenekler: 5/10/15/30 dk önce; başlayınca / 5 dk sonra / bitene kadar).
+      - Ekran sırasında en üstte: takvim → odak zamanlayıcısı → çalan şarkı → kendi görselin.
+      - Tuşla hatırlatma açık: başlamadan 1 dk önce Esc turuncu yanıp söner.
+      - Gün boyu süren etkinliklere kart gelmez (listede "gün boyu" diye görünür).
+    - **Kaynak:** Üçü de takvimi bir paylaşım adresiyle (iCal, `.ics`) veriyor: Google "iCal biçiminde gizli adres", Outlook "takvim yayımla" ICS bağlantısı, Apple "Ortak Takvim" (`webcal://`). Uygulama `https://` ve `webcal://` kabul ediyor; düz `http://` reddediliyor (gizli adres açıkta gitmesin). En çok 8 takvim.
+      - Adres gizli: `calendar.json`'da duruyor, günlüğe yazılmıyor, arayüze gitmiyor (yalnız sunucu adı). Okuma Windows'un kendi HTTP istemcisiyle (`Windows.Web.Http`, önbelleksiz), 15 dk'da bir ya da "Şimdi oku" ile; hata olursa 2 dk sonra yeniden.
+      - Ekleme adım adım: takvimi seç → adresi yapıştır (sağlayıcıya göre "adres nereden alınır" adımları, Google ve Apple için gizlilik uyarısı) → okuma; her adımda Vazgeç, bitince "… eklendi · N etkinlik".
+    - **Okuma** (`ics.rs`): `icalendar` ayrıştırıcısı ve `rrule` ile tekrarlar (RRULE, EXDATE, RDATE), taşınan/değişen tekrarlar (RECURRENCE-ID), iptaller. Saat dilimleri: UTC, IANA adı (Google, Apple), Windows adı (Outlook, "Turkey Standard Time"; CLDR tablosu), satıcı yolu ("/mozilla.org/…/Europe/Istanbul"), bilinmeyen adda VTIMEZONE'un standart farkı, yüzen saatlerde bilgisayarın saat dilimi. Bir günden geriye iki gün ileriye açılıyor.
+    - **Ekranı paylaşma** (`live.rs`): Ekranı tutan tek bir bayrak yerine tutan kaynakların listesi (`set_hold`, `held_by`, `LiveState.holders`). Takvim kart zamanında ekranı tutar; zamanlayıcı bu sırada faz kartını bekletir, takvim bırakınca o anki kartını yeniden ister; şarkı herkes bırakınca geri gelir; ikisi de yoksa 5 sn sonra kendi görsel. Yakın toplantılar (3 dk'dan az ara) kendi görsel olmadan birbirine geçer. Kartta yalnız kesin saat ve gün sözcüğü var, bu yüzden başlarken yeniden yüklenmez (toplantı başına yaklaşık 2 yükleme).
+    - **Tuş hatırlatması:** Yeni ışık katmanı `LightLayer::Reminders` (en üstte, yalnız kendi tuşları). Başka katman yoksa o dakika klavyenin geri kalanı karanlık olur (`04 20` bütün klavyeyi kaplıyor); sayfa bunu söylüyor. Canlı mod gerektirmiyor. "Dene" 4 sn yakıyor.
+    - **Doğrulama:**
+      - 224 test (yeni: Google/Outlook/Apple biçimli örnek takvimler, tekrar, istisna, taşınan tekrar, iptal, katlanmış satır, Windows ve özel saat dilimleri, gün boyu, süre; kart zamanları, yakın toplantılar, hatırlatma dakikası, sonraki toplantı, adres denetimi, katmanlar). clippy ve rustfmt temiz.
+      - Tarayıcıda sahte arka uçla: ekleme adımları, yanlış adres uyarısı, eklenen takvim, yaklaşan toplantılar, "kart zamanı", sıradaki kart saati; kart çizildi ve sahte ekrana gitti ("GOOGLE TAKVİM · BUGÜN", 02:48 – 03:03, "Günlük toplantı", "Meet · Sonra 04:45 Tasarım incelemesi").
+      - Gerçek uygulamada (CDP): Google'ın herkese açık Türkiye resmi tatiller takvimi yaklaşık 1 sn'de okundu (yalnız gün boyu etkinlikler; kart ve yükleme yok). "Dene" ile Esc 4 sn yanıp söndü (`Reminders` katmanı 1 LED). Takvim kaldırıldı; günlükte adres değil yalnız sunucu adı var.
+      - Kullanıcının canlı modu kapalıydı; gerçek bir toplantı kartı klavyeye yüklenmedi (flash'a yazma yok).
+    - **Bekleyen:** Kullanıcının kendi takvimiyle denemesi (canlı mod açıkken bir toplantı kartı ve tuş hatırlatması).
+
 ## 4. Sistem nasıl kurulu (as-built)
 
 ```
@@ -587,9 +608,11 @@ app/
                 atamanın ve makroların tek kaydıdır. screen_lib.rs: ekran kütüphanesi (screen/library.json,
                 library/<id>.bin, live.bin). live.rs: canlı mod, yükleme bütçesi, bekleyen kart işçisi, kendi görseline zamanlı dönüş.
                 now_playing.rs: Windows medya oturumlarından "Çalan şarkı" (müzik durunca 5 dk sonra dönüş).
+                calendar.rs: takvimler (okuma iş parçacığı, kart zamanları, ekranı tutma, tuş hatırlatması, calendar.json);
+                ics.rs: iCal okuma (tekrarlar, saat dilimleri, Windows bölge adları).
                 pomodoro.rs: odak zamanlayıcısı (süre, bütün klavyede boşalan ışık katmanı, "Klavyede dene", Windows bildirim sesi, faz kartı isteği).
                 gauges.rs: sistem göstergeleri (okuma iş parçacığı, çubuk ve uyarı katmanları, gauges.json). Işık katmanları
-                device.rs'te: Göstergeler → Zamanlayıcı → Uyarılar, en üstte Işıklar önizlemesi (`LightLayer`, `compose`).
+                device.rs'te: Göstergeler → Zamanlayıcı → Uyarılar → Hatırlatmalar, en üstte Işıklar önizlemesi (`LightLayer`, `compose`).
   src/          React 19 + TS 7 + Tailwind 4 + motion. lib/ipc.ts (tipli köprü, seri kuyruk), lib/lighting.ts
                 (Işıklar durumu), lib/mirror.ts, components/KeyboardView.tsx (geometriden çizim, boyama),
                 components/CalibrationCard.tsx, components/UnsavedDialog.tsx, lib/unsaved.ts (kaydedilmemiş
@@ -603,8 +626,10 @@ app/
                 lib/pomodoro.ts (odak zamanlayıcısı durumu, sahte arka uç; `?pomofast` ile dakika 2 sn),
                 lib/pomodoroLights.ts (tuş ışığı kuralları, pomodoro.rs ile aynı; ikisi birlikte değişir),
                 lib/gauges.ts (göstergeler durumu; sahte arka uç için kuralların kopyası, gauges.rs ile birlikte değişir),
+                lib/calendar.ts (takvim durumu; sahte arka uçta örnek toplantılar ve kart zamanlarının kopyası),
                 pages/screen/ (Ekran Stüdyosu: common.tsx ortak adımlar, FileFlow.tsx, TextFlow.tsx, SlideFlow.tsx,
-                MatchLights.tsx, LivePanel.tsx; PomodoroPanel.tsx odak zamanlayıcısının kartı, Focus.tsx'te).
+                MatchLights.tsx, LivePanel.tsx, CalendarPanel.tsx takvim katmanı ve ekleme adımları; PomodoroPanel.tsx
+                odak zamanlayıcısının kartı, Focus.tsx'te).
   src/bindings/ `cargo test` ile ÜRETİLİR (TS tipleri, geometri JSON'u, efekt kataloğu). Elle düzenlenmez.
 tools/cdp.mjs   Çalışan uygulamanın WebView2'sine CDP ile JS çalıştırır ya da ekran görüntüsü alır (uçtan uca test).
 .github/workflows/ci.yml   PR ve birleştirmelerde Windows'ta kontroller (bkz. gelistirme-akisi.md).
@@ -621,7 +646,7 @@ rustfmt.toml, .gitattributes   120 sütun biçim; LF satır sonu.
 ## 5. Nasıl çalıştırılır ve test edilir
 
 ```bash
-cargo test --workspace            # 205 test; TS tiplerini ve mock JSON'ları da üretir
+cargo test --workspace            # 224 test; TS tiplerini ve mock JSON'ları da üretir
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check        # rustfmt.toml: 120 sütun
 cd app && pnpm typecheck
@@ -736,7 +761,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 
 1. `git switch develop && git pull`, sonra yeni iş için dal aç. PR açınca auto-merge ve auto-fix'i aç (`gelistirme-akisi.md`).
 2. **Tuş atama ve makrolar bitti** (madde 19–21). Klavye fabrika durumunda: atama varsayılan, makro yok; `keymap.json` ve `macros.json` kayıtları da öyle.
-3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Odak zamanlayıcısı yapıldı ve kullanıcı denedi (maddeler 28–30); ekran sırası ve kendi görseline dönüş yapıldı ve kullanıcı denedi (maddeler 31–32); LED canlı katmanı "Sistem göstergeleri" olarak yapıldı ve kullanıcı klavyede denedi (madde 33).**
+3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Odak zamanlayıcısı yapıldı ve kullanıcı denedi (maddeler 28–30); ekran sırası ve kendi görseline dönüş yapıldı ve kullanıcı denedi (maddeler 31–32); LED canlı katmanı "Sistem göstergeleri" olarak yapıldı ve kullanıcı klavyede denedi (madde 33). Takvim yapıldı (madde 34); kullanıcının kendi takvimiyle denemesi bekleniyor.**
    - **Kullanıcının isteği:** "Ürünün farkı burada ortaya çıkacak." Ayrıca: "Buradaki görüntüyü de kaybetmeyelim" (stok ana sayfa) ve "birden fazla ekran görüntüsü veya başka ne yapabiliriz".
    - **Kısa sonuçlar:**
      - Resim ve GIF: evet, en çok 140 kare.
@@ -765,7 +790,9 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
         - **Ekran sayfası düzeni** (maddeler 29–30): Görseller ve Canlı ekran sekmeleri; kütüphane sayfalı; Odak zamanlayıcısı kendi sayfasında.
         - **LED canlı katmanı yapıldı: Araçlar → Sistem göstergeleri** (madde 33). İşlemci, ekran kartı, bellek çubukları; topuzla ses düzeyi; mikrofon sessiz uyarısı. Zamanlayıcı çubukların üstünde, ses ve mikrofon zamanlayıcının üstünde (kullanıcının kararı).
           - **Kullanıcı klavyede denedi (2026-11-11): "Çalışıyor."** Kullanıcının ayarı: göstergeler açık, bellek dahil, Isı, Karanlık, parlaklık 4.
-          - **Sıradaki:** takvim, hatırlatıcı, oyun oturumu. Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
+        - **Takvim yapıldı** (madde 34): Ekran → Canlı ekran'da en üstteki katman. Google, Outlook, Apple iCloud ya da herhangi bir paylaşım adresi; toplantıdan önce kart, 1 dk önce Esc yanıp söner.
+          - **Bekleyen:** kullanıcının kendi takvimini ekleyip canlı mod açıkken denemesi.
+          - **Sıradaki:** hatırlatıcı, oyun oturumu. Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.
      4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar **20** yükleme: uygulamanın kaydında 18 (elle, canlı ve geri yükleme), CLI ile E1 ve E4.
@@ -922,7 +949,8 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
   - [x] Odak zamanlayıcısı (maddeler 28–30; kullanıcı klavyede denedi). Açık: faz kartları canlı mod açıkken klavyede denenmedi.
   - [x] Ekran sayfası sekmeleri ve sayfalı kütüphane (madde 29).
   - [x] LED canlı katmanı: Sistem göstergeleri (madde 33; kullanıcı klavyede denedi).
-  - [ ] Faz C'nin geri kalanı: takvim, hatırlatıcı, oyun oturumu; ses spektrumu.
+  - [x] Takvim (madde 34; kullanıcının kendi takvimiyle denemesi bekleniyor).
+  - [ ] Faz C'nin geri kalanı: hatırlatıcı, oyun oturumu; ses spektrumu.
 - [ ] **Kendi firmware katmanımız** (kullanıcının fikri, 2026-11-10; araştırma hattı, şimdilik yapılmıyor). Stok firmware'de olmayan canlı ekranı (RAM'den çizim) kendi firmware'imizle ya da stok firmware'e yamayla eklemek.
   - Emsal: kardeş AK820 Pro'da QMK portu ve Jackrabbit firmware'i; panoyu firmware çiziyor, flash aşınması yok.
   - Proje kuralıyla çakışıyor: klavyeye firmware, bootloader ya da ISP komutu gönderilmez. Bu kuralı yalnızca kullanıcı kaldırabilir.

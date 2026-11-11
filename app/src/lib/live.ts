@@ -41,6 +41,7 @@ const mock = {
     track: null,
     restore: null,
     held: false,
+    holders: [],
     songStop: "back",
     own: null,
     goingBack: null,
@@ -126,10 +127,13 @@ if (!inTauri && typeof window !== "undefined") {
   (window as unknown as { __ksMockTrack: (p: boolean) => void }).__ksMockTrack = mockTrackPlaying;
 }
 
-/** The mock Pomodoro holds the screen (browser preview only). */
-export function mockLiveHeld(held: boolean) {
-  if (inTauri || mock.state.held === held) return;
-  mock.state.held = held;
+/** A mock source holds the screen or lets go (browser preview only). */
+export function mockLiveHold(source: string, on: boolean) {
+  if (inTauri) return;
+  const has = mock.state.holders.includes(source);
+  if (on === has) return;
+  mock.state.holders = on ? [...mock.state.holders, source] : mock.state.holders.filter((h) => h !== source);
+  mock.state.held = mock.state.holders.length > 0;
   mockEmit();
 }
 
