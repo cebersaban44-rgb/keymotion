@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { EffectRequest } from "../bindings/EffectRequest";
 import type { LedColor } from "../bindings/LedColor";
+import type { MessageKey } from "./i18n";
 import { applyEffect, applyPerKey, lightingLoad, lightingSave } from "./ipc";
 
 export type LightingTab = "effects" | "per-key";
@@ -38,6 +39,8 @@ export interface LightingState {
   setEffect: (patch: Partial<EffectRequest>) => void;
   markApplied: (e: EffectRequest) => void;
   markPerKeySaved: (colors: ColorMap, brightness: number) => void;
+  /** Back to the effect last stored on the keyboard. */
+  revertEffect: () => void;
   revertPerKey: () => void;
   paint: (leds: number[], color: string | null) => void;
   setPerKey: (m: ColorMap) => void;
@@ -229,9 +232,14 @@ export const useLighting = create<LightingState>((set, get) => {
     markApplied: (appliedEffect) => update({ appliedEffect, savedPerKey: null, draft: null }),
     markPerKeySaved: (colors, brightness) =>
       update({ savedPerKey: { colors: { ...colors }, brightness }, appliedEffect: null, draft: null }),
+    revertEffect: () => {
+      const { appliedEffect, draft } = get();
+      if (appliedEffect) update({ effect: { ...appliedEffect }, draft: draft === "effect" ? null : draft });
+    },
     revertPerKey: () => {
-      const saved = get().savedPerKey;
-      if (saved) update({ perKey: { ...saved.colors }, perKeyBrightness: saved.brightness, draft: null });
+      const { savedPerKey: saved, draft } = get();
+      if (saved)
+        update({ perKey: { ...saved.colors }, perKeyBrightness: saved.brightness, draft: draft === "per-key" ? null : draft });
     },
     paint: (leds, color) => {
       const next = { ...get().perKey };
@@ -275,7 +283,7 @@ export function rgbToHex(r: number, g: number, b: number): string {
   return `#${[r, g, b].map((n) => n.toString(16).padStart(2, "0")).join("")}`;
 }
 
-function sameEffect(a: EffectRequest, b: EffectRequest): boolean {
+export function sameEffect(a: EffectRequest, b: EffectRequest): boolean {
   return (
     a.mode === b.mode &&
     a.color.toLowerCase() === b.color.toLowerCase() &&
@@ -321,17 +329,24 @@ export function toLedColors(map: ColorMap): LedColor[] {
 /** Effects that react to key presses rather than animating on their own. */
 export const REACTIVE_EFFECTS = new Set([2, 3, 13, 14, 15]);
 
-export const SWATCHES = [
-  "#ffffff",
-  "#ff3b30",
-  "#ff8a3d",
-  "#ffcc00",
-  "#a8e43a",
-  "#34c759",
-  "#2ee6d6",
-  "#38b6ff",
-  "#3a5bff",
-  "#8b5cf6",
-  "#e040fb",
-  "#ff4fa3",
+/**
+ * The one colour palette of the app's light pickers (effects, per-key,
+ * focus timer, gauges) and of the calibration pattern. Names are read out
+ * instead of the colour code.
+ */
+export const PALETTE: readonly { hex: string; name: MessageKey }[] = [
+  { hex: "#ffffff", name: "color.white" },
+  { hex: "#ff3b30", name: "color.red" },
+  { hex: "#ff8a3d", name: "color.orange" },
+  { hex: "#ffcc00", name: "color.yellow" },
+  { hex: "#a8e43a", name: "color.lime" },
+  { hex: "#34c759", name: "color.green" },
+  { hex: "#2ee6d6", name: "color.cyan" },
+  { hex: "#38b6ff", name: "color.sky" },
+  { hex: "#3a5bff", name: "color.blue" },
+  { hex: "#8b5cf6", name: "color.violet" },
+  { hex: "#e040fb", name: "color.magenta" },
+  { hex: "#ff4fa3", name: "color.pink" },
 ];
+
+export const SWATCHES = PALETTE.map((p) => p.hex);

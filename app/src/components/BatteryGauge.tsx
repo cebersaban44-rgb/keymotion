@@ -37,7 +37,6 @@ export function BatteryGauge({ percent }: { percent: number | null }) {
             strokeWidth={9}
             strokeLinecap="round"
             fill="none"
-            style={on ? { filter: `drop-shadow(0 0 4px ${color})` } : undefined}
           />
         );
       })}

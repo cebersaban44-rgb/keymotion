@@ -1,5 +1,5 @@
 import { RefreshCw } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Sidebar } from "./components/Sidebar";
@@ -206,6 +206,8 @@ export default function App() {
   };
 
   return (
+    // Follows Windows' "Animation effects" setting.
+    <MotionConfig reducedMotion="user">
     <div className="flex h-full bg-bg">
       <div className="contents" inert={guard.asking || safetyOpen}>
         <Sidebar />
@@ -232,5 +234,6 @@ export default function App() {
         {guard.asking && <UnsavedDialog items={guard.items} onCancel={guard.cancel} />}
       </AnimatePresence>
     </div>
+    </MotionConfig>
   );
 }
