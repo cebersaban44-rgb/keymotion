@@ -1,11 +1,13 @@
-// Bağlantı: how the keyboard is connected, where its mode switch sits, and
-// what the app can do over each connection. The mode is chosen only with the
-// switch on the back of the keyboard; the app cannot change it.
+// Bağlantı: how the keyboard is connected, where its mode switch sits, what
+// the app can do over each connection, and the keyboard clock. The mode is
+// chosen only with the switch on the back of the keyboard; the app cannot
+// change it.
 
 import { Bluetooth, Check, Radio, Usb, type LucideIcon } from "lucide-react";
 import type { Connection as Conn } from "../bindings/Connection";
 import type { Feature } from "../bindings/Feature";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
+import { ClockCard } from "../components/ClockCard";
 import { ModeSwitch } from "../components/ModeSwitch";
 import { connectionKey, useT, type MessageKey } from "../lib/i18n";
 
@@ -51,8 +53,8 @@ export function Connection({ kb }: { kb: KeyboardInfo }) {
   const featuresOf = (c: Conn) => kb.modes.find((m) => m.connection === c)?.features ?? [];
   const columns = COLUMNS.filter((c) => kb.modes.some((m) => m.connection === c));
 
-  const details: [MessageKey, string, string?][] = [];
-  if (kb.product) details.push(["overview.mode.device", kb.product]);
+  // The model name, not the USB product string (which names the chip maker).
+  const details: [MessageKey, string, string?][] = [["overview.mode.device", kb.modelName]];
   if (kb.firmware) details.push(["conn.firmware", kb.firmware, "num"]);
   if (kb.bleName) details.push(["overview.mode.btName", kb.bleName]);
   if (channel) details.push(["overview.mode.channel", `${channel} / 3`, "num"]);
@@ -65,8 +67,8 @@ export function Connection({ kb }: { kb: KeyboardInfo }) {
         <p className="page-desc">{t("conn.desc")}</p>
       </header>
 
-      <section className="card grid grid-cols-[minmax(0,1fr)_auto] items-start gap-8 p-5 max-[760px]:grid-cols-1">
-        <div className="flex flex-col gap-1">
+      <section className="card flex flex-wrap items-start justify-between gap-x-8 gap-y-5 p-5">
+        <div className="flex min-w-[280px] flex-1 flex-col gap-1">
           <span className="text-[12px] text-ink-3">{t("conn.current")}</span>
           <span className="flex items-center gap-2.5 text-[20px] font-semibold" data-connection-current={kb.connection}>
             <Icon size={20} className="text-signal" aria-hidden />
@@ -144,6 +146,8 @@ export function Connection({ kb }: { kb: KeyboardInfo }) {
           <p>{t("conn.note.modes")}</p>
         </div>
       </section>
+
+      {(kb.features.includes("clock") || featuresOf("usb").includes("clock")) && <ClockCard usb={kb.features.includes("clock")} />}
     </div>
   );
 }

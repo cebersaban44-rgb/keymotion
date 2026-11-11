@@ -25,7 +25,7 @@ export const WEEKDAYS = 0b001_1111;
 export const WEEKEND = 0b110_0000;
 export const EVERY_DAY = 0b111_1111;
 
-export const DEFAULT_REMINDERS: ReminderSettings = { enabled: true, screen: true, stayMin: 2, awayWait: true };
+export const DEFAULT_REMINDERS: ReminderSettings = { enabled: true, screen: true, stayMin: 2, awayWait: true, notify: false };
 export const STAY_CHOICES = [1, 2, 5] as const;
 export const EVERY_CHOICES = [20, 30, 45, 60, 90] as const;
 

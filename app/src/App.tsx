@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { Lock } from "lucide-react";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -11,12 +11,11 @@ import {
   getUiEnvironment,
   onCloseRequested,
   onKeyboardsChanged,
-  refreshKeyboards,
   setUnsavedFlag,
   setWindowTheme,
 } from "./lib/ipc";
 import { useUnsaved } from "./lib/unsaved";
-import { tNow, useT } from "./lib/i18n";
+import { tNow, useT, type MessageKey } from "./lib/i18n";
 import { useKeymap } from "./lib/keymap";
 import { useLayout } from "./lib/layout";
 import { startLive } from "./lib/live";
@@ -27,7 +26,9 @@ import { startCalendar, useCalendar } from "./lib/calendar";
 import { startReminders } from "./lib/reminders";
 import { useMacros } from "./lib/macros";
 import { useScreen } from "./lib/screen";
-import { useActiveKeyboard, useApp } from "./lib/store";
+import { OFFLINE_KEYBOARD } from "./lib/offline";
+import { useActiveKeyboard, useApp, type PageId } from "./lib/store";
+import { Calendar } from "./pages/Calendar";
 import { Connection } from "./pages/Connection";
 import { Keymap } from "./pages/Keymap";
 import { Macros } from "./pages/Macros";
@@ -39,6 +40,7 @@ import { Overview } from "./pages/Overview";
 import { Screen, ScreenUploadToast } from "./pages/Screen";
 import { ScreenNotices } from "./pages/screen/Safety";
 import { Settings } from "./pages/Settings";
+import { Welcome } from "./pages/Welcome";
 
 function useBootstrap() {
   const setKeyboards = useApp((s) => s.setKeyboards);
@@ -147,24 +149,42 @@ function useCloseGuard() {
   return { items, asking: asking && unsaved, cancel: () => setAsking(false) };
 }
 
-function EmptyState() {
+/** Pages that change the keyboard's own settings: without it they say so. */
+const LOCKED_PAGE: Partial<Record<PageId, { title: MessageKey; desc: MessageKey }>> = {
+  lighting: { title: "nav.lighting", desc: "light.desc" },
+  keymap: { title: "nav.keymap", desc: "km.eyebrow" },
+  macros: { title: "nav.macros", desc: "mc.eyebrow" },
+};
+
+/** A keyboard page while no keyboard is connected. */
+function DeviceLocked({ page }: { page: PageId }) {
   const t = useT();
+  const setPage = useApp((s) => s.setPage);
+  const info = LOCKED_PAGE[page];
   return (
-    <div className="flex h-[calc(100vh-8rem)] flex-col items-center justify-center gap-5 text-center">
-      <div className="relative h-24 w-24">
-        <span className="absolute inset-0 animate-ping rounded-full bg-signal/15" />
-        <img src="/app-icon.svg" alt="" className="relative h-24 w-24 opacity-90" />
-      </div>
-      <h1 className="font-display text-[30px] font-semibold">{t("device.none.title")}</h1>
-      <p className="max-w-[46ch] text-[13.5px] text-ink-2">{t("device.none.body")}</p>
-      <button
-        type="button"
-        onClick={() => refreshKeyboards()}
-        className="flex items-center gap-2 rounded-full bg-signal px-4 py-2 text-[13px] font-medium text-signal-ink transition-transform active:scale-[0.97]"
-      >
-        <RefreshCw size={14} />
-        {t("device.refresh")}
-      </button>
+    <div className="flex flex-col gap-6" data-locked={page}>
+      {info && (
+        <header className="flex flex-col gap-2">
+          <h1 className="page-title">{t(info.title)}</h1>
+          <p className="page-desc">{t(info.desc)}</p>
+        </header>
+      )}
+      <section className="card flex flex-wrap items-center gap-4 p-5">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-ink-2">
+          <Lock size={18} aria-hidden />
+        </span>
+        <div className="min-w-[220px] flex-1">
+          <h2 className="eyebrow">{t("locked.title")}</h2>
+          <p className="mt-0.5 text-[13px] text-ink-2">{t("locked.body")}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setPage("overview")}
+          className="h-9 rounded-lg border border-line px-3 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+        >
+          {t("locked.steps")}
+        </button>
+      </section>
     </div>
   );
 }
@@ -182,7 +202,22 @@ export default function App() {
 
   const content = () => {
     if (page === "settings") return <Settings />;
-    if (!kb) return loaded ? <EmptyState /> : null;
+    if (!loaded) return null;
+    // Tools and the screen library work without the keyboard.
+    const tool = kb ?? OFFLINE_KEYBOARD;
+    switch (page) {
+      case "focus":
+        return <Focus kb={tool} />;
+      case "gauges":
+        return <Gauges kb={tool} />;
+      case "reminders":
+        return <Reminders kb={tool} />;
+      case "calendar":
+        return <Calendar />;
+      case "screen":
+        return <Screen kb={tool} />;
+    }
+    if (!kb) return page === "overview" || page === "connection" ? <Welcome /> : <DeviceLocked page={page} />;
     switch (page) {
       case "overview":
         return <Overview kb={kb} />;
@@ -194,14 +229,6 @@ export default function App() {
         return <Keymap kb={kb} />;
       case "macros":
         return <Macros kb={kb} />;
-      case "screen":
-        return <Screen kb={kb} />;
-      case "focus":
-        return <Focus kb={kb} />;
-      case "gauges":
-        return <Gauges kb={kb} />;
-      case "reminders":
-        return <Reminders kb={kb} />;
     }
   };
 
@@ -211,7 +238,7 @@ export default function App() {
     <div className="flex h-full bg-bg">
       <div className="contents" inert={guard.asking || safetyOpen}>
         <Sidebar />
-        <main className="relative flex-1 overflow-y-auto">
+        <main className="relative min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
           <AnimatePresence mode="wait">
             <motion.div
               key={page + (kb?.key ?? "none")}
@@ -219,7 +246,7 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.18 }}
-              className="mx-auto min-h-full max-w-[1240px] px-10 pt-9 pb-12"
+              className="@container mx-auto min-h-full max-w-[1240px] px-6 pt-7 pb-10 min-[1200px]:px-10 min-[1200px]:pt-9"
             >
               {/* A page that fails to draw leaves the sidebar usable. */}
               <ErrorBoundary>{content()}</ErrorBoundary>

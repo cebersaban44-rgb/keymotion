@@ -66,8 +66,11 @@ export function SlideTile({ onStart }: { onStart: () => void }) {
 }
 
 /** Three library pictures fanned out, or plain panels when it is empty. */
+const NO_ITEMS: ScreenItem[] = [];
+
 function SlideStackArt() {
-  const items = useScreen((s) => s.state?.items ?? []);
+  // The store value itself (lesson 33): a fresh [] each call loops forever.
+  const items = useScreen((s) => s.state?.items) ?? NO_ITEMS;
   const picks = items.slice(0, 3);
   return (
     <div className="relative h-[90px] w-[200px]">
@@ -261,7 +264,7 @@ export function SlideFlow({
           void addFiles([...e.dataTransfer.files]);
         }}
       >
-        <div className="grid grid-cols-[480px_minmax(280px,1fr)] gap-6">
+        <div className="grid grid-cols-1 gap-6 @min-[860px]:grid-cols-[480px_minmax(280px,1fr)]">
           <div className="flex flex-col gap-2">
             <div className="relative h-[270px] w-[480px] overflow-hidden rounded-lg bg-black">
               {show ? (
@@ -529,7 +532,8 @@ function LibraryPicker({
 }) {
   const t = useT();
   const itemName = useItemName();
-  const items = useScreen((s) => s.state?.items ?? []);
+  // The store value itself (lesson 33): a fresh [] each call loops forever.
+  const items = useScreen((s) => s.state?.items) ?? NO_ITEMS;
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2/40 p-3">
       <div className="flex items-center justify-between">

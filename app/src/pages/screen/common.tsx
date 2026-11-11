@@ -26,7 +26,6 @@ import {
   PROVEN_FRAMES,
   W,
   fromBlob,
-  pagesFor,
   toRgba,
   uploadSeconds,
   type Prepared,
@@ -306,15 +305,8 @@ export function Stats({ frames, loopMs }: { frames: number; loopMs: number }) {
   return (
     <div className="num flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-ink-2">
       <span>{t("sc.frames", { count: frames })}</span>
-      {frames > 1 && (
-        <span>
-          {t("sc.loop")}: {fmtSeconds(loopMs / 1000)}
-        </span>
-      )}
-      <span>{t("sc.pages", { count: pagesFor(frames) })}</span>
-      <span>
-        {t("sc.uploadTime")}: ~{fmtSeconds(uploadSeconds(frames))}
-      </span>
+      {frames > 1 && <span>{t("sc.loopOf", { time: fmtSeconds(loopMs / 1000) })}</span>}
+      <span>{t("sc.uploadAbout", { time: fmtSeconds(uploadSeconds(frames)) })}</span>
     </div>
   );
 }
@@ -417,7 +409,7 @@ export function PreviewPanel({
 
   return (
     <>
-      <div className="grid grid-cols-[480px_minmax(280px,1fr)] gap-6">
+      <div className="grid grid-cols-1 gap-6 @min-[860px]:grid-cols-[480px_minmax(280px,1fr)]">
         <div className="flex flex-col gap-2">
           <div className="relative">
             <FramePlayer frames={prepared.frames} delaysMs={prepared.delaysMs} className="h-[270px] w-[480px] rounded-lg bg-black" />
@@ -633,16 +625,10 @@ export function ConfirmUpload({
         <div className="flex gap-4">
           <FramePlayer frames={[preview]} delaysMs={[100]} className="h-[68px] w-[120px] shrink-0 rounded-md bg-black" />
           <div className="num flex flex-col gap-0.5 text-[13px] text-ink-2">
-            <span>
-              {t("sc.frames", { count: frames })}
-              {frames > 1 ? ` · ${t("sc.loop")} ${fmtSeconds(loopMs / 1000)}` : ""}
-            </span>
-            <span>
-              {t("sc.pages", { count: pagesFor(frames) })} · ~{fmtSeconds(uploadSeconds(frames))}
-            </span>
-            <span>
-              {t("sc.confirm.todayCount")}: {(state?.uploadsToday ?? 0) + 1}
-            </span>
+            <span>{t("sc.frames", { count: frames })}</span>
+            {frames > 1 && <span>{t("sc.loopOf", { time: fmtSeconds(loopMs / 1000) })}</span>}
+            <span>{t("sc.uploadAbout", { time: fmtSeconds(uploadSeconds(frames)) })}</span>
+            <span>{t("sc.confirm.todayNth", { n: (state?.uploadsToday ?? 0) + 1 })}</span>
           </div>
         </div>
         <ul className="flex flex-col gap-2 text-[13px] text-ink-2">

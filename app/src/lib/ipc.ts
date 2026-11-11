@@ -51,6 +51,16 @@ export async function getUiEnvironment(): Promise<UiEnvironment> {
   return invoke<UiEnvironment>("ui_environment");
 }
 
+/** Open one of the project's own pages in the browser (the backend opens
+ *  nothing else). */
+export async function openLink(url: string): Promise<void> {
+  if (!inTauri) {
+    window.open(url, "_blank", "noopener");
+    return;
+  }
+  await invoke("open_link", { url });
+}
+
 export async function setWindowTheme(theme: ThemePreference): Promise<void> {
   if (!inTauri) return;
   await invoke("set_window_theme", { theme });

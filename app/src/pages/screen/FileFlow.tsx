@@ -219,7 +219,7 @@ function FileEditor({ source, onPrepared }: { source: Source; onPrepared: (p: Pr
 
   return (
     <>
-      <div className="grid grid-cols-[480px_minmax(280px,1fr)] gap-6">
+      <div className="grid grid-cols-1 gap-6 @min-[860px]:grid-cols-[480px_minmax(280px,1fr)]">
         <div className="flex flex-col gap-2">
           <CropCanvas source={source} framing={framing} onFraming={setFraming} atMs={cursor} dither={dither} />
           <p className="text-[12px] text-ink-3">{t("sc.preview.editNote")}</p>

@@ -1673,11 +1673,15 @@ pub struct ReminderSettings {
     /// Repeating reminders wait while nobody is at the computer and count
     /// again from the return (owner's choice, 2026-11-11).
     pub away_wait: bool,
+    /// A Windows notification each time, too. Without the keyboard on the
+    /// USB cable reminders always come as a notification, since the keys
+    /// cannot light up.
+    pub notify: bool,
 }
 
 impl Default for ReminderSettings {
     fn default() -> Self {
-        Self { enabled: true, screen: true, stay_min: 2, away_wait: true }
+        Self { enabled: true, screen: true, stay_min: 2, away_wait: true, notify: false }
     }
 }
 
