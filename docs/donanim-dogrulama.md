@@ -465,7 +465,11 @@ Uygulamanın Ekran sayfası; kullanıcı kendi dosyalarıyla denedi.
 - **Nasıl:** Gerçek uygulama (debug), CDP ile. Klavye USB'de. Kartsız (yalnız ışık) deneme: ekrana yükleme yok, flash'a yazma yok. Kullanıcının göstergeleri kendi ayarında kapalıydı; altta başka katman yoktu.
 - **"Dene":** 12:49:06 UTC'de `Nudges` katmanı başladı (ilk karede 0 LED: şerit klavyenin solundan giriyor), 12:49:09'da durdu ("no light layer left; keyboard reverts to its saved effect"). 3 sn'de 2 kare `FF` ile reddedildi (bilinen ara sıra `FF`).
 - **Zamanlanmış hatırlatma:** 13:50 (yerel) için kurulan yalnız ışıklı, tek seferlik bir hatırlatma 12:50:00.89 UTC'de çaldı (`late_s=1`: saniyelik tik), dalga 3 sn sürdü; hatırlatma kapandı, satırda "geçti" yazdı. Sonra silindi.
-- **Bekleyen:** Kullanıcının gözle denemesi (dalganın rengi ve hızı) ve kartlı bir hatırlatmanın ekrana gelmesi (2 yükleme).
+- **Kullanıcının denemesi (2026-11-11, klavyede):** "Denedim, çalışıyor."
+  - Canlı mod açık (Yoğun plan). Kartlı ve sesli, tek seferlik bir hatırlatma 14:06:00 UTC'de (17:06) vaktinde çaldı (`late_s=0`). Kart 16 sayfada 2,8 sn'de yüklendi.
+  - 2 dk sonra (14:08:01) altta çalan şarkının kartı yüklendi (2,8 sn): kart bitince alttaki geri geldi.
+  - 14:08:17'de kullanıcı canlı modu kapatıp önceki görseli geri yükledi: 254 sayfa, 37 sn.
+- **Yükleme sayısı:** Uygulamanın kaydında toplam **31** (2026-11-10'da 24, 2026-11-11'de 7). CLI ile yapılan E1 ve E4 de eklenince **33**.
 
 ### Sistem göstergeleri ışık katmanı (`04 20`, yalnızca RAM) — 2026-11-10
 

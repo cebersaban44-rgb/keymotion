@@ -49,7 +49,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
 | Ekran → **Işıkları uydur**: görselin paletinden tuş tasarımı (degrade, tek renk, görsel), Işıklar'da taslak | ✅ Kullanıcı mor kartta klavyede doğruladı (madde 26). |
 | Ekran → **Canlı ekran**: canlı mod, günlük yükleme bütçesi, "Çalan şarkı" kartı, kapatınca önceki görseli geri yükleme; "Ekranda ne görünür?" sırası (zamanlayıcı → şarkı → kendi görselin), kaynak bitince kendi görseline dönüş | ✅ Kullanıcı klavyede denedi (madde 27). Sıra, kendi görseline dönüş, bekleyen kartın gösterilmesi ve "Şimdi gönder" de klavyede denendi, çalışıyor (maddeler 31–32). |
 | Ekran → Canlı ekran → **Takvim**: Google, Outlook ve Apple iCloud takvimleri (paylaşım adresiyle, yalnız okuma); toplantıdan 10 dk önce ekrana kart (saat, ad, yer, sonraki toplantı), başladıktan 5 dk sonra gider; ekran sırasında en üstte; başlamadan 1 dk önce Esc turuncu yanıp söner (RAM) | ✅ Okuma ve tekrarlar testli; gerçek uygulamada gerçek bir Google takviminin okunması ve tuş hatırlatması denendi. Kullanıcı kendi Google takvimini gizli adresle ekledi, kartı "Klavyede 1 dk göster" ile klavyede gördü, 1 dk sonra kendi görseli döndü (madde 34). Toplantıdan önce kendiliğinden gelen kart gerçek bir toplantıda henüz gözlenmedi. |
-| Araçlar → **Hatırlatıcılar**: bir kez, her gün belli saatte ya da çalışma saatlerinde aralıkla; vakti gelince tuşlarda hatırlatmanın renginde bir dalga (RAM), istenirse ekranda kart ("saat önde", 2 dk), isteğe bağlı Windows bildirim sesi; aralıklılar bilgisayar başında değilken bekler | 🟡 Zamanlama testli; sahte arka uçla ekleme, düzenleme, silme ve kartın ekrana gelişi; gerçek uygulamada "Dene" dalgası ve yalnız ışıklı bir hatırlatmanın vaktinde çalması denendi (madde 35). Kullanıcının klavyede denemesi bekleniyor. |
+| Araçlar → **Hatırlatıcılar**: bir kez, her gün belli saatte ya da çalışma saatlerinde aralıkla; vakti gelince tuşlarda hatırlatmanın renginde bir dalga (RAM), istenirse ekranda kart ("saat önde", 2 dk), isteğe bağlı Windows bildirim sesi; aralıklılar bilgisayar başında değilken bekler | ✅ Zamanlama testli; gerçek uygulamada "Dene" dalgası ve yalnız ışıklı bir hatırlatma denendi. Kullanıcı kartlı ve sesli bir hatırlatmayı klavyede denedi: vaktinde çaldı, kart geldi, 2 dk sonra alttaki şarkı kartı döndü (madde 35). |
 | Araçlar → **Sistem göstergeleri**: işlemci (1…0), ekran kartı (Q…P) ve bellek (A…;) yükü tuş sıralarında çubuk; ses düzeyi topuz çevrilince F1…F12'de 1,5 sn; Windows'ta mikrofon sessizken seçilen tuş kırmızı; Isı ya da kendi rengi, soluk iz, geri kalan tuşlar karanlık ya da soluk renk, parlaklık (flash'sız). Zamanlayıcı çubukların üstünde, ses ve mikrofon zamanlayıcının üstünde | ✅ Uygulamada uçtan uca denendi (CDP); kullanıcı klavyede denedi: "Çalışıyor" (madde 33). |
 | Araçlar → **Odak zamanlayıcısı** (Pomodoro tekniği): odak ve mola süreleri; bütün klavye fazın rengiyle dolu başlar ve süre azaldıkça seçilen yönde boşalır (flash'sız; yön, renkler, parlaklık, nabız, faz geçişi, ses seçilebilir; "Klavyede dene"); faz başında ekran kartı; kenar çubuğunda kalan süre | ✅ Kullanıcı klavyede denedi: ışıklar, bildirim sesi, geçiş efektleri ve süreler çalışıyor (maddeler 28–30). Canlı mod açıkken faz kartları da klavyede çalışıyor (madde 31). |
 
@@ -622,7 +622,11 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Gerçek uygulamada (CDP, flash'a yazmadan): "Dene" ile `Nudges` katmanı 3 sn çalıştı. Yalnız ışıklı, tek seferlik bir hatırlatma 13:50:00'de çaldı (1 sn geç: saniyelik tik), dalga 3 sn sürdü, satırda "geçti" yazdı. Deneme hatırlatması silindi; `reminders.json` boş.
       - Kartlı bir hatırlatmanın gerçek klavyede ekrana gelmesi denenmedi (yükleme kullanıcının denemesine bırakıldı).
     - **Yan olay:** Derlerken C: sürücüsü doldu (0 MB); `cargo build` ve bir test koşusu çıktısız hata verdi. Kullanıcının onayıyla `target\debug\incremental` (17 GB) silindi, 12 GB açıldı (ders 50).
-    - **Bekleyen:** Kullanıcının kendi hatırlatmalarıyla klavyede denemesi: dalga, ses ve kartlı bir hatırlatma.
+    - **Kullanıcının denemesi (2026-11-11, klavyede):** "Denedim, çalışıyor." Uygulamanın günlüğünden:
+      - 17:05'te kartlı ve sesli, tek seferlik bir hatırlatma kaydetti (simge damla). 17:06:00'da tam vaktinde çaldı (`late_s=0`); kart 16 sayfada 2,8 sn'de yüklendi.
+      - 2 dk sonra (17:08:01) altta çalan şarkının kartı geri geldi ("alttaki geri gelir" kuralı).
+      - Kullanıcı sonra canlı modu kapatıp önceki görseli geri yükledi (254 sayfa, 37 sn).
+      - Konu kapandı. Aralıklı bir hatırlatmanın gün boyu çalışması ve "uzaktayken bekle" gerçek kullanımda gözlenecek.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -809,7 +813,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 
 1. `git switch develop && git pull`, sonra yeni iş için dal aç. PR açınca auto-merge ve auto-fix'i aç (`gelistirme-akisi.md`).
 2. **Tuş atama ve makrolar bitti** (madde 19–21). Klavye fabrika durumunda: atama varsayılan, makro yok; `keymap.json` ve `macros.json` kayıtları da öyle.
-3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Odak zamanlayıcısı yapıldı ve kullanıcı denedi (maddeler 28–30); ekran sırası ve kendi görseline dönüş yapıldı ve kullanıcı denedi (maddeler 31–32); LED canlı katmanı "Sistem göstergeleri" olarak yapıldı ve kullanıcı klavyede denedi (madde 33). Takvim yapıldı ve kullanıcı kendi takvimiyle klavyede denedi (madde 34). Hatırlatıcı yapıldı (madde 35); kullanıcının klavyede denemesi bekleniyor. Sıradaki: oyun oturumu.**
+3. **Ekran: Faz A ve B bitti, Faz C sürüyor.** Derin araştırma: `research/ekran-derin-arastirma.md`. **Odak zamanlayıcısı yapıldı ve kullanıcı denedi (maddeler 28–30); ekran sırası ve kendi görseline dönüş yapıldı ve kullanıcı denedi (maddeler 31–32); LED canlı katmanı "Sistem göstergeleri" olarak yapıldı ve kullanıcı klavyede denedi (madde 33). Takvim yapıldı ve kullanıcı kendi takvimiyle klavyede denedi (madde 34). Hatırlatıcı yapıldı ve kullanıcı klavyede denedi (madde 35). Sıradaki: oyun oturumu.**
    - **Kullanıcının isteği:** "Ürünün farkı burada ortaya çıkacak." Ayrıca: "Buradaki görüntüyü de kaybetmeyelim" (stok ana sayfa) ve "birden fazla ekran görüntüsü veya başka ne yapabiliriz".
    - **Kısa sonuçlar:**
      - Resim ve GIF: evet, en çok 140 kare.
@@ -843,11 +847,12 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
           - Kayıtlı adres `calendar.json`'da (gizli; sohbete ve belgelere yazdırma). Toplantı adları da yazılmaz.
           - Takvim bitti.
         - **Hatırlatıcı yapıldı** (madde 35): Araçlar → Hatırlatıcılar. Bir kez, her gün belli saatte ya da aralıkla; tuşlarda dalga, istenirse ekranda kart (takvimin altında, zamanlayıcının üstünde), isteğe bağlı ses.
-          - **Kalınan yer (2026-11-11):** hatırlatıcı bitti; kullanıcının klavyede denemesi bekleniyor (dalga, ses, kartlı bir hatırlatma). Kullanıcının `reminders.json`'u boş (deneme hatırlatması silindi).
+          - **Kullanıcı klavyede denedi (2026-11-11): "Denedim, çalışıyor."** Kartlı ve sesli tek seferlik hatırlatma vaktinde çaldı, 2 dk sonra şarkı kartı döndü. Konu kapandı.
+          - **Kalınan yer (2026-11-11):** hatırlatıcı bitti. Kullanıcının `reminders.json`'unda kendi denemesi (tek seferlik, geçti) duruyor.
           - **Sıradaki: oyun oturumu** (ön plandaki uygulama: açılınca kart, kapanınca özet). Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.
-     4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar **28** yükleme: uygulamanın kaydında 26 (elle, canlı ve geri yükleme; 2026-11-10'da 24, 2026-11-11'de 2), CLI ile E1 ve E4.
+     4. Her yükleme `donanim-dogrulama.md`'ye yazılır. Bugüne kadar **33** yükleme: uygulamanın kaydında 31 (elle, canlı ve geri yükleme; 2026-11-10'da 24, 2026-11-11'de 7), CLI ile E1 ve E4.
    - **Faz B planı** (hepsi yapıldı, maddeler 24–26; plan kayıt için duruyor):
      - **Kullanıcının arayüz kuralı** (2026-11-10, Faz A geri bildirimi):
        - adımlar görünür olsun;
@@ -1002,7 +1007,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
   - [x] Ekran sayfası sekmeleri ve sayfalı kütüphane (madde 29).
   - [x] LED canlı katmanı: Sistem göstergeleri (madde 33; kullanıcı klavyede denedi).
   - [x] Takvim (madde 34; kullanıcı kendi takvimiyle klavyede denedi).
-  - [x] Hatırlatıcı (madde 35; kullanıcının klavyede denemesi bekleniyor).
+  - [x] Hatırlatıcı (madde 35; kullanıcı klavyede denedi).
   - [ ] Faz C'nin geri kalanı: oyun oturumu; ses spektrumu.
 - [ ] **Kendi firmware katmanımız** (kullanıcının fikri, 2026-11-10; araştırma hattı, şimdilik yapılmıyor). Stok firmware'de olmayan canlı ekranı (RAM'den çizim) kendi firmware'imizle ya da stok firmware'e yamayla eklemek.
   - Emsal: kardeş AK820 Pro'da QMK portu ve Jackrabbit firmware'i; panoyu firmware çiziyor, flash aşınması yok.
