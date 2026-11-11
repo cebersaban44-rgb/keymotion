@@ -9,6 +9,7 @@ const RULES: [RegExp, MessageKey][] = [
   [/screen upload stopped/i, "err.uploadStopped"],
   [/live mode is off/i, "err.liveOff"],
   [/fn key cannot be reassigned/i, "err.fn"],
+  [/unsupported keyboard firmware/i, "err.firmware"],
   [/factory backup cannot be removed/i, "err.factory"],
   [/larger than|too large|at most 4096|frames; the keyboard takes|more than \d+ frames/i, "err.tooLarge"],
   [/not a gif|not a readable gif|no frames|expected binary data|unsupported/i, "err.badFile"],

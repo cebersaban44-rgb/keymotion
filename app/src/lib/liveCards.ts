@@ -8,7 +8,7 @@ import type { PomodoroSettings } from "../bindings/PomodoroSettings";
 import type { ReminderCard } from "../bindings/ReminderCard";
 import type { ReminderIcon } from "../bindings/ReminderIcon";
 import type { TrackInfo } from "../bindings/TrackInfo";
-import type { MessageKey } from "./i18n";
+import type { MessageKey, Translate } from "./i18n";
 import { phaseColor } from "./pomodoro";
 import { H, STILL_DELAY_MS, W, type Prepared } from "./screenImport";
 import { compose565, makeLayers } from "./screenText";
@@ -198,6 +198,8 @@ export interface PomodoroWords {
   name: string;
   phase: Record<PomodoroPhase, string>;
   round: string;
+  /** "3 rounds", for the finished series. */
+  rounds: (n: number) => string;
   min: string;
   next: string;
   nextFocus: string;
@@ -210,12 +212,13 @@ export interface PomodoroWords {
 }
 
 /** The card's words in the current language. */
-export function pomodoroWords(tNow: (key: MessageKey) => string): PomodoroWords {
+export function pomodoroWords(tNow: Translate): PomodoroWords {
   return {
     label: tNow("pomo.card.label"),
     name: tNow("pomo.card.name"),
     phase: { focus: tNow("pomo.phase.focus"), shortBreak: tNow("pomo.phase.shortBreak"), longBreak: tNow("pomo.phase.longBreak") },
     round: tNow("pomo.card.round"),
+    rounds: (n) => tNow("pomo.card.rounds", { count: n }),
     min: tNow("pomo.card.min"),
     next: tNow("pomo.card.next"),
     nextFocus: tNow("pomo.card.nextFocus"),
@@ -261,7 +264,7 @@ export async function pomodoroCard(c: PomodoroCard, s: PomodoroSettings, w: Pomo
   const title = done ? (c.complete ? w.doneComplete : w.doneStopped) : w.phase[c.phase];
   const big = done ? `${c.focusMin} ${w.min}` : `${String(c.minutes).padStart(2, "0")}:00`;
   let foot: string;
-  if (done) foot = `${c.focusDone} ${w.round} · ${w.ended} ${endTime}`;
+  if (done) foot = `${w.rounds(c.focusDone)} · ${w.ended} ${endTime}`;
   else if (c.phase === "focus")
     foot = c.focusDone + 1 >= c.rounds ? `${w.next}: ${s.longMin} ${w.min} ${w.nextLong}` : `${w.next}: ${s.shortMin} ${w.min} ${w.nextShort}`;
   else if (c.phase === "shortBreak") foot = `${w.next}: ${s.focusMin} ${w.min} ${w.nextFocus}`;

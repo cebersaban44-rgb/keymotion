@@ -3,7 +3,7 @@ import type { Connection } from "./Connection";
 import type { Feature } from "./Feature";
 
 /**
- * What one connection mode of a model offers, for "switch to USB to
- * unlock" guidance in the UI.
+ * What the app offers in one connection mode of a model, for the
+ * connection map and "switch to USB to unlock" guidance in the UI.
  */
 export type ModeInfo = { connection: Connection, features: Array<Feature>, verified: boolean, };

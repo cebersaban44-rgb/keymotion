@@ -1,9 +1,9 @@
-// Genel Bakış: the connected keyboard at a glance. Its drawing shows the
+// Genel BakÄ±ÅŸ: the connected keyboard at a glance. Its drawing shows the
 // keyboard's real light (read back over USB about four times a second) and
 // the keys held down while the app is in front; below, the connection,
 // the battery and what this connection allows.
 
-import { BatteryCharging, Check, Lock, Usb } from "lucide-react";
+import { BatteryCharging, Check, ChevronRight, Lock, Usb } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { Feature } from "../bindings/Feature";
 import type { GeometryInfo } from "../bindings/GeometryInfo";
@@ -11,12 +11,14 @@ import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import { BatteryGauge } from "../components/BatteryGauge";
 import { ClockCard } from "../components/ClockCard";
 import { KeyboardView } from "../components/KeyboardView";
-import { ModeSwitch } from "../components/ModeSwitch";
 import { hidFromCode } from "../lib/hidCodes";
 import { connectionKey, featureKey, useAgo, useT } from "../lib/i18n";
 import { useMirror } from "../lib/mirror";
+import { useApp } from "../lib/store";
+import { CONNECTION_ICON, connectionSummary } from "./Connection";
 
-const ALL_FEATURES: Feature[] = ["lighting", "per-key-rgb", "keymap", "macros", "options", "screen", "clock", "battery"];
+// Keyboard options (sleep, Win lock) are not built yet, so they are not listed.
+const ALL_FEATURES: Feature[] = ["lighting", "per-key-rgb", "keymap", "macros", "screen", "clock", "battery"];
 
 /** LEDs of the keys held down while the window has focus. The Fn key and
  *  keys the system keeps (Win, Print Screen) send nothing here. */
@@ -52,6 +54,25 @@ function usePressedKeys(geometry: GeometryInfo | null): ReadonlySet<number> {
   return down;
 }
 
+const isRed = (c: string | undefined) => {
+  if (!c) return false;
+  const byte = (i: number) => parseInt(c.slice(i, i + 2), 16);
+  return byte(1) > 180 && byte(3) < 60 && byte(5) < 60;
+};
+
+/** Whether the keyboard is charging, read from its Fn light. The firmware
+ *  lights Fn red while the battery charges, whatever the effect (seen on the
+ *  AK980 PRO, 2026-11-10); the USB read-back shows it. There is no battery
+ *  level over USB, but this tells "charging" apart. A red effect would light
+ *  the keys next to Fn too, so those must not be red. */
+function isCharging(kb: KeyboardInfo, mirror: Record<number, string> | null): boolean {
+  const led = (id: string) => kb.geometry?.keys.find((k) => k.id === id)?.led;
+  const [fn, space, rctrl] = [led("fn"), led("space"), led("rctrl")];
+  if (!mirror || fn == null) return false;
+  const neighboursRed = [space, rctrl].every((l) => l != null && isRed(mirror[l]));
+  return isRed(mirror[fn]) && !neighboursRed;
+}
+
 export function Overview({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
   const ago = useAgo();
@@ -63,14 +84,16 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
   // Off when nothing but the indicator keys (Num Lock, Caps Lock, Fn) is lit.
   const lit = mirror ? Object.values(mirror).filter((c) => c !== "#000000").length : 0;
   const lightsOff = !!mirror && Object.keys(mirror).length > 0 && lit <= 3;
-  const bleChannel = kb.bleName?.match(/-(\d)$/)?.[1];
+  const charging = isCharging(kb, live ? mirror : null);
+  const setPage = useApp((s) => s.setPage);
+  const ConnIcon = CONNECTION_ICON[kb.connection];
   const usbFeatures = kb.modes.find((m) => m.connection === "usb")?.features ?? [];
   const model = kb.modelName.replace(`${kb.vendor} `, "");
 
   const specs = [
     `${t("overview.spec.layout")} %${kb.layout}`,
     `${kb.keyCount} ${t("overview.specs.keys")}`,
-    kb.screen ? `${kb.screen.width}×${kb.screen.height} ${t("overview.specs.screen")}` : null,
+    kb.screen ? `${kb.screen.width}Ã—${kb.screen.height} ${t("overview.specs.screen")}` : null,
     kb.hasKnob ? t("overview.specs.knob") : null,
   ].filter(Boolean) as string[];
 
@@ -118,38 +141,21 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
       </section>
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-5">
-        <section className="card flex flex-col gap-4 p-5">
-          <div>
-            <h2 className="eyebrow">{t("overview.mode.title")}</h2>
-            <p className="mt-0.5 text-[13px] text-ink-3">{t("overview.mode.hint")}</p>
-          </div>
-          <ModeSwitch value={kb.connection} />
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13px]">
-            {kb.product && (
-              <>
-                <dt className="text-ink-3">{t("overview.mode.device")}</dt>
-                <dd className="text-right">{kb.product}</dd>
-              </>
-            )}
-            {kb.bleName && (
-              <>
-                <dt className="text-ink-3">{t("overview.mode.btName")}</dt>
-                <dd className="text-right">{kb.bleName}</dd>
-              </>
-            )}
-            {bleChannel && (
-              <>
-                <dt className="text-ink-3">{t("overview.mode.channel")}</dt>
-                <dd className="num text-right">{bleChannel} / 3</dd>
-              </>
-            )}
-            {kb.bleAddress && (
-              <>
-                <dt className="text-ink-3">{t("overview.mode.btAddress")}</dt>
-                <dd className="mono text-right text-[12px]">{kb.bleAddress}</dd>
-              </>
-            )}
-          </dl>
+        <section className="card flex flex-col gap-3 p-5" data-overview-connection>
+          <h2 className="eyebrow">{t("overview.mode.title")}</h2>
+          <span className="flex items-center gap-2.5 text-[16px] font-semibold">
+            <ConnIcon size={18} className="text-signal" aria-hidden />
+            {t(connectionKey(kb.connection))}
+          </span>
+          <p className="text-[13px] text-ink-2">{t(connectionSummary(kb.connection))}</p>
+          <button
+            type="button"
+            onClick={() => setPage("connection")}
+            className="mt-auto flex items-center gap-1 self-start rounded-md text-[13px] text-signal hover:underline"
+          >
+            {t("overview.mode.details")}
+            <ChevronRight size={14} aria-hidden />
+          </button>
         </section>
 
         <section className="card flex flex-col gap-3 p-5" data-overview-battery>
@@ -160,11 +166,11 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
           {usb && (
             <p className="flex items-start gap-2 text-[13px] text-ink-2">
               <BatteryCharging size={16} className="mt-0.5 shrink-0 text-ok" aria-hidden />
-              {t("overview.bat.cable")}
+              {t(charging ? "overview.bat.charging" : "overview.bat.cable")}
             </p>
           )}
           <p className="text-[13px] text-ink-3">
-            {kb.battery ? t("overview.bat.read").replace("{ago}", ago(kb.battery.readAtMs)) : t("overview.bat.none")}
+            {kb.battery ? t("overview.bat.read", { ago: ago(kb.battery.readAtMs) }) : t("overview.bat.none")}
           </p>
         </section>
 

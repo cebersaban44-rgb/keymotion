@@ -528,14 +528,14 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
       <div className="-mt-3 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 text-[12px] text-ink-3">
         {tool === "select" && selection.size > 0 ? (
           <span className="text-ink-2">
-            <span className="num font-medium">{`${selection.size} ${t(selection.size === 1 ? "light.keySelected" : "light.keysSelected")}`}</span>
+            <span className="num font-medium">{t("light.keysSelected", { count: selection.size })}</span>
             <span className="ml-3">{t("light.selectShortcuts")}</span>
           </span>
         ) : (
           <span>{t(tool === "brush" ? "light.paintHint" : "light.selectEmptyHint")}</span>
         )}
         <span className="num">
-          {painted} {t(painted === 1 ? "light.keyPainted" : "light.keysPainted")}
+          {t("light.keysPainted", { count: painted })}
         </span>
       </div>
 

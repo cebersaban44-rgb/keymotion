@@ -646,7 +646,25 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Pil kartı ve bağlantı kartı artık yalnız gerçek veriyi gösteriyor; uydurma değer yok.
     - **Türkçede bir tuzak:** "ekran kartı" Türkçede grafik kartı demek. Ekrana giden kartlar için "kart" denir; "ekran kartı" yalnız Sistem göstergelerindeki grafik kartı için kalır.
     - **Biçim yardımcıları:** `percent()` (%40 / 40%), `decimal()` (2,8 / 2.8), `fmtSeconds` dil birimleriyle; `useAgo` gün de söylüyor.
-    - **Bekleyen (sonraya):** Sayının cümle içinde yer değiştirdiği birkaç metin (ör. "{n} tuş kaydedilmedi") parçalı anahtarlarla kuruluyor; doğal sıra için `t()`'ye yer tutucu desteği eklenebilir. İngilizce çoğullar birkaç yerde düzeltildi, hepsi değil.
+    - **Bekleyen (sonraya):** Sayının cümle içinde yer değiştirdiği birkaç metin (ör. "{n} tuş kaydedilmedi") parçalı anahtarlarla kuruluyor; doğal sıra için `t()`'ye yer tutucu desteği eklenebilir. İngilizce çoğullar birkaç yerde düzeltildi, hepsi değil. *(Madde 37'de yapıldı.)*
+37. **Destek haritası, bağlantı modları ve Bağlantı sayfası (ürünleşme öncesi).** Ayrıntı ve README'ye kaynak: `docs/destek-haritasi.md`.
+    - **Kullanıcının isteği (2026-11-11):** Ürünleştirmeden önce: uygulama hangi klavyelerde çalışır, onları nasıl tanır; 2.4G ve Bluetooth'ta hangi özellikler çalışır; Genel Bakış'taki USB / 2.4G / BT alanı gerçekten çalışıyor mu, oradan mod değiştirilebiliyor mu. Haritalansın, düzeltilecekler düzeltilsin, GitHub'da anlatılsın. Ardından küçük arayüz borçları ve arayüzün yeniden kontrolü.
+    - **Bulgular:**
+      - Uygulama yalnız AK980 PRO'yu tanıyor (USB `0C45:8009` + ürün adında "AK980"; BT adı "AK980 PRO"; alıcı `0C45:FEFE` USB bus). "AK980 V2" aynı kimliği veriyor.
+      - Aynı "04 xx" ailesinden 13 aday (AK820 Pro FF13 sürümü, AK35I V3 MAX, AKS075, AULA F108 Pro/F75 Max/NOVA75…) ve "AA" ailesi gibi uyumsuzlar listelendi; her aday ancak o klavyede denenerek eklenebilir (P4).
+      - Mod yalnız klavyenin arkasındaki anahtarla değişir; uygulamadaki çizim seçici değildi ama öyle görünüyordu.
+      - **Hata:** 2.4 GHz alıcı takılınca model dosyasındaki "lighting, clock, battery" doğrudan arayüze gidiyordu; Işıklar kilitsiz, saat düğmesi açık görünüyordu ama alıcı sürücüsü yok. **Hata:** "Seçenekler" (uyku, Win kilidi) Genel Bakış'ta var gibi işaretliydi.
+    - **Düzeltmeler:**
+      - `kb_core::app_capabilities(model, mod)`: model dosyası klavyenin sunduğunu, bu işlev uygulamanın sürdüğünü söyler (USB: seçenekler ve pil hariç; BT: pil; alıcı: hiçbiri). `KeyboardInfo.features` ve `ModeInfo.features` buradan.
+      - `kb_core::shape`: komut ve ekran kanalı açılırken HID tanımlayıcısının şekli denetlenir (FF13: 64 bayt feature/çıkış, rapor kimliği yok; FF68: 4096 bayt çıkış). Şekil farklıysa kanal kullanılmaz (`device.rs` `open_checked`), hata "unsupported keyboard firmware" → `err.firmware`. Kullanıcının klavyesinin tanımlayıcıları testlerde.
+      - Arka uçtaki Türkçe "Klavye USB modunda değil" hatası İngilizce `NO_USB` oldu (arayüz `err.noKeyboard` gösterir).
+      - **Bağlantı sayfası** (önizlemeyle onaylandı): şu anki bağlantı ve ayrıntılar, anahtarın konumu ("Modu bu anahtarla değiştirirsiniz"), bağlantıya göre özellik tablosu (`ModeInfo`'dan kendiliğinden). Genel Bakış'taki bağlantı kartı sadeleşip bu sayfaya bağlanıyor; `ModeSwitch` artık düz bir anahtar çizimi.
+    - **Arayüz borçları:**
+      - `t(key, vars)` ve `tNow(key, vars)` yer tutucu destekliyor (`{name}`); `vars.count === 1` iken `<key>.one` biçimi seçilir (Türkçede ikisi aynı). Parçalı `.a/.b/.c` anahtarları ve "sayı + ayrı kelime" kurguları tek cümleye çevrildi; İngilizcede "1 frames" gibi hatalar kalktı.
+      - 22 kullanılmayan anahtar silindi; Sistem göstergeleri ve Renk kalibrasyonundaki elle yazılmış "%" `percent()` oldu. Anahtar sayısı 1026 (iki dilde aynı).
+      - Tarama (sahte arka uç, Playwright, 17 sayfa ve sekme, TR ve EN): Türkçede İngilizce, İngilizcede Türkçe (Windows düzeninin Ğ/Ü/Ş tuş adları hariç), boş yer tutucu, "undefined" ya da "1 frames" yok. Alıcı ve Bluetooth modunda kilitler doğru.
+    - **Pil (kullanıcının sorusu: "kendimiz bir katman yazıp USB'de pili okuyabilir miyiz?"):** Klavye USB'de pil bilgisini hiçbir yoldan vermiyor: resmi sürücünün yapılandırması, kardeş yazılım incelemesi, HID tanımlayıcıları ve 20 sn pasif dinleme (`kb listen`, yeni; hiç rapor gelmedi). Bilgisayar tarafındaki bir katman olmayan veriyi okuyamaz. Yapılan: Fn ışığı şarjda kırmızı yandığı için Genel Bakış, aynada Fn kırmızıyken (ve komşuları kırmızı değilken) "Klavye şu an şarj oluyor." diyor. Gerçek yüzde ileride 2.4 GHz alıcıyla (`20 01`) gelir.
+    - **Doğrulama:** 242 Rust testi, clippy, tsc; gerçek uygulamada (CDP) şekil denetimi komut kanalını açtı, Genel Bakış aynası çalıştı ("Klavyenin ışığı kapalı"), Bağlantı sayfası USB'de doğru.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -659,7 +677,8 @@ crates/
                 ölçeği, F5 kırmızı baytının iki adayı. sonix/keymap.rs: tuş atama girişleri, katman tablosu,
                 HID ve medya kataloğu. WASM'a derlenebilir.
   kb-transport/ hidapi (feature/output/input raporları) ve WinRT BLE (yalnızca okuma: pil).
-  kb-core/      detect.rs (arayüzleri klavyelere gruplar), sonix.rs (sürücü: akışlar, zamanlama, yeniden deneme,
+  kb-core/      detect.rs (arayüzleri klavyelere gruplar; app_capabilities: uygulamanın her modda sürdüğü özellikler),
+                shape.rs (HID tanımlayıcısından rapor uzunlukları; "04 xx" ailesinin şekli), sonix.rs (sürücü: akışlar, zamanlama, yeniden deneme,
                 sağlama toplamı), color.rs (sRGB→LED gamma/kazanç, ters dönüşüm, doğrusal parlaklık),
                 readback.rs (F5 okumasında kırmızıyı beklenen renge göre çözer), clock.rs (yerel saat → klavye saati),
                 keymap.rs (katmanı modele göre denetler: Fn kilidi, bilinmeyen tuş, kanonik biçim).
@@ -689,7 +708,7 @@ app/
                 lib/keymapLabels.tsx (tuş üstü ve uzun adlar), lib/macros.ts (makro taslağı ve kayıt),
                 lib/hidCodes.ts (e.code ↔ HID), lib/layout.ts (Windows düzenine göre tuş adları),
                 lib/screen.ts (ekran kütüphanesi ve yükleme durumu), lib/screenImport.ts (dosya → RGB565),
-                lib/screenText.ts (yazı kartı çizicisi), pages/{Overview,Lighting,Keymap,Macros,Screen,Focus,Gauges,Reminders,Settings}.tsx,
+                lib/screenText.ts (yazı kartı çizicisi), pages/{Overview,Connection,Lighting,Keymap,Macros,Screen,Focus,Gauges,Reminders,Settings}.tsx,
                 lib/screenSlides.ts (slayt kare bütçesi ve geçişler), lib/screenPalette.ts (ekrana uygun ışık),
                 lib/live.ts (canlı mod durumu ve kaynaklar), lib/liveCards.ts (canlı kartlar),
                 lib/pomodoro.ts (odak zamanlayıcısı durumu, sahte arka uç; `?pomofast` ile dakika 2 sn),
@@ -697,7 +716,8 @@ app/
                 lib/gauges.ts (göstergeler durumu; sahte arka uç için kuralların kopyası, gauges.rs ile birlikte değişir),
                 lib/calendar.ts (takvim durumu; sahte arka uçta örnek toplantılar ve kart zamanlarının kopyası),
                 lib/reminders.ts (hatırlatıcı durumu, şablonlar; sahte arka uçta zamanlamanın kopyası),
-                lib/errors.ts (arka uç hatası → kısa iki dilli mesaj), lib/i18n.ts (metinler; percent, decimal, useAgo),
+                lib/errors.ts (arka uç hatası → kısa iki dilli mesaj), lib/i18n.ts (metinler; t(key, vars) yer tutucu ve
+                ".one" tekil biçimi; percent, decimal, useAgo),
                 pages/screen/ (Ekran Stüdyosu: common.tsx ortak adımlar, FileFlow.tsx, TextFlow.tsx, SlideFlow.tsx,
                 MatchLights.tsx, LivePanel.tsx, CalendarPanel.tsx takvim katmanı ve ekleme adımları; PomodoroPanel.tsx
                 odak zamanlayıcısının kartı, Focus.tsx'te).
@@ -717,7 +737,7 @@ rustfmt.toml, .gitattributes   120 sütun biçim; LF satır sonu.
 ## 5. Nasıl çalıştırılır ve test edilir
 
 ```bash
-cargo test --workspace            # 237 test; TS tiplerini ve mock JSON'ları da üretir
+cargo test --workspace            # 242 test; TS tiplerini ve mock JSON'ları da üretir
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check        # rustfmt.toml: 120 sütun
 cd app && pnpm typecheck
@@ -733,6 +753,7 @@ cargo build -p klavye-studio && ./target/debug/klavye-studio.exe
 # CLI (klavye USB modunda, uygulama KAPALI ya da aynası kapalıyken; aksi halde komutlar çakışır)
 kb list | kb hid-all | kb descriptors | kb battery | kb models | kb effects
 kb peek                                    # pasif okuma
+kb listen [--seconds 20]                   # klavyenin kendiliğinden gönderdiği raporlar (FF13, FFFF; hiçbir şey gönderilmez)
 kb read-colors [--repeat N --interval ms]  # 04 F5
 kb live --pattern wave|solid|test|gamma    # 04 20, yalnızca RAM
 kb live-probe                              # 04 20 + 04 F5: canlı katman, eksik tuşlar, kırmızı baytı (yalnızca RAM)
@@ -762,8 +783,9 @@ node tools/cdp.mjs --shot ekran.png            # pencerenin ekran görüntüsü
 Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust log'unu (`RUST_LOG=klavye_studio=debug`) karşılaştırabilirsin. Hata ayıklama portunu kullanıcının normal çalıştırmasında açık bırakma.
 
 **Arayüz testinde işe yarayanlar:**
-- **Sahte arka uç:** `http://127.0.0.1:1420/?mock=usb`. `&pomofast` eklenirse odak zamanlayıcısında bir dakika 2 sn sürer.
+- **Sahte arka uç:** `http://127.0.0.1:1420/?mock=usb` (ayrıca `mock=dongle`, `mock=bluetooth`, `mock=none`). `&pomofast` eklenirse odak zamanlayıcısında bir dakika 2 sn sürer.
 - **Ekran görüntüsü:** Uygulamanın içindeki tarayıcı paneli geniş sayfalarda yalnızca görünen kısmı yakalıyor. Tam görüntü için Playwright (`browser_resize` + `browser_take_screenshot`, dosya adı vermeden) daha güvenilir.
+- **Panel gizliyse** sayfa geçişleri ilerlemez (ders 51). Sahte arka uçla sayfa sayfa tarama Playwright'ta sorunsuz çalışıyor (2026-11-11: 17 sayfa ve sekme, TR ve EN, `ks.locale` localStorage ile).
 - **Sayfanın kendi modülleri:** Test için bir modülü `import()` ile alırken, uygulamanın yüklediği adresi kullan (`performance.getEntriesByType('resource')`). Oturumda değişen dosyaları Vite `?t=…` ile yükler; düz adres ayrı bir kopya açar (ders 43).
 - **Kullanıcının uygulaması** Vite'tan, yani çalışma ağacından yüklenir. Önce dalı hazırla, uygulamayı en son başlat (ders 39). Rust değişince uygulamayı durdur, `cargo build -p klavye-studio`, yeniden başlat.
 
@@ -873,6 +895,8 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
           - **Kalınan yer (2026-11-11):** hatırlatıcı bitti. Kullanıcının `reminders.json`'unda kendi denemesi (tek seferlik, geçti) duruyor.
           - **Arayüz profesyonelleştirildi** (madde 36): bütün metinler `docs/arayuz-dili.md`'ye göre, Windows'un yazı tipi, sade başlıklar, canlı Genel Bakış klavyesi, son Bluetooth pil okuması.
           - **Kalınan yer (2026-11-11):** kullanıcı yeni özellikleri şimdilik durdurdu ("bu kadar özellik yeter"). Sıradaki iş **ürünleştirme** (P3): kurulum dosyası, imza, güncelleyici, tepsi servisi, ilk sürüm belgeleri. Ondan önce bağlam sıkıştırılacak.
+          - **Destek haritası yapıldı** (madde 37, `docs/destek-haritasi.md`): desteklenen ve eklenebilecek klavyeler, bağlantı modlarına göre özellikler, Bağlantı sayfası, 2.4G'de yanlış açık görünen sayfalar düzeltildi, HID şekil denetimi, arayüz metin borçları kapandı, USB'de pil araştırması (yüzde yok; Fn ışığından "şarj oluyor").
+          - **Kalınan yer (2026-11-11):** sıradaki iş kullanıcının sırasıyla: ürünleştirme konuları (tek tek açılıp kontrol edilecek), sonra repo konuları. Kullanıcıyla klavyede denenecekler: Fn ışığı şarj bitince sönüyor mu; Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri.
           - Sonraya: oyun oturumu (ön plandaki uygulama: açılınca kart, kapanınca özet). Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.

@@ -296,9 +296,11 @@ function mockKeyboards(): KeyboardInfo[] {
   const mode = new URLSearchParams(location.search).get("mock") ?? "bluetooth";
   if (mode === "none") return [];
   const usb = mode === "usb";
+  const dongle = mode === "dongle";
+  const usbFeatures: KeyboardInfo["features"] = ["lighting", "per-key-rgb", "keymap", "macros", "screen", "clock"];
   return [
     {
-      key: `ajazz-ak980-pro:${usb ? "Usb" : "Bluetooth"}`,
+      key: `ajazz-ak980-pro:${usb ? "Usb" : dongle ? "Dongle" : "Bluetooth"}`,
       modelId: "ajazz-ak980-pro",
       modelName: "AJAZZ AK980 PRO",
       vendor: "AJAZZ",
@@ -307,25 +309,20 @@ function mockKeyboards(): KeyboardInfo[] {
       hasKnob: true,
       hasSideLight: true,
       screen: { width: 240, height: 135, verified: false },
-      connection: usb ? "usb" : "bluetooth",
+      connection: usb ? "usb" : dongle ? "dongle" : "bluetooth",
       product: usb ? "SONiX AK980 PRO" : null,
-      features: usb
-        ? ["lighting", "per-key-rgb", "keymap", "macros", "options", "screen", "clock"]
-        : ["battery"],
+      // What the app drives in each mode (kb_core::app_capabilities).
+      features: usb ? usbFeatures : dongle ? [] : ["battery"],
       modes: [
-        {
-          connection: "usb",
-          features: ["lighting", "per-key-rgb", "keymap", "macros", "options", "screen", "clock"],
-          verified: true,
-        },
-        { connection: "dongle", features: ["lighting", "clock", "battery"], verified: false },
+        { connection: "usb", features: usbFeatures, verified: true },
+        { connection: "dongle", features: [], verified: false },
         { connection: "bluetooth", features: ["battery"], verified: true },
       ],
-      hasCommandChannel: usb,
+      hasCommandChannel: usb || dongle,
       hasDisplayChannel: usb,
-      bleName: usb ? null : "AK980 PRO-1",
-      bleAddress: usb ? null : "AA:BB:CC:DD:EE:FF",
-      battery: usb ? null : { percent: 94, readAtMs: Date.now() - 40_000 },
+      bleName: usb || dongle ? null : "AK980 PRO-1",
+      bleAddress: usb || dongle ? null : "AA:BB:CC:DD:EE:FF",
+      battery: usb || dongle ? null : { percent: 94, readAtMs: Date.now() - 40_000 },
       geometry: ak980Geometry as GeometryInfo,
     },
   ];
