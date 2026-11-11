@@ -1,29 +1,19 @@
-import {
-  AlertTriangle,
-  BoxSelect,
-  Check,
-  Eraser,
-  Loader2,
-  MousePointer2,
-  PaintBucket,
-  Paintbrush,
-  RotateCcw,
-  Usb,
-  Gauge,
-  X,
-} from "lucide-react";
+import { AlertTriangle, BoxSelect, Eraser, MousePointer2, PaintBucket, Paintbrush, RotateCcw, Usb, Gauge, X } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { EffectInfo } from "../bindings/EffectInfo";
 import type { EffectMotion } from "../bindings/EffectMotion";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
-import { ColorPicker, EffectSwatch, Field, Segmented, Steps, Toggle, type SwatchVariant } from "../components/controls";
+import { ActionBar } from "../components/ActionBar";
+import { ColorPicker, Field, Segmented, Steps, Toggle } from "../components/controls";
+import { EffectThumb } from "../components/EffectThumb";
 import { KeyboardView, type KeyAction } from "../components/KeyboardView";
 import { getLightingCatalog, setLiveFrame } from "../lib/ipc";
 import { useT, type MessageKey } from "../lib/i18n";
 import {
   REACTIVE_EFFECTS,
   sameColors,
+  sameEffect,
   toLedColors,
   useLighting,
   type ColorMap,
@@ -32,32 +22,6 @@ import {
 import { useGauges } from "../lib/gauges";
 import { useMirror } from "../lib/mirror";
 import { useApp } from "../lib/store";
-import { friendlyError } from "../lib/errors";
-
-const VARIANT: Record<number, SwatchVariant> = {
-  0: "off",
-  1: "static",
-  2: "ripple",
-  3: "ripple",
-  4: "sparkle",
-  5: "sparkle",
-  6: "spectrum",
-  7: "breath",
-  8: "spectrum",
-  9: "wave",
-  10: "wave",
-  11: "wave",
-  12: "wave",
-  13: "ripple",
-  14: "ripple",
-  15: "ripple",
-  16: "wave",
-  17: "breath",
-  18: "wave",
-  19: "wave",
-};
-
-type Status = { kind: "idle" } | { kind: "busy" } | { kind: "ok"; ms: number } | { kind: "error"; message: string };
 
 /**
  * Labels for direction codes 0 and 1, by how the effect moves. Measured on
@@ -86,7 +50,7 @@ export function Lighting({ kb }: { kb: KeyboardInfo }) {
   const setPage = useApp((s) => s.setPage);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="@container flex flex-col gap-6">
       <header className="flex items-end justify-between gap-6">
         <div>
           <h1 className="page-title">{t("nav.lighting")}</h1>
@@ -130,19 +94,26 @@ export function Lighting({ kb }: { kb: KeyboardInfo }) {
       )}
 
       {tab === "effects" ? (
-        <EffectsTab kb={kb} usb={usb} mirror={mirror} />
+        <EffectsTab key="effects" kb={kb} usb={usb} mirror={mirror} />
       ) : (
-        <PerKeyTab kb={kb} usb={usb} perKey={perKey} />
+        <PerKeyTab key="per-key" kb={kb} usb={usb} perKey={perKey} />
       )}
     </div>
   );
 }
 
-function Plate({ kb, colors, caption, live, onKeyAction, selected, tool, onBackgroundPress }: {
+function Plate({
+  kb,
+  colors,
+  caption,
+  onKeyAction,
+  selected,
+  tool,
+  onBackgroundPress,
+}: {
   kb: KeyboardInfo;
   colors: ColorMap | null;
-  caption: string;
-  live: boolean;
+  caption?: { text: string; live: boolean };
   onKeyAction?: (led: number, action: KeyAction, additive: boolean) => void;
   selected?: ReadonlySet<number>;
   tool?: PaintTool;
@@ -154,8 +125,8 @@ function Plate({ kb, colors, caption, live, onKeyAction, selected, tool, onBackg
       onPointerDown={(e) => {
         if (!(e.target as HTMLElement).closest(".kb-key")) onBackgroundPress?.();
       }}
-      className="relative overflow-hidden rounded-lg border border-line p-6 pb-4"
-      style={{ background: "linear-gradient(180deg, var(--plate), color-mix(in oklch, var(--plate) 80%, black))" }}
+      className="relative overflow-hidden rounded-lg border border-line p-4"
+      style={{ background: "var(--plate)" }}
     >
       {kb.geometry && (
         <KeyboardView
@@ -168,44 +139,20 @@ function Plate({ kb, colors, caption, live, onKeyAction, selected, tool, onBackg
           tool={tool}
         />
       )}
-      <div className="mt-4 flex items-center gap-2 text-[12px] text-[#8b8d92]">
-        <span className={`h-1.5 w-1.5 rounded-full ${live ? "bg-ok" : "bg-white/25"}`} />
-        <span className="num">{caption}</span>
-      </div>
+      {caption && (
+        <div className="mt-3 flex items-center gap-2 text-[12px] text-[#a9a59e]">
+          <span className={`h-1.5 w-1.5 rounded-full ${caption.live ? "bg-ok" : "bg-white/30"}`} />
+          <span className="num">{caption.text}</span>
+        </div>
+      )}
     </section>
-  );
-}
-
-function StatusLine({ status, okText }: { status: Status; okText: string }) {
-  const t = useT();
-  if (status.kind === "idle") return <span className="text-[12px] text-ink-3">{t("light.persistNote")}</span>;
-  if (status.kind === "busy")
-    return (
-      <span className="flex items-center gap-2 text-[12px] text-ink-2">
-        <Loader2 size={13} className="animate-spin" />
-        {t("light.applying")}
-      </span>
-    );
-  if (status.kind === "ok")
-    return (
-      <span className="flex items-center gap-2 text-[12px] text-ok">
-        <Check size={13} />
-        {okText}
-      </span>
-    );
-  return (
-    <span className="flex items-center gap-2 text-[12px] text-danger">
-      <AlertTriangle size={13} />
-      {status.message}
-    </span>
   );
 }
 
 function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirror: ColorMap | null }) {
   const t = useT();
-  const { effect, setEffect, applyEffectDraft, appliedEffect } = useLighting();
+  const { effect, setEffect, applyEffectDraft, appliedEffect, revertEffect } = useLighting();
   const [catalog, setCatalog] = useState<EffectInfo[]>([]);
-  const [status, setStatus] = useState<Status>({ kind: "idle" });
 
   useEffect(() => {
     getLightingCatalog().then(setCatalog).catch(console.error);
@@ -214,18 +161,12 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
   const current = catalog.find((e) => e.id === effect.mode);
   const effects = catalog.filter((e) => e.id !== 0);
   const off = catalog.find((e) => e.id === 0);
-  const dirty = JSON.stringify(effect) !== JSON.stringify(appliedEffect);
-
-  const apply = async () => {
-    setStatus({ kind: "busy" });
-    const started = performance.now();
-    try {
-      await applyEffectDraft();
-      setStatus({ kind: "ok", ms: Math.round(performance.now() - started) });
-    } catch (e) {
-      setStatus({ kind: "error", message: friendlyError(e, t) });
-    }
-  };
+  // Unknown until the app stores an effect once; then whatever differs.
+  const changes = !appliedEffect
+    ? t("bar.notSaved")
+    : sameEffect(effect, appliedEffect)
+      ? null
+      : t("bar.effectChanged");
 
   const card = (fx: EffectInfo) => {
     const selected = fx.id === effect.mode;
@@ -236,17 +177,11 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
         type="button"
         onClick={() => setEffect({ mode: fx.id })}
         aria-pressed={selected}
-        className={`group relative flex flex-col gap-3 rounded-lg border p-3 text-left transition-all ${
-          selected
-            ? "border-signal bg-surface-2 shadow-[0_0_0_3px_color-mix(in_oklch,var(--signal)_20%,transparent)]"
-            : "border-line bg-surface hover:border-line-strong"
+        className={`group relative flex flex-col gap-3 rounded-lg border p-3 text-left transition-colors ${
+          selected ? "border-signal bg-surface-2 shadow-[inset_0_0_0_1px_var(--signal)]" : "border-line bg-surface hover:border-line-strong"
         }`}
       >
-        <EffectSwatch
-          variant={VARIANT[fx.id] ?? "wave"}
-          color={effect.color}
-          rainbow={fx.rainbow ? effect.rainbow || !fx.color : !fx.color}
-        />
+        <EffectThumb id={fx.id} color={effect.color} rainbow={selected && fx.color && fx.rainbow && effect.rainbow} />
         <div className="flex items-center gap-1.5">
           <span className="truncate text-[13px] font-medium">{t(`fx.${fx.id}` as MessageKey)}</span>
           {isApplied && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-ok" aria-hidden />}
@@ -264,18 +199,17 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
       <Plate
         kb={kb}
         colors={mirror}
-        live={!!mirror}
-        caption={mirror ? t("light.mirror.on") : t("light.mirror.off")}
+        caption={{ text: mirror ? t("light.mirror.on") : t("light.mirror.off"), live: !!mirror }}
       />
 
-      <div className="grid grid-cols-[1fr_360px] items-start gap-5">
+      <div className="grid grid-cols-1 items-start gap-5 @4xl:grid-cols-[minmax(0,1fr)_340px]">
         <motion.section layout className="card p-5">
           <div className="eyebrow mb-4">{t("light.effects")}</div>
           <div className="grid grid-cols-4 gap-2.5">{effects.map(card)}</div>
           {off && <div className="mt-2.5 grid grid-cols-4 gap-2.5 border-t border-line pt-2.5">{card(off)}</div>}
         </motion.section>
 
-        <section className="card sticky top-4 flex flex-col gap-5 p-5">
+        <section className="card flex flex-col gap-5 p-5 @4xl:sticky @4xl:top-4">
           <div className="flex items-baseline justify-between">
             <div className="eyebrow">{t("light.settings")}</div>
             <span className="font-display text-[15px] font-semibold">{current && t(`fx.${current.id}` as MessageKey)}</span>
@@ -341,22 +275,11 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
             <p className="text-[13px] text-ink-3">{t("light.noSettings")}</p>
           )}
 
-          <div className="flex flex-col gap-2.5 border-t border-line pt-4">
-            <button
-              type="button"
-              disabled={!usb || status.kind === "busy" || !current}
-              onClick={apply}
-              className="flex h-10 items-center justify-center gap-2 rounded-lg bg-signal text-[13.5px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {status.kind === "busy" ? <Loader2 size={15} className="animate-spin" /> : null}
-              {status.kind === "busy" ? t("light.applying") : t("light.apply")}
-              {dirty && status.kind !== "busy" && <span className="h-1.5 w-1.5 rounded-full bg-signal-ink/70" />}
-            </button>
-            <StatusLine status={status} okText={t("light.applied")} />
+          <div className="border-t border-line pt-4">
             <button
               type="button"
               onClick={() => setEffect({ mode: 11, rainbow: true, brightness: 5, speed: 3, direction: 0 })}
-              className="flex items-center gap-1.5 self-start text-[12px] text-ink-3 hover:text-ink"
+              className="flex items-center gap-1.5 text-[12px] text-ink-2 hover:text-ink"
             >
               <RotateCcw size={12} />
               {t("light.factoryReset")}
@@ -364,6 +287,13 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
           </div>
         </section>
       </div>
+
+      <ActionBar
+        changes={changes}
+        canSave={usb && !!current}
+        onSave={applyEffectDraft}
+        onRevert={appliedEffect ? revertEffect : undefined}
+      />
     </>
   );
 }
@@ -385,7 +315,6 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
     tool,
     setTool,
   } = useLighting();
-  const [status, setStatus] = useState<Status>({ kind: "idle" });
   const keys = kb.geometry?.keys ?? [];
   const live = usb && livePreview;
 
@@ -496,157 +425,128 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
     setPerKey(map);
   };
 
-  const save = async () => {
-    setStatus({ kind: "busy" });
-    const started = performance.now();
-    try {
-      await savePerKeyDraft();
-      setStatus({ kind: "ok", ms: Math.round(performance.now() - started) });
-    } catch (e) {
-      setStatus({ kind: "error", message: friendlyError(e, t) });
-    }
-  };
-
-  const painted = Object.keys(perKey).length;
-  // Does the design on screen differ from the one stored on the keyboard?
-  const matchesSaved =
-    !!savedPerKey && savedPerKey.brightness === perKeyBrightness && sameColors(savedPerKey.colors, perKey);
-  const saveState: MessageKey = !savedPerKey ? "light.state.none" : matchesSaved ? "light.state.clean" : "light.state.dirty";
+  // What differs from the design stored on the keyboard (none stored: everything).
+  const base = savedPerKey?.colors ?? {};
+  const changedKeys = changedLeds(base, perKey);
+  const brightnessChanged = !!savedPerKey && savedPerKey.brightness !== perKeyBrightness;
+  const matchesSaved = !!savedPerKey && !brightnessChanged && sameColors(savedPerKey.colors, perKey);
+  const changes = matchesSaved
+    ? null
+    : changedKeys > 0
+      ? t("bar.keysChanged", { count: changedKeys })
+      : brightnessChanged
+        ? t("bar.brightnessChanged")
+        : t("bar.notSaved");
 
   return (
     <>
+      {/* Tool and colour, right above the keys they act on. */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+        <Segmented<PaintTool>
+          label={t("light.tool")}
+          value={tool}
+          onChange={switchTool}
+          options={[
+            { value: "brush", label: t("light.tool.brush"), icon: <Paintbrush size={13} /> },
+            { value: "select", label: t("light.tool.select"), icon: <MousePointer2 size={13} /> },
+          ]}
+        />
+        <ColorPicker inline label={t("light.brush")} value={brush} onChange={pickColor} />
+      </div>
+
       <Plate
         kb={kb}
         colors={perKey}
-        live={live}
-        caption={live ? t(matchesSaved ? "light.live.saved" : "light.live.on") : t("light.design")}
         onKeyAction={onKeyAction}
         selected={tool === "select" ? selection : undefined}
         tool={tool}
         onBackgroundPress={() => tool === "select" && selection.size > 0 && select(new Set())}
       />
-      <div className="-mt-3 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 text-[12px] text-ink-3">
+
+      <div className="-mt-3 flex min-h-8 flex-wrap items-center justify-between gap-x-6 gap-y-2 text-[13px]">
         {tool === "select" && selection.size > 0 ? (
-          <span className="text-ink-2">
-            <span className="num font-medium">{t("light.keysSelected", { count: selection.size })}</span>
-            <span className="ml-3">{t("light.selectShortcuts")}</span>
+          <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="num font-medium text-ink">{t("light.keysSelected", { count: selection.size })}</span>
+            <span className="text-[12px] text-ink-3">{t("light.selectShortcuts")}</span>
           </span>
         ) : (
-          <span>{t(tool === "brush" ? "light.paintHint" : "light.selectEmptyHint")}</span>
+          <span className="max-w-[80ch] text-ink-2">{t(tool === "brush" ? "light.tool.brushHint" : "light.tool.selectHint")}</span>
         )}
-        <span className="num">
-          {t("light.keysPainted", { count: painted })}
-        </span>
-      </div>
-
-      <div className="grid grid-cols-[1fr_360px] items-start gap-5">
-        <section className="card flex flex-col gap-5 p-5">
-          <div className="flex flex-col gap-2.5 rounded-lg border border-line bg-bg-raise/60 p-3.5">
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-[13px] font-medium">{t("light.tool")}</span>
-              <Segmented<PaintTool>
-                label={t("light.tool")}
-                value={tool}
-                onChange={switchTool}
-                options={[
-                  { value: "brush", label: t("light.tool.brush"), icon: <Paintbrush size={13} /> },
-                  { value: "select", label: t("light.tool.select"), icon: <MousePointer2 size={13} /> },
-                ]}
-              />
-            </div>
-            <p className="text-[12px] leading-relaxed text-ink-2">
-              {t(tool === "brush" ? "light.tool.brushHint" : "light.tool.selectHint")}
-            </p>
-          </div>
-          <Field
-            label={
-              tool === "brush"
-                ? t("light.brush")
-                : selection.size
-                  ? t("light.selectedColor")
-                  : t("light.colorPickFirst")
-            }
-          >
-            <ColorPicker label={t("light.brush")} value={brush} onChange={pickColor} />
-          </Field>
-          {tool === "select" && (
-            <Field label={t("light.selection")}>
-              <div className="flex flex-wrap gap-2">
-                <ToolButton icon={<BoxSelect size={14} />} label={t("light.selectAll")} onClick={selectAll} />
-                {selection.size > 0 && (
-                  <>
-                    <ToolButton icon={<Eraser size={14} />} label={t("light.eraseSelected")} onClick={eraseSelection} />
-                    <ToolButton icon={<X size={14} />} label={t("light.deselect")} onClick={() => select(new Set())} />
-                  </>
-                )}
-              </div>
-            </Field>
-          )}
-          <Field label={t("light.tools")}>
-            <div className="flex flex-wrap gap-2">
-              <ToolButton
-                icon={<PaintBucket size={14} />}
-                label={t("light.fillAll")}
-                onClick={() => paint(keys.map((k) => k.led), currentBrush())}
-              />
-              <ToolButton icon={<Eraser size={14} />} label={t("light.clear")} onClick={() => setPerKey({})} />
-            </div>
-          </Field>
-          <Field label={t("light.presets")}>
-            <div className="flex flex-wrap gap-2">
-              <ToolButton label={t("light.preset.wasd")} onClick={() => preset("wasd")} />
-              <ToolButton label={t("light.preset.home")} onClick={() => preset("home")} />
-              <ToolButton label={t("light.preset.rainbow")} onClick={() => preset("rainbow")} />
-            </div>
-          </Field>
-        </section>
-
-        <section className="card sticky top-4 flex flex-col gap-5 p-5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="text-[13px] font-medium">{t("light.livePreview")}</div>
-              <div className="text-[12px] text-ink-3">{t("light.livePreviewHint")}</div>
-            </div>
-            <Toggle label={t("light.livePreview")} checked={livePreview} onChange={setLivePreview} disabled={!usb} />
-          </div>
-          <Field label={t("light.brightness")} hint={`${perKeyBrightness} / 5`}>
-            <Steps label={t("light.brightness")} value={perKeyBrightness} onChange={setPerKeyBrightness} />
-          </Field>
-          <div className="flex flex-col gap-2.5 border-t border-line pt-4">
-            <div role="status" className="flex items-center gap-2 text-[13px]">
-              <span
-                className={`h-2 w-2 shrink-0 rounded-full ${
-                  matchesSaved ? "bg-ok" : "bg-warn"
-                }`}
-              />
-              <span className={matchesSaved ? "text-ink-2" : "text-ink"}>{t(saveState)}</span>
-            </div>
-            <button
-              type="button"
-              disabled={!usb || status.kind === "busy"}
-              onClick={save}
-              className="flex h-10 items-center justify-center gap-2 rounded-lg bg-signal text-[13.5px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {status.kind === "busy" && <Loader2 size={15} className="animate-spin" />}
-              {status.kind === "busy" ? t("light.saving") : t("light.save")}
-            </button>
-            {savedPerKey && !matchesSaved && (
-              <button
-                type="button"
-                onClick={revertPerKey}
-                disabled={status.kind === "busy"}
-                className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-line bg-bg-raise text-[13px] text-ink-2 transition-colors hover:border-line-strong hover:text-ink disabled:opacity-40"
-              >
-                <RotateCcw size={13} />
-                {t("light.revert")}
-              </button>
+        {tool === "select" && (
+          <span className="flex flex-wrap gap-2">
+            <ToolButton icon={<BoxSelect size={14} />} label={t("light.selectAll")} onClick={selectAll} />
+            {selection.size > 0 && (
+              <>
+                <ToolButton icon={<Eraser size={14} />} label={t("light.eraseSelected")} onClick={eraseSelection} />
+                <ToolButton icon={<X size={14} />} label={t("light.deselect")} onClick={() => select(new Set())} />
+              </>
             )}
-            <StatusLine status={status} okText={t("light.saved")} />
-            <p className="text-[12px] leading-relaxed text-ink-3">{t("light.indicatorNote")}</p>
-          </div>
-        </section>
+          </span>
+        )}
       </div>
+
+      <section className="card flex flex-col divide-y divide-line">
+        <SettingRow title={t("light.brightness")} hint={`${perKeyBrightness} / 5`}>
+          <div className="w-[264px] max-w-full">
+            <Steps label={t("light.brightness")} value={perKeyBrightness} onChange={setPerKeyBrightness} />
+          </div>
+        </SettingRow>
+        <SettingRow title={t("light.presets")}>
+          <div className="flex flex-wrap gap-2">
+            <ToolButton label={t("light.preset.wasd")} onClick={() => preset("wasd")} />
+            <ToolButton label={t("light.preset.home")} onClick={() => preset("home")} />
+            <ToolButton label={t("light.preset.rainbow")} onClick={() => preset("rainbow")} />
+          </div>
+        </SettingRow>
+        <SettingRow title={t("light.tools")}>
+          <div className="flex flex-wrap gap-2">
+            <ToolButton
+              icon={<PaintBucket size={14} />}
+              label={t("light.fillAll")}
+              onClick={() => paint(keys.map((k) => k.led), currentBrush())}
+            />
+            <ToolButton icon={<Eraser size={14} />} label={t("light.clear")} onClick={() => setPerKey({})} />
+          </div>
+        </SettingRow>
+        <p className="px-5 py-3 text-[12px] text-ink-3">
+          {t("light.paintHint")} {t("light.indicatorNote")}
+        </p>
+      </section>
+
+      <ActionBar
+        left={
+          <label className="flex items-center gap-2.5 text-[13px]" title={t("light.livePreviewHint")}>
+            <Toggle label={t("light.livePreview")} checked={livePreview} onChange={setLivePreview} disabled={!usb} />
+            <span className={usb ? "text-ink" : "text-ink-3"}>{t("light.livePreview")}</span>
+          </label>
+        }
+        changes={changes}
+        canSave={usb}
+        onSave={savePerKeyDraft}
+        onRevert={savedPerKey ? revertPerKey : undefined}
+      />
     </>
+  );
+}
+
+/** Keys whose colour differs between two designs (painted, recoloured or cleared). */
+function changedLeds(a: ColorMap, b: ColorMap): number {
+  const leds = new Set([...Object.keys(a), ...Object.keys(b)]);
+  let n = 0;
+  for (const led of leds) if (a[Number(led)]?.toLowerCase() !== b[Number(led)]?.toLowerCase()) n += 1;
+  return n;
+}
+
+/** One setting in a card: its name on the left, the control on the right. */
+function SettingRow({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-5 py-3.5">
+      <span className="flex items-baseline gap-2 text-[13px] font-medium">
+        {title}
+        {hint && <span className="num text-[12px] font-normal text-ink-3">{hint}</span>}
+      </span>
+      {children}
+    </div>
   );
 }
 
@@ -657,7 +557,7 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
  */
 const currentBrush = () => useLighting.getState().brush;
 
-function ToolButton({ icon, label, onClick }: { icon?: React.ReactNode; label: string; onClick: () => void }) {
+function ToolButton({ icon, label, onClick }: { icon?: ReactNode; label: string; onClick: () => void }) {
   return (
     <button
       type="button"
