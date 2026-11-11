@@ -12,6 +12,10 @@ export type KeyboardInfo = {
  */
 key: string, modelId: string, modelName: string, vendor: string, layout: string, keyCount: number, hasKnob: boolean, hasSideLight: boolean, screen: ScreenInfo | null, connection: Connection, product: string | null, 
 /**
+ * Firmware version over the cable, as people read it ("1.06").
+ */
+firmware: string | null, 
+/**
  * Features usable right now in this connection mode.
  */
 features: Array<Feature>, 

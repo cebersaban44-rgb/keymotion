@@ -53,6 +53,7 @@ export function Connection({ kb }: { kb: KeyboardInfo }) {
 
   const details: [MessageKey, string, string?][] = [];
   if (kb.product) details.push(["overview.mode.device", kb.product]);
+  if (kb.firmware) details.push(["conn.firmware", kb.firmware, "num"]);
   if (kb.bleName) details.push(["overview.mode.btName", kb.bleName]);
   if (channel) details.push(["overview.mode.channel", `${channel} / 3`, "num"]);
   if (kb.bleAddress) details.push(["overview.mode.btAddress", kb.bleAddress, "mono text-[12px]"]);

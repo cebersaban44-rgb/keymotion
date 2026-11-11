@@ -21,6 +21,7 @@ import type { KeymapLayer } from "../bindings/KeymapLayer";
 import type { KeymapState } from "../bindings/KeymapState";
 import type { MacroInfo } from "../bindings/MacroInfo";
 import type { MacrosState } from "../bindings/MacrosState";
+import type { SettingsReset } from "../bindings/SettingsReset";
 // Generated from Rust by `cargo test` (dto.rs export_mock_geometry).
 import ak980Geometry from "../bindings/geometry-ajazz-ak980-pro.json";
 import mockKeymapCatalog from "../bindings/keymap-catalog.json";
@@ -90,14 +91,87 @@ export async function getLightingCatalog(): Promise<EffectInfo[]> {
 
 /** Store a firmware effect on the keyboard (flash write). */
 export function applyEffect(request: EffectRequest): Promise<void> {
-  if (!inTauri) return mockDelay(300);
-  return serial(() => invoke<void>("apply_effect", { request }));
+  return flashWrite(() => (inTauri ? serial(() => invoke<void>("apply_effect", { request })) : mockDelay(300)));
 }
 
 /** Store per-key colours on the keyboard (flash write). */
 export function applyPerKey(colors: LedColor[], brightness: number): Promise<void> {
-  if (!inTauri) return mockDelay(900);
-  return serial(() => invoke<void>("apply_per_key", { colors, brightness }));
+  return flashWrite(() =>
+    inTauri ? serial(() => invoke<void>("apply_per_key", { colors, brightness })) : mockDelay(900),
+  );
+}
+
+// ----------------------------------------------------------- device safety
+
+/**
+ * Asks the user whether to write on firmware nobody tested (lib/safety.ts
+ * sets it). `fromUser`: the user's own action asked, not the live mode in
+ * the background. Resolves `true` to go ahead.
+ */
+export type FirmwareGate = (version: string, fromUser: boolean) => Promise<boolean>;
+let firmwareGate: FirmwareGate = () => Promise.resolve(false);
+
+export function setFirmwareGate(gate: FirmwareGate) {
+  firmwareGate = gate;
+}
+
+const UNTESTED = /untested keyboard firmware (\S+)/i;
+
+/**
+ * Run a write to the keyboard's memory. On untested firmware the backend
+ * refuses the first write of a session; the user is asked here, outside
+ * the serial queue so live previews keep going, and the write goes again
+ * if they continue.
+ */
+export async function flashWrite<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    if (!inTauri) mockFirmwareCheck();
+    return await run();
+  } catch (e) {
+    const version = (e instanceof Error ? e.message : String(e)).match(UNTESTED)?.[1];
+    if (!version) throw e;
+    if (!(await firmwareGate(version, true))) throw new Error("write cancelled by the user");
+    return run();
+  }
+}
+
+/** Allow writes on this untested firmware version until the app closes. */
+export async function confirmFirmware(version: string): Promise<void> {
+  if (!inTauri) {
+    mockConfirmedFirmware = version;
+    return;
+  }
+  await invoke("confirm_firmware", { firmware: version });
+}
+
+/** A write was refused for untested firmware (also from the live mode). */
+export async function onFirmwareUnverified(cb: (version: string) => void): Promise<UnlistenFn> {
+  if (!inTauri) return () => {};
+  return listen<string>("firmware-unverified", (e) => cb(e.payload));
+}
+
+/** Settings files that could not be read and went back to their defaults. */
+export async function getSettingsResets(): Promise<SettingsReset[]> {
+  if (!inTauri) {
+    // `?reset=keymap,macros` shows the notice in the browser.
+    const names = new URLSearchParams(location.search).get("reset");
+    return names ? names.split(",").map((n) => ({ file: `${n}.json`, backup: `${n}.json.bak-20261111-120000` })) : [];
+  }
+  return invoke<SettingsReset[]>("settings_resets");
+}
+
+/** The notice about the resets was shown; it does not come back. */
+export async function dismissSettingsResets(): Promise<void> {
+  if (!inTauri) return;
+  await invoke("dismiss_settings_resets");
+}
+
+// Browser-only: `?fw=1.07` plays a keyboard on untested firmware.
+const mockFirmware = () => new URLSearchParams(location.search).get("fw") ?? "1.06";
+let mockConfirmedFirmware: string | null = null;
+function mockFirmwareCheck() {
+  const fw = mockFirmware();
+  if (fw !== "1.06" && fw !== mockConfirmedFirmware) throw new Error(`untested keyboard firmware ${fw}`);
 }
 
 // Tauri dispatches IPC calls concurrently, so two quick calls can arrive in
@@ -207,13 +281,13 @@ export function getKeymapState(modelId: string): Promise<KeymapState> {
  * Write one whole keymap layer (flash write); keys not listed go back to
  * the default. Resolves with the app's updated record.
  */
-export async function applyKeymap(layer: KeymapLayer, assignments: KeyAssignment[]): Promise<KeymapState> {
-  if (!inTauri) {
+export function applyKeymap(layer: KeymapLayer, assignments: KeyAssignment[]): Promise<KeymapState> {
+  return flashWrite(async () => {
+    if (inTauri) return serial(() => invoke<KeymapState>("apply_keymap", { layer, assignments }));
     await mockDelay(700);
     mockKeymap = { ...mockKeymap, [layer]: { assignments, writtenMs: Date.now() } };
     return mockKeymap;
-  }
-  return serial(() => invoke<KeymapState>("apply_keymap", { layer, assignments }));
+  });
 }
 
 // ------------------------------------------------------------------ macros
@@ -238,14 +312,14 @@ export function getMacrosState(modelId: string): Promise<MacrosState> {
  * Write every macro (flash write); slot `i` is macro `i`, `null` leaves a
  * slot unused. Resolves with the app's updated record.
  */
-export async function applyMacros(slots: (MacroInfo | null)[]): Promise<MacrosState> {
-  if (!inTauri) {
+export function applyMacros(slots: (MacroInfo | null)[]): Promise<MacrosState> {
+  return flashWrite(async () => {
+    if (inTauri) return serial(() => invoke<MacrosState>("apply_macros", { slots }));
     await mockDelay(600);
     while (slots.length && slots[slots.length - 1] === null) slots = slots.slice(0, -1);
     mockMacros = { ...mockMacros, slots, writtenMs: Date.now() };
     return mockMacros;
-  }
-  return serial(() => invoke<MacrosState>("apply_macros", { slots }));
+  });
 }
 
 // ------------------------------------------------------------- calibration
@@ -311,6 +385,7 @@ function mockKeyboards(): KeyboardInfo[] {
       screen: { width: 240, height: 135, verified: false },
       connection: usb ? "usb" : dongle ? "dongle" : "bluetooth",
       product: usb ? "SONiX AK980 PRO" : null,
+      firmware: usb ? mockFirmware() : null,
       // What the app drives in each mode (kb_core::app_capabilities).
       features: usb ? usbFeatures : dongle ? [] : ["battery"],
       modes: [

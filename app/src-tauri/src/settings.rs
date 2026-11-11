@@ -1,6 +1,13 @@
 //! Settings the backend owns and persists in the app config directory
 //! (`%APPDATA%\dev.keymotion`). UI-only preferences (theme, language,
 //! the current lighting design) stay in the webview's local storage.
+//!
+//! A file that cannot be used (damaged, unreadable, or written by a newer
+//! version of the app) gives the defaults, but it is never lost: it is first
+//! moved aside as `<name>.bak-<YYYYMMDD-HHMMSS>` and the reset is recorded,
+//! so the UI can say once which records went back to their defaults. This
+//! matters most for `keymap.json` and `macros.json`: the keyboard cannot
+//! report either, so the file is the only record of what it holds.
 
 use kb_core::color::LedCalibration;
 use kb_core::keymap::LayerMap;
@@ -11,7 +18,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 const CALIBRATION_FILE: &str = "calibration.json";
 const CALIBRATION_VERSION: u32 = 1;
@@ -31,8 +39,73 @@ struct Versioned<T> {
     value: T,
 }
 
-/// Read `file` if it exists, has `version` and parses. Anything else is
-/// logged and gives `None`, so a damaged file cannot break the app.
+/// A settings file that could not be used when it was loaded.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reset {
+    pub dir: PathBuf,
+    /// File name, e.g. `keymap.json`.
+    pub file: String,
+    /// Name of the copy kept beside it; `None` while it could not be moved
+    /// aside (then the file itself is not overwritten, see [`save`]).
+    pub backup: Option<String>,
+    /// The UI has shown the notice about it.
+    pub shown: bool,
+}
+
+/// Resets of this run, oldest first.
+static RESETS: Mutex<Vec<Reset>> = Mutex::new(Vec::new());
+
+fn resets_lock() -> std::sync::MutexGuard<'static, Vec<Reset>> {
+    RESETS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Resets the UI has not shown yet.
+pub fn unshown_resets() -> Vec<Reset> {
+    resets_lock().iter().filter(|r| !r.shown).cloned().collect()
+}
+
+/// The UI showed its notice: it is not shown again in this run. (The file
+/// is gone from its place, so the next run does not report it either.)
+pub fn mark_resets_shown() {
+    for r in resets_lock().iter_mut() {
+        r.shown = true;
+    }
+}
+
+/// Name of the copy of `file` kept at `time`: `keymap.json.bak-20261111-143005`.
+pub(crate) fn backup_name(file: &str, time: chrono::NaiveDateTime) -> String {
+    format!("{file}.bak-{}", time.format("%Y%m%d-%H%M%S"))
+}
+
+/// Move `dir/file` aside under a backup name not taken yet (copy when it
+/// cannot be moved). Returns the backup's name.
+fn keep_aside(dir: &Path, file: &str) -> Option<String> {
+    let base = backup_name(file, chrono::Local::now().naive_local());
+    let name =
+        (1..100).map(|n| if n == 1 { base.clone() } else { format!("{base}-{n}") }).find(|n| !dir.join(n).exists())?;
+    let (from, to) = (dir.join(file), dir.join(&name));
+    match fs::rename(&from, &to).or_else(|_| fs::copy(&from, &to).map(|_| ())) {
+        Ok(()) => Some(name),
+        Err(e) => {
+            tracing::warn!("{file} could not be kept aside: {e}");
+            None
+        }
+    }
+}
+
+/// `file` cannot be used: keep it aside and record the reset.
+fn reset(dir: &Path, file: &str) {
+    let backup = keep_aside(dir, file);
+    match &backup {
+        Some(b) => tracing::warn!("{file} kept as {b}; using defaults"),
+        None => tracing::warn!("{file} left in place and not overwritten; using defaults"),
+    }
+    resets_lock().push(Reset { dir: dir.to_path_buf(), file: file.to_string(), backup, shown: false });
+}
+
+/// Read `file` if it exists, has `version` and parses. Anything else gives
+/// `None` (the defaults), so a damaged file cannot break the app; a file
+/// that exists but cannot be used is kept aside first (see the module docs).
 pub(crate) fn load<T: DeserializeOwned>(dir: &Path, file: &str, version: u32) -> Option<T> {
     let path = dir.join(file);
     let text = match fs::read_to_string(&path) {
@@ -40,25 +113,46 @@ pub(crate) fn load<T: DeserializeOwned>(dir: &Path, file: &str, version: u32) ->
         Err(e) if e.kind() == io::ErrorKind::NotFound => return None,
         Err(e) => {
             tracing::warn!("{file} unreadable ({}): {e}", path.display());
+            reset(dir, file);
             return None;
         }
     };
     match serde_json::from_str::<Versioned<T>>(&text) {
         Ok(s) if s.version == version => Some(s.value),
         Ok(s) => {
-            tracing::warn!(version = s.version, "{file}: unknown version; using defaults");
+            tracing::warn!(version = s.version, "{file}: unknown version");
+            reset(dir, file);
             None
         }
         Err(e) => {
-            tracing::warn!("{file} is damaged; using defaults: {e}");
+            tracing::warn!("{file} is damaged: {e}");
+            reset(dir, file);
             None
         }
+    }
+}
+
+/// A reset file that is still in its place must be kept aside before it is
+/// overwritten; if that still fails, it is not overwritten at all.
+fn guard_overwrite(dir: &Path, file: &str) -> io::Result<()> {
+    let mut resets = resets_lock();
+    let Some(r) = resets.iter_mut().find(|r| r.backup.is_none() && r.dir == dir && r.file == file) else {
+        return Ok(());
+    };
+    if !dir.join(file).exists() {
+        return Ok(());
+    }
+    r.backup = keep_aside(dir, file);
+    match &r.backup {
+        Some(_) => Ok(()),
+        None => Err(io::Error::other(format!("{file} could not be kept aside, so it was not overwritten"))),
     }
 }
 
 /// Write `value` atomically (temp file, then rename).
 pub(crate) fn save<T: Serialize>(dir: &Path, file: &str, version: u32, value: T) -> io::Result<()> {
     fs::create_dir_all(dir)?;
+    guard_overwrite(dir, file)?;
     let json = serde_json::to_string_pretty(&Versioned { version, value }).map_err(io::Error::other)?;
     let tmp = dir.join(format!("{file}.tmp"));
     fs::write(&tmp, json)?;
@@ -379,6 +473,109 @@ mod tests {
 
         fs::write(dir.join(CLOCK_FILE), r#"{"version":7,"autoSync":false}"#).unwrap();
         assert_eq!(load_clock(&dir), ClockSettings::default(), "unknown version");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    fn resets_in(dir: &Path) -> Vec<Reset> {
+        resets_lock().iter().filter(|r| r.dir == dir).cloned().collect()
+    }
+
+    fn files_in(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> =
+            fs::read_dir(dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn backup_names_carry_the_time() {
+        let t = chrono::NaiveDate::from_ymd_opt(2026, 11, 11).unwrap().and_hms_opt(9, 5, 7).unwrap();
+        assert_eq!(backup_name("keymap.json", t), "keymap.json.bak-20261111-090507");
+    }
+
+    #[test]
+    fn a_damaged_record_is_kept_before_it_is_overwritten() {
+        let dir = temp_dir("reset-damaged");
+        fs::create_dir_all(&dir).unwrap();
+        let damaged = r#"{"version":1,"models":{"ajazz-ak980-pro":{"base":"#;
+        fs::write(dir.join(KEYMAP_FILE), damaged).unwrap();
+
+        assert_eq!(load_keymaps(&dir), Keymaps::default(), "defaults");
+        let resets = resets_in(&dir);
+        assert_eq!(resets.len(), 1);
+        assert_eq!(resets[0].file, KEYMAP_FILE);
+        let backup = resets[0].backup.clone().expect("kept aside");
+        assert!(backup.starts_with("keymap.json.bak-") && backup.len() == "keymap.json.bak-20261111-090507".len());
+        assert_eq!(fs::read_to_string(dir.join(&backup)).unwrap(), damaged, "the old file, byte for byte");
+        assert!(!dir.join(KEYMAP_FILE).exists(), "moved, not copied");
+
+        // The next save writes a new record; the backup stays.
+        let mut km = Keymaps::default();
+        km.models.insert("ajazz-ak980-pro".into(), StoredKeymap::default());
+        save_keymaps(&dir, &km).unwrap();
+        assert_eq!(load_keymaps(&dir), km);
+        assert_eq!(fs::read_to_string(dir.join(&backup)).unwrap(), damaged);
+        assert_eq!(files_in(&dir), vec![KEYMAP_FILE.to_string(), backup]);
+        assert_eq!(resets_in(&dir).len(), 1, "a good file is no reset");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_record_from_a_newer_version_is_kept_too() {
+        let dir = temp_dir("reset-newer");
+        fs::create_dir_all(&dir).unwrap();
+        let newer = r#"{"version":2,"models":{}}"#;
+        fs::write(dir.join(MACROS_FILE), newer).unwrap();
+        assert_eq!(load_macros(&dir), MacroRecord::default());
+        let backup = resets_in(&dir)[0].backup.clone().unwrap();
+        assert!(backup.starts_with("macros.json.bak-"));
+        assert_eq!(fs::read_to_string(dir.join(backup)).unwrap(), newer);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_second_reset_in_the_same_second_gets_its_own_name() {
+        let dir = temp_dir("reset-twice");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(CLOCK_FILE), "first").unwrap();
+        let _ = load_clock(&dir);
+        fs::write(dir.join(CLOCK_FILE), "second").unwrap();
+        let _ = load_clock(&dir);
+        let backups: Vec<String> = resets_in(&dir).into_iter().filter_map(|r| r.backup).collect();
+        assert_eq!(backups.len(), 2);
+        assert_ne!(backups[0], backups[1]);
+        let mut kept: Vec<String> = backups.iter().map(|b| fs::read_to_string(dir.join(b)).unwrap()).collect();
+        kept.sort();
+        assert_eq!(kept, vec!["first".to_string(), "second".to_string()]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_notice_is_shown_once() {
+        let dir = temp_dir("reset-notice");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(CALIBRATION_FILE), "{").unwrap();
+        let _ = load_calibration(&dir);
+        assert!(unshown_resets().iter().any(|r| r.dir == dir && r.file == CALIBRATION_FILE));
+        mark_resets_shown();
+        assert!(!unshown_resets().iter().any(|r| r.dir == dir));
+        // The file was moved aside: the next run finds nothing to report.
+        assert_eq!(load_calibration(&dir), LedCalibration::DEFAULT);
+        assert_eq!(resets_in(&dir).len(), 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_reset_file_still_in_place_is_kept_before_the_save() {
+        // Moving it aside failed at load time (say, it was locked).
+        let dir = temp_dir("reset-later");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(MACROS_FILE), "old").unwrap();
+        resets_lock().push(Reset { dir: dir.clone(), file: MACROS_FILE.into(), backup: None, shown: false });
+        save_macros(&dir, &MacroRecord::default()).unwrap();
+        let backup = resets_in(&dir)[0].backup.clone().expect("kept before the save");
+        assert_eq!(fs::read_to_string(dir.join(backup)).unwrap(), "old");
+        assert_eq!(load_macros(&dir), MacroRecord::default());
         let _ = fs::remove_dir_all(&dir);
     }
 }

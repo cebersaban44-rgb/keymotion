@@ -23,7 +23,8 @@ use dto::{
     CalendarSettings, CalendarState, Calibration, CalibrationInfo, ClockStatus, EffectInfo, EffectRequest,
     GaugesSettings, GaugesState, KeyAssignment, KeyboardInfo, KeymapCatalog, KeymapLayer, KeymapState, LedColor,
     LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, PomodoroSettings, PomodoroState, Reminder,
-    ReminderSettings, ReminderState, ScreenItem, ScreenItemKind, ScreenState, SongStop, ThemePreference, UiEnvironment,
+    ReminderSettings, ReminderState, ScreenItem, ScreenItemKind, ScreenState, SettingsReset, SongStop, ThemePreference,
+    UiEnvironment,
 };
 use gauges::GaugesHandle;
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
@@ -371,6 +372,27 @@ fn refresh_keyboards(device: Device<'_>) -> Result<(), String> {
     device.send(Request::Refresh)
 }
 
+/// The user said to write on this untested firmware version ("1.07") for
+/// the rest of the session (asked after a `firmware-unverified` refusal).
+#[tauri::command]
+fn confirm_firmware(device: Device<'_>, firmware: String) -> Result<(), String> {
+    tracing::debug!(%firmware, "ipc: confirm_firmware");
+    device.send(Request::ConfirmFirmware(firmware))
+}
+
+/// Settings files that could not be read at start-up and went back to
+/// their defaults, not yet reported to the user.
+#[tauri::command]
+fn settings_resets() -> Vec<SettingsReset> {
+    settings::unshown_resets().into_iter().map(SettingsReset::from).collect()
+}
+
+/// The UI showed the notice about the resets; do not report them again.
+#[tauri::command]
+fn dismiss_settings_resets() {
+    settings::mark_resets_shown();
+}
+
 #[tauri::command]
 fn lighting_catalog() -> Vec<EffectInfo> {
     EffectInfo::catalog()
@@ -612,6 +634,15 @@ pub fn run() {
         .init();
 
     tauri::Builder::default()
+        // One app at a time: two would send commands to the keyboard at
+        // once. A second launch brings the open window forward instead.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .manage(CloseGuard::default())
         .on_window_event(|window, event| {
             let tauri::WindowEvent::CloseRequested { api, .. } = event else { return };
@@ -657,6 +688,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             keyboards,
             refresh_keyboards,
+            confirm_firmware,
+            settings_resets,
+            dismiss_settings_resets,
             lighting_catalog,
             apply_effect,
             apply_per_key,

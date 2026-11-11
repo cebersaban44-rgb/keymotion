@@ -7,7 +7,7 @@ import { create } from "zustand";
 import type { ScreenItem } from "../bindings/ScreenItem";
 import type { ScreenProgress } from "../bindings/ScreenProgress";
 import type { ScreenState } from "../bindings/ScreenState";
-import { inTauri } from "./ipc";
+import { flashWrite, inTauri } from "./ipc";
 import { FRAME_PIXELS, HEADER_LEN, pagesFor, toBlob, type Prepared } from "./screenImport";
 
 // ------------------------------------------------------------------- ipc
@@ -131,7 +131,12 @@ export async function removeItem(modelId: string, id: string): Promise<ScreenSta
   return invoke<ScreenState>("screen_remove", { modelId, id });
 }
 
-async function uploadItem(modelId: string, id: string, onProgress: (p: ScreenProgress) => void): Promise<ScreenState> {
+/** Upload to the GIF page (a write to the keyboard's memory). */
+function uploadItem(modelId: string, id: string, onProgress: (p: ScreenProgress) => void): Promise<ScreenState> {
+  return flashWrite(() => uploadOnce(modelId, id, onProgress));
+}
+
+async function uploadOnce(modelId: string, id: string, onProgress: (p: ScreenProgress) => void): Promise<ScreenState> {
   if (!inTauri) {
     const item = mock.items.find((i) => i.id === id);
     const total = item?.pages ?? 16;

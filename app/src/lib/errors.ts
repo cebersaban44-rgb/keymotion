@@ -5,6 +5,14 @@
 import type { MessageKey } from "./i18n";
 
 const RULES: [RegExp, MessageKey][] = [
+  // Writes refused before anything was sent (device.rs `WriteBlock`).
+  [/more than one keyboard on the usb cable/i, "err.several"],
+  [/another program is using the keyboard \(ajazz-driver\)/i, "err.conflict.ajazz"],
+  [/another program is using the keyboard \(signalrgb\)/i, "err.conflict.signalrgb"],
+  [/another program is using the keyboard \(openrgb\)/i, "err.conflict.openrgb"],
+  [/another program is using the keyboard \(kb-cli\)/i, "err.conflict.kb"],
+  [/untested keyboard firmware/i, "err.untested"],
+  [/write cancelled by the user/i, "err.cancelled"],
   [/blocked by safety guard/i, "err.guard"],
   [/screen upload stopped/i, "err.uploadStopped"],
   [/live mode is off/i, "err.liveOff"],

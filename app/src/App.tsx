@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { UnsavedDialog } from "./components/UnsavedDialog";
+import { SafetyDialogs, useSafetyDialogOpen } from "./components/SafetyDialogs";
 import {
   closeWindow,
   getKeyboards,
@@ -172,6 +173,7 @@ export default function App() {
   useKeyboardRecords();
   useLiveScreen();
   const guard = useCloseGuard();
+  const safetyOpen = useSafetyDialogOpen();
   const page = useApp((s) => s.page);
   const loaded = useApp((s) => s.loaded);
   const kb = useActiveKeyboard();
@@ -203,7 +205,7 @@ export default function App() {
 
   return (
     <div className="flex h-full bg-bg">
-      <div className="contents" inert={guard.asking}>
+      <div className="contents" inert={guard.asking || safetyOpen}>
         <Sidebar />
         <main className="relative flex-1 overflow-y-auto">
           <AnimatePresence mode="wait">
@@ -221,6 +223,7 @@ export default function App() {
         </main>
       </div>
       <ScreenUploadToast />
+      <SafetyDialogs />
       <AnimatePresence>
         {guard.asking && <UnsavedDialog items={guard.items} onCancel={guard.cancel} />}
       </AnimatePresence>
