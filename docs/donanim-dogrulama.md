@@ -452,7 +452,13 @@ Uygulamanın Ekran sayfası; kullanıcı kendi dosyalarıyla denedi.
 - **Okuma:** Google'ın herkese açık "Türkiye'deki tatiller" takvimi (`calendar.google.com`, herkese açık adres) eklendi. Windows HTTP istemcisiyle yaklaşık 1 sn'de okundu, iki günlük aralıkta 1 etkinlik (gün boyu; kart yok). Sağlayıcı "google" olarak tanındı. Günlükte adres yok, yalnız sunucu adı.
 - **Tuş hatırlatması:** "Dene" ile `Reminders` katmanı 1 LED'le (Esc) başladı, 4 sn sonra durdu; başka katman olmadığı için klavye kendi kayıtlı ışığına döndü.
 - Takvim sonra kaldırıldı; `calendar.json`'da takvim yok.
-- **Bekleyen:** Kullanıcının kendi takvimiyle, canlı mod açıkken bir toplantı kartının klavyeye gitmesi.
+- **Kullanıcının kendi takvimiyle (2026-11-11, klavyede):**
+  - Google'ın "iCal biçiminde gizli adres"i eklendi ve okundu; sıradaki toplantı listede ve kartın önizlemesinde göründü.
+  - Canlı mod açık (Yoğun plan). "Klavyede 1 dk göster": kart 04:17:26'da klavyeye yüklendi (`lastSource = calendar`), 1 dk sonra kendi görseli geri yüklendi (kayıt 04:19:02). 2 yükleme.
+  - Kullanıcı: "1 dakikalık takvim göstermesi başarılı."
+  - Toplantı adı ve adres belgelere yazılmadı (kullanıcının özel bilgisi).
+- **Yükleme sayısı:** Uygulamanın kaydında toplam **26** (2026-11-10'da 24, 2026-11-11'de 2). CLI ile yapılan E1 ve E4 de eklenince **28**.
+- **Henüz gözlenmedi:** Gerçek bir toplantıdan 10 dk önce kartın kendiliğinden gelmesi ve 1 dk önce Esc'in yanıp sönmesi.
 
 ### Sistem göstergeleri ışık katmanı (`04 20`, yalnızca RAM) — 2026-11-10
 
