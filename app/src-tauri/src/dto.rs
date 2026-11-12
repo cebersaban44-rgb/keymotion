@@ -276,6 +276,109 @@ pub struct UiEnvironment {
     pub os_build: u32,
 }
 
+/// Running in the background (tray.rs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct BackgroundSettings {
+    /// Closing the window hides it; the app goes on in the tray.
+    pub close_to_tray: bool,
+    /// Windows starts the app (hidden) when the user signs in.
+    pub start_with_windows: bool,
+    /// The startup entry is there but Task Manager or Settings turned it
+    /// off (read only: setting `start_with_windows` turns it on again).
+    #[serde(default)]
+    pub start_turned_off: bool,
+}
+
+/// The tray menu's words and the background notice, in the UI language.
+/// Templates keep their `{name}` places; the backend fills them in.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TrayTexts {
+    /// "tr" or "en": how a date further than tomorrow is written.
+    pub locale: String,
+    pub open: String,
+    pub no_keyboard: String,
+    /// `{n}`: percent.
+    pub battery: String,
+    pub conn_usb: String,
+    pub conn_dongle: String,
+    pub conn_bluetooth: String,
+    pub focus: String,
+    pub focus_start: String,
+    pub focus_pause: String,
+    pub focus_resume: String,
+    pub focus_skip: String,
+    pub focus_stop: String,
+    pub phase_focus: String,
+    pub phase_short: String,
+    pub phase_long: String,
+    /// `{n}` of `{total}`.
+    pub round: String,
+    /// `{min}`.
+    pub left: String,
+    pub paused: String,
+    /// `{rounds}` × `{min}`.
+    pub ready: String,
+    pub reminders: String,
+    pub reminders_on: String,
+    pub reminders_off: String,
+    /// `{time}`, `{title}`.
+    pub reminders_next: String,
+    pub reminders_none: String,
+    pub tomorrow: String,
+    pub gauges: String,
+    pub profiles: String,
+    pub default_profile: String,
+    pub quit: String,
+    pub hidden_title: String,
+    pub hidden_body: String,
+}
+
+/// Until the UI has sent its words (a start with Windows, before the page
+/// has loaded).
+impl Default for TrayTexts {
+    fn default() -> Self {
+        let s = |t: &str| t.to_string();
+        Self {
+            locale: s("en"),
+            open: s("Open Keymotion"),
+            no_keyboard: s("No keyboard connected"),
+            battery: s("battery {n}%"),
+            conn_usb: s("USB cable"),
+            conn_dongle: s("2.4 GHz receiver"),
+            conn_bluetooth: s("Bluetooth"),
+            focus: s("Focus timer"),
+            focus_start: s("Start"),
+            focus_pause: s("Pause"),
+            focus_resume: s("Resume"),
+            focus_skip: s("Skip to the next phase"),
+            focus_stop: s("Stop"),
+            phase_focus: s("Focus"),
+            phase_short: s("Short break"),
+            phase_long: s("Long break"),
+            round: s("Round {n}/{total}"),
+            left: s("{min} min left"),
+            paused: s("Paused"),
+            ready: s("Ready: {rounds} × {min} min focus"),
+            reminders: s("Reminders"),
+            reminders_on: s("Reminders on"),
+            reminders_off: s("Reminders off"),
+            reminders_next: s("Next: {time} · {title}"),
+            reminders_none: s("No reminders coming up"),
+            tomorrow: s("tomorrow"),
+            gauges: s("System gauges on the keys"),
+            profiles: s("Profiles"),
+            default_profile: s("Default"),
+            quit: s("Quit"),
+            hidden_title: s("Still running in the background"),
+            hidden_body: s("Its icon is next to the clock. To quit, right-click the icon and choose Quit."),
+        }
+    }
+}
+
 /// One LED and its colour (live frames, mirror read-back, per-key tables).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Serialize, TS)]
 #[ts(export)]
