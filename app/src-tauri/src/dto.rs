@@ -1227,6 +1227,10 @@ pub struct LiveState {
     /// Time until the next upload is allowed, when none is available now.
     pub next_token_ms: Option<f64>,
     pub pending: Option<LiveItem>,
+    /// Time until the waiting card may go, when it waits for the budget.
+    /// The focus timer's and the song's cards leave one upload for a
+    /// reminder or a meeting, so theirs can be later than `next_token_ms`.
+    pub pending_wait_ms: Option<f64>,
     pub uploading: Option<LiveItem>,
     pub last: Option<LiveShown>,
     pub last_error: Option<String>,
@@ -1866,6 +1870,37 @@ pub struct ReminderState {
     pub showing_until_ms: Option<f64>,
     /// Nobody has touched the computer for a while: repeating reminders wait.
     pub away: bool,
+    /// The last reminder whose card could not go on the screen, and why;
+    /// cleared when a reminder's card shows (K5).
+    pub card_skip: Option<CardSkip>,
+}
+
+/// Why a reminder's card did not go on the screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum CardSkipReason {
+    /// "Show cards on the screen" is off on the Reminders page.
+    CardsOff,
+    /// The live screen is off.
+    LiveOff,
+    /// The keyboard is not on the USB cable.
+    NoCable,
+    /// A meeting's card holds the screen.
+    Meeting,
+    /// No upload left in the budget.
+    Budget,
+}
+
+/// A reminder's card that did not go on the screen.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CardSkip {
+    pub id: String,
+    pub reason: CardSkipReason,
+    /// When the reminder went off.
+    pub at_ms: f64,
 }
 
 /// A card the UI should draw and hand to the live mode

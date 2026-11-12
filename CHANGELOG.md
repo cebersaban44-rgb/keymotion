@@ -34,12 +34,17 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
   the picture.
 - **Live screen:** cards that update on their own (the song that is playing,
   focus timer phases, upcoming meetings), with a daily upload limit, a clear
-  order of what is shown, and a return to your own picture afterwards.
+  order of what is shown, and a return to your own picture afterwards. The
+  focus timer and the song leave the last upload for reminders and meetings. A
+  card that waits for the limit is shown as waiting, apart from what the
+  keyboard shows, and "Don't send" drops it.
 - **Calendar:** Google, Outlook and iCloud calendars through their share
   address (read only); a card on the screen before a meeting and a blinking key
   a minute before it starts.
 - **Reminders:** once, daily or at intervals during working hours; a wave of
-  colour on the keys, and optionally a screen card and a sound.
+  colour on the keys, and optionally a screen card and a sound. "Try" shows the
+  card too, and the page says why a card was not shown (the upload limit, the
+  live screen off, no USB cable, a meeting card).
 - **System gauges:** processor, graphics and memory load as bars on key rows,
   volume on the function keys, microphone mute on a chosen key.
 - **Focus timer:** the whole keyboard fills with the phase colour and empties

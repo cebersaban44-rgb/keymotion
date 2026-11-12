@@ -284,6 +284,7 @@ function ScreenCard() {
   const state = useScreen((s) => s.state);
   const liveOn = useLive((s) => !!s.state?.enabled);
   const liveName = useLive((s) => s.state?.last?.name ?? null);
+  const waiting = useLive((s) => (s.state?.enabled ? (s.state.pending?.name ?? null) : null));
   const showsLive = state?.shown === "live";
   const shown = state?.items.find((i) => i.id === state.shown) ?? null;
   const factory = !!state?.items.some((i) => i.kind === "factory");
@@ -309,7 +310,12 @@ function ScreenCard() {
       ) : (
         <span className="text-[13px] text-ink-3">{t(factory ? "sc.page.gif.maybeFactory" : "overview.screen.unknown")}</span>
       )}
-      {liveOn && !showsLive && <span className="text-[12px] text-ink-3">{t("overview.screen.liveOn")}</span>}
+      {liveOn && !showsLive && !waiting && <span className="text-[12px] text-ink-3">{t("overview.screen.liveOn")}</span>}
+      {waiting && (
+        <span className="truncate text-[12px] text-ink-3" data-overview-waiting>
+          {t("overview.screen.waiting", { name: waiting })}
+        </span>
+      )}
     </QuickCard>
   );
 }

@@ -20,7 +20,10 @@
 //! Titles are the user's own words: they are not logged.
 
 use crate::device::{DeviceHandle, LightLayer, LiveFrame, Request};
-use crate::dto::{Connection, Reminder, ReminderCard, ReminderInfo, ReminderSettings, ReminderState, ReminderWhen};
+use crate::dto::{
+    CardSkip, CardSkipReason, Connection, Reminder, ReminderCard, ReminderInfo, ReminderSettings, ReminderState,
+    ReminderWhen,
+};
 use crate::live::{now_ms, LiveHandle};
 use crate::notify;
 use crate::pomodoro::{play_sound, KeyMap};
@@ -34,6 +37,31 @@ use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
+
+/// Why a reminder's card cannot go on the screen now, `None` if it can.
+/// Away from the USB cable the upload would fail and be dropped when the
+/// card's time ends, so it is not tried (K5).
+fn card_skip_reason(
+    cards_on: bool,
+    live_on: bool,
+    on_cable: bool,
+    meeting: bool,
+    budget: bool,
+) -> Option<CardSkipReason> {
+    if !cards_on {
+        Some(CardSkipReason::CardsOff)
+    } else if !live_on {
+        Some(CardSkipReason::LiveOff)
+    } else if !on_cable {
+        Some(CardSkipReason::NoCable)
+    } else if meeting {
+        Some(CardSkipReason::Meeting)
+    } else if !budget {
+        Some(CardSkipReason::Budget)
+    } else {
+        None
+    }
+}
 
 /// Live mode source id of the reminder cards.
 pub const SOURCE: &str = "reminder";
@@ -265,6 +293,8 @@ struct Inner {
     wave_sent: Option<Vec<(u8, Rgb)>>,
     /// The reminder whose card holds the screen, and until when.
     showing: Option<(String, f64)>,
+    /// The last card that could not go on the screen, and why.
+    card_skip: Option<CardSkip>,
     startup_checked: bool,
     away: bool,
     model: Option<(String, KeyMap)>,
@@ -307,6 +337,7 @@ impl RemindersHandle {
             wave: None,
             wave_sent: None,
             showing: None,
+            card_skip: None,
             startup_checked: false,
             away: false,
             model: None,
@@ -362,6 +393,7 @@ impl RemindersHandle {
             showing: inner.showing.as_ref().map(|(id, _)| id.clone()),
             showing_until_ms: inner.showing.as_ref().map(|(_, until)| *until),
             away: inner.away,
+            card_skip: inner.card_skip.clone(),
         }
     }
 
@@ -426,6 +458,9 @@ impl RemindersHandle {
             let mut inner = self.inner.lock().map_err(|_| "reminders unavailable")?;
             inner.stored.reminders.retain(|r| r.id != id);
             inner.stored.fired.remove(id);
+            if inner.card_skip.as_ref().is_some_and(|k| k.id == id) {
+                inner.card_skip = None;
+            }
             inner.anchors.remove(id);
             inner.stored.clone()
         };
@@ -549,20 +584,20 @@ impl RemindersHandle {
             }
         }
         if let Some((r, t)) = fired.iter().rev().find(|(r, _)| r.card) {
-            let why_not = if !s.screen {
-                Some("cards are off")
-            } else if !live_on {
-                Some("the live mode is off")
-            } else if self.live.held_by(crate::calendar::SOURCE) {
-                Some("a meeting's card holds the screen")
-            } else if !self.live.budget_ready() {
-                Some("no upload left in the budget")
-            } else {
-                None
-            };
+            let why_not = card_skip_reason(
+                s.screen,
+                live_on,
+                map.is_some(),
+                self.live.held_by(crate::calendar::SOURCE),
+                self.live.budget_ready(),
+            );
             match why_not {
-                Some(why) => tracing::info!(id = %r.id, "reminder card skipped: {why}"),
+                Some(reason) => {
+                    tracing::info!(id = %r.id, ?reason, "reminder card skipped");
+                    inner.card_skip = Some(CardSkip { id: r.id.clone(), reason, at_ms: *t });
+                }
                 None => {
+                    inner.card_skip = None;
                     let card =
                         ReminderCard { reminder: r.clone(), at_ms: *t, next_ms: next_after(&r.when, &Local, *t) };
                     self.live.set_hold(SOURCE, true);
@@ -659,6 +694,17 @@ mod tests {
     }
 
     const WEEKDAYS: u8 = 0b001_1111;
+
+    #[test]
+    fn a_skipped_card_says_why() {
+        use CardSkipReason::*;
+        assert_eq!(card_skip_reason(true, true, true, false, true), None);
+        assert_eq!(card_skip_reason(false, true, true, false, true), Some(CardsOff));
+        assert_eq!(card_skip_reason(true, false, true, false, true), Some(LiveOff));
+        assert_eq!(card_skip_reason(true, true, false, false, true), Some(NoCable));
+        assert_eq!(card_skip_reason(true, true, true, true, true), Some(Meeting));
+        assert_eq!(card_skip_reason(true, true, true, false, false), Some(Budget));
+    }
 
     #[test]
     fn a_daily_reminder_goes_off_once_at_its_time_on_its_days() {
