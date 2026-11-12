@@ -1,6 +1,6 @@
 ---
 title: Frequently asked questions
-description: Short answers about the Windows warning, AJAZZ's own software, Bluetooth and the 2.4 GHz receiver, keyboard safety, your data, other keyboards and reporting a problem.
+description: Short answers about the Windows warning, AJAZZ's own software, putting a GIF on the screen, Bluetooth and the 2.4 GHz receiver, keyboard safety, your data, the AK980 V2, other keyboards and reporting a problem.
 ---
 
 import { Aside } from "@astrojs/starlight/components";
@@ -20,6 +20,21 @@ You can keep AJAZZ's software installed. While its driver is running, though, Ke
 The keyboard follows one program's commands at a time, and commands from two programs can mix up. Close the other program, then save again.
 
 Having the driver installed is also useful: Keymotion can copy the keyboard's factory screen animation from it. See [If something goes wrong](/keymotion/help/recovery/#put-the-factory-screen-animation-back).
+
+## Do I need AJAZZ's software to use Keymotion?
+
+No. Keymotion talks to the keyboard by itself over the USB cable and does all of it on its own: lighting, key mapping, macros and the screen. You can uninstall AJAZZ's software.
+
+Keeping it installed has one use: if you ever want the keyboard's factory screen animation back, Keymotion can copy it from there. See [If something goes wrong](/keymotion/help/recovery/#put-the-factory-screen-animation-back).
+
+## How do I put a GIF or my own picture on the AK980 PRO screen?
+
+1. Connect the USB cable and set the switch on the back of the keyboard to the middle.
+2. In Keymotion, open **Screen** and choose **Image or video**.
+3. Pick a PNG, JPEG, GIF, WebP, APNG, MP4 or WebM file, then place it and choose the part you want.
+4. Click **Preview**, then **Upload to keyboard**.
+
+A still picture uploads in a few seconds. The screen holds up to 140 frames, and a full 140-frame animation takes about five and a half minutes. On the keyboard, **Fn+Home** switches between the clock and your picture. You can also make text cards and slideshows: see [Screen](/keymotion/guide/screen/).
 
 ## Why can't I change settings over Bluetooth?
 
@@ -68,6 +83,10 @@ No. It collects no usage data, has no account and sends nothing about you or you
 ## Does it work with other keyboards?
 
 Not yet. Keymotion supports the AJAZZ AK980 PRO. If you connect a SONiX or AJAZZ keyboard that isn't supported yet, Keymotion says so, sends nothing to it, and offers **Request support** to ask for it on GitHub. See [Supported keyboards](/keymotion/help/keyboards/).
+
+## Does it work with the AJAZZ AK980 V2?
+
+Some shops sell the same keyboard as the **AJAZZ AK980 V2**. It reports the same USB identity as the AK980 PRO, so Keymotion treats it as one. We haven't tried one separately: if you have one, please [tell us how it went](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK980+V2&model=AJAZZ+AK980+V2). See [Supported keyboards](/keymotion/help/keyboards/).
 
 ## Is Keymotion made by AJAZZ?
 

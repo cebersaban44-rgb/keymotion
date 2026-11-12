@@ -3,7 +3,12 @@
 #
 # It builds from main, so the site always describes the released app. A run
 # can also be started by hand (Actions › Pages › Run workflow), for example to
-# publish a fix to the guide between releases once it is on main.
+# publish a fix to the guide between releases once it is on main. The
+# github-pages environment lets main and develop publish.
+#
+# After a publish, the changed pages go to IndexNow (Bing, Yandex and others;
+# tools/site/indexnow.mjs). Google has no such service: it reads the sitemap
+# the site was registered with in Search Console.
 #
 # Repository setting: Settings › Pages › Source must be "GitHub Actions".
 name: Pages
@@ -61,3 +66,32 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  indexnow:
+    name: Tell search engines
+    needs: deploy
+    runs-on: ubuntu-latest
+    # The site is already published; a failure here only shows as a warning.
+    continue-on-error: true
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Find the last successful publish
+        id: last
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow pages.yml --status success --limit 1 --json headSha --jq '.[0].headSha // ""')
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Send the changed pages to IndexNow
+        env:
+          SINCE: ${{ steps.last.outputs.sha }}
+        run: node tools/site/indexnow.mjs ${SINCE:+--since "$SINCE"}

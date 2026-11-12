@@ -1,6 +1,6 @@
 # Sürüm notları
 
-Keymotion'daki önemli değişiklikler burada listelenir. İngilizcesi: [CHANGELOG.md](../CHANGELOG.md).
+Keymotion'daki önemli değişiklikler burada listelenir. İngilizcesi: [CHANGELOG.md](CHANGELOG.md).
 
 ## [Yayımlanmamış]
 

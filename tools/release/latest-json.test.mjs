@@ -143,7 +143,7 @@ test("releaseBody: notes, how to install, the SHA-256 line and the policy links"
   assert.match(body, new RegExp(`SHA-256 of \`setup\\.exe\`: \`${SHA}\``));
   assert.match(body, /\[Code signing policy\]\(https:\/\/cebersaban44-rgb\.github\.io\/keymotion\/about\/code-signing\/\)/);
   assert.match(body, /\[Privacy policy\]\(/);
-  assert.match(body, /\[Türkçe sürüm notları\]\(https:\/\/github\.com\/o\/r\/blob\/v0\.2\.0\/docs\/surum-notlari\.md\)\n$/);
+  assert.match(body, /\[Türkçe sürüm notları\]\(https:\/\/github\.com\/o\/r\/blob\/v0\.2\.0\/CHANGELOG\.tr\.md\)\n$/);
   // Signed releases (stage 9) drop the Windows warning.
   assert.doesNotMatch(releaseBody({ notes: "x", fileName: "s.exe", sha256: SHA, signed: true }), /isn't signed/);
   assert.match(releaseBody({ notes: "x", fileName: "s.exe", sha256: SHA, preface: "Test build." }), /^> Test build\.\n\nx\n/);
@@ -175,7 +175,7 @@ test("CLI: writes latest.json and release-notes.md, fails without a section", (t
   assert.deepEqual(JSON.parse(manifest.notes), { en: "### Fixed\n\n- A bug.\n- Another one.", tr: "- Bir hata." });
   assert.match(
     readFileSync(join(dir, "release-notes.md"), "utf8"),
-    new RegExp(`^### Fixed[\\s\\S]*${SHA}\`\\n\\n\\[User guide\\][\\s\\S]*/owner/repo/blob/v0\\.2\\.0/docs/surum-notlari\\.md\\)\\n$`),
+    new RegExp(`^### Fixed[\\s\\S]*${SHA}\`\\n\\n\\[User guide\\][\\s\\S]*/owner/repo/blob/v0\\.2\\.0/CHANGELOG\\.tr\\.md\\)\\n$`),
   );
 
   const missing = run("0.3.0");
