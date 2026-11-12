@@ -77,7 +77,7 @@ export function profileSummary(p: ProfileInfo, t: Translate, locale: Locale): st
       l.mode === 0 ? t("prof.sum.off") : t("prof.sum.effect", { effect: t(`fx.${l.mode}` as MessageKey), level: l.brightness }),
     );
   } else if (l?.kind === "per-key") {
-    out.push(t("prof.sum.perKey", { count: l.keys }));
+    out.push(l.keys > 0 ? t("prof.sum.perKey", { count: l.keys }) : t("prof.sum.perKey.none"));
   }
   if (p.keymap !== null) out.push(p.keymap === 0 ? t("prof.sum.keymap.factory") : t("prof.sum.keymap", { count: p.keymap }));
   if (p.macros !== null) out.push(p.macros === 0 ? t("prof.sum.macros.none") : t("prof.sum.macros", { count: p.macros }));
