@@ -739,5 +739,7 @@ Eskiden "Aşama 1b: erken başvuru" idi. 2026-11-12'de SignPath'in şartları ve
 | 8 | İlk sürümün nerede duyurulacağı (kullanım kanıtı için) | Kullanıcı seçer |
 | 4 | GitHub'da özel güvenlik bildirimi açılsın mı? | Evet (açıldı, 2026-11-12) |
 | 5 | Kurulum ayrıntıları (kısayollar, kaldırırken ayarlar) | Yukarıdaki varsayılanlar |
-| 6 | Güncelleme anahtarı GitHub Secrets'a konulsun mu? | Evet |
+| 6 | Güncelleme anahtarı GitHub Secrets'a konulsun mu? | Evet; kondu (2026-11-12) |
+| 6 | Depo herkese açık mı kalsın, gizli mi olsun? | **Karar verildi:** açık kalır (2026-11-12). Gizli depoda: ücretsiz hesapta Windows CI dakikaları kısıtlı (ayda 2.000, Windows iki kat sayılır), dal korumaları ve otomatik birleştirme çalışmaz, güncelleyici GitHub'a girişsiz bakamaz, SignPath ücretsiz imzası verilmez. Depoda gizli bir şey yok: anahtar Secrets'ta; takvim adresi, hatırlatıcı adları, kişisel bilgiler depoya girmez. |
+| 6 | "Supply chain (cargo-deny)" denetimi birleşme için zorunlu olsun mu? | Öneri (depo ayarı, kullanıcının onayıyla): PR #83 bu denetim kırmızıyken birleşti |
 | — | Disk için `cargo clean` (ortak `target` klasörü) | Gerekirse, sorarak |
