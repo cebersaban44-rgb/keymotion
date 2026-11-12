@@ -47,6 +47,9 @@
         },
         "installerIcon": "icons/icon.ico",
         "uninstallerIcon": "icons/icon.ico",
+        "sidebarImage": "windows/images/sidebar.bmp",
+        "headerImage": "windows/images/header.bmp",
+        "uninstallerHeaderImage": "windows/images/header.bmp",
         "installerHooks": "windows/installer-hooks.nsh"
       }
     },
