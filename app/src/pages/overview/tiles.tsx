@@ -143,7 +143,12 @@ export function RemindersTile() {
   // As the Reminders page says it: off, away, the next one, none ahead, none at all.
   const away = !!s && s.away && s.settings.awayWait && list.some((i) => i.reminder.enabled && i.reminder.when.kind === "every");
   const Icon = next ? ICON_OF[next.reminder.icon] : null;
-  const badge = s && list.length ? { on: s.settings.enabled && on > 0, text: s.settings.enabled ? t("overview.rem.on", { count: on }) : t("overview.off") } : null;
+  // "0 açık" says nothing: the badge shows only how many are on, or that
+  // reminders are off.
+  const badge =
+    s && list.length && (on > 0 || !s.settings.enabled)
+      ? { on: s.settings.enabled, text: s.settings.enabled ? t("overview.rem.on", { count: on }) : t("overview.off") }
+      : null;
 
   return (
     <Tile
