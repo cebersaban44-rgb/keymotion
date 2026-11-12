@@ -36,6 +36,14 @@ nowPlaying: boolean, track: TrackInfo | null,
  */
 restore: LiveRestore | null, 
 /**
+ * The source whose card is on the GIF page now (`calendar`,
+ * `reminder`, `pomodoro`, `now-playing`), as far as the app knows;
+ * null when the user's own picture or the factory animation is there.
+ * Not the same as `restore`: the first card can replace the factory
+ * animation, which has nothing to put back.
+ */
+showing: string | null, 
+/**
  * Someone holds the screen (the calendar around a meeting, the focus
  * timer while it runs): "Çalan şarkı" waits.
  */

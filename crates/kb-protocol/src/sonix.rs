@@ -50,8 +50,6 @@ pub enum Op {
     PerKeyColors = 0x23,
     /// Read back the colours currently shown (read-only).
     ReadColors = 0xF5,
-    /// Options: sleep, Win lock, … (flash write).
-    Options = 0x17,
     /// Base-layer keymap (flash write).
     KeymapBase = 0x11,
     /// Fn-layer keymap (flash write).
@@ -78,7 +76,6 @@ impl Op {
             0x13 => Lighting,
             0x23 => PerKeyColors,
             0xF5 => ReadColors,
-            0x17 => Options,
             0x11 => KeymapBase,
             0x27 => KeymapFn,
             0x19 => MacroBegin,
@@ -548,8 +545,10 @@ mod tests {
     fn guard_blocks_unknown_opcodes() {
         let mut p = header(Op::Begin, 0, 0);
         // 38 writes external flash from address 0, 1F reboots into the
-        // bootloader, 50/51 are unverified resets.
-        for op in [0x38u8, 0x1F, 0x05, 0x10, 0x12, 0x22, 0x26, 0x50, 0x51, 0xAB, 0xE0, 0xF1, 0xF6] {
+        // bootloader, 50/51 are unverified resets, 17 (keyboard options:
+        // sleep, Win lock) writes flash but has not been measured yet; it
+        // goes back on the list with its encoder once it is.
+        for op in [0x38u8, 0x1F, 0x05, 0x10, 0x12, 0x17, 0x22, 0x26, 0x50, 0x51, 0xAB, 0xE0, 0xF1, 0xF6] {
             p[1] = op;
             assert_eq!(guard(&p, PacketKind::Header), Err(Blocked::Opcode(op)), "op {op:02X}");
         }

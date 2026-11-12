@@ -94,7 +94,7 @@ These are the opcodes on the allowlist that the app uses. Each one was measured 
 | Live frame (RAM only) | `04 20` (8) → 8 packets → `04 02` | 29.5 frames a second |
 | Color read-back | `04 F5` (9) → 9 reads → `04 02` | the app reads every 250 ms |
 
-`04 17` (keyboard options such as sleep and the Windows key lock) is also on the allowlist, but nothing in the app or `kb` sends it, and it has not been measured.
+`04 17` (keyboard options such as sleep and the Windows key lock) is not on the allowlist: it writes to flash and has not been measured. It goes on the list together with its encoder once it is.
 
 `kb-core` keeps a fixed pause before and after configuration packets (`CMD_DELAY` in `crates/kb-core/src/sonix.rs`). Measured: a `04 02` sent right after the last read-back packet is not processed, the session stays open and the next read-back fails.
 

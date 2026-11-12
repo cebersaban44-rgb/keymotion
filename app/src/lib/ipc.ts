@@ -320,13 +320,52 @@ export function setLiveFrame(colors: LedColor[] | null, brightness = 5): Promise
  * what the app last saved there; it resolves the read-back's red channel.
  */
 export function setMirror(enabled: boolean, hint: MirrorHint | null = null): Promise<void> {
-  if (import.meta.env.DEV && !inTauri) return Promise.resolve();
+  if (import.meta.env.DEV && !inTauri) {
+    if (enabled && hint) mockMirrorListener?.(mockMirrorColors(hint));
+    return Promise.resolve();
+  }
   return serial(() => invoke<void>("set_mirror", { enabled, hint }));
 }
 
 export async function onMirror(cb: (colors: LedColor[]) => void): Promise<UnlistenFn> {
-  if (import.meta.env.DEV && !inTauri) return () => {};
+  if (import.meta.env.DEV && !inTauri) {
+    mockMirrorListener = cb;
+    return () => {
+      if (mockMirrorListener === cb) mockMirrorListener = null;
+    };
+  }
   return listen<LedColor[]>("lighting-mirror", (e) => cb(e.payload));
+}
+
+// Browser mock: the mirror reports what was last saved, as the keyboard
+// would (a single-colour effect on every key, a rainbow across the board for
+// the others, a per-key design as saved), so previews and screenshots show
+// lit keys.
+let mockMirrorListener: ((colors: LedColor[]) => void) | null = null;
+
+function mockMirrorColors(hint: MirrorHint): LedColor[] {
+  const scale = Math.max(0, Math.min(5, hint.brightness)) / 5;
+  const dim = (c: LedColor): LedColor => ({
+    led: c.led,
+    r: Math.round(c.r * scale),
+    g: Math.round(c.g * scale),
+    b: Math.round(c.b * scale),
+  });
+  if (hint.keys) return hint.keys.map(dim);
+  const keys = ak980Geometry.keys;
+  if (hint.color) {
+    const n = Number.parseInt(hint.color.slice(1), 16);
+    return keys.map((k) => dim({ led: k.led, r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 }));
+  }
+  return keys.map((k) => {
+    // Hue by position, full saturation: the rainbow most effects start with.
+    const h = ((k.x / ak980Geometry.width) * 360) % 360;
+    const f = (o: number) => {
+      const t = (o + h / 60) % 6;
+      return Math.round(255 * (1 - Math.max(0, Math.min(1, Math.min(t, 4 - t)))));
+    };
+    return dim({ led: k.led, r: f(5), g: f(3), b: f(1) });
+  });
 }
 
 // Browser-only stand-in for the keyboard clock state.
@@ -510,9 +549,31 @@ export function logUiError(message: string): Promise<void> {
  *  lines). A problem report passes what happened (`context`) for the top. */
 export async function getDiagnostics(language: string, context?: string): Promise<string> {
   if (import.meta.env.DEV && !inTauri) {
+    // Shaped like the real report (app/src-tauri/src/diagnostics.rs), with
+    // made-up values, so previews and screenshots look right.
     await mockDelay(150);
-    const what = context ? `\nWhat happened:\n  ${context.split("\n").join("\n  ")}\n` : "";
-    return `Browser preview diagnostics\nUI language: ${language}${what}\nUser agent: ${navigator.userAgent}\n`;
+    const what = context ? `\n\nWhat happened:\n  ${context.split("\n").join("\n  ")}` : "";
+    return [
+      "Keymotion diagnostics",
+      `Created: ${new Date().toISOString().replace(/\.\d{3}Z$/, "Z")}`,
+      "App version: 0.1.0",
+      "Windows: Windows 11 Home 25H2 (build 26200.7171)",
+      "WebView2: 142.0.3595.80",
+      `UI language: ${language}${what}`,
+      "",
+      "Keyboards:",
+      '  AJAZZ AK980 PRO (ajazz-ak980-pro), usb, firmware 1.06, product "AK980 PRO"',
+      "",
+      "Data files:",
+      "  lighting.json (2.1 KB)",
+      "  settings.json (1.4 KB)",
+      "",
+      "Last 3 log lines (addresses and user names removed):",
+      "2026-11-12T10:14:58Z  INFO keyboard connected model=ajazz-ak980-pro connection=usb",
+      "2026-11-12T10:15:02Z  INFO lighting saved mode=wave brightness=4",
+      "2026-11-12T10:15:40Z  INFO clock set",
+      "",
+    ].join("\n");
   }
   return invoke<string>("diagnostics_report", { language, context: context ?? null });
 }
@@ -1071,7 +1132,7 @@ function mockKeyboards(): KeyboardInfo[] {
       keyCount: 97,
       hasKnob: true,
       hasSideLight: true,
-      screen: { width: 240, height: 135, verified: false },
+      screen: { width: 240, height: 135, verified: true },
       connection: usb ? "usb" : dongle ? "dongle" : "bluetooth",
       product: usb ? "SONiX AK980 PRO" : null,
       firmware: usb ? mockFirmware() : null,

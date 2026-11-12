@@ -408,7 +408,17 @@ impl ScreenLibrary {
     /// The GIF page shows a live card from this source (as far as the app
     /// knows).
     pub fn live_source_showing(&self, source: &str) -> bool {
-        self.index.live.last_source.as_deref() == Some(source) && self.index.shown.values().any(|v| v == LIVE_ID)
+        self.live_showing().as_deref() == Some(source)
+    }
+
+    /// The source of the live card on the GIF page, or None when it shows
+    /// the user's own picture or the factory animation (as far as the app
+    /// knows).
+    pub fn live_showing(&self) -> Option<String> {
+        if !self.index.shown.values().any(|v| v == LIVE_ID) {
+            return None;
+        }
+        self.index.live.last_source.clone()
     }
 
     /// Record a live card the keyboard confirmed and keep its data for

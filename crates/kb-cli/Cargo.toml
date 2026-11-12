@@ -19,6 +19,7 @@ kb-core.workspace = true
 kb-devices.workspace = true
 kb-protocol.workspace = true
 kb-transport.workspace = true
+kb-winsys.workspace = true
 tracing-subscriber.workspace = true
 
 [lints]

@@ -348,12 +348,12 @@ export const SHOTS = [
   { name: "screen-no-backup", query: { driver: "" }, page: "screen", screenTab: "visuals", settle: 1500 },
   {
     name: "focus-timer",
-    query: { pomofast: "" },
+    // The first block starts 7 minutes in: the ring and the keys are part
+    // empty and the ring shows a real time.
+    query: { pomoskip: "7" },
     page: "focus",
     steps: async (page) => {
-      await click(page, "pomo.start", { wait: 600 });
-      // Some of the first block gone: the ring and the keys part empty.
-      await page.waitForTimeout(9000);
+      await click(page, "pomo.start", { wait: 1500 });
     },
   },
   {

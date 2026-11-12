@@ -357,9 +357,12 @@ body {
   color: #f6f3ec;
 }
 
-/* Four-letter labels on 1u keys (Home, PgUp) step down, never below 9 px. */
+/* Four-letter labels on 1u keys (Home, PgUp) step down, never below 9 px,
+   and get most of the cap's width so they don't run into its edge. */
 .kb-key.kb-long {
   font-size: max(9px, min(12px, calc(var(--u) * 0.25)));
+  padding-inline: calc(var(--u) * 0.05);
+  letter-spacing: -0.02em;
 }
 
 /* Legends under 9 px are hidden rather than shrunk (see KeyboardView). */

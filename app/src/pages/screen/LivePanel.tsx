@@ -129,11 +129,11 @@ type Layered = "calendar" | "reminder" | "pomodoro" | "song" | "own";
 
 /** Which layer is on the GIF page now. */
 function onScreen(s: LiveState): Layered {
-  if (s.uploading?.source === "restore" || !s.restore) return "own";
-  if (s.last?.source === CALENDAR_SOURCE) return "calendar";
-  if (s.last?.source === REMINDER_SOURCE) return "reminder";
-  if (s.last?.source === POMODORO_SOURCE) return "pomodoro";
-  if (s.last?.source === NOW_PLAYING_SOURCE) return "song";
+  if (s.uploading?.source === "restore") return "own";
+  if (s.showing === CALENDAR_SOURCE) return "calendar";
+  if (s.showing === REMINDER_SOURCE) return "reminder";
+  if (s.showing === POMODORO_SOURCE) return "pomodoro";
+  if (s.showing === NOW_PLAYING_SOURCE) return "song";
   return "own";
 }
 
@@ -620,7 +620,7 @@ function StatusLine({ s, usb }: { s: LiveState; usb: boolean }) {
         <p className={`${row} text-ink-2`}>
           <Upload size={14} className="text-ok" />
           {/* After going back to the own picture the card is not on the screen any more. */}
-          {s.restore ? t("sc.live.last") : t("sc.live.lastCard")}: <span className="truncate font-medium">{s.last.name}</span>
+          {s.showing ? t("sc.live.last") : t("sc.live.lastCard")}: <span className="truncate font-medium">{s.last.name}</span>
           <span className="num text-ink-3">
             · {new Date(s.last.atMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>
