@@ -44,14 +44,15 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
   volume on the function keys, microphone mute on a chosen key.
 - **Focus timer:** the whole keyboard fills with the phase colour and empties
   as time runs out; phase cards on the screen.
-- **Installer:** a per-user Windows installer in English and Turkish; no
-  administrator rights needed. Uninstalling keeps your settings unless you tick
-  "Delete the application data", and removes the start-with-Windows entry and
-  the notification name.
+- **Installer:** a per-user Windows installer in English and Turkish, with the
+  Keymotion icon and a plain welcome text; no administrator rights needed.
+  Uninstalling keeps your settings unless you tick "Also delete my settings and
+  saved data", and removes the start-with-Windows entry and the notification
+  name.
 - **Reporting problems:** Settings › About › Feedback, a calm notice after an
   unexpected error, and a one-time notice after a crash open a report window
   that shows what will be sent first. "Report on GitHub" copies it and opens
-  the project's issue form; the app sends nothing by itself. A SONiX or AJAZZ
+  the project's issue form in the default browser; the app sends nothing by itself. A SONiX or AJAZZ
   keyboard that isn't supported yet gets "Request support", with its USB ids
   and HID descriptions read from Windows (nothing is written to it).
 - **Keymotion animation:** an animation of its own for the keyboard's screen,
@@ -64,7 +65,8 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
   focus timer (phase and minutes left, pause, skip, stop), shows the next
   reminder and turns reminders and the key gauges on or off. It also opens a
   profile's load confirmation and quits the app. Settings › Background can turn
-  this off, and can start Keymotion hidden when Windows starts.
+  this off, and can start Keymotion hidden when Windows starts. The first time
+  the window is closed after the app starts, a notice says it is still running.
 - Protection for unsaved changes when leaving a page or closing the app.
 - Turkish and English interface, light and dark theme.
 - Project: MIT/Apache-2.0 licence, NOTICE (unofficial project, use at your own
