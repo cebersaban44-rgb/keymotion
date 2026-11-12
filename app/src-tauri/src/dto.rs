@@ -2002,3 +2002,65 @@ pub struct ReminderCard {
     /// When it goes off next, if it repeats.
     pub next_ms: Option<f64>,
 }
+
+/// Updates (updates.rs): what the app knows about a newer version.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct UpdateState {
+    /// The version running now ("0.1.0").
+    pub current: String,
+    /// Look on GitHub once a day when the app starts.
+    pub auto_check: bool,
+    /// When GitHub was last asked (ms since the epoch).
+    pub last_check_ms: Option<f64>,
+    pub status: UpdateStatus,
+}
+
+/// Where an update stands.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(export)]
+pub enum UpdateStatus {
+    /// Not asked in this run.
+    Idle,
+    Checking,
+    UpToDate,
+    /// A newer version is on GitHub. `notes`: the release notes as the
+    /// release pipeline wrote them (a JSON object with "en" and maybe "tr").
+    #[serde(rename_all = "camelCase")]
+    Available {
+        version: String,
+        notes: Option<String>,
+        date_ms: Option<f64>,
+    },
+    /// Bytes so far; `total` when the server said.
+    Downloading {
+        version: String,
+        done: f64,
+        total: Option<f64>,
+    },
+    /// The installer starts; the app closes and opens again when it is done.
+    Installing {
+        version: String,
+    },
+    Failed {
+        reason: UpdateFailure,
+    },
+}
+
+/// Why asking or installing did not work, in words the UI can say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum UpdateFailure {
+    /// No connection to GitHub.
+    Offline,
+    /// GitHub has no release yet.
+    NoRelease,
+    /// The download did not match the signature: not installed.
+    Signature,
+    /// A write to the keyboard did not finish in time.
+    KeyboardBusy,
+    Other,
+}

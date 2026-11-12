@@ -1,0 +1,270 @@
+# Builds the Windows installer and puts it on a DRAFT GitHub release, with the
+# files the app's updater reads (roadmap stage 6, docs/yol-haritasi.md).
+#
+#   - Pushing a `v*` tag builds that version. The tag must be "v" + the
+#     version in the app's files (tools/check-version.mjs), and CHANGELOG.md
+#     must have a section for it ("## [0.2.0] - <date>").
+#   - "Run workflow" on a branch makes a test build of the version in
+#     app/src-tauri/tauri.conf.json; when CHANGELOG.md has no section for it
+#     yet, the notes come from "## [Unreleased]". Delete such a test draft
+#     rather than publishing it: publishing creates the tag on that commit.
+#
+# The release files are only ever built here, never uploaded from a computer:
+# SignPath (stage 9) asks for automated builds that can be traced to the
+# source. Nothing is published: the owner reviews the draft and publishes it.
+#
+# Secrets: TAURI_SIGNING_PRIVATE_KEY (required, the updater key from
+# `pnpm --dir app tauri signer generate`) and TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+# (that key's password; leave it unset or empty when it has none).
+#
+# Actions are pinned to commit SHAs (the release is in the comment next to
+# each), as in ci.yml; Dependabot proposes updates.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One release build per tag or branch at a time. A second one waits rather than
+# cancelling a build that may be uploading.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  release:
+    name: Build and draft the release
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Keep LF line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      # The cheap checks run first, so a wrong tag or a missing secret fails
+      # in seconds instead of after the build.
+      - name: Check the version
+        id: version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            node tools/check-version.mjs --tag "$GITHUB_REF_NAME" --github-output
+          else
+            node tools/check-version.mjs --github-output
+          fi
+
+      # A tag needs its own CHANGELOG.md section; a test build from a branch
+      # may use the Unreleased one.
+      - name: Check the release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            node tools/release/latest-json.mjs --check-notes --version "$VERSION"
+          else
+            node tools/release/latest-json.mjs --check-notes --version "$VERSION" --allow-unreleased
+          fi
+
+      - name: Check the updater signing key
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::The secret TAURI_SIGNING_PRIVATE_KEY is missing or empty. Add the updater's private key (made with 'pnpm --dir app tauri signer generate') under Settings > Secrets and variables > Actions; without it the build cannot sign the update."
+            exit 1
+          fi
+
+      - name: Release script tests
+        run: node --test "tools/release/*.test.mjs"
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: app/package.json
+          cache: true
+          cache_dependency_path: app/pnpm-lock.yaml
+
+      - name: Install UI dependencies
+        run: pnpm --dir app install --frozen-lockfile
+
+      # The release is pinned in rust-toolchain.toml.
+      - name: Rust toolchain
+        run: |
+          channel="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal -c rustfmt -c clippy --no-self-update
+          rustc --version
+
+      # A tag can read the caches of the default branch but its own are of no
+      # use to anyone else, so only branch runs save one.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref_type != 'tag' }}
+
+      # With bundle.createUpdaterArtifacts, tauri build also signs the setup
+      # .exe for the updater (<setup>.exe.sig) with the key below. Old bundles
+      # are removed first, so the next step finds only this build's files.
+      - name: Build the installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          rm -rf target/release/bundle app/src-tauri/target/release/bundle
+          pnpm --dir app tauri build --bundles nsis
+
+      # The repository is a Cargo workspace, so target/ is at the root; the
+      # app's own folder is searched too in case that ever changes.
+      - name: Find the installer
+        id: setup
+        run: |
+          shopt -s nullglob
+          found=(target/release/bundle/nsis/*-setup.exe app/src-tauri/target/release/bundle/nsis/*-setup.exe)
+          if [ "${#found[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one NSIS setup .exe, found ${#found[@]}: ${found[*]}"
+            exit 1
+          fi
+          setup="${found[0]}"
+          if [ ! -s "$setup.sig" ]; then
+            echo "::error::$setup.sig is missing. Is bundle.createUpdaterArtifacts true in app/src-tauri/tauri.conf.json?"
+            exit 1
+          fi
+          mkdir -p release-out
+          cp "$setup" "$setup.sig" release-out/
+          name="$(basename "$setup")"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "Installer: $setup"
+
+      # --- Code signing (stage 9, SignPath Foundation): not active yet --------
+      # Authenticode signing goes HERE: after the build, before anything below
+      # reads the installer. Signing changes the file's bytes, so the updater
+      # signature tauri build wrote (<setup>.exe.sig, made from the unsigned
+      # file) no longer matches and the app would refuse the update. After
+      # signing, make the .sig again from the signed file with
+      # `tauri signer sign`; the SHA-256 and latest.json below then also come
+      # from the signed file. Rough shape (check SignPath's current action and
+      # inputs, and pin it by SHA):
+      #
+      # - name: Upload the unsigned installer for SignPath
+      #   id: unsigned
+      #   uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      #   with:
+      #     name: unsigned-setup
+      #     path: release-out/${{ steps.setup.outputs.name }}
+      #
+      # - name: Sign the installer (SignPath asks for approval of each release)
+      #   uses: signpath/github-action-submit-signing-request@<sha> # v<release>
+      #   with:
+      #     api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+      #     organization-id: <SignPath organization id>
+      #     project-slug: keymotion
+      #     signing-policy-slug: release-signing
+      #     github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+      #     wait-for-completion: true
+      #     output-artifact-directory: release-out
+      #
+      # - name: Updater signature of the signed installer
+      #   env:
+      #     SETUP: ${{ steps.setup.outputs.name }}
+      #     TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      #     TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      #   run: |
+      #     rm "release-out/$SETUP.sig"
+      #     pnpm --dir app tauri signer sign "../release-out/$SETUP"
+      #     test -s "release-out/$SETUP.sig"
+      #
+      # This signs the installer only. Signing the app inside it (keymotion.exe)
+      # as well needs a signing step before NSIS packs it.
+      # ---------------------------------------------------------------------------
+
+      - name: SHA-256 of the installer
+        id: sha256
+        env:
+          SETUP: ${{ steps.setup.outputs.name }}
+        run: |
+          sha256="$(sha256sum "release-out/$SETUP" | cut -d ' ' -f 1)"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+          echo "SHA-256 of $SETUP: $sha256"
+
+      # As in "Check the release notes": only a branch build may use Unreleased.
+      - name: Write latest.json and the release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SETUP: ${{ steps.setup.outputs.name }}
+          SHA256: ${{ steps.sha256.outputs.sha256 }}
+        run: |
+          args=(--version "$VERSION" --setup "release-out/$SETUP" --sha256 "$SHA256")
+          if [ "$GITHUB_REF_TYPE" != tag ]; then
+            args+=(--allow-unreleased)
+          fi
+          node tools/release/latest-json.mjs "${args[@]}"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: keymotion-${{ steps.version.outputs.version }}-windows-x64
+          path: |
+            release-out/${{ steps.setup.outputs.name }}
+            release-out/${{ steps.setup.outputs.name }}.sig
+            release-out/latest.json
+          if-no-files-found: error
+          overwrite: true
+
+      # Creates the draft, or refreshes it when this is a re-run. A release
+      # that is already published is never touched.
+      - name: Draft the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SETUP: ${{ steps.setup.outputs.name }}
+          SHA256: ${{ steps.sha256.outputs.sha256 }}
+        run: |
+          tag="v$VERSION"
+          title="Keymotion $VERSION"
+          files=("release-out/$SETUP" "release-out/$SETUP.sig" release-out/latest.json)
+          case "$VERSION" in
+            *-*) prerelease=true ;;
+            *) prerelease=false ;;
+          esac
+
+          if draft="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [ "$draft" != true ]; then
+              echo "::error::Release $tag is already published. This workflow only makes drafts; raise the version for a new release."
+              exit 1
+            fi
+            echo "Draft $tag exists (a re-run): updating its notes and replacing its files."
+            gh release edit "$tag" --draft --title "$title" --notes-file release-out/release-notes.md \
+              --target "$GITHUB_SHA" --prerelease="$prerelease"
+            gh release upload "$tag" "${files[@]}" --clobber
+          else
+            flags=()
+            if [ "$prerelease" = true ]; then
+              flags+=(--prerelease)
+            fi
+            gh release create "$tag" --draft --title "$title" --notes-file release-out/release-notes.md \
+              --target "$GITHUB_SHA" "${flags[@]}" "${files[@]}"
+          fi
+
+          url="$(gh release view "$tag" --json url --jq .url)"
+          {
+            echo "### $title (draft)"
+            echo
+            echo "- Draft: $url"
+            echo "- Installer: \`$SETUP\`"
+            echo "- SHA-256: \`$SHA256\`"
+            echo "- Pre-release: $prerelease"
+          } >> "$GITHUB_STEP_SUMMARY"
