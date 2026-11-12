@@ -29,6 +29,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 | 3 | Keymotion açılış animasyonu | — (2 ile paralel olabilir) | Önizlemeye onay | Bitti (PR #62; kullanıcı A'yı, yazılı seçti) |
 | 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bitti (PR #63); GitHub ayarları kullanıcı onayıyla açıldı |
 | 5 | Kurulum dosyası (NSIS), imzasız | 1, 2 | Kurulum ayrıntılarına onay | Yapıldı (PR'da); kullanıcının elle denemesi ve kurulum görselleri bekliyor |
+| 5c | Kurulum denemesi bulguları (K1–K11): simge ve görseller, GitHub bağlantıları, hatırlatıcı kartı, ekran durumu, odak zamanlayıcısı, bildirim, Genel bakış | 5 | K2, K7, K11 için önizlemeden seçim (K9 kararı verildi: her açılışta bir kez) | Sırada (sıkıştırmadan sonra) |
 | 6 | Sürüm hattı (GitHub Actions) ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Bekliyor |
 | 6b | Uygulama penceresinin açılış animasyonu | 5 (kurulu sürümle ölçülür) | Önizlemeden tasarım seçimi | Planlandı (kullanıcının kararı, 2026-11-12) |
 | 7 | GitHub sayfası ve bütün belgeler, SignPath'in sayfa şartları dahil | 5, 6 (kurulum ve indirme adımları belli) | Belge yapısına ve görünümüne onay (önce önizleme) | Bekliyor |
@@ -363,6 +364,96 @@ Uygulama içi düğme bu formların adresini açacak, o yüzden formlar önce ya
   - kurulum görselleri: şu an NSIS'in varsayılan karşılama resmi ve üst bant; Keymotion görselleri önizlemeyle önerilecek;
   - SmartScreen davranışı ancak internetten indirilen dosyada görülür (Aşama 6).
 
+## Aşama 5c: kurulum denemesi bulguları (2026-11-12, kullanıcının denemesi)
+
+Kullanıcı kurulum dosyasını Explorer'dan, yani Claude'un kutusunun dışında denedi (ders 62) ve uygulamayı bir süre kullandı. Ekran görüntüleriyle bildirdiği her konu aşağıda bir iş olarak duruyor. Ekran görüntülerinin yeri hafızada (kişisel klasör yolu içerdikleri için repoya konmadı).
+
+**Sıra (kullanıcının kararı):**
+1. Bu listedeki hatalar, gerekirse yardımcı ajanlarla, hızlıca çözülür.
+2. Sonra uygulamada kalan geliştirmeler: açılış animasyonu (6b), görseller, yapı.
+3. Sonra yol haritasına dönülür.
+4. Kurulum dosyası bu süreçte yeniden derlenmez; uygulama işleri bitince sonda bir kez alınır (hafıza: kurulum derlemesi sonda).
+
+**Çalışanlar:**
+- kurulum sayfaları Türkçe;
+- uygulama Windows'un diliyle Türkçe açıldı;
+- "Bilgisayar açılınca başlat" kaydı oluştu ve kaldırınca silindi;
+- kısayollar ve "Yüklü uygulamalar" kaydı kaldırınca gitti;
+- odak zamanlayıcısı genel olarak istendiği gibi çalışıyor;
+- hatırlatıcının sesi ve ışık dalgası geliyor;
+- Sorun bildir penceresi çalışıyor, açılan sayfa hariç (K4).
+
+### Görünüm ve marka
+
+- **K1. Kurulum dosyasının simgesi NSIS'in hazır simgesi.**
+  - Görülen: Explorer'da "NSIS" yazılı küre ve ok. Kurulum ve kaldırma pencerelerinin başlığında da aynı simge var.
+  - Yapılacak: `bundle.windows.nsis.installerIcon` ve `uninstallerIcon` Keymotion simgesi olacak (`icons/icon.ico`).
+  - Kontrol: Explorer'da, pencere başlıklarında ve "Yüklü uygulamalar"da Keymotion simgesi görünüyor.
+- **K2. Kurulum ve kaldırma görselleri NSIS'in hazır görselleri.**
+  - Görülen: karşılama ve bitiş sayfasının solunda lacivert, damalı, eski bir bilgisayar resmi (164×314). Kaldırma sayfasının sağ üstünde kırmızı NSIS kaldırma logosu (üst bant, 150×57). Kullanıcı: "Logolar da berbat."
+  - Yapılacak: Keymotion'ın kendi görselleri, BMP olarak:
+    - `sidebarImage` 164×314;
+    - `headerImage` ve `uninstallerHeaderImage` 150×57.
+    Uygulamanın koyu zemini, "K" logosu ve keymotion yazısı kullanılır. Yüksek DPI'da bulanıklık denetlenir.
+  - Sıra: önce sohbette önizleme ve seçenekler, onaydan sonra dosyalar (hafıza kuralı).
+- **K3. Kurulumun karşılama metni NSIS'in genel metni.**
+  - Görülen: "Kurulumu başlatmadan önce çalışan diğer programları kapatmanızı öneririz. Böylece bilgisayarınızı yeniden başlatmadan bazı sistem dosyaları sorunsuz kurulabilir." Teknik ve gereksiz.
+  - Yapılacak: `customLanguageFiles` ile sade Türkçe ve İngilizce metin (ne kurulacağı, yönetici izni gerekmediği). Diğer sayfaların metinleri de gözden geçirilir.
+- **K11. Genel bakış sayfası çok sade.**
+  - Görülen: klavye çiziminin altındaki dört kart (Işık, Ekran, Odak zamanlayıcısı, Profil) çok basit; uygulamanın bütün özelliklerini yansıtmıyor.
+  - Yapılacak: Genel bakış'ın yeniden tasarımı. Uygulamayı görsel olarak anlatan ve hızlı işlem araçları olan bir ana sayfa olacak; örneğin hatırlatıcılar, takvim, sistem göstergeleri, canlı ekran, son görsel, hızlı ışık seçimi. Açılış animasyonu (6b) ve GitHub ekran görüntüleriyle (7) aynı görsel dil.
+  - Sıra: önce önizlemeyle birkaç seçenek, kullanıcı seçer, sonra kod.
+
+### Hatalar
+
+- **K4. "GitHub'da bildir" ve "Öneri gönder" tarayıcı yerine Belgeler klasörünü açıyor.**
+  - Görülen: rapor penceresi "Bilgiler panoya kopyalandı. Açılan sayfada…" diyor, ama tarayıcı açılmıyor, Explorer'da Belgeler açılıyor.
+  - Sebep (büyük olasılık): adresler `explorer.exe <adres>` ile açılıyor (`notify.rs` `open`). Soru işaretli ve parametreli adresi (`…/issues/new?template=bug.yml&title=…`) Explorer adres olarak tanımıyor ve varsayılan klasörü açıyor. GitHub'ın hazır olmamasıyla ilgisi yok: repo, formlar ve özel güvenlik bildirimi hazır.
+  - Not: Aşama 4'teki "GitHub'da bildir tarayıcıda sayfa açtı" denemem doğrulanmamıştı; Chrome'da sekme görünmemişti.
+  - Yapılacak:
+    - adresleri Windows'un kabuğuyla açmak (`ShellExecuteW`, "open"); `open_link` (destek listesi) de aynı yolu kullansın;
+    - kutunun dışında hem formlu hem düz adresle denemek.
+- **K5. Hatırlatıcıların ekran kartı gönderilmiyor.**
+  - Görülen: üç denemede de ışık dalgası ve ses geldi, ekran kartı gelmedi:
+    - "Su molası" önce kartsız oluşturuldu, sonra karta çevrildi;
+    - "Dene" düğmesi;
+    - baştan kartla oluşturulan "Hareket molası".
+  - Olası sebepler (`reminders.rs`): kartlar kapalı, canlı mod kapalı, ekranı toplantı kartı tutuyor ya da yükleme hakkı (bütçe) dolu. Kullanıcı aynı oturumda odak zamanlayıcısıyla art arda kart göndermişti (K8). Kart atlanınca kullanıcıya hiçbir şey söylenmiyor; sebep yalnızca günlükte.
+  - Yapılacak:
+    - geliştirme sürümünde yeniden üretip sebebi bulmak;
+    - atlanan kartın sebebi arayüzde sade dille görünsün (örnek: "Ekran kartı gönderilmedi: kısa sürede çok görsel gönderildi, birazdan yeniden denenecek");
+    - "Dene" düğmesinin neyi yapıp yapmadığı açık olsun;
+    - sonradan karta çevrilen hatırlatıcı da denensin.
+- **K8. Ekran sayfası, klavyede olmayan kartı klavyedeymiş gibi gösteriyor.**
+  - Görülen: odak zamanlayıcısında aşamalar art arda değişti, yükleme hakkı doldu. Uygulama "şimdi gönder?" diye sordu; kullanıcı klavyeyi yıpratmamak için göndermedi. Klavyede eski animasyon kaldı, ama Ekran sayfasında uzun molanın kartı güncel görünüyor.
+  - Yapılacak:
+    - Ekran sayfası ve Genel bakış'taki Ekran kartı klavyede gerçekten olanı göstersin;
+    - bekleyen (gönderilmemiş) kart ayrıca "bekliyor" diye görünsün (`live.rs` `pending`);
+    - "Gönderme" denince bekleyen kart düşsün ve sayfalar eski görseli göstersin.
+- **K10. Kaldırma penceresinde "Uygulama verilerini sil" kutusu işaretli görünüyor.**
+  - Varsayılanı işaretsiz olmalı (Tauri şablonu). Kullanıcı işaretlediyse gerçek AppData'daki deneme verisi silindi; asıl veri Claude'un kutusunda, etkilenmedi.
+  - Yapılacak: kutunun dışında varsayılan durumu doğrulamak.
+
+### Davranış ve tasarım kararları
+
+- **K6. Odak zamanlayıcısında kısa mola görünmedi.**
+  - Görülen: odak, kısa mola, uzun mola 1 dk ve tur 1; "Atla" ile ilerlenince odak → uzun mola → bitti. Kısa mola hiç gelmedi.
+  - Sebep: tasarım böyle (`pomodoro.rs`): son odaktan sonra uzun mola, aradaki odaklardan sonra kısa mola gelir. Tur 1 olunca kısa mola yok. Hata değil, ama kullanıcıya anlaşılmaz geliyor; K7 bunu çözer.
+- **K7. Odak zamanlayıcısının yeniden tasarımı (kullanıcının isteği).**
+  - Kullanıcı: "Kısa mola ile uzun mola arasındaki fark yalnızca süre; saçma."
+  - Yapılacak: sabit "odak, kısa mola, uzun mola, tur" yerine kullanıcının kurduğu bir sıra:
+    - bloklar: odak ya da mola, süre, isteğe bağlı ad;
+    - "Mola ekle" ve "Odak ekle";
+    - bloklar fareyle sürüklenip yer değiştirir;
+    - tekrar sayısı.
+  - Ekran kartları, ışıklar, tepsi menüsündeki aşamalar ve "Atla" bu sıraya göre çalışır. Eski ayarlar yeni yapıya taşınır (veri taşıma, ders 54).
+  - Sıra: önce önizlemeyle tasarım, sonra kod.
+- **K9. Pencere kapatılınca bildirim gelmedi.**
+  - Sebep: "arka planda çalışıyor" bildirimi bilgisayar başına bir kez gösterilecek şekilde yapıldı (madde 39; kullanıcının "durmadan bildirim göndermeyelim" isteği). Gerçek AppData'da bu hak 06:04'te `target\release\keymotion.exe` açılışında kullanıldı (logosuz çıkan bildirim). Kurulu sürüm aynı veriyi kullandığı için bir daha göstermedi.
+  - **Karar (kullanıcı, 2026-11-12): her açılışta bir kez.** Uygulama her açıldığında, pencere ilk kapatılınca bildirim bir kez gelir; aynı oturumda sonraki kapatmalarda gelmez.
+  - Yapılacak: `tray.rs` `take_notice` kalıcı `notice_shown` yerine oturum başına bir bayrak kullanır. `background.json` içindeki eski alan okunur ama artık kullanılmaz. Windows açılınca gizli başlamada (`--hidden`) pencere hiç gösterilmediği için bildirim gelmez.
+  - Logo hâlâ doğrulanmadı; bildirim çıkınca kutunun dışında bakılacak. Hatırlatıcının Windows bildirimi de kurulu sürümde denenecek.
+
 ## Aşama 6: sürüm hattı ve otomatik güncelleyici
 
 - **GitHub Actions:**
@@ -517,6 +608,8 @@ Eskiden "Aşama 1b: erken başvuru" idi. 2026-11-12'de SignPath'in şartları ve
 |---|---|---|
 | 1 | Rust paket ve exe adı `keymotion` olsun mu? | Evet |
 | 9 | SignPath Foundation başvurusu (ilk sürümden sonra) | Kullanıcı başvurur, formu birlikte dolduralım |
+| 5c | K9: arka plan bildirimi ne sıklıkla? | **Karar verildi:** her açılışta bir kez (2026-11-12) |
+| 5c | K2 kurulum görselleri, K7 odak zamanlayıcısı sırası, K11 Genel bakış tasarımı | Önizlemeden seçim |
 | 6b | Uygulama açılış animasyonunun tasarımı | Önizlemeden seçim |
 | 7 | GitHub sayfasının yapısı, biçimi (yalnız repo sayfaları mı, ayrıca belge sitesi mi) ve görünümü | Aşamanın başında önizlemeyle |
 | 8 | İlk sürümün nerede duyurulacağı (kullanım kanıtı için) | Kullanıcı seçer |
