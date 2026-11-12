@@ -302,6 +302,13 @@ fn live_configure(
     live.configure(enabled, plan, now_playing, restore, song_stop)
 }
 
+/// Do not send the waiting live card: the keyboard keeps its picture.
+#[tauri::command]
+fn live_drop_waiting(live: Live<'_>) -> Result<LiveState, String> {
+    tracing::debug!("ipc: live_drop_waiting");
+    live.drop_waiting()
+}
+
 /// Send the waiting live card now instead of waiting for the budget.
 #[tauri::command]
 fn live_send_now(live: Live<'_>) -> Result<LiveState, String> {
@@ -1444,6 +1451,7 @@ pub fn run() {
             live_configure,
             live_submit,
             live_send_now,
+            live_drop_waiting,
             now_playing_cover,
             pomodoro_state,
             pomodoro_control,

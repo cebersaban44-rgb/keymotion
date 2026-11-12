@@ -62,7 +62,7 @@ export function calendarStatus(live: LiveState, c: CalendarState | null, onScree
   if (!live.enabled) return "sc.live.st.liveOff";
   if (!c || c.sources.length === 0) return "calendar.st.none";
   if (!c.settings.screen) return "sc.live.st.cardsOff";
-  if (live.pending?.source === CALENDAR_SOURCE && live.nextTokenMs != null) return "sc.live.st.waitBudget";
+  if (live.pending?.source === CALENDAR_SOURCE && live.pendingWaitMs != null) return "sc.live.st.waitBudget";
   if (onScreen) return "sc.live.st.showing";
   if (c.showing) return "calendar.st.due";
   if (c.nextCardMs != null) return "calendar.st.next";

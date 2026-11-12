@@ -163,7 +163,7 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
     ? "sc.live.st.liveOff"
     : p && !p.settings.screen
       ? "sc.live.st.cardsOff"
-      : s.pending?.source === POMODORO_SOURCE && s.nextTokenMs != null
+      : s.pending?.source === POMODORO_SOURCE && s.pendingWaitMs != null
         ? "sc.live.st.waitBudget"
         : on === "pomodoro"
         ? "sc.live.st.showing"
@@ -178,7 +178,7 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
     ? "sc.live.st.liveOff"
     : !s.nowPlaying
       ? "sc.live.st.sourceOff"
-      : s.pending?.source === NOW_PLAYING_SOURCE && s.nextTokenMs != null
+      : s.pending?.source === NOW_PLAYING_SOURCE && s.pendingWaitMs != null
         ? "sc.live.st.waitBudget"
         : on === "song"
           ? "sc.live.st.showing"
@@ -522,6 +522,25 @@ function BudgetLine({ s }: { s: LiveState }) {
   );
 }
 
+/** "Gönderme": the waiting card is forgotten; the keyboard keeps what it
+ *  shows now (K8: the owner declined to protect the keyboard, but nothing
+ *  let them say so). */
+export function DontSend() {
+  const t = useT();
+  const dropWaiting = useLive((x) => x.dropWaiting);
+  return (
+    <button
+      type="button"
+      onClick={() => dropWaiting().catch(console.error)}
+      title={t("sc.live.dontSend.hint")}
+      className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+      data-dont-send
+    >
+      <X size={13} /> {t("sc.live.dontSend")}
+    </button>
+  );
+}
+
 /** Send the waiting card without waiting for the budget. */
 export function SendNow() {
   const t = useT();
@@ -589,11 +608,12 @@ function StatusLine({ s, usb }: { s: LiveState; usb: boolean }) {
             ·{" "}
             {!usb
               ? t("sc.live.waitCable")
-              : s.nextTokenMs != null
-                ? t("sc.live.waitBudget", { wait: fmtWait(s.nextTokenMs, units) })
+              : s.pendingWaitMs != null
+                ? t("sc.live.waitBudget", { wait: fmtWait(s.pendingWaitMs, units) })
                 : t("sc.live.waitTurn")}
           </span>
-          {usb && s.nextTokenMs != null && <SendNow />}
+          {usb && s.pendingWaitMs != null && <SendNow />}
+          <DontSend />
         </p>
       )}
       {s.last ? (

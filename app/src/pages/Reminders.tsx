@@ -26,14 +26,17 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import type { CardSkip } from "../bindings/CardSkip";
+import type { CardSkipReason } from "../bindings/CardSkipReason";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { Reminder } from "../bindings/Reminder";
 import type { ReminderIcon } from "../bindings/ReminderIcon";
 import type { ReminderInfo } from "../bindings/ReminderInfo";
 import type { ReminderWhen } from "../bindings/ReminderWhen";
 import { Segmented, Toggle } from "../components/controls";
+import { CALENDAR_SOURCE } from "../lib/calendar";
 import { tNow, useT, type MessageKey } from "../lib/i18n";
-import { submitLive, useLive } from "../lib/live";
+import { fmtWait, submitLive, useLive } from "../lib/live";
 import { reminderCard, reminderWords } from "../lib/liveCards";
 import {
   EVERY_CHOICES,
@@ -81,6 +84,8 @@ export function Reminders({ kb }: { kb: KeyboardInfo }) {
   const drawError = useReminders((x) => x.drawError);
   const configure = useReminders((x) => x.configure);
   const liveOn = useLive((x) => !!x.state?.enabled);
+  // The budget is empty: cards cannot go until it refills.
+  const budgetWait = useLive((x) => (x.state?.enabled ? x.state.nextTokenMs : null));
   const [editing, setEditing] = useState<{ draft: Reminder | null; step: Step } | null>(null);
   const [done, setDone] = useState<string | null>(null);
   if (!s) return null;
@@ -126,6 +131,11 @@ export function Reminders({ kb }: { kb: KeyboardInfo }) {
             <span className={s.settings.enabled ? "text-ink-2" : "text-ink-3"}>{status}</span>
           </div>
           {!usb && <Hint tone="usb">{t("reminder.noUsb")}</Hint>}
+          {anyCard && liveOn && s.settings.screen && usb && budgetWait != null && (
+            <Hint tone="note">
+              {t("reminder.budgetEmpty", { wait: fmtWait(budgetWait, { h: t("sc.live.h"), m: t("sc.live.m") }) })}
+            </Hint>
+          )}
           {anyCard && !liveOn && (
             <div className="flex flex-wrap items-center gap-3">
               <Hint tone="note">{t("reminder.liveOff")}</Hint>
@@ -151,6 +161,8 @@ export function Reminders({ kb }: { kb: KeyboardInfo }) {
                   info={i}
                   showing={s.showing === i.reminder.id}
                   away={s.away && s.settings.awayWait}
+                  usb={usb}
+                  skip={s.cardSkip?.id === i.reminder.id ? s.cardSkip : null}
                   onEdit={() => {
                     setDone(null);
                     setEditing({ draft: { ...i.reminder }, step: 1 });
@@ -248,7 +260,75 @@ function IconDot({ icon, color, size = 32 }: { icon: ReminderIcon; color: readon
   );
 }
 
-function Row({ info, showing, away, onEdit }: { info: ReminderInfo; showing: boolean; away: boolean; onEdit: () => void }) {
+/** Why a tried card cannot go now, `null` if it can (as the backend
+ *  decides for a reminder going off, `reminders.rs`; the budget does not
+ *  stop a try: the user asked for it). */
+function tryBlocked(cardsOn: boolean, liveOn: boolean, usb: boolean, meeting: boolean): CardSkipReason | null {
+  if (!cardsOn) return "cardsOff";
+  if (!liveOn) return "liveOff";
+  if (!usb) return "noCable";
+  if (meeting) return "meeting";
+  return null;
+}
+
+type Tried = { kind: "sent" } | { kind: "light"; why: CardSkipReason } | { kind: "failed" };
+
+/** "Dene" on a row: what the reminder does when it goes off, now. The wave
+ *  and the sound, and the card when the reminder has one (K5: the owner
+ *  expected the card too). The card goes like the editor's try: counted
+ *  like a manual upload, the own picture back after a minute. */
+function useTryReminder(r: Reminder, usb: boolean) {
+  const locale = useApp((s) => s.locale);
+  const cardsOn = useReminders((x) => x.state?.settings.screen ?? false);
+  const [tried, setTried] = useState<Tried | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!tried) return;
+    const id = window.setTimeout(() => setTried(null), 10_000);
+    return () => window.clearTimeout(id);
+  }, [tried]);
+  const run = async () => {
+    setTried(null);
+    await tryReminderLight(r.color, r.sound).catch(console.error);
+    if (!r.card) return;
+    const live = useLive.getState().state;
+    const why = tryBlocked(cardsOn, !!live?.enabled, usb, !!live?.holders.includes(CALENDAR_SOURCE));
+    if (why) {
+      setTried({ kind: "light", why });
+      return;
+    }
+    setBusy(true);
+    try {
+      const card = await reminderCard(previewCard(r), reminderWords(tNow, locale));
+      useLive.setState({ state: await submitLive(card, REMINDER_SOURCE) });
+      await tryReminderCardBack();
+      setTried({ kind: "sent" });
+    } catch (e) {
+      console.error(e);
+      setTried({ kind: "failed" });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return { run, tried, busy };
+}
+
+function Row({
+  info,
+  showing,
+  away,
+  usb,
+  skip,
+  onEdit,
+}: {
+  info: ReminderInfo;
+  showing: boolean;
+  away: boolean;
+  usb: boolean;
+  /** This reminder's card did not go on the screen last time. */
+  skip: CardSkip | null;
+  onEdit: () => void;
+}) {
   const t = useT();
   const locale = useApp((s) => s.locale);
   const save = useReminders((x) => x.save);
@@ -256,6 +336,7 @@ function Row({ info, showing, away, onEdit }: { info: ReminderInfo; showing: boo
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const r = info.reminder;
+  const trial = useTryReminder(r, usb);
   const past = r.when.kind === "once" && r.when.at <= Date.now();
   const nextText = showing
     ? t("reminder.next.showing")
@@ -288,10 +369,13 @@ function Row({ info, showing, away, onEdit }: { info: ReminderInfo; showing: boo
         <span className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => tryReminderLight(r.color, r.sound).catch(console.error)}
-            className="h-8 rounded-lg border border-line px-2.5 text-[12px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+            onClick={() => void trial.run()}
+            disabled={trial.busy}
+            title={t("reminder.try.hint")}
+            className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12px] text-ink-2 hover:bg-surface-2 hover:text-ink disabled:opacity-60"
             data-reminder-try
           >
+            {trial.busy && <Loader2 size={12} className="animate-spin" />}
             {t("reminder.try")}
           </button>
           <button
@@ -339,6 +423,24 @@ function Row({ info, showing, away, onEdit }: { info: ReminderInfo; showing: boo
             {t("gauges.cancel")}
           </button>
         </div>
+      )}
+      {trial.tried && (
+        <p
+          className={`text-[12px] ${trial.tried.kind === "sent" ? "text-ok" : trial.tried.kind === "failed" ? "text-danger" : "text-ink-2"}`}
+          data-reminder-tried={trial.tried.kind}
+        >
+          {trial.tried.kind === "sent"
+            ? t("reminder.try.sent")
+            : trial.tried.kind === "failed"
+              ? t("reminder.preview.failed")
+              : t("reminder.try.lightOnly", { why: t(`reminder.skip.${trial.tried.why}`) })}
+        </p>
+      )}
+      {skip && !showing && (
+        <p className="flex items-start gap-2 text-[12px] text-ink-3" data-reminder-skip={skip.reason}>
+          <Monitor size={13} className="mt-0.5 shrink-0" aria-hidden />
+          <span>{t("reminder.skip", { time: hhmm(skip.atMs), why: t(`reminder.skip.${skip.reason}`) })}</span>
+        </p>
       )}
       {error && <p className="text-[12px] text-danger">{error}</p>}
     </li>

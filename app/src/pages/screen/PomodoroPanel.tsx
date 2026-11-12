@@ -46,7 +46,7 @@ import { LIMITS, POMODORO_SOURCE, fmtClock, phaseColor, remainingNow, usePomodor
 import { TRY_MS, fromHex, keyPositions, lightColors, tryColors, viewOf } from "../../lib/pomodoroLights";
 import { uploadSeconds } from "../../lib/screenImport";
 import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useItemName } from "./common";
-import { SendNow } from "./LivePanel";
+import { DontSend, SendNow } from "./LivePanel";
 
 const MOTIONS: { id: PomodoroMotion; label: MessageKey; icon: LucideIcon }[] = [
   { id: "rightToLeft", label: "pomo.motion.rightToLeft", icon: ArrowLeftToLine },
@@ -432,7 +432,7 @@ function CardWaiting({ usb }: { usb: boolean }) {
   const live = useLive((x) => x.state);
   if (!live?.enabled || live.pending?.source !== POMODORO_SOURCE) return null;
   const units = { h: t("sc.live.h"), m: t("sc.live.m") };
-  const budget = usb && live.nextTokenMs != null;
+  const budget = usb && live.pendingWaitMs != null;
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-warn/40 bg-warn/10 px-3.5 py-2.5" data-pomo-waiting>
       <p className="flex min-w-0 flex-1 items-start gap-2 text-[13px] text-ink">
@@ -441,11 +441,14 @@ function CardWaiting({ usb }: { usb: boolean }) {
           {!usb
             ? t("pomo.wait.cable")
             : budget
-              ? t("pomo.wait.budget", { wait: fmtWait(live.nextTokenMs!, units) })
+              ? t("pomo.wait.budget", { wait: fmtWait(live.pendingWaitMs!, units) })
               : t("pomo.wait.turn")}
         </span>
       </p>
-      {budget && <SendNow />}
+      <span className="ml-auto flex items-center gap-2">
+        {budget && <SendNow />}
+        <DontSend />
+      </span>
     </div>
   );
 }
