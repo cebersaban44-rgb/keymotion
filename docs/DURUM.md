@@ -701,7 +701,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       | Görsel tur: ortak parçalar (C3, C4, C7–C9) | a9b9fd62f33be953b | `9dc8f2c` | Tek `KeyboardView`; `ActionBar` ("Klavyeye kaydet"/"Geri al"); kontrast ≥ 4.5:1; `MotionConfig`; tek `PALETTE`; efekt küçük resimleri (`EffectThumb`). |
       | Görsel tur: iskelet ve içerik (C1, C2, C5, C6, D, hatırlatıcı bildirimi) | a8d589af398a32a3a | `e895284` | Açılış ekranı (`Welcome.tsx`); klavyesiz araç sayfaları (`OFFLINE_KEYBOARD`); gruplu kenar çubuğu ve ayrı Takvim sayfası; 1200 px altında simgeli kenar çubuğu; en küçük pencere 960×600; yeni Genel Bakış; içerik düzeltmeleri; hatırlatıcılar için Windows bildirimi (`notify.rs`); `open_link` yalnızca proje GitHub adresini açar. |
       | Repo ve lisans (G) | a84c1a27b55bfcb20 | PR #54 | |
-      | Profiller (E, tuvalin 4. ekranı) | a91c8367cc573f58f | Çalışıyor | `profiles.rs`, `Profiles.tsx`, Genel Bakış'ta profil kartı, yedeğe profiller bölümü; `integrate/pre-release` dalından başladı. |
+      | Profiller (E, tuvalin 4. ekranı) | a91c8367cc573f58f | `0502c57` | `profiles.rs` (`profiles.json`, en çok 100 profil, ad 40 karakter), `Profiles.tsx`, `lib/profiles.ts`; parça parça yükleme (ışık, tuş atama, makrolar, sonra ekran görseli), aynı olan parça yazılmaz; silinemeyen "Varsayılan" (fabrika efekti: kayan gökkuşağı, parlaklık 5, hız 3, `EffectSettings::factory()`; iki katman boş; makro yok); profil dosyası `kind: "keymotion-profile"`; yedekte `profiles` bölümü (kimliğe göre birleşir); Genel Bakış'ta "Profil" kartı; sahte arka uçta `?failPart=keymap`. |
 
       Cihaz güvenliği yardımcısının yaptıkları:
       - tek örnek (`tauri-plugin-single-instance`);
@@ -743,6 +743,14 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
         - Geri yükleme penceresi "0 makro" yerine "Makro yok" diyor.
         - Sahte arka uçta kapatma isteği: `dispatchEvent(new Event("mock-close-requested"))`.
       - Not: günlükte saatte birkaç kez `keyboard refused 0xF5` (ayna okuması) uyarısı var; okuma yeniden deneniyor, zararsız.
+      - **Profiller (kullanıcının onayıyla, 2026-11-12):**
+        - Önce geri dönüş noktası olarak "Kendi ayarlarım" oluşturuldu (yalnızca `profiles.json`'a yazar). Profil klavyedeki durumu doğru tanıdı: tuş başına renk tüm tuşlar sönük, parlaklık 5; tuş atama fabrika ayarında; makro yok.
+        1. "Varsayılan" yüklendi: yalnızca ışık yazıldı (1 sn), tuş atama ve makrolar aynı olduğu için atlandı. Klavye kayan gökkuşağına döndü; Genel Bakış'ta Işık "Akan ışık", Profil "Varsayılan".
+        2. "Kendi ayarlarım" geri yüklendi: ışık yeniden tüm tuşlar sönük, `lighting.json` eski hâline döndü.
+        3. Sahte `SignalRgb.exe` açıkken "Varsayılan": ilk parçada reddedildi ("SignalRGB açık…"), hiçbir şey yazılmadı.
+        4. Ekran görselli profil ("cat"): önce GIF sayfasına "Günaydın" yüklendi (2,9 sn). Profil yüklenirken pencere kapatılmak istendi: yeni pencere çıktı ("Klavyeye kaydediliyor", "Bitmesi bekleniyor…", "Vazgeç"/"Hemen çık", odak "Vazgeç"te). "Vazgeç"ten sonra yükleme 41 sn'de eksiksiz bitti, uygulama açık kaldı, GIF sayfasında yine "cat".
+        - Deneme profili silindi; "Kendi ayarlarım" kullanıcının profili olarak kaldı.
+        - Deneme notları: CDP'den Türkçe metin PowerShell üzerinden geçince bozuluyor, Bash'ten çalıştır. `Process.CloseMainWindow()` bazen başlıksız bir yardımcı pencereyi hedefliyor; kapatma denemesinde "Keymotion" başlıklı pencereye `WM_CLOSE` gönder. Arka uçtan oluşturulan profil sayfaya ancak sayfa yeniden açılınca gelir.
       - Denenmeyenler:
         - klavye yokken açılış ekranı (kablo çekilmeli);
         - yükleme ortasında kablo çekip "yarım kaldı" önerisi;
@@ -750,7 +758,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
         - "Klasörü aç" ve "Başka bir klavyeniz mi var?" bağlantısı;
         - 1280 genişlikte %150 kenar çubuğu.
     - **Sıradaki adımlar:**
-      1. **Profiller** yardımcısı bitince: dalını `integrate/pre-release`'e birleştir; denetimler; gerçek uygulamada dene. Profil yükleme klavyeye yazar, önce kullanıcıya sor. Profilde ekran görseli varsa yeni kapatma penceresini de o yüklemeyle gör. Sonra PR #57'yi birleştir.
+      1. ~~Profiller~~: birleşti, denetimler temiz (324 test), gerçek uygulamada denendi. PR #57 develop'a birleştirilir.
       2. **Keymotion'ın kendi açılış animasyonu:** fabrika yedeği olmayanların dönebileceği özgün görsel.
       3. **Küçükler:**
          - ESLint uyarıları;
@@ -1007,7 +1015,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
           - **Destek haritası yapıldı** (madde 37, `docs/destek-haritasi.md`): desteklenen ve eklenebilecek klavyeler, bağlantı modlarına göre özellikler, Bağlantı sayfası, 2.4G'de yanlış açık görünen sayfalar düzeltildi, HID şekil denetimi, arayüz metin borçları kapandı, USB'de pil araştırması (yüzde yok; Fn ışığından "şarj oluyor" / "şarj tamamlandı").
           - **İlk sürüm öncesi eksik listesi** (2026-11-11, `docs/urun-eksikleri.md`): iki bağımsız inceleme (tasarım ve kullanım; ürün hazırlığı) ve bu oturumun gözlemleri, ciddi olanlar kodda doğrulandı. Sıra: kimlik (isim, logo, uygulama kimliği) → güven → görsel ve içerik turu → veri ve tanılama → ürünleştirme ve repo. İsim adayları ve logo konseptleri Claude Design tuvalinde (Keypane önerildi).
           - Kullanıcı isim ve logoyu seçti (Keymotion, E konsepti). Ardından eksik listesinin tamamı başladı (madde 38).
-          - **Kalınan yer (2026-11-12, gece): madde 38'deki "Sıradaki adımlar"** — beş yardımcı birleşti (PR #57, `integrate/pre-release`) ve gerçek uygulamada denendi; profiller yardımcısı çalışıyor, bitince birleştirip deneyip PR #57'yi birleştirmek. Kullanıcıyla klavyede denenecekler: Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri.
+          - **Kalınan yer (2026-11-12, gece): madde 38'deki "Sıradaki adımlar"** — altı yardımcı (profiller dahil) birleşti, gerçek uygulamada denendi, PR #57 develop'a gidiyor. Sırada: Keymotion açılış animasyonu, küçükler, sonra ürünleştirme (F) ve sorun bildirme (I). Kullanıcıyla klavyede denenecekler: Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri.
           - Sonraya: oyun oturumu (ön plandaki uygulama: açılınca kart, kapanınca özet). Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.

@@ -288,7 +288,7 @@ Ayrıntı ve yardımcıların listesi: `DURUM.md` madde 38.
 | C. Görünüm | C3, C4, C7, C8, C9 (klavye çizimi, kaydetme çubuğu, okunurluk, tutarlılık, hareket) | **Birleşti** (PR #57) |
 | D. İçerik | Bütün maddeler | **Birleşti** (PR #57) |
 | E. Veri ve tanılama | Günlük, tanılama, ErrorBoundary, dışa/içe aktarma, ışık durumu, takvim şifresi, gizlilik belgesi | **Birleşti** (PR #57). Gerçek uygulamada denendi |
-| E. Profiller | Profiller sayfası, Genel Bakış kartı | Yardımcıda, sürüyor (`integrate/pre-release` üzerinden) |
+| E. Profiller | Profiller sayfası, Genel Bakış kartı | **Birleşti** (PR #57). Gerçek uygulamada dört yükleme denemesi geçti |
 | F. Ürünleştirme | Tepsi, NSIS, imza, sürüm hattı, güncelleyici, güç | Görsel tur ve birleştirme bittikten sonra |
 | G. Repo ve hukuk | Lisans, NOTICE, üçüncü taraf lisansları, CI denetimleri, ESLint, Dependabot, cargo-deny, CHANGELOG | **Bitti** (PR #54). Kalan: ESLint'in 15 uyarısı, `?mock` anahtarlarının kurulu sürümden çıkarılması |
 | H. GitHub sayfası | İki dilli README ve belgeler, ekran görüntüleri, issue formları, topluluk dosyaları | Ürünleştirmeden sonra |
