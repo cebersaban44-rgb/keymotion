@@ -435,6 +435,16 @@ Bu aşamada birleşen kaynaklar:
 
 - TR/EN × açık/koyu. Arayüz kesinleştikten sonra çekilir. Sahte cihazla çekilebilir.
 
+### 7.3b Desteklenen klavyelerin gerçek ürün görselleri (kullanıcının fikri, 2026-11-12)
+
+- **Amaç:** tanıtımda desteklenen klavyelerin gerçek fotoğrafları da yer alır. Ziyaretçi uygulamanın hangi klavyelerde çalıştığını ilk bakışta anlar.
+- **Nerede:** README'nin üst kısmı ve "Desteklenen klavyeler" bölümü; ileride her model için bir satır (fotoğraf, model adı, bağlantı modları, desteklenen özellikler).
+- **Görsellerin kaynağı (haklar):**
+  - tercih: kullanıcının kendi klavyesinin kendi çektiği fotoğrafları (gerekirse uygulamadaki ışık ve ekran görselleriyle birlikte, ürünü çalışırken gösterir);
+  - AJAZZ'ın resmî ürün fotoğrafları telif hakkı onlara ait olduğu için ancak izinle kullanılır; fabrika animasyonundaki kararla aynı ilke (\`urun-eksikleri.md\` kararlar 3);
+  - model adları yalnızca uyumluluğu söylemek için kullanılır ("AJAZZ AK980 PRO ile çalışır"); "resmî değildir" notu görsellerin yanında da durur.
+- **Yeni model eklenince:** destek haritasındaki satırla birlikte o modelin görseli de eklenir.
+
 ### 7.4 Bütün `docs/` belgelerinin gözden geçirilmesi
 
 - Geliştirici belgeleri (`DURUM.md`, `gelistirme-akisi.md`, `mimari.md`, `donanim-dogrulama.md`, `teknik-analiz.md`, araştırmalar) güncelliği için okunur. Kullanıcıya yönelik sayfalarla geliştirici belgeleri ayrı yerlerde durur.
