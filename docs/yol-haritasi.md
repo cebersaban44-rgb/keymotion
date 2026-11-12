@@ -29,7 +29,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 | 3 | Keymotion açılış animasyonu | — (2 ile paralel olabilir) | Önizlemeye onay | Bitti (PR #62; kullanıcı A'yı, yazılı seçti) |
 | 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bitti (PR #63); GitHub ayarları kullanıcı onayıyla açıldı |
 | 5 | Kurulum dosyası (NSIS), imzasız | 1, 2 | Kurulum ayrıntılarına onay | Yapıldı (PR'da); kullanıcının elle denemesi ve kurulum görselleri bekliyor |
-| 5c | Kurulum denemesi bulguları (K1–K11): simge ve görseller, GitHub bağlantıları, hatırlatıcı kartı, ekran durumu, odak zamanlayıcısı, bildirim, Genel bakış | 5 | K9 için karar; K2, K7, K11 için önizlemeden seçim | Sırada (sıkıştırmadan sonra) |
+| 5c | Kurulum denemesi bulguları (K1–K11): simge ve görseller, GitHub bağlantıları, hatırlatıcı kartı, ekran durumu, odak zamanlayıcısı, bildirim, Genel bakış | 5 | K2, K7, K11 için önizlemeden seçim (K9 kararı verildi: her açılışta bir kez) | Sırada (sıkıştırmadan sonra) |
 | 6 | Sürüm hattı (GitHub Actions) ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Bekliyor |
 | 6b | Uygulama penceresinin açılış animasyonu | 5 (kurulu sürümle ölçülür) | Önizlemeden tasarım seçimi | Planlandı (kullanıcının kararı, 2026-11-12) |
 | 7 | GitHub sayfası ve bütün belgeler, SignPath'in sayfa şartları dahil | 5, 6 (kurulum ve indirme adımları belli) | Belge yapısına ve görünümüne onay (önce önizleme) | Bekliyor |
@@ -450,10 +450,8 @@ Kullanıcı kurulum dosyasını Explorer'dan, yani Claude'un kutusunun dışınd
   - Sıra: önce önizlemeyle tasarım, sonra kod.
 - **K9. Pencere kapatılınca bildirim gelmedi.**
   - Sebep: "arka planda çalışıyor" bildirimi bilgisayar başına bir kez gösterilecek şekilde yapıldı (madde 39; kullanıcının "durmadan bildirim göndermeyelim" isteği). Gerçek AppData'da bu hak 06:04'te `target\release\keymotion.exe` açılışında kullanıldı (logosuz çıkan bildirim). Kurulu sürüm aynı veriyi kullandığı için bir daha göstermedi.
-  - Kullanıcı şimdi her aşağı inişte bildirim bekliyor. **Karar gerekiyor:**
-    - (a) her açılışta, ilk kapatmada bir kez (öneri);
-    - (b) her kapatmada;
-    - (c) bilgisayar başına bir kez (bugünkü).
+  - **Karar (kullanıcı, 2026-11-12): her açılışta bir kez.** Uygulama her açıldığında, pencere ilk kapatılınca bildirim bir kez gelir; aynı oturumda sonraki kapatmalarda gelmez.
+  - Yapılacak: `tray.rs` `take_notice` kalıcı `notice_shown` yerine oturum başına bir bayrak kullanır. `background.json` içindeki eski alan okunur ama artık kullanılmaz. Windows açılınca gizli başlamada (`--hidden`) pencere hiç gösterilmediği için bildirim gelmez.
   - Logo hâlâ doğrulanmadı; bildirim çıkınca kutunun dışında bakılacak. Hatırlatıcının Windows bildirimi de kurulu sürümde denenecek.
 
 ## Aşama 6: sürüm hattı ve otomatik güncelleyici
@@ -610,7 +608,7 @@ Eskiden "Aşama 1b: erken başvuru" idi. 2026-11-12'de SignPath'in şartları ve
 |---|---|---|
 | 1 | Rust paket ve exe adı `keymotion` olsun mu? | Evet |
 | 9 | SignPath Foundation başvurusu (ilk sürümden sonra) | Kullanıcı başvurur, formu birlikte dolduralım |
-| 5c | K9: arka plan bildirimi ne sıklıkla? (a) her açılışta bir kez, (b) her kapatmada, (c) bilgisayar başına bir kez | (a) |
+| 5c | K9: arka plan bildirimi ne sıklıkla? | **Karar verildi:** her açılışta bir kez (2026-11-12) |
 | 5c | K2 kurulum görselleri, K7 odak zamanlayıcısı sırası, K11 Genel bakış tasarımı | Önizlemeden seçim |
 | 6b | Uygulama açılış animasyonunun tasarımı | Önizlemeden seçim |
 | 7 | GitHub sayfasının yapısı, biçimi (yalnız repo sayfaları mı, ayrıca belge sitesi mi) ve görünümü | Aşamanın başında önizlemeyle |
