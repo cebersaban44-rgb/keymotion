@@ -20,17 +20,19 @@
   --line-strong: rgb(255 255 255 / 0.13);
   --ink: #ece9e3;
   --ink-2: #a9a8a4;
-  --ink-3: #6c6d70;
+  /* Helper text: at least 4.5:1 on every surface below. */
+  --ink-3: #8a8b8e;
   --signal: #ff8a3d;
   --signal-ink: #1a0d04;
   --ok: #5fd39a;
   --warn: #f2c14e;
   --danger: #ff5d5d;
+  /* The keyboard drawing: dark plate and unlit caps in both themes. */
   --plate: #0a0b0d;
-  --key-top: #2a2d32;
-  --key-side: #1c1e22;
-  --key-edge: rgb(255 255 255 / 0.06);
-  --key-legend: #d9d6cf;
+  --kb-cap: #1b1d21;
+  --kb-cap-edge: rgb(255 255 255 / 0.06);
+  --kb-legend-off: #a9a59e;
+  --kb-ring: #f4f1ea;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.25);
   color-scheme: dark;
 }
@@ -44,17 +46,18 @@
   --line-strong: rgb(20 20 24 / 0.16);
   --ink: #16171a;
   --ink-2: #55565b;
-  --ink-3: #8a8b8f;
-  --signal: #f0701f;
-  --signal-ink: #ffffff;
+  --ink-3: #66676b;
+  /* Dark text on the orange: 5:1. The orange itself keeps 3:1 on the page. */
+  --signal: #d65f12;
+  --signal-ink: #1a0d04;
   --ok: #1f9d63;
   --warn: #b7860b;
   --danger: #d23b3b;
-  --plate: #23262b;
-  --key-top: #f6f4ef;
-  --key-side: #d9d5cc;
-  --key-edge: rgb(0 0 0 / 0.08);
-  --key-legend: #2a2b2f;
+  --plate: #1f2125;
+  --kb-cap: #2a2d32;
+  --kb-cap-edge: rgb(255 255 255 / 0.07);
+  --kb-legend-off: #bdb9b1;
+  --kb-ring: #f4f1ea;
   --shadow: 0 1px 2px rgb(40 30 20 / 0.08);
   color-scheme: light;
 }
@@ -163,6 +166,57 @@ body {
   box-shadow: var(--shadow);
 }
 
+/* Buttons. Disabled ones turn grey with no orange left, so they never
+   look pressable. */
+.btn-primary,
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  white-space: nowrap;
+  transition:
+    background-color 120ms ease-out,
+    color 120ms ease-out,
+    transform 120ms ease-out;
+}
+.btn-primary {
+  background: var(--signal);
+  color: var(--signal-ink);
+  font-weight: 600;
+}
+.btn-primary:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--signal) 90%, var(--ink));
+}
+.btn-secondary {
+  background: transparent;
+  color: var(--ink);
+  font-weight: 500;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+.btn-primary:active:not(:disabled),
+.btn-secondary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  cursor: not-allowed;
+  background: transparent;
+  color: var(--ink-3);
+  font-weight: 500;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.btn-primary:disabled {
+  background: var(--surface-2);
+}
+
 /* Screen previews: one panel pixel per CSS block, no smoothing. */
 .pixelated {
   image-rendering: pixelated;
@@ -227,8 +281,10 @@ body {
 }
 
 /* ------------------------------------------------------------------
-   Keyboard render. Units are keyboard units (1u = one standard key);
-   --u is set from the container width with container query units.
+   Keyboard drawing (KeyboardView), the one used everywhere. Units are
+   keyboard units (1u = one standard key); --u is set from the container
+   width with container query units. A lit key's cap takes its light
+   colour (--c); an unlit key is a dark cap in both themes.
    ------------------------------------------------------------------ */
 @property --hue {
   syntax: "<number>";
@@ -243,101 +299,15 @@ body {
   initial-value: transparent;
 }
 
-/* A key held down on the keyboard (Overview): it sinks and shows a ring. */
-.kb-key.is-pressed {
-  transform: translateY(calc(var(--u) * 0.035));
-  filter: brightness(1.35);
-  outline: 2px solid var(--ink);
-  outline-offset: 1px;
-}
-
-/* Static colours (mirror / per-key): no idle animation, smooth changes. */
-.kb-static .kb-led,
-.kb-static .kb-key {
-  animation: none;
-  transition: --c 220ms ease-out;
-}
-
-.kb-paint .kb-key {
-  cursor: crosshair;
-  text-align: left;
-  touch-action: none;
-  /* A solid colour edge so each painted key's colour reads at a glance. */
-  box-shadow:
-    inset 0 calc(var(--u) * -0.1) 0 0 var(--c, transparent),
-    0 calc(var(--u) * 0.03) calc(var(--u) * 0.06) rgb(0 0 0 / 0.35);
-}
-
-/* Select tool: arrow pointer and a ring around selected keys. */
-.kb-select .kb-key {
-  cursor: pointer;
-}
-.kb-key.is-selected {
-  outline: 2px solid #f6f3ec;
-  outline-offset: 2px;
-  filter: brightness(1.18);
-}
-
-.kb-paint .kb-key:hover {
-  border-color: var(--line-strong);
-  filter: brightness(1.12);
-}
-
-.kb-paint .kb-key:focus-visible {
-  outline-offset: 1px;
-}
-
-/* Keymap view: reassigned keys, pending edits and the locked Fn key. */
-.kb-keymap .kb-key {
-  cursor: pointer;
-  box-shadow:
-    inset 0 calc(var(--u) * -0.06) 0 0 var(--c, transparent),
-    0 calc(var(--u) * 0.03) calc(var(--u) * 0.06) rgb(0 0 0 / 0.35);
-}
-.kb-key .kb-legend {
-  display: flex;
-  align-items: center;
-  gap: calc(var(--u) * 0.04);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--key-legend-strong, #fff7ee);
-  font-weight: 600;
-}
-.kb-key .kb-legend svg {
-  width: calc(var(--u) * 0.3);
-  height: calc(var(--u) * 0.3);
-  flex: none;
-}
-.kb-key.is-pending::after {
-  content: "";
-  position: absolute;
-  top: calc(var(--u) * 0.09);
-  right: calc(var(--u) * 0.09);
-  width: calc(var(--u) * 0.11);
-  height: calc(var(--u) * 0.11);
-  border-radius: 50%;
-  background: var(--signal);
-  box-shadow: 0 0 calc(var(--u) * 0.12) var(--signal);
-}
-.kb-key.is-locked {
-  cursor: not-allowed;
-  opacity: 0.5;
-  /* Stripes over the keycap's own gradient (kept from .kb-key). */
-  background-image:
-    repeating-linear-gradient(
-      -45deg,
-      transparent 0 calc(var(--u) * 0.08),
-      rgb(127 127 127 / 0.12) calc(var(--u) * 0.08) calc(var(--u) * 0.16)
-    ),
-    linear-gradient(180deg, var(--key-top) 0%, var(--key-top) 62%, var(--key-side) 100%);
-}
-[data-theme="light"] .kb-key .kb-legend {
-  color: var(--key-legend-strong, #16171a);
-}
-
 .kb-stage {
   container-type: inline-size;
+}
+
+/* Compact previews (focus timer, gauges) carry their own plate. */
+.kb-plate-compact {
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--plate);
 }
 
 .kb {
@@ -347,67 +317,156 @@ body {
   --gap: calc(var(--u) * 0.06);
 }
 
-.kb-led {
-  position: absolute;
-  left: calc(var(--x) * var(--u));
-  top: calc(var(--y) * var(--u));
-  width: calc(var(--w) * var(--u));
-  height: calc(var(--h) * var(--u));
-  pointer-events: none;
-  --c: oklch(0.74 0.19 var(--hue));
-  animation: hueflow 14s linear infinite, led-in 900ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  animation-delay: calc(var(--x) * -0.42s), calc(var(--x) * 38ms + 200ms);
-}
-
-.kb-led::before {
-  content: "";
-  position: absolute;
-  left: 18%;
-  right: 18%;
-  bottom: -4%;
-  height: 42%;
-  border-radius: 50%;
-  background: var(--c);
-  filter: blur(calc(var(--u) * 0.22));
-  opacity: 0.85;
-}
-
-[data-theme="light"] .kb-led::before {
-  opacity: 0.7;
-}
-
 .kb-key {
   position: absolute;
   left: calc(var(--x) * var(--u) + var(--gap));
   top: calc(var(--y) * var(--u) + var(--gap));
   width: calc(var(--w) * var(--u) - var(--gap) * 2);
   height: calc(var(--h) * var(--u) - var(--gap) * 2);
-  border-radius: calc(var(--u) * 0.14);
-  background:
-    linear-gradient(180deg, var(--key-top) 0%, var(--key-top) 62%, var(--key-side) 100%);
-  border: 1px solid var(--key-edge);
-  box-shadow:
-    inset 0 calc(var(--u) * -0.05) 0 0 color-mix(in oklch, var(--c, transparent) 55%, transparent),
-    0 calc(var(--u) * 0.03) calc(var(--u) * 0.06) rgb(0 0 0 / 0.35);
-  color: var(--key-legend);
+  border-radius: calc(var(--u) * 0.12);
+  /* The light adds to the dark cap: black stays an unlit cap. */
+  background-color: var(--kb-cap);
+  background-image: linear-gradient(var(--c), var(--c));
+  background-blend-mode: screen;
+  border: 1px solid var(--kb-cap-edge);
+  box-shadow: inset 0 calc(var(--u) * -0.07) 0 0 rgb(0 0 0 / 0.3);
+  color: var(--kb-legend-off);
   font-family: var(--font-sans);
-  font-size: calc(var(--u) * 0.2);
+  font-size: min(13px, calc(var(--u) * 0.3));
   line-height: 1.1;
-  padding: calc(var(--u) * 0.1) calc(var(--u) * 0.12);
+  padding: calc(var(--u) * 0.08) calc(var(--u) * 0.1);
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
   overflow: hidden;
   white-space: nowrap;
-  --c: oklch(0.74 0.19 var(--hue));
+  transition:
+    --c 220ms ease-out,
+    transform 120ms ease-out,
+    filter 120ms ease-out;
+}
+
+/* Lit caps: a dark legend on bright colours, a light one on deep colours. */
+.kb-key.tone-bright,
+.kb-key.tone-idle {
+  color: #16171a;
+  border-color: rgb(0 0 0 / 0.22);
+  box-shadow: inset 0 calc(var(--u) * -0.07) 0 0 rgb(0 0 0 / 0.22);
+}
+.kb-key.tone-deep {
+  color: #f6f3ec;
+}
+
+/* Four-letter labels on 1u keys (Home, PgUp) step down, never below 9 px. */
+.kb-key.kb-long {
+  font-size: max(9px, min(12px, calc(var(--u) * 0.25)));
+}
+
+/* Legends under 9 px are hidden rather than shrunk (see KeyboardView). */
+.kb-nolegend .kb-key > span {
+  display: none;
+}
+.kb-nosub .kb-key .sub {
+  display: none;
+}
+
+/* Lights unknown: an idle rainbow drifting left to right. */
+.kb-idle .kb-key {
+  --hue: calc(var(--x) * 17);
+  --c: oklch(0.76 0.16 var(--hue));
   animation: hueflow 14s linear infinite;
   animation-delay: calc(var(--x) * -0.42s);
 }
 
+/* Fast-changing previews follow their frames without easing. */
+.kb-compact .kb-key {
+  transition: none;
+}
+
+/* A key held down on the keyboard (Overview): it sinks and shows a ring. */
+.kb-key.is-pressed {
+  z-index: 1;
+  transform: translateY(calc(var(--u) * 0.035));
+  filter: brightness(1.3);
+  outline: 2px solid var(--kb-ring);
+  outline-offset: 1px;
+}
+
+/* Selected keys: a light ring in the gap around the cap. */
+.kb-key.is-selected {
+  z-index: 1;
+  outline: 2px solid var(--kb-ring);
+  outline-offset: 2px;
+}
+
+.kb-paint .kb-key {
+  cursor: crosshair;
+  text-align: left;
+  touch-action: none;
+}
+.kb-select .kb-key {
+  cursor: pointer;
+}
+.kb-paint .kb-key:hover {
+  border-color: rgb(255 255 255 / 0.28);
+  filter: brightness(1.15);
+}
+.kb-paint .kb-key:focus-visible {
+  z-index: 2;
+  outline: 2px solid var(--signal);
+  outline-offset: 1px;
+  border-radius: calc(var(--u) * 0.12);
+}
+
+/* Keymap: reassigned and turned-off keys, pending edits, the locked Fn key. */
+.kb-key.is-mapped {
+  box-shadow:
+    inset 0 0 0 2px var(--signal),
+    inset 0 calc(var(--u) * -0.07) 0 0 rgb(0 0 0 / 0.3);
+}
+.kb-key.is-blocked {
+  box-shadow:
+    inset 0 0 0 2px var(--danger),
+    inset 0 calc(var(--u) * -0.07) 0 0 rgb(0 0 0 / 0.3);
+}
+.kb-key .kb-legend {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 0.04);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #f6f3ec;
+  font-weight: 600;
+}
+.kb-key .kb-legend svg {
+  width: calc(var(--u) * 0.3);
+  height: calc(var(--u) * 0.3);
+  flex: none;
+}
 .kb-key .sub {
   margin-top: auto;
+  opacity: 0.7;
+  font-size: min(11px, calc(var(--u) * 0.22));
+}
+.kb-key.is-pending::after {
+  content: "";
+  position: absolute;
+  top: calc(var(--u) * 0.09);
+  right: calc(var(--u) * 0.09);
+  width: calc(var(--u) * 0.12);
+  height: calc(var(--u) * 0.12);
+  border-radius: 50%;
+  background: var(--signal);
+}
+.kb-key.is-locked {
+  cursor: not-allowed;
   opacity: 0.55;
-  font-size: calc(var(--u) * 0.16);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0 calc(var(--u) * 0.08),
+    rgb(255 255 255 / 0.08) calc(var(--u) * 0.08) calc(var(--u) * 0.16)
+  );
 }
 
 .kb-screen {
@@ -421,11 +480,9 @@ body {
 .kb-knob {
   position: absolute;
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 40% 35%, #5a5e66 0%, #2b2e33 55%, #16181b 100%);
+  background: radial-gradient(circle at 40% 35%, #5a5e66 0%, #2b2e33 55%, #16181b 100%);
   box-shadow:
     0 0 0 calc(var(--u) * 0.05) #0e0f11,
-    0 0 0 calc(var(--u) * 0.11) transparent,
     0 calc(var(--u) * 0.06) calc(var(--u) * 0.14) rgb(0 0 0 / 0.5);
 }
 
@@ -439,72 +496,153 @@ body {
 }
 
 /* ------------------------------------------------------------------
-   Effect swatches: 7×2 mini keys approximating each firmware effect.
+   Effect thumbnails (EffectThumb): 8×3 mini keys, each effect with its
+   own motion. Per cell: --fx-c colour, --d delay, --still the level in
+   a still frame (reduced motion). Per thumbnail: --p period, --lo floor.
    ------------------------------------------------------------------ */
-.fx {
+.fxp {
+  position: relative;
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 3px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 2px;
+  padding: 4px;
+  border-radius: 6px;
+  background: var(--plate);
+  overflow: hidden;
 }
 
-.fx span {
+.fxp span {
+  position: relative;
   aspect-ratio: 1;
-  border-radius: 3px;
-  --hue: 20;
-  --c: var(--fx-color);
-  background: var(--c);
-  box-shadow: 0 0 6px color-mix(in oklch, var(--c) 70%, transparent);
+  border-radius: 2px;
+  background: var(--kb-cap);
 }
 
-.fx-rainbow span,
-.fx-spectrum span {
-  --c: oklch(0.74 0.19 var(--hue));
+.fxp span::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--fx-c);
+  opacity: var(--still, 1);
 }
 
-.fx-rainbow span {
-  --hue: calc(var(--col) * 45);
+.fxp-pulse span.on::before {
+  animation: fxp-pulse var(--p) ease-in-out var(--d) infinite;
+}
+.fxp-flash span.on::before {
+  animation: fxp-flash var(--p) ease-out var(--d) infinite;
+}
+.fxp-twinkle span.on::before {
+  animation: fxp-twinkle var(--p) linear var(--d) infinite;
+}
+.fxp-dip span.on::before {
+  animation: fxp-dip var(--p) ease-out var(--d) infinite;
+}
+.fxp-beat span.on::before {
+  animation: fxp-beat var(--p) ease-out var(--d) infinite;
+}
+.fxp-hue span::before {
+  --hue: var(--h0, 0);
+  background: oklch(0.74 0.17 var(--hue));
+}
+.fxp-hue span.on::before {
+  animation: hueflow var(--p) linear var(--d) infinite;
 }
 
-.fx-wave span {
-  animation: hueflow 3.2s linear infinite;
-  animation-delay: calc(var(--col) * -0.25s);
+/* Shuttle: a lit band sweeps back and forth over the row. */
+.fxp-shuttle::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to right,
+    rgb(8 9 11 / 0.88) 0 42%,
+    transparent 47% 53%,
+    rgb(8 9 11 / 0.88) 58% 100%
+  );
+  background-size: 260% 100%;
+  animation: fxp-shuttle var(--p) ease-in-out infinite alternate;
 }
 
-.fx-wave:not(.fx-rainbow) span {
-  animation: pulse 1.8s ease-in-out infinite;
-  animation-delay: calc(var(--col) * 0.12s);
-}
-
-.fx-spectrum span {
-  animation: hueflow 4s linear infinite;
-}
-
-.fx-breath span {
-  animation: pulse 2.6s ease-in-out infinite;
-}
-
-.fx-sparkle span {
-  animation: pulse 1.4s ease-in-out infinite;
-  animation-delay: calc(var(--i) * 0.37s);
-}
-
-.fx-ripple span {
-  animation: pulse 2s ease-out infinite;
-  animation-delay: calc((var(--col) - 3) * (var(--col) - 3) * 0.06s);
-}
-
-.fx-off span {
-  --c: var(--line-strong);
-  box-shadow: none;
-}
-
-@keyframes pulse {
+@keyframes fxp-pulse {
   0%,
   100% {
-    opacity: 0.18;
+    opacity: var(--lo, 0.1);
   }
   50% {
     opacity: 1;
+  }
+}
+
+@keyframes fxp-flash {
+  0% {
+    opacity: 1;
+  }
+  40%,
+  100% {
+    opacity: var(--lo, 0);
+  }
+}
+
+@keyframes fxp-twinkle {
+  0%,
+  100% {
+    opacity: var(--lo, 0.1);
+  }
+  6% {
+    opacity: 1;
+  }
+  22% {
+    opacity: var(--lo, 0.1);
+  }
+}
+
+@keyframes fxp-dip {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  6% {
+    opacity: 0.04;
+  }
+  45% {
+    opacity: 1;
+  }
+}
+
+@keyframes fxp-beat {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  10% {
+    opacity: 1;
+  }
+  20% {
+    opacity: 0.4;
+  }
+  30% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+
+@keyframes fxp-shuttle {
+  from {
+    background-position: 22% 0;
+  }
+  to {
+    background-position: 78% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fxp span::before,
+  .fxp::after {
+    animation: none !important;
   }
 }
 
@@ -514,17 +652,6 @@ body {
   }
   to {
     --hue: 360;
-  }
-}
-
-@keyframes led-in {
-  from {
-    opacity: 0;
-    transform: translateY(12%);
-  }
-  to {
-    opacity: 1;
-    transform: none;
   }
 }
 

@@ -15,11 +15,19 @@
 //!   default microphone's mute (only the Windows mute: a mute button inside
 //!   a call app does not reach Windows). The caller looks the default
 //!   devices up again now and then, so a switch of device is followed.
+//! * Running programs: a Toolhelp snapshot, with each program's path where
+//!   Windows gives it, so the app can refuse to write to the keyboard while
+//!   another program talks to it.
+//! * Shutdown: while the app writes the keyboard's flash, Windows is told
+//!   why shutting down now is a bad idea (`ShutdownBlockReasonCreate`).
 //!
 //! Types holding COM or PDH handles are not `Send`: make them on the thread
 //! that uses them.
 
 #![allow(unsafe_code)]
+
+pub mod os;
+pub mod secret;
 
 use std::collections::HashMap;
 
@@ -75,6 +83,23 @@ pub fn idle_ms() -> Option<u64> {
     sys::idle_ms()
 }
 
+/// A running program.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunningProgram {
+    pub pid: u32,
+    /// Executable file name, e.g. `SignalRgb.exe`.
+    pub name: String,
+    /// Full path; `None` when Windows does not give it (protected or
+    /// elevated processes).
+    pub path: Option<String>,
+}
+
+/// Every program running now (empty when the list cannot be read). Takes a
+/// few milliseconds: call it before an action, not in a loop.
+pub fn running_programs() -> Vec<RunningProgram> {
+    sys::running_programs()
+}
+
 /// The `GPU Engine` counters' instance name parts: the card (LUID) and the
 /// engine type. Names look like
 /// `pid_1234_luid_0x00000000_0x0000D1F2_phys_0_eng_0_engtype_3D`.
@@ -98,6 +123,21 @@ pub fn gpu_busiest<'a>(items: impl IntoIterator<Item = (&'a str, f64)>) -> Optio
         }
     }
     engines.into_values().reduce(f64::max).map(|v| v.clamp(0.0, 100.0) as f32)
+}
+
+/// Tell Windows that the app is writing to the keyboard: if the user shuts
+/// down or signs out meanwhile, Windows lists the app with `reason`
+/// (`ShutdownBlockReasonCreate`). `hwnd` is the main window's handle; the
+/// call only works on the thread that created that window. False when
+/// Windows refused.
+pub fn block_shutdown(hwnd: isize, reason: &str) -> bool {
+    sys::block_shutdown(hwnd, reason)
+}
+
+/// The write is over: shutting down is fine again
+/// (`ShutdownBlockReasonDestroy`). Same thread rule as [`block_shutdown`].
+pub fn unblock_shutdown(hwnd: isize) -> bool {
+    sys::unblock_shutdown(hwnd)
 }
 
 /// Graphics load from the performance counters.
@@ -161,6 +201,79 @@ mod sys {
     use windows::Win32::System::SystemInformation::{GetTickCount, GlobalMemoryStatusEx, MEMORYSTATUSEX};
     use windows::Win32::System::Threading::GetSystemTimes;
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+
+    pub fn running_programs() -> Vec<super::RunningProgram> {
+        use windows::core::PWSTR;
+        use windows::Win32::Foundation::CloseHandle;
+        use windows::Win32::System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+        };
+        use windows::Win32::System::Threading::{
+            OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+
+        fn text(wide: &[u16]) -> String {
+            let end = wide.iter().position(|&c| c == 0).unwrap_or(wide.len());
+            String::from_utf16_lossy(&wide[..end])
+        }
+
+        fn path_of(pid: u32) -> Option<String> {
+            // SAFETY: plain call; the handle is closed below.
+            let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;
+            let mut buf = [0u16; 1024];
+            let mut len = buf.len() as u32;
+            // SAFETY: `buf` holds `len` UTF-16 units; the call writes at most that many.
+            let read =
+                unsafe { QueryFullProcessImageNameW(process, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len) };
+            // SAFETY: the handle came from OpenProcess above and is closed once.
+            let _ = unsafe { CloseHandle(process) };
+            read.ok()?;
+            Some(String::from_utf16_lossy(&buf[..(len as usize).min(buf.len())]))
+        }
+
+        // SAFETY: plain call; the snapshot handle is closed below.
+        let Ok(snapshot) = (unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        let mut entry = PROCESSENTRY32W { dwSize: size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
+        // SAFETY: a valid snapshot handle and an entry with its size set, as the API asks.
+        let mut more = unsafe { Process32FirstW(snapshot, &mut entry) }.is_ok();
+        while more {
+            let pid = entry.th32ProcessID;
+            // Process 0 is the idle process: no executable behind it.
+            if pid != 0 {
+                out.push(super::RunningProgram { pid, name: text(&entry.szExeFile), path: path_of(pid) });
+            }
+            // SAFETY: as above.
+            more = unsafe { Process32NextW(snapshot, &mut entry) }.is_ok();
+        }
+        // SAFETY: the handle came from CreateToolhelp32Snapshot and is closed once.
+        let _ = unsafe { CloseHandle(snapshot) };
+        out
+    }
+
+    // Declared here rather than through the `windows` crate: its
+    // `Win32_System_Shutdown` feature would rebuild the whole crate for two
+    // functions. Both live in user32, which every window links anyway.
+    #[link(name = "user32")]
+    extern "system" {
+        fn ShutdownBlockReasonCreate(hwnd: *mut core::ffi::c_void, reason: *const u16) -> i32;
+        fn ShutdownBlockReasonDestroy(hwnd: *mut core::ffi::c_void) -> i32;
+    }
+
+    pub fn block_shutdown(hwnd: isize, reason: &str) -> bool {
+        let wide: Vec<u16> = reason.encode_utf16().chain(std::iter::once(0)).collect();
+        // SAFETY: `wide` is NUL-terminated UTF-16 and outlives the call
+        // (Windows copies it). A wrong handle only makes the call fail.
+        unsafe { ShutdownBlockReasonCreate(hwnd as *mut core::ffi::c_void, wide.as_ptr()) != 0 }
+    }
+
+    pub fn unblock_shutdown(hwnd: isize) -> bool {
+        // SAFETY: no pointers besides the handle; a wrong handle only makes
+        // the call fail.
+        unsafe { ShutdownBlockReasonDestroy(hwnd as *mut core::ffi::c_void) != 0 }
+    }
 
     pub fn idle_ms() -> Option<u64> {
         let mut info = LASTINPUTINFO { cbSize: size_of::<LASTINPUTINFO>() as u32, dwTime: 0 };
@@ -370,6 +483,10 @@ mod sys {
 mod sys {
     use super::Volume;
 
+    pub fn running_programs() -> Vec<super::RunningProgram> {
+        Vec::new()
+    }
+
     pub fn cpu_times() -> Option<(u64, u64)> {
         None
     }
@@ -380,6 +497,14 @@ mod sys {
 
     pub fn idle_ms() -> Option<u64> {
         None
+    }
+
+    pub fn block_shutdown(_hwnd: isize, _reason: &str) -> bool {
+        false
+    }
+
+    pub fn unblock_shutdown(_hwnd: isize) -> bool {
+        false
     }
 
     pub struct Gpu;
@@ -436,6 +561,15 @@ mod tests {
         assert_eq!(gpu_busiest(items), Some(55.0));
         assert_eq!(gpu_busiest([("pid_1_luid_0x0_0x1_phys_0_eng_0_engtype_3D", 180.0)]), Some(100.0));
         assert_eq!(gpu_busiest([]), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_running_list_has_this_process() {
+        let list = running_programs();
+        let own = list.iter().find(|p| p.pid == std::process::id()).expect("own process listed");
+        assert!(own.name.to_ascii_lowercase().ends_with(".exe"), "{own:?}");
+        assert!(own.path.as_deref().is_some_and(|p| p.ends_with(&own.name)), "{own:?}");
     }
 
     #[test]

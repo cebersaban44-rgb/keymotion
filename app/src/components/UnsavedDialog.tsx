@@ -9,20 +9,24 @@ import { friendlyError } from "../lib/errors";
 
 /**
  * Shown when the window is closed with changes not stored on the keyboard:
- * save everything and quit, quit and undo the edits, or stay.
+ * save everything and quit, quit and undo the edits, or stay. When the only
+ * thing pending is a write already running (an upload, a save), it offers to
+ * close once that ends, to quit now, or to stay.
  */
 export function UnsavedDialog({ items, onCancel }: { items: UnsavedItem[]; onCancel: () => void }) {
   const t = useT();
   const kb = useActiveKeyboard();
   const usb = kb?.connection === "usb" && kb.hasCommandChannel;
   const canSave = usb || !items.some((i) => i.needsUsb);
+  // Only writes already running: nothing to save, only to wait for.
+  const writing = items.every((i) => i.running);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const primary = useRef<HTMLButtonElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    (canSave ? primary.current : cancel.current)?.focus();
+    (canSave && !writing ? primary.current : cancel.current)?.focus();
     // Focus once, when the dialog opens.
   }, []);
   useEffect(() => {
@@ -77,10 +81,10 @@ export function UnsavedDialog({ items, onCancel }: { items: UnsavedItem[]; onCan
           </span>
           <div className="flex flex-col gap-1.5">
             <h2 id="unsaved-title" className="font-display text-[20px] leading-tight font-semibold">
-              {t("unsaved.title")}
+              {t(writing ? "unsaved.writing.title" : "unsaved.title")}
             </h2>
             <p id="unsaved-body" className="text-[13px] leading-relaxed text-ink-2">
-              {t("unsaved.body")}
+              {t(writing ? "unsaved.writing.body" : "unsaved.body")}
             </p>
           </div>
         </div>
@@ -95,7 +99,14 @@ export function UnsavedDialog({ items, onCancel }: { items: UnsavedItem[]; onCan
           ))}
         </ul>
 
-        {!canSave && <p className="text-[13px] text-ink-2">{t("unsaved.needsUsb")}</p>}
+        {writing ? (
+          <p role="status" className="flex items-center gap-2 text-[13px] text-ink-2">
+            <Loader2 size={14} className="animate-spin" aria-hidden />
+            {t("unsaved.writing.waiting")}
+          </p>
+        ) : (
+          !canSave && <p className="text-[13px] text-ink-2">{t("unsaved.needsUsb")}</p>
+        )}
         {error && (
           <p role="alert" className="flex items-start gap-2 text-[13px] text-danger">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
@@ -120,20 +131,21 @@ export function UnsavedDialog({ items, onCancel }: { items: UnsavedItem[]; onCan
               disabled={busy}
               className="h-9 rounded-lg border border-line bg-bg-raise px-3.5 text-[13px] text-ink transition-colors hover:border-line-strong disabled:opacity-40"
             >
-              {t("unsaved.discardExit")}
+              {t(writing ? "unsaved.writing.now" : "unsaved.discardExit")}
             </button>
-            <button
-              ref={primary}
-              type="button"
-              onClick={saveAndQuit}
-              disabled={busy || !canSave}
-              className="flex h-9 items-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-              {busy ? t("unsaved.saving") : t("unsaved.saveExit")}
-            </button>
+            {!writing && (
+              <button
+                ref={primary}
+                type="button"
+                onClick={saveAndQuit}
+                disabled={busy || !canSave}
+                className="flex h-9 items-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                {busy ? t("unsaved.saving") : t("unsaved.saveExit")}
+              </button>
+            )}
           </div>
-          
         </div>
       </motion.div>
     </motion.div>

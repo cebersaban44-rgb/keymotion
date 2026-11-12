@@ -1,14 +1,18 @@
 // Changes the user made in the app that are not stored on the keyboard yet.
 // Every page with such state contributes one hook below; the close guard
 // (UnsavedDialog) and the sidebar read the combined list. A running screen
-// upload counts too: closing would leave the GIF page half written.
+// upload counts too: closing would leave the GIF page half written. So does
+// any other flash write the app runs by itself (a live card, going back to
+// the own picture), though the sidebar does not mark it.
 
+import { useEffect } from "react";
 import type { MessageKey } from "./i18n";
 import { dirtyLayers, useKeymap } from "./keymap";
 import { dirtySlots, useMacros } from "./macros";
 import { lightingUnsaved, useLighting } from "./lighting";
 import { useScreen } from "./screen";
 import type { PageId } from "./store";
+import { startWriting, useWriting, writingDone } from "./writing";
 
 export interface UnsavedItem {
   id: string;
@@ -23,6 +27,11 @@ export interface UnsavedItem {
   save: () => Promise<void>;
   /** Drop the pending changes. */
   discard: () => void;
+  /** A write the app runs by itself: closing asks, the sidebar shows no mark. */
+  background?: boolean;
+  /** A write already running (an upload, a save): "save" waits for it, it
+   *  cannot be undone. */
+  running?: boolean;
 }
 
 /** Lighting: the most recently edited setup (an effect or a per-key design). */
@@ -85,6 +94,28 @@ function useScreenItem(): UnsavedItem | null {
     needsUsb: true,
     save: () => useScreen.getState().running ?? Promise.resolve(),
     discard: () => {},
+    running: true,
+  };
+}
+
+/** Any other flash write in progress (the backend's `flash-write`): a live
+ *  card, going back to the own picture, or a short settings write. "Save"
+ *  waits for it to end; it cannot be undone. */
+function useWriteItem(manualUpload: boolean): UnsavedItem | null {
+  useEffect(startWriting, []);
+  const kind = useWriting((s) => s.kind);
+  // A manual upload has its own item above.
+  if (!kind || (kind === "screen" && manualUpload)) return null;
+  return {
+    id: `write:${kind}`,
+    page: kind === "screen" ? "screen" : "overview",
+    area: kind === "screen" ? "nav.screen" : "unsaved.write.area",
+    detail: kind === "screen" ? "unsaved.screen" : "unsaved.write",
+    needsUsb: false,
+    save: writingDone,
+    discard: () => {},
+    background: true,
+    running: true,
   };
 }
 
@@ -94,5 +125,6 @@ export function useUnsaved(): UnsavedItem[] {
   const keymap = useKeymapItem();
   const macros = useMacrosItem();
   const screen = useScreenItem();
-  return [lighting, keymap, macros, screen].filter((i): i is UnsavedItem => i !== null);
+  const write = useWriteItem(screen !== null);
+  return [lighting, keymap, macros, screen, write].filter((i): i is UnsavedItem => i !== null);
 }

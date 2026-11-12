@@ -174,6 +174,8 @@ pub struct KeyboardInfo {
     pub screen: Option<ScreenInfo>,
     pub connection: Connection,
     pub product: Option<String>,
+    /// Firmware version over the cable, as people read it ("1.06").
+    pub firmware: Option<String>,
     /// Features usable right now in this connection mode.
     pub features: Vec<Feature>,
     /// What every connection mode of this model offers.
@@ -201,6 +203,7 @@ impl KeyboardInfo {
             screen: m.screen.as_ref().map(|s| ScreenInfo { width: s.width, height: s.height, verified: s.verified }),
             connection: k.connection.into(),
             product: k.product.clone(),
+            firmware: k.firmware.map(kb_devices::firmware_text),
             features: k.capabilities().into_iter().map(Feature::from).collect(),
             modes: m
                 .modes
@@ -240,6 +243,26 @@ mod tests {
             let json = serde_json::to_string_pretty(&GeometryInfo::from_model(g)).unwrap();
             std::fs::write(dir.join(format!("geometry-{}.json", m.id)), json + "\n").unwrap();
         }
+    }
+}
+
+/// A settings file that could not be read at start-up and went back to its
+/// defaults. The old file was kept beside it (`backup`); the UI names the
+/// record once.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SettingsReset {
+    /// File name, e.g. `keymap.json`.
+    pub file: String,
+    /// Name of the kept copy; `None` when it could not be moved aside (it is
+    /// then left in place and not overwritten).
+    pub backup: Option<String>,
+}
+
+impl From<crate::settings::Reset> for SettingsReset {
+    fn from(r: crate::settings::Reset) -> Self {
+        Self { file: r.file, backup: r.backup }
     }
 }
 
@@ -881,6 +904,32 @@ pub struct ScreenState {
     pub uploads_today: u32,
     pub uploads_total: u32,
     pub limits: ScreenLimits,
+    /// The last upload to the GIF page stopped partway (an error, a quit, a
+    /// crash): the page holds part of it. `shown` is `null` meanwhile.
+    pub incomplete: Option<ScreenIncomplete>,
+}
+
+/// An upload that was cut short (see [`ScreenState::incomplete`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ScreenIncomplete {
+    /// Library item to upload again: the one cut short, or for a live card
+    /// the user's own picture. `null` when there is none.
+    pub id: Option<String>,
+    /// When the upload started (Unix ms).
+    pub at_ms: f64,
+}
+
+/// A write to the keyboard's flash in progress (`flash-write` event).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum FlashWrite {
+    /// A screen upload (up to ~5 minutes).
+    Screen,
+    /// Lighting, keymap or macros (under a second or two).
+    Settings,
 }
 
 /// `screen-upload-progress` event payload.
@@ -1046,6 +1095,10 @@ pub struct LiveState {
     pub own: Option<LiveRestore>,
     /// The screen goes back to the user's own picture at this time.
     pub going_back: Option<LiveBack>,
+    /// Turning the live mode on asks first: there is no factory backup and
+    /// the GIF page probably still shows the factory animation, which the
+    /// first card erases for good. Asked once.
+    pub factory_ack_needed: bool,
 }
 
 /// What the "Çalan şarkı" source does when the music stops.
@@ -1620,11 +1673,15 @@ pub struct ReminderSettings {
     /// Repeating reminders wait while nobody is at the computer and count
     /// again from the return (owner's choice, 2026-11-11).
     pub away_wait: bool,
+    /// A Windows notification each time, too. Without the keyboard on the
+    /// USB cable reminders always come as a notification, since the keys
+    /// cannot light up.
+    pub notify: bool,
 }
 
 impl Default for ReminderSettings {
     fn default() -> Self {
-        Self { enabled: true, screen: true, stay_min: 2, away_wait: true }
+        Self { enabled: true, screen: true, stay_min: 2, away_wait: true, notify: false }
     }
 }
 

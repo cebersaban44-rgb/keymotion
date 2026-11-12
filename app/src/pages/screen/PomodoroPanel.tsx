@@ -37,6 +37,7 @@ import type { PomodoroSettings } from "../../bindings/PomodoroSettings";
 import type { PomodoroState } from "../../bindings/PomodoroState";
 import type { PomodoroTransition } from "../../bindings/PomodoroTransition";
 import { ColorPicker, Segmented, Slider, Toggle } from "../../components/controls";
+import { KeyboardView } from "../../components/KeyboardView";
 import { useT, type MessageKey } from "../../lib/i18n";
 import { fmtWait, useLive } from "../../lib/live";
 import { pomodoroCard, pomodoroWords } from "../../lib/liveCards";
@@ -44,7 +45,7 @@ import { useApp } from "../../lib/store";
 import { LIMITS, POMODORO_SOURCE, fmtClock, phaseColor, remainingNow, usePomodoro } from "../../lib/pomodoro";
 import { TRY_MS, fromHex, keyPositions, lightColors, tryColors, viewOf } from "../../lib/pomodoroLights";
 import { uploadSeconds } from "../../lib/screenImport";
-import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb } from "./common";
+import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useItemName } from "./common";
 import { SendNow } from "./LivePanel";
 
 const MOTIONS: { id: PomodoroMotion; label: MessageKey; icon: LucideIcon }[] = [
@@ -109,9 +110,9 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
   const caption = !shown.lights ? t("pomo.preview.off") : idle ? t("pomo.preview.idle") : t("pomo.preview.live");
 
   return (
-    <section className="card flex flex-col gap-6 p-5" data-pomodoro>
+    <section className="card flex flex-col" data-pomodoro>
       {/* What the timer shows: the time left, and the keys. */}
-      <div className="flex flex-col gap-5 rounded-lg border border-line bg-bg-raise/50 p-5">
+      <div className="flex flex-col gap-5 p-5">
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-6">
           <Dial s={s} />
           <div className="flex min-w-0 flex-col gap-2">
@@ -175,9 +176,9 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
       </div>
 
       {/* Settings of the timer; the key lights' own settings sit in their row. */}
-      <div className="flex flex-col gap-2">
-        <h3 className="text-[13px] font-semibold">{t("pomo.settings")}</h3>
-        <div className="flex flex-col divide-y divide-line rounded-lg border border-line" data-pomo-settings>
+      <div className="flex flex-col gap-2 border-t border-line pt-4">
+        <h3 className="px-5 text-[13px] font-semibold">{t("pomo.settings")}</h3>
+        <div className="flex flex-col divide-y divide-line border-t border-line" data-pomo-settings>
           <SettingRow icon={Clock3} title={t("pomo.lengths")} body={t("pomo.lengths.note")}>
             <div className="grid grid-cols-[repeat(auto-fit,minmax(196px,1fr))] gap-2">
               <LengthField label={t("pomo.len.focus")} unit={t("pomo.min")} value={s.settings.focusMin} limits={LIMITS.focusMin} onChange={(focusMin) => set({ focusMin })} />
@@ -217,7 +218,7 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
         </div>
       </div>
 
-      {drawError && <Hint tone="error">{t("err.draw")}</Hint>}
+      {drawError && <div className="border-t border-line p-5"><Hint tone="error">{t("err.draw")}</Hint></div>}
     </section>
   );
 }
@@ -245,7 +246,7 @@ function Dial({ s }: { s: PomodoroState }) {
           strokeWidth="9"
           strokeLinecap="round"
           strokeDasharray={`${len * share} ${len}`}
-          style={{ filter: `drop-shadow(0 0 6px ${color}88)`, transition: "stroke-dasharray 250ms linear" }}
+          style={{ transition: "stroke-dasharray 250ms linear" }}
           opacity={idle ? 0.3 : share > 0 ? 1 : 0}
         />
       </svg>
@@ -394,44 +395,21 @@ function LightPreview({
     return () => window.clearInterval(id);
   }, []);
   const view = viewOf(s, now);
+  // Keys left out of the map are drawn unlit.
   let colors: Record<number, string>;
   if (!settings.lights) {
-    colors = Object.fromEntries(keys.map((k) => [k.led, "#24262b"]));
+    colors = {};
   } else if (view) {
     colors = lightColors(keys, settings, view, now);
   } else {
     // The run, then a short dark pause before it starts again.
     const t = (now - loopStart.current) % (TRY_MS + 1_200);
-    colors = t < TRY_MS ? tryColors(keys, settings, t, now) : Object.fromEntries(keys.map((k) => [k.led, "rgb(0,0,0)"]));
+    colors = t < TRY_MS ? tryColors(keys, settings, t, now) : {};
   }
-  const g = kb.geometry!;
-  const pad = 0.25;
   return (
-    <svg
-      viewBox={`${-pad} ${-pad} ${g.width + 2 * pad} ${g.height + 2 * pad}`}
-      className="w-full max-w-[720px] rounded-lg"
-      role="img"
-      aria-label={t("pomo.preview.idle")}
-      data-pomo-preview
-    >
-      <rect x={-pad} y={-pad} width={g.width + 2 * pad} height={g.height + 2 * pad} rx={0.35} fill="#111214" />
-      {g.screen && (
-        <rect x={g.screen.x + 0.06} y={g.screen.y + 0.06} width={g.screen.w - 0.12} height={g.screen.h - 0.12} rx={0.08} fill="#26282c" />
-      )}
-      {g.keys.map((k) => (
-        <rect
-          key={k.id}
-          x={k.x + 0.06}
-          y={k.y + 0.06}
-          width={k.w - 0.12}
-          height={k.h - 0.12}
-          rx={0.12}
-          fill={colors[k.led] ?? "#000"}
-          stroke="rgba(255,255,255,0.06)"
-          strokeWidth={0.03}
-        />
-      ))}
-    </svg>
+    <div className="w-full max-w-[720px]" data-pomo-preview>
+      <KeyboardView geometry={kb.geometry!} connection={kb.connection} colors={colors} compact label={t("pomo.preview.idle")} />
+    </div>
   );
 }
 
@@ -516,6 +494,7 @@ function ScreenSettings({ s, set }: { s: PomodoroState; set: (patch: Partial<Pom
  *  with the user's lengths and colours, and what comes at the end. */
 function CardStrip({ settings, own }: { settings: PomodoroSettings; own: LiveRestore | null }) {
   const t = useT();
+  const name = useItemName();
   const locale = useApp((x) => x.locale);
   const [cards, setCards] = useState<Uint16Array[] | null>(null);
   const { focusMin, shortMin, longMin, rounds, focusColor, shortColor, longColor, endScreen } = settings;
@@ -563,7 +542,7 @@ function CardStrip({ settings, own }: { settings: PomodoroSettings; own: LiveRes
     endScreen === "summary"
       ? cards?.[2]
       : ownFrame;
-  const endLabel = `${t("pomo.screen.atEnd")}: ${endScreen === "summary" ? t("pomo.end.summary.short") : own?.name ?? t("pomo.end.own")}`;
+  const endLabel = `${t("pomo.screen.atEnd")}: ${endScreen === "summary" ? t("pomo.end.summary.short") : (own ? name(own) : t("pomo.end.own"))}`;
   return (
     <div className="flex flex-col gap-1.5" data-pomo-strip>
       <span className="text-[12px] text-ink-3">{t("pomo.screen.example")}</span>
@@ -603,6 +582,7 @@ function EndChoice({
   onChange: (v: PomodoroEndScreen) => void;
 }) {
   const t = useT();
+  const name = useItemName();
   return (
     <div className="flex flex-col gap-1.5" role="radiogroup" aria-label={t("pomo.end")} data-pomo-end>
       <span className="text-[13px] font-medium">{t("pomo.end")}</span>
@@ -629,7 +609,7 @@ function EndChoice({
               <span className="text-[12px] text-ink-3">{t(c.body)}</span>
               {c.id === "back" && own && (
                 <span className="text-[12px] text-ink-2">
-                  {t("pomo.end.own")}: <span className="font-medium text-ink">{own.name}</span> ({t("sc.uploadTime")}{" "}
+                  {t("pomo.end.own")}: <span className="font-medium text-ink">{name(own)}</span> ({t("sc.uploadTime")}{" "}
                   <span className="num">~{fmtSeconds(uploadSeconds(own.frames))}</span>)
                 </span>
               )}
@@ -686,7 +666,7 @@ function SettingRow({
 }) {
   const nested = Array.isArray(children) ? children.some(Boolean) : !!children;
   return (
-    <div className="flex flex-col gap-3 p-4" data-pomo-row={data}>
+    <div className="flex flex-col gap-3 px-5 py-4" data-pomo-row={data}>
       <div className="flex items-start justify-between gap-3">
         <span className="flex items-start gap-2.5">
           <Icon size={16} className="mt-0.5 shrink-0 text-signal" />
