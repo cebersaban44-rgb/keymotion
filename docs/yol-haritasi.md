@@ -31,7 +31,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 | 5 | Kurulum dosyası (NSIS), imzasız | 1, 2 | Kurulum ayrıntılarına onay | Yapıldı (PR'da); kullanıcının elle denemesi ve kurulum görselleri bekliyor |
 | 5c | Kurulum denemesi bulguları (K1–K11): simge ve görseller, GitHub bağlantıları, hatırlatıcı kartı, ekran durumu, odak zamanlayıcısı, bildirim, Genel bakış | 5 | Kararlar verildi: K9 her açılışta bir kez; K2, K7, K11 için A | Yapıldı (PR #72–#77); klavyede gerçek yüklemeyle deneme kullanıcıda |
 | 5d | Kullanıcının geri bildirimleri (K12 Genel bakış'taki klavye çizimi, K13 açılış logosunun keskinliği) ve denemeleri | 5c | — | K12 yapıldı (A); K13 kapandı (kod değişikliği gerekmedi); A denemeleri yapıldı, K14 düzeltildi; B kurulum derlemesiyle |
-| 6 | Sürüm hattı (GitHub Actions) ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Kod yapıldı; anahtar Secrets'ta; iş akışı denendi (taslak doğru, silindi); kalan: rc.1 → rc.2 güncelleme denemesi |
+| 6 | Sürüm hattı (GitHub Actions) ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | **Bitti (2026-11-12):** güncelleyici, anahtar, iş akışı, rc.1 → rc.2 güncellemesi kullanıcının bilgisayarında çalıştı. Kalan: deneme ön sürümlerini silmek (onayla); K15 kurulum görselleri (Aşama 8'den önce) |
 | 6b | Uygulama penceresinin açılış animasyonu | 5 (kurulu sürümle ölçülür) | Seçim A (2026-11-12) | Yapıldı (PR #78); kurulu sürümde açılış süresi ölçülecek |
 | 7 | GitHub sayfası ve bütün belgeler, SignPath'in sayfa şartları dahil | 5, 6 (kurulum ve indirme adımları belli) | Belge yapısına ve görünümüne onay (önce önizleme) | Bekliyor |
 | 8 | Son denemeler ve ilk sürüm 0.1.0 (imzasız) | hepsi | Elle denemeler; `main`'e birleştirme onayı | Bekliyor |
@@ -576,7 +576,15 @@ Claude'un denemediği ya da yalnızca tarayıcı önizlemesinde denediği her ş
      - Taslak kullanıcının onayıyla silindi; `v0.1.0` etiketi oluşmadı.
      - Ayrıca: PR #83, zorunlu olmayan "Supply chain (cargo-deny)" denetimi kırmızıyken birleşti (ISC lisanslı `ring`, `untrusted`, `rustls-webpki`); düzeltme PR #84 (ISC izinli, üçüncü taraf bildirimleri yeniden üretildi). Öneri: bu denetimi de zorunlu yapmak (depo ayarı, kullanıcının onayıyla).
      - Aşama 8 için not: gerçek sürümden önce `CHANGELOG.md`'de `## [0.1.0] - <tarih>` bölümü ve Türkçe notlar için `docs/surum-notlari.md` yazılır.
-  3. Uçtan uca deneme: 0.1.0-rc.1 ve 0.1.0-rc.2 ön sürüm olarak yayımlanır (herkese açık, ama "en son sürüm" sayılmaz), rc.1 kurulur, rc.2'ye güncellenir. Sonra ön sürümler silinebilir.
+  3. **Yapıldı (2026-11-12, kullanıcının onayıyla): rc.1 → rc.2 güncellemesi uçtan uca çalıştı.**
+     - Depo herkese açık (kullanıcı gizli sanıyordu; gizli depoda güncelleyici çalışamaz, çünkü uygulama GitHub'a girişsiz bakıyor). Kullanıcı açık kalmasını ve ön sürümlerle denemeyi onayladı.
+     - Önce: deneme sürümleri GitHub'ın listesinden sürüm numarası en büyük olanı seçiyor, listenin sırasını değil (PR #87).
+     - `test/rc1` ve `test/rc2` dallarında sürüm `0.1.0-rc.1` / `0.1.0-rc.2` (develop'ta sürüm `0.1.0` kaldı); iş akışı ikisini taslak olarak üretti. rc.1 ön sürüm olarak yayımlandı; kullanıcı GitHub'dan indirip kurdu (Windows uyarısı çıkmadı), sürüm Ayarlar'da göründü. Sonra rc.2 yayımlandı.
+     - Kullanıcı rc.1'de Ayarlar › Hakkında › "Güncellemeleri denetle": rc.2 bulundu, şerit çıktı, "Kur ve yeniden başlat" ile uygulama kapandı, kurulum küçük pencerede ilerledi, Keymotion rc.2 olarak açıldı. Dört adım da sorunsuz.
+     - Yan etki: bir taslağı yayımlamak etiketini oluşturuyor, etiket iş akışını yeniden başlatıyordu; CHANGELOG bölümü olmadığından 18 sn'de kırmızı bitti (kullanıcıya hata e-postası). Düzeltme PR #88: etiketin sürümü zaten yayımlanmışsa derleme atlanır, çalıştırma yeşil biter. rc.2'nin etiketi bu düzeltmeden önceki koddan çalıştığı için onda bir kez daha kırmızı çıktı.
+     - Kalan: ön sürümler (`v0.1.0-rc.1`, `v0.1.0-rc.2`), etiketleri ve `test/rc1`, `test/rc2` dalları kullanıcının onayıyla silinir. Kullanıcının bilgisayarında şu an kurulu sürüm rc.2; geliştirme sürümü kapalı (ikisi birlikte çalışmaz).
+- **Kullanıcının geri bildirimi (2026-11-12), sonra düzeltilecek:**
+  - **K15. Kurulum sihirbazının görselleri pikselli.** Üst banttaki logo ile "keymotion" yazısı (`header.bmp`, 150×57) ve bitiş sayfasının solundaki görsel (`sidebar.bmp`, 164×314) pikselli ve dağınık görünüyor. Olası sebep: NSIS bu bitmapleri %100 ölçeğe göre bekliyor, Windows %125'te büyütüyor. Yapılacak: yüksek çözünürlüklü görseller (`tools/installer-images.py` daha büyük boyutta çizer) ve NSIS'in ölçekleme ayarları (`MUI_HEADERIMAGE_BITMAP_STRETCH`, `MUI_WELCOMEFINISHPAGE_BITMAP_STRETCH`) ya da ölçeğe göre seçilen görseller araştırılır; önce önizleme, gerçek kurulumda %125'te doğrulanır. Aşama 8'deki son kurulum derlemesinden önce yapılır.
 
 ## Aşama 6b: uygulama penceresinin açılış animasyonu
 
