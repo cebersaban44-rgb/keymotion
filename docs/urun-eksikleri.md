@@ -275,6 +275,7 @@ Kurulu sürümde bir hata olduğunda ya da bir özellik başka bir klavyede çal
 7. **Açık kalan:** tepsi modunda canlı kartların nasıl çizileceği (Rust'ta mı, gizli pencerede mi) ürünleştirme başlarken kararlaştırılacak (F).
 
 Ek kararlar (2026-11-12):
+- Pencere kapatılınca uygulama tepside çalışmaya devam eder; Windows'la başlatma isteğe bağlı (varsayılan kapalı). Kalan işlerin sırası: `docs/yol-haritasi.md`.
 - Uygulamanın ve GitHub sayfasının varsayılan dili İngilizce; ikisinde de Türkçe seçilebilir.
 - Repo adı `keymotion` (yeniden adlandırıldı).
 - GitHub Discussions açık (soru-cevap).
@@ -295,10 +296,10 @@ Ayrıntı ve yardımcıların listesi: `DURUM.md` madde 38.
 | D. İçerik | Bütün maddeler | **Birleşti** (PR #57) |
 | E. Veri ve tanılama | Günlük, tanılama, ErrorBoundary, dışa/içe aktarma, ışık durumu, takvim şifresi, gizlilik belgesi | **Birleşti** (PR #57). Gerçek uygulamada denendi |
 | E. Profiller | Profiller sayfası, Genel Bakış kartı | **Birleşti** (PR #57). Gerçek uygulamada dört yükleme denemesi geçti |
-| F. Ürünleştirme | Tepsi, NSIS, imza, sürüm hattı, güncelleyici, güç | Görsel tur ve birleştirme bittikten sonra |
+| F. Ürünleştirme | Tepsi, NSIS, imza, sürüm hattı, güncelleyici, güç | Sırası ve ayrıntısı `docs/yol-haritasi.md` (Aşama 1–6) |
 | G. Repo ve hukuk | Lisans, NOTICE, üçüncü taraf lisansları, CI denetimleri, ESLint, Dependabot, cargo-deny, CHANGELOG | **Bitti** (PR #54). Kalan: ESLint'in 15 uyarısı, `?mock` anahtarlarının kurulu sürümden çıkarılması |
 | H. GitHub sayfası | İki dilli README ve belgeler, ekran görüntüleri, issue formları, topluluk dosyaları | Ürünleştirmeden sonra. Kararlar verildi: varsayılan İngilizce (`README.md`) + Türkçe (`README.tr.md`), repo adı `keymotion` (yapıldı), Discussions açık (yapıldı) |
 | I. Sorun bildirme | Uygulama içinden sorun bildirme, desteklenmeyen klavye bildirimi | Planlandı, ürünleştirmeyle birlikte (bölüm I) |
 | Dil | Uygulamanın varsayılan dili | **İngilizce** (2026-11-12, yapıldı); Türkçe seçilebilir |
-| Tepsi ve arka plan | Pencere kapanınca uygulamanın tepside çalışmaya devam etmesi | Kullanıcının kararı bekleniyor (DURUM madde 38) |
+| Tepsi ve arka plan | Pencere kapanınca uygulamanın tepside çalışmaya devam etmesi | **Karar: tepside çalışsın** (2026-11-12). Plan: `docs/yol-haritasi.md` Aşama 2 |
 | Keymotion açılış animasyonu | Fabrika yedeği olmayanlar için özgün görsel | Profillerle birlikte ya da hemen sonra |

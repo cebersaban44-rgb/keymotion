@@ -763,7 +763,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Repo adı **keymotion**. Uygulandı: `cebersaban44-rgb/klavye-studio` → `cebersaban44-rgb/keymotion`. Eski adresler GitHub'da yönleniyor, `origin` güncellendi. Koddaki adresler değişti: `notify.rs` `PROJECT_PAGES` (uygulamanın açabildiği tek adres) ve `offline.ts` `SUPPORT_LIST_URL`.
       - **Discussions açık**, cevaplanabilir "Q&A" kategorisi var.
       - Sorun bildirme yalnızca GitHub üzerinden (bölüm I), e-posta yok.
-      - Tepsi ve arka plan davranışı: kullanıcıya anlatıldı, kararı bekleniyor (aşağıda).
+      - **Tepsi ve arka plan: tepside çalışsın** (önerilen ayrıntılarla). X pencereyi gizler; tepsi menüsü Aç / Odak / Profiller / Çık; ilk gizlemede bir bildirim; Ayarlar'da "Kapatınca tepside çalışmaya devam et" (varsayılan açık) ve "Windows açılınca başlat" (varsayılan kapalı, gizli başlar). Ayrıntı: `docs/yol-haritasi.md` Aşama 2.
     - **Küçük işler (2026-11-12, gece):**
       - Yapıldı:
         - PR #57 birleşti; ana klasör `develop`'ta, arayüz yeniden ana klasörden sunuluyor ("ui", 1420).
@@ -786,18 +786,16 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - küçük ekranda (1920×1080, %150) pencerenin sığması;
       - Bluetooth kanal kısayolları (Fn+Q/W/E) ve denenmemiş tuş atamaları (B8);
       - hatırlatıcı Windows bildiriminin ekranda göründüğü.
-    - **Sıradaki adımlar (temiz bağlamda):**
-      1. Yardımcının dalını incele, birleştir; notices'i yenile.
-      2. Keymotion açılış animasyonu: önce önizleme.
-      3. **Ürünleştirme (F):**
-         - **Tepsi ve arka plan (önce kullanıcının kararı):** pencere kapatılınca uygulama tamamen mi kapansın, yoksa saatin yanındaki tepside simge olarak çalışmaya devam mı etsin? Odak zamanlayıcısı, hatırlatıcılar, takvim kartları, canlı ekran ve sistem göstergeleri ancak uygulama çalışırken iş görür. Ek sorular: Windows açılınca kendiliğinden başlasın mı; tepsi menüsünde ne olsun (aç, odak başlat, profil seç, çık). Teknik not: canlı kartlar WebView'da çiziliyor; pencere gizliyken çizmeye devam etmeli (gizli pencere yeterli mi, ölçülecek).
-         - NSIS kurulum ayarları ve kod imzalama (SignPath Foundation ya da Azure Artifact Signing).
-         - Sürüm hattı (GitHub Actions ile kurulum dosyası ve sürüm notları) ve otomatik güncelleyici.
-         - Güç kullanımı ölçümü (arka planda çalışırken).
-         - Rust paket adı: `klavye-studio` → `keymotion` (kurulu exe adı ve Görev Yöneticisi'nde görünen ad). Kullanıcıya sorulmadı; ürünleştirmede öner.
-         - Uygulama içinden sorun bildirme ve desteklenmeyen klavye için "destek iste" (bölüm I, yalnızca GitHub).
-      4. **GitHub sayfası (H):** İngilizce varsayılan + Türkçe; kullanım belgeleri; TR/EN ve açık/koyu ekran görüntüleri; denenen ortam; issue formları (hata, klavye desteği, öneri); `SECURITY.md`; Discussions'a yönlendirme; lisans notları; kurtarma rehberi (B9).
-      5. **Sonraya bırakılanlar:** oyun oturumu, ses spektrumu, başka modeller (P4), 2.4G alıcısı (pil yüzdesi `20 01`), Bluetooth işleri.
+    - **Sıradaki adımlar: `docs/yol-haritasi.md`** (2026-11-12, kullanıcıyla birlikte sıralandı). Kısaca:
+      0. açık işleri kapat (lint/mock yardımcısı, PR #58);
+      1. Rust paket ve exe adı `keymotion` (onay sorulacak); 1b. kod imzalama başvurusu (SignPath Foundation), erken ve paralel;
+      2. tepsi ve arka plan (karar verildi);
+      3. Keymotion açılış animasyonu (önce önizleme; 2 ile paralel olabilir);
+      4. GitHub sorun formları, sonra uygulama içinden sorun bildirme;
+      5. kurulum dosyası (NSIS) ve imza;
+      6. sürüm hattı ve otomatik güncelleyici;
+      7. GitHub sayfası ve belgeler (İngilizce varsayılan + Türkçe);
+      8. son denemeler (kullanıcının elle denemeleri dahil) ve ilk sürüm 0.1.0.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -1041,7 +1039,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
           - **Destek haritası yapıldı** (madde 37, `docs/destek-haritasi.md`): desteklenen ve eklenebilecek klavyeler, bağlantı modlarına göre özellikler, Bağlantı sayfası, 2.4G'de yanlış açık görünen sayfalar düzeltildi, HID şekil denetimi, arayüz metin borçları kapandı, USB'de pil araştırması (yüzde yok; Fn ışığından "şarj oluyor" / "şarj tamamlandı").
           - **İlk sürüm öncesi eksik listesi** (2026-11-11, `docs/urun-eksikleri.md`): iki bağımsız inceleme (tasarım ve kullanım; ürün hazırlığı) ve bu oturumun gözlemleri, ciddi olanlar kodda doğrulandı. Sıra: kimlik (isim, logo, uygulama kimliği) → güven → görsel ve içerik turu → veri ve tanılama → ürünleştirme ve repo. İsim adayları ve logo konseptleri Claude Design tuvalinde (Keypane önerildi).
           - Kullanıcı isim ve logoyu seçti (Keymotion, E konsepti). Ardından eksik listesinin tamamı başladı (madde 38).
-          - **Kalınan yer (2026-11-12, gece): madde 38'in sonundaki "Sıradaki adımlar (temiz bağlamda)"** — PR #57 birleşti; repo `keymotion` oldu, Discussions açıldı, varsayılan dil İngilizce. Lint ve sahte arka uç yardımcısının dalı incelenip birleştirilecek. Ardından açılış animasyonu (önce önizleme), sonra ürünleştirme: önce kullanıcının tepsi ve arka plan kararı. Kullanıcıyla klavyede denenecekler: Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri.
+          - **Kalınan yer (2026-11-12, gece): `docs/yol-haritasi.md`, Aşama 0'dan başla.** PR #57 birleşti; repo `keymotion`, Discussions açık, varsayılan dil İngilizce, tepsi kararı verildi. Önce lint/mock yardımcısının raporunu incele ve dalını birleştir; sonra Aşama 1'de paket adını kullanıcıya sor ve imza başvurusunu başlat. Kullanıcıyla klavyede denenecekler: Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri.
           - Sonraya: oyun oturumu (ön plandaki uygulama: açılınca kart, kapanınca özet). Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.
@@ -1266,11 +1264,14 @@ Kullanıcının fikirleri. Şimdi yapılmayacak; uygulamanın bütün özellikle
   - Ön şart: P3'teki arka plan servisi (penceresiz çalışma).
 
 ### P3 — Ürünleştirme
-- [ ] Arka plan servisi:
-  - Sistem tepsisi; pencere kapanınca WebView'ı yok et.
-  - Otomatik başlatma, tek örnek (single-instance).
-  - Takma/çıkarmayı `CM_Register_Notification` ile algıla.
-- [ ] Release derleme (`custom-protocol`), NSIS kurulum, kod imzalama, imzalı güncelleyici.
+
+**Sıra ve ayrıntı artık `docs/yol-haritasi.md`'de** (2026-11-12). Aşağıdaki liste geçmiş kayıt olarak kalıyor.
+
+- [ ] Arka plan servisi (yol haritası Aşama 2; karar: tepside çalışsın):
+  - Sistem tepsisi. WebView gizlenir, **yok edilmez**: canlı kartlar orada çiziliyor (bellek ölçülecek). Eski plan "WebView'ı yok et" idi.
+  - Otomatik başlatma (isteğe bağlı, varsayılan kapalı). [x] Tek örnek (`tauri-plugin-single-instance`, PR #57).
+  - Takma/çıkarmayı `CM_Register_Notification` ile algıla (arka planda güç için; Aşama 2'de değerlendir).
+- [ ] Release derleme (`custom-protocol`), NSIS kurulum, kod imzalama, imzalı güncelleyici (Aşama 5–6).
 - [x] CI (GitHub Actions, Windows): arayüz typecheck ve derleme, fmt, clippy, testler, bindings kontrolü; iki dalda birleştirme şartı. Ayrıntı: `docs/gelistirme-akisi.md`.
 - [ ] Mock modda Playwright e2e testlerini CI'a ekle.
 - [ ] Erişilebilirlik denetimi, TR/EN tamlığı, açık tema ince ayarı, uygulama adı ve logo kararı.
