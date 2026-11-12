@@ -1,9 +1,10 @@
 // Genel Bakış: the connected keyboard at a glance. Its drawing shows the
 // keyboard's real light (read back over USB about four times a second) and
-// the keys held down while the app is in front; beside it, the picture on
-// the keyboard's screen. Under them, one tile for each thing the app does
-// (light, focus timer, reminders, calendar, system gauges, profile), each
-// saying what is on now and linking to its page. The connection details
+// the keys held down while the app is in front, across the whole width so
+// the keys' letters stay readable. Under it, the picture on the keyboard's
+// screen and one tile for each thing the app does (light, focus timer,
+// reminders, calendar, system gauges, profile), each saying what is on now
+// and linking to its page. The connection details
 // and the clock live on the Bağlantı page.
 
 import { BatteryCharging, BatteryFull, BatteryMedium, Usb } from "lucide-react";
@@ -170,38 +171,42 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
         </div>
       </header>
 
-      <div className={`grid gap-4 ${kb.screen ? "grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]" : ""}`} data-overview-top>
-        {/* The keyboard, as it is lit right now. */}
-        <section className="card flex min-w-0 flex-col overflow-hidden p-0" data-overview-keyboard>
-          <div className="flex flex-1 flex-col justify-center p-6 pb-4" style={{ background: "var(--plate)" }}>
-            {kb.geometry && (
-              <KeyboardView
-                geometry={kb.geometry}
-                battery={kb.battery?.percent ?? null}
-                connection={kb.connection}
-                colors={live ? (mirror ?? {}) : {}}
-                keyClass={pressedClass}
-              />
-            )}
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-line px-5 py-3 text-[13px]">
-            <span className="flex items-center gap-2 text-ink-2" data-overview-live={live ? (lightsOff ? "off" : "on") : "unavailable"}>
-              <span className={`h-2 w-2 rounded-full ${live && mirror ? "bg-ok" : "bg-ink-3"}`} aria-hidden />
-              {!live ? t("overview.kb.usbOnly") : lightsOff ? t("overview.kb.off") : t("overview.kb.live")}
-            </span>
-            <span className="text-ink-3">{t("overview.kb.press")}</span>
-          </div>
-        </section>
-        {kb.screen && <ScreenNow />}
-      </div>
+      {/* The keyboard, as it is lit right now: the whole width, so the
+          keys' letters and numbers stay readable (K12, option A). */}
+      <section className="card flex min-w-0 flex-col overflow-hidden p-0" data-overview-keyboard>
+        <div className="p-6 pb-5" style={{ background: "var(--plate)" }}>
+          {kb.geometry && (
+            <KeyboardView
+              geometry={kb.geometry}
+              battery={kb.battery?.percent ?? null}
+              connection={kb.connection}
+              colors={live ? (mirror ?? {}) : {}}
+              keyClass={pressedClass}
+            />
+          )}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-line px-5 py-3 text-[13px]">
+          <span className="flex items-center gap-2 text-ink-2" data-overview-live={live ? (lightsOff ? "off" : "on") : "unavailable"}>
+            <span className={`h-2 w-2 rounded-full ${live && mirror ? "bg-ok" : "bg-ink-3"}`} aria-hidden />
+            {!live ? t("overview.kb.usbOnly") : lightsOff ? t("overview.kb.off") : t("overview.kb.live")}
+          </span>
+          <span className="text-ink-3">{t("overview.kb.press")}</span>
+        </div>
+      </section>
 
-      {/* One tile for each thing the app does. */}
+      {/* One tile for each thing the app does; the keyboard's screen first,
+          two rows tall so its picture stays large. */}
       <div className={`grid gap-4 ${narrow ? "grid-cols-2" : "grid-cols-3"}`} data-overview-cards>
+        {kb.screen && <ScreenNow className="row-span-2" />}
         <LightTile />
         <FocusTile />
         <RemindersTile />
         <CalendarTile />
-        <GaugesTile geometry={kb.geometry ?? null} usb={usb && kb.hasCommandChannel} />
+        {/* Wide window with the screen tile: the gauges take two columns so
+            the last row is full. */}
+        <div className={`grid min-w-0 ${kb.screen && !narrow ? "col-span-2" : ""}`}>
+          <GaugesTile geometry={kb.geometry ?? null} usb={usb && kb.hasCommandChannel} />
+        </div>
         <ProfileTile modelId={kb.modelId} />
       </div>
 

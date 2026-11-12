@@ -9,7 +9,7 @@ import { useApp } from "../../lib/store";
 import { GifPicture, useGifPage } from "../screen/common";
 import { TileLink } from "./Tile";
 
-export function ScreenNow() {
+export function ScreenNow({ className = "" }: { className?: string }) {
   const t = useT();
   const openScreen = useApp((s) => s.openScreen);
   const gif = useGifPage();
@@ -19,7 +19,7 @@ export function ScreenNow() {
   const empty = !gif.item && !gif.showsLive;
 
   return (
-    <section className="card flex min-w-0 flex-col gap-3 p-5" data-overview-screen>
+    <section className={`card flex min-w-0 flex-col gap-3 p-4 ${className}`} data-overview-screen>
       <header className="flex items-center gap-2.5">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-line bg-bg-raise text-ink-2">
           <Monitor size={15} aria-hidden />
