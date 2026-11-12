@@ -161,7 +161,33 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 
 **Kullanıcının denediği (ilk menü):** odak başlat/duraklat çalıştı, ama bitirme yoktu. Bunun üzerine alt menülü düzene geçildi.
 
-**Elle denenecekler:** test senaryoları kullanıcıya verildi (DURUM madde 39). Yapılacak denemeler:
+**Elle denenecekler** (kullanıcıya verilen senaryolar; simge saatin yanındaki ^ içinde):
+
+1. **Kapatma:** X → pencere kaybolur, simge kalır, "Keymotion arka planda çalışıyor" bildirimi bir kez çıkar.
+2. **Sol tık** simgeye → pencere geri gelir.
+3. **Sağ tık** → en üstte klavye satırı ("AJAZZ AK980 PRO · USB kablo").
+4. **Odak zamanlayıcısı ▸:**
+   - boştayken "Hazır: …";
+   - Başlat → aşama satırı ve kalan dakika, fare simgenin üstündeyken araç ipucunda da;
+   - Duraklat → "Duraklatıldı · …", Sürdür;
+   - Sonraki aşamaya geç → mola;
+   - Durdur → "Hazır";
+   - menü açıkken dakika azalır.
+5. **Hatırlatıcılar ▸:** sıradaki hatırlatıcı. "Hatırlatıcılar açık" işareti kaldırılınca "Hatırlatıcılar kapalı" görünür ve sayfadaki anahtar da kapanır. Sonra tekrar aç.
+6. **Tuşlarda sistem göstergeleri:** işaretlenince tuşlarda çubuklar çıkar, Sistem göstergeleri sayfasındaki anahtar da açılır. Sonra kapat.
+7. **Profiller ▸:** klavyedeki profil işaretli. Başka biri seçilince pencere açılır ve Profiller'de onay satırı görünür; Vazgeç.
+8. **Çık:**
+   - değişiklik yokken: uygulama kapanır, simge gider;
+   - kaydedilmemiş değişiklikle (örneğin tuş başına bir renk): X pencereyi gizler, değişiklik kaybolmaz. Tepsiden Çık → pencere açılır ve "kaydedilmemiş" penceresi çıkar. Vazgeç → uygulama açık kalır, X yine gizler.
+9. **Ayar kapalıyken:** Ayarlar › Arka plan › "Kapatınca tepside…" kapalı → X uygulamayı tamamen kapatır. Sonra ayarı geri aç.
+10. **Windows'la başlatma:**
+    - açınca Görev Yöneticisi › Başlangıç uygulamaları'nda "keymotion" görünür;
+    - orada devre dışı bırakılınca Ayarlar'daki anahtar kapalı görünür ve "Görev Yöneticisi'nde kapatılmış" notu çıkar;
+    - sonra kapat.
+    - Debug sürüm arayüzü Vite'tan yüklediği için gerçek yeniden başlatma kurulu sürümde denenecek.
+11. **İkinci açılış:** pencere gizliyken exe'yi yeniden çalıştır → aynı pencere gelir, ikinci simge çıkmaz.
+12. **Dil:** Ayarlar'da English → menü İngilizce olur.
+13. **Uzun gizli kalma (10 dk ve üstü):** hatırlatıcı ve odak kartları zamanında gelir. Bu, Chromium'un kısma eşiği için.
 
 - kapat → gizlen;
 - ilk bildirim;
