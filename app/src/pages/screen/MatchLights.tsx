@@ -12,7 +12,7 @@ import { useT, type MessageKey } from "../../lib/i18n";
 import { useLighting } from "../../lib/lighting";
 import { extractPalette, lightDesign, type LightMatch } from "../../lib/screenPalette";
 import { useApp } from "../../lib/store";
-import { FramePlayer, loadFrames, pickThumb } from "./common";
+import { FramePlayer, loadFrames, pickThumb, useItemName } from "./common";
 
 const OPTIONS: { id: LightMatch; title: MessageKey; body: MessageKey }[] = [
   { id: "gradient", title: "sc.lm.gradient", body: "sc.lm.gradientBody" },
@@ -30,6 +30,7 @@ export function MatchLightsDialog({
   onClose: () => void;
 }) {
   const t = useT();
+  const itemName = useItemName();
   const [frames, setFrames] = useState<Uint16Array[] | null>(null);
   const [delays, setDelays] = useState<number[]>([]);
   const [kind, setKind] = useState<LightMatch>("gradient");
@@ -108,7 +109,7 @@ export function MatchLightsDialog({
             <div className="flex items-center gap-4">
               {thumb && <FramePlayer frames={[thumb]} delaysMs={[100]} className="h-[68px] w-[120px] shrink-0 rounded-md bg-black" />}
               <div className="flex min-w-0 flex-col gap-1.5">
-                <span className="truncate text-[13px] font-semibold">{item.name}</span>
+                <span className="truncate text-[13px] font-semibold">{itemName(item)}</span>
                 <div className="flex gap-1.5" aria-label={t("sc.lm.palette")}>
                   {palette.map((s) => (
                     <span

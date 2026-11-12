@@ -150,6 +150,31 @@ export const useMacros = create<MacroStore>((set, get) => {
   };
 });
 
+/**
+ * Macros from a backup, opened as unsaved edits for `modelId`: nothing is
+ * written to the keyboard until the user saves them on the Macros page.
+ */
+export function stageMacrosImport(modelId: string, slots: Slots) {
+  const draft = clone(trim(slots));
+  if (useMacros.getState().modelId === modelId) useMacros.setState({ draft, selected: null });
+  persist({ modelId, draft, selected: null });
+}
+
+/**
+ * The record may have changed outside the editor (a profile was loaded):
+ * read it again. When it did, the draft (made against the old one) goes.
+ */
+export async function adoptMacrosRecord(modelId: string) {
+  const state = await getMacrosState(modelId);
+  const saved = trim(state.slots);
+  const store = useMacros.getState();
+  if (store.modelId === modelId && store.saved && dirtySlots({ saved: store.saved, draft: saved }).length === 0) return;
+  if (store.modelId === modelId) {
+    useMacros.setState({ saved, writtenMs: state.writtenMs, draft: clone(saved), selected: null });
+  }
+  persist({ modelId, draft: clone(saved), selected: null });
+}
+
 function sameStep(a: MacroStepInfo, b: MacroStepInfo): boolean {
   return a.kind === b.kind && a.code === b.code && a.delayMs === b.delayMs;
 }

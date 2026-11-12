@@ -10,7 +10,7 @@ import type { LiveState } from "../bindings/LiveState";
 import type { SongStop } from "../bindings/SongStop";
 import type { TrackInfo } from "../bindings/TrackInfo";
 import { inTauri } from "./ipc";
-import { mockLiveUploaded, mockRestored, mockShown, useScreen } from "./screen";
+import { mockFactoryAtRisk, mockLiveUploaded, mockRestored, mockShown, useScreen } from "./screen";
 import { toBlob, type Prepared } from "./screenImport";
 
 // ------------------------------------------------------------------- ipc
@@ -45,7 +45,10 @@ const mock = {
     songStop: "back",
     own: null,
     goingBack: null,
+    factoryAckNeeded: false,
   } as LiveState,
+  /** The user accepted that live cards erase the factory animation. */
+  factoryAck: false,
   /** What the mock GIF page showed before the first live card. */
   before: null as { id: string; name: string; frames: number; pages: number } | null,
   emit: null as ((s: LiveState) => void) | null,
@@ -68,6 +71,7 @@ function mockEmit() {
   const shown = mockShown();
   mock.state.own = shown === "live" ? mock.before : shown;
   mock.state.restore = shown === "live" && !mock.state.uploading ? mock.before : null;
+  mock.state.factoryAckNeeded = !mock.factoryAck && mockFactoryAtRisk();
   mock.emit?.({ ...mock.state });
 }
 
@@ -176,8 +180,22 @@ async function mockTrackLoop() {
 }
 
 export function getLiveState(): Promise<LiveState> {
-  if (!inTauri) return Promise.resolve({ ...mock.state });
+  if (!inTauri) {
+    mock.state.factoryAckNeeded = !mock.factoryAck && mockFactoryAtRisk();
+    return Promise.resolve({ ...mock.state });
+  }
   return invoke<LiveState>("live_state");
+}
+
+/** The user accepted, once, that live cards erase the factory animation
+ *  (there is no backup of it). */
+async function ackFactory(): Promise<LiveState> {
+  if (!inTauri) {
+    mock.factoryAck = true;
+    mock.state.factoryAckNeeded = false;
+    return { ...mock.state };
+  }
+  return invoke<LiveState>("live_ack_factory");
 }
 
 export interface LivePatch {
@@ -294,16 +312,43 @@ interface LiveStore {
   state: LiveState | null;
   /** Card drawing failed (shown on the Screen page). */
   drawError: string | null;
+  /** Turning the live mode on waits for the user: the first card would
+   *  erase the factory animation, which has no backup (asked once). */
+  askingFactory: LivePatch | null;
   load: () => Promise<void>;
   configure: (patch: LivePatch) => Promise<void>;
+  /** The answer to `askingFactory`: go on (and never ask again) or not. */
+  answerFactory: (go: boolean) => Promise<void>;
   sendNow: () => Promise<void>;
 }
 
-export const useLive = create<LiveStore>((set) => ({
+export const useLive = create<LiveStore>((set, get) => ({
   state: null,
   drawError: null,
+  askingFactory: null,
   load: async () => set({ state: await getLiveState() }),
-  configure: async (patch) => set({ state: await configureLive(patch) }),
+  configure: async (patch) => {
+    const s = get().state;
+    if (patch.enabled === true && s && !s.enabled && s.factoryAckNeeded) {
+      // Asked only if still so (an upload may have happened meanwhile).
+      const fresh = await getLiveState();
+      if (fresh.factoryAckNeeded) {
+        set({ state: fresh, askingFactory: patch });
+        return;
+      }
+    }
+    set({ state: await configureLive(patch) });
+  },
+  answerFactory: async (go) => {
+    const patch = get().askingFactory;
+    set({ askingFactory: null });
+    if (!go || !patch) return;
+    // A backup taken from the official driver meanwhile makes the
+    // acknowledgment unnecessary.
+    const s = await getLiveState();
+    if (s.factoryAckNeeded) await ackFactory();
+    set({ state: await configureLive(patch) });
+  },
   sendNow: async () => set({ state: await sendLiveNow() }),
 }));
 

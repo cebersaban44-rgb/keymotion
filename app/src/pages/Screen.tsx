@@ -1,22 +1,25 @@
-import { Check, ChevronDown, Images, Info, Library, Loader2, Palette, Pencil, Radio, Search, Trash2, Upload, Usb, X, type LucideIcon } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ImageOff, Images, Info, Library, Loader2, Palette, Pencil, Radio, Search, Trash2, Upload, Usb, X, type LucideIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { ScreenItem } from "../bindings/ScreenItem";
-import { useT, type MessageKey } from "../lib/i18n";
+import { percent, useT, type MessageKey } from "../lib/i18n";
 import { useLive } from "../lib/live";
 import { itemData, useScreen } from "../lib/screen";
 import { fromBlob, uploadSeconds, type Source } from "../lib/screenImport";
 import { useApp, type ScreenTab } from "../lib/store";
 import {
-  ConfirmUpload,
+  DriverBackup,
   FramePlayer,
+  LibraryConfirm,
+  RetryUpload,
   Stepper,
   Thumb,
   fmtSeconds,
   loadFrames,
-  pickThumb,
   remaining,
+  useHasFactory,
+  useItemName,
   useNow,
   type Done,
 } from "./screen/common";
@@ -59,6 +62,7 @@ export function Screen({ kb }: { kb: KeyboardInfo }) {
       <header className="flex flex-wrap items-end justify-between gap-6">
         <div>
           <h1 className="page-title">{t("sc.title")}</h1>
+          <p className="page-desc">{t("sc.desc")}</p>
         </div>
         <div role="tablist" aria-label={t("sc.title")} className="inline-flex rounded-lg border border-line bg-bg-raise p-1">
           {TABS.map(({ id, label, icon: Icon }) => (
@@ -87,7 +91,7 @@ export function Screen({ kb }: { kb: KeyboardInfo }) {
         </div>
       )}
 
-      <KeyboardScreens />
+      <KeyboardScreens usb={usb} />
 
       {/* Kept mounted on other tabs, so a visual being made is not lost. */}
       <div className={tab === "visuals" ? "flex flex-col gap-6" : "hidden"}>
@@ -174,10 +178,14 @@ function ClockPage() {
   );
 }
 
-function Panel({ label, sub, children }: { label: string; sub: string; children: ReactNode }) {
+function Panel({ label, sub, empty, children }: { label: string; sub: string; empty?: boolean; children: ReactNode }) {
   return (
     <figure className="flex flex-col gap-2">
-      <div className="relative aspect-[240/135] w-full overflow-hidden rounded-lg bg-black shadow-[0_0_0_6px_#0b0c0e,0_0_0_7px_var(--line)]">
+      <div
+        className={`relative aspect-[240/135] w-full overflow-hidden rounded-lg ${
+          empty ? "border border-dashed border-line-strong bg-surface-2/50" : "bg-black shadow-[0_0_0_6px_#0b0c0e,0_0_0_7px_var(--line)]"
+        }`}
+      >
         {children}
       </div>
       <figcaption className="flex items-baseline justify-between gap-2 px-1">
@@ -188,15 +196,18 @@ function Panel({ label, sub, children }: { label: string; sub: string; children:
   );
 }
 
-function KeyboardScreens() {
+function KeyboardScreens({ usb }: { usb: boolean }) {
   const t = useT();
+  const name = useItemName();
   const state = useScreen((s) => s.state);
   const shownId = state?.shown ?? null;
   const factory = state?.items.find((i) => i.kind === "factory") ?? null;
   const liveLast = useLive((s) => s.state?.last ?? null);
+  const incomplete = !!state?.incomplete;
   const showsLive = shownId === "live";
   const shown = state?.items.find((i) => i.id === shownId) ?? null;
-  const item = shown ?? factory;
+  // A page holding part of an upload shows nothing we could draw.
+  const item = incomplete ? null : (shown ?? factory);
   const [frames, setFrames] = useState<{ frames: Uint16Array[]; delaysMs: number[] } | null>(null);
 
   useEffect(() => {
@@ -217,14 +228,17 @@ function KeyboardScreens() {
       </Panel>
       <Panel
         label={t("sc.page.gif")}
+        empty={!item && !showsLive}
         sub={
-          showsLive
-            ? `${t("sc.page.gif.live")}: ${liveLast?.name ?? ""}`
-            : shown
-              ? shown.name
-              : factory
-                ? t("sc.page.gif.maybeFactory")
-                : t("sc.page.gif.unknown")
+          incomplete
+            ? t("sc.page.gif.incomplete")
+            : showsLive
+              ? `${t("sc.page.gif.live")}: ${liveLast?.name ?? ""}`
+              : shown
+                ? name(shown)
+                : factory
+                  ? t("sc.page.gif.maybeFactory")
+                  : t("sc.page.gif.unknown")
         }
       >
         {frames ? (
@@ -233,21 +247,32 @@ function KeyboardScreens() {
             delaysMs={frames.delaysMs}
             className={`h-full w-full ${shown || showsLive ? "" : "opacity-60"}`}
           />
+        ) : item || showsLive ? (
+          <div className="flex h-full items-center justify-center text-ink-3">
+            <Loader2 size={16} className="animate-spin" />
+          </div>
         ) : (
-          <div className="flex h-full items-center justify-center text-[12px] text-ink-3">
-            {item ? <Loader2 size={16} className="animate-spin" /> : t("sc.page.gif.unknown")}
+          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-[12px] text-ink-3" data-gif-empty>
+            {incomplete ? (
+              <>
+                <AlertTriangle size={18} aria-hidden />
+                {t("sc.page.gif.incomplete")}
+              </>
+            ) : (
+              <>
+                <ImageOff size={18} aria-hidden />
+                {t("sc.page.gif.empty")}
+              </>
+            )}
           </div>
         )}
       </Panel>
       <div className="flex flex-col gap-3 text-[13px] text-ink-2">
+        <IncompleteLine usb={usb} />
         {state && (
-          <div className="num flex flex-col gap-0.5 text-[12px] text-ink-3" title={t("sc.wear.hint")}>
-            <span>
-              {t("sc.uploads.today")}: <span className="text-ink-2">{state.uploadsToday}</span> · {t("sc.uploads.total")}:{" "}
-              <span className="text-ink-2">{state.uploadsTotal}</span>
-            </span>
-            <span>{t("sc.wear.short")}</span>
-          </div>
+          <p className="num text-[12px] text-ink-3" title={t("sc.wear.hint")} data-upload-counts>
+            {t("sc.uploads.counts", { count: state.uploadsToday, total: state.uploadsTotal })}
+          </p>
         )}
         <p className="flex gap-2">
           <Info size={14} className="mt-0.5 shrink-0 text-signal" />
@@ -257,8 +282,70 @@ function KeyboardScreens() {
           <Check size={14} className="mt-0.5 shrink-0 text-ok" />
           <span>{t("sc.pages.safe")}</span>
         </p>
+        <FactoryLine />
       </div>
     </section>
+  );
+}
+
+/** The last upload stopped partway: say so, and offer to upload it again. */
+function IncompleteLine({ usb }: { usb: boolean }) {
+  const t = useT();
+  const name = useItemName();
+  const incomplete = useScreen((s) => s.state?.incomplete ?? null);
+  const items = useScreen((s) => s.state?.items);
+  if (!incomplete) return null;
+  const item = items?.find((i) => i.id === incomplete.id) ?? null;
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2.5 text-ink" role="status" data-incomplete>
+      <p className="flex gap-2">
+        <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" />
+        <span>
+          <span className="font-semibold">{t("sc.incomplete.title")}</span>
+          <span className="block text-ink-2">
+            {t("sc.incomplete.body")} {item ? t("sc.incomplete.retry", { name: name(item) }) : t("sc.incomplete.pick")}
+          </span>
+        </span>
+      </p>
+      {item && (
+        <div className="pl-[22px]">
+          <RetryUpload item={item} usb={usb} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** No factory backup: what that means, and the official driver's copy to
+ *  back it up from when it is on this PC. */
+function FactoryLine() {
+  const t = useT();
+  const hasFactory = useHasFactory();
+  const driver = useScreen((s) => s.driver);
+  const [backedUp, setBackedUp] = useState(false);
+  useEffect(() => {
+    if (!hasFactory) useScreen.getState().findDriver();
+  }, [hasFactory]);
+  if (hasFactory) {
+    return backedUp ? (
+      <p className="flex gap-2" role="status">
+        <Check size={14} className="mt-0.5 shrink-0 text-ok" />
+        <span>{t("sc.factory.backedUp")}</span>
+      </p>
+    ) : null;
+  }
+  return (
+    <div className="flex flex-col gap-2" data-factory-missing>
+      <p className="flex gap-2">
+        <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" />
+        <span>
+          {t("sc.factory.missing")} {t(driver === "found" ? "sc.factory.driverFound" : "sc.factory.driverRestores")}
+        </span>
+      </p>
+      <div className="pl-[22px]">
+        <DriverBackup onDone={() => setBackedUp(true)} />
+      </div>
+    </div>
   );
 }
 
@@ -368,6 +455,7 @@ const LIBRARY_FILTERS: { id: LibraryFilter; label: MessageKey }[] = [
 
 function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
   const t = useT();
+  const name = useItemName();
   const state = useScreen((s) => s.state);
   const upload = useScreen((s) => s.upload);
   const [confirmItem, setConfirmItem] = useState<ScreenItem | null>(null);
@@ -385,7 +473,7 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
     const shownId = state?.shown;
     return all
       .filter((it) => kind === "all" || (kind === "image" ? it.kind === "image" : it.kind !== "image"))
-      .filter((it) => !q || it.name.toLocaleLowerCase().includes(q))
+      .filter((it) => !q || name(it).toLocaleLowerCase().includes(q))
       .sort((a, b) => Number(b.id === shownId) - Number(a.id === shownId));
   }, [all, kind, query, state?.shown]);
   const visible = items.slice(0, limit);
@@ -397,7 +485,7 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
     setNotice(null);
     try {
       await useScreen.getState().uploadToKeyboard(it, "library");
-      setNotice({ ok: true, text: `${t("sc.done.uploaded", { name: it.name })}. ${t("sc.done.fnHome")}` });
+      setNotice({ ok: true, text: `${t("sc.done.uploaded", { name: name(it) })}. ${t("sc.done.fnHome")}` });
     } catch (e) {
       setNotice({ ok: false, text: friendlyError(e, t) });
     }
@@ -461,12 +549,13 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
       <ul className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-2" data-library>
         {visible.map((it) => {
           const onKeyboard = state?.shown === it.id;
+          const cut = state?.incomplete?.id === it.id;
           const busy = upload?.id === it.id;
           return (
             <li
               key={it.id}
               className={`flex gap-3 rounded-lg border p-3 transition-colors ${
-                onKeyboard ? "border-ok/40 bg-ok/5" : "border-line hover:bg-surface-2/60"
+                onKeyboard ? "border-ok/40 bg-ok/5" : cut ? "border-warn/40 bg-warn/5" : "border-line hover:bg-surface-2/60"
               }`}
             >
               <Thumb item={it} />
@@ -489,8 +578,8 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
                     className="h-7 rounded-md border border-signal bg-bg-raise px-2 text-[13px] outline-none"
                   />
                 ) : (
-                  <span className="truncate text-[13px] font-semibold" title={it.name}>
-                    {it.name}
+                  <span className="truncate text-[13px] font-semibold" title={name(it)}>
+                    {name(it)}
                   </span>
                 )}
                 <span className="num text-[11px] text-ink-3">
@@ -507,6 +596,9 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
                   {onKeyboard && (
                     <span className="rounded-full bg-ok/15 px-2 py-px text-[11px] text-ok">{t("sc.badge.onKeyboard")}</span>
                   )}
+                  {cut && (
+                    <span className="rounded-full bg-warn/15 px-2 py-px text-[11px] text-warn">{t("sc.incomplete.badge")}</span>
+                  )}
                 </span>
               </div>
               <div className="flex flex-col items-end justify-between gap-2">
@@ -518,7 +610,7 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
                   className="flex h-8 items-center gap-1.5 rounded-lg border border-signal/40 px-2.5 text-[12px] font-medium text-signal hover:bg-signal/10 disabled:opacity-35"
                 >
                   {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-                  {it.kind === "factory" ? t("sc.factory.restore") : t("sc.upload.short")}
+                  {cut ? t("sc.incomplete.action") : it.kind === "factory" ? t("sc.factory.restore") : t("sc.upload.short")}
                 </button>
                 <div className="flex gap-1">
                   {kb.geometry && (
@@ -605,21 +697,13 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
   );
 }
 
-function LibraryConfirm({ item, onCancel, onConfirm }: { item: ScreenItem; onCancel: () => void; onConfirm: () => void }) {
-  const [first, setFirst] = useState<Uint16Array | null>(null);
-  useEffect(() => {
-    loadFrames(item.id, item.frames === 1).then((d) => setFirst(pickThumb(d.frames)), console.error);
-  }, [item.id, item.frames]);
-  if (!first) return null;
-  return <ConfirmUpload frames={item.frames} loopMs={item.loopMs} preview={first} onCancel={onCancel} onConfirm={onConfirm} />;
-}
-
 // ----------------------------------------------------- upload progress
 
 /** Floating progress while an upload runs. Hidden on the Screen page when
  *  the studio itself shows the progress. */
 export function ScreenUploadToast() {
   const t = useT();
+  const name = useItemName();
   const upload = useScreen((s) => s.upload);
   const page = useApp((s) => s.page);
   const [now, setNow] = useState(Date.now());
@@ -644,9 +728,7 @@ export function ScreenUploadToast() {
         >
           <div className="flex items-center gap-2 text-[13px] font-semibold">
             <Loader2 size={14} className="animate-spin text-signal" />
-            <span className="truncate">
-              {t("sc.uploading")}: {upload.name}
-            </span>
+            <span className="truncate">{t("sc.uploading.name", { name: name(upload) })}</span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
             <div
@@ -655,9 +737,7 @@ export function ScreenUploadToast() {
             />
           </div>
           <div className="num flex justify-between text-[12px] text-ink-3">
-            <span>
-              {t("sc.pagesDone", { done: upload.done, count: upload.total })}
-            </span>
+            <span>{t("sc.uploaded.pct", { pct: percent(Math.round((upload.done / Math.max(1, upload.total)) * 100)) })}</span>
             <span>
               {left ? t("sc.left", { time: left }) : ""}
             </span>

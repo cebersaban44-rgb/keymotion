@@ -1,36 +1,20 @@
-import {
-  ArrowDown,
-  ArrowUp,
-  Check,
-  Circle,
-  Info,
-  Keyboard,
-  Loader2,
-  MousePointerClick,
-  Plus,
-  Square,
-  Trash2,
-  Undo2,
-  Usb,
-  X,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, Circle, Info, Keyboard, MousePointerClick, Plus, Square, Trash2, Usb, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { KeymapCatalog } from "../bindings/KeymapCatalog";
 import type { KeymapLayer } from "../bindings/KeymapLayer";
 import type { MacroInfo } from "../bindings/MacroInfo";
 import type { MacroStepInfo } from "../bindings/MacroStepInfo";
+import { ActionBar } from "../components/ActionBar";
 import { Segmented } from "../components/controls";
 import { hidFromCode } from "../lib/hidCodes";
 import { getKeymapCatalog } from "../lib/ipc";
-import { useAgo, useT, type MessageKey } from "../lib/i18n";
+import { decimal, percent, useAgo, useT, type MessageKey } from "../lib/i18n";
 import { useKeymap } from "../lib/keymap";
 import { budgetUsed, dirtySlots, duration, useMacros } from "../lib/macros";
 import { useLayoutLabel } from "../lib/layout";
 import { useApp } from "../lib/store";
-import { friendlyError } from "../lib/errors";
 
-type Status = { kind: "idle" } | { kind: "busy" } | { kind: "ok"; ms: number } | { kind: "error"; message: string };
 type Timing = "real" | "fixed";
 
 const MOUSE: { mask: number; key: MessageKey }[] = [
@@ -76,13 +60,14 @@ export function Macros({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
   const usb = kb.connection === "usb" && kb.hasCommandChannel && kb.features.includes("macros");
   const catalog = useCatalog();
-  const { draft, limits, selected, select, create, modelId, saved } = useMacros();
+  const { draft, limits, selected, select, create, modelId, saved, save, discard } = useMacros();
   const loaded = saved !== null && modelId === kb.modelId;
   const used = budgetUsed(draft);
   const full = draft.filter(Boolean).length >= limits.maxSlots;
+  const changed = useMacros((s) => dirtySlots(s).length);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="@container flex flex-col gap-6">
       <header className="flex items-end justify-between gap-6">
         <div>
           <h1 className="page-title">{t("nav.macros")}</h1>
@@ -98,7 +83,7 @@ export function Macros({ kb }: { kb: KeyboardInfo }) {
         </div>
       )}
 
-      <div className="grid grid-cols-[300px_1fr] items-start gap-5">
+      <div className="grid grid-cols-[240px_minmax(0,1fr)] items-start gap-5 @3xl:grid-cols-[280px_minmax(0,1fr)]">
         <div className="sticky top-4 flex flex-col gap-5">
           <section className="card flex flex-col gap-2 p-3">
             <div className="flex items-center justify-between px-2 pt-2 pb-1">
@@ -114,8 +99,8 @@ export function Macros({ kb }: { kb: KeyboardInfo }) {
               </button>
             </div>
             <MacroList onSelect={select} selected={selected} />
+            <RecordNote />
           </section>
-          <SaveCard usb={usb} loaded={loaded} />
         </div>
         {selected !== null && draft[selected] ? (
           <Editor key={selected} kb={kb} slot={selected} macro={draft[selected]!} catalog={catalog} />
@@ -126,6 +111,14 @@ export function Macros({ kb }: { kb: KeyboardInfo }) {
           </section>
         )}
       </div>
+
+      <ActionBar
+        changes={changed > 0 ? t("bar.macrosChanged", { count: changed }) : null}
+        blocked={used > limits.budget ? t("mc.overBudget") : null}
+        canSave={usb && loaded}
+        onSave={save}
+        onRevert={discard}
+      />
     </div>
   );
 }
@@ -135,11 +128,11 @@ function Memory({ used, budget }: { used: number; budget: number }) {
   const pct = Math.min(100, Math.round((used / budget) * 100));
   const over = used > budget;
   return (
-    <div className="flex w-[220px] flex-col gap-1.5" title={`${used} / ${budget} B`}>
+    <div className="flex w-[220px] flex-col gap-1.5">
       <div className="flex items-baseline justify-between text-[12px]">
         <span className="text-ink-2">{t("mc.memory")}</span>
         <span className={`num ${over ? "text-danger" : "text-ink-3"}`}>
-          {used} / {budget} B
+          {percent(pct)}
         </span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
@@ -178,7 +171,7 @@ function MacroList({ selected, onSelect }: { selected: number | null; onSelect: 
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-[13px] font-medium">{m.name || t("mc.unnamed")}</span>
               <span className="num text-[11px] text-ink-3">
-                {t("mc.steps", { count: m.steps.length })} · {(duration(m, minDelay) / 1000).toFixed(2)} s
+                {t("mc.steps", { count: m.steps.length })} · {decimal(duration(m, minDelay) / 1000, 2)} {t("time.s")}
               </span>
             </span>
             {dirty.has(slot) && (
@@ -404,7 +397,8 @@ function Editor({
               onClick={() => addClick(m.mask)}
               className="flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface-2 px-2.5 text-[12px] text-ink-2 hover:text-ink disabled:opacity-40"
             >
-              <MousePointerClick size={13} />+ {t(m.key)}
+              <MousePointerClick size={13} aria-hidden />
+              {t(m.key)}
             </button>
           ))}
         </span>
@@ -483,7 +477,7 @@ function Editor({
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line pt-4 text-[12px] text-ink-2">
         <span className="num">
-          {t("mc.steps", { count: steps.length })} · {(duration(macro, limits.minDelayMs) / 1000).toFixed(2)} s
+          {t("mc.steps", { count: steps.length })} · {decimal(duration(macro, limits.minDelayMs) / 1000, 2)} {t("time.s")}
         </span>
         {steps.length > 0 && (
           <button
@@ -548,74 +542,18 @@ function IconButton({
   );
 }
 
-function SaveCard({ usb, loaded }: { usb: boolean; loaded: boolean }) {
+/** Macros cannot be read back: what the list shows and when it was saved. */
+function RecordNote() {
   const t = useT();
   const ago = useAgo();
-  const [status, setStatus] = useState<Status>({ kind: "idle" });
-  const changed = useMacros((s) => dirtySlots(s).length);
   const writtenMs = useMacros((s) => s.writtenMs);
-  const over = useMacros((s) => budgetUsed(s.draft) > s.limits.budget);
-  const { save, discard } = useMacros();
-  const dirty = changed > 0;
-
-  const run = async () => {
-    setStatus({ kind: "busy" });
-    const started = performance.now();
-    try {
-      await save();
-      setStatus({ kind: "ok", ms: Math.round(performance.now() - started) });
-    } catch (e) {
-      setStatus({ kind: "error", message: friendlyError(e, t) });
-    }
-  };
-
   return (
-    <section className="card flex flex-col gap-3 p-4">
-      <button
-        type="button"
-        disabled={!usb || !loaded || !dirty || over || status.kind === "busy"}
-        onClick={run}
-        className="flex h-10 items-center justify-center gap-2 rounded-lg bg-signal text-[13.5px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        {status.kind === "busy" && <Loader2 size={15} className="animate-spin" />}
-        {status.kind === "busy" ? t("km.saving") : t("km.save")}
-        {dirty && status.kind !== "busy" && (
-          <span className="num rounded-full bg-signal-ink/15 px-1.5 text-[11px]">{changed}</span>
-        )}
-      </button>
-      {status.kind === "error" ? (
-        <span className="flex items-start gap-2 text-[12px] text-danger">
-          <X size={13} className="mt-0.5 shrink-0" />
-          {status.message}
-        </span>
-      ) : status.kind === "ok" && !dirty ? (
-        <span className="flex items-center gap-2 text-[12px] text-ok">
-          <Check size={13} />
-          {t("mc.saved")}
-        </span>
-      ) : over ? (
-        <span className="text-[12px] text-danger">{t("mc.overBudget")}</span>
-      ) : (
-        <span className="text-[12px] text-ink-3">{t("mc.persistNote")}</span>
-      )}
-      <button
-        type="button"
-        disabled={!dirty || status.kind === "busy"}
-        onClick={discard}
-        className="flex items-center gap-1.5 self-start text-[12px] text-ink-3 hover:text-ink disabled:opacity-40"
-      >
-        <Undo2 size={12} />
-        {t("km.revert")}
-      </button>
-      <p className="flex gap-2 border-t border-line pt-3 text-[12px] text-ink-2">
-        <Info size={13} className="mt-0.5 shrink-0 text-ink-3" />
-        <span>
-          {t("mc.readNote")}{" "}
-          <span className="text-ink-3">
-            {writtenMs ? t("mc.record.at", { ago: ago(writtenMs) }) : t("mc.record.never")}
-          </span>
-        </span>
-      </p>
-    </section>
+    <p className="mx-2 mb-1 flex gap-2 border-t border-line pt-3 text-[12px] text-ink-2">
+      <Info size={13} className="mt-0.5 shrink-0 text-ink-3" />
+      <span>
+        {t("mc.readNote")}{" "}
+        <span className="text-ink-3">{writtenMs ? t("mc.record.at", { ago: ago(writtenMs) }) : t("mc.record.never")}</span>
+      </span>
+    </p>
   );
 }

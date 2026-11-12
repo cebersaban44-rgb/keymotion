@@ -121,6 +121,9 @@ pub struct LiveStored {
     pub before: Option<String>,
     /// What "Çalan şarkı" does when the music stops.
     pub song_stop: SongStop,
+    /// The user accepted, once, that live cards erase the factory animation
+    /// for good when there is no backup of it.
+    pub factory_ack: bool,
 }
 
 impl Default for LiveStored {
@@ -135,8 +138,14 @@ impl Default for LiveStored {
             last_ms: None,
             before: None,
             song_stop: SongStop::default(),
+            factory_ack: false,
         }
     }
+}
+
+/// Turning the live mode on must ask first (see `LiveState::factory_ack_needed`).
+fn factory_ack_needed(lib: &ScreenLibrary) -> bool {
+    !lib.live().factory_ack && lib.factory_at_risk()
 }
 
 struct Pending {
@@ -267,6 +276,9 @@ impl LiveHandle {
         let mut put_back = None;
         {
             let mut lib = self.library.lock().map_err(|_| "screen library unavailable")?;
+            if enabled == Some(true) && !lib.live().enabled && factory_ack_needed(&lib) {
+                return Err("live mode would erase the factory animation; not acknowledged".into());
+            }
             if restore == Some(true) && enabled != Some(true) {
                 put_back = lib.live_restore_target().map(|r| r.id);
             }
@@ -304,6 +316,19 @@ impl LiveHandle {
             }
         }
         self.wake();
+        self.emit();
+        self.state()
+    }
+
+    /// The user accepted that live cards erase the factory animation (no
+    /// backup of it): turning the live mode on no longer asks.
+    pub fn ack_factory(&self) -> Result<LiveState, String> {
+        {
+            let mut lib = self.library.lock().map_err(|_| "screen library unavailable")?;
+            lib.live_mut().factory_ack = true;
+            lib.save().map_err(|e| e.to_string())?;
+        }
+        tracing::info!("factory animation loss acknowledged for the live mode");
         self.emit();
         self.state()
     }
@@ -751,6 +776,7 @@ fn snapshot(lib: &mut ScreenLibrary, rt: &Runtime) -> LiveState {
         song_stop: live.song_stop,
         own: lib.live_own(),
         going_back: rt.back.clone(),
+        factory_ack_needed: factory_ack_needed(lib),
     }
 }
 
@@ -885,6 +911,7 @@ mod tests {
     fn stored_settings_tolerate_missing_fields() {
         let s: LiveStored = serde_json::from_str("{}").unwrap();
         assert!(!s.enabled && s.now_playing);
+        assert!(!s.factory_ack, "older files: turning on asks about the factory animation");
         assert_eq!(s.song_stop, SongStop::Back, "older files: the own picture comes back");
         assert_eq!(s.budget.plan, LivePlan::Balanced);
         let s: LiveStored = serde_json::from_str(r#"{"enabled":true,"budget":{"plan":"heavy"}}"#).unwrap();

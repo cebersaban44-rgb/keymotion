@@ -14,12 +14,15 @@
 //!   5 minutes, which a locked screen also gives) and count again from the
 //!   return. Timed ones go off anyway.
 //! * The card shows absolute times only, so it never goes stale.
+//! * A Windows notification comes too when the user turns it on, and always
+//!   while the keyboard is not on the USB cable (the keys cannot light up).
 //!
 //! Titles are the user's own words: they are not logged.
 
 use crate::device::{DeviceHandle, LightLayer, LiveFrame, Request};
 use crate::dto::{Connection, Reminder, ReminderCard, ReminderInfo, ReminderSettings, ReminderState, ReminderWhen};
 use crate::live::{now_ms, LiveHandle};
+use crate::notify;
 use crate::pomodoro::{play_sound, KeyMap};
 use crate::settings;
 use chrono::{Datelike, Days, Local, NaiveDate, TimeZone};
@@ -279,6 +282,8 @@ pub struct RemindersHandle {
     app: AppHandle,
     live: Arc<LiveHandle>,
     config_dir: Option<PathBuf>,
+    /// The app id Windows notifications are shown under.
+    app_id: String,
 }
 
 impl RemindersHandle {
@@ -308,7 +313,8 @@ impl RemindersHandle {
             last_state: None,
         }));
         let (tx, rx) = mpsc::channel();
-        let handle = Arc::new(Self { tx, inner, app, live, config_dir });
+        let app_id = notify::app_id(&app.config().identifier);
+        let handle = Arc::new(Self { tx, inner, app, live, config_dir, app_id });
         let worker = handle.clone();
         std::thread::Builder::new()
             .name("reminders".into())
@@ -528,12 +534,18 @@ impl RemindersHandle {
             }
         }
 
-        // The card, for the last one that goes off now and wants one.
+        // The keys light up only on the USB cable; otherwise a notification
+        // says it instead.
+        let map = self.key_map(inner, device);
+        let notify = s.notify || map.is_none();
         for (r, t) in &fired {
-            tracing::info!(id = %r.id, card = r.card, sound = r.sound, late_s = ((now - t) / 1000.0).round(), "reminder went off");
+            tracing::info!(id = %r.id, card = r.card, sound = r.sound, notify, late_s = ((now - t) / 1000.0).round(), "reminder went off");
             inner.wave = Some((r.color, now));
             if r.sound {
                 play_sound();
+            }
+            if notify {
+                self.notify(r);
             }
         }
         if let Some((r, t)) = fired.iter().rev().find(|(r, _)| r.card) {
@@ -570,7 +582,6 @@ impl RemindersHandle {
         }
 
         // The wave.
-        let map = self.key_map(inner, device);
         let frame = match (inner.wave, &map) {
             (Some((color, from)), Some(map)) => wave_frame(map, color, now - from),
             _ => None,
@@ -600,6 +611,20 @@ impl RemindersHandle {
             TICK_WAVE
         } else {
             TICK
+        }
+    }
+
+    /// A Windows notification with the reminder's title and note, off this
+    /// thread (the first one can take a moment).
+    fn notify(&self, r: &Reminder) {
+        let (app_id, title, note, id) = (self.app_id.clone(), r.title.clone(), r.note.clone(), r.id.clone());
+        let spawned = std::thread::Builder::new().name("reminder-notification".into()).spawn(move || {
+            if let Err(e) = notify::show(&app_id, &title, &note) {
+                tracing::warn!(%id, "reminder notification not shown: {e}");
+            }
+        });
+        if let Err(e) = spawned {
+            tracing::warn!("reminder notification not shown: {e}");
         }
     }
 

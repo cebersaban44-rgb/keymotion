@@ -10,9 +10,11 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { GaugeBase } from "../bindings/GaugeBase";
 import type { GaugeStyle } from "../bindings/GaugeStyle";
 import type { GaugesSettings } from "../bindings/GaugesSettings";
+import type { Connection } from "../bindings/Connection";
 import type { GeometryInfo } from "../bindings/GeometryInfo";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import { ColorPicker, Segmented, Slider, Toggle } from "../components/controls";
+import { KeyboardView } from "../components/KeyboardView";
 import { OWN_COLORS, heatRgb, rgbCss, useGauges, watchGauges } from "../lib/gauges";
 import { percent, useT, type MessageKey } from "../lib/i18n";
 import { fromHex, toHex } from "../lib/pomodoroLights";
@@ -43,7 +45,6 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
   const colors = useMemo(() => {
     if (!s || !geometry) return null;
     const out: Record<number, string> = {};
-    for (const k of geometry.keys) out[k.led] = "rgb(14,15,17)";
     for (const c of s.frame) out[c.led] = `rgb(${c.r},${c.g},${c.b})`;
     return out;
   }, [s, geometry]);
@@ -80,9 +81,9 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
         </div>
       )}
 
-      <section className="card flex flex-col gap-6 p-5">
+      <section className="card flex flex-col">
         {/* On or off, what the keys show, and the readings. */}
-        <div className="flex flex-col gap-5 rounded-lg border border-line bg-bg-raise/50 p-5">
+        <div className="flex flex-col gap-5 p-5">
           <div className="flex items-start justify-between gap-4">
             <span className="flex flex-col gap-1">
               <span className="text-[14px] font-semibold">{t("gauges.on")}</span>
@@ -102,6 +103,7 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
               <span className="text-[12px] text-ink-3">{picking ? t("gauges.mic.pick") : t("gauges.preview")}</span>
               <KeysPreview
                 geometry={geometry}
+                connection={kb.connection}
                 colors={colors}
                 ring={picking ? micLed : undefined}
                 onPick={
@@ -115,7 +117,7 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
               />
             </div>
           )}
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(132px,1fr))] gap-2" data-gauges-readings>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-x-6 gap-y-4" data-gauges-readings>
             <Reading icon={Activity} label={t("gauges.r.cpu")} value={pct(r.cpu)} share={r.cpu} />
             <Reading icon={Gauge} label={t("gauges.r.gpu")} value={pct(r.gpu)} share={r.gpu} />
             <Reading icon={Layers} label={t("gauges.r.ram")} value={pct(r.ram)} share={r.ram} />
@@ -136,7 +138,7 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
         </div>
 
         {/* Settings. */}
-        <div className="flex flex-col divide-y divide-line rounded-lg border border-line" data-gauges-settings>
+        <div className="flex flex-col divide-y divide-line border-t border-line" data-gauges-settings>
           <Row icon={Activity} title={t("gauges.bars")} body={t("gauges.bars.body")}>
             <div className="grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-2">
               <GaugeSwitch label={t("gauges.r.cpu")} where={t("gauges.cpu.where")} on={shown.cpu} onChange={(cpu) => set({ cpu })} />
@@ -232,72 +234,44 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
   );
 }
 
-/** The keyboard with each key filled in the colour it shows (like the
- *  timer's preview); while picking, keys can be clicked. */
+/** The keyboard as the gauges light it (the app's keyboard drawing, small);
+ *  while picking the microphone key, keys can be clicked. */
 function KeysPreview({
-  geometry: g,
+  geometry,
+  connection,
   colors,
   ring,
   onPick,
 }: {
   geometry: GeometryInfo;
+  connection: Connection;
   colors: Record<number, string>;
   ring?: number;
   onPick?: (id: string) => void;
 }) {
   const t = useT();
-  const pad = 0.25;
+  const selected = useMemo(() => new Set(ring === undefined ? [] : [ring]), [ring]);
+  const byLed = useMemo(() => new Map(geometry.keys.map((k) => [k.led, k.id])), [geometry]);
   return (
-    <svg
-      viewBox={`${-pad} ${-pad} ${g.width + 2 * pad} ${g.height + 2 * pad}`}
-      className="w-full max-w-[760px] rounded-lg"
-      role={onPick ? "group" : "img"}
-      aria-label={t("gauges.preview")}
-      data-gauges-preview
-    >
-      <rect x={-pad} y={-pad} width={g.width + 2 * pad} height={g.height + 2 * pad} rx={0.35} fill="#111214" />
-      {g.screen && (
-        <rect x={g.screen.x + 0.06} y={g.screen.y + 0.06} width={g.screen.w - 0.12} height={g.screen.h - 0.12} rx={0.08} fill="#26282c" />
-      )}
-      {g.keys.map((k) => {
-        const fill = colors[k.led] ?? "#000";
-        const lit = /rgb\((\d+),(\d+),(\d+)\)/.exec(fill);
-        const bright = lit ? Number(lit[1]) * 0.3 + Number(lit[2]) * 0.59 + Number(lit[3]) * 0.11 > 110 : false;
-        return (
-          <g
-            key={k.id}
-            onClick={onPick ? () => onPick(k.id) : undefined}
-            className={onPick ? "cursor-pointer" : undefined}
-            role={onPick ? "button" : undefined}
-            aria-label={onPick ? k.label || k.id : undefined}
-            data-key={k.id}
-          >
-            <rect
-              x={k.x + 0.06}
-              y={k.y + 0.06}
-              width={k.w - 0.12}
-              height={k.h - 0.12}
-              rx={0.12}
-              fill={fill}
-              stroke={ring === k.led ? "var(--signal)" : "rgba(255,255,255,0.07)"}
-              strokeWidth={ring === k.led ? 0.08 : 0.03}
-            />
-            {k.label && (
-              <text
-                x={k.x + k.w / 2}
-                y={k.y + k.h / 2 + 0.1}
-                textAnchor="middle"
-                fontSize={k.label.length > 3 ? 0.22 : 0.28}
-                fill={bright ? "rgba(0,0,0,0.6)" : "rgba(255,255,255,0.28)"}
-                style={{ pointerEvents: "none", fontFamily: "var(--font-mono, monospace)" }}
-              >
-                {k.label}
-              </text>
-            )}
-          </g>
-        );
-      })}
-    </svg>
+    <div className="w-full max-w-[760px]" data-gauges-preview>
+      <KeyboardView
+        geometry={geometry}
+        connection={connection}
+        colors={colors}
+        compact
+        label={t("gauges.preview")}
+        selected={selected}
+        tool="select"
+        onKeyAction={
+          onPick
+            ? (led, action) => {
+                const id = byLed.get(led);
+                if (action === "press" && id) onPick(id);
+              }
+            : undefined
+        }
+      />
+    </div>
   );
 }
 
@@ -318,8 +292,8 @@ function Reading({
   alert?: boolean;
 }) {
   return (
-    <div className={`flex flex-col gap-1.5 rounded-lg border px-3 py-2.5 ${alert ? "border-danger/40 bg-danger/10" : lit ? "border-signal/50" : "border-line"}`}>
-      <span className="flex items-center gap-1.5 text-[12px] text-ink-3">
+    <div className="flex flex-col gap-1.5">
+      <span className={`flex items-center gap-1.5 text-[12px] ${lit ? "text-signal" : "text-ink-3"}`}>
         <Icon size={13} className={alert ? "text-danger" : ""} />
         {label}
       </span>
@@ -335,12 +309,12 @@ function Reading({
 
 function GaugeSwitch({ label, where, on, onChange }: { label: string; where: string; on: boolean; onChange: (v: boolean) => void }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-line px-3 py-2.5">
+    <div className="flex items-center gap-3 py-1">
+      <Toggle checked={on} onChange={onChange} label={label} />
       <span className="flex flex-col">
         <span className="text-[13px] font-medium">{label}</span>
         <span className="text-[12px] text-ink-3">{where}</span>
       </span>
-      <Toggle checked={on} onChange={onChange} label={label} />
     </div>
   );
 }
@@ -388,7 +362,7 @@ function LayerList({
     { title: "gauges.layer.saved", note: "gauges.layer.saved.note", on: !timerFront && !(enabled && lit) },
   ];
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-line p-4" data-gauges-layers>
+    <div className="flex flex-col gap-3 border-t border-line px-5 py-4" data-gauges-layers>
       <span className="flex flex-col">
         <span className="text-[13px] font-semibold">{t("gauges.layers")}</span>
         <span className="text-[12px] text-ink-3">{t("gauges.layers.body")}</span>
@@ -437,7 +411,7 @@ function Row({
 }) {
   const nested = Array.isArray(children) ? children.some(Boolean) : !!children;
   return (
-    <div className="flex flex-col gap-3 p-4">
+    <div className="flex flex-col gap-3 px-5 py-4">
       <div className="flex items-start justify-between gap-3">
         <span className="flex items-start gap-2.5">
           <Icon size={16} className="mt-0.5 shrink-0 text-signal" />

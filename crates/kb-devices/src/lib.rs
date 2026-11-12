@@ -86,6 +86,24 @@ pub struct ModeSpec {
     #[serde(default)]
     pub capabilities: Vec<Capability>,
     pub verified: bool,
+    /// Firmware versions (USB `bcdDevice`, e.g. `0x0106`) this project has
+    /// tested writes on. Writing to the keyboard's memory on any other
+    /// version needs the user's confirmation first.
+    #[serde(default)]
+    pub verified_firmware: Vec<u16>,
+}
+
+impl ModeSpec {
+    /// Whether writes were tested on this firmware version.
+    pub fn firmware_verified(&self, release: u16) -> bool {
+        self.verified_firmware.contains(&release)
+    }
+}
+
+/// A firmware version (USB `bcdDevice`, binary-coded decimal) as people
+/// read it: `0x0106` is "1.06".
+pub fn firmware_text(release: u16) -> String {
+    format!("{:x}.{:02x}", release >> 8, release & 0xFF)
 }
 
 fn one() -> f32 {
@@ -361,6 +379,19 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn firmware_versions() {
+        assert_eq!(firmware_text(0x0106), "1.06");
+        assert_eq!(firmware_text(0x0138), "1.38");
+        assert_eq!(firmware_text(0x1210), "12.10");
+        assert_eq!(firmware_text(0x0009), "0.09");
+        let usb = models()[0].mode(ConnectionKind::Usb).unwrap();
+        assert!(usb.firmware_verified(0x0106), "the owner's keyboard");
+        assert!(!usb.firmware_verified(0x0107));
+        let dongle = models()[0].mode(ConnectionKind::Dongle).unwrap();
+        assert!(!dongle.firmware_verified(0x0106), "no list: nothing is verified");
     }
 
     #[test]

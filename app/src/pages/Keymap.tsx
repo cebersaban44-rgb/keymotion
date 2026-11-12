@@ -1,4 +1,4 @@
-import { AlertTriangle, Ban, Check, Info, Keyboard, Loader2, Lock, Mouse, RotateCcw, Undo2, Usb, X } from "lucide-react";
+import { AlertTriangle, Ban, Info, Keyboard, Lock, Mouse, RotateCcw, Usb } from "lucide-react";
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { KeyActionInfo } from "../bindings/KeyActionInfo";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
@@ -6,19 +6,18 @@ import type { KeyGeo } from "../bindings/KeyGeo";
 import type { KeymapCatalog } from "../bindings/KeymapCatalog";
 import type { KeyUsageGroup } from "../bindings/KeyUsageGroup";
 import type { KeymapLayer } from "../bindings/KeymapLayer";
+import { ActionBar } from "../components/ActionBar";
 import { Segmented } from "../components/controls";
 import { KeyboardView, type Legend } from "../components/KeyboardView";
 import { getKeymapCatalog } from "../lib/ipc";
 import { useAgo, useT, type MessageKey } from "../lib/i18n";
-import { dirtyLayers, FN_USAGE, normalize, sameAction, usageAction, useKeymap, type LayerMap } from "../lib/keymap";
+import { FN_USAGE, normalize, sameAction, usageAction, useKeymap, type LayerMap } from "../lib/keymap";
 import { actionShort, actionText, MEDIA_ICONS, MOD_TOGGLES, usageShort, type MacroNames } from "../lib/keymapLabels";
 import { dirtySlots, useMacros } from "../lib/macros";
 import { layoutLabel, useLayout, useLayoutLabel } from "../lib/layout";
 import { useApp } from "../lib/store";
 import type { MacroPlayMode } from "../bindings/MacroPlayMode";
-import { friendlyError } from "../lib/errors";
 
-type Status = { kind: "idle" } | { kind: "busy" } | { kind: "ok"; ms: number } | { kind: "error"; message: string };
 type Category = "keys" | "media" | "mouse" | "macro" | "special";
 
 /** Names of the macros being edited, for key legends and the panel. */
@@ -48,15 +47,14 @@ export function Keymap({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
   const usb = kb.connection === "usb" && kb.hasCommandChannel && kb.features.includes("keymap");
   const catalog = useCatalog();
-  const { layer, setLayer, draft, saved, selected, select, modelId } = useKeymap();
+  const { layer, setLayer, saved, selected, select, modelId, save, discard } = useKeymap();
   const loaded = saved !== null && modelId === kb.modelId;
   const keys = kb.geometry?.keys ?? [];
   const selectedKey = keys.find((k) => k.led === selected) ?? null;
-
-  const counts = { base: Object.keys(draft.base).length, fn: Object.keys(draft.fn).length };
+  const changed = useKeymap((s) => countChanges(s.draft, s.saved));
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="@container flex flex-col gap-6">
       <header className="flex items-end justify-between gap-6">
         <div>
           <h1 className="page-title">{t("nav.keymap")}</h1>
@@ -75,9 +73,6 @@ export function Keymap({ kb }: { kb: KeyboardInfo }) {
               }`}
             >
               {t(id === "base" ? "km.layer.base" : "km.layer.fn")}
-              {counts[id] > 0 && (
-                <span className="num rounded-full bg-signal/15 px-1.5 text-[11px] text-signal">{counts[id]}</span>
-              )}
             </button>
           ))}
         </div>
@@ -92,15 +87,22 @@ export function Keymap({ kb }: { kb: KeyboardInfo }) {
 
       <Plate kb={kb} layer={layer} catalog={catalog} onSelect={select} selected={selected} />
 
-      <div className="grid grid-cols-[1fr_360px] items-start gap-5">
+      <div className="grid grid-cols-1 items-start gap-5 @4xl:grid-cols-[minmax(0,1fr)_340px]">
         <Picker layer={layer} catalog={catalog} keyGeo={selectedKey} disabled={!loaded} />
-        <div className="sticky top-4 flex flex-col gap-5">
+        <div className="flex flex-col gap-5 @4xl:sticky @4xl:top-4">
           <SelectedCard layer={layer} catalog={catalog} keyGeo={selectedKey} />
-          <SaveCard usb={usb} loaded={loaded} layer={layer} />
+          <LayerCard layer={layer} />
         </div>
       </div>
 
       <KeyTester />
+
+      <ActionBar
+        changes={changed > 0 ? t("bar.keysChanged", { count: changed }) : null}
+        canSave={usb && loaded}
+        onSave={save}
+        onRevert={discard}
+      />
     </div>
   );
 }
@@ -125,31 +127,30 @@ function Plate({
   const names = useMacroNames();
   const layoutMap = useLayout((s) => s.map);
 
-  const { legends, colors, classes } = useMemo(() => {
+  // Reassigned keys get an orange edge (a red one when turned off), keys
+  // not saved yet a dot; the change count is in the bar below.
+  const { legends, classes } = useMemo(() => {
     const layout = (hid: number) => layoutLabel(layoutMap, hid);
     const legends: Record<number, Legend> = {};
-    const colors: Record<number, string> = {};
     const classes: Record<number, string> = {};
     for (const k of keys) {
       const a = draft[k.led];
+      const cls: string[] = [];
       if (a) {
         legends[k.led] = {
           main: actionShort(a, catalog, layout),
           text: actionText(a, catalog, t, names, layout),
           sub: k.label,
         };
-        colors[k.led] = a.kind === "disabled" ? "var(--danger)" : "var(--signal)";
-      } else {
-        colors[k.led] = "transparent";
+        cls.push(a.kind === "disabled" ? "is-blocked" : "is-mapped");
       }
-      const pending = saved && !sameAction(a, saved[k.led]);
-      if (k.hid === FN_USAGE) classes[k.led] = "is-locked";
-      else if (pending) classes[k.led] = "is-pending";
+      if (k.hid === FN_USAGE) cls.push("is-locked");
+      else if (saved && !sameAction(a, saved[k.led])) cls.push("is-pending");
+      if (cls.length) classes[k.led] = cls.join(" ");
     }
-    return { legends, colors, classes };
+    return { legends, classes };
   }, [keys, draft, saved, catalog, t, names, layoutMap]);
 
-  const pendingCount = Object.values(classes).filter((c) => c === "is-pending").length;
   const selectedSet = useMemo(() => new Set(selected === null ? [] : [selected]), [selected]);
 
   return (
@@ -157,15 +158,15 @@ function Plate({
       onPointerDown={(e) => {
         if (!(e.target as HTMLElement).closest(".kb-key")) onSelect(null);
       }}
-      className="kb-keymap relative overflow-hidden rounded-lg border border-line p-6 pb-4"
-      style={{ background: "linear-gradient(180deg, var(--plate), color-mix(in oklch, var(--plate) 80%, black))" }}
+      className="relative overflow-hidden rounded-lg border border-line p-4"
+      style={{ background: "var(--plate)" }}
     >
       {kb.geometry && (
         <KeyboardView
           geometry={kb.geometry}
           battery={kb.battery?.percent ?? null}
           connection={kb.connection}
-          colors={colors}
+          look="plain"
           legends={legends}
           keyClass={classes}
           selected={selectedSet}
@@ -175,19 +176,11 @@ function Plate({
           }}
         />
       )}
-      <div className="mt-4 flex items-center gap-4 text-[12px] text-[#8b8d92]">
+      <div className="mt-3 flex items-center gap-4 text-[12px] text-[#a9a59e]">
         <span className="flex items-center gap-2">
           <Keyboard size={13} />
           {t(layer === "base" ? "km.layer.base.caption" : "km.layer.fn.caption")}
         </span>
-        {pendingCount > 0 && (
-          <span className="flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-signal" />
-            <span>
-              <span className="num">{pendingCount}</span> {t("km.legend.pending")}
-            </span>
-          </span>
-        )}
       </div>
     </section>
   );
@@ -564,78 +557,41 @@ function SelectedCard({
   );
 }
 
-function SaveCard({ usb, loaded, layer }: { usb: boolean; loaded: boolean; layer: KeymapLayer }) {
+/** About the layer: how the app knows it, the Fn caveat, and a reset. */
+function LayerCard({ layer }: { layer: KeymapLayer }) {
   const t = useT();
   const ago = useAgo();
-  const [status, setStatus] = useState<Status>({ kind: "idle" });
-  const dirty = useKeymap((s) => dirtyLayers(s).length > 0);
-  const changed = useKeymap((s) => countChanges(s.draft, s.saved));
   const layerEmpty = useKeymap((s) => Object.keys(s.draft[layer]).length === 0);
   const writtenMs = useKeymap((s) => s.writtenMs[layer]);
-  const { save, discard, resetLayer } = useKeymap();
-
-  const run = async () => {
-    setStatus({ kind: "busy" });
-    const started = performance.now();
-    try {
-      await save();
-      setStatus({ kind: "ok", ms: Math.round(performance.now() - started) });
-    } catch (e) {
-      setStatus({ kind: "error", message: friendlyError(e, t) });
-    }
-  };
+  const resetLayer = useKeymap((s) => s.resetLayer);
 
   return (
-    <section className="card flex flex-col gap-4 p-5">
-      <button
-        type="button"
-        disabled={!usb || !loaded || !dirty || status.kind === "busy"}
-        onClick={run}
-        className="flex h-10 items-center justify-center gap-2 rounded-lg bg-signal text-[13.5px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        {status.kind === "busy" && <Loader2 size={15} className="animate-spin" />}
-        {status.kind === "busy" ? t("km.saving") : t("km.save")}
-        {dirty && status.kind !== "busy" && (
-          <span className="num rounded-full bg-signal-ink/15 px-1.5 text-[11px]">{changed}</span>
-        )}
-      </button>
-      <StatusLine status={status} dirty={dirty} changed={changed} />
-      <div className="flex flex-wrap gap-x-4 gap-y-2">
+    <section className="card flex flex-col gap-3 p-5 text-[12px] text-ink-2">
+      {layer === "fn" && (
+        <p className="flex gap-2 rounded-lg border border-warn/30 bg-warn/10 p-3">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" />
+          {t("km.fnNote")}
+        </p>
+      )}
+      <p className="flex gap-2">
+        <Info size={14} className="mt-0.5 shrink-0 text-ink-3" />
+        <span>
+          {t("km.readNote")}{" "}
+          <span className="text-ink-3">
+            {writtenMs ? t("km.record.at", { ago: ago(writtenMs) }) : t("km.record.never")}
+          </span>
+        </span>
+      </p>
+      <div className="border-t border-line pt-3">
         <button
           type="button"
-          disabled={!dirty || status.kind === "busy"}
-          onClick={discard}
-          className="flex items-center gap-1.5 text-[12px] text-ink-3 hover:text-ink disabled:opacity-40"
-        >
-          <Undo2 size={12} />
-          {t("km.revert")}
-        </button>
-        <button
-          type="button"
-          disabled={layerEmpty || status.kind === "busy"}
+          disabled={layerEmpty}
           onClick={() => resetLayer(layer)}
-          className="flex items-center gap-1.5 text-[12px] text-ink-3 hover:text-ink disabled:opacity-40"
+          className="flex items-center gap-1.5 text-[12px] text-ink-2 hover:text-ink disabled:cursor-not-allowed disabled:text-ink-3"
         >
           <RotateCcw size={12} />
           {t("km.resetLayer")}
         </button>
-      </div>
-      <div className="flex flex-col gap-2.5 border-t border-line pt-4 text-[12px] text-ink-2">
-        {layer === "fn" && (
-          <p className="flex gap-2 rounded-lg border border-warn/30 bg-warn/10 p-3">
-            <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" />
-            {t("km.fnNote")}
-          </p>
-        )}
-        <p className="flex gap-2">
-          <Info size={14} className="mt-0.5 shrink-0 text-ink-3" />
-          <span>
-            {t("km.readNote")}{" "}
-            <span className="text-ink-3">
-              {writtenMs ? t("km.record.at", { ago: ago(writtenMs) }) : t("km.record.never")}
-            </span>
-          </span>
-        </p>
       </div>
     </section>
   );
@@ -649,39 +605,6 @@ function countChanges(draft: Record<KeymapLayer, LayerMap>, saved: Record<Keymap
     for (const led of leds) if (!sameAction(draft[l][led], saved[l][led])) n += 1;
   }
   return n;
-}
-
-function StatusLine({ status, dirty, changed }: { status: Status; dirty: boolean; changed: number }) {
-  const t = useT();
-  if (status.kind === "busy")
-    return (
-      <span className="flex items-center gap-2 text-[12px] text-ink-2">
-        <Loader2 size={13} className="animate-spin" />
-        {t("km.saving")}
-      </span>
-    );
-  if (status.kind === "error")
-    return (
-      <span className="flex items-start gap-2 text-[12px] text-danger">
-        <X size={13} className="mt-0.5 shrink-0" />
-        {status.message}
-      </span>
-    );
-  if (dirty)
-    return (
-      <span className="text-[12px] text-ink-2">
-        <span className="num">{t("km.changed", { count: changed })}</span> ·{" "}
-        <span className="text-ink-3">{t("km.persistNote")}</span>
-      </span>
-    );
-  if (status.kind === "ok")
-    return (
-      <span className="flex items-center gap-2 text-[12px] text-ok">
-        <Check size={13} />
-        {t("km.saved")}
-      </span>
-    );
-  return <span className="text-[12px] text-ink-3">{t("km.persistNote")}</span>;
 }
 
 /** Media keys as the browser names them (KeyboardEvent.key). */

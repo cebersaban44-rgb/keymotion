@@ -1,16 +1,40 @@
 // What a failed action says to the user. The backend's error text is
 // technical and English; the user gets what happened and what to do, in
-// the UI language (docs/arayuz-dili.md). The original goes to the console.
+// the UI language (docs/arayuz-dili.md). The original goes to the console
+// and to the app's log, so "Copy diagnostics" can carry it.
 
 import type { MessageKey } from "./i18n";
+import { logUiError } from "./ipc";
 
 const RULES: [RegExp, MessageKey][] = [
+  // Writes refused before anything was sent (device.rs `WriteBlock`).
+  [/more than one keyboard on the usb cable/i, "err.several"],
+  [/another program is using the keyboard \(ajazz-driver\)/i, "err.conflict.ajazz"],
+  [/another program is using the keyboard \(signalrgb\)/i, "err.conflict.signalrgb"],
+  [/another program is using the keyboard \(openrgb\)/i, "err.conflict.openrgb"],
+  [/another program is using the keyboard \(kb-cli\)/i, "err.conflict.kb"],
+  [/untested keyboard firmware/i, "err.untested"],
+  [/write cancelled by the user/i, "err.cancelled"],
+  // Profiles and profile files (profiles.rs). A load's own failure reads
+  // "profile part failed (keymap): …" and falls through to its cause.
+  [/a backup file, not a profile/i, "err.profile.backup"],
+  [/not a profile file/i, "err.profile.notProfile"],
+  [/profile from a newer version/i, "err.profile.newer"],
+  [/profile file damaged/i, "err.profile.damaged"],
+  [/profile file too large/i, "err.profile.tooLarge"],
+  [/profile for another keyboard model/i, "err.profile.otherModel"],
+  [/profile name taken/i, "err.profile.nameTaken"],
+  [/profile name empty/i, "err.profile.name"],
+  [/profile limit reached/i, "err.profile.full"],
+  [/nothing to put in the profile/i, "err.profile.nothing"],
   [/blocked by safety guard/i, "err.guard"],
   [/screen upload stopped/i, "err.uploadStopped"],
   [/live mode is off/i, "err.liveOff"],
   [/fn key cannot be reassigned/i, "err.fn"],
   [/unsupported keyboard firmware/i, "err.firmware"],
   [/factory backup cannot be removed/i, "err.factory"],
+  [/no official driver copy/i, "err.noDriver"],
+  [/factory animation; not acknowledged/i, "err.factoryAck"],
   [/larger than|too large|at most 4096|frames; the keyboard takes|more than \d+ frames/i, "err.tooLarge"],
   [/not a gif|not a readable gif|no frames|expected binary data|unsupported/i, "err.badFile"],
   [/echoed different data|checksum/i, "err.verify"],
@@ -22,7 +46,10 @@ const RULES: [RegExp, MessageKey][] = [
 /** A short, translated message for an error from the backend. */
 export function friendlyError(e: unknown, t: (key: MessageKey) => string, quiet = false): string {
   const raw = e instanceof Error ? e.message : String(e);
-  if (!quiet) console.error(raw);
+  if (!quiet) {
+    console.error(raw);
+    void logUiError(`action failed: ${raw}`);
+  }
   const hit = RULES.find(([re]) => re.test(raw));
   return t(hit ? hit[1] : "err.generic");
 }

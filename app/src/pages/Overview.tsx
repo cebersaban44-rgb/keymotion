@@ -1,24 +1,25 @@
 // Genel Bakış: the connected keyboard at a glance. Its drawing shows the
 // keyboard's real light (read back over USB about four times a second) and
-// the keys held down while the app is in front; below, the connection,
-// the battery and what this connection allows.
+// the keys held down while the app is in front; under it, quick cards for
+// the light, the screen, the focus timer and the profile. The connection details and the
+// clock live on the Bağlantı page.
 
-import { BatteryCharging, BatteryFull, Check, ChevronRight, Lock, Usb } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { Feature } from "../bindings/Feature";
+import { BatteryCharging, BatteryFull, BatteryMedium, Play, Radio, Usb } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { GeometryInfo } from "../bindings/GeometryInfo";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
-import { BatteryGauge } from "../components/BatteryGauge";
-import { ClockCard } from "../components/ClockCard";
 import { KeyboardView } from "../components/KeyboardView";
+import { useGauges } from "../lib/gauges";
 import { hidFromCode } from "../lib/hidCodes";
-import { connectionKey, featureKey, useAgo, useT } from "../lib/i18n";
+import { connectionKey, percent, useAgo, useT, type MessageKey } from "../lib/i18n";
+import { useLighting } from "../lib/lighting";
+import { useLive } from "../lib/live";
 import { useMirror } from "../lib/mirror";
+import { DEFAULT_SETTINGS, fmtClock, phaseColor, remainingNow, usePomodoro } from "../lib/pomodoro";
+import { profileName, profileOnKeyboard, useProfiles } from "../lib/profiles";
+import { useScreen } from "../lib/screen";
 import { useApp } from "../lib/store";
-import { CONNECTION_ICON, connectionSummary } from "./Connection";
-
-// Keyboard options (sleep, Win lock) are not built yet, so they are not listed.
-const ALL_FEATURES: Feature[] = ["lighting", "per-key-rgb", "keymap", "macros", "screen", "clock", "battery"];
+import { Thumb } from "./screen/common";
 
 /** LEDs of the keys held down while the window has focus. The Fn key and
  *  keys the system keeps (Win, Print Screen) send nothing here. */
@@ -89,6 +90,35 @@ function useChargeState(kb: KeyboardInfo, mirror: Record<number, string> | null)
   return state;
 }
 
+/** The keyboard firmware version ("1.06"), when the keyboard reports it. */
+function firmwareOf(kb: KeyboardInfo): string | null {
+  return kb.firmware?.trim() || null;
+}
+
+/** "%98 düzen, 97 tuş, 240×135 ekran ve döner düğme." in the UI language. */
+function useSpecs(kb: KeyboardInfo): string {
+  const t = useT();
+  const locale = useApp((s) => s.locale);
+  const layout = /^\d+$/.test(kb.layout) ? percent(Number(kb.layout)) : kb.layout;
+  const parts = [
+    t("overview.spec.layout", { layout }),
+    t("overview.spec.keys", { count: kb.keyCount }),
+    kb.screen ? t("overview.spec.screen", { size: `${kb.screen.width}×${kb.screen.height}` }) : null,
+    kb.hasKnob ? t("overview.spec.knob") : null,
+  ].filter((p): p is string => !!p);
+  const list = new Intl.ListFormat(locale === "tr" ? "tr-TR" : "en-US", { type: "conjunction" }).format(parts);
+  const firmware = firmwareOf(kb);
+  return [t("overview.spec", { list }), firmware ? t("overview.firmware", { version: firmware }) : null].filter(Boolean).join(" ");
+}
+
+function Pill({ children, data }: { children: ReactNode; data?: string }) {
+  return (
+    <span className="flex h-8 items-center gap-2 rounded-md border border-line bg-surface px-3 text-[13px] whitespace-nowrap" data-pill={data}>
+      {children}
+    </span>
+  );
+}
+
 export function Overview({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
   const ago = useAgo();
@@ -101,36 +131,43 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
   const lit = mirror ? Object.values(mirror).filter((c) => c !== "#000000").length : 0;
   const lightsOff = !!mirror && Object.keys(mirror).length > 0 && lit <= 3;
   const charge = useChargeState(kb, live ? mirror : null);
-  const setPage = useApp((s) => s.setPage);
-  const ConnIcon = CONNECTION_ICON[kb.connection];
-  const usbFeatures = kb.modes.find((m) => m.connection === "usb")?.features ?? [];
-  const model = kb.modelName.replace(`${kb.vendor} `, "");
-
-  const specs = [
-    `${t("overview.spec.layout")} %${kb.layout}`,
-    `${kb.keyCount} ${t("overview.specs.keys")}`,
-    kb.screen ? `${kb.screen.width}×${kb.screen.height} ${t("overview.specs.screen")}` : null,
-    kb.hasKnob ? t("overview.specs.knob") : null,
-  ].filter(Boolean) as string[];
+  const specs = useSpecs(kb);
+  const lastRead = kb.battery ? t("overview.bat.read", { level: percent(kb.battery.percent), ago: ago(kb.battery.readAtMs) }) : undefined;
 
   return (
-    <div className="flex flex-col gap-6" data-overview>
-      <header className="flex items-start justify-between gap-6">
-        <div>
-          <h1 className="page-title">
-            {kb.vendor} {model}
-          </h1>
-          <ul className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-ink-2" aria-label={t("overview.specs")}>
-            {specs.map((s) => (
-              <li key={s} className="num">
-                {s}
-              </li>
-            ))}
-          </ul>
+    <div className="flex flex-col gap-5" data-overview>
+      <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="page-title">{kb.modelName}</h1>
+          <p className="page-desc num" data-overview-specs>
+            {specs}
+          </p>
         </div>
-        <div className="flex items-center gap-2 rounded-md border border-line bg-surface px-3 py-1.5 text-[13px]">
-          <span className="h-2 w-2 rounded-full bg-ok" aria-hidden />
-          {t(connectionKey(kb.connection))}
+        <div className="flex flex-wrap gap-2">
+          <Pill data="connection">
+            <span className="h-2 w-2 rounded-full bg-ok" aria-hidden />
+            {t(connectionKey(kb.connection))}
+          </Pill>
+          {usb && charge && (
+            <span title={lastRead} data-overview-charge={charge}>
+              <Pill>
+                {charge === "full" ? (
+                  <BatteryFull size={16} className="text-ok" aria-hidden />
+                ) : (
+                  <BatteryCharging size={16} className="text-ok" aria-hidden />
+                )}
+                {t(charge === "charging" ? "overview.bat.charging" : "overview.bat.full")}
+              </Pill>
+            </span>
+          )}
+          {!usb && kb.battery && (
+            <span title={lastRead} data-overview-battery>
+              <Pill>
+                <BatteryMedium size={16} className="text-ok" aria-hidden />
+                <span className="num">{t("overview.bat.level", { level: percent(kb.battery.percent) })}</span>
+              </Pill>
+            </span>
+          )}
         </div>
       </header>
 
@@ -156,67 +193,12 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
         </div>
       </section>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-5">
-        <section className="card flex flex-col gap-3 p-5" data-overview-connection>
-          <h2 className="eyebrow">{t("overview.mode.title")}</h2>
-          <span className="flex items-center gap-2.5 text-[16px] font-semibold">
-            <ConnIcon size={18} className="text-signal" aria-hidden />
-            {t(connectionKey(kb.connection))}
-          </span>
-          <p className="text-[13px] text-ink-2">{t(connectionSummary(kb.connection))}</p>
-          <button
-            type="button"
-            onClick={() => setPage("connection")}
-            className="mt-auto flex items-center gap-1 self-start rounded-md text-[13px] text-signal hover:underline"
-          >
-            {t("overview.mode.details")}
-            <ChevronRight size={14} aria-hidden />
-          </button>
-        </section>
-
-        <section className="card flex flex-col gap-3 p-5" data-overview-battery>
-          <h2 className="eyebrow">{t("overview.battery.title")}</h2>
-          <div className="flex items-center justify-center">
-            <BatteryGauge percent={kb.battery?.percent ?? null} />
-          </div>
-          {usb && (
-            <p className="flex items-start gap-2 text-[13px] text-ink-2" data-overview-charge={charge ?? "unknown"}>
-              {charge === "full" ? (
-                <BatteryFull size={16} className="mt-0.5 shrink-0 text-ok" aria-hidden />
-              ) : (
-                <BatteryCharging size={16} className="mt-0.5 shrink-0 text-ok" aria-hidden />
-              )}
-              {t(charge === "charging" ? "overview.bat.charging" : charge === "full" ? "overview.bat.full" : "overview.bat.cable")}
-            </p>
-          )}
-          <p className="text-[13px] text-ink-3">
-            {kb.battery ? t("overview.bat.read", { ago: ago(kb.battery.readAtMs) }) : t("overview.bat.none")}
-          </p>
-        </section>
-
-        <section className="card flex flex-col gap-3 p-5">
-          <h2 className="eyebrow">{t("overview.features.title")}</h2>
-          <ul className="flex flex-col gap-2">
-            {ALL_FEATURES.map((f) => {
-              const on = kb.features.includes(f);
-              return (
-                <li key={f} className="flex items-center gap-2.5 text-[13px]">
-                  <span
-                    className={`flex h-5 w-5 items-center justify-center rounded ${on ? "bg-ok/15 text-ok" : "bg-surface-2 text-ink-3"}`}
-                    aria-hidden
-                  >
-                    {on ? <Check size={12} strokeWidth={2.5} /> : <Lock size={11} />}
-                  </span>
-                  <span className={on ? "text-ink" : "text-ink-3"}>{t(featureKey(f))}</span>
-                  {!on && usbFeatures.includes(f) && <span className="ml-auto text-[12px] text-ink-3">{t("overview.features.locked")}</span>}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-4" data-overview-cards>
+        <LightCard />
+        <ScreenCard />
+        <FocusCard />
+        <ProfileCard modelId={kb.modelId} />
       </div>
-
-      {(kb.features.includes("clock") || usbFeatures.includes("clock")) && <ClockCard usb={kb.features.includes("clock")} />}
 
       {!usb && (
         <section className="card flex gap-4 p-5" data-overview-unlock>
@@ -226,14 +208,182 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
           <div className="flex-1">
             <h2 className="eyebrow">{t("overview.unlock.title")}</h2>
             <p className="mt-0.5 max-w-[70ch] text-[13px] text-ink-2">{t("overview.unlock.body")}</p>
-            <ol className="mt-3 flex list-decimal flex-col gap-1 pl-5 text-[13px] text-ink-2">
-              {(["overview.unlock.step1", "overview.unlock.step2", "overview.unlock.step3"] as const).map((k) => (
-                <li key={k}>{t(k)}</li>
-              ))}
-            </ol>
           </div>
         </section>
       )}
     </div>
+  );
+}
+
+/** A small card in the row under the keyboard: a title, what is set now and
+ *  a way to it. */
+function QuickCard({
+  title,
+  data,
+  children,
+  link,
+  onLink,
+}: {
+  title: MessageKey;
+  data: string;
+  children: ReactNode;
+  link: MessageKey;
+  onLink: () => void;
+}) {
+  const t = useT();
+  return (
+    <section className="card flex min-w-0 flex-col gap-2.5 p-4" data-quick={data}>
+      <h2 className="text-[13px] font-semibold">{t(title)}</h2>
+      {children}
+      <button type="button" onClick={onLink} className="mt-auto self-start rounded-md pt-1 text-[13px] text-signal hover:underline">
+        {t(link)}
+      </button>
+    </section>
+  );
+}
+
+/** The light the app last stored on the keyboard. Only the Lighting page
+ *  changes it, with its own save step. */
+function LightCard() {
+  const t = useT();
+  const setPage = useApp((s) => s.setPage);
+  const applied = useLighting((s) => s.appliedEffect);
+  const saved = useLighting((s) => s.savedPerKey);
+  const gauges = useGauges((s) => !!s.state?.settings.enabled);
+  const name = saved ? t("light.tab.perKey") : applied ? t(`fx.${applied.mode}` as MessageKey) : null;
+  const level = saved ? saved.brightness : applied && applied.mode !== 0 ? applied.brightness : null;
+  return (
+    <QuickCard title="overview.light" data="light" link="overview.light.go" onLink={() => setPage("lighting")}>
+      <span className={`truncate text-[15px] ${name ? "" : "text-ink-3"}`}>{name ?? t("overview.light.unknown")}</span>
+      {level != null && (
+        <div className="flex items-center gap-3 text-[12px] text-ink-3">
+          <span>{t("light.brightness")}</span>
+          <span
+            role="meter"
+            aria-label={t("light.brightness")}
+            aria-valuemin={0}
+            aria-valuemax={5}
+            aria-valuenow={level}
+            className="flex flex-1 gap-1"
+          >
+            {[1, 2, 3, 4, 5].map((i) => (
+              <span key={i} className={`h-1.5 flex-1 rounded-full ${i <= level ? "bg-signal" : "bg-surface-2"}`} />
+            ))}
+          </span>
+        </div>
+      )}
+      {gauges && <span className="text-[12px] text-ink-3">{t("overview.light.gauges")}</span>}
+    </QuickCard>
+  );
+}
+
+/** What the keyboard's GIF page shows, as far as the app knows. */
+function ScreenCard() {
+  const t = useT();
+  const openScreen = useApp((s) => s.openScreen);
+  const state = useScreen((s) => s.state);
+  const liveOn = useLive((s) => !!s.state?.enabled);
+  const liveName = useLive((s) => s.state?.last?.name ?? null);
+  const showsLive = state?.shown === "live";
+  const shown = state?.items.find((i) => i.id === state.shown) ?? null;
+  const factory = !!state?.items.some((i) => i.kind === "factory");
+  return (
+    <QuickCard title="nav.screen" data="screen" link="overview.screen.go" onLink={() => openScreen(liveOn ? "live" : "visuals")}>
+      {showsLive ? (
+        <div className="flex items-center gap-3">
+          <span className="flex h-[68px] w-[68px] shrink-0 items-center justify-center rounded-md bg-surface-2 text-ok">
+            <Radio size={20} aria-hidden />
+          </span>
+          <span className="flex min-w-0 flex-col">
+            <span className="text-[13px] font-medium">{t("overview.screen.live")}</span>
+            {liveName && <span className="truncate text-[12px] text-ink-3">{liveName}</span>}
+          </span>
+        </div>
+      ) : shown ? (
+        <div className="flex min-w-0 items-center gap-3">
+          <Thumb item={shown} />
+          <span className="min-w-0 truncate text-[13px]" title={shown.name}>
+            {shown.name}
+          </span>
+        </div>
+      ) : (
+        <span className="text-[13px] text-ink-3">{t(factory ? "sc.page.gif.maybeFactory" : "overview.screen.unknown")}</span>
+      )}
+      {liveOn && !showsLive && <span className="text-[12px] text-ink-3">{t("overview.screen.liveOn")}</span>}
+    </QuickCard>
+  );
+}
+
+/** The profile the keyboard has (all its parts match this computer's
+ *  records), or that it matches none. */
+function ProfileCard({ modelId }: { modelId: string }) {
+  const t = useT();
+  const setPage = useApp((s) => s.setPage);
+  const state = useProfiles((s) => (s.modelId === modelId ? s.state : null));
+  useEffect(() => {
+    useProfiles.getState().load(modelId).catch(console.error);
+  }, [modelId]);
+  const match = state ? profileOnKeyboard(state) : null;
+  return (
+    <QuickCard title="overview.profile" data="profile" link="overview.profile.go" onLink={() => setPage("profiles")}>
+      {state && (
+        <span
+          className={match ? "truncate text-[15px]" : "text-[13px] text-ink-3"}
+          title={match ? profileName(match, t) : undefined}
+          data-overview-profile={match ? match.id : "none"}
+        >
+          {match ? profileName(match, t) : t("overview.profile.none")}
+        </span>
+      )}
+    </QuickCard>
+  );
+}
+
+/** Start the focus timer from here; while it runs, the time left. */
+function FocusCard() {
+  const t = useT();
+  const setPage = useApp((s) => s.setPage);
+  const p = usePomodoro((x) => x.state);
+  const control = usePomodoro((x) => x.control);
+  const running = p?.status === "running";
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!running) return;
+    const id = window.setInterval(() => tick((n) => n + 1), 500);
+    return () => window.clearInterval(id);
+  }, [running]);
+  const s = p?.settings ?? DEFAULT_SETTINGS;
+  const busy = !!p && p.status !== "idle";
+  const phase = !p
+    ? null
+    : p.phase === "focus"
+      ? t("pomo.phase.focus")
+      : p.phase === "shortBreak"
+        ? t("pomo.phase.shortBreak")
+        : t("pomo.phase.longBreak");
+  return (
+    <QuickCard title="nav.focus" data="focus" link="overview.focus.go" onLink={() => setPage("focus")}>
+      {busy && p ? (
+        <span className="flex items-baseline gap-2">
+          <span className="num text-[20px] font-semibold" style={{ color: phaseColor(p.settings, p.phase) }}>
+            {fmtClock(remainingNow(p))}
+          </span>
+          <span className="text-[12px] text-ink-3">{p.status === "paused" ? t("pomo.paused") : phase}</span>
+        </span>
+      ) : (
+        <>
+          <span className="text-[15px]">{t("overview.focus.plan", { focus: s.focusMin, rest: s.shortMin })}</span>
+          <button
+            type="button"
+            onClick={() => control("start").catch(console.error)}
+            className="flex h-9 items-center justify-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink transition-transform active:scale-[0.98]"
+            data-quick-start
+          >
+            <Play size={14} aria-hidden />
+            {t("overview.focus.start")}
+          </button>
+        </>
+      )}
+    </QuickCard>
   );
 }

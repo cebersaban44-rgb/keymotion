@@ -15,6 +15,7 @@ crate-type = ["rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+base64 = "0.23"
 chrono.workspace = true
 chrono-tz = "0.10"
 icalendar = { version = "0.17", default-features = false, features = ["parser"] }
@@ -27,6 +28,7 @@ rrule = "0.14"
 serde.workspace = true
 serde_json.workspace = true
 tauri = { version = "2", features = [] }
+tauri-plugin-single-instance = "2"
 tracing.workspace = true
 tracing-subscriber.workspace = true
 ts-rs = "12"
@@ -35,7 +37,13 @@ ts-rs = "12"
 gif.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows = { workspace = true, features = ["Web_Http", "Web_Http_Filters", "Web_Http_Headers"] }
+windows = { workspace = true, features = [
+    "Data_Xml_Dom",
+    "UI_Notifications",
+    "Web_Http",
+    "Web_Http_Filters",
+    "Web_Http_Headers",
+] }
 windows-version = "0.100"
 
 [lints]

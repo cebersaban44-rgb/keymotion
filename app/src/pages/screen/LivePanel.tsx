@@ -1,4 +1,4 @@
-// "Canlı ekran": the live mode switch, what shows on the screen in which
+// "Canlı ekran": the live screen switch, what shows on the screen in which
 // order (calendar, reminders, focus timer, the song, the user's own picture), and the upload
 // budget (phase C). The backend runs the live mode; this only shows and
 // sets it.
@@ -18,8 +18,8 @@ import { POMODORO_SOURCE, usePomodoro } from "../../lib/pomodoro";
 import { REMINDER_SOURCE, useReminders } from "../../lib/reminders";
 import { useApp } from "../../lib/store";
 import { uploadSeconds } from "../../lib/screenImport";
-import { CalendarBody, calendarStatus } from "./CalendarPanel";
-import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useNow } from "./common";
+import { calendarStatus } from "./CalendarPanel";
+import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useItemName, useNow } from "./common";
 import { friendlyError } from "../../lib/errors";
 
 const PLANS: { id: LivePlan; label: MessageKey; years: MessageKey }[] = [
@@ -30,6 +30,7 @@ const PLANS: { id: LivePlan; label: MessageKey; years: MessageKey }[] = [
 
 export function LivePanel({ usb }: { usb: boolean }) {
   const t = useT();
+  const name = useItemName();
   const s = useLive((x) => x.state);
   const drawError = useLive((x) => x.drawError);
   const configure = useLive((x) => x.configure);
@@ -86,7 +87,7 @@ export function LivePanel({ usb }: { usb: boolean }) {
       {!s.enabled && s.restore && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line px-4 py-3" data-live-leftover>
           <span className="text-[13px] text-ink-2">
-            {t("sc.live.leftover")} <span className="font-medium text-ink">{s.restore.name}</span>
+            {t("sc.live.leftover")} <span className="font-medium text-ink">{name(s.restore)}</span>
           </span>
           <button
             type="button"
@@ -145,6 +146,7 @@ function fmtSoon(ms: number, units: { s: string; h: string; m: string }) {
  *  user's own picture at the bottom (owner's design, 2026-11-10). */
 function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) {
   const t = useT();
+  const name = useItemName();
   const p = usePomodoro((x) => x.state);
   const cal = useCalendar((x) => x.state);
   const configureCal = useCalendar((x) => x.configure);
@@ -223,7 +225,16 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
             />
           }
         >
-          <CalendarBody />
+          <div>
+            <button
+              type="button"
+              onClick={() => setPage("calendar")}
+              className="h-8 rounded-lg border border-line px-3 text-[12px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+              data-calendar-open
+            >
+              {t("calendar.layer.open")}
+            </button>
+          </div>
         </Layer>
         <Layer
           n={2}
@@ -292,7 +303,7 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
             <div className="flex flex-wrap items-center gap-4">
               <OwnThumb own={s.own} />
               <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="truncate text-[13px] font-semibold">{s.own.name}</span>
+                <span className="truncate text-[13px] font-semibold">{name(s.own)}</span>
                 <span className="num text-[12px] text-ink-3">
                   {t("sc.frames", { count: s.own.frames })} · {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(s.own.frames))}
                 </span>
@@ -410,6 +421,7 @@ function TurnOff({
   onChoose: (restore: boolean) => void;
 }) {
   const t = useT();
+  const name = useItemName();
   const [thumb, setThumb] = useState<Uint16Array | null>(null);
   useEffect(() => {
     let live = true;
@@ -455,7 +467,7 @@ function TurnOff({
             <div className="h-[68px] w-[120px] shrink-0 rounded-md bg-black" />
           )}
           <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="truncate text-[13px] font-semibold">{restore.name}</span>
+            <span className="truncate text-[13px] font-semibold">{name(restore)}</span>
             <span className="num text-[12px] text-ink-3">
               {t("sc.frames", { count: restore.frames })} · {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(restore.frames))}
             </span>
@@ -553,6 +565,7 @@ function TrackLine({ s }: { s: LiveState }) {
 
 function StatusLine({ s, usb }: { s: LiveState; usb: boolean }) {
   const t = useT();
+  const name = useItemName();
   const units = { h: t("sc.live.h"), m: t("sc.live.m") };
   const row = "flex items-center gap-2 text-[13px]";
   if (!s.enabled && !s.uploading) return <p className="text-[13px] text-ink-3">{t("sc.live.off")}</p>;
@@ -562,7 +575,10 @@ function StatusLine({ s, usb }: { s: LiveState; usb: boolean }) {
         <p className={`${row} text-ink`}>
           <Loader2 size={14} className="animate-spin text-signal" />
           {s.uploading.source === "restore" ? t("sc.live.restoring") : t("sc.live.uploading")}:{" "}
-          <span className="truncate font-medium">{s.uploading.name}</span>
+          <span className="truncate font-medium">
+            {/* Going back puts a library item up (maybe the factory backup). */}
+            {s.uploading.source === "restore" ? name(s.uploading) : s.uploading.name}
+          </span>
         </p>
       )}
       {s.pending && (

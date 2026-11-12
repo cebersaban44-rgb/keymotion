@@ -234,7 +234,7 @@ export function TextFlow({
           </div>
         </Field>
 
-        <div className="grid grid-cols-[480px_minmax(280px,1fr)] gap-6">
+        <div className="grid grid-cols-1 gap-6 @min-[860px]:grid-cols-[480px_minmax(280px,1fr)]">
           <div className="flex flex-col gap-2">
             <CardCanvas spec={spec} className="h-[270px] w-[480px] rounded-lg" onLayout={setLayout} />
             <p className="text-[12px] text-ink-3">{t("sc.tx.liveNote")}</p>
@@ -253,9 +253,9 @@ export function TextFlow({
                   value={spec.font}
                   onChange={(font) => set({ font })}
                   options={[
-                    { value: "display", label: "Bricolage" },
-                    { value: "sans", label: "Instrument" },
-                    { value: "mono", label: "Mono" },
+                    { value: "display", label: t("sc.tx.font.display") },
+                    { value: "sans", label: t("sc.tx.font.sans") },
+                    { value: "mono", label: t("sc.tx.font.mono") },
                   ]}
                 />
                 <span className="flex items-center gap-2.5">
