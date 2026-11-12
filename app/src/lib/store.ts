@@ -64,7 +64,7 @@ export const useApp = create<AppState>((set) => ({
   page: "overview",
   screenTab: load<ScreenTab>("ks.screenTab", ["visuals", "live"], "visuals"),
   theme: load<ThemePreference>("ks.theme", ["system", "dark", "light"], "system"),
-  locale: load<Locale>("ks.locale", ["tr", "en"], "tr"),
+  locale: load<Locale>("ks.locale", ["tr", "en"], "en"),
   setKeyboards: (keyboards) => set({ keyboards, loaded: true }),
   setEnv: (env) => set({ env }),
   setPage: (page) => set({ page }),
