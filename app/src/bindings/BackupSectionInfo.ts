@@ -3,7 +3,7 @@ import type { BackupSection } from "./BackupSection";
 
 export type BackupSectionInfo = { section: BackupSection, 
 /**
- * Macros, library items, reminders or calendars in it (0 for the
- * others; for the calendar, 0 means its settings only).
+ * Macros, library items, reminders, calendars or profiles in it (0 for
+ * the others; for the calendar, 0 means its settings only).
  */
 count: number, };

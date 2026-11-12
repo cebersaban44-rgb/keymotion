@@ -19,6 +19,7 @@ mod notify;
 mod now_playing;
 mod official_driver;
 mod pomodoro;
+mod profiles;
 mod reminders;
 mod screen_lib;
 mod settings;
@@ -39,6 +40,7 @@ use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
 use live::LiveHandle;
 use now_playing::NowPlaying;
 use pomodoro::{PomodoroAction, PomodoroHandle};
+use profiles::{PartLoaded, ProfilePart, ProfileParts, ProfileSaved, ProfileStore, ProfilesState};
 use reminders::RemindersHandle;
 use screen_lib::ScreenLibrary;
 use std::path::PathBuf;
@@ -94,6 +96,7 @@ type Pomodoro<'a> = State<'a, Arc<PomodoroHandle>>;
 type Gauges<'a> = State<'a, Arc<GaugesHandle>>;
 type Calendar<'a> = State<'a, Arc<CalendarHandle>>;
 type Reminders<'a> = State<'a, Arc<RemindersHandle>>;
+type Profiles<'a> = State<'a, Arc<Mutex<ProfileStore>>>;
 
 fn lock_library(lib: &Mutex<ScreenLibrary>) -> Result<std::sync::MutexGuard<'_, ScreenLibrary>, String> {
     lib.lock().map_err(|_| "screen library unavailable".to_string())
@@ -849,6 +852,248 @@ fn backup_cancel(pending: State<'_, PendingImport>) {
     }
 }
 
+// ----------------------------------------------------------------- profiles
+
+fn lock_profiles(p: &Mutex<ProfileStore>) -> Result<std::sync::MutexGuard<'_, ProfileStore>, String> {
+    p.lock().map_err(|_| "profiles unavailable".to_string())
+}
+
+fn now_ms() -> f64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_millis() as f64)
+}
+
+/// What the keyboard of `model_id` has, as this computer recorded it: the
+/// keymap and macro records, the Lighting page's record, the library item
+/// on the GIF page (profiles.rs). Editors' unsaved drafts are not in it.
+fn profile_current(app: &AppHandle, model_id: &str) -> Result<profiles::Current, String> {
+    let (keymap, macros) = {
+        let device = app.state::<Arc<DeviceHandle>>();
+        let snap = device.snapshot.lock().map_err(|_| "device state unavailable")?;
+        (
+            profiles::ProfileKeymap::from_record(snap.keymaps.models.get(model_id)),
+            snap.macros.models.get(model_id).map(|m| m.slots.clone()).unwrap_or_default(),
+        )
+    };
+    let lighting = app
+        .path()
+        .app_config_dir()
+        .ok()
+        .and_then(|dir| lighting::load(&dir))
+        .and_then(|state| profiles::ProfileLighting::from_record(&state));
+    let screen = {
+        let library = app.state::<Arc<Mutex<ScreenLibrary>>>();
+        let state = lock_library(&library)?.state(model_id);
+        let shown = state.shown.as_deref();
+        state
+            .items
+            .iter()
+            .find(|i| Some(i.id.as_str()) == shown)
+            .map(|i| profiles::ProfileScreen { id: i.id.clone(), name: i.name.clone() })
+    };
+    Ok(profiles::Current {
+        model_id: model_id.to_string(),
+        lighting,
+        keymap,
+        macros: profiles::trimmed(macros),
+        screen,
+    })
+}
+
+/// The profiles for the keyboard of `model_id`: which one it has, what
+/// loading each would write.
+#[tauri::command]
+fn profiles_state(app: AppHandle, profiles: Profiles<'_>, model_id: String) -> Result<ProfilesState, String> {
+    let current = profile_current(&app, &model_id)?;
+    let items: std::collections::HashMap<String, (String, u32)> = {
+        let library = app.state::<Arc<Mutex<ScreenLibrary>>>();
+        let state = lock_library(&library)?.state("");
+        state.items.into_iter().map(|i| (i.id, (i.name, i.pages))).collect()
+    };
+    let lookup =
+        |id: &str| items.get(id).map(|(name, pages)| profiles::LibraryItem { name: name.clone(), pages: *pages });
+    Ok(lock_profiles(&profiles)?.state(&current, &lookup))
+}
+
+/// A new profile from what the keyboard has (the chosen parts).
+#[tauri::command]
+fn profiles_create(
+    app: AppHandle,
+    profiles: Profiles<'_>,
+    model_id: String,
+    name: String,
+    parts: ProfileParts,
+) -> Result<ProfileSaved, String> {
+    tracing::debug!(?parts, "ipc: profiles_create");
+    let current = profile_current(&app, &model_id)?;
+    let p = lock_profiles(&profiles)?.create(&name, parts, &current, now_ms())?;
+    tracing::info!(parts = ?p.parts(), "profile created");
+    Ok(ProfileSaved { id: p.id, name: p.name })
+}
+
+/// The profile's parts from what the keyboard has now.
+#[tauri::command]
+fn profiles_update(app: AppHandle, profiles: Profiles<'_>, model_id: String, id: String) -> Result<(), String> {
+    tracing::debug!(%id, "ipc: profiles_update");
+    let current = profile_current(&app, &model_id)?;
+    lock_profiles(&profiles)?.update(&id, &current, now_ms())
+}
+
+#[tauri::command]
+fn profiles_rename(profiles: Profiles<'_>, id: String, name: String) -> Result<(), String> {
+    tracing::debug!(%id, "ipc: profiles_rename");
+    lock_profiles(&profiles)?.rename(&id, &name, now_ms())
+}
+
+/// A copy named `name` (made unique when taken).
+#[tauri::command]
+fn profiles_duplicate(profiles: Profiles<'_>, id: String, name: String) -> Result<ProfileSaved, String> {
+    tracing::debug!(%id, "ipc: profiles_duplicate");
+    let p = lock_profiles(&profiles)?.duplicate(&id, &name, now_ms())?;
+    Ok(ProfileSaved { id: p.id, name: p.name })
+}
+
+#[tauri::command]
+fn profiles_delete(profiles: Profiles<'_>, id: String) -> Result<(), String> {
+    tracing::debug!(%id, "ipc: profiles_delete");
+    lock_profiles(&profiles)?.delete(&id)
+}
+
+/// Write one profile to a file in the Downloads folder, its screen picture
+/// with it (profiles.rs has the format).
+#[tauri::command]
+async fn profiles_export(
+    app: AppHandle,
+    profiles: Profiles<'_>,
+    id: String,
+    file_name: String,
+) -> Result<BackupExported, String> {
+    if id == profiles::DEFAULT_ID {
+        return Err(profiles::ERR_BUILT_IN.into());
+    }
+    let profile = lock_profiles(&profiles)?.get(&id).ok_or(profiles::ERR_UNKNOWN)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let picture = profile.screen.as_ref().and_then(|s| {
+            let library = app.state::<Arc<Mutex<ScreenLibrary>>>();
+            let lib = library.lock().ok()?;
+            let item = lib.state("").items.into_iter().find(|i| i.id == s.id)?;
+            let data = lib.data(&s.id).map_err(|e| tracing::warn!("profile picture left out: {e}")).ok()?;
+            Some((item, data))
+        });
+        let screen = picture.as_ref().map(|(i, data)| (i.name.as_str(), i.kind, i.created_ms, data.as_slice()));
+        let bytes = profiles::export(&profile, screen, &app.package_info().version.to_string(), now_ms())?;
+        let downloads = app.path().download_dir().ok();
+        let in_downloads = downloads.is_some();
+        let dir = downloads
+            .or_else(|| app.path().document_dir().ok())
+            .or_else(|| app.path().home_dir().ok())
+            .ok_or("no folder to save the profile in")?;
+        let path = backup::write_new(&dir, &file_name, &bytes).map_err(|e| format!("profile not saved: {e}"))?;
+        tracing::info!(bytes = bytes.len(), "profile exported");
+        let file = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        if let Ok(mut last) = app.state::<LastExport>().0.lock() {
+            *last = Some(path);
+        }
+        Ok(BackupExported { file, in_downloads })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Add the profile in a file (the body is its bytes). It is checked whole
+/// first; its screen picture goes into the library.
+#[tauri::command]
+async fn profiles_import(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<ProfileSaved, String> {
+    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
+        return Err("expected binary data".into());
+    };
+    if data.len() > profiles::MAX_FILE_BYTES {
+        return Err(profiles::ERR_TOO_LARGE.into());
+    }
+    let data = data.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let imported = profiles::check_import(profiles::parse(&data)?)?;
+        drop(data);
+        let mut profile = imported.profile;
+        if let Some((name, kind, anim)) = imported.picture {
+            let library = app.state::<Arc<Mutex<ScreenLibrary>>>();
+            let item =
+                lock_library(&library)?.add(&name, kind, &anim).map_err(|e| format!("picture not saved: {e}"))?;
+            profile.screen = Some(profiles::ProfileScreen { id: item.id, name: item.name });
+        }
+        let store = app.state::<Arc<Mutex<ProfileStore>>>();
+        let p = lock_profiles(&store)?.add(profile, now_ms())?;
+        tracing::info!(parts = ?p.parts(), "profile imported");
+        Ok(ProfileSaved { id: p.id, name: p.name })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Writes of a profile load, through the device actor's requests: every
+/// check before a write applies (several keyboards, other programs,
+/// untested firmware) and each is announced as a flash write.
+struct DeviceWriter<'a> {
+    device: &'a DeviceHandle,
+    config_dir: Option<PathBuf>,
+}
+
+impl profiles::Writer for DeviceWriter<'_> {
+    fn effect(&mut self, effect: kb_protocol::sonix::EffectSettings) -> Result<(), String> {
+        self.device.call(|reply| Request::ApplyEffect(effect, reply))
+    }
+
+    fn per_key(&mut self, colors: Vec<(u8, [u8; 3])>, brightness: u8) -> Result<(), String> {
+        self.device.call(|reply| Request::ApplyPerKey { colors, brightness, reply })
+    }
+
+    fn keymap(
+        &mut self,
+        layer: kb_protocol::sonix::keymap::Layer,
+        entries: Vec<(u8, kb_protocol::sonix::keymap::KeyAction)>,
+    ) -> Result<(), String> {
+        self.device.call(|reply| Request::ApplyKeymap { layer, entries, reply }).map(|_| ())
+    }
+
+    fn macros(&mut self, slots: Vec<Option<settings::StoredMacro>>) -> Result<(), String> {
+        self.device.call(|reply| Request::ApplyMacros { slots, reply }).map(|_| ())
+    }
+
+    fn lighting_stored(&mut self, l: &profiles::ProfileLighting) -> Result<(), String> {
+        let dir = self.config_dir.as_deref().ok_or("no config directory")?;
+        let state = lighting::after_store(lighting::load(dir), l.stored());
+        lighting::save(dir, state).map_err(|e| format!("lighting not saved: {e}"))
+    }
+}
+
+/// Put one part of a profile on the USB keyboard (flash writes), unless it
+/// has it already. The UI runs the parts in order and stops at a failure;
+/// the screen part is a library upload (`screen_upload`).
+#[tauri::command]
+async fn profiles_load(
+    app: AppHandle,
+    device: Device<'_>,
+    profiles: Profiles<'_>,
+    model_id: String,
+    id: String,
+    part: ProfilePart,
+) -> Result<PartLoaded, String> {
+    tracing::debug!(%id, ?part, "ipc: profiles_load");
+    let profile = lock_profiles(&profiles)?.get(&id).ok_or(profiles::ERR_UNKNOWN)?;
+    let handle = device.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let current = profile_current(&app, &model_id)?;
+        let mut writer = DeviceWriter { device: &handle, config_dir: app.path().app_config_dir().ok() };
+        let result = profiles::load_part(&profile, part, &current, &mut writer);
+        match &result {
+            Ok(r) => tracing::info!(?part, ?r, "profile part loaded"),
+            Err(e) => tracing::warn!(?part, "profile part not loaded: {e}"),
+        }
+        result
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg(windows)]
 fn os_build() -> u32 {
     windows_version::OsVersion::current().build
@@ -951,6 +1196,7 @@ pub fn run() {
             let config_dir = app.path().app_config_dir().map_err(|e| tracing::warn!("no config directory: {e}")).ok();
             let calibration = config_dir.as_deref().map(settings::load_calibration).unwrap_or_default();
             let library = Arc::new(Mutex::new(ScreenLibrary::open(config_dir.as_deref())));
+            app.manage(Arc::new(Mutex::new(ProfileStore::open(config_dir.as_deref()))));
             let device = Arc::new(device::spawn(
                 app.handle().clone(),
                 calibration,
@@ -1041,7 +1287,16 @@ pub fn run() {
             backup_reveal,
             backup_inspect,
             backup_import,
-            backup_cancel
+            backup_cancel,
+            profiles_state,
+            profiles_create,
+            profiles_update,
+            profiles_rename,
+            profiles_duplicate,
+            profiles_delete,
+            profiles_export,
+            profiles_import,
+            profiles_load
         ])
         .run(tauri::generate_context!())
         .expect("error while running Keymotion");

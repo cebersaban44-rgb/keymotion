@@ -57,6 +57,39 @@ pub fn merge_import(local: Option<Map<String, Value>>, backup: Map<String, Value
     out
 }
 
+/// Lighting that went to the keyboard from outside the Lighting page (a
+/// profile): an effect (`EffectRequest` fields) or a per-key design
+/// (LED → `#rrggbb`, and its brightness).
+pub enum StoredLight {
+    Effect(Value),
+    PerKey { colors: Value, brightness: u8 },
+}
+
+/// The record after `stored` went to the keyboard: what the keyboard has
+/// (`appliedEffect` or `savedPerKey`, the other one cleared, as the page
+/// does after a save) and the editor showing it with nothing pending. The
+/// tools and the other setup's edits stay. Field names follow `lighting.ts`.
+pub fn after_store(local: Option<Map<String, Value>>, stored: StoredLight) -> Map<String, Value> {
+    let mut out = local.unwrap_or_default();
+    match stored {
+        StoredLight::Effect(effect) => {
+            out.insert("effect".into(), effect.clone());
+            out.insert("appliedEffect".into(), effect);
+            out.insert("savedPerKey".into(), Value::Null);
+            out.insert("tab".into(), Value::from("effects"));
+        }
+        StoredLight::PerKey { colors, brightness } => {
+            out.insert("perKey".into(), colors.clone());
+            out.insert("perKeyBrightness".into(), Value::from(brightness));
+            out.insert("savedPerKey".into(), serde_json::json!({ "colors": colors, "brightness": brightness }));
+            out.insert("appliedEffect".into(), Value::Null);
+            out.insert("tab".into(), Value::from("per-key"));
+        }
+    }
+    out.insert("draft".into(), Value::Null);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -103,5 +136,31 @@ mod tests {
         let effect = merge_import(None, obj(json!({ "tab": "effects" })));
         assert_eq!(effect["draft"], json!("effect"));
         assert_eq!(effect["appliedEffect"], Value::Null);
+    }
+
+    #[test]
+    fn a_profile_moves_the_record_and_the_editor() {
+        let local = obj(json!({
+            "tab": "effects",
+            "effect": { "mode": 7 },
+            "appliedEffect": { "mode": 1 },
+            "perKey": { "40": "#00ff00" },
+            "savedPerKey": null,
+            "brush": "#123456",
+            "draft": "effect",
+        }));
+        let per_key =
+            after_store(Some(local.clone()), StoredLight::PerKey { colors: json!({ "33": "#ff8a3d" }), brightness: 3 });
+        assert_eq!(per_key["savedPerKey"], json!({ "colors": { "33": "#ff8a3d" }, "brightness": 3 }));
+        assert_eq!(per_key["perKey"], json!({ "33": "#ff8a3d" }));
+        assert_eq!(per_key["perKeyBrightness"], json!(3));
+        assert_eq!(per_key["appliedEffect"], Value::Null, "the keyboard holds one setup");
+        assert_eq!((per_key["tab"].clone(), per_key["draft"].clone()), (json!("per-key"), Value::Null));
+        assert_eq!(per_key["brush"], json!("#123456"), "tools stay");
+        let e = json!({ "mode": 11, "color": "#ff0000", "rainbow": true, "brightness": 5, "speed": 3, "direction": 0 });
+        let effect = after_store(Some(local), StoredLight::Effect(e.clone()));
+        assert_eq!((effect["effect"].clone(), effect["appliedEffect"].clone()), (e.clone(), e));
+        assert_eq!(effect["savedPerKey"], Value::Null);
+        assert_eq!(effect["perKey"], json!({ "40": "#00ff00" }), "the other editor keeps its design");
     }
 }

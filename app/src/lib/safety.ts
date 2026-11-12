@@ -100,6 +100,7 @@ const RECORDS: Record<string, MessageKey> = {
   "pomodoro.json": "safety.record.pomodoro",
   "calendar.json": "safety.record.calendar",
   "reminders.json": "safety.record.reminders",
+  "profiles.json": "safety.record.profiles",
 };
 
 /** The record a settings file holds; `null` for files not worth a notice (the battery cache). */
