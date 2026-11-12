@@ -20,6 +20,10 @@
 !define MUI_WELCOMEPAGE_TITLE "$(kmWelcomeTitle)"
 !define MUI_WELCOMEPAGE_TEXT "$(kmWelcomeText)"
 
+; Sharp images at every display scale (K15): the welcome and finish pages'
+; left image and the top band are drawn at their boxes' real size.
+!include "${__FILEDIR__}\installer-images.nsh"
+
 !macro NSIS_HOOK_POSTUNINSTALL
   ${If} $UpdateMode <> 1
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "${PRODUCTNAME}"
