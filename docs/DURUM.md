@@ -757,22 +757,47 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
         - Windows'u yükleme sırasında kapatma;
         - "Klasörü aç" ve "Başka bir klavyeniz mi var?" bağlantısı;
         - 1280 genişlikte %150 kenar çubuğu.
-    - **Sıradaki adımlar:**
-      1. ~~Profiller~~: birleşti, denetimler temiz (324 test), gerçek uygulamada denendi. PR #57 develop'a birleştirilir.
-      2. **Keymotion'ın kendi açılış animasyonu:** fabrika yedeği olmayanların dönebileceği özgün görsel.
-      3. **Küçükler:**
-         - ESLint uyarıları;
-         - ders 40'ı güncellemek (ESLint artık var);
-         - Dependabot'tan sonra notices dosyasını yenilemek (PR #55 toml 1.2 bekliyor).
-      4. **Sonra ürünleştirme (F):**
-         - tepsi ve arka plan: canlı kartlar WebView'da çiziliyor, bunun için önce karar gerekli;
-         - NSIS ayarları ve imza (SignPath Foundation ya da Azure Artifact Signing);
-         - sürüm hattı ve güncelleyici;
-         - güç kullanımı;
-         - **uygulama içinden sorun bildirme** (kullanıcının fikri, 2026-11-12): `docs/urun-eksikleri.md` bölüm I.
-
-         Ardından GitHub sayfası (H): iki dilli, TR/EN ve açık/koyu ekran görüntüleriyle.
-      5. **Kullanıcıya sorulacak:** GitHub repo adının `keymotion` olması ve Rust paket adı. (Sorun bildirimi kararı verildi: yalnızca GitHub, e-posta yok.)
+    - **Kullanıcının kararları (2026-11-12, gece):**
+      - Uygulamanın varsayılan dili **İngilizce**. Türkçe seçilebilir; seçim kayıtlıysa (`ks.locale`) o kalır. Uygulandı: `store.ts` varsayılanı `en`, `index.html` `lang="en"`.
+      - GitHub'da da varsayılan dil İngilizce: `README.md` İngilizce, `README.tr.md` Türkçe, ikisinin en üstünde dil bağlantısı ("English | Türkçe"). Belgeler aynı düzende (`docs/en/…`, `docs/tr/…` ya da dosya adında `.tr`). H bölümünde yapılacak.
+      - Repo adı **keymotion**. Uygulandı: `cebersaban44-rgb/klavye-studio` → `cebersaban44-rgb/keymotion`. Eski adresler GitHub'da yönleniyor, `origin` güncellendi. Koddaki adresler değişti: `notify.rs` `PROJECT_PAGES` (uygulamanın açabildiği tek adres) ve `offline.ts` `SUPPORT_LIST_URL`.
+      - **Discussions açık**, cevaplanabilir "Q&A" kategorisi var.
+      - Sorun bildirme yalnızca GitHub üzerinden (bölüm I), e-posta yok.
+      - Tepsi ve arka plan davranışı: kullanıcıya anlatıldı, kararı bekleniyor (aşağıda).
+    - **Küçük işler (2026-11-12, gece):**
+      - Yapıldı:
+        - PR #57 birleşti; ana klasör `develop`'ta, arayüz yeniden ana klasörden sunuluyor ("ui", 1420).
+        - Birleşmiş 8 yardımcı klasörü ve dalı silindi; boş yer 17 GB'tan 21 GB'a çıktı (ders 55).
+        - Kullanıcının düzeltebileceği durumlar (başka program açık, kablo yok, ad alınmış, yanlış dosya) günlüğe uyarı olarak yazılıyor ("action refused"; `errors.ts` `EXPECTED`, `log_ui_error`).
+        - PR #55 (Dependabot `toml` 1.2) otomatik birleştirmede.
+      - Yardımcıda (`a0ca5d5edacfcd31b`):
+        - 15 ESLint uyarısı, davranış değişmeden;
+        - ESLint CI'da engelleyici (sıfır uyarı);
+        - ders 40;
+        - sahte arka uç (`?mock` vb.) yalnızca geliştirme sürümünde, kurulu sürümde yok.
+      - Kalan:
+        - PR #55 birleşince `node tools/notices.mjs` ile `third-party-notices.txt`'yi yenile.
+        - **Keymotion açılış animasyonu:** fabrika yedeği olmayanların GIF sayfasına koyabileceği özgün görsel (K harfinin çizgileri sırayla belirir, turuncu çizgi yanar). Önce önizlemeyle göster, onaydan sonra üret.
+        - İstenirse `cargo clean`: ortak `target` klasöründe eski yardımcıların derlemeleri duruyor. Silmeden önce kullanıcıya sor; tam derleme birkaç dakika sürer.
+    - **Kullanıcının elle deneyeceği şeyler** (ben yapamıyorum):
+      - klavye yokken açılış ekranı (kablo çekilir);
+      - yükleme ortasında kablo çekip yeniden açınca "yarım kaldı" önerisi;
+      - yükleme sırasında Windows'u kapatmak;
+      - küçük ekranda (1920×1080, %150) pencerenin sığması;
+      - Bluetooth kanal kısayolları (Fn+Q/W/E) ve denenmemiş tuş atamaları (B8);
+      - hatırlatıcı Windows bildiriminin ekranda göründüğü.
+    - **Sıradaki adımlar (temiz bağlamda):**
+      1. Yardımcının dalını incele, birleştir; notices'i yenile.
+      2. Keymotion açılış animasyonu: önce önizleme.
+      3. **Ürünleştirme (F):**
+         - **Tepsi ve arka plan (önce kullanıcının kararı):** pencere kapatılınca uygulama tamamen mi kapansın, yoksa saatin yanındaki tepside simge olarak çalışmaya devam mı etsin? Odak zamanlayıcısı, hatırlatıcılar, takvim kartları, canlı ekran ve sistem göstergeleri ancak uygulama çalışırken iş görür. Ek sorular: Windows açılınca kendiliğinden başlasın mı; tepsi menüsünde ne olsun (aç, odak başlat, profil seç, çık). Teknik not: canlı kartlar WebView'da çiziliyor; pencere gizliyken çizmeye devam etmeli (gizli pencere yeterli mi, ölçülecek).
+         - NSIS kurulum ayarları ve kod imzalama (SignPath Foundation ya da Azure Artifact Signing).
+         - Sürüm hattı (GitHub Actions ile kurulum dosyası ve sürüm notları) ve otomatik güncelleyici.
+         - Güç kullanımı ölçümü (arka planda çalışırken).
+         - Rust paket adı: `klavye-studio` → `keymotion` (kurulu exe adı ve Görev Yöneticisi'nde görünen ad). Kullanıcıya sorulmadı; ürünleştirmede öner.
+         - Uygulama içinden sorun bildirme ve desteklenmeyen klavye için "destek iste" (bölüm I, yalnızca GitHub).
+      4. **GitHub sayfası (H):** İngilizce varsayılan + Türkçe; kullanım belgeleri; TR/EN ve açık/koyu ekran görüntüleri; denenen ortam; issue formları (hata, klavye desteği, öneri); `SECURITY.md`; Discussions'a yönlendirme; lisans notları; kurtarma rehberi (B9).
+      5. **Sonraya bırakılanlar:** oyun oturumu, ses spektrumu, başka modeller (P4), 2.4G alıcısı (pil yüzdesi `20 01`), Bluetooth işleri.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -967,6 +992,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 52 | Genel Bakış'ta "240×135" yerine bozuk karakter çıktı; PR #50 develop'a öyle birleşti (2026-11-11) | Bir dosyada küçük bir değişiklik PowerShell 5.1'in `Get-Content -Raw` / `Set-Content -Encoding utf8` ikilisiyle yapıldı. `Get-Content` kodlama verilmezse dosyayı ANSI (cp1254) okur; Türkçe harfler ve × bozulup UTF-8 (BOM'lu) yazıldı. Tarama bunu yakalamadı: aranan kelimeler değil, bozuk harf dizisiydi | Dosya içeriğini PowerShell'de okuyup yazma; Edit aracını ya da `python -I` (açık `encoding="utf-8"`) kullan. Taramaya bozuk kodlama denetimi ekle (`Ã`, `Ä±`, `ÅŸ` gibi diziler). Bozulan dosya `metin.encode("cp1254").decode("utf-8")` ile birebir geri döndü. |
 | 53 | Claude Design tuvalinde artboard'lar hata verdi (2026-11-11/12) | Tuval aracı `.dc.html` betiğini kaçış karakterlerine duyarlı bir metnin içine koyuyor: betikteki ters eğik çizgi, ters tırnak ve `${` kodu bozdu (`Unexpected token ';'`). Ayrıca SVG öznitelikleri tireli yazılmıştı (`stroke-width`; React `strokeWidth` ister), stil delikleri metin olarak verilmişti (React stil nesnesi ister), form alanlarında `value`/`checked` vardı | Tuval betiklerinde bu karakterleri yazma, `String.fromCharCode` ile üret. SVG özniteliklerini camelCase yaz, `style="{{x}}"` deliğine nesne ver, statik form alanında `defaultValue`/`defaultChecked` kullan. Tuvali kendin göremiyorsan (claude.ai girişi) kullanıcıdan hatanın ekran görüntüsünü iste. **Sonradan bulunan asıl neden (sürüm 13):** `K.map(... => { ... };` — kapanış parantezi eksikti; karakter düzeltmeleri hatayı gidermedi. Kaydetmeden önce her tuval betiğini `node tools/check-dc.mjs project/*.dc.html` ile derleyip `renderVals()`'ı çalıştır. |
 | 54 | Yeni sürümü gerçek uygulamada denemek kullanıcının verisini tek yönlü değiştirdi (2026-11-12) | Birleşik sürüm ilk açılışta takvim adresini DPAPI ile şifreliyor ve ışık durumunu WebView'dan `lighting.json`'a taşıyor; eski sürüm bunları geri okuyamaz. Bozuk kayıt denemesi de gerçek `keymap.json`'u bozmayı gerektirdi | Veri taşıyan bir sürümü ilk kez açmadan önce `%APPDATA%\dev.keymotion` ve `%LOCALAPPDATA%\dev.keymotion\EBWebView\Default\Local Storage` yedeğini scratchpad'e al. Dosya bozma denemesinde önce yedeğin birebir aynı olduğunu (hash) doğrula, denemeden sonra aynen geri koy ve `.bak` dosyasını kaldır. |
+| 55 | Birleşmiş yardımcı klasörleri `git worktree remove` ile silinemedi (2026-11-12) | Git kaydı sildi ama dosyalar kaldı: Windows'ta büyük `node_modules` ve açık dosyalar. Üç yardımcı kendi Vite sunucusunu (1431, 1437, 1491) açık bırakmıştı; bunlar `app/.vite`'yi tutuyordu | Silmeden önce her klasörün temiz (`git status`) ve dalının birleşmiş olduğunu doğrula. Kalan dosyaları bağlantıları izlemeyen `cmd /c rmdir /s /q` ile sil. Önce o klasörden çalışan `node` süreçlerini bul (`Win32_Process` komut satırı) ve kapat. Yardımcı görevlerine "işin bitince başlattığın sunucuyu kapat" yaz. |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 
@@ -1015,7 +1041,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
           - **Destek haritası yapıldı** (madde 37, `docs/destek-haritasi.md`): desteklenen ve eklenebilecek klavyeler, bağlantı modlarına göre özellikler, Bağlantı sayfası, 2.4G'de yanlış açık görünen sayfalar düzeltildi, HID şekil denetimi, arayüz metin borçları kapandı, USB'de pil araştırması (yüzde yok; Fn ışığından "şarj oluyor" / "şarj tamamlandı").
           - **İlk sürüm öncesi eksik listesi** (2026-11-11, `docs/urun-eksikleri.md`): iki bağımsız inceleme (tasarım ve kullanım; ürün hazırlığı) ve bu oturumun gözlemleri, ciddi olanlar kodda doğrulandı. Sıra: kimlik (isim, logo, uygulama kimliği) → güven → görsel ve içerik turu → veri ve tanılama → ürünleştirme ve repo. İsim adayları ve logo konseptleri Claude Design tuvalinde (Keypane önerildi).
           - Kullanıcı isim ve logoyu seçti (Keymotion, E konsepti). Ardından eksik listesinin tamamı başladı (madde 38).
-          - **Kalınan yer (2026-11-12, gece): madde 38'deki "Sıradaki adımlar"** — altı yardımcı (profiller dahil) birleşti, gerçek uygulamada denendi, PR #57 develop'a gidiyor. Sırada: Keymotion açılış animasyonu, küçükler, sonra ürünleştirme (F) ve sorun bildirme (I). Kullanıcıyla klavyede denenecekler: Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri.
+          - **Kalınan yer (2026-11-12, gece): madde 38'in sonundaki "Sıradaki adımlar (temiz bağlamda)"** — PR #57 birleşti; repo `keymotion` oldu, Discussions açıldı, varsayılan dil İngilizce. Lint ve sahte arka uç yardımcısının dalı incelenip birleştirilecek. Ardından açılış animasyonu (önce önizleme), sonra ürünleştirme: önce kullanıcının tepsi ve arka plan kararı. Kullanıcıyla klavyede denenecekler: Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri.
           - Sonraya: oyun oturumu (ön plandaki uygulama: açılınca kart, kapanınca özet). Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.

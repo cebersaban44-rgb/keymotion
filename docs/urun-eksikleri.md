@@ -274,6 +274,12 @@ Kurulu sürümde bir hata olduğunda ya da bir özellik başka bir klavyede çal
 6. **Bütün "Şart" ve "Olmalı" maddeleri yapılacak.** Açılış ekranı dahil. Kullanıcı, alt ajanların kullanılabileceğini ve dış referanslara bakılabileceğini söyledi; amaç ürünün en üst seviyede olması.
 7. **Açık kalan:** tepsi modunda canlı kartların nasıl çizileceği (Rust'ta mı, gizli pencerede mi) ürünleştirme başlarken kararlaştırılacak (F).
 
+Ek kararlar (2026-11-12):
+- Uygulamanın ve GitHub sayfasının varsayılan dili İngilizce; ikisinde de Türkçe seçilebilir.
+- Repo adı `keymotion` (yeniden adlandırıldı).
+- GitHub Discussions açık (soru-cevap).
+- Sorun bildirme yalnızca GitHub üzerinden.
+
 ## Uygulama durumu (2026-11-12, birleştirme sonrası)
 
 Ayrıntı ve yardımcıların listesi: `DURUM.md` madde 38.
@@ -291,6 +297,8 @@ Ayrıntı ve yardımcıların listesi: `DURUM.md` madde 38.
 | E. Profiller | Profiller sayfası, Genel Bakış kartı | **Birleşti** (PR #57). Gerçek uygulamada dört yükleme denemesi geçti |
 | F. Ürünleştirme | Tepsi, NSIS, imza, sürüm hattı, güncelleyici, güç | Görsel tur ve birleştirme bittikten sonra |
 | G. Repo ve hukuk | Lisans, NOTICE, üçüncü taraf lisansları, CI denetimleri, ESLint, Dependabot, cargo-deny, CHANGELOG | **Bitti** (PR #54). Kalan: ESLint'in 15 uyarısı, `?mock` anahtarlarının kurulu sürümden çıkarılması |
-| H. GitHub sayfası | İki dilli README ve belgeler, ekran görüntüleri, issue formları, topluluk dosyaları | Ürünleştirmeden sonra |
+| H. GitHub sayfası | İki dilli README ve belgeler, ekran görüntüleri, issue formları, topluluk dosyaları | Ürünleştirmeden sonra. Kararlar verildi: varsayılan İngilizce (`README.md`) + Türkçe (`README.tr.md`), repo adı `keymotion` (yapıldı), Discussions açık (yapıldı) |
 | I. Sorun bildirme | Uygulama içinden sorun bildirme, desteklenmeyen klavye bildirimi | Planlandı, ürünleştirmeyle birlikte (bölüm I) |
+| Dil | Uygulamanın varsayılan dili | **İngilizce** (2026-11-12, yapıldı); Türkçe seçilebilir |
+| Tepsi ve arka plan | Pencere kapanınca uygulamanın tepside çalışmaya devam etmesi | Kullanıcının kararı bekleniyor (DURUM madde 38) |
 | Keymotion açılış animasyonu | Fabrika yedeği olmayanlar için özgün görsel | Profillerle birlikte ya da hemen sonra |
