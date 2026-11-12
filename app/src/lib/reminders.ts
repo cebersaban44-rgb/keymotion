@@ -4,8 +4,6 @@
 // cards, which go through the live mode. The browser preview keeps a small
 // copy of the schedule for its fake reminders: keep the two in step.
 
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type { Reminder } from "../bindings/Reminder";
 import type { ReminderCard } from "../bindings/ReminderCard";
@@ -14,7 +12,7 @@ import type { ReminderSettings } from "../bindings/ReminderSettings";
 import type { ReminderState } from "../bindings/ReminderState";
 import type { ReminderWhen } from "../bindings/ReminderWhen";
 import type { MessageKey, Translate } from "./i18n";
-import { inTauri } from "./ipc";
+import { inTauri, invoke, listen } from "./ipc";
 import { mockLiveHold, mockReturnAfter, submitLive, useLive } from "./live";
 import type { Prepared } from "./screenImport";
 
@@ -244,12 +242,12 @@ function mockStart() {
 // ------------------------------------------------------------------- ipc
 
 export function getReminders(): Promise<ReminderState> {
-  if (!inTauri) return Promise.resolve(mockState());
+  if (import.meta.env.DEV && !inTauri) return Promise.resolve(mockState());
   return invoke<ReminderState>("reminders_state");
 }
 
 export function configureReminders(settings: ReminderSettings): Promise<ReminderState> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     mock.settings = { ...settings };
     return Promise.resolve(mockState());
   }
@@ -257,7 +255,7 @@ export function configureReminders(settings: ReminderSettings): Promise<Reminder
 }
 
 export function saveReminder(reminder: Reminder): Promise<ReminderState> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     const r = { ...reminder, title: reminder.title.trim(), note: reminder.note.trim() };
     if (!r.title) return Promise.reject(new Error("title empty"));
     if (r.enabled && r.when.kind === "once" && r.when.at <= Date.now()) return Promise.reject(new Error("time passed"));
@@ -274,7 +272,7 @@ export function saveReminder(reminder: Reminder): Promise<ReminderState> {
 }
 
 export function removeReminder(id: string): Promise<ReminderState> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     mock.reminders = mock.reminders.filter((r) => r.id !== id);
     return Promise.resolve(mockState());
   }
@@ -283,14 +281,14 @@ export function removeReminder(id: string): Promise<ReminderState> {
 
 /** "Dene": the wave in this colour on the keys (and the sound). */
 export function tryReminderLight(color: Rgb, sound: boolean): Promise<void> {
-  if (!inTauri) return Promise.resolve();
+  if (import.meta.env.DEV && !inTauri) return Promise.resolve();
   return invoke("reminders_try", { color, sound });
 }
 
 /** After a tried card went to the live mode: send it now, own picture
  *  back after a minute. */
 export function tryReminderCardBack(): Promise<void> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     mockReturnAfter(REMINDER_SOURCE, 60_000);
     return Promise.resolve();
   }
@@ -352,7 +350,7 @@ export function startReminders(draw: (c: ReminderCard) => Promise<Prepared>): ()
     }
   };
   useReminders.getState().load().catch(console.error);
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     mock.emit = (s) => useReminders.setState({ state: s });
     mock.onCard = (c) => void onCard(c);
     return () => {

@@ -2,15 +2,13 @@
 // screen hold live in the backend; the UI shows the timer, changes its
 // settings and draws the cards it asks for, which go through the live mode.
 
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type { PomodoroAction } from "../bindings/PomodoroAction";
 import type { PomodoroCard } from "../bindings/PomodoroCard";
 import type { PomodoroPhase } from "../bindings/PomodoroPhase";
 import type { PomodoroSettings } from "../bindings/PomodoroSettings";
 import type { PomodoroState } from "../bindings/PomodoroState";
-import { inTauri } from "./ipc";
+import { inTauri, invoke, listen } from "./ipc";
 import { mockCancelReturn, mockLiveHold, mockReturnAfter, submitLive, useLive } from "./live";
 import { TRY_MS, phaseRgb, toHex } from "./pomodoroLights";
 import type { Prepared } from "./screenImport";
@@ -72,7 +70,7 @@ export function fmtClock(ms: number) {
 
 /** Browser preview without Tauri: the same timer in memory. With
  *  `pomofast` in the address a minute lasts two seconds. */
-const MINUTE = typeof location !== "undefined" && location.search.includes("pomofast") ? 2_000 : 60_000;
+const MINUTE = import.meta.env.DEV && typeof location !== "undefined" && location.search.includes("pomofast") ? 2_000 : 60_000;
 
 const mock = {
   settings: { ...DEFAULT_SETTINGS },
@@ -229,17 +227,17 @@ function mockControl(action: PomodoroAction): PomodoroState {
 // ------------------------------------------------------------------- ipc
 
 export function getPomodoro(): Promise<PomodoroState> {
-  if (!inTauri) return Promise.resolve(mockState());
+  if (import.meta.env.DEV && !inTauri) return Promise.resolve(mockState());
   return invoke<PomodoroState>("pomodoro_state");
 }
 
 export function controlPomodoro(action: PomodoroAction): Promise<PomodoroState> {
-  if (!inTauri) return Promise.resolve(mockControl(action));
+  if (import.meta.env.DEV && !inTauri) return Promise.resolve(mockControl(action));
   return invoke<PomodoroState>("pomodoro_control", { action });
 }
 
 export function configurePomodoro(settings: PomodoroSettings): Promise<PomodoroState> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     // Cards turned off while it runs: its card leaves the screen.
     const wanted = mockCardsWanted();
     mock.settings = { ...settings };
@@ -299,7 +297,7 @@ export function startPomodoro(draw: (c: PomodoroCard) => Promise<Prepared>): () 
     }
   };
   usePomodoro.getState().load().catch(console.error);
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     mock.emit = (s) => usePomodoro.setState({ state: s });
     mock.onCard = (c) => void onCard(c);
     // The live mode switch changes whether the mock holds the screen.

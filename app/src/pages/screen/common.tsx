@@ -12,7 +12,7 @@
 
 import { AlertTriangle, Check, Download, Info, Library, Loader2, Pencil, Play, Upload, Usb, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { ScreenItem } from "../../bindings/ScreenItem";
 import { Field } from "../../components/controls";
@@ -77,9 +77,15 @@ export const pickThumb = brightestFrame;
  */
 export function useItemName() {
   const t = useT();
+  const factoryName = t("sc.factory.name");
   const factory = useScreen((s) => s.state?.items.find((i) => i.kind === "factory") ?? null);
-  return (x: { id?: string | null; name: string }) =>
-    factory && (x.id ? x.id === factory.id : x.name === factory.name) ? t("sc.factory.name") : x.name;
+  // The same function until the factory item or the language changes, so a
+  // memo that uses it does not recompute on every render.
+  return useCallback(
+    (x: { id?: string | null; name: string }) =>
+      factory && (x.id ? x.id === factory.id : x.name === factory.name) ? factoryName : x.name,
+    [factory, factoryName],
+  );
 }
 
 /** The library has the factory backup (`true` until the library is known). */

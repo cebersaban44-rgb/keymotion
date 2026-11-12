@@ -1,14 +1,12 @@
 // Screen studio state: the library (stored on disk by the backend), what the
 // keyboard's GIF page shows, and a running upload.
 
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type { ScreenIncomplete } from "../bindings/ScreenIncomplete";
 import type { ScreenItem } from "../bindings/ScreenItem";
 import type { ScreenProgress } from "../bindings/ScreenProgress";
 import type { ScreenState } from "../bindings/ScreenState";
-import { flashWrite, inTauri } from "./ipc";
+import { flashWrite, inTauri, invoke, listen } from "./ipc";
 import { FRAME_PIXELS, HEADER_LEN, pagesFor, toBlob, type Prepared } from "./screenImport";
 
 // ------------------------------------------------------------------- ipc
@@ -39,7 +37,7 @@ const mock = {
 
 /** Browser preview: `?mock=usb&driver` pretends AJAZZ's official driver is
  *  installed, so its factory animation can be backed up. */
-const MOCK_DRIVER = typeof location !== "undefined" && /[?&]driver\b/.test(location.search);
+const MOCK_DRIVER = import.meta.env.DEV && typeof location !== "undefined" && /[?&]driver\b/.test(location.search);
 
 function mockState(): ScreenState {
   return {
@@ -66,7 +64,7 @@ function mockCutUpload(id?: string) {
   const modelId = useScreen.getState().modelId;
   if (modelId) void useScreen.getState().load(modelId);
 }
-if (!inTauri && typeof window !== "undefined") {
+if (import.meta.env.DEV && !inTauri && typeof window !== "undefined") {
   (window as unknown as { __ksMockIncomplete: (id?: string) => void }).__ksMockIncomplete = mockCutUpload;
 }
 
@@ -118,14 +116,14 @@ export function mockRestored(id: string) {
 }
 
 export function getScreenState(modelId: string): Promise<ScreenState> {
-  if (!inTauri) return Promise.resolve(mockState());
+  if (import.meta.env.DEV && !inTauri) return Promise.resolve(mockState());
   return invoke<ScreenState>("screen_state", { modelId });
 }
 
 /** Store a prepared animation in the library (validated again in Rust). */
 export async function addToLibrary(p: Prepared): Promise<ScreenItem> {
   const blob = toBlob(p);
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     const id = Math.random().toString(16).slice(2, 18).padEnd(16, "0");
     const loop = p.delaysMs.reduce((a, d) => a + Math.max(2, Math.round(d / 2) * 2), 0);
     const item: ScreenItem = {
@@ -149,7 +147,7 @@ export async function addToLibrary(p: Prepared): Promise<ScreenItem> {
 
 /** Stored data of an item (header + frames), at most `frames` frames. */
 export async function itemData(id: string, frames?: number): Promise<ArrayBuffer> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     const d = mock.data.get(id) ?? new Uint8Array(HEADER_LEN + FRAME_PIXELS * 2);
     const n = frames ? Math.min(d.length, HEADER_LEN + frames * FRAME_PIXELS * 2) : d.length;
     return d.slice(0, n).buffer;
@@ -158,7 +156,7 @@ export async function itemData(id: string, frames?: number): Promise<ArrayBuffer
 }
 
 export async function renameItem(modelId: string, id: string, name: string): Promise<ScreenState> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     const it = mock.items.find((i) => i.id === id);
     if (it) it.name = name;
     return mockState();
@@ -167,7 +165,7 @@ export async function renameItem(modelId: string, id: string, name: string): Pro
 }
 
 export async function removeItem(modelId: string, id: string): Promise<ScreenState> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     mock.items = mock.items.filter((i) => i.id !== id);
     return mockState();
   }
@@ -180,7 +178,7 @@ function uploadItem(modelId: string, id: string, onProgress: (p: ScreenProgress)
 }
 
 async function uploadOnce(modelId: string, id: string, onProgress: (p: ScreenProgress) => void): Promise<ScreenState> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     const item = mock.items.find((i) => i.id === id);
     const total = item?.pages ?? 16;
     for (let done = 1; done <= total; done += Math.max(1, Math.floor(total / 40))) {
@@ -208,13 +206,13 @@ async function uploadOnce(modelId: string, id: string, onProgress: (p: ScreenPro
 /** Whether AJAZZ's official driver left its copy of the factory animation
  *  on this PC (the backend searches once per run, off the UI thread). */
 async function findDriverBackup(): Promise<boolean> {
-  if (!inTauri) return MOCK_DRIVER;
+  if (import.meta.env.DEV && !inTauri) return MOCK_DRIVER;
   return invoke<boolean>("screen_find_driver_backup");
 }
 
 /** Keep the official driver's copy as the factory backup. */
 async function backupFromDriver(modelId: string): Promise<ScreenState> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     await new Promise((r) => setTimeout(r, 600));
     if (!mock.items.some((i) => i.kind === "factory")) mock.items.push(mockFactoryItem());
     return mockState();
