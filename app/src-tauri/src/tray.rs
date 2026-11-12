@@ -73,13 +73,13 @@ const SETTLE: Duration = Duration::from_millis(250);
 #[serde(rename_all = "camelCase", default)]
 struct Stored {
     close_to_tray: bool,
-    /// The "still running" notice was shown (once, the first time).
-    notice_shown: bool,
+    // Older files also hold `noticeShown` (the notice used to come once per
+    // computer); it is read and ignored.
 }
 
 impl Default for Stored {
     fn default() -> Self {
-        Self { close_to_tray: true, notice_shown: false }
+        Self { close_to_tray: true }
     }
 }
 
@@ -90,6 +90,8 @@ pub struct Background {
     dir: Option<PathBuf>,
     /// "Quit" was chosen: the next close ends the app instead of hiding it.
     quitting: AtomicBool,
+    /// The "still running" notice was shown in this run of the app.
+    notice_given: AtomicBool,
     refresh: Mutex<Option<Sender<()>>>,
 }
 
@@ -101,6 +103,7 @@ impl Background {
             texts: Mutex::new(TrayTexts::default()),
             dir,
             quitting: AtomicBool::new(false),
+            notice_given: AtomicBool::new(false),
             refresh: Mutex::new(None),
         })
     }
@@ -133,7 +136,7 @@ impl Background {
     pub fn configure(&self, wanted: BackgroundSettings) -> Result<BackgroundSettings, String> {
         let now = self.settings();
         if wanted.close_to_tray != now.close_to_tray {
-            self.save(Stored { close_to_tray: wanted.close_to_tray, ..self.stored() })?;
+            self.save(Stored { close_to_tray: wanted.close_to_tray })?;
             tracing::info!(close_to_tray = wanted.close_to_tray, "background setting");
         }
         let fix = wanted.start_with_windows && now.start_turned_off;
@@ -171,16 +174,11 @@ impl Background {
         self.quitting.store(false, Ordering::SeqCst);
     }
 
-    /// True once: the first time the window is hidden.
+    /// True once per run of the app: the first time the window is hidden
+    /// (owner's decision, 2026-11-12). Started hidden with Windows, the
+    /// window is not closed until the user opens it, so no notice comes then.
     fn take_notice(&self) -> bool {
-        let s = self.stored();
-        if s.notice_shown {
-            return false;
-        }
-        if let Err(e) = self.save(Stored { notice_shown: true, ..s }) {
-            tracing::warn!("{e}");
-        }
-        true
+        !self.notice_given.swap(true, Ordering::SeqCst)
     }
 }
 
@@ -840,6 +838,21 @@ mod tests {
     fn stored_defaults_keep_the_app_in_the_tray() {
         let s: Stored = serde_json::from_str("{}").unwrap();
         assert!(s.close_to_tray);
-        assert!(!s.notice_shown);
+    }
+
+    #[test]
+    fn older_settings_with_the_notice_flag_still_load() {
+        let s: Stored = serde_json::from_str(r#"{"closeToTray":false,"noticeShown":true}"#).unwrap();
+        assert!(!s.close_to_tray);
+    }
+
+    #[test]
+    fn the_notice_comes_once_per_run() {
+        let bg = Background::open(None);
+        assert!(bg.take_notice());
+        assert!(!bg.take_notice());
+        assert!(!bg.take_notice());
+        // A new run of the app (a new Background) shows it again.
+        assert!(Background::open(None).take_notice());
     }
 }

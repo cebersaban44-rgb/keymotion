@@ -149,14 +149,10 @@ fn encode(s: &str) -> String {
     out
 }
 
-#[cfg(windows)]
+/// Open the page in the default browser (`explorer.exe` opened the
+/// Documents folder for an address with a query; K4).
 fn open(url: &str) -> Result<(), String> {
-    std::process::Command::new("explorer.exe").arg(url).spawn().map(|_| ()).map_err(|e| e.to_string())
-}
-
-#[cfg(not(windows))]
-fn open(_url: &str) -> Result<(), String> {
-    Err("opening pages is only available on Windows".into())
+    kb_winsys::shell::open_url(url).inspect_err(|e| tracing::warn!("{e}"))
 }
 
 #[cfg(test)]
