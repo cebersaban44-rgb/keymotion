@@ -30,10 +30,10 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 | 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bitti (PR #63); GitHub ayarları kullanıcı onayıyla açıldı |
 | 5 | Kurulum dosyası (NSIS), imzasız | 1, 2 | Kurulum ayrıntılarına onay | Yapıldı (PR'da); kullanıcının elle denemesi ve kurulum görselleri bekliyor |
 | 5c | Kurulum denemesi bulguları (K1–K11): simge ve görseller, GitHub bağlantıları, hatırlatıcı kartı, ekran durumu, odak zamanlayıcısı, bildirim, Genel bakış | 5 | Kararlar verildi: K9 her açılışta bir kez; K2, K7, K11 için A | Yapıldı (PR #72–#77); klavyede gerçek yüklemeyle deneme kullanıcıda |
-| 5d | Kullanıcının geri bildirimleri (K12 Genel bakış'taki klavye çizimi, K13 açılış logosunun keskinliği) ve denemeleri | 5c | — | K12 yapıldı (A); K13 kapandı (kod değişikliği gerekmedi); A denemeleri yapıldı, K14 düzeltildi; B kurulum derlemesiyle |
+| 5d | Kullanıcının geri bildirimleri (K12 Genel bakış'taki klavye çizimi, K13 açılış logosunun keskinliği) ve denemeleri | 5c | — | **Bitti (2026-11-12):** K12 yapıldı (A); K13 kapandı; A ve B denemeleri yapıldı; K14 düzeltildi; K15 Aşama 8'den önceye kaldı |
 | 6 | Sürüm hattı (GitHub Actions) ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | **Bitti (2026-11-12):** güncelleyici, anahtar, iş akışı, rc.1 → rc.2 güncellemesi kullanıcının bilgisayarında çalıştı. Deneme ön sürümleri silindi. Kalan: K15 kurulum görselleri (Aşama 8'den önce) |
 | 6b | Uygulama penceresinin açılış animasyonu | 5 (kurulu sürümle ölçülür) | Seçim A (2026-11-12) | Yapıldı (PR #78); kurulu sürümde açılış süresi ölçülecek |
-| 7 | GitHub sayfası ve bütün belgeler, SignPath'in sayfa şartları dahil | 5, 6 (kurulum ve indirme adımları belli) | Belge yapısına ve görünümüne onay (önce önizleme) | Bekliyor |
+| 7 | GitHub sayfası ve bütün belgeler, SignPath'in sayfa şartları dahil; `CHANGELOG.md` 0.1.0 bölümü ve Türkçe sürüm notları | 5, 6 (kurulum ve indirme adımları belli) | Önce kullanıcıyla planlama görüşmesi; belge yapısına ve görünümüne onay (önce önizleme) | Sırada: planlama görüşmesi |
 | 8 | Son denemeler ve ilk sürüm 0.1.0 (imzasız) | hepsi | Elle denemeler; `main`'e birleştirme onayı | Bekliyor |
 | 9 | Kod imzalama: SignPath Foundation başvurusu ve imzalı sürüm (eskiden 1b) | 8 ve kullanım kanıtı | Başvuruyu kullanıcı yapar; formu birlikte doldururuz | İlk sürümden sonra |
 
@@ -544,6 +544,17 @@ Claude'un denemediği ya da yalnızca tarayıcı önizlemesinde denediği her ş
 - **2 (K9), arka plan bildirimi hiç gelmedi.** Sebep ortam: geliştirme sürümünü Claude başlattığı için Claude'un kutusunda çalışıyor. Uygulama bildirimlerde adı ve logosu görünsün diye kayıt defterine (`HKCU\Software\Classes\AppUserModelId\dev.keymotion`) yazıyor; bu kayıt yalnızca kutunun içinde var, gerçek Windows'ta yok (kutunun dışından bakıldı). Windows tanımadığı uygulamanın bildirimini sessizce atıyor; uygulamanın kaydında hata yok, "window hidden" satırı var. Kod değişmedi; deneme B'nin 10. maddesine taşındı (kurulu sürüm kaydı gerçek Windows'a yazar).
 - **K14. Bir hatırlatıcının satırındaki "Dene": kart ve ışıklar geldi, ama bir dakika sonra kendi görseli geri gelmedi.** Sebep: "Dene" kartı hemen gönderir ve bir dakika sonrası için dönüş kurar; dönüş, sırada gönderilmeye hazır bir kart görünce "ekrana o gelecek" diye iptal ediliyordu, oysa o kart hatırlatıcının kendi kartıydı. Takvimdeki "Dene" de aynıydı; hatırlatıcının ve toplantının kendi saatinde gelen kartı etkilenmiyordu (dönüş, kart ekrandan kalkarken kuruluyor). **Düzeltildi:** dönüşü yalnızca başka bir kaynağın hazır kartı iptal ediyor; kaynağın kendi kartı gönderilirken dönüş onu bekliyor ve süresi dolunca kendi görseline dönülüyor (`live.rs` `back_inputs`, birim testi). Kullanıcı "Dene"yi yeniden dener.
 
+
+**B, kurulu sürümle (2026-11-12, akşamüstü; Aşama 6'nın deneme sürümleri rc.1 ve rc.2, GitHub'dan indirilip gerçek Windows'a kuruldu):** hepsi denendi.
+- **8 (K1, K2, K3), kurulum:** Windows uyarısı çıkmadı; simge, Türkçe sayfalar ve metinler doğru. Bulunan: **K15**, üst banttaki logo ile yazı ve bitiş sayfasının solundaki görsel pikselli (Aşama 6, "Kullanıcının geri bildirimi"; Aşama 8'deki son derlemeden önce düzeltilecek).
+- **9 (K10), kaldırma:** çalıştı (kullanıcı denedi).
+- **10 (K9), arka plan bildirimi:** kurulu sürümde Keymotion adı ve logosuyla geliyor, her açılışta bir kez. Geliştirme sürümünde görünmemesinin sebebi Claude'un kutusuydu (A, 2. madde); kodda sorun yoktu.
+- **11 (6b), açılış süresi:** kullanıcının gözlemi: animasyon açılışı uzatmıyor. Süre ölçülmedi.
+- **12 (K4), GitHub bağlantıları:** kurulu sürümde tarayıcıda açılıyor.
+- Ayrıca kurulu sürümle güncelleme akışı (rc.1 → rc.2) uçtan uca çalıştı (Aşama 6).
+
+Aşama 5d bitti: A ve B denemeleri yapıldı; K12, K13, K14 kapandı, K15 Aşama 8'den önceye kaldı.
+
 ## Aşama 6: sürüm hattı ve otomatik güncelleyici
 
 - **GitHub Actions:**
@@ -575,7 +586,7 @@ Claude'un denemediği ya da yalnızca tarayıcı önizlemesinde denediği her ş
      - İkinci çalıştırma başarılı (yaklaşık 20 dk). Taslakta: `Keymotion_0.1.0_x64-setup.exe` (5,3 MB), `.exe.sig`, `latest.json` (6,8 KB). İmzanın anahtar kimliği uygulamadaki ortak anahtarla aynı (`B9EAB4ACA904885A`); `latest.json`'daki imza `.sig` ile birebir aynı; adres `releases/download/v0.1.0/…`. Notlar yalnızca İngilizce (Türkçe `docs/surum-notlari.md` henüz yok); başta "Test build" satırı, sonda SHA-256.
      - Taslak kullanıcının onayıyla silindi; `v0.1.0` etiketi oluşmadı.
      - Ayrıca: PR #83, zorunlu olmayan "Supply chain (cargo-deny)" denetimi kırmızıyken birleşti (ISC lisanslı `ring`, `untrusted`, `rustls-webpki`); düzeltme PR #84 (ISC izinli, üçüncü taraf bildirimleri yeniden üretildi). Öneri: bu denetimi de zorunlu yapmak (depo ayarı, kullanıcının onayıyla).
-     - Aşama 8 için not: gerçek sürümden önce `CHANGELOG.md`'de `## [0.1.0] - <tarih>` bölümü ve Türkçe notlar için `docs/surum-notlari.md` yazılır.
+     - Not: `CHANGELOG.md`'de `## [0.1.0] - <tarih>` bölümü ve Türkçe notlar (`docs/surum-notlari.md`) Aşama 7'de yazılır (kullanıcının kararı, 2026-11-12: GitHub sayfasına ait).
   3. **Yapıldı (2026-11-12, kullanıcının onayıyla): rc.1 → rc.2 güncellemesi uçtan uca çalıştı.**
      - Depo herkese açık (kullanıcı gizli sanıyordu; gizli depoda güncelleyici çalışamaz, çünkü uygulama GitHub'a girişsiz bakıyor). Kullanıcı açık kalmasını ve ön sürümlerle denemeyi onayladı.
      - Önce: deneme sürümleri GitHub'ın listesinden sürüm numarası en büyük olanı seçiyor, listenin sırasını değil (PR #87).
@@ -616,6 +627,8 @@ Kullanıcının kararı (2026-11-12): uygulama açılırken bir giriş animasyon
 
 Kullanıcının kararı (2026-11-12): GitHub sayfası yalnızca imza şartları için yapılmaz. Bizim belgelerle ilgili bütün notlarımız ve isteklerimiz, SignPath'in şartları ve ürünün görünümü bu aşamada bir araya gelir. GitHub sayfası baştan sona, tek bir yapıyla düzenlenir; ürünün GitHub'daki profesyonel görünümü ve içeriği burada tamamlanır.
 
+**Nasıl yapılır (kullanıcının kararı, 2026-11-12):** bu aşamada yapılacak her şey önce planlanır ve kullanıcıyla konuşulur. Claude bütün işlerin planını çıkarır (aşağıdaki 7.1–7.4), kullanıcıyla birlikte üstünden geçer; kullanıcı kendi fikirlerini ekler. Her şey ayrıntılı konuşulup netleştirildikten sonra iş tek seferde yapılır, parça parça değil. Planlama görüşmesinden önce yazıma başlanmaz.
+
 Bu aşamada birleşen kaynaklar:
 - `docs/urun-eksikleri.md` bölüm H (kullanıcının notu, 2026-11-11): iki dilli sayfalar, ekran görüntüleri, kullanım belgeleri, topluluk dosyaları;
 - `docs/DURUM.md` §7 P3 "İlk sürümde belge ve GitHub gözden geçirmesi";
@@ -644,6 +657,7 @@ Bu aşamada birleşen kaynaklar:
 - **Lisans ve haklar:** LICENSE-MIT ve LICENSE-APACHE, NOTICE (AJAZZ'dan bağımsızlık notu), üçüncü taraf lisansları.
 - **Topluluk:** Discussions ve sorun formlarına bağlantılar.
 - **Sürüm sayfası:** sürüm notu (CHANGELOG'dan), kurulum dosyası ve SHA-256, iki dilde kısa özet, "Code signing policy" bağlantısı.
+- **Sürüm notları (Aşama 8'den buraya alındı, kullanıcının kararı, 2026-11-12):** `CHANGELOG.md`'de `## [0.1.0] - <tarih>` bölümü (İngilizce; sürüm hattı etiketli derlemede bu bölümü ister) ve Türkçe karşılığı `docs/surum-notlari.md` (aynı başlıkla; uygulamanın kurulum penceresi Türkçe arayüzde bunu gösterir, yoksa GitHub'a bağlantı verir). İmzasız ilk sürümde Windows uyarısını geçme yolu da notta yazar.
 
 ### 7.3 Ekran görüntüleri
 
@@ -681,8 +695,8 @@ Bu aşamada birleşen kaynaklar:
   - küçük ekranda (1920×1080, %150) pencerenin sığması;
   - Bluetooth kanal kısayolları (Fn+Q/W/E) ve denenmemiş tuş atamaları (B8);
   - hatırlatıcı Windows bildiriminin ekranda göründüğü.
-- **Kurulu sürümle uçtan uca deneme:** temiz kurulum, güncelleme akışı, kaldırma.
-- **Yayın:** `CHANGELOG.md` ve sürüm notları. `main`'e birleştirme kullanıcı onayıyla. Sonra etiket ve yayın.
+- **Kurulu sürümle uçtan uca deneme:** temiz kurulum, güncelleme akışı ve kaldırma Aşama 6'nın deneme sürümleriyle yapıldı (2026-11-12, çalıştı); son derlemeyle kısaca yinelenir.
+- **Yayın:** `CHANGELOG.md` ve sürüm notları Aşama 7'de hazırlanır. `main`'e birleştirme kullanıcı onayıyla. Sonra etiket, iş akışının taslağı, kullanıcı yayımlar.
 - **İmzasız ilk sürüm:** sürüm notu Windows uyarısını ve "Ek bilgi" → "Yine de çalıştır" yolunu açıkça anlatır; imzanın ileride geleceği yazılır.
 - **Kullanım kanıtı (Aşama 9 için):** sürümden sonra duyuru. Nerede paylaşılacağına (klavye toplulukları, forumlar) kullanıcı karar verir. İndirme sayısı, yıldızlar ve tartışmalar SignPath formundaki "Reputation" alanını doldurur.
 - **İsteğe bağlı:** sahte cihazla Playwright uçtan uca testlerini CI'a eklemek (DURUM P3).
