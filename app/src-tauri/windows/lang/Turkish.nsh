@@ -1,4 +1,4 @@
-﻿; Turkish texts of the installer (bundle.windows.nsis.customLanguageFiles).
+; Turkish texts of the installer (bundle.windows.nsis.customLanguageFiles).
 ; They replace Tauri's own file, so every key Tauri's template uses must be here:
 ; after a Tauri update, compare with target/release/nsis/x64/Turkish.nsh.
 ; kmWelcome* are ours (installer-hooks.nsh). Plain words, no technical terms.
