@@ -179,6 +179,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 - Kayıt olmazsa geliştirme sürümü PowerShell'in kimliğine düşer.
 - Doğrulama: arka plan bildirimi Windows'un bildirim geçmişinde `dev.keymotion` altında göründü.
 - Bildirim başlığında uygulama adı zaten görünüyor. Bu yüzden metin "Arka planda çalışmaya devam ediyor" oldu, ad tekrarlanmıyor.
+- **Metin yeniden yazıldı (2026-11-12, kullanıcı "çok kötü ve saçma görünüyor" dedi):** başlık "Arka planda çalışıyor" / "Still running"; açıklama tek cümle: "Yeniden açmak için saatin yanındaki Keymotion simgesine tıklayın." / "To open it again, click the Keymotion icon next to the clock." ^ oku ve Çık anlatımı bildirimden çıktı; Ayarlar'daki açıklamada duruyor.
 
 **Uygulamanın gönderdiği Windows bildirimleri (tam liste):**
 1. **Arka planda çalışıyor:** pencere ilk kez tepsiye gittiğinde, bir kez (bilgisayar başına; `background.json` `noticeShown`). Sonraki kapatmalarda yok.

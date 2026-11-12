@@ -266,8 +266,8 @@ const tr = {
   "tray.gauges": "Tuşlarda sistem göstergeleri",
   "tray.profiles": "Profiller",
   "tray.quit": "Çık",
-  "tray.hidden.title": "Arka planda çalışmaya devam ediyor",
-  "tray.hidden.body": "Simgesi saatin yanında; görünmüyorsa ^ okuna tıklayın. Tamamen kapatmak için simgeye sağ tıklayıp Çık'ı seçin.",
+  "tray.hidden.title": "Arka planda çalışıyor",
+  "tray.hidden.body": "Yeniden açmak için saatin yanındaki Keymotion simgesine tıklayın.",
 
   "cal.title": "Renk kalibrasyonu",
   "cal.intro": "Tuş renklerini ekranda gördüğünüze yaklaştırır. Gama, beyazı ve saf renkleri değiştirmez.",
@@ -1625,8 +1625,8 @@ const en: Record<MessageKey, string> = {
   "tray.gauges": "System gauges on the keys",
   "tray.profiles": "Profiles",
   "tray.quit": "Quit",
-  "tray.hidden.title": "Still running in the background",
-  "tray.hidden.body": "Its icon is next to the clock; if you can't see it, click the ^ arrow. To quit, right-click the icon and choose Quit.",
+  "tray.hidden.title": "Still running",
+  "tray.hidden.body": "To open it again, click the Keymotion icon next to the clock.",
 
   "cal.title": "Color calibration",
   "cal.intro": "Brings key colors closer to what you see on screen. Gamma leaves white and pure colors unchanged.",
