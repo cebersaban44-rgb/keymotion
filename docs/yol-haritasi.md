@@ -30,7 +30,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 | 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bitti (PR #63); GitHub ayarları kullanıcı onayıyla açıldı |
 | 5 | Kurulum dosyası (NSIS), imzasız | 1, 2 | Kurulum ayrıntılarına onay | Yapıldı (PR'da); kullanıcının elle denemesi ve kurulum görselleri bekliyor |
 | 5c | Kurulum denemesi bulguları (K1–K11): simge ve görseller, GitHub bağlantıları, hatırlatıcı kartı, ekran durumu, odak zamanlayıcısı, bildirim, Genel bakış | 5 | Kararlar verildi: K9 her açılışta bir kez; K2, K7, K11 için A | Yapıldı (PR #72–#77); klavyede gerçek yüklemeyle deneme kullanıcıda |
-| 5d | Kullanıcının geri bildirimleri (K12 Genel bakış'taki klavye çizimi, K13 açılış logosunun keskinliği) ve denemeleri | 5c | K12 için önizlemeden seçim | Sırada (sıkıştırmadan sonra) |
+| 5d | Kullanıcının geri bildirimleri (K12 Genel bakış'taki klavye çizimi, K13 açılış logosunun keskinliği) ve denemeleri | 5c | — | K12 yapıldı (A); K13 kapandı (kod değişikliği gerekmedi); sırada kullanıcının denemeleri |
 | 6 | Sürüm hattı (GitHub Actions) ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Bekliyor |
 | 6b | Uygulama penceresinin açılış animasyonu | 5 (kurulu sürümle ölçülür) | Seçim A (2026-11-12) | Yapıldı (PR #78); kurulu sürümde açılış süresi ölçülecek |
 | 7 | GitHub sayfası ve bütün belgeler, SignPath'in sayfa şartları dahil | 5, 6 (kurulum ve indirme adımları belli) | Belge yapısına ve görünümüne onay (önce önizleme) | Bekliyor |
@@ -493,6 +493,9 @@ Kullanıcı 5c'nin sonucunu gördü. **Sıra (kullanıcının talimatı):**
     - yazı eşikleri ve boyutları bu genişliğe göre;
     - ikisi birlikte.
   - Önce önizlemeyle bir ya da iki seçenek gösterilir (tasarım kuralı), kullanıcı seçer, sonra kod. Ekran ve sistem genişlikleri (geniş ve dar pencere) denenir.
+  - **Yapıldı (2026-11-12): kullanıcı A'yı seçti** (önizlemede A, klavye üstte tam genişlikte; B, yan yana ve klavye büyük).
+    - Klavye çizimi sayfanın tam genişliğinde; altında "Klavye ekranında şimdi" ilk kutu, iki satır yüksekliğinde. Geniş pencerede sistem göstergeleri iki sütun kaplıyor, son satır dolu.
+    - Ölçümler: geniş pencerede (1320) çizim 948 px, tuş yazıları 13 px; dar pencerede (1100) 928 px, 13 px; en küçük pencerede (960) 788 px, 11,5 px. Dar pencerede kenar çubuğu daraldığı için çizim geniş kalıyor. Gerçek uygulamada (%125) doğrulandı.
 - **K13. Açılış animasyonundaki logo pikselli, düşük çözünürlüklü görünüyor.**
   - Kullanıcı: animasyonun üstündeki logo "piksel piksel" geliyor; Claude'un aldığı ekran görüntüsünde de görülüyor. Altındaki "keymotion" yazısı düzgün.
   - Yapılacak: logo her ölçekte keskin olsun. İncelenecek olası sebepler:
@@ -501,6 +504,9 @@ Kullanıcı 5c'nin sonucunu gördü. **Sıra (kullanıcının talimatı):**
     - `pathLength="1"` ile kesik çizgi (`stroke-dasharray`) çizimi;
     - pencerenin ölçeği (Windows %125/%150) ile yakın plan karşılaştırma: gerçek WebView2'de, cihaz ölçeğinde çekilen kareyle.
   - Bitti sayılır: gerçek pencerede, cihaz ölçeğinde çekilen karelerde logonun kenarları yazı kadar keskin; kullanıcı görüp onaylar.
+  - **Kapandı (2026-11-12), kod değişikliği gerekmedi.** Animasyon kare kare yakalandı: uygulamanın kendi çiziminden (CDP, sayfa yenilenerek ve soğuk açılışta) ve ekrandan (pencerenin bölgesi, %125). Her karede logo yazı kadar keskindi; ekran ölçeği açılıştan itibaren 1,25'te sabit. Kullanıcı denemeler sırasında açılan animasyonu gördü: "artık daha keskin, daha net" ve onayladı.
+    - Önceki pikselli görüntü yeniden üretilemedi. Olası sebep: güncellemeden sonraki ilk açılışta geliştirme sunucusunun dosyaları hazırlaması (çizim takılıyor). Yeniden görülürse hangi açılışta olduğu not edilir (deneme 7).
+    - Ders: ekrandan görüntü yakalarken pencere çizilmeden önceki kareler pencerenin arkasındakini alabilir; yakalama pencere çizildikten sonra başlatılır, böyle kareler hemen silinir.
 
 ### Kullanıcının denemesi (K12 ve K13'ten sonra)
 
@@ -523,7 +529,7 @@ Claude'un denemediği ya da yalnızca tarayıcı önizlemesinde denediği her ş
    - hatırlatıcı kendi saatinde çalınca kart gelmeli; gelmezse satırın altında sebebi yazmalı;
    - yükleme hakkı doluyken sayfanın üstünde uyarı; odak zamanlayıcısı çalışırken bile hatırlatıcının kartı gidebilmeli (son hak hatırlatıcıya ayrılıyor).
 6. **K11 ve K12, Genel bakış:** kutular gerçek verilerle; klavye çizimi tuş yazılarıyla; odak kutusundan "Başlat".
-7. **6b ve K13, açılış animasyonu:** uygulamadan çık ve yeniden aç: K çizgi çizgi çizilmeli, logo keskin olmalı, logo kenar çubuğuna gitmeli. Tepsiden açınca oynamamalı. Tıklayınca ya da bir tuşa basınca hemen bitmeli.
+7. **6b ve K13, açılış animasyonu:** uygulamadan çık ve yeniden aç: K çizgi çizgi çizilmeli, logo keskin olmalı, logo kenar çubuğuna gitmeli. Tepsiden açınca oynamamalı. Tıklayınca ya da bir tuşa basınca hemen bitmeli. Logo yeniden pikselli görünürse hangi açılışta olduğunu not et (güncellemeden sonraki ilk açılış mı, Windows'la açılış mı, sonraki açılışlar mı).
 
 **B. Sondaki kurulum derlemesiyle (Explorer'dan, Claude'un kutusunun dışında; ders 62):**
 8. **K1, K2, K3, kurulum:** kurulum dosyasının ve pencerelerin simgesi Keymotion; karşılama ve bitiş sayfasının solunda Keymotion görseli, üst bantta logo; karşılama metni sade ("Keymotion, klavyenizin ışıklarını…"); diğer sayfaların Türkçesi.
@@ -696,7 +702,7 @@ Eskiden "Aşama 1b: erken başvuru" idi. 2026-11-12'de SignPath'in şartları ve
 | 5c | K9: arka plan bildirimi ne sıklıkla? | **Karar verildi:** her açılışta bir kez (2026-11-12) |
 | 5c | K2 kurulum görselleri, K7 odak zamanlayıcısı sırası, K11 Genel bakış tasarımı | **Karar verildi:** K2 A (sade), K7 önizlemedeki sıra, "25 / 5 klasik" varsayılan, K11 A (kutulu kontrol paneli) (2026-11-12) |
 | 6b | Uygulama açılış animasyonunun tasarımı | **Karar verildi:** A, çizgi çizgi K (2026-11-12) |
-| 5d | K12: Genel bakış'ta klavye çiziminin yeri ve tuş yazıları | Önizlemeden seçim |
+| 5d | K12: Genel bakış'ta klavye çiziminin yeri ve tuş yazıları | **Karar verildi:** A, klavye üstte tam genişlikte (2026-11-12) |
 | 7 | GitHub sayfasının yapısı, biçimi (yalnız repo sayfaları mı, ayrıca belge sitesi mi) ve görünümü | Aşamanın başında önizlemeyle |
 | 8 | İlk sürümün nerede duyurulacağı (kullanım kanıtı için) | Kullanıcı seçer |
 | 4 | GitHub'da özel güvenlik bildirimi açılsın mı? | Evet (açıldı, 2026-11-12) |
