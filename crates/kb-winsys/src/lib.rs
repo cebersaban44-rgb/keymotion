@@ -28,6 +28,7 @@
 
 pub mod os;
 pub mod secret;
+pub mod startup;
 
 use std::collections::HashMap;
 

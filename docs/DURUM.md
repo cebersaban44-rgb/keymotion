@@ -796,6 +796,32 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       6. sürüm hattı ve otomatik güncelleyici;
       7. GitHub sayfası ve belgeler (İngilizce varsayılan + Türkçe);
       8. son denemeler (kullanıcının elle denemeleri dahil) ve ilk sürüm 0.1.0.
+39. **Yol haritası: Aşama 0, 1 ve 2 (2026-11-12, gece).**
+    - **Aşama 0 bitti:**
+      - PR #58 (repo adı, İngilizce varsayılan, uyarı günlüğü, yol haritası) birleşti.
+      - PR #59 (yardımcı): 15 ESLint uyarısı giderildi, ESLint CI'ı engelliyor, sahte arka uç kurulu sürümde yok. Gerçek uygulamada denendi: 17 sayfa ve sekme hatasız, Ctrl+A ve Esc seçimi doğru. Yardımcının klasörü silindi.
+    - **Aşama 1 bitti (PR #60):** Rust paketi `keymotion`, exe `keymotion.exe`, kütüphane `keymotion_lib`. Veri klasörleri değişmedi; uygulama ayarlarıyla açıldı.
+    - **Aşama 2, tepsi (`feat/tray`):**
+      - **Arka uç:**
+        - `tray.rs`: `Background` durumu, `background.json` (`closeToTray`, `noticeShown`) ve tepsi menüsü.
+        - `kb-winsys::startup`: HKCU `Run` kaydı. Görev Yöneticisi'nin kapatma işaretini (`StartupApproved`) okuyor; açınca o işareti siliyor.
+        - Kapatma isteği önce `tray::hide_on_close`'a gidiyor. "Çık" `quitting` işaretini koyup pencereyi kapatıyor, böylece eski kapatma denetimi çalışıyor. Diyalogda "Vazgeç" `quit_cancelled` ile işareti kaldırıyor.
+        - Tek örnek eklentisi `tray::show_main`'i çağırıyor. `--hidden` argümanıyla pencere gösterilmiyor.
+        - Yeni komutlar: `background_state`, `background_configure`, `tray_texts`, `window_shown`, `quit_cancelled`. Yeni olaylar: `window-shown`, `tray-profile`.
+        - `profiles_state` ortak `profiles_of` işlevini kullanıyor (tepsi de).
+      - **Menü:** `docs/yol-haritasi.md` Aşama 2'deki düzen.
+        - Menü bir kez kuruluyor; sonra maddelerin yazısı ve işaretleri yerinde değişiyor.
+        - Yenileme tetikleri: odak, klavye ve hatırlatıcı olayları; profil komutları, `lighting_save`, yedekten geri yükleme ve metinler. Çalışırken 10 sn'de bir de yenileniyor.
+        - Tuşlardaki göstergeleri tepsiden açıp kapatınca `gauges` olayı gönderiliyor; arayüz bunu artık her zaman dinliyor (`followGauges`).
+      - **Arayüz:**
+        - Ayarlar › Arka plan kartı (`BackgroundCard`);
+        - `useTray` (metinler, `windowShown`, `tray-profile`);
+        - tepsiden seçilen profilin onay satırı (`Profiles` `profileRequest`);
+        - ayna pencere gizliyken duruyor;
+        - TR/EN metinler.
+      - **Denetimler:** fmt, clippy `-D warnings`, `cargo test` (tepsi ve başlangıç kaydı testleri dahil), tsc, ESLint (0 uyarı), metin denetimi temiz.
+      - **Gerçek uygulamada (CDP):** ölçümler ve yapılan denemeler `docs/yol-haritasi.md` Aşama 2'de. Menünün kendisi fareyle açıldığı için kullanıcı dener; senaryolar ona verildi.
+      - **Kullanıcının ilk denemesi:** odak başlat/duraklat çalıştı, bitirme yoktu. Odak bir alt menüye taşındı (aşama satırı + Başlat/Duraklat/Sürdür, Sonraki aşamaya geç, Durdur). Klavye satırı, hatırlatıcılar ve göstergeler eklendi.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -991,6 +1017,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 53 | Claude Design tuvalinde artboard'lar hata verdi (2026-11-11/12) | Tuval aracı `.dc.html` betiğini kaçış karakterlerine duyarlı bir metnin içine koyuyor: betikteki ters eğik çizgi, ters tırnak ve `${` kodu bozdu (`Unexpected token ';'`). Ayrıca SVG öznitelikleri tireli yazılmıştı (`stroke-width`; React `strokeWidth` ister), stil delikleri metin olarak verilmişti (React stil nesnesi ister), form alanlarında `value`/`checked` vardı | Tuval betiklerinde bu karakterleri yazma, `String.fromCharCode` ile üret. SVG özniteliklerini camelCase yaz, `style="{{x}}"` deliğine nesne ver, statik form alanında `defaultValue`/`defaultChecked` kullan. Tuvali kendin göremiyorsan (claude.ai girişi) kullanıcıdan hatanın ekran görüntüsünü iste. **Sonradan bulunan asıl neden (sürüm 13):** `K.map(... => { ... };` — kapanış parantezi eksikti; karakter düzeltmeleri hatayı gidermedi. Kaydetmeden önce her tuval betiğini `node tools/check-dc.mjs project/*.dc.html` ile derleyip `renderVals()`'ı çalıştır. |
 | 54 | Yeni sürümü gerçek uygulamada denemek kullanıcının verisini tek yönlü değiştirdi (2026-11-12) | Birleşik sürüm ilk açılışta takvim adresini DPAPI ile şifreliyor ve ışık durumunu WebView'dan `lighting.json`'a taşıyor; eski sürüm bunları geri okuyamaz. Bozuk kayıt denemesi de gerçek `keymap.json`'u bozmayı gerektirdi | Veri taşıyan bir sürümü ilk kez açmadan önce `%APPDATA%\dev.keymotion` ve `%LOCALAPPDATA%\dev.keymotion\EBWebView\Default\Local Storage` yedeğini scratchpad'e al. Dosya bozma denemesinde önce yedeğin birebir aynı olduğunu (hash) doğrula, denemeden sonra aynen geri koy ve `.bak` dosyasını kaldır. |
 | 55 | Birleşmiş yardımcı klasörleri `git worktree remove` ile silinemedi (2026-11-12) | Git kaydı sildi ama dosyalar kaldı: Windows'ta büyük `node_modules` ve açık dosyalar. Üç yardımcı kendi Vite sunucusunu (1431, 1437, 1491) açık bırakmıştı; bunlar `app/.vite`'yi tutuyordu | Silmeden önce her klasörün temiz (`git status`) ve dalının birleşmiş olduğunu doğrula. Kalan dosyaları bağlantıları izlemeyen `cmd /c rmdir /s /q` ile sil. Önce o klasörden çalışan `node` süreçlerini bul (`Win32_Process` komut satırı) ve kapat. Yardımcı görevlerine "işin bitince başlattığın sunucuyu kapat" yaz. |
+| 56 | Tepsiden sonra `close-keymotion.ps1` uygulamayı kapatmıyor (2026-11-12) | Pencerenin X'i (WM_CLOSE) artık pencereyi gizliyor; uygulama tepside kalıyor | Denemede uygulamayı kapatmak için CDP ile `window.__TAURI_INTERNALS__.invoke('close_window')` (pencereyi yok eder, uygulama çıkar). WM_CLOSE gizlemeyi denemek içindir. Tepsi menüsünü otomatik denemek fareyi oynatıyor: kullanıcı ekrandayken yapma, senaryoyu ona ver. Hata ayıklama portuyla açılan kopyayı işin sonunda kapat, uygulamayı portsuz yeniden aç. |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 
@@ -1039,7 +1066,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
           - **Destek haritası yapıldı** (madde 37, `docs/destek-haritasi.md`): desteklenen ve eklenebilecek klavyeler, bağlantı modlarına göre özellikler, Bağlantı sayfası, 2.4G'de yanlış açık görünen sayfalar düzeltildi, HID şekil denetimi, arayüz metin borçları kapandı, USB'de pil araştırması (yüzde yok; Fn ışığından "şarj oluyor" / "şarj tamamlandı").
           - **İlk sürüm öncesi eksik listesi** (2026-11-11, `docs/urun-eksikleri.md`): iki bağımsız inceleme (tasarım ve kullanım; ürün hazırlığı) ve bu oturumun gözlemleri, ciddi olanlar kodda doğrulandı. Sıra: kimlik (isim, logo, uygulama kimliği) → güven → görsel ve içerik turu → veri ve tanılama → ürünleştirme ve repo. İsim adayları ve logo konseptleri Claude Design tuvalinde (Keypane önerildi).
           - Kullanıcı isim ve logoyu seçti (Keymotion, E konsepti). Ardından eksik listesinin tamamı başladı (madde 38).
-          - **Kalınan yer (2026-11-12, gece): `docs/yol-haritasi.md`, Aşama 0'dan başla.** PR #57 birleşti; repo `keymotion`, Discussions açık, varsayılan dil İngilizce, tepsi kararı verildi. Önce lint/mock yardımcısının raporunu incele ve dalını birleştir; sonra Aşama 1'de paket adını kullanıcıya sor ve imza başvurusunu başlat. Kullanıcıyla klavyede denenecekler: Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri.
+          - **Kalınan yer (2026-11-12, gece, sonra): Aşama 2 (tepsi) kullanıcının elle denemesinde.** Aşama 0 ve 1 bitti (PR #58, #59, #60). `feat/tray` dalındaki tepsi PR'ı kullanıcının deneme sonucunu bekliyor; senaryolar madde 39'da anlatıldı, sonuca göre düzelt ve birleştir. Sonra: Aşama 1b (SignPath başvurusu, kullanıcı yapar), Aşama 3 (açılış animasyonu önizlemesi), Aşama 4. Kullanıcıyla klavyede denenecekler: Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri.
           - Sonraya: oyun oturumu (ön plandaki uygulama: açılınca kart, kapanınca özet). Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.

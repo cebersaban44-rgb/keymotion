@@ -301,5 +301,5 @@ Ayrıntı ve yardımcıların listesi: `DURUM.md` madde 38.
 | H. GitHub sayfası | İki dilli README ve belgeler, ekran görüntüleri, issue formları, topluluk dosyaları | Ürünleştirmeden sonra. Kararlar verildi: varsayılan İngilizce (`README.md`) + Türkçe (`README.tr.md`), repo adı `keymotion` (yapıldı), Discussions açık (yapıldı) |
 | I. Sorun bildirme | Uygulama içinden sorun bildirme, desteklenmeyen klavye bildirimi | Planlandı, ürünleştirmeyle birlikte (bölüm I) |
 | Dil | Uygulamanın varsayılan dili | **İngilizce** (2026-11-12, yapıldı); Türkçe seçilebilir |
-| Tepsi ve arka plan | Pencere kapanınca uygulamanın tepside çalışmaya devam etmesi | **Karar: tepside çalışsın** (2026-11-12). Plan: `docs/yol-haritasi.md` Aşama 2 |
+| Tepsi ve arka plan | Pencere kapanınca uygulamanın tepside çalışmaya devam etmesi | **Kod hazır** (`feat/tray`, 2026-11-12): kapatınca gizlenir, tepsi menüsü (klavye, odak alt menüsü, hatırlatıcılar, göstergeler, profiller, çık), Ayarlar › Arka plan, Windows'la gizli başlama. Kullanıcının elle denemesi bekleniyor. Ayrıntı: `docs/yol-haritasi.md` Aşama 2 |
 | Keymotion açılış animasyonu | Fabrika yedeği olmayanlar için özgün görsel | Profillerle birlikte ya da hemen sonra |

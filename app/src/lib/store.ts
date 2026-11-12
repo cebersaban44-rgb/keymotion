@@ -29,6 +29,10 @@ interface AppState {
   screenTab: ScreenTab;
   theme: ThemePreference;
   locale: Locale;
+  /** The window is on screen (false while the app runs in the tray). */
+  windowShown: boolean;
+  /** A profile chosen in the tray menu: the Profiles page asks to load it. */
+  profileRequest: string | null;
   setKeyboards: (k: KeyboardInfo[]) => void;
   setEnv: (e: UiEnvironment) => void;
   setPage: (p: PageId) => void;
@@ -37,6 +41,10 @@ interface AppState {
   openScreen: (t: ScreenTab) => void;
   setTheme: (t: ThemePreference) => void;
   setLocale: (l: Locale) => void;
+  setWindowShown: (shown: boolean) => void;
+  /** Open the Profiles page on this profile's load confirmation. */
+  requestProfile: (id: string) => void;
+  clearProfileRequest: () => void;
 }
 
 // UI preferences are per-machine conveniences; storage may be unavailable.
@@ -65,6 +73,8 @@ export const useApp = create<AppState>((set) => ({
   screenTab: load<ScreenTab>("ks.screenTab", ["visuals", "live"], "visuals"),
   theme: load<ThemePreference>("ks.theme", ["system", "dark", "light"], "system"),
   locale: load<Locale>("ks.locale", ["tr", "en"], "en"),
+  windowShown: true,
+  profileRequest: null,
   setKeyboards: (keyboards) => set({ keyboards, loaded: true }),
   setEnv: (env) => set({ env }),
   setPage: (page) => set({ page }),
@@ -84,6 +94,9 @@ export const useApp = create<AppState>((set) => ({
     save("ks.locale", locale);
     set({ locale });
   },
+  setWindowShown: (windowShown) => set({ windowShown }),
+  requestProfile: (id) => set({ page: "profiles", profileRequest: id }),
+  clearProfileRequest: () => set({ profileRequest: null }),
 }));
 
 /** Below this window width the sidebar shrinks to icons. */

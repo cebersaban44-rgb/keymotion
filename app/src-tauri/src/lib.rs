@@ -23,17 +23,18 @@ mod profiles;
 mod reminders;
 mod screen_lib;
 mod settings;
+mod tray;
 
 use backup::{BackupExported, BackupImported, BackupSection, BackupSummary, PendingImport};
 use calendar::CalendarHandle;
 use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request, ScreenWriteStep};
 use diagnostics::{AppFolder, LastExport};
 use dto::{
-    CalendarSettings, CalendarState, Calibration, CalibrationInfo, ClockStatus, EffectInfo, EffectRequest, FlashWrite,
-    GaugesSettings, GaugesState, KeyAssignment, KeyboardInfo, KeymapCatalog, KeymapLayer, KeymapState, LedColor,
-    LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, PomodoroSettings, PomodoroState, Reminder,
-    ReminderSettings, ReminderState, ScreenItem, ScreenItemKind, ScreenState, SettingsReset, SongStop, ThemePreference,
-    UiEnvironment,
+    BackgroundSettings, CalendarSettings, CalendarState, Calibration, CalibrationInfo, ClockStatus, EffectInfo,
+    EffectRequest, FlashWrite, GaugesSettings, GaugesState, KeyAssignment, KeyboardInfo, KeymapCatalog, KeymapLayer,
+    KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, PomodoroSettings, PomodoroState,
+    Reminder, ReminderSettings, ReminderState, ScreenItem, ScreenItemKind, ScreenState, SettingsReset, SongStop,
+    ThemePreference, TrayTexts, UiEnvironment,
 };
 use gauges::GaugesHandle;
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
@@ -49,6 +50,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
+use tray::Background;
 
 /// Event asking the UI to confirm closing while changes are unsaved.
 const EVENT_CLOSE_REQUESTED: &str = "close-requested";
@@ -67,6 +69,11 @@ struct CloseGuard {
 /// A flash write runs (closing asks first, as with unsaved changes).
 fn flash_busy(app: &AppHandle) -> bool {
     app.try_state::<Arc<DeviceHandle>>().is_some_and(|d| d.flash.current().is_some())
+}
+
+/// Closing would ask first: changes not on the keyboard, or a flash write.
+fn close_needs_asking(app: &AppHandle) -> bool {
+    app.try_state::<CloseGuard>().is_some_and(|g| g.unsaved.load(Ordering::SeqCst)) || flash_busy(app)
 }
 
 /// The official driver's copy of the factory animation: searched once per
@@ -682,6 +689,39 @@ fn close_window(window: WebviewWindow) -> Result<(), String> {
     window.destroy().map_err(|e| e.to_string())
 }
 
+/// The user stayed after "Quit" in the tray asked about unsaved changes:
+/// closing hides the window again.
+#[tauri::command]
+fn quit_cancelled(background: State<'_, Arc<Background>>) {
+    background.quit_cancelled();
+}
+
+/// Whether the window is on screen (hidden: running in the tray).
+#[tauri::command]
+fn window_shown(window: WebviewWindow) -> bool {
+    window.is_visible().unwrap_or(true)
+}
+
+#[tauri::command]
+fn background_state(background: State<'_, Arc<Background>>) -> BackgroundSettings {
+    background.settings()
+}
+
+#[tauri::command]
+fn background_configure(
+    background: State<'_, Arc<Background>>,
+    settings: BackgroundSettings,
+) -> Result<BackgroundSettings, String> {
+    background.configure(settings)
+}
+
+/// The tray menu's words in the UI language.
+#[tauri::command]
+fn tray_texts(app: AppHandle, background: State<'_, Arc<Background>>, texts: TrayTexts) {
+    background.set_texts(texts);
+    tray::refresh(&app);
+}
+
 /// Open one of the project's own pages (the support list) in the browser.
 #[tauri::command]
 fn open_link(url: String) -> Result<(), String> {
@@ -717,7 +757,10 @@ fn lighting_state(app: AppHandle) -> Option<serde_json::Value> {
 fn lighting_save(app: AppHandle, state: serde_json::Value) -> Result<(), String> {
     let state = lighting::check(state)?;
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-    lighting::save(&dir, state).map_err(|e| format!("lighting not saved: {e}"))
+    lighting::save(&dir, state).map_err(|e| format!("lighting not saved: {e}"))?;
+    // Which profile the keyboard has may have changed.
+    tray::refresh(&app);
+    Ok(())
 }
 
 /// A UI failure (a page that crashed, an action that failed) for the log.
@@ -845,9 +888,12 @@ async fn backup_import(app: AppHandle, sections: Vec<BackupSection>) -> Result<B
         .map_err(|_| "import unavailable")?
         .take()
         .ok_or(backup::ERR_NOTHING_PENDING)?;
-    tauri::async_runtime::spawn_blocking(move || backup::apply(&app, pending, &sections))
+    let handle = app.clone();
+    let imported = tauri::async_runtime::spawn_blocking(move || backup::apply(&handle, pending, &sections))
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string());
+    tray::refresh(&app);
+    imported
 }
 
 /// The user closed the import without restoring anything.
@@ -905,11 +951,8 @@ fn profile_current(app: &AppHandle, model_id: &str) -> Result<profiles::Current,
     })
 }
 
-/// The profiles for the keyboard of `model_id`: which one it has, what
-/// loading each would write.
-#[tauri::command]
-fn profiles_state(app: AppHandle, profiles: Profiles<'_>, model_id: String) -> Result<ProfilesState, String> {
-    let current = profile_current(&app, &model_id)?;
+fn profiles_of(app: &AppHandle, model_id: &str) -> Result<ProfilesState, String> {
+    let current = profile_current(app, model_id)?;
     let items: std::collections::HashMap<String, (String, u32)> = {
         let library = app.state::<Arc<Mutex<ScreenLibrary>>>();
         let state = lock_library(&library)?.state("");
@@ -917,7 +960,33 @@ fn profiles_state(app: AppHandle, profiles: Profiles<'_>, model_id: String) -> R
     };
     let lookup =
         |id: &str| items.get(id).map(|(name, pages)| profiles::LibraryItem { name: name.clone(), pages: *pages });
-    Ok(lock_profiles(&profiles)?.state(&current, &lookup))
+    let store = app.state::<Arc<Mutex<ProfileStore>>>();
+    let state = lock_profiles(&store)?.state(&current, &lookup);
+    Ok(state)
+}
+
+/// The profiles for the tray menu, for the keyboard the UI shows (USB
+/// first, as `useActiveKeyboard`); `true` when one is connected.
+fn tray_profiles(app: &AppHandle) -> Option<(ProfilesState, bool)> {
+    let model_id = {
+        let device = app.try_state::<Arc<DeviceHandle>>()?;
+        let snap = device.snapshot.lock().ok()?;
+        let rank = |k: &&KeyboardInfo| match k.connection {
+            dto::Connection::Usb => 0,
+            dto::Connection::Dongle => 1,
+            dto::Connection::Bluetooth => 2,
+        };
+        snap.keyboards.iter().min_by_key(rank).map(|k| k.model_id.clone())
+    };
+    let connected = model_id.is_some();
+    profiles_of(app, model_id.as_deref().unwrap_or_default()).ok().map(|s| (s, connected))
+}
+
+/// The profiles for the keyboard of `model_id`: which one it has, what
+/// loading each would write.
+#[tauri::command]
+fn profiles_state(app: AppHandle, model_id: String) -> Result<ProfilesState, String> {
+    profiles_of(&app, &model_id)
 }
 
 /// A new profile from what the keyboard has (the chosen parts).
@@ -933,6 +1002,7 @@ fn profiles_create(
     let current = profile_current(&app, &model_id)?;
     let p = lock_profiles(&profiles)?.create(&name, parts, &current, now_ms())?;
     tracing::info!(parts = ?p.parts(), "profile created");
+    tray::refresh(&app);
     Ok(ProfileSaved { id: p.id, name: p.name })
 }
 
@@ -941,27 +1011,39 @@ fn profiles_create(
 fn profiles_update(app: AppHandle, profiles: Profiles<'_>, model_id: String, id: String) -> Result<(), String> {
     tracing::debug!(%id, "ipc: profiles_update");
     let current = profile_current(&app, &model_id)?;
-    lock_profiles(&profiles)?.update(&id, &current, now_ms())
+    lock_profiles(&profiles)?.update(&id, &current, now_ms())?;
+    tray::refresh(&app);
+    Ok(())
 }
 
 #[tauri::command]
-fn profiles_rename(profiles: Profiles<'_>, id: String, name: String) -> Result<(), String> {
+fn profiles_rename(app: AppHandle, profiles: Profiles<'_>, id: String, name: String) -> Result<(), String> {
     tracing::debug!(%id, "ipc: profiles_rename");
-    lock_profiles(&profiles)?.rename(&id, &name, now_ms())
+    lock_profiles(&profiles)?.rename(&id, &name, now_ms())?;
+    tray::refresh(&app);
+    Ok(())
 }
 
 /// A copy named `name` (made unique when taken).
 #[tauri::command]
-fn profiles_duplicate(profiles: Profiles<'_>, id: String, name: String) -> Result<ProfileSaved, String> {
+fn profiles_duplicate(
+    app: AppHandle,
+    profiles: Profiles<'_>,
+    id: String,
+    name: String,
+) -> Result<ProfileSaved, String> {
     tracing::debug!(%id, "ipc: profiles_duplicate");
     let p = lock_profiles(&profiles)?.duplicate(&id, &name, now_ms())?;
+    tray::refresh(&app);
     Ok(ProfileSaved { id: p.id, name: p.name })
 }
 
 #[tauri::command]
-fn profiles_delete(profiles: Profiles<'_>, id: String) -> Result<(), String> {
+fn profiles_delete(app: AppHandle, profiles: Profiles<'_>, id: String) -> Result<(), String> {
     tracing::debug!(%id, "ipc: profiles_delete");
-    lock_profiles(&profiles)?.delete(&id)
+    lock_profiles(&profiles)?.delete(&id)?;
+    tray::refresh(&app);
+    Ok(())
 }
 
 /// Write one profile to a file in the Downloads folder, its screen picture
@@ -1029,6 +1111,7 @@ async fn profiles_import(app: AppHandle, request: tauri::ipc::Request<'_>) -> Re
         let store = app.state::<Arc<Mutex<ProfileStore>>>();
         let p = lock_profiles(&store)?.add(profile, now_ms())?;
         tracing::info!(parts = ?p.parts(), "profile imported");
+        tray::refresh(&app);
         Ok(ProfileSaved { id: p.id, name: p.name })
     })
     .await
@@ -1172,19 +1255,18 @@ pub fn run() {
     tauri::Builder::default()
         // One app at a time: two would send commands to the keyboard at
         // once. A second launch brings the open window forward instead.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
-        }))
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| tray::show_main(app)))
         .manage(CloseGuard::default())
         .manage(Arc::new(DriverGif::default()))
         .manage(PendingImport::default())
         .manage(LastExport::default())
         .on_window_event(|window, event| {
             let tauri::WindowEvent::CloseRequested { api, .. } = event else { return };
+            // Kept in the tray: hiding loses nothing, so nothing to ask.
+            if tray::hide_on_close(window) {
+                api.prevent_close();
+                return;
+            }
             let guard = window.state::<CloseGuard>();
             // A flash write (a live card, going back to the own picture)
             // asks too, even if the UI has not heard of it yet.
@@ -1227,6 +1309,7 @@ pub fn run() {
             let calibration = config_dir.as_deref().map(settings::load_calibration).unwrap_or_default();
             let library = Arc::new(Mutex::new(ScreenLibrary::open(config_dir.as_deref())));
             app.manage(Arc::new(Mutex::new(ProfileStore::open(config_dir.as_deref()))));
+            app.manage(Background::open(config_dir.clone()));
             let device = Arc::new(device::spawn(
                 app.handle().clone(),
                 calibration,
@@ -1242,7 +1325,13 @@ pub fn run() {
             app.manage(library);
             app.manage(device);
             app.manage(live);
-            window.show()?;
+            tray::start(app.handle())?;
+            // Started with Windows: only the tray icon shows.
+            if std::env::args().any(|a| a == tray::ARG_HIDDEN) {
+                tracing::info!("started hidden, in the tray");
+            } else {
+                window.show()?;
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1261,6 +1350,11 @@ pub fn run() {
             set_unsaved,
             ack_close_request,
             close_window,
+            quit_cancelled,
+            window_shown,
+            background_state,
+            background_configure,
+            tray_texts,
             ui_environment,
             open_link,
             set_window_theme,

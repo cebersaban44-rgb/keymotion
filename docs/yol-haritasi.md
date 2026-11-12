@@ -21,10 +21,10 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 
 | Sıra | Aşama | Bağımlılık | Kullanıcıdan gereken | Durum |
 |---|---|---|---|---|
-| 0 | Açık işleri kapat (lint/mock yardımcısı, PR #58) | — | — | PR #58 birleşti; yardımcı sürüyor |
-| 1 | Rust paket ve exe adı `keymotion` | 0 | Onay (öneri: evet) | Yapıldı |
+| 0 | Açık işleri kapat (lint/mock yardımcısı, PR #58) | — | — | Bitti (PR #58, #59) |
+| 1 | Rust paket ve exe adı `keymotion` | 0 | Onay (öneri: evet) | Bitti (PR #60) |
 | 1b | Kod imzalama başvurusu (SignPath Foundation) | — | Başvuruyu kullanıcı yapar | Başlatılacak |
-| 2 | Tepsi ve arka plan | 1 | Karar verildi: tepsi | Bekliyor |
+| 2 | Tepsi ve arka plan | 1 | Karar verildi: tepsi | Kod hazır (`feat/tray`); kullanıcının elle denemesi bekleniyor |
 | 3 | Keymotion açılış animasyonu | — (2 ile paralel olabilir) | Önizlemeye onay | Bekliyor |
 | 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bekliyor |
 | 5 | Kurulum dosyası (NSIS) ve imza | 1, 2, 1b | Kurulum ayrıntılarına onay | Bekliyor |
@@ -90,11 +90,20 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 - **Tepsi simgesi:**
   - Sol tık pencereyi gösterir ve öne getirir.
   - Araç ipucu "Keymotion". Odak sürüyorsa kalan süre de görünür.
-- **Sağ tık menüsü** (arayüz dilinde; dil arka uca iletilir, `set_write_reason` gibi):
-  - Aç;
-  - Odak zamanlayıcısı: Başlat / Duraklat / Devam et (duruma göre);
+- **Sağ tık menüsü** (arayüz dilinde; metinler `tray_texts` ile arka uca iletilir). Kullanıcının ilk denemesinden sonra (2026-11-12) alt menülü düzene geçildi:
+  - en üstte klavye satırı, tıklanmaz: "AJAZZ AK980 PRO · USB kablo", kablo yoksa pil yüzdesiyle; klavye yoksa "Klavye bağlı değil";
+  - Keymotion'ı aç;
+  - Odak zamanlayıcısı ▸
+    - üstte, tıklanmaz: aşama, tur ve kalan dakika ("Odak · Tur 2/4 · 18 dk kaldı", "Duraklatıldı · Kısa mola · 3 dk kaldı", boştayken "Hazır: 4 × 25 dk odak");
+    - Başlat / Duraklat / Sürdür (duruma göre);
+    - Sonraki aşamaya geç;
+    - Durdur.
+    - Sonraki aşamaya geç ve Durdur yalnızca zamanlayıcı çalışırken ya da duraklatılmışken kullanılır.
+  - Hatırlatıcılar ▸ sıradaki hatırlatıcı ("Sıradaki: 14:30 · başlık", "yarın 09:00"), "Hatırlatıcılar açık" işareti;
+  - Tuşlarda sistem göstergeleri (işaretli/işaretsiz; yalnızca RAM, flash'a yazmaz);
   - Profiller ▸ kayıtlı profiller, klavyede olan işaretli;
   - Çık.
+  - Menü bir kez kurulur, sonra yalnızca maddelerin yazısı ve işaretleri değişir. Bu yüzden açık menü kapanmaz, kalan dakika menü açıkken de güncellenir (10 sn'de bir).
   - **Profil seçimi** klavyeye yazar. Bu yüzden pencereyi açar ve Profiller sayfasında o profilin onay satırını gösterir. Onaysız yükleme yok; bu, "her adımda Vazgeç" kuralına uyar.
 - **Çık:** kaydedilmemiş değişiklik ya da süren bir yazma varsa pencere açılır ve mevcut kapatma penceresi gösterilir (`useCloseGuard`, `UnsavedDialog`). Yoksa uygulama kapanır.
 - **İkinci açılış:** gizli pencereyi gösterir. Tek örnek eklentisi zaten var; `show()` eklenir.
@@ -128,7 +137,31 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 - **Güç kullanımı** burada ölçülür: boşta, odak sürerken, göstergeler açıkken. Windows "Güç kullanımı" ve işlemci zamanıyla.
 - **Takma ve çıkarma:** bugün klavyeler düzenli taramayla bulunuyor. Arka planda güç için `CM_Register_Notification` bildirimine geçmeyi değerlendir (DURUM P3).
 
+### Ölçümler (2026-11-12, debug sürüm)
+
+- **Gizli pencerede kısılma yok.** Tauri pencereyi `SW_HIDE` ile gizliyor, WebView2'ye "görünmez" denmiyor:
+  - `document.visibilityState` "visible" kalıyor;
+  - 100 ms'lik zamanlayıcı 1,5 sn'de 15 kez çalıştı;
+  - `requestAnimationFrame` çalıştı;
+  - örnek hatırlatıcı kartı 137 ms'de çizildi.
+  - Bu yüzden WebView2 argümanı eklenmedi. 5 dakikadan uzun gizli kalmada yeniden ölçülmeli (Chromium'un yoğun kısma eşiği).
+- **Ayna okuması (`04 F5`) pencere gizliyken duruyor:** `useMirror` artık `windowShown`'a bağlı.
+- **Bellek:** pencere gizliyken 7 süreç, toplam çalışma kümesi yaklaşık 270 MB (debug sürüm, hata ayıklama portu açık). Kurulu sürümde yeniden ölçülecek.
+- **Güç kullanımı:** henüz ölçülmedi; kullanıcının uzun süreli denemesinde Görev Yöneticisi › Güç kullanımı.
+
 ### Doğrulama (gerçek uygulama)
+
+**Yapılanlar (2026-11-12, CDP ile):**
+- kapat → gizlen, ilk bildirim bir kez (`background.json` `noticeShown`);
+- ikinci açılış pencereyi gösteriyor;
+- gizli açılış (`--hidden`) ve sonra ikinci açılış;
+- arayüz `windowShown`'ı izliyor;
+- Ayarlar › Arka plan › "Windows açılınca başlat": `Run` kaydı `"…\keymotion.exe" --hidden` olarak yazıldı ve kapatınca silindi;
+- tepsiden profil seçmenin olayı Profiller sayfasında onay satırını açtı, "Vazgeç" kapattı.
+
+**Kullanıcının denediği (ilk menü):** odak başlat/duraklat çalıştı, ama bitirme yoktu. Bunun üzerine alt menülü düzene geçildi.
+
+**Elle denenecekler:** test senaryoları kullanıcıya verildi (DURUM madde 39). Yapılacak denemeler:
 
 - kapat → gizlen;
 - ilk bildirim;
