@@ -41,6 +41,12 @@
       "nsis": {
         "installMode": "currentUser",
         "languages": ["English", "Turkish"],
+        "customLanguageFiles": {
+          "English": "windows/lang/English.nsh",
+          "Turkish": "windows/lang/Turkish.nsh"
+        },
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
         "installerHooks": "windows/installer-hooks.nsh"
       }
     },

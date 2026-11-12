@@ -20,6 +20,7 @@
 //!   another program talks to it.
 //! * Shutdown: while the app writes the keyboard's flash, Windows is told
 //!   why shutting down now is a bad idea (`ShutdownBlockReasonCreate`).
+//! * Web pages: opened in the default browser (`ShellExecuteW`, [`shell`]).
 //!
 //! Types holding COM or PDH handles are not `Send`: make them on the thread
 //! that uses them.
@@ -29,6 +30,7 @@
 pub mod appid;
 pub mod os;
 pub mod secret;
+pub mod shell;
 pub mod startup;
 
 use std::collections::HashMap;
