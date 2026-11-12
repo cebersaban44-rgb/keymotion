@@ -14,7 +14,7 @@
 //   - English: the CHANGELOG.md section whose heading is the version, in Keep
 //     a Changelog form: "## [0.2.0] - 2026-12-01" ("## 0.2.0" and "## [v0.2.0]"
 //     work too). A tag build fails when there is none.
-//   - Turkish (optional): the same kind of section in docs/surum-notlari.md.
+//   - Turkish (optional): the same kind of section in CHANGELOG.tr.md.
 //   - --allow-unreleased (test builds from a branch): when the version has no
 //     section, the "## [Unreleased]" section is used instead ("Yayımlanmamış"
 //     is accepted as the same heading in the Turkish file).
@@ -23,7 +23,7 @@
 //   node tools/release/latest-json.mjs --version 0.2.0 \
 //     --setup release-out/Keymotion_0.2.0_x64-setup.exe --sha256 <hex> \
 //     [--repository owner/repo] [--allow-unreleased] [--out-dir dir] \
-//     [--changelog CHANGELOG.md] [--tr-notes docs/surum-notlari.md]
+//     [--changelog CHANGELOG.md] [--tr-notes CHANGELOG.tr.md]
 //   node tools/release/latest-json.mjs --check-notes --version 0.2.0 \
 //     [--allow-unreleased]     only checks that the notes exist (before the
 //                              build, so a tag without notes fails early)
@@ -137,7 +137,7 @@ export function releaseBody({ notes, fileName, sha256, preface, repository, vers
     `[Privacy policy](${SITE}/about/privacy/)`,
   ];
   if (repository && version) {
-    links.push(`[Türkçe sürüm notları](https://github.com/${repository}/blob/v${version}/docs/surum-notlari.md)`);
+    links.push(`[Türkçe sürüm notları](https://github.com/${repository}/blob/v${version}/CHANGELOG.tr.md)`);
   }
   parts.push(notes, "---", "### Install", ...install, `SHA-256 of \`${fileName}\`: \`${sha256}\``, links.join(" · "));
   return `${parts.join("\n\n")}\n`;
@@ -155,7 +155,7 @@ function main() {
       signed: { type: "boolean", default: false },
       "out-dir": { type: "string" },
       changelog: { type: "string", default: join(root, "CHANGELOG.md") },
-      "tr-notes": { type: "string", default: join(root, "docs", "surum-notlari.md") },
+      "tr-notes": { type: "string", default: join(root, "CHANGELOG.tr.md") },
     },
   });
   const required = opt["check-notes"] ? ["version"] : ["version", "setup", "sha256", "repository"];

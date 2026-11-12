@@ -1,6 +1,6 @@
 ---
 title: Sık sorulanlar
-description: Windows uyarısı, AJAZZ'ın kendi yazılımı, Bluetooth ve 2.4 GHz alıcı, klavyenin güvenliği, verileriniz, başka klavyeler ve sorun bildirme üzerine kısa yanıtlar.
+description: Windows uyarısı, AJAZZ'ın kendi yazılımı, ekrana GIF koyma, Bluetooth ve 2.4 GHz alıcı, klavyenin güvenliği, verileriniz, AK980 V2, başka klavyeler ve sorun bildirme üzerine kısa yanıtlar.
 ---
 
 import { Aside } from "@astrojs/starlight/components";
@@ -20,6 +20,21 @@ AJAZZ'ın yazılımını kaldırmanız gerekmez. Ama sürücüsü açıkken Keym
 Klavye aynı anda tek bir programın komutlarını izler; iki programın komutları karışabilir. Öbür programı kapatıp yeniden kaydedin.
 
 Sürücünün kurulu olması bir açıdan da işe yarar: Keymotion klavyenin fabrika ekran animasyonunu ondan kopyalayabilir. Bkz. [Bir şey ters giderse](/keymotion/tr/help/recovery/#fabrika-ekran-animasyonunu-geri-getirme).
+
+## Keymotion için AJAZZ'ın yazılımı gerekir mi?
+
+Hayır. Keymotion klavyeyle USB kablosu üzerinden kendisi konuşur ve her şeyi kendi başına yapar: ışıklar, tuş atama, makrolar ve ekran. AJAZZ'ın yazılımını kaldırabilirsiniz.
+
+Kurulu kalmasının tek bir faydası var: klavyenin fabrika ekran animasyonunu bir gün geri isterseniz Keymotion onu oradan kopyalayabilir. Bkz. [Bir şey ters giderse](/keymotion/tr/help/recovery/#fabrika-ekran-animasyonunu-geri-getirme).
+
+## AK980 PRO'nun ekranına GIF ya da kendi görselimi nasıl koyarım?
+
+1. USB kablosunu takın ve klavyenin arkasındaki anahtarı ortaya alın.
+2. Keymotion'da **Ekran** sayfasını açın ve **Görsel ya da video**'yu seçin.
+3. Bir PNG, JPEG, GIF, WebP, APNG, MP4 ya da WebM dosyası seçin, yerleştirin ve istediğiniz bölümü belirleyin.
+4. **Önizle**'ye, ardından **Klavyeye yükle**'ye tıklayın.
+
+Durağan bir görsel birkaç saniyede yüklenir. Ekran en çok 140 kare alır ve 140 karelik bir animasyonun yüklenmesi yaklaşık beş buçuk dakika sürer. Klavyede **Fn+Home**, saat ile sizin görseliniz arasında geçiş yapar. Yazı kartları ve slayt gösterileri de hazırlayabilirsiniz: bkz. [Ekran](/keymotion/tr/guide/screen/).
 
 ## Bluetooth'ta neden ayar yapamıyorum?
 
@@ -68,6 +83,10 @@ Hayır. Kullanım bilgisi toplamaz, hesap istemez, sizinle ya da bilgisayarını
 ## Başka klavyelerle çalışır mı?
 
 Henüz çalışmaz. Keymotion AJAZZ AK980 PRO'yu destekler. Henüz desteklenmeyen bir SONiX ya da AJAZZ klavye takarsanız Keymotion bunu söyler, klavyeye hiçbir şey göndermez ve GitHub'da destek istemeniz için **Destek iste**'yi sunar. Bkz. [Desteklenen klavyeler](/keymotion/tr/help/keyboards/).
+
+## AJAZZ AK980 V2'de çalışır mı?
+
+Bazı satıcılar aynı klavyeyi **AJAZZ AK980 V2** adıyla satıyor. AK980 PRO ile aynı USB kimliğini bildirdiği için Keymotion onu AK980 PRO olarak tanır. Ayrıca denemedik: sizde varsa lütfen [nasıl çalıştığını bize yazın](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK980+V2&model=AJAZZ+AK980+V2). Bkz. [Desteklenen klavyeler](/keymotion/tr/help/keyboards/).
 
 ## Keymotion'ı AJAZZ mı yaptı?
 

@@ -59,3 +59,12 @@ With the 2.4 GHz receiver or Bluetooth, this page is locked.
 ## Screenshots
 
 `<Screenshot name="…" alt="…" />` shows `src/assets/screens/<lang>/light/<name>.webp` in the light theme and `…/dark/<name>.webp` in the dark theme. The shots are taken by `tools/screenshots` from the app's development build with a stand-in keyboard and sample data, so they can be retaken whenever the app changes. Shots are taken in English and in the dark theme only: Turkish pages and the light theme show the same picture, unless a Turkish or light one exists. Until a shot exists, the page shows a labelled placeholder.
+
+## Search engines and AI assistants
+
+- **Titles and descriptions.** Every page has a `description` in its front matter: one or two sentences that say what the page answers, with the keyboard's name where it fits. Search results and AI assistants show it.
+- **Home pages.** `index.mdx` and `tr/index.mdx` set their own `<title>` and Open Graph title (otherwise it would be "Keymotion | Keymotion") and carry a JSON-LD `SoftwareApplication` description of the app. When the app gains or loses a main feature, update its `featureList` in both.
+- **Share picture.** `public/images/social-preview.png` (made by `tools/screenshots/social.mjs`) shows when a link to any page is shared. It is set in `astro.config.mjs`.
+- **AI assistants.** `starlight-llms-txt` writes `/keymotion/llms.txt`, `llms-full.txt` and `llms-small.txt` from the English pages. Its summary is in `astro.config.mjs`.
+- **Sitemap and IndexNow.** Starlight writes `sitemap-index.xml`. After each publish, `pages.yml` sends the changed pages to IndexNow (`tools/site/indexnow.mjs`).
+- **The host root.** `robots.txt`, the IndexNow key file and the root page that sends visitors here live in the [cebersaban44-rgb.github.io](https://github.com/cebersaban44-rgb/cebersaban44-rgb.github.io) repository, because search engines read them only at the root of the host.
