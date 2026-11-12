@@ -244,6 +244,16 @@ fn back_step(back: &LiveBack, now: f64, enabled: bool, showing: bool, busy: bool
     }
 }
 
+/// `back_step`'s `busy` and `ready` for a return of `back_source`. A card
+/// about to go replaces the screen and makes the return needless, unless it
+/// is the source's own card (one tried with "Dene", sent at once): then the
+/// return waits for it like for an upload, and comes after its time
+/// (owner's test, 2026-11-12: a tried reminder card stayed on the screen).
+fn back_inputs(back_source: &str, pending_source: Option<&str>, card_ready: bool, uploading: bool) -> (bool, bool) {
+    let mine = pending_source == Some(back_source);
+    (uploading || (card_ready && mine), card_ready && !mine)
+}
+
 enum Msg {
     Wake,
 }
@@ -757,8 +767,9 @@ fn card_ready(lib: &mut ScreenLibrary, rt: &Runtime, now: f64) -> bool {
 fn go_back(lib: &mut ScreenLibrary, rt: &mut Runtime, now: f64) -> bool {
     let Some(back) = rt.back.clone() else { return false };
     let showing = lib.live_source_showing(&back.source);
-    let ready = card_ready(lib, rt, now);
-    match back_step(&back, now, lib.live().enabled, showing, rt.uploading.is_some(), ready) {
+    let pending = rt.pending.as_ref().map(|p| p.item.source.as_str());
+    let (busy, ready) = back_inputs(&back.source, pending, card_ready(lib, rt, now), rt.uploading.is_some());
+    match back_step(&back, now, lib.live().enabled, showing, busy, ready) {
         BackStep::Wait(_) => false,
         BackStep::Drop => {
             tracing::debug!(source = %back.source, "return to the own picture no longer needed");
@@ -917,6 +928,29 @@ mod tests {
         assert!(matches!(back_step(&b, 2_000.0, true, false, true, false), BackStep::Wait(_)));
         // Live mode off: nothing goes by itself.
         assert_eq!(back_step(&b, 2_000.0, false, true, false, false), BackStep::Drop);
+    }
+
+    /// Owner's test, 2026-11-12: "Dene" on a reminder sends its card at once
+    /// and asks for the own picture back after a minute; the card itself,
+    /// waiting to go, dropped that return and stayed on the screen.
+    #[test]
+    fn a_tried_card_still_goes_back_after_its_time() {
+        let b = LiveBack { source: "reminder".into(), at_ms: 60_000.0 };
+        // The source's own card is about to go: wait for it, do not drop.
+        let (busy, ready) = back_inputs("reminder", Some("reminder"), true, false);
+        assert!(busy && !ready);
+        assert_eq!(back_step(&b, 10.0, true, false, busy, ready), BackStep::Wait(59_990.0));
+        // Uploaded and on the page: back after the minute.
+        let (busy, ready) = back_inputs("reminder", None, false, false);
+        assert_eq!(back_step(&b, 60_000.0, true, true, busy, ready), BackStep::Go);
+        // Another source's card about to go still replaces it.
+        let (busy, ready) = back_inputs("reminder", Some("now-playing"), true, false);
+        assert!(!busy && ready);
+        assert_eq!(back_step(&b, 10.0, true, true, busy, ready), BackStep::Drop);
+        // The source's own card waiting for the budget does not hold the
+        // return (2026-11-10: the break card stayed for an hour).
+        let (busy, ready) = back_inputs("reminder", Some("reminder"), false, false);
+        assert_eq!(back_step(&b, 60_000.0, true, true, busy, ready), BackStep::Go);
     }
 
     /// Owner's test, 2026-11-10: the budget was empty, the timer was
