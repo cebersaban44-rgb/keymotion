@@ -1,6 +1,6 @@
 # Keymotion yol haritası: ilk sürüme kadar
 
-Durum: 2026-11-12. Kaynaklar: kullanıcının kararları, `docs/DURUM.md` madde 38, `docs/urun-eksikleri.md`.
+Durum: 2026-11-12 (gece sonu: Aşama 0–3 bitti; sıradaki 4 ya da 1b, kullanıcı seçecek). Kaynaklar: kullanıcının kararları, `docs/DURUM.md` madde 38, `docs/urun-eksikleri.md`.
 
 Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve kararları da burada. Bir aşama bitince "Durum" sütununu ve DURUM'daki "Kalınan yer" satırını güncelle.
 
@@ -25,7 +25,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 | 1 | Rust paket ve exe adı `keymotion` | 0 | Onay (öneri: evet) | Bitti (PR #60) |
 | 1b | Kod imzalama başvurusu (SignPath Foundation) | — | Başvuruyu kullanıcı yapar | Başlatılacak |
 | 2 | Tepsi ve arka plan | 1 | Karar verildi: tepsi | Bitti (PR #61): kullanıcı 1–8, ben 9–13 denedik |
-| 3 | Keymotion açılış animasyonu | — (2 ile paralel olabilir) | Önizlemeye onay | Bitti (kullanıcı A'yı seçti; PR'da) |
+| 3 | Keymotion açılış animasyonu | — (2 ile paralel olabilir) | Önizlemeye onay | Bitti (PR #62; kullanıcı A'yı, yazılı seçti) |
 | 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bekliyor |
 | 5 | Kurulum dosyası (NSIS) ve imza | 1, 2, 1b | Kurulum ayrıntılarına onay | Bekliyor |
 | 6 | Sürüm hattı ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Bekliyor |
