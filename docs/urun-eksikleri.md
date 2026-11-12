@@ -215,6 +215,8 @@ GitHub sayfası planı (H) ve kullanıcının kararları en sonda.
 
 ## H. GitHub sayfası ve topluluk (sırası gelince)
 
+> **2026-11-12:** bu bölüm `docs/yol-haritasi.md` Aşama 7'ye taşındı. Orada SignPath Foundation'ın sayfa şartlarıyla (Code signing policy, gizlilik cümlesi, belgelenmiş indirme sayfası) birleşti. Kullanıcının isteğiyle GitHub sayfası uçtan uca, tek yapıyla düzenlenecek. Aşağıdaki not kaynak olarak duruyor.
+
 Kullanıcının notu (2026-11-11): Repo açık kaynak olacağı için sayfalar hem İngilizce hem Türkçe olacak. İçerik:
 
 - ekran görüntüleri: Türkçe ve İngilizce, açık ve koyu tema;
@@ -280,6 +282,7 @@ Ek kararlar (2026-11-12):
 - Repo adı `keymotion` (yeniden adlandırıldı).
 - GitHub Discussions açık (soru-cevap).
 - Sorun bildirme yalnızca GitHub üzerinden.
+- Yol haritasının sırası: 5 kurulum dosyası (imzasız) → 6 sürüm hattı → 7 GitHub sayfası ve bütün belgeler → 8 ilk sürüm (imzasız) → 9 SignPath başvurusu ve imzalı sürüm. Kod imzalama başvurusu ilk sürümden sonraya kaydı: SignPath yayınlanmış bir sürüm ve kullanım kanıtı istiyor.
 
 ## Uygulama durumu (2026-11-12, birleştirme sonrası)
 
@@ -298,7 +301,7 @@ Ayrıntı ve yardımcıların listesi: `DURUM.md` madde 38.
 | E. Profiller | Profiller sayfası, Genel Bakış kartı | **Birleşti** (PR #57). Gerçek uygulamada dört yükleme denemesi geçti |
 | F. Ürünleştirme | Tepsi, NSIS, imza, sürüm hattı, güncelleyici, güç | Sırası ve ayrıntısı `docs/yol-haritasi.md` (Aşama 1–6) |
 | G. Repo ve hukuk | Lisans, NOTICE, üçüncü taraf lisansları, CI denetimleri, ESLint, Dependabot, cargo-deny, CHANGELOG | **Bitti** (PR #54; ESLint uyarıları temizlendi ve CI'ı engelliyor, `?mock` anahtarları kurulu sürümde yok) |
-| H. GitHub sayfası | İki dilli README ve belgeler, ekran görüntüleri, issue formları, topluluk dosyaları | Ürünleştirmeden sonra. Kararlar verildi: varsayılan İngilizce (`README.md`) + Türkçe (`README.tr.md`), repo adı `keymotion` (yapıldı), Discussions açık (yapıldı) |
+| H. GitHub sayfası | İki dilli README ve belgeler, ekran görüntüleri, issue formları, topluluk dosyaları | `docs/yol-haritasi.md` Aşama 7 (SignPath şartlarıyla birlikte; issue formları Aşama 4'te yapıldı). Kararlar verildi: varsayılan İngilizce (`README.md`) + Türkçe (`README.tr.md`), repo adı `keymotion` (yapıldı), Discussions açık (yapıldı) |
 | I. Sorun bildirme | Uygulama içinden sorun bildirme, desteklenmeyen klavye bildirimi | **Bitti** (2026-11-12): GitHub formları, `SECURITY.md`, sorun bildir penceresi, beklenmeyen hata ve çökme bildirimi, "Destek iste". Ayrıntı: `docs/yol-haritasi.md` Aşama 4. Özel güvenlik bildirimi açıldı, "keyboard support" etiketi oluşturuldu (kullanıcı onayıyla) |
 | Dil | Uygulamanın varsayılan dili | **İngilizce** (2026-11-12, yapıldı); Türkçe seçilebilir |
 | Tepsi ve arka plan | Pencere kapanınca uygulamanın tepside çalışmaya devam etmesi | **Bitti** (PR #61, 2026-11-12): kapatınca gizlenir, tepsi menüsü (klavye, odak alt menüsü, hatırlatıcılar, göstergeler, profiller, çık), Ayarlar › Arka plan, Windows'la gizli başlama. Kullanıcı ve ben denedik; bildirimler Keymotion adı ve logosuyla. Ayrıntı: `docs/yol-haritasi.md` Aşama 2 |
