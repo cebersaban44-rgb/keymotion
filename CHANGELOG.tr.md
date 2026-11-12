@@ -4,7 +4,9 @@ Keymotion'daki önemli değişiklikler burada listelenir. İngilizcesi: [CHANGEL
 
 ## [Yayımlanmamış]
 
-İlk sürüm hazırlanıyor. Windows'ta AJAZZ AK980 PRO'yu destekler.
+## [0.1.0] - 2026-11-12
+
+İlk sürüm. Windows'ta AJAZZ AK980 PRO'yu destekler.
 
 ### Eklenenler
 
@@ -109,3 +111,6 @@ Keymotion'daki önemli değişiklikler burada listelenir. İngilizcesi: [CHANGEL
   İngilizce kullanım kılavuzu: uygulamanın her sayfası, bir şey ters giderse ne
   yapılacağı, desteklenen ve sırada olabilecek klavyeler, geliştiriciler için
   sayfalar. Ayarlar › Hakkında'dan açılır.
+
+[Yayımlanmamış]: https://github.com/cebersaban44-rgb/keymotion/compare/v0.1.0...develop
+[0.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v0.1.0

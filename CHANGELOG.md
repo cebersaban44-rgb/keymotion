@@ -7,7 +7,9 @@ Türkçe: [CHANGELOG.tr.md](CHANGELOG.tr.md).
 
 ## [Unreleased]
 
-The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
+## [0.1.0] - 2026-11-12
+
+The first release. It supports the AJAZZ AK980 PRO on Windows.
 
 ### Added
 
@@ -99,4 +101,5 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
   something goes wrong, the supported keyboards and the ones that could come
   next, and pages for developers. Settings › About opens it.
 
-[Unreleased]: https://github.com/cebersaban44-rgb/keymotion/commits/develop
+[Unreleased]: https://github.com/cebersaban44-rgb/keymotion/compare/v0.1.0...develop
+[0.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v0.1.0
