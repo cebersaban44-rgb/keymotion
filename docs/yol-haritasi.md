@@ -28,7 +28,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 | 2 | Tepsi ve arka plan | 1 | Karar verildi: tepsi | Bitti (PR #61): kullanıcı 1–8, ben 9–13 denedik |
 | 3 | Keymotion açılış animasyonu | — (2 ile paralel olabilir) | Önizlemeye onay | Bitti (PR #62; kullanıcı A'yı, yazılı seçti) |
 | 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bitti (PR #63); GitHub ayarları kullanıcı onayıyla açıldı |
-| 5 | Kurulum dosyası (NSIS), imzasız | 1, 2 | Kurulum ayrıntılarına onay | Sırada |
+| 5 | Kurulum dosyası (NSIS), imzasız | 1, 2 | Kurulum ayrıntılarına onay | Yapıldı (PR'da); kullanıcının elle denemesi ve kurulum görselleri bekliyor |
 | 6 | Sürüm hattı (GitHub Actions) ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Bekliyor |
 | 7 | GitHub sayfası ve bütün belgeler, SignPath'in sayfa şartları dahil | 5, 6 (kurulum ve indirme adımları belli) | Belge yapısına ve görünümüne onay (önce önizleme) | Bekliyor |
 | 8 | Son denemeler ve ilk sürüm 0.1.0 (imzasız) | hepsi | Elle denemeler; `main`'e birleştirme onayı | Bekliyor |
@@ -333,6 +333,33 @@ Uygulama içi düğme bu formların adresini açacak, o yüzden formlar önce ya
   - temiz bir Windows kullanıcı hesabında ya da sanal makinede kur, aç, kaldır;
   - SmartScreen davranışı (imzasız): "Windows bilgisayarınızı korudu" ekranı ve "Ek bilgi" → "Yine de çalıştır" yolu; sürüm notunda anlatılacak;
   - kurulu sürümde sahte arka uç ve geliştirici anahtarları olmamalı (Aşama 0).
+
+### Yapılan (2026-11-12, sabah)
+
+- **Ayarlar** (`app/src-tauri/tauri.conf.json` `bundle`):
+  - NSIS, kullanıcı başına (`currentUser`): `%LOCALAPPDATA%\Keymotion`, yönetici izni yok;
+  - diller İngilizce ve Türkçe; Windows'un diline göre seçilir, Türkçe değilse İngilizce;
+  - yayımcı "Keymotion", telif satırı, ana sayfa (GitHub), lisans "MIT OR Apache-2.0", kısa ve uzun açıklama;
+  - WebView2: varsayılan (gerekirse önyükleyiciyi indirir; Windows 11'de zaten var).
+- **Tauri'nin şablonunda zaten olanlar** (2.12.4, `installer.nsi` okundu):
+  - karşılama, klasör, kurulum ve bitiş sayfaları; bitişte "Masaüstü kısayolu oluştur" ve "Keymotion'ı çalıştır" kutuları;
+  - kaldırıcıda "Uygulama verilerini sil" kutusu, varsayılan işaretsiz (veriler kalır);
+  - çalışan uygulama varsa kapatmak için sorar (Windows'un yeniden başlatma yöneticisiyle);
+  - `Run` altındaki "Keymotion" değerini kaldırırken siler; güncellemede dokunmaz.
+- **Eklenen kaldırma adımı** (`app/src-tauri/windows/installer-hooks.nsh`): `StartupApproved\Run\Keymotion` ve `AppUserModelId\dev.keymotion` kaldırırken silinir, güncellemede kalır.
+- **Derleme:** çalışan uygulama etkilenmesin diye ayrı bir worktree'de (`../klavye-build`), ortak `target` klasörüyle: `pnpm tauri build`. Çıktı `target/release/bundle/nsis/Keymotion_0.1.0_x64-setup.exe` (4 MB). İlk sürüm derlemesi yaklaşık 8 dk.
+- **Denemeler (bu hesapta, sessiz kurulumla `/P`):**
+  - kurulum: klasör, "Yüklü uygulamalar" kaydı (yayımcı, sürüm, GitHub bağlantıları), Başlat menüsü ve masaüstü kısayolu ✓;
+  - exe bilgileri: ürün adı, açıklama, şirket, sürüm 0.1.0, telif ✓;
+  - kurulu sürüm: arayüz uygulamanın içinden geliyor (`tauri.localhost`), geliştirme modülleri yok, klavye bulunuyor (yazılım 1.06) ✓;
+  - kaldırma: klasör, kayıt, kısayollar ve bildirim kaydı silindi; ayarlar ve veriler kaldı ✓;
+  - "Windows açılınca başlat" kaydının silinmesi elle denenmedi: kaydı betikle açmak otomatik izin denetimince engellendi. Kullanıcı deneyecek.
+- **Bulunan hata (ders 61):** kurulu sürüm ilk açılışta, klavye takılıyken "Klavye bekleniyor" gösterdi. Arayüz klavye listesini okuyup değişiklik olayını sonra dinlemeye başlıyordu; hızlı açılan sürüm sürümünde olay arada kayboluyordu. Düzeltme `lib/follow.ts`: önce dinle, sonra oku; okuma sürerken olay gelirse okumanın cevabı atılır. Aynı kalıp saat kartında, flash yazma durumunda ve desteklenmeyen klavye listesinde de kullanıldı. Boş tercihlerle 6 açılışın 6'sında klavye göründü (düzeltmeden önce 2'de 1 kayboluyordu).
+- **Bilinen:** kurulu sürüm geliştirme sürümünden ayrı bir adreste çalışır, arayüz tercihleri (dil, tema) ayrı tutulur. İlk açılışta İngilizce gelir (varsayılan dil kararı).
+- **Kalan:**
+  - kullanıcının elle denemesi: Türkçe kurulum sayfaları, masaüstü kısayolu kutusu, "Bilgisayar açılınca başlat" açıkken kaldırma;
+  - kurulum görselleri: şu an NSIS'in varsayılan karşılama resmi ve üst bant; Keymotion görselleri önizlemeyle önerilecek;
+  - SmartScreen davranışı ancak internetten indirilen dosyada görülür (Aşama 6).
 
 ## Aşama 6: sürüm hattı ve otomatik güncelleyici
 
