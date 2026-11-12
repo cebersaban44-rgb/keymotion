@@ -75,11 +75,11 @@ function sectionHint(info: BackupSectionInfo, screenNew: number, t: Translate) {
     case "keymap":
       return t("data.section.draft");
     case "macros":
-      return t("data.section.macros", { count });
+      return count > 0 ? t("data.section.macros", { count }) : t("data.section.macros.none");
     case "screen":
       return screenNew > 0 ? t("data.section.screen", { count: screenNew }) : t("data.section.screen.none");
     case "reminders":
-      return t("data.section.reminders", { count });
+      return count > 0 ? t("data.section.reminders", { count }) : t("data.section.reminders.none");
     case "calendar":
       return count > 0 ? t("data.section.calendar.with", { count }) : t("data.section.calendar.settings");
     default:
