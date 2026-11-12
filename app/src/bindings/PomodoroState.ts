@@ -9,9 +9,18 @@ import type { PomodoroSummary } from "./PomodoroSummary";
  */
 export type PomodoroState = { settings: PomodoroSettings, status: PomodoroStatus, phase: PomodoroPhase, 
 /**
- * Focus round the current phase belongs to (1-based).
+ * The current block in the sequence (1-based).
+ */
+block: number, 
+/**
+ * The focus block the current one is or follows (1-based, of
+ * `settings.focus_blocks()`).
  */
 round: number, 
+/**
+ * The run of the sequence (1-based).
+ */
+cycle: number, 
 /**
  * Length of the current phase.
  */

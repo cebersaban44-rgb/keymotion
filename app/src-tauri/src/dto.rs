@@ -352,14 +352,13 @@ pub struct TrayTexts {
     pub focus_skip: String,
     pub focus_stop: String,
     pub phase_focus: String,
-    pub phase_short: String,
-    pub phase_long: String,
-    /// `{n}` of `{total}`.
+    pub phase_break: String,
+    /// Block `{n}` of `{total}`.
     pub round: String,
     /// `{min}`.
     pub left: String,
     pub paused: String,
-    /// `{rounds}` × `{min}`.
+    /// `{blocks}` blocks, `{min}` minutes in all.
     pub ready: String,
     pub reminders: String,
     pub reminders_on: String,
@@ -396,12 +395,11 @@ impl Default for TrayTexts {
             focus_skip: s("Skip to the next phase"),
             focus_stop: s("Stop"),
             phase_focus: s("Focus"),
-            phase_short: s("Short break"),
-            phase_long: s("Long break"),
-            round: s("Round {n}/{total}"),
+            phase_break: s("Break"),
+            round: s("Block {n}/{total}"),
             left: s("{min} min left"),
             paused: s("Paused"),
-            ready: s("Ready: {rounds} × {min} min focus"),
+            ready: s("Ready: {blocks} blocks, {min} min"),
             reminders: s("Reminders"),
             reminders_on: s("Reminders on"),
             reminders_off: s("Reminders off"),
@@ -1281,15 +1279,36 @@ pub struct LiveBack {
     pub at_ms: f64,
 }
 
-/// Pomodoro phase.
+/// What a block of the focus timer is: focus or a break. A break is a
+/// break, whatever its length (K7: the owner found "short" and "long"
+/// breaks that differ only in length pointless).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub enum PomodoroPhase {
     #[default]
     Focus,
-    ShortBreak,
-    LongBreak,
+    Break,
+}
+
+/// One block of the sequence the user builds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PomodoroBlock {
+    pub phase: PomodoroPhase,
+    /// 1–`BLOCK_MAX_MIN`.
+    pub minutes: u16,
+}
+
+impl PomodoroBlock {
+    pub const fn focus(minutes: u16) -> Self {
+        Self { phase: PomodoroPhase::Focus, minutes }
+    }
+
+    pub const fn rest(minutes: u16) -> Self {
+        Self { phase: PomodoroPhase::Break, minutes }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, TS)]
@@ -1335,18 +1354,16 @@ pub enum PomodoroTransition {
 }
 
 /// Pomodoro settings (persisted in `pomodoro.json`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(default, rename_all = "camelCase")]
 #[ts(export)]
 pub struct PomodoroSettings {
-    /// Minutes of one focus phase (1–120).
-    pub focus_min: u16,
-    /// Minutes of a short break (1–60).
-    pub short_min: u16,
-    /// Minutes of the long break that ends a series (1–60).
-    pub long_min: u16,
-    /// Focus phases in one series (1–8).
-    pub rounds: u8,
+    /// The sequence the user built, in order (1–`BLOCKS_MAX` blocks).
+    /// Owner's design, 2026-11-12 (K7): blocks are added, removed and
+    /// dragged into order; "25 / 5 klasik" is the default.
+    pub blocks: Vec<PomodoroBlock>,
+    /// How many times the sequence runs: 1–`REPEAT_MAX`, 0 until stopped.
+    pub repeat: u8,
     /// Progress on the key lights (RAM only, no flash write).
     pub lights: bool,
     /// A card on the screen when a phase starts (through the live mode).
@@ -1354,8 +1371,7 @@ pub struct PomodoroSettings {
     pub motion: PomodoroMotion,
     /// Phase colours (UI colours, sRGB).
     pub focus_color: [u8; 3],
-    pub short_color: [u8; 3],
-    pub long_color: [u8; 3],
+    pub break_color: [u8; 3],
     /// Light brightness in the keyboard's own steps, 1–5.
     pub brightness: u8,
     /// The light that is left breathes in the last minute of a phase.
@@ -1365,6 +1381,41 @@ pub struct PomodoroSettings {
     pub sound: bool,
     /// What the screen shows when a series ends or is stopped.
     pub end_screen: PomodoroEndScreen,
+    /// Settings files from before the sequence (focus, short and long
+    /// break, rounds): read once, turned into `blocks` by `sanitized`,
+    /// never written.
+    #[serde(skip_serializing)]
+    #[ts(skip)]
+    pub focus_min: Option<u16>,
+    #[serde(skip_serializing)]
+    #[ts(skip)]
+    pub short_min: Option<u16>,
+    #[serde(skip_serializing)]
+    #[ts(skip)]
+    pub long_min: Option<u16>,
+    #[serde(skip_serializing)]
+    #[ts(skip)]
+    pub rounds: Option<u8>,
+    /// The old short break's colour becomes the break colour (the long
+    /// break's is dropped).
+    #[serde(skip_serializing)]
+    #[ts(skip)]
+    pub short_color: Option<[u8; 3]>,
+}
+
+/// Longest block, in minutes.
+pub const BLOCK_MAX_MIN: u16 = 180;
+/// Most blocks in a sequence.
+pub const BLOCKS_MAX: usize = 16;
+/// Most runs of the sequence (0 means until stopped).
+pub const REPEAT_MAX: u8 = 9;
+
+/// "25 / 5 klasik": three focus blocks of 25 minutes, 5-minute breaks
+/// between them, a 15-minute break at the end (the owner's choice from the
+/// preview, 2026-11-12).
+pub fn classic_blocks() -> Vec<PomodoroBlock> {
+    use PomodoroBlock as B;
+    vec![B::focus(25), B::rest(5), B::focus(25), B::rest(5), B::focus(25), B::rest(15)]
 }
 
 /// What the screen shows when a series ends or is stopped (with screen
@@ -1383,51 +1434,75 @@ pub enum PomodoroEndScreen {
 impl Default for PomodoroSettings {
     fn default() -> Self {
         Self {
-            focus_min: 25,
-            short_min: 5,
-            long_min: 15,
-            rounds: 4,
+            blocks: classic_blocks(),
+            repeat: 1,
             lights: true,
             screen: true,
             motion: PomodoroMotion::default(),
             focus_color: [255, 80, 20],
-            short_color: [30, 220, 100],
-            long_color: [40, 140, 255],
+            break_color: [30, 220, 100],
             brightness: 4,
             pulse: true,
             transition: PomodoroTransition::default(),
             sound: false,
             end_screen: PomodoroEndScreen::default(),
+            focus_min: None,
+            short_min: None,
+            long_min: None,
+            rounds: None,
+            short_color: None,
         }
     }
 }
 
 impl PomodoroSettings {
-    pub fn sanitized(self) -> Self {
-        Self {
-            focus_min: self.focus_min.clamp(1, 120),
-            short_min: self.short_min.clamp(1, 60),
-            long_min: self.long_min.clamp(1, 60),
-            rounds: self.rounds.clamp(1, 8),
-            brightness: self.brightness.clamp(1, 5),
-            ..self
+    /// In range, and an older file's focus, breaks and rounds turned into
+    /// the sequence they made: each round a focus block, a short break
+    /// between rounds and the long break at the end.
+    pub fn sanitized(mut self) -> Self {
+        if let Some(rounds) = self.rounds.take() {
+            let focus = self.focus_min.take().unwrap_or(25);
+            let short = self.short_min.take().unwrap_or(5);
+            let long = self.long_min.take().unwrap_or(15);
+            let rounds = rounds.clamp(1, 8);
+            self.blocks = (1..=rounds)
+                .flat_map(|r| {
+                    [PomodoroBlock::focus(focus), PomodoroBlock::rest(if r == rounds { long } else { short })]
+                })
+                .collect();
+            self.repeat = 1;
         }
+        if let Some(c) = self.short_color.take() {
+            self.break_color = c;
+        }
+        (self.focus_min, self.short_min, self.long_min) = (None, None, None);
+        self.blocks.truncate(BLOCKS_MAX);
+        for b in &mut self.blocks {
+            b.minutes = b.minutes.clamp(1, BLOCK_MAX_MIN);
+        }
+        if self.blocks.is_empty() {
+            self.blocks = classic_blocks();
+        }
+        self.repeat = self.repeat.min(REPEAT_MAX);
+        self.brightness = self.brightness.clamp(1, 5);
+        self
     }
 
     pub fn color(&self, phase: PomodoroPhase) -> [u8; 3] {
         match phase {
             PomodoroPhase::Focus => self.focus_color,
-            PomodoroPhase::ShortBreak => self.short_color,
-            PomodoroPhase::LongBreak => self.long_color,
+            PomodoroPhase::Break => self.break_color,
         }
     }
 
-    pub fn minutes(&self, phase: PomodoroPhase) -> u16 {
-        match phase {
-            PomodoroPhase::Focus => self.focus_min,
-            PomodoroPhase::ShortBreak => self.short_min,
-            PomodoroPhase::LongBreak => self.long_min,
-        }
+    /// Focus blocks in one run of the sequence (at least 1, for the cards).
+    pub fn focus_blocks(&self) -> u8 {
+        self.blocks.iter().filter(|b| b.phase == PomodoroPhase::Focus).count().clamp(1, 255) as u8
+    }
+
+    /// Minutes of one run of the sequence.
+    pub fn total_minutes(&self) -> u32 {
+        self.blocks.iter().map(|b| u32::from(b.minutes)).sum()
     }
 }
 
@@ -1453,8 +1528,13 @@ pub struct PomodoroState {
     pub settings: PomodoroSettings,
     pub status: PomodoroStatus,
     pub phase: PomodoroPhase,
-    /// Focus round the current phase belongs to (1-based).
+    /// The current block in the sequence (1-based).
+    pub block: u8,
+    /// The focus block the current one is or follows (1-based, of
+    /// `settings.focus_blocks()`).
     pub round: u8,
+    /// The run of the sequence (1-based).
+    pub cycle: u8,
     /// Length of the current phase.
     pub phase_ms: f64,
     /// Time left in the phase as of `at_ms` (counts down from there while
@@ -1486,10 +1566,17 @@ pub enum PomodoroCardKind {
 pub struct PomodoroCard {
     pub kind: PomodoroCardKind,
     pub phase: PomodoroPhase,
+    /// The focus block this one is or follows, of the focus blocks in one
+    /// run (the ring on the card).
     pub round: u8,
     pub rounds: u8,
+    /// The run of the sequence and how many there are (0: until stopped).
+    pub cycle: u8,
+    pub cycles: u8,
     /// Phase length in minutes.
     pub minutes: u16,
+    /// The block that comes next, `None` when this is the last.
+    pub next: Option<PomodoroBlock>,
     pub focus_done: u8,
     pub focus_min: u32,
     /// Summary: every round was done, the long break included.

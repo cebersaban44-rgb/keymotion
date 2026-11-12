@@ -519,7 +519,7 @@ pub fn apply(app: &AppHandle, pending: Pending, sections: &[BackupSection]) -> B
         });
     }
     if let Some(p) = b.pomodoro {
-        run(BackupSection::Focus, &mut out, &mut || app.state::<Arc<PomodoroHandle>>().configure(p).map(|_| 0));
+        run(BackupSection::Focus, &mut out, &mut || app.state::<Arc<PomodoroHandle>>().configure(p.clone()).map(|_| 0));
     }
     if let Some(g) = b.gauges.clone() {
         run(BackupSection::Gauges, &mut out, &mut || app.state::<Arc<GaugesHandle>>().configure(g.clone()).map(|_| 0));

@@ -198,14 +198,13 @@ export interface PomodoroWords {
   name: string;
   phase: Record<PomodoroPhase, string>;
   round: string;
-  /** "3 rounds", for the finished series. */
+  /** "3 focus blocks", for the finished series. */
   rounds: (n: number) => string;
   min: string;
   next: string;
   nextFocus: string;
-  nextShort: string;
-  nextLong: string;
-  lastBreak: string;
+  nextBreak: string;
+  last: string;
   doneComplete: string;
   doneStopped: string;
   ended: string;
@@ -216,15 +215,14 @@ export function pomodoroWords(tNow: Translate): PomodoroWords {
   return {
     label: tNow("pomo.card.label"),
     name: tNow("pomo.card.name"),
-    phase: { focus: tNow("pomo.phase.focus"), shortBreak: tNow("pomo.phase.shortBreak"), longBreak: tNow("pomo.phase.longBreak") },
+    phase: { focus: tNow("pomo.phase.focus"), break: tNow("pomo.phase.break") },
     round: tNow("pomo.card.round"),
     rounds: (n) => tNow("pomo.card.rounds", { count: n }),
     min: tNow("pomo.card.min"),
     next: tNow("pomo.card.next"),
     nextFocus: tNow("pomo.card.nextFocus"),
-    nextShort: tNow("pomo.card.nextShort"),
-    nextLong: tNow("pomo.card.nextLong"),
-    lastBreak: tNow("pomo.card.lastBreak"),
+    nextBreak: tNow("pomo.card.nextBreak"),
+    last: tNow("pomo.card.last"),
     doneComplete: tNow("pomo.card.doneComplete"),
     doneStopped: tNow("pomo.card.doneStopped"),
     ended: tNow("pomo.card.ended"),
@@ -256,7 +254,7 @@ export async function pomodoroCard(c: PomodoroCard, s: PomodoroSettings, w: Pomo
   const done = c.kind === "done";
   // A finished series gets a check; one ended early shows its rounds.
   const check = done && c.complete;
-  const color = phaseColor(s, done ? (check ? "shortBreak" : "focus") : c.phase);
+  const color = phaseColor(s, done ? (check ? "break" : "focus") : c.phase);
   const tone = hexRgb(color);
   const light = tone.map((v) => Math.round(v + (255 - v) * 0.35)) as [number, number, number];
   const endTime = new Date(c.endedMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -265,10 +263,8 @@ export async function pomodoroCard(c: PomodoroCard, s: PomodoroSettings, w: Pomo
   const big = done ? `${c.focusMin} ${w.min}` : `${String(c.minutes).padStart(2, "0")}:00`;
   let foot: string;
   if (done) foot = `${w.rounds(c.focusDone)} · ${w.ended} ${endTime}`;
-  else if (c.phase === "focus")
-    foot = c.focusDone + 1 >= c.rounds ? `${w.next}: ${s.longMin} ${w.min} ${w.nextLong}` : `${w.next}: ${s.shortMin} ${w.min} ${w.nextShort}`;
-  else if (c.phase === "shortBreak") foot = `${w.next}: ${s.focusMin} ${w.min} ${w.nextFocus}`;
-  else foot = w.lastBreak;
+  else if (c.next) foot = `${w.next}: ${c.next.minutes} ${w.min} ${c.next.phase === "focus" ? w.nextFocus : w.nextBreak}`;
+  else foot = w.last;
   await Promise.all([fonts(`${w.label} ${title} ${foot}`), document.fonts.load(`700 34px ${MONO}`, big).catch(() => [])]);
 
   const { bg, fg } = makeLayers();
@@ -279,12 +275,13 @@ export async function pomodoroCard(c: PomodoroCard, s: PomodoroSettings, w: Pomo
   bg.fillRect(0, 0, W, H);
 
   fg.clearRect(0, 0, W, H);
-  // Ring on the right: one arc per round, finished rounds filled.
+  // Ring on the right: one arc per focus block of the sequence, the ones
+  // done in this run filled. A finished series: one arc per focus block done.
   const r = 40;
   const cx = W - 16 - r;
   const cy = H / 2;
-  const rounds = check ? 1 : Math.max(1, done ? s.rounds : c.rounds);
-  const filled = check ? 1 : c.focusDone;
+  const rounds = check ? 1 : Math.max(1, done ? c.focusDone : c.rounds);
+  const filled = check ? 1 : done ? c.focusDone : c.phase === "focus" ? c.round - 1 : Math.min(c.round, c.focusDone);
   const gap = rounds > 1 ? 0.16 : 0;
   const seg = (Math.PI * 2) / rounds;
   fg.lineWidth = 7;
@@ -318,7 +315,7 @@ export async function pomodoroCard(c: PomodoroCard, s: PomodoroSettings, w: Pomo
     fg.stroke();
   } else {
     fg.font = `700 24px ${DISPLAY}`;
-    fg.fillText(done ? `${c.focusDone}/${s.rounds}` : `${c.round}/${c.rounds}`, cx, cy + 6);
+    fg.fillText(done ? `${c.focusDone}` : `${c.round}/${c.rounds}`, cx, cy + 6);
     fg.font = `600 8px ${SANS}`;
     fg.letterSpacing = "1px";
     fg.fillStyle = "rgba(255,255,255,0.6)";
