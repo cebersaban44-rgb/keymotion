@@ -721,10 +721,16 @@ fn lighting_save(app: AppHandle, state: serde_json::Value) -> Result<(), String>
 }
 
 /// A UI failure (a page that crashed, an action that failed) for the log.
+/// Situations the user can fix arrive as "action refused: …" and are logged
+/// as warnings (lib/errors.ts `EXPECTED`).
 #[tauri::command]
 fn log_ui_error(message: String) {
     let message: String = message.chars().take(4_000).collect();
-    tracing::error!(target: "ui", "{message}");
+    if message.starts_with("action refused:") {
+        tracing::warn!(target: "ui", "{message}");
+    } else {
+        tracing::error!(target: "ui", "{message}");
+    }
 }
 
 /// The diagnostics report, plain text for the clipboard.

@@ -131,9 +131,9 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **CI (`.github/workflows/ci.yml`):** Windows'ta çalışır. Adımlar: arayüz kurulumu, typecheck ve derleme; fmt, clippy, testler; üretilen TS tiplerinin güncel olduğunun kontrolü. İlk çalışma 5 dk sürdü.
     - **`.gitattributes`:** Bütün metin dosyaları LF; Windows'ta ts-rs ve CI aynı baytları görür.
     - **PR'lar:**
-      - [#1](https://github.com/cebersaban44-rgb/klavye-studio/pull/1): ışık işleri (madde 10–13)
-      - [#2](https://github.com/cebersaban44-rgb/klavye-studio/pull/2) ve [#3](https://github.com/cebersaban44-rgb/klavye-studio/pull/3): dal rehberi ve varsayılan dal
-      - [#4](https://github.com/cebersaban44-rgb/klavye-studio/pull/4): CI
+      - [#1](https://github.com/cebersaban44-rgb/keymotion/pull/1): ışık işleri (madde 10–13)
+      - [#2](https://github.com/cebersaban44-rgb/keymotion/pull/2) ve [#3](https://github.com/cebersaban44-rgb/keymotion/pull/3): dal rehberi ve varsayılan dal
+      - [#4](https://github.com/cebersaban44-rgb/keymotion/pull/4): CI
 15. **Efekt rengi, parlaklık ölçeği ve ayna kırmızısı.** P1'deki "efekt rengine gamma gerekiyor mu?" sorusu göz yerine ölçümle cevaplandı. Ayrıntı: `donanim-dogrulama.md`, "Efekt rengi, parlaklık ölçeği ve F5'in kırmızı baytı".
     - **Efekt rengi:** Firmware gamma uygulamıyor. Uygulamanın kalibrasyonu artık efekt rengine de uygulanıyor.
     - **Parlaklık:** Firmware ölçeği ölçüldü: `v·m[n] >> 10`, `m = [0, 191, 382, 573, 764, 1016]`. Efektler ve tuş başına tablo aynı ölçeği kullanıyor. Canlı önizleme `n/5` yerine bunu kullanıyor.
@@ -155,7 +155,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - Katalog her efektin hareketini taşıyor (`Motion`: dikey, yatay, dönme, yol, çapraz). Arayüz yön düğmelerini buna göre adlandırıyor; eski kayıtlardaki 2/3 değerleri doğru düğmede görünüyor.
     - Ölçüm aracı: F5 karelerinden desen kaymasını hesaplayan `kb-cli/src/motion.rs` (eksen izdüşümü ve iki boyutlu eşleştirme, birim testli).
     - Kullanıcı yön düğmelerini uygulamada seçip klavyede denedi: doğru çalışıyor.
-    - **PR'lar:** [#6](https://github.com/cebersaban44-rgb/klavye-studio/pull/6) madde 15, [#7](https://github.com/cebersaban44-rgb/klavye-studio/pull/7) madde 16, [#8](https://github.com/cebersaban44-rgb/klavye-studio/pull/8) madde 17, [#9](https://github.com/cebersaban44-rgb/klavye-studio/pull/9) bağlantı modları listesi, [#10](https://github.com/cebersaban44-rgb/klavye-studio/pull/10) madde 18.
+    - **PR'lar:** [#6](https://github.com/cebersaban44-rgb/keymotion/pull/6) madde 15, [#7](https://github.com/cebersaban44-rgb/keymotion/pull/7) madde 16, [#8](https://github.com/cebersaban44-rgb/keymotion/pull/8) madde 17, [#9](https://github.com/cebersaban44-rgb/keymotion/pull/9) bağlantı modları listesi, [#10](https://github.com/cebersaban44-rgb/keymotion/pull/10) madde 18.
 19. **Tuş atama** (`04 11` temel, `04 27` Fn). Ayrıntı: `donanim-dogrulama.md`, "Tuş atama".
     - **Protokol** (`kb-protocol/src/sonix/keymap.rs`): `KeyAction` (varsayılan, devre dışı, tuş + değiştiriciler, medya, fare, tekerlek), 576 baytlık katman tablosu, HID ve medya kataloğu. Fn (`0xAF`) hedef olarak da kabul edilmez. Geçerli her girişin `guard`'dan geçtiği testle kanıtlı.
     - **Model:** her tuşun varsayılan HID kodu (`hid`) model dosyasında. `kb-core/src/keymap.rs` katmanı modele göre denetler: Fn tuşu kilitli, modelde olmayan tuş reddedilir, temel katmanda "tuş kendini gönderir" varsayılana çevrilir.
@@ -164,7 +164,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **Arayüz:** Tuş Atama sayfası: katman sekmeleri, klavyede seçim (değişen tuş yeni işlevini ve altında asıl etiketini gösterir, kaydedilmemişler noktalı), işlev seçici (Tuşlar + "Birlikte basılı" değiştiriciler, Medya, Fare, Özel), kaydet paneli ve okunamama/Fn katmanı notları, tuş testi kutusu.
     - **CLI:** `kb keymap --layer base|fn KEY=ACTION … --yes`, `kb keymap-targets`.
     - **Doğrulama:** CLI ile iki katman yazılıp kullanıcı bastı; varsayılana dönüş doğrulandı. Sonra uygulamanın kendi Kaydet düğmesiyle yazılıp sayfadaki tuş testi kutusunda doğrulandı ve uygulamadan fabrika ayarına döndürüldü. Klavye şu an fabrika atamasında.
-    - **PR'lar:** [#12](https://github.com/cebersaban44-rgb/klavye-studio/pull/12) madde 19, [#13](https://github.com/cebersaban44-rgb/klavye-studio/pull/13) "tuşla uygulama başlatma" fikri (P2).
+    - **PR'lar:** [#12](https://github.com/cebersaban44-rgb/keymotion/pull/12) madde 19, [#13](https://github.com/cebersaban44-rgb/keymotion/pull/13) "tuşla uygulama başlatma" fikri (P2).
 20. **Makrolar: temel** (`04 19` → `04 15`). Ayrıntı: `donanim-dogrulama.md`, "Makrolar".
     - **Protokol** (`kb-protocol/src/sonix/macros.rs`): makro görüntüsü (100 yuvalık dizin, kayıtlar, sayfa sayısı ve `AA 55`), bellek sınırı (`(adım + yuva) × 8 ≤ 0xA8C`), ABD düzeniyle metin → adım, geri okuma (test için). Geçerli her görüntünün `guard`'dan geçtiği testle kanıtlı.
     - **Yuvalar sabit:** Boş yuva numarasını korur (`FF FF FF FF`). Bir makro silinince sonrakiler kaymaz, tuş atamalarını yeniden yazmak gerekmez.
@@ -172,7 +172,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **Sürücü:** `04 19` → `04 15` (sayfa) → 30 ms → sayfalar → 30 ms → `04 02`; `04 18` ve `04 F0` yok. `04 02` yankısındaki toplam görüntünün toplamıyla tutuyor.
     - **CLI:** `kb macros SPEC… --yes` (`text:`, `combo:`, `steps:`; `-` boş yuva), `kb keymap KEY=macro:N[:times:K|:toggle|:hold]`.
     - **Doğrulama:** Kullanıcı Num / (bir kez "ok"), Num * ("ok" üç kez) ve Num − (sağ tık, 200 ms, x) tuşlarına bastı; olaylar ve beklemeler beklendiği gibi. Sonra makrolar silindi ve atama fabrika ayarına döndü.
-    - **PR:** [#14](https://github.com/cebersaban44-rgb/klavye-studio/pull/14).
+    - **PR:** [#14](https://github.com/cebersaban44-rgb/keymotion/pull/14).
 21. **Makrolar sayfası.** Ayrıntı: `donanim-dogrulama.md`, "Makrolar sayfası, uçtan uca".
     - **Uygulamanın kaydı:** `macros.json` (model başına yuvalar; ad ve adımlar, son yazım zamanı). Klavye makroları ve adlarını geri okuyamıyor; cihaz aktörü kaydı yalnızca klavyenin onayladığı yazımdan sonra günceller. Taslak `ks.macros.v1`'de, kapatma uyarısına katılıyor.
     - **Sayfa:**
@@ -184,9 +184,9 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **Tuş Atama:** "Makro" kategorisi; oynatma biçimi (bir kez, belirli sayıda, tekrar basana kadar, basılı tuttukça). Tuş üstünde `M1`, panelde makronun adı görünür.
     - **Klavye düzenine göre etiketler** (`lib/layout.ts`): WebView2'nin Keyboard Map API'siyle her tuşun Windows'ta yazdığı karakter gösteriliyor (Türkçe Q'da `;` konumu **Ş**, `[` **Ğ**). Makro adımlarında, Tuş Atama seçicisinde ve atanmış tuş adlarında kullanılıyor. Pencere odak alınca düzen yeniden okunuyor.
     - **Doğrulama:** Kayıt, bağlama ve silme CDP ile denendi. Ardından uygulamadan makro ve atama kaydedildi; kullanıcı Num /'a bastı ve tuş testi kutusunda "Shift+H, Ş, I, sol tık" dizisi tekrar tekrar geldi. Sonra makro uygulamadan silindi ve ikisi de kaydedildi; klavye ve kayıtlar fabrika durumunda.
-    - **PR:** [#15](https://github.com/cebersaban44-rgb/klavye-studio/pull/15).
+    - **PR:** [#15](https://github.com/cebersaban44-rgb/keymotion/pull/15).
 22. **Ekran: derin araştırma ve güvenli yükleme çekirdeği.** Ayrıntı: `research/ekran-derin-arastirma.md`, `donanim-dogrulama.md` "Ekran yüklemesi".
-    - **Araştırma** ([#17](https://github.com/cebersaban44-rgb/klavye-studio/pull/17)): resim ve GIF evet; canlı video yok, kısa video ≤140 karelik animasyona çevrilir; tek animasyon yuvası; stok firmware'de flash'sız yol yok; kullanıcının "kendi firmware katmanımız" fikri araştırma hattı.
+    - **Araştırma** ([#17](https://github.com/cebersaban44-rgb/keymotion/pull/17)): resim ve GIF evet; canlı video yok, kısa video ≤140 karelik animasyona çevrilir; tek animasyon yuvası; stok firmware'de flash'sız yol yok; kullanıcının "kendi firmware katmanımız" fikri araştırma hattı.
     - **Fabrika animasyonu yedeği:** Resmi sürücü paketinden çıkarıldı (hiçbir şey çalıştırılmadan); kullanıcı klavyedekiyle aynı olduğunu doğruladı.
     - **Protokol** (`kb-protocol/src/sonix/screen.rs`):
       - `Frame` (240×135 RGB565) ve `ScreenAnimation`. Klavyeye giden tek tür bu: 1–140 kare, gecikme 1–254 (`FF` yasak).
@@ -201,7 +201,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **Doğrulama:**
       - E1: test deseni doğru yön ve renkte, ayrı GIF sayfasında; Fn+Home ile saat sayfasına geçiliyor.
       - E4: fabrika animasyonu 308 s'de geri yüklendi; görüntü ve hız aynı. Yükleme sırasında ekranda LOADING % görünüyor.
-    - **PR:** [#18](https://github.com/cebersaban44-rgb/klavye-studio/pull/18).
+    - **PR:** [#18](https://github.com/cebersaban44-rgb/keymotion/pull/18).
 23. **Ekran Stüdyosu sayfası.** Ayrıntı: `donanim-dogrulama.md`, "Ekran Stüdyosu, uçtan uca".
     - **Kullanıcının ilkesi uygulandı:** Dosya olduğu gibi gönderilmez. WebView2'nin kendi çözücüleriyle açılır, 240×135 RGB565'e çevrilir, gönderilecek baytlardan önizlenir, onayla yüklenir. Rust tarafı (`screen_add`) veriyi yeniden doğrular.
     - **Akış:** Dosya → Düzenle → Önizle → Yükle; her adımda Vazgeç. Bitince alan başlangıca döner ve ne yapıldığını söyler.
@@ -216,7 +216,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **RGB565 dönüşümü:** Rust ve arayüz aynı kuralı kullanıyor: en yakın seviye (kırpma değil).
     - **Doğrulama:** CDP ile fabrika GIF'i, dikey fotoğraf ve WebM video içe aktarıldı. Kullanıcı kendi resim ve GIF'ini yükledi; E2 geçti; yükleme sırasında yazma sürüyor.
     - **Henüz yok:** slayt, canlı kartlar. Yazı kartları madde 24'te.
-    - **PR:** [#19](https://github.com/cebersaban44-rgb/klavye-studio/pull/19).
+    - **PR:** [#19](https://github.com/cebersaban44-rgb/keymotion/pull/19).
 24. **Ekran Stüdyosu Faz B1: kaynak seçici ve yazı kartları.**
     - **Akış:** Adım 1 artık kaynak seçiyor: **Dosyadan** (Faz A akışı) ya da **Yazı kartı**. Adımlar: Kaynak → Düzenle → Önizle → Yükle.
       - Önizleme, onay, ilerleme ve "bitti" durumu bütün kaynaklarda ortak (`pages/screen/common.tsx`).
@@ -248,7 +248,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Vazgeç;
       - düzenlemeye dön.
       - Klavyeye gerçek yükleme henüz yapılmadı; kullanıcının onayını bekliyor.
-    - **PR:** [#21](https://github.com/cebersaban44-rgb/klavye-studio/pull/21).
+    - **PR:** [#21](https://github.com/cebersaban44-rgb/keymotion/pull/21).
 25. **Ekran Stüdyosu Faz B2: slayt.**
     - **Kaynak:** Adım 1'de üçüncü kutu, **Slayt**. Birkaç görsel tek döngüde gösterilir.
     - **Slaytlar** (en çok 24):
@@ -277,7 +277,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Vazgeç.
       - Geliştirme sırasında bir hata bulunup düzeltildi: HMR sonrası slayt anahtarları çakışıp yanlış küçük resim gösteriyordu. Anahtarlar artık düzenleyici başına sayaçla üretiliyor.
       - Klavyeye gerçek yükleme henüz yapılmadı.
-    - **PR:** [#22](https://github.com/cebersaban44-rgb/klavye-studio/pull/22).
+    - **PR:** [#22](https://github.com/cebersaban44-rgb/keymotion/pull/22).
 26. **Ekran Stüdyosu Faz B3: ışıkları ekrana uydur.**
     - **Nereden:** "Bitti" bandındaki "Işıkları uydur" düğmesi ve kütüphanedeki her öğenin palet simgesi (fabrika animasyonu dahil).
     - **Palet** (`lib/screenPalette.ts`):
@@ -356,7 +356,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **Arada bulunan hatalar:**
       - CI'da rustfmt hatası. Ders §6: push etmeden önce CI adımlarını yerelde çalıştır.
       - Uygulama dal değişimi sırasında açılınca pencere boş kaldı. Ders §6.
-    - **PR:** [#25](https://github.com/cebersaban44-rgb/klavye-studio/pull/25) (canlı mod, bütçe, çalan şarkı), [#26](https://github.com/cebersaban44-rgb/klavye-studio/pull/26) (kapatınca geri yükleme, 4 sn).
+    - **PR:** [#25](https://github.com/cebersaban44-rgb/keymotion/pull/25) (canlı mod, bütçe, çalan şarkı), [#26](https://github.com/cebersaban44-rgb/keymotion/pull/26) (kapatınca geri yükleme, 4 sn).
 28. **Ekran Faz C, ikinci adım: Odak zamanlayıcısı (Pomodoro tekniği).**
     - **Ad:** Arayüzde "Odak zamanlayıcısı" (İngilizcede "Focus timer"). Kullanıcı "Pomodoro"nun Türkçe olmadığını fark etti: kelime İtalyanca ("domates"), TDK sözlüğünde yok ve tekniğin adı olarak Francesco Cirillo'nun tescilli markası. Türkçe sayfada yalnız Türkçe kelime kullanılır (ders §6, 41). Koddaki adlar (`pomodoro.rs`, `source = "pomodoro"`) iç ad olarak kaldı.
     - **Zamanlayıcı arka uçta** (`app/src-tauri/src/pomodoro.rs`):
@@ -454,11 +454,11 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Kenar çubuğundaki kalan süre kutusu zamanlayıcının kendi sayfasında gizlenir (aynı bilgi sayfada var). Kutuya tıklayınca zamanlayıcı sayfası açılır.
     - **Doğrulama:** Tarayıcıda sahte arka uçla bütün bağlantılar ve kenar çubuğu. Gerçek uygulamada (CDP) zamanlayıcı sayfası, Ekran'ın iki sekmesi ve kaynak satırı.
     - **Maddeler 28–30'un PR'ları:**
-      - [#28](https://github.com/cebersaban44-rgb/klavye-studio/pull/28): zamanlayıcı, F1–F12 ilerlemesi, faz kartları.
-      - [#29](https://github.com/cebersaban44-rgb/klavye-studio/pull/29): Türkçe ad ("Odak zamanlayıcısı").
-      - [#30](https://github.com/cebersaban44-rgb/klavye-studio/pull/30): bütün klavyede boşalan ışık ve seçenekleri.
-      - [#31](https://github.com/cebersaban44-rgb/klavye-studio/pull/31): Ekran sekmeleri, tek kart, sayfalı kütüphane.
-      - [#32](https://github.com/cebersaban44-rgb/klavye-studio/pull/32): kendi sayfası (Araçlar), Canlı ekrandaki satırın kaldırılması.
+      - [#28](https://github.com/cebersaban44-rgb/keymotion/pull/28): zamanlayıcı, F1–F12 ilerlemesi, faz kartları.
+      - [#29](https://github.com/cebersaban44-rgb/keymotion/pull/29): Türkçe ad ("Odak zamanlayıcısı").
+      - [#30](https://github.com/cebersaban44-rgb/keymotion/pull/30): bütün klavyede boşalan ışık ve seçenekleri.
+      - [#31](https://github.com/cebersaban44-rgb/keymotion/pull/31): Ekran sekmeleri, tek kart, sayfalı kütüphane.
+      - [#32](https://github.com/cebersaban44-rgb/keymotion/pull/32): kendi sayfası (Araçlar), Canlı ekrandaki satırın kaldırılması.
 
 31. **Ekranı kim kullanır: sıra ve kendi görseline dönüş.**
     - **Kullanıcının denemesi (2026-11-10, klavyede, canlı mod açık):** Faz kartları ekrana geliyor, "oldukça güzel çalışıyor". Ama tur bitince ya da durdurunca ekranda "tur görseli" kalıyordu; önceki görsel ancak canlı mod kapatılınca geri geliyordu.
@@ -495,7 +495,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - Tarayıcıda sahte arka uçla (`?pomofast`): durdurunca geri sayım ve dönüş, özet kartı seçimi, bekleme içinde yeniden başlatınca dönüş yok, çalışırken kartları kapatınca dönüş, şarkı durunca dönüş ve müzik yeniden başlayınca iptal (`window.__ksMockTrack(false|true)`).
       - Gerçek uygulamada (CDP, canlı mod kapalı, klavyeye yazmadan): kendi görseli "cat" ve küçük resmi, kullanıcının ayarlarıyla (1 dk, 2 tur) çizilmiş kartlar, "Canlı modu aç" uyarısı.
       - Kullanıcının klavyede denemesi: madde 32.
-    - PR: [#35](https://github.com/cebersaban44-rgb/klavye-studio/pull/35).
+    - PR: [#35](https://github.com/cebersaban44-rgb/keymotion/pull/35).
 
 32. **Ekran "takılı kaldı": günlük bütçe bitince kartlar ve dönüş sessizce bekliyordu.**
     - **Kullanıcının denemesi (2026-11-10, 21:02–21:08 yerel saat, canlı mod açık):**
@@ -757,22 +757,45 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
         - Windows'u yükleme sırasında kapatma;
         - "Klasörü aç" ve "Başka bir klavyeniz mi var?" bağlantısı;
         - 1280 genişlikte %150 kenar çubuğu.
-    - **Sıradaki adımlar:**
-      1. ~~Profiller~~: birleşti, denetimler temiz (324 test), gerçek uygulamada denendi. PR #57 develop'a birleştirilir.
-      2. **Keymotion'ın kendi açılış animasyonu:** fabrika yedeği olmayanların dönebileceği özgün görsel.
-      3. **Küçükler:**
-         - ESLint uyarıları;
-         - ders 40'ı güncellemek (ESLint artık var);
-         - Dependabot'tan sonra notices dosyasını yenilemek (PR #55 toml 1.2 bekliyor).
-      4. **Sonra ürünleştirme (F):**
-         - tepsi ve arka plan: canlı kartlar WebView'da çiziliyor, bunun için önce karar gerekli;
-         - NSIS ayarları ve imza (SignPath Foundation ya da Azure Artifact Signing);
-         - sürüm hattı ve güncelleyici;
-         - güç kullanımı;
-         - **uygulama içinden sorun bildirme** (kullanıcının fikri, 2026-11-12): `docs/urun-eksikleri.md` bölüm I.
-
-         Ardından GitHub sayfası (H): iki dilli, TR/EN ve açık/koyu ekran görüntüleriyle.
-      5. **Kullanıcıya sorulacak:** GitHub repo adının `keymotion` olması ve Rust paket adı. (Sorun bildirimi kararı verildi: yalnızca GitHub, e-posta yok.)
+    - **Kullanıcının kararları (2026-11-12, gece):**
+      - Uygulamanın varsayılan dili **İngilizce**. Türkçe seçilebilir; seçim kayıtlıysa (`ks.locale`) o kalır. Uygulandı: `store.ts` varsayılanı `en`, `index.html` `lang="en"`.
+      - GitHub'da da varsayılan dil İngilizce: `README.md` İngilizce, `README.tr.md` Türkçe, ikisinin en üstünde dil bağlantısı ("English | Türkçe"). Belgeler aynı düzende (`docs/en/…`, `docs/tr/…` ya da dosya adında `.tr`). H bölümünde yapılacak.
+      - Repo adı **keymotion**. Uygulandı: `cebersaban44-rgb/klavye-studio` → `cebersaban44-rgb/keymotion`. Eski adresler GitHub'da yönleniyor, `origin` güncellendi. Koddaki adresler değişti: `notify.rs` `PROJECT_PAGES` (uygulamanın açabildiği tek adres) ve `offline.ts` `SUPPORT_LIST_URL`.
+      - **Discussions açık**, cevaplanabilir "Q&A" kategorisi var.
+      - Sorun bildirme yalnızca GitHub üzerinden (bölüm I), e-posta yok.
+      - **Tepsi ve arka plan: tepside çalışsın** (önerilen ayrıntılarla). X pencereyi gizler; tepsi menüsü Aç / Odak / Profiller / Çık; ilk gizlemede bir bildirim; Ayarlar'da "Kapatınca tepside çalışmaya devam et" (varsayılan açık) ve "Windows açılınca başlat" (varsayılan kapalı, gizli başlar). Ayrıntı: `docs/yol-haritasi.md` Aşama 2.
+    - **Küçük işler (2026-11-12, gece):**
+      - Yapıldı:
+        - PR #57 birleşti; ana klasör `develop`'ta, arayüz yeniden ana klasörden sunuluyor ("ui", 1420).
+        - Birleşmiş 8 yardımcı klasörü ve dalı silindi; boş yer 17 GB'tan 21 GB'a çıktı (ders 55).
+        - Kullanıcının düzeltebileceği durumlar (başka program açık, kablo yok, ad alınmış, yanlış dosya) günlüğe uyarı olarak yazılıyor ("action refused"; `errors.ts` `EXPECTED`, `log_ui_error`).
+        - PR #55 (Dependabot `toml` 1.2) birleşti; `third-party-notices.txt` yenilendi (PR #58).
+        - Yardımcı (`a0ca5d5edacfcd31b`, Aşama 0):
+          - 15 ESLint uyarısı davranış değişmeden giderildi. Tek `eslint-disable`: `TextFlow`'daki dile bağlı çevirici (`useLocaleT`).
+          - ESLint CI'da engelleyici, sıfır uyarı (`--max-warnings 0`); ders 40.
+          - Sahte arka uç yalnızca geliştirme sürümünde. Her dal `import.meta.env.DEV && !inTauri` ile korunuyor. Üretim derlemesinde işaretlerin hiçbiri yok (`mock-close-requested`, `failPart`, `__ksMock`, `?mock` okuması); JS 928 KB'tan 892 KB'a indi.
+          - `invoke` ve `listen` artık `lib/ipc.ts` üzerinden: uygulama dışında açık bir hatayla reddediliyor.
+          - Dikkat: `SlideFlow`'da `show` hesabı "duraklar yalnızca eklenir" varsayımına dayanıyor; duraklar silinir ya da değiştirilirse `version` geri eklenmeli (kodda not var). `useEffectEvent` React 19.2+ ister (proje 19.3.1).
+      - Kalan:
+        - **Keymotion açılış animasyonu:** fabrika yedeği olmayanların GIF sayfasına koyabileceği özgün görsel (K harfinin çizgileri sırayla belirir, turuncu çizgi yanar). Önce önizlemeyle göster, onaydan sonra üret.
+        - İstenirse `cargo clean`: ortak `target` klasöründe eski yardımcıların derlemeleri duruyor. Silmeden önce kullanıcıya sor; tam derleme birkaç dakika sürer.
+    - **Kullanıcının elle deneyeceği şeyler** (ben yapamıyorum):
+      - klavye yokken açılış ekranı (kablo çekilir);
+      - yükleme ortasında kablo çekip yeniden açınca "yarım kaldı" önerisi;
+      - yükleme sırasında Windows'u kapatmak;
+      - küçük ekranda (1920×1080, %150) pencerenin sığması;
+      - Bluetooth kanal kısayolları (Fn+Q/W/E) ve denenmemiş tuş atamaları (B8);
+      - hatırlatıcı Windows bildiriminin ekranda göründüğü.
+    - **Sıradaki adımlar: `docs/yol-haritasi.md`** (2026-11-12, kullanıcıyla birlikte sıralandı). Kısaca:
+      0. açık işleri kapat (lint/mock yardımcısı, PR #58);
+      1. Rust paket ve exe adı `keymotion` (onay sorulacak); 1b. kod imzalama başvurusu (SignPath Foundation), erken ve paralel;
+      2. tepsi ve arka plan (karar verildi);
+      3. Keymotion açılış animasyonu (önce önizleme; 2 ile paralel olabilir);
+      4. GitHub sorun formları, sonra uygulama içinden sorun bildirme;
+      5. kurulum dosyası (NSIS) ve imza;
+      6. sürüm hattı ve otomatik güncelleyici;
+      7. GitHub sayfası ve belgeler (İngilizce varsayılan + Türkçe);
+      8. son denemeler (kullanıcının elle denemeleri dahil) ve ilk sürüm 0.1.0.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -967,6 +990,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 52 | Genel Bakış'ta "240×135" yerine bozuk karakter çıktı; PR #50 develop'a öyle birleşti (2026-11-11) | Bir dosyada küçük bir değişiklik PowerShell 5.1'in `Get-Content -Raw` / `Set-Content -Encoding utf8` ikilisiyle yapıldı. `Get-Content` kodlama verilmezse dosyayı ANSI (cp1254) okur; Türkçe harfler ve × bozulup UTF-8 (BOM'lu) yazıldı. Tarama bunu yakalamadı: aranan kelimeler değil, bozuk harf dizisiydi | Dosya içeriğini PowerShell'de okuyup yazma; Edit aracını ya da `python -I` (açık `encoding="utf-8"`) kullan. Taramaya bozuk kodlama denetimi ekle (`Ã`, `Ä±`, `ÅŸ` gibi diziler). Bozulan dosya `metin.encode("cp1254").decode("utf-8")` ile birebir geri döndü. |
 | 53 | Claude Design tuvalinde artboard'lar hata verdi (2026-11-11/12) | Tuval aracı `.dc.html` betiğini kaçış karakterlerine duyarlı bir metnin içine koyuyor: betikteki ters eğik çizgi, ters tırnak ve `${` kodu bozdu (`Unexpected token ';'`). Ayrıca SVG öznitelikleri tireli yazılmıştı (`stroke-width`; React `strokeWidth` ister), stil delikleri metin olarak verilmişti (React stil nesnesi ister), form alanlarında `value`/`checked` vardı | Tuval betiklerinde bu karakterleri yazma, `String.fromCharCode` ile üret. SVG özniteliklerini camelCase yaz, `style="{{x}}"` deliğine nesne ver, statik form alanında `defaultValue`/`defaultChecked` kullan. Tuvali kendin göremiyorsan (claude.ai girişi) kullanıcıdan hatanın ekran görüntüsünü iste. **Sonradan bulunan asıl neden (sürüm 13):** `K.map(... => { ... };` — kapanış parantezi eksikti; karakter düzeltmeleri hatayı gidermedi. Kaydetmeden önce her tuval betiğini `node tools/check-dc.mjs project/*.dc.html` ile derleyip `renderVals()`'ı çalıştır. |
 | 54 | Yeni sürümü gerçek uygulamada denemek kullanıcının verisini tek yönlü değiştirdi (2026-11-12) | Birleşik sürüm ilk açılışta takvim adresini DPAPI ile şifreliyor ve ışık durumunu WebView'dan `lighting.json`'a taşıyor; eski sürüm bunları geri okuyamaz. Bozuk kayıt denemesi de gerçek `keymap.json`'u bozmayı gerektirdi | Veri taşıyan bir sürümü ilk kez açmadan önce `%APPDATA%\dev.keymotion` ve `%LOCALAPPDATA%\dev.keymotion\EBWebView\Default\Local Storage` yedeğini scratchpad'e al. Dosya bozma denemesinde önce yedeğin birebir aynı olduğunu (hash) doğrula, denemeden sonra aynen geri koy ve `.bak` dosyasını kaldır. |
+| 55 | Birleşmiş yardımcı klasörleri `git worktree remove` ile silinemedi (2026-11-12) | Git kaydı sildi ama dosyalar kaldı: Windows'ta büyük `node_modules` ve açık dosyalar. Üç yardımcı kendi Vite sunucusunu (1431, 1437, 1491) açık bırakmıştı; bunlar `app/.vite`'yi tutuyordu | Silmeden önce her klasörün temiz (`git status`) ve dalının birleşmiş olduğunu doğrula. Kalan dosyaları bağlantıları izlemeyen `cmd /c rmdir /s /q` ile sil. Önce o klasörden çalışan `node` süreçlerini bul (`Win32_Process` komut satırı) ve kapat. Yardımcı görevlerine "işin bitince başlattığın sunucuyu kapat" yaz. |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 
@@ -1015,7 +1039,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
           - **Destek haritası yapıldı** (madde 37, `docs/destek-haritasi.md`): desteklenen ve eklenebilecek klavyeler, bağlantı modlarına göre özellikler, Bağlantı sayfası, 2.4G'de yanlış açık görünen sayfalar düzeltildi, HID şekil denetimi, arayüz metin borçları kapandı, USB'de pil araştırması (yüzde yok; Fn ışığından "şarj oluyor" / "şarj tamamlandı").
           - **İlk sürüm öncesi eksik listesi** (2026-11-11, `docs/urun-eksikleri.md`): iki bağımsız inceleme (tasarım ve kullanım; ürün hazırlığı) ve bu oturumun gözlemleri, ciddi olanlar kodda doğrulandı. Sıra: kimlik (isim, logo, uygulama kimliği) → güven → görsel ve içerik turu → veri ve tanılama → ürünleştirme ve repo. İsim adayları ve logo konseptleri Claude Design tuvalinde (Keypane önerildi).
           - Kullanıcı isim ve logoyu seçti (Keymotion, E konsepti). Ardından eksik listesinin tamamı başladı (madde 38).
-          - **Kalınan yer (2026-11-12, gece): madde 38'deki "Sıradaki adımlar"** — altı yardımcı (profiller dahil) birleşti, gerçek uygulamada denendi, PR #57 develop'a gidiyor. Sırada: Keymotion açılış animasyonu, küçükler, sonra ürünleştirme (F) ve sorun bildirme (I). Kullanıcıyla klavyede denenecekler: Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri.
+          - **Kalınan yer (2026-11-12, gece): `docs/yol-haritasi.md`, Aşama 0'dan başla.** PR #57 birleşti; repo `keymotion`, Discussions açık, varsayılan dil İngilizce, tepsi kararı verildi. Önce lint/mock yardımcısının raporunu incele ve dalını birleştir; sonra Aşama 1'de paket adını kullanıcıya sor ve imza başvurusunu başlat. Kullanıcıyla klavyede denenecekler: Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri.
           - Sonraya: oyun oturumu (ön plandaki uygulama: açılınca kart, kapanınca özet). Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.
@@ -1118,7 +1142,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 
 ### P0 — Hemen
 - [x] Kullanıcı tuş başına renk akışını yeniden denedi: Fırça ve Seç araçları, kaydetme ve kapatma uyarısı.
-- [x] Repo oluşturuldu: https://github.com/cebersaban44-rgb/klavye-studio (public; varsayılan dal `develop`, yayın dalı `main`). Commit'ler GitHub noreply e-postasıyla atılıyor (repo-yerel `user.email`).
+- [x] Repo oluşturuldu: https://github.com/cebersaban44-rgb/keymotion (public; varsayılan dal `develop`, yayın dalı `main`). Commit'ler GitHub noreply e-postasıyla atılıyor (repo-yerel `user.email`).
 - [x] Dal düzeni, PR akışı ve CI kuruldu (madde 14).
 - [ ] Açık kaynak hazırlığı: lisans seçimi (henüz LICENSE yok, yani varsayılan olarak "tüm hakları saklı"). Geri kalanı P3'teki ilk sürüm gözden geçirmesinde.
 - [x] Geliştirme log'larını sadeleştir: IPC `info` log'ları `debug`'a çekildi.
@@ -1240,11 +1264,14 @@ Kullanıcının fikirleri. Şimdi yapılmayacak; uygulamanın bütün özellikle
   - Ön şart: P3'teki arka plan servisi (penceresiz çalışma).
 
 ### P3 — Ürünleştirme
-- [ ] Arka plan servisi:
-  - Sistem tepsisi; pencere kapanınca WebView'ı yok et.
-  - Otomatik başlatma, tek örnek (single-instance).
-  - Takma/çıkarmayı `CM_Register_Notification` ile algıla.
-- [ ] Release derleme (`custom-protocol`), NSIS kurulum, kod imzalama, imzalı güncelleyici.
+
+**Sıra ve ayrıntı artık `docs/yol-haritasi.md`'de** (2026-11-12). Aşağıdaki liste geçmiş kayıt olarak kalıyor.
+
+- [ ] Arka plan servisi (yol haritası Aşama 2; karar: tepside çalışsın):
+  - Sistem tepsisi. WebView gizlenir, **yok edilmez**: canlı kartlar orada çiziliyor (bellek ölçülecek). Eski plan "WebView'ı yok et" idi.
+  - Otomatik başlatma (isteğe bağlı, varsayılan kapalı). [x] Tek örnek (`tauri-plugin-single-instance`, PR #57).
+  - Takma/çıkarmayı `CM_Register_Notification` ile algıla (arka planda güç için; Aşama 2'de değerlendir).
+- [ ] Release derleme (`custom-protocol`), NSIS kurulum, kod imzalama, imzalı güncelleyici (Aşama 5–6).
 - [x] CI (GitHub Actions, Windows): arayüz typecheck ve derleme, fmt, clippy, testler, bindings kontrolü; iki dalda birleştirme şartı. Ayrıntı: `docs/gelistirme-akisi.md`.
 - [ ] Mock modda Playwright e2e testlerini CI'a ekle.
 - [ ] Erişilebilirlik denetimi, TR/EN tamlığı, açık tema ince ayarı, uygulama adı ve logo kararı.
@@ -1283,4 +1310,4 @@ Kullanıcının fikirleri. Şimdi yapılmayacak; uygulamanın bütün özellikle
 - Windows 11, Rust 1.99.1 (stable, MSVC), Node 24, pnpm 10, TypeScript 7, WebView2 157.
 - Uygulamanın adı **Keymotion** (2026-11-11, kullanıcının seçimi; önceki geçici ad "Klavye Stüdyo"). Kimlik `dev.keymotion`; ayarlar `%APPDATA%\dev.keymotion`, WebView verisi `%LOCALAPPDATA%\dev.keymotion`. Eski `dev.klavye.studio` klasörleri ilk açılışta taşınır (`app/src-tauri/src/migrate.rs`). Rust paket adı (`klavye-studio`) ve repo adı şimdilik değişmedi.
 - `.claude/launch.json` → "ui" (Vite, 127.0.0.1:1420).
-- GitHub hesabı **Pro** (2026-11-12, kullanıcı bildirdi). Repo herkese açık (`cebersaban44-rgb/klavye-studio`): koruma kuralları, Actions, Pages ve Discussions zaten ücretsiz, Pro burada pek bir şey değiştirmiyor. İşe yaradığı yer: özel bir repo (koruma kuralları, Pages, kod sahipleri) ve Codespaces. `main` korumalı: PR zorunlu, "Build and test" geçmeli, yöneticiler de uyar. Discussions kapalı; GitHub sayfası (H) hazırlanırken açılması kullanıcıya sorulacak.
+- GitHub hesabı **Pro** (2026-11-12, kullanıcı bildirdi). Repo herkese açık (`cebersaban44-rgb/keymotion`; 2026-11-12 tarihinde `klavye-studio` adından yeniden adlandırıldı, eski adresler yönleniyor): koruma kuralları, Actions, Pages ve Discussions zaten ücretsiz, Pro burada pek bir şey değiştirmiyor. İşe yaradığı yer: özel bir repo (koruma kuralları, Pages, kod sahipleri) ve Codespaces. `main` korumalı: PR zorunlu, "Build and test" geçmeli, yöneticiler de uyar. Discussions açık (2026-11-12, kullanıcının isteği); cevaplanabilir "Q&A" kategorisi var.

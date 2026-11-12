@@ -10,7 +10,7 @@
 const DEV_APP_ID: &str = r"{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe";
 
 /// Pages the app may open: only the project's own GitHub pages.
-const PROJECT_PAGES: &str = "https://github.com/cebersaban44-rgb/klavye-studio/";
+const PROJECT_PAGES: &str = "https://github.com/cebersaban44-rgb/keymotion/";
 
 /// The app id notifications are shown under.
 pub fn app_id(identifier: &str) -> String {
@@ -92,10 +92,10 @@ mod tests {
 
     #[test]
     fn only_project_pages_are_opened() {
-        assert!(project_page("https://github.com/cebersaban44-rgb/klavye-studio/blob/develop/docs/destek-haritasi.md"));
+        assert!(project_page("https://github.com/cebersaban44-rgb/keymotion/blob/develop/docs/destek-haritasi.md"));
         assert!(!project_page("https://github.com/someone-else/repo"));
-        assert!(!project_page("https://github.com/cebersaban44-rgb/klavye-studio/../../someone-else"));
-        assert!(!project_page("https://github.com/cebersaban44-rgb/klavye-studio/\" & calc"));
+        assert!(!project_page("https://github.com/cebersaban44-rgb/keymotion/../../someone-else"));
+        assert!(!project_page("https://github.com/cebersaban44-rgb/keymotion/\" & calc"));
         assert!(!project_page("file:///C:/Windows/System32/calc.exe"));
     }
 }

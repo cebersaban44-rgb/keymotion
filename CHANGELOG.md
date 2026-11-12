@@ -50,4 +50,4 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
   risk), third-party licence notices, and automatic checks for broken
   characters, vendor files, versions and dependencies.
 
-[Unreleased]: https://github.com/cebersaban44-rgb/klavye-studio/commits/develop
+[Unreleased]: https://github.com/cebersaban44-rgb/keymotion/commits/develop

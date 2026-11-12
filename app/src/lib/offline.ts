@@ -11,7 +11,7 @@ import ak980Geometry from "../bindings/geometry-ajazz-ak980-pro.json";
 export const SUPPORTED_MODEL = "AJAZZ AK980 PRO";
 
 /** The supported keyboards and what works in each connection mode. */
-export const SUPPORT_LIST_URL = "https://github.com/cebersaban44-rgb/klavye-studio/blob/develop/docs/destek-haritasi.md";
+export const SUPPORT_LIST_URL = "https://github.com/cebersaban44-rgb/keymotion/blob/develop/docs/destek-haritasi.md";
 
 /**
  * Stand-in for the supported model while nothing is connected. No channel
