@@ -242,6 +242,24 @@ Büyük açık kaynak masaüstü uygulamalarının repoları incelenip örnek al
 - **Lisans ve haklar:** LICENSE-MIT ve LICENSE-APACHE, NOTICE (resmî olmadığı notu), üçüncü taraf lisansları, gizlilik (`PRIVACY.md` ve `docs/gizlilik.md`).
 - **Dış katkılar için denetim:** DURUM P3'teki plan (zorunlu inceleme, CODEOWNERS, fork PR'larında gizli bilgilere erişim yok).
 
+## I. Uygulama içinden sorun bildirme (kullanıcının fikri, 2026-11-12)
+
+Kurulu sürümde bir hata olduğunda ya da bir özellik başka bir klavyede çalışmadığında, kullanıcı birkaç tıkla bize ulaşabilmeli. Gizlilik sözü korunur: uygulama kendiliğinden hiçbir şey göndermez, her bildirimi kullanıcı görüp kendisi yollar.
+
+- **Yakalama (çoğu var):** panik notu (`crash-*.txt`), arayüz hataları için ErrorBoundary, başarısız işlemlerin günlüğe yazılması, "Tanılama bilgisini kopyala".
+- **Gösterme:**
+  - beklenmeyen hata: kısa ve sakin bir bildirim, "Sorunu bildir" düğmesiyle; aynı hata tekrar tekrar gösterilmez;
+  - çökme: sonraki açılışta bir kez "Uygulama geçen sefer beklenmedik şekilde kapandı" ve "Bildir";
+  - beklenen hatalar (kablo yok, başka program açık) bildirim istemez, bugünkü açıklayıcı metinleriyle kalır.
+- **Bildirme penceresi:**
+  - gönderilecek metni önce gösterir: sürüm, Windows, klavye modeli ve yazılımı, son günlük satırları (adresler ve kullanıcı adı zaten ayıklanıyor);
+  - "GitHub'da bildir": hazır formu (`.github/ISSUE_TEMPLATE/bug.yml`) başlık ve özetle açar; uzun metin panoya kopyalanır, kullanıcı yapıştırır (adres uzunluğu sınırlı);
+  - "E-postayla gönder": `mailto:` ile; ayrı bir proje adresi gerekir, kişisel adres kullanılmaz;
+  - GitHub hesabı olmayanlar için e-posta yeterli; ikisi de kullanıcının kendi programıyla gider.
+- **Desteklenmeyen klavye:** AJAZZ/SONiX kimlikli ama listede olmayan bir klavye takılınca "Bu klavye henüz desteklenmiyor — destek iste". Bildirime VID/PID, ürün adı, arayüzler ve HID tanımlayıcıları eklenir (yalnızca okunur, klavyeye bir şey yazılmaz). Yeni model eklemek için en değerli bilgi bu.
+- **GitHub tarafı (H ile birlikte):** issue formları (hata, klavye desteği, öneri), `SECURITY.md` (güvenlik açığı özel kanaldan), Discussions (soru-cevap), etiketler.
+- **Yapılmayacak:** otomatik hata gönderme (Sentry vb.) ilk sürümde yok. İstenirse sonra, açıkça "izin ver" seçeneğiyle ve gizlilik belgesi güncellenerek.
+
 ## Kararlar (kullanıcı, 2026-11-11)
 
 1. **İsim ve logo:** Keymotion; logo üç çizgili "K", biri turuncu yanıyor (A).
@@ -257,22 +275,23 @@ Büyük açık kaynak masaüstü uygulamalarının repoları incelenip örnek al
 6. **Bütün "Şart" ve "Olmalı" maddeleri yapılacak.** Açılış ekranı dahil. Kullanıcı, alt ajanların kullanılabileceğini ve dış referanslara bakılabileceğini söyledi; amaç ürünün en üst seviyede olması.
 7. **Açık kalan:** tepsi modunda canlı kartların nasıl çizileceği (Rust'ta mı, gizli pencerede mi) ürünleştirme başlarken kararlaştırılacak (F).
 
-## Uygulama durumu (2026-11-12)
+## Uygulama durumu (2026-11-12, birleştirme sonrası)
 
 Ayrıntı ve yardımcıların listesi: `DURUM.md` madde 38.
 
 | Bölüm | Maddeler | Durum |
 |---|---|---|
 | A. Kimlik | İsim, logo, simgeler, uygulama kimliği, veri taşıma | **Bitti** (PR #53). Repo ve Rust paket adı kullanıcıya sorulacak. |
-| B. Güven | B4, B5, B7, B10 | **Kodlandı**, birleştirilmedi (dal `worktree-agent-aef20208906d41455`) |
-| B. Güven | B1, B2, B3, B6 | Yardımcıda, sürüyor |
+| B. Güven | B4, B5, B7, B10 | **Birleşti** (PR #57, açık). Gerçek uygulamada denendi: tek örnek, SignalRGB engeli, bozuk kayıt bildirimi, fw 1.06 ile kayıt |
+| B. Güven | B1, B2, B3, B6 | **Birleşti** (PR #57). Denendi: yükleme sırasında kapatma. Denenmedi: kablo çekince "yarım kaldı", Windows'u kapatma |
 | B. Güven | B8 (denenmemiş atamalar), B9 (kurtarma rehberi), B11 (140 kare: kalıyor) | B8 kullanıcıyla klavyede denenecek; B9 GitHub belgeleriyle birlikte |
-| C. Görünüm | C1, C2, C5, C6 (açılış, dar pencere, adlar, Genel Bakış) | Yardımcıda, sürüyor |
-| C. Görünüm | C3, C4, C7, C8, C9 (klavye çizimi, kaydetme çubuğu, okunurluk, tutarlılık, hareket) | Yardımcıda, sürüyor |
-| D. İçerik | Bütün maddeler | Yardımcıda (iskelet ve içerik), sürüyor |
-| E. Veri ve tanılama | Günlük, tanılama, ErrorBoundary, dışa/içe aktarma, ışık durumu, takvim şifresi, gizlilik belgesi | Yardımcıda, sürüyor |
-| E. Profiller | Profiller sayfası, Genel Bakış kartı | İlk birleştirmeden sonra yeni yardımcı |
+| C. Görünüm | C1, C2, C5, C6 (açılış, dar pencere, adlar, Genel Bakış) | **Birleşti** (PR #57). Açılış ekranı yalnızca sahte cihazda görüldü |
+| C. Görünüm | C3, C4, C7, C8, C9 (klavye çizimi, kaydetme çubuğu, okunurluk, tutarlılık, hareket) | **Birleşti** (PR #57) |
+| D. İçerik | Bütün maddeler | **Birleşti** (PR #57) |
+| E. Veri ve tanılama | Günlük, tanılama, ErrorBoundary, dışa/içe aktarma, ışık durumu, takvim şifresi, gizlilik belgesi | **Birleşti** (PR #57). Gerçek uygulamada denendi |
+| E. Profiller | Profiller sayfası, Genel Bakış kartı | Yardımcıda, sürüyor (`integrate/pre-release` üzerinden) |
 | F. Ürünleştirme | Tepsi, NSIS, imza, sürüm hattı, güncelleyici, güç | Görsel tur ve birleştirme bittikten sonra |
-| G. Repo ve hukuk | Lisans, NOTICE, üçüncü taraf lisansları, CI denetimleri, ESLint, Dependabot, cargo-deny, CHANGELOG | **Bitti**, PR #54 (CI bekleniyor). Kalan: ESLint'in 15 uyarısı, `?mock` anahtarlarının kurulu sürümden çıkarılması |
+| G. Repo ve hukuk | Lisans, NOTICE, üçüncü taraf lisansları, CI denetimleri, ESLint, Dependabot, cargo-deny, CHANGELOG | **Bitti** (PR #54). Kalan: ESLint'in 15 uyarısı, `?mock` anahtarlarının kurulu sürümden çıkarılması |
 | H. GitHub sayfası | İki dilli README ve belgeler, ekran görüntüleri, issue formları, topluluk dosyaları | Ürünleştirmeden sonra |
+| I. Sorun bildirme | Uygulama içinden sorun bildirme, desteklenmeyen klavye bildirimi | Planlandı, ürünleştirmeyle birlikte (bölüm I) |
 | Keymotion açılış animasyonu | Fabrika yedeği olmayanlar için özgün görsel | Profillerle birlikte ya da hemen sonra |
