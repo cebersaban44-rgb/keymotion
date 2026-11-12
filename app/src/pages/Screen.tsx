@@ -1,23 +1,22 @@
-import { AlertTriangle, Check, ChevronDown, Clock3, ImageOff, Images, Info, Library, Loader2, Palette, Pencil, Radio, Search, Trash2, Upload, Usb, X, type LucideIcon } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Clock3, Images, Info, Library, Loader2, Palette, Pencil, Radio, Search, Trash2, Upload, Usb, X, type LucideIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { ScreenItem } from "../bindings/ScreenItem";
 import { percent, useT, type MessageKey } from "../lib/i18n";
-import { useLive } from "../lib/live";
-import { builtIn, itemData, useScreen } from "../lib/screen";
-import { fromBlob, uploadSeconds, type Source } from "../lib/screenImport";
+import { builtIn, useScreen } from "../lib/screen";
+import { uploadSeconds, type Source } from "../lib/screenImport";
 import { useApp, type ScreenTab } from "../lib/store";
 import {
   DriverBackup,
-  FramePlayer,
+  GifPicture,
   LibraryConfirm,
   RetryUpload,
   Stepper,
   Thumb,
   fmtSeconds,
-  loadFrames,
   remaining,
+  useGifPage,
   useHasFactory,
   useItemName,
   useNow,
@@ -198,80 +197,17 @@ function Panel({ label, sub, empty, children }: { label: string; sub: string; em
 
 function KeyboardScreens({ usb }: { usb: boolean }) {
   const t = useT();
-  const name = useItemName();
   const state = useScreen((s) => s.state);
-  const shownId = state?.shown ?? null;
-  const factory = state?.items.find((i) => i.kind === "factory") ?? null;
-  const liveLast = useLive((s) => s.state?.last ?? null);
-  // A card waiting for the budget or the cable is not on the keyboard yet:
-  // said apart from what the page shows (K8).
-  const waiting = useLive((s) => (s.state?.enabled ? (s.state.pending ?? null) : null));
-  const incomplete = !!state?.incomplete;
-  const showsLive = shownId === "live";
-  const shown = state?.items.find((i) => i.id === shownId) ?? null;
-  // A page holding part of an upload shows nothing we could draw.
-  const item = incomplete ? null : (shown ?? factory);
-  // Reload by id only: the item object is new whenever the screen state is.
-  const itemId = item?.id;
-  const liveAt = liveLast?.atMs;
-  const [frames, setFrames] = useState<{ frames: Uint16Array[]; delaysMs: number[] } | null>(null);
-
-  useEffect(() => {
-    setFrames(null);
-    let live = true;
-    // A live card changes under the same id: read it fresh each time.
-    const load = showsLive ? itemData("live").then(fromBlob) : itemId !== undefined ? loadFrames(itemId) : null;
-    load?.then((f) => live && setFrames(f), console.error);
-    return () => {
-      live = false;
-    };
-  }, [itemId, showsLive, liveAt]);
+  const gif = useGifPage();
+  const { waiting } = gif;
 
   return (
     <section className="card grid grid-cols-[1fr_1fr_minmax(220px,0.8fr)] items-start gap-6 p-5">
       <Panel label={t("sc.page.home")} sub={t("sc.page.home.sub")}>
         <ClockPage />
       </Panel>
-      <Panel
-        label={t("sc.page.gif")}
-        empty={!item && !showsLive}
-        sub={
-          incomplete
-            ? t("sc.page.gif.incomplete")
-            : showsLive
-              ? `${t("sc.page.gif.live")}: ${liveLast?.name ?? ""}`
-              : shown
-                ? name(shown)
-                : factory
-                  ? t("sc.page.gif.maybeFactory")
-                  : t("sc.page.gif.unknown")
-        }
-      >
-        {frames ? (
-          <FramePlayer
-            frames={frames.frames}
-            delaysMs={frames.delaysMs}
-            className={`h-full w-full ${shown || showsLive ? "" : "opacity-60"}`}
-          />
-        ) : item || showsLive ? (
-          <div className="flex h-full items-center justify-center text-ink-3">
-            <Loader2 size={16} className="animate-spin" />
-          </div>
-        ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-[12px] text-ink-3" data-gif-empty>
-            {incomplete ? (
-              <>
-                <AlertTriangle size={18} aria-hidden />
-                {t("sc.page.gif.incomplete")}
-              </>
-            ) : (
-              <>
-                <ImageOff size={18} aria-hidden />
-                {t("sc.page.gif.empty")}
-              </>
-            )}
-          </div>
-        )}
+      <Panel label={t("sc.page.gif")} empty={!gif.item && !gif.showsLive} sub={gif.caption}>
+        <GifPicture gif={gif} />
       </Panel>
       <div className="flex flex-col gap-3 text-[13px] text-ink-2">
         <IncompleteLine usb={usb} />

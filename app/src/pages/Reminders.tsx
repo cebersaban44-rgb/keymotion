@@ -231,7 +231,7 @@ export function Reminders({ kb }: { kb: KeyboardInfo }) {
 }
 
 /** "14:00", or "yarın 14:00" when not today. */
-function when(ms: number, t: (k: MessageKey) => string, locale: string) {
+export function when(ms: number, t: (k: MessageKey) => string, locale: string) {
   const today = new Date(ms).toDateString() === new Date().toDateString();
   return today ? hhmm(ms) : `${dayWord(ms, t, locale).toLocaleLowerCase(locale)} ${hhmm(ms)}`;
 }
