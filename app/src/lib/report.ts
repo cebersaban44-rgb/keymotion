@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 import type { UnsupportedKeyboard } from "../bindings/UnsupportedKeyboard";
+import { follow } from "./follow";
 import { getUnsupportedKeyboards, onUnsupportedChanged } from "./ipc";
 
 export interface ReportRequest {
@@ -71,18 +72,6 @@ export function crashTitle(note: string): string {
 /** Keyboards that look like SONiX or AJAZZ ones but aren't supported yet. */
 export function useUnsupportedKeyboards(): UnsupportedKeyboard[] {
   const [list, setList] = useState<UnsupportedKeyboard[]>([]);
-  useEffect(() => {
-    let stop: (() => void) | undefined;
-    let gone = false;
-    getUnsupportedKeyboards().then((l) => !gone && setList(l), console.error);
-    onUnsupportedChanged((l) => setList(l)).then(
-      (off) => (gone ? off() : (stop = off)),
-      console.error,
-    );
-    return () => {
-      gone = true;
-      stop?.();
-    };
-  }, []);
+  useEffect(() => follow(getUnsupportedKeyboards, onUnsupportedChanged, setList), []);
   return list;
 }

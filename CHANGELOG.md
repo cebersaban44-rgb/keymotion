@@ -44,6 +44,10 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
   volume on the function keys, microphone mute on a chosen key.
 - **Focus timer:** the whole keyboard fills with the phase colour and empties
   as time runs out; phase cards on the screen.
+- **Installer:** a per-user Windows installer in English and Turkish; no
+  administrator rights needed. Uninstalling keeps your settings unless you tick
+  "Delete the application data", and removes the start-with-Windows entry and
+  the notification name.
 - **Reporting problems:** Settings › About › Feedback, a calm notice after an
   unexpected error, and a one-time notice after a crash open a report window
   that shows what will be sent first. "Report on GitHub" copies it and opens
