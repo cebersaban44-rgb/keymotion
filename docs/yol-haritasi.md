@@ -30,7 +30,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 | 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bitti (PR #63); GitHub ayarları kullanıcı onayıyla açıldı |
 | 5 | Kurulum dosyası (NSIS), imzasız | 1, 2 | Kurulum ayrıntılarına onay | Yapıldı (PR'da); kullanıcının elle denemesi ve kurulum görselleri bekliyor |
 | 5c | Kurulum denemesi bulguları (K1–K11): simge ve görseller, GitHub bağlantıları, hatırlatıcı kartı, ekran durumu, odak zamanlayıcısı, bildirim, Genel bakış | 5 | Kararlar verildi: K9 her açılışta bir kez; K2, K7, K11 için A | Yapıldı (PR #72–#77); klavyede gerçek yüklemeyle deneme kullanıcıda |
-| 5d | Kullanıcının geri bildirimleri (K12 Genel bakış'taki klavye çizimi, K13 açılış logosunun keskinliği) ve denemeleri | 5c | — | K12 yapıldı (A); K13 kapandı (kod değişikliği gerekmedi); sırada kullanıcının denemeleri |
+| 5d | Kullanıcının geri bildirimleri (K12 Genel bakış'taki klavye çizimi, K13 açılış logosunun keskinliği) ve denemeleri | 5c | — | K12 yapıldı (A); K13 kapandı (kod değişikliği gerekmedi); A denemeleri yapıldı, K14 düzeltildi; B kurulum derlemesiyle |
 | 6 | Sürüm hattı (GitHub Actions) ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Bekliyor |
 | 6b | Uygulama penceresinin açılış animasyonu | 5 (kurulu sürümle ölçülür) | Seçim A (2026-11-12) | Yapıldı (PR #78); kurulu sürümde açılış süresi ölçülecek |
 | 7 | GitHub sayfası ve bütün belgeler, SignPath'in sayfa şartları dahil | 5, 6 (kurulum ve indirme adımları belli) | Belge yapısına ve görünümüne onay (önce önizleme) | Bekliyor |
@@ -534,9 +534,15 @@ Claude'un denemediği ya da yalnızca tarayıcı önizlemesinde denediği her ş
 **B. Sondaki kurulum derlemesiyle (Explorer'dan, Claude'un kutusunun dışında; ders 62):**
 8. **K1, K2, K3, kurulum:** kurulum dosyasının ve pencerelerin simgesi Keymotion; karşılama ve bitiş sayfasının solunda Keymotion görseli, üst bantta logo; karşılama metni sade ("Keymotion, klavyenizin ışıklarını…"); diğer sayfaların Türkçesi.
 9. **K10, kaldırma:** "Ayarlarımı ve kayıtlarımı da sil" kutusu işaretsiz gelmeli; kaldırma penceresinin üst bandında logo.
-10. **K9, bildirim logosu:** "Arka planda çalışıyor" bildiriminde Keymotion adı ve logosu.
+10. **K9, arka plan bildirimi ve logosu:** "Arka planda çalışıyor" bildiriminde Keymotion adı ve logosu. Ayrıca A'daki 2. madde burada denenir: pencereyi kapat, bildirim gelir; tepsiden açıp yine kapat, gelmez; uygulamadan çıkıp yeniden aç ve kapat, yine bir kez gelir.
 11. **6b, açılış süresi:** derlenmiş sürümde animasyon açılışı uzatmamalı (ölçülür).
 12. **K4, kurulu sürümde:** GitHub bağlantıları yine tarayıcıda açılmalı.
+
+### Denemelerin sonuçları
+
+**A, geliştirme sürümünde (2026-11-12, öğleden sonra):** 1, 3, 4, 5, 6 ve 7 çalıştı. Bulunanlar:
+- **2 (K9), arka plan bildirimi hiç gelmedi.** Sebep ortam: geliştirme sürümünü Claude başlattığı için Claude'un kutusunda çalışıyor. Uygulama bildirimlerde adı ve logosu görünsün diye kayıt defterine (`HKCU\Software\Classes\AppUserModelId\dev.keymotion`) yazıyor; bu kayıt yalnızca kutunun içinde var, gerçek Windows'ta yok (kutunun dışından bakıldı). Windows tanımadığı uygulamanın bildirimini sessizce atıyor; uygulamanın kaydında hata yok, "window hidden" satırı var. Kod değişmedi; deneme B'nin 10. maddesine taşındı (kurulu sürüm kaydı gerçek Windows'a yazar).
+- **K14. Bir hatırlatıcının satırındaki "Dene": kart ve ışıklar geldi, ama bir dakika sonra kendi görseli geri gelmedi.** Sebep: "Dene" kartı hemen gönderir ve bir dakika sonrası için dönüş kurar; dönüş, sırada gönderilmeye hazır bir kart görünce "ekrana o gelecek" diye iptal ediliyordu, oysa o kart hatırlatıcının kendi kartıydı. Takvimdeki "Dene" de aynıydı; hatırlatıcının ve toplantının kendi saatinde gelen kartı etkilenmiyordu (dönüş, kart ekrandan kalkarken kuruluyor). **Düzeltildi:** dönüşü yalnızca başka bir kaynağın hazır kartı iptal ediyor; kaynağın kendi kartı gönderilirken dönüş onu bekliyor ve süresi dolunca kendi görseline dönülüyor (`live.rs` `back_inputs`, birim testi). Kullanıcı "Dene"yi yeniden dener.
 
 ## Aşama 6: sürüm hattı ve otomatik güncelleyici
 
