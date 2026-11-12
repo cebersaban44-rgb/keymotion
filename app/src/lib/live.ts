@@ -32,6 +32,7 @@ const mock = {
     tokens: 6,
     nextTokenMs: null,
     pending: null,
+    pendingWaitMs: null,
     uploading: null,
     last: null,
     lastError: null,
@@ -250,6 +251,7 @@ async function mockUploadPending() {
   s.tokens -= 1;
   s.nextTokenMs = s.tokens < 1 ? ((1 - s.tokens) / (s.perDay / 24)) * 3_600_000 : null;
   s.pending = null;
+  s.pendingWaitMs = null;
   mock.pendingBlob = null;
   s.uploading = item;
   mockEmit();
@@ -273,6 +275,7 @@ export async function submitLive(p: Prepared, source: string): Promise<LiveState
     mockEmit();
     if (s.tokens < 1) {
       s.nextTokenMs = ((1 - s.tokens) / (s.perDay / 24)) * 3_600_000;
+      s.pendingWaitMs = s.nextTokenMs;
       mockEmit();
       return { ...s };
     }
@@ -291,6 +294,18 @@ export async function sendLiveNow(): Promise<LiveState> {
     return { ...mock.state };
   }
   return invoke<LiveState>("live_send_now");
+}
+
+/** Do not send the waiting card: the keyboard keeps its current picture. */
+export async function dropLiveWaiting(): Promise<LiveState> {
+  if (import.meta.env.DEV && !inTauri) {
+    mock.state.pending = null;
+    mock.state.pendingWaitMs = null;
+    mock.pendingBlob = null;
+    mockEmit();
+    return { ...mock.state };
+  }
+  return invoke<LiveState>("live_drop_waiting");
 }
 
 /** Cover art of the announced track, if Windows gave one. */
@@ -318,6 +333,8 @@ interface LiveStore {
   /** The answer to `askingFactory`: go on (and never ask again) or not. */
   answerFactory: (go: boolean) => Promise<void>;
   sendNow: () => Promise<void>;
+  /** "Gönderme": forget the waiting card. */
+  dropWaiting: () => Promise<void>;
 }
 
 export const useLive = create<LiveStore>((set, get) => ({
@@ -348,6 +365,7 @@ export const useLive = create<LiveStore>((set, get) => ({
     set({ state: await configureLive(patch) });
   },
   sendNow: async () => set({ state: await sendLiveNow() }),
+  dropWaiting: async () => set({ state: await dropLiveWaiting() }),
 }));
 
 /**
@@ -359,15 +377,21 @@ export const useLive = create<LiveStore>((set, get) => ({
 export function startLive(draw: (t: TrackInfo, cover: Blob | null) => Promise<Prepared>): () => void {
   // `undefined` until the first state arrives (that one is not a change).
   let lastShownMs: number | null | undefined;
+  let wasUploading = false;
   const onState = (s: LiveState) => {
     useLive.setState({ state: s });
-    // A live upload changed the GIF page and the upload counters.
+    // An upload ended: a live card, or the own picture put back (which
+    // leaves `last` as it was). Either changed the GIF page, so the pages
+    // read again what the keyboard shows (K8: after a put-back they kept
+    // showing the last live card).
     const at = s.last?.atMs ?? null;
-    if (lastShownMs !== undefined && at !== lastShownMs) {
+    const ended = wasUploading && !s.uploading;
+    if ((lastShownMs !== undefined && at !== lastShownMs) || ended) {
       const modelId = useScreen.getState().modelId;
       if (modelId) useScreen.getState().load(modelId).catch(console.error);
     }
     lastShownMs = at;
+    wasUploading = !!s.uploading;
   };
   const onTrack = async (t: TrackInfo) => {
     const s = useLive.getState().state;

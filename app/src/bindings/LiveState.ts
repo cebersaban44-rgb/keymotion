@@ -19,7 +19,13 @@ tokens: number,
 /**
  * Time until the next upload is allowed, when none is available now.
  */
-nextTokenMs: number | null, pending: LiveItem | null, uploading: LiveItem | null, last: LiveShown | null, lastError: string | null, 
+nextTokenMs: number | null, pending: LiveItem | null, 
+/**
+ * Time until the waiting card may go, when it waits for the budget.
+ * The focus timer's and the song's cards leave one upload for a
+ * reminder or a meeting, so theirs can be later than `next_token_ms`.
+ */
+pendingWaitMs: number | null, uploading: LiveItem | null, last: LiveShown | null, lastError: string | null, 
 /**
  * Source switch: the song playing.
  */

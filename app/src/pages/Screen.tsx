@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, ChevronDown, ImageOff, Images, Info, Library, Loader2, Palette, Pencil, Radio, Search, Trash2, Upload, Usb, X, type LucideIcon } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Clock3, ImageOff, Images, Info, Library, Loader2, Palette, Pencil, Radio, Search, Trash2, Upload, Usb, X, type LucideIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
@@ -203,6 +203,9 @@ function KeyboardScreens({ usb }: { usb: boolean }) {
   const shownId = state?.shown ?? null;
   const factory = state?.items.find((i) => i.kind === "factory") ?? null;
   const liveLast = useLive((s) => s.state?.last ?? null);
+  // A card waiting for the budget or the cable is not on the keyboard yet:
+  // said apart from what the page shows (K8).
+  const waiting = useLive((s) => (s.state?.enabled ? (s.state.pending ?? null) : null));
   const incomplete = !!state?.incomplete;
   const showsLive = shownId === "live";
   const shown = state?.items.find((i) => i.id === shownId) ?? null;
@@ -272,6 +275,12 @@ function KeyboardScreens({ usb }: { usb: boolean }) {
       </Panel>
       <div className="flex flex-col gap-3 text-[13px] text-ink-2">
         <IncompleteLine usb={usb} />
+        {waiting && (
+          <p className="flex gap-2" data-gif-waiting>
+            <Clock3 size={14} className="mt-0.5 shrink-0 text-warn" />
+            <span>{t("sc.page.gif.waiting", { name: waiting.name })}</span>
+          </p>
+        )}
         {state && (
           <p className="num text-[12px] text-ink-3" title={t("sc.wear.hint")} data-upload-counts>
             {t("sc.uploads.counts", { count: state.uploadsToday, total: state.uploadsTotal })}
