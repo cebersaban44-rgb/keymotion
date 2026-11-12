@@ -3,7 +3,7 @@
 // Browser mock (development only): outside Tauri, `pnpm dev` in a browser
 // uses stand-ins for the backend so the UI can be designed and tested
 // (`?mock=usb|bluetooth|dongle|none`, `?fw=`, `?reset=`, `?failPart=`,
-// `mock-close-requested`; lib/screen.ts, live.ts, pomodoro.ts, calendar.ts,
+// `?unsupported`, `?crash`, `mock-close-requested`; lib/screen.ts, live.ts, pomodoro.ts, calendar.ts,
 // reminders.ts and gauges.ts have their own). Every mock branch is guarded
 // by `import.meta.env.DEV`, written out at the guard itself: Vite replaces
 // it with `false` in a production build, so the mock code and its switches
@@ -43,6 +43,9 @@ import type { ProfileSaved } from "../bindings/ProfileSaved";
 import type { ProfilesState } from "../bindings/ProfilesState";
 import type { ScreenItem } from "../bindings/ScreenItem";
 import type { TrayTexts } from "../bindings/TrayTexts";
+import type { CrashNote } from "../bindings/CrashNote";
+import type { IssueKind } from "../bindings/IssueKind";
+import type { UnsupportedKeyboard } from "../bindings/UnsupportedKeyboard";
 // Generated from Rust by `cargo test` (dto.rs export_mock_geometry).
 import ak980Geometry from "../bindings/geometry-ajazz-ak980-pro.json";
 import mockKeymapCatalog from "../bindings/keymap-catalog.json";
@@ -503,13 +506,75 @@ export function logUiError(message: string): Promise<void> {
   return invoke<void>("log_ui_error", { message }).catch(() => undefined);
 }
 
-/** The diagnostics report as plain text (versions, keyboards, last log lines). */
-export async function getDiagnostics(language: string): Promise<string> {
+/** The diagnostics report as plain text (versions, keyboards, last log
+ *  lines). A problem report passes what happened (`context`) for the top. */
+export async function getDiagnostics(language: string, context?: string): Promise<string> {
   if (import.meta.env.DEV && !inTauri) {
     await mockDelay(150);
-    return `Browser preview diagnostics\nUI language: ${language}\nUser agent: ${navigator.userAgent}\n`;
+    const what = context ? `\nWhat happened:\n  ${context.split("\n").join("\n  ")}\n` : "";
+    return `Browser preview diagnostics\nUI language: ${language}${what}\nUser agent: ${navigator.userAgent}\n`;
   }
-  return invoke<string>("diagnostics_report", { language });
+  return invoke<string>("diagnostics_report", { language, context: context ?? null });
+}
+
+// ------------------------------------------------------- reporting problems
+
+const ISSUE_PAGE = "https://github.com/cebersaban44-rgb/keymotion/issues/new";
+
+/** Open a new issue on the project's GitHub page with its form; the title
+ *  and (for a keyboard) the model are filled in. */
+export async function openIssue(kind: IssueKind, title: string, model?: string): Promise<void> {
+  if (import.meta.env.DEV && !inTauri) {
+    const q = new URLSearchParams({ template: `${kind}.yml` });
+    if (title.trim()) q.set("title", title.trim());
+    if (model?.trim()) q.set("model", model.trim());
+    window.open(`${ISSUE_PAGE}?${q}`, "_blank", "noopener");
+    return;
+  }
+  await invoke("open_issue", { kind, title, model: model ?? null });
+}
+
+/** The newest crash note from an earlier run not offered yet. */
+export async function crashPending(): Promise<CrashNote | null> {
+  if (import.meta.env.DEV && !inTauri) {
+    if (!new URLSearchParams(location.search).has("crash")) return null;
+    return {
+      name: "crash-2026-11-12-101500.txt",
+      text: "Crash note\nVersion: 0.1.0-dev\nTime: 2026-11-12T10:15:00+03:00\nThread: device-actor\nLocation: src\\device.rs:812:9\nMessage: browser preview crash\n",
+    };
+  }
+  return invoke<CrashNote | null>("crash_pending");
+}
+
+/** The crash note `name` was offered: it isn't again. */
+export async function crashSeen(name: string): Promise<void> {
+  if (import.meta.env.DEV && !inTauri) return;
+  await invoke("crash_seen", { name });
+}
+
+const MOCK_UNSUPPORTED: UnsupportedKeyboard[] = [{ id: "0C45:8009:usb", name: "SONiX AK820 PRO" }];
+
+/** Keyboards that look like SONiX or AJAZZ ones but aren't supported yet. */
+export async function getUnsupportedKeyboards(): Promise<UnsupportedKeyboard[]> {
+  if (import.meta.env.DEV && !inTauri) {
+    return new URLSearchParams(location.search).has("unsupported") ? MOCK_UNSUPPORTED : [];
+  }
+  return invoke<UnsupportedKeyboard[]>("unsupported_keyboards");
+}
+
+export async function onUnsupportedChanged(cb: (list: UnsupportedKeyboard[]) => void): Promise<UnlistenFn> {
+  if (import.meta.env.DEV && !inTauri) return () => {};
+  return listen<UnsupportedKeyboard[]>("unsupported-keyboards-changed", (e) => cb(e.payload));
+}
+
+/** A support request for an unsupported keyboard: versions, its ids, names
+ *  and HID descriptions (read from Windows, nothing is sent to it). */
+export async function unsupportedReport(id: string): Promise<string> {
+  if (import.meta.env.DEV && !inTauri) {
+    await mockDelay(200);
+    return `Keymotion keyboard support request\nApp version: 0.1.0-dev\n\nKeyboard: SONiX AK820 PRO\nUSB ids: ${id}\n\nCollections (1):\n  1. usage page 0x0001, usage 0x0006 (keyboard)\n     descriptor, 4 bytes:\n     05 01 09 06\n`;
+  }
+  return invoke<string>("unsupported_report", { id });
 }
 
 /** Open the app's log or data folder in Explorer. */

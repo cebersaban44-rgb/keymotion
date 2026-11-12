@@ -27,7 +27,8 @@ These readings are used only to draw on the keyboard and in the app. They are no
 | Time since your last keyboard or mouse input | While Reminders are on | Repeating reminders wait while you are away |
 | Your Windows keyboard layout | When the app opens or gets focus | Key labels in your language |
 | Connected keyboards (USB devices, Bluetooth battery) | While the app runs | Finding and controlling the keyboard |
-| Windows and WebView2 versions | When you copy diagnostics | The diagnostics report |
+| A keyboard's HID descriptions (what Windows recorded about its collections) | When you ask for support for a keyboard that isn't supported yet | The support request |
+| Windows and WebView2 versions | When you copy diagnostics or report a problem | The diagnostics report |
 
 ## Where your data lives
 
@@ -44,6 +45,14 @@ The folder names contain the app's identifier. **Settings → About → Data fol
 ## Diagnostics
 
 **Settings → About → Diagnostics → Copy** puts a text report on your clipboard: app, Windows and WebView2 versions, the keyboard model, firmware and connection, the names and sizes of the settings files, and the last 150 log lines (cleaned as described above). It is not sent anywhere; you decide whether to paste it into a message.
+
+## Reporting a problem or asking for support
+
+Problems are reported on GitHub, by you. The app sends nothing itself.
+
+- **Report a problem** (Settings → About → Feedback, the notice after an unexpected error, the notice after a crash) opens a window that shows the text first: the diagnostics above, with what happened at the top. **Report on GitHub** puts the text on your clipboard and opens the project's issue form in your browser. You paste it there and decide whether to send it.
+- **Request support** appears when a SONiX or AJAZZ keyboard isn't supported yet. It works the same way with the keyboard's details: its USB ids, its name, and the HID descriptions Windows keeps of it. Nothing is written to the keyboard. Its serial number and device paths are left out.
+- **After a crash**, the next start offers the newest crash note from the last 7 days, once.
 
 ## Export, import and deletion
 

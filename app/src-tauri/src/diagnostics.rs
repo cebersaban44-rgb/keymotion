@@ -7,6 +7,10 @@
 //! calendar address, a reminder title or a meeting name: the log does not
 //! carry them, and every log line passes [`crate::logging::redact`] again.
 //! The report is English: it is read by the developer, not shown in the UI.
+//!
+//! A problem report adds what happened (an error, a crash note) at the top.
+//! A support request for a keyboard the app doesn't know yet describes that
+//! keyboard instead ([`keyboard_details`]).
 
 use crate::dto::KeyboardInfo;
 use serde::Deserialize;
@@ -15,6 +19,8 @@ use ts_rs::TS;
 
 /// Log lines in a report.
 pub const LOG_LINES: usize = 150;
+/// Longest "what happened" text in a report.
+const CONTEXT_MAX: usize = 4_000;
 
 /// A folder the user can open from Settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
@@ -35,6 +41,8 @@ pub struct Facts {
     pub windows: String,
     pub webview: String,
     pub ui_language: String,
+    /// What happened, for a problem report (an error, a crash note).
+    pub context: Option<String>,
     pub keyboards: Vec<String>,
     pub data_files: Vec<(String, u64)>,
     pub log_lines: Vec<String>,
@@ -102,6 +110,13 @@ pub fn report(f: &Facts) -> String {
     s.push_str(&format!("Windows: {}\n", f.windows));
     s.push_str(&format!("WebView2: {}\n", f.webview));
     s.push_str(&format!("UI language: {}\n", f.ui_language));
+    if let Some(context) = f.context.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
+        let context: String = crate::logging::redact(context).chars().take(CONTEXT_MAX).collect();
+        s.push_str("\nWhat happened:\n");
+        for line in context.lines() {
+            s.push_str(&format!("  {line}\n"));
+        }
+    }
     s.push_str("\nKeyboards:\n");
     if f.keyboards.is_empty() {
         s.push_str("  none found\n");
@@ -122,6 +137,65 @@ pub fn report(f: &Facts) -> String {
         s.push('\n');
     }
     s
+}
+
+/// The start of a support request: the app and Windows versions.
+pub fn support_request(app_name: &str, app_version: &str, windows: &str, details: &str) -> String {
+    format!("{app_name} keyboard support request\nApp version: {app_version}\nWindows: {windows}\n\n{details}")
+}
+
+/// A keyboard the app doesn't know yet, for a support request: its ids and
+/// names, and each HID collection with its report descriptor (`descriptors`,
+/// in the order of `k.collections`). The serial number and the device paths
+/// stay out: they identify the user's own keyboard, not the model.
+pub fn keyboard_details(k: &kb_core::UnknownKeyboard, descriptors: &[Result<Vec<u8>, String>]) -> String {
+    let mut s = String::new();
+    s.push_str(&format!("Keyboard: {}\n", k.product.as_deref().unwrap_or("(no name)")));
+    if let Some(m) = &k.manufacturer {
+        s.push_str(&format!("Maker: {m}\n"));
+    }
+    s.push_str(&format!("USB ids: VID {:04X}, PID {:04X}, release 0x{:04X}\n", k.vid, k.pid, k.release));
+    let bus = match k.bus {
+        kb_transport::hid::Bus::Usb => "USB",
+        kb_transport::hid::Bus::Bluetooth => "Bluetooth",
+        kb_transport::hid::Bus::Other => "other",
+    };
+    s.push_str(&format!("Connection: {bus}\n"));
+    s.push_str(&format!("\nCollections ({}):\n", k.collections.len()));
+    for (i, &(page, usage, interface)) in k.collections.iter().enumerate() {
+        s.push_str(&format!("  {}. usage page 0x{page:04X}, usage 0x{usage:04X}", i + 1));
+        if let Some(name) = usage_name(page, usage) {
+            s.push_str(&format!(" ({name})"));
+        }
+        if interface >= 0 {
+            s.push_str(&format!(", interface {interface}"));
+        }
+        s.push('\n');
+        match descriptors.get(i) {
+            Some(Ok(bytes)) => {
+                s.push_str(&format!("     descriptor, {} bytes:\n", bytes.len()));
+                for chunk in bytes.chunks(16) {
+                    let hex: Vec<String> = chunk.iter().map(|b| format!("{b:02X}")).collect();
+                    s.push_str(&format!("     {}\n", hex.join(" ")));
+                }
+            }
+            Some(Err(e)) => s.push_str(&format!("     descriptor not readable: {e}\n")),
+            None => s.push_str("     descriptor not read\n"),
+        }
+    }
+    s
+}
+
+/// What a HID collection is, for the common ones.
+fn usage_name(page: u16, usage: u16) -> Option<&'static str> {
+    Some(match (page, usage) {
+        (0x0001, 0x0002) => "mouse",
+        (0x0001, 0x0006) => "keyboard",
+        (0x0001, 0x0080) => "system control",
+        (0x000C, 0x0001) => "consumer control",
+        (p, _) if p >= 0xFF00 => "vendor-defined",
+        _ => return None,
+    })
 }
 
 /// Open `path` in Explorer; with `select`, open its folder with it selected.
@@ -177,6 +251,7 @@ mod tests {
             windows: "Windows 11 Core 25H2 (build 26200.7171)".into(),
             webview: "142.0.3595.65".into(),
             ui_language: "tr".into(),
+            context: None,
             keyboards: vec!["AJAZZ AK980 PRO (ajazz-ak980-pro), usb, firmware unknown".into()],
             data_files: vec![("calendar.json".into(), 2048), ("keymap.json".into(), 12)],
             log_lines: vec![
@@ -204,12 +279,69 @@ mod tests {
             windows: "unknown".into(),
             webview: "unknown".into(),
             ui_language: "en".into(),
+            context: None,
             keyboards: vec![],
             data_files: vec![],
             log_lines: vec![],
         };
         let r = report(&f);
         assert!(r.contains("Keyboards:\n  none found\n") && r.contains("Data files:\n  none\n"), "{r}");
+    }
+
+    #[test]
+    fn a_problem_report_says_what_happened_first() {
+        let f = Facts {
+            app_name: "Keymotion".into(),
+            app_version: "0.1.0".into(),
+            time: "t".into(),
+            windows: "w".into(),
+            webview: "v".into(),
+            ui_language: "en".into(),
+            context: Some(
+                r"action failed: not saved at C:\Users\saban\x
+second line"
+                    .into(),
+            ),
+            keyboards: vec![],
+            data_files: vec![],
+            log_lines: vec![],
+        };
+        let r = report(&f);
+        let what = r.find("What happened:\n  action failed: not saved").expect("context");
+        assert!(what < r.find("Keyboards:").unwrap(), "{r}");
+        assert!(r.contains("\n  second line\n") && !r.contains("saban"), "{r}");
+    }
+
+    #[test]
+    fn keyboard_details_carry_ids_collections_and_descriptors() {
+        let k = kb_core::UnknownKeyboard {
+            vid: 0x0C45,
+            pid: 0x8009,
+            bus: kb_transport::hid::Bus::Usb,
+            release: 0x0138,
+            manufacturer: Some("SONiX".into()),
+            product: Some("SONiX AK820 PRO".into()),
+            collections: vec![(0x0001, 0x0006, 0), (0xFF13, 0x0001, 3)],
+            paths: vec![r"\\?\hid#vid_0c45&pid_8009&mi_00#7&serial".into(), "p2".into()],
+        };
+        let descriptor: Vec<u8> = (0u8..20).collect();
+        let r = keyboard_details(&k, &[Ok(descriptor), Err("access denied".into())]);
+        for part in [
+            "Keyboard: SONiX AK820 PRO\n",
+            "Maker: SONiX\n",
+            "USB ids: VID 0C45, PID 8009, release 0x0138\n",
+            "Connection: USB\n",
+            "1. usage page 0x0001, usage 0x0006 (keyboard), interface 0\n",
+            "descriptor, 20 bytes:\n     00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F\n     10 11 12 13\n",
+            "2. usage page 0xFF13, usage 0x0001 (vendor-defined), interface 3\n",
+            "descriptor not readable: access denied",
+        ] {
+            assert!(r.contains(part), "{part:?} missing:\n{r}");
+        }
+        assert!(!r.contains("hid#") && !r.contains("serial"), "paths stay out:\n{r}");
+        assert!(
+            support_request("Keymotion", "0.1.0", "Windows 11", &r).starts_with("Keymotion keyboard support request\n")
+        );
     }
 
     #[test]

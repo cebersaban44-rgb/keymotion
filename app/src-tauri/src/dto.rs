@@ -158,6 +158,45 @@ pub struct Battery {
     pub read_at_ms: u64,
 }
 
+/// A keyboard that looks like a SONiX or AJAZZ one but isn't supported yet
+/// (kb_core `unknown_keyboards`): the UI offers "Request support".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct UnsupportedKeyboard {
+    /// Ids and bus, "0C45:8009:usb".
+    pub id: String,
+    /// The name the keyboard reports, when it has one.
+    pub name: Option<String>,
+}
+
+impl UnsupportedKeyboard {
+    pub fn from_unknown(k: &kb_core::UnknownKeyboard) -> Self {
+        Self { id: k.key(), name: k.name().map(str::to_string) }
+    }
+}
+
+/// A crash note from an earlier run, offered once for reporting.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CrashNote {
+    /// File name (`crash-….txt`): marks it seen.
+    pub name: String,
+    /// Its text (version, time, message), already redacted.
+    pub text: String,
+}
+
+/// Which GitHub issue form to open (`.github/ISSUE_TEMPLATE/<kind>.yml`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum IssueKind {
+    Bug,
+    Keyboard,
+    Idea,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]

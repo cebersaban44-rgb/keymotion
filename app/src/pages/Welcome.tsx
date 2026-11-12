@@ -1,12 +1,15 @@
 // First run, or no keyboard connected: which keyboard the app supports, how
 // to connect it, and what works without it. Shown in place of Genel bakış
 // and Bağlantı until a keyboard is found (the app looks every 2 seconds).
+// A SONiX or AJAZZ keyboard the app doesn't support yet gets a card on top
+// with "Request support" (lib/report.ts).
 
-import { ArrowUpRight, BellRing, Images, Timer, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, BellRing, Images, Keyboard, Timer, type LucideIcon } from "lucide-react";
 import { ModeSwitch } from "../components/ModeSwitch";
 import { useT, type MessageKey } from "../lib/i18n";
 import { openLink } from "../lib/ipc";
 import { SUPPORTED_MODEL, SUPPORT_LIST_URL } from "../lib/offline";
+import { useReport, useUnsupportedKeyboards } from "../lib/report";
 import { useApp } from "../lib/store";
 
 const STEPS: MessageKey[] = ["welcome.step1", "welcome.step2", "welcome.step3"];
@@ -15,6 +18,8 @@ export function Welcome() {
   const t = useT();
   const setPage = useApp((s) => s.setPage);
   const openScreen = useApp((s) => s.openScreen);
+  const openReport = useReport((s) => s.openReport);
+  const unsupported = useUnsupportedKeyboards();
 
   const tools: { icon: LucideIcon; title: MessageKey; body: MessageKey; open: () => void }[] = [
     { icon: Timer, title: "nav.focus", body: "welcome.focus", open: () => setPage("focus") },
@@ -29,6 +34,33 @@ export function Welcome() {
         <h1 className="page-title mt-2">{t("welcome.title")}</h1>
         <p className="page-desc">{t("welcome.desc")}</p>
       </header>
+
+      {unsupported.map((k) => (
+        <section key={k.id} className="card flex flex-wrap items-center gap-x-5 gap-y-4 p-5" data-unsupported={k.id}>
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-warn/15 text-warn">
+            <Keyboard size={19} aria-hidden />
+          </span>
+          <div className="flex min-w-[240px] flex-1 flex-col gap-1">
+            <span className="text-[12px] text-ink-3">{t("unsupported.title")}</span>
+            <span className="text-[15px] font-semibold">{k.name ?? t("unsupported.unnamed")}</span>
+            <p className="text-[13px] text-ink-2">{t("unsupported.body")}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              openReport({
+                kind: "keyboard",
+                title: `[Keyboard] ${k.name ?? k.id}`,
+                keyboardId: k.id,
+                model: k.name ?? undefined,
+              })
+            }
+            className="flex h-9 items-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink transition-transform active:scale-[0.98]"
+          >
+            {t("unsupported.request")}
+          </button>
+        </section>
+      ))}
 
       <section className="card flex flex-wrap gap-x-8 gap-y-5 p-6" aria-labelledby="welcome-connect">
         <div className="flex min-w-[260px] flex-1 flex-col gap-3.5">

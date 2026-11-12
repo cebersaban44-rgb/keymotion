@@ -10,4 +10,4 @@ pub mod screen_import;
 pub mod shape;
 pub mod sonix;
 
-pub use detect::{app_capabilities, detect, wired_count, DetectedKeyboard};
+pub use detect::{app_capabilities, detect, unknown_keyboards, wired_count, DetectedKeyboard, UnknownKeyboard};

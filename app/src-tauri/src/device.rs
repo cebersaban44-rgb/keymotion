@@ -27,7 +27,7 @@
 //! program talks to the keyboard, and on firmware nobody tested only after
 //! the user said so in this session. Live frames and the clock skip it.
 
-use crate::dto::{Battery, FlashWrite, KeyboardInfo, LedColor};
+use crate::dto::{Battery, FlashWrite, KeyboardInfo, LedColor, UnsupportedKeyboard};
 use crate::settings::{
     self, ClockSettings, Keymaps, MacroRecord, StoredKeymap, StoredLayer, StoredMacro, StoredMacros,
 };
@@ -50,6 +50,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 
 pub const EVENT_KEYBOARDS_CHANGED: &str = "keyboards-changed";
+/// The keyboards the app sees but can't drive yet changed; the payload is
+/// the new list (`UnsupportedKeyboard`).
+pub const EVENT_UNSUPPORTED_CHANGED: &str = "unsupported-keyboards-changed";
 pub const EVENT_MIRROR: &str = "lighting-mirror";
 pub const EVENT_CLOCK: &str = "clock-changed";
 pub const EVENT_SCREEN_PROGRESS: &str = "screen-upload-progress";
@@ -223,6 +226,13 @@ pub enum Request {
         slots: Vec<Option<StoredMacro>>,
         reply: Reply<StoredMacros>,
     },
+    /// Describe an unsupported keyboard for a support request: its ids,
+    /// names, collections and their report descriptors. Read-only: the
+    /// descriptors come from Windows, nothing is sent to the keyboard.
+    DescribeUnsupported {
+        id: String,
+        reply: Reply<String>,
+    },
     /// Upload an animation to the USB keyboard's GIF page (flash write).
     /// `id` only labels the progress events.
     UploadScreen {
@@ -354,6 +364,8 @@ pub enum Expected {
 #[derive(Default)]
 pub struct Snapshot {
     pub keyboards: Vec<KeyboardInfo>,
+    /// Keyboards that look like SONiX or AJAZZ ones but match no model.
+    pub unsupported: Vec<UnsupportedKeyboard>,
     pub calibration: LedCalibration,
     pub clock: ClockSettings,
     /// What the app last wrote to each model's keymap.
@@ -510,6 +522,7 @@ pub fn spawn(
     let macros = config_dir.as_deref().map(settings::load_macros).unwrap_or_default();
     let snapshot = Arc::new(Mutex::new(Snapshot {
         keyboards: Vec::new(),
+        unsupported: Vec::new(),
         calibration,
         clock,
         keymaps: keymaps.clone(),
@@ -540,6 +553,8 @@ struct Actor {
     shared: Arc<Mutex<Snapshot>>,
     hid: Option<Hid>,
     peers: Vec<BlePeer>,
+    /// Keyboards seen that no model matches (for support requests).
+    unknown: Vec<kb_core::UnknownKeyboard>,
     last_ble_scan: Option<Instant>,
     batteries: HashMap<u64, (Battery, Instant)>,
     /// Last battery reading per model, kept on disk: shown over USB, where
@@ -606,6 +621,7 @@ impl Actor {
             shared,
             hid,
             peers: Vec::new(),
+            unknown: Vec::new(),
             last_ble_scan: None,
             batteries: HashMap::new(),
             last_battery: config_dir.as_deref().map(settings::load_batteries).unwrap_or_default(),
@@ -772,6 +788,9 @@ impl Actor {
             Request::ApplyMacros { slots, reply } => {
                 let _write = self.flash.begin(FlashWrite::Settings);
                 let _ = reply.send(self.apply_macros(slots));
+            }
+            Request::DescribeUnsupported { id, reply } => {
+                let _ = reply.send(self.describe_unsupported(&id));
             }
             Request::UploadScreen { id, anim, reply } => {
                 let _write = self.flash.begin(FlashWrite::Screen);
@@ -1064,6 +1083,9 @@ impl Actor {
             None => Vec::new(),
         };
         let detected = kb_core::detect(&interfaces, &self.peers);
+        self.unknown = kb_core::unknown_keyboards(&interfaces);
+        let unsupported: Vec<UnsupportedKeyboard> =
+            self.unknown.iter().map(UnsupportedKeyboard::from_unknown).collect();
 
         let usb = detected.iter().find(|k| k.connection == ConnectionKind::Usb);
         let was_connected = self.command_path.is_some();
@@ -1109,15 +1131,25 @@ impl Actor {
             infos.push(KeyboardInfo::from_detected(k, battery));
         }
 
-        let changed = {
+        let (changed, unsupported_changed) = {
             let mut snap = self.shared.lock().expect("snapshot lock");
-            if snap.keyboards != infos {
+            let changed = snap.keyboards != infos;
+            if changed {
                 snap.keyboards = infos.clone();
-                true
-            } else {
-                false
             }
+            let unsupported_changed = snap.unsupported != unsupported;
+            if unsupported_changed {
+                snap.unsupported = unsupported.clone();
+            }
+            (changed, unsupported_changed)
         };
+        if unsupported_changed {
+            let ids: Vec<&str> = unsupported.iter().map(|k| k.id.as_str()).collect();
+            tracing::info!(?ids, "unsupported keyboards changed");
+            if let Err(e) = self.app.emit(EVENT_UNSUPPORTED_CHANGED, &unsupported) {
+                tracing::warn!("emit failed: {e}");
+            }
+        }
         if changed {
             tracing::info!(count = infos.len(), "keyboards changed");
             if let Err(e) = self.app.emit(EVENT_KEYBOARDS_CHANGED, &infos) {
@@ -1128,6 +1160,15 @@ impl Actor {
 }
 
 impl Actor {
+    /// The support request text for the unsupported keyboard `id`.
+    fn describe_unsupported(&self, id: &str) -> Result<String, String> {
+        let k = self.unknown.iter().find(|k| k.key() == id).ok_or("unsupported keyboard not found")?;
+        let hid = self.hid.as_ref().ok_or("no HID access")?;
+        let descriptors: Vec<Result<Vec<u8>, String>> =
+            k.paths.iter().map(|p| hid.report_descriptor_at(p).map_err(|e| e.to_string())).collect();
+        Ok(crate::diagnostics::keyboard_details(k, &descriptors))
+    }
+
     /// Keep a battery reading for when the keyboard is on the cable. Written
     /// to disk when the level changes or every half hour.
     fn remember_battery(&mut self, model_id: &str, b: &Battery) {
