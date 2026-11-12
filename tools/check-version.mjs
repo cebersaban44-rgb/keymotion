@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// The app's version is kept in three files (docs/gelistirme-akisi.md, "Sürüm
-// çıkarma"); this check fails when they disagree:
+// The app's version is kept in three files, and this check fails when they
+// disagree (docs site: developers/contributing):
 //   - app/src-tauri/Cargo.toml   (usually `version.workspace = true`, which
 //                                 reads [workspace.package] in Cargo.toml)
 //   - app/package.json

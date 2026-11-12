@@ -108,12 +108,38 @@ export function latestJson({ version, notes, pubDate, url, signature }) {
   };
 }
 
-/** The draft release's body: the notes and the setup file's SHA-256. */
-export function releaseBody({ notes, fileName, sha256, preface }) {
+const SITE = "https://cebersaban44-rgb.github.io/keymotion";
+
+/**
+ * The draft release's body: the notes, how to install, the setup file's
+ * SHA-256 and the links SignPath asks a download page to carry (code signing
+ * policy, privacy policy). `signed` drops the Windows warning once releases
+ * are signed (roadmap stage 9).
+ */
+export function releaseBody({ notes, fileName, sha256, preface, repository, version, signed = false }) {
   if (!/^[0-9a-f]{64}$/.test(sha256 ?? "")) throw new Error(`not a SHA-256: ${JSON.stringify(sha256)}`);
   const parts = [];
   if (preface) parts.push(`> ${preface}`);
-  parts.push(notes, "---", `SHA-256 of \`${fileName}\`: \`${sha256}\``);
+  const install = [
+    `Download **\`${fileName}\`** below and run it. It works on Windows 10 and 11, 64-bit, and installs for your user account without administrator rights. Connect the keyboard with the USB cable, with the switch on its back in the middle.`,
+  ];
+  if (!signed) {
+    install.push(
+      `> [!NOTE]\n> This release isn't signed yet, so Windows may say "Windows protected your PC". Select **More info**, then **Run anyway**.`,
+    );
+  }
+  install.push(
+    "Already using Keymotion? It finds the new version by itself, or open **Settings › About** and select **Check for updates**.",
+  );
+  const links = [
+    `[User guide](${SITE}/guide/install/)`,
+    `[Code signing policy](${SITE}/about/code-signing/)`,
+    `[Privacy policy](${SITE}/about/privacy/)`,
+  ];
+  if (repository && version) {
+    links.push(`[Türkçe sürüm notları](https://github.com/${repository}/blob/v${version}/docs/surum-notlari.md)`);
+  }
+  parts.push(notes, "---", "### Install", ...install, `SHA-256 of \`${fileName}\`: \`${sha256}\``, links.join(" · "));
   return `${parts.join("\n\n")}\n`;
 }
 
@@ -126,6 +152,7 @@ function main() {
       repository: { type: "string", default: process.env.GITHUB_REPOSITORY },
       "allow-unreleased": { type: "boolean", default: false },
       "check-notes": { type: "boolean", default: false },
+      signed: { type: "boolean", default: false },
       "out-dir": { type: "string" },
       changelog: { type: "string", default: join(root, "CHANGELOG.md") },
       "tr-notes": { type: "string", default: join(root, "docs", "surum-notlari.md") },
@@ -172,7 +199,15 @@ function main() {
     en.label === version
       ? undefined
       : `Test build: ${version} has no CHANGELOG.md section yet, so these are the Unreleased notes.`;
-  const body = releaseBody({ notes: en.body, fileName, sha256: opt.sha256, preface });
+  const body = releaseBody({
+    notes: en.body,
+    fileName,
+    sha256: opt.sha256,
+    preface,
+    repository: opt.repository,
+    version,
+    signed: opt.signed,
+  });
 
   const outDir = opt["out-dir"] ?? dirname(setup);
   writeFileSync(join(outDir, "latest.json"), `${JSON.stringify(manifest, null, 2)}\n`);

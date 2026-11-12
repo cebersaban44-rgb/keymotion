@@ -20,11 +20,11 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
   (start it from here), the next reminder, the next meeting, the system
   gauges with live bars, and the profile. Also connection mode, battery, and
   the keyboard clock, which is set automatically when the keyboard connects.
-- **Lighting:** the 20 built-in effects with colour, brightness, speed and
-  direction; a live mirror of the keyboard's colours; per-key colour with brush
+- **Lighting:** the 20 built-in effects with color, brightness, speed and
+  direction; a live mirror of the keyboard's colors; per-key color with brush
   and selection tools, ready-made patterns, live preview and saving to the
   keyboard.
-- **Colour calibration:** gamma and white balance, with test patterns shown on
+- **Color calibration:** gamma and white balance, with test patterns shown on
   the keyboard.
 - **Key assignment:** base and Fn layers. Keys, shortcuts, media keys, mouse
   buttons, scrolling or nothing; a layer can be reset to the factory layout.
@@ -33,7 +33,7 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
   memory is left.
 - **Screen studio** for the 240×135 screen: images, GIFs and videos (crop,
   length), text cards and slideshows; preview before upload, a library, and a
-  way back to the factory animation. "Match lights" designs key colours from
+  way back to the factory animation. "Match lights" designs key colors from
   the picture.
 - **Live screen:** cards that update on their own (the song that is playing,
   focus timer phases, upcoming meetings), with a daily upload limit, a clear
@@ -45,7 +45,7 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
   address (read only); a card on the screen before a meeting and a blinking key
   a minute before it starts.
 - **Reminders:** once, daily or at intervals during working hours; a wave of
-  colour on the keys, and optionally a screen card and a sound. "Try" shows the
+  color on the keys, and optionally a screen card and a sound. "Try" shows the
   card too, and the page says why a card was not shown (the upload limit, the
   live screen off, no USB cable, a meeting card).
 - **System gauges:** processor, graphics and memory load as bars on key rows,
@@ -53,7 +53,7 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
 - **Focus timer:** a sequence you build from focus and break blocks of any
   length, in any order (drag to reorder), run once, a few times or until you
   stop it; "25 / 5 classic" by default, and older settings become the
-  sequence they made. The whole keyboard fills with the block's colour and
+  sequence they made. The whole keyboard fills with the block's color and
   empties as time runs out; a card on the screen for each block.
 - **Installer:** a per-user Windows installer in English and Turkish, with the
   Keymotion icon and a plain welcome text; no administrator rights needed.
@@ -75,7 +75,7 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
   gauges go on. The tray menu shows the keyboard and its battery, runs the
   focus timer (phase and minutes left, pause, skip, stop), shows the next
   reminder and turns reminders and the key gauges on or off. It also opens a
-  profile's load confirmation and quits the app. Settings › Background can turn
+  profile's load confirmation and quits the app. Settings › Closing and starting can turn
   this off, and can start Keymotion hidden when Windows starts. The first time
   the window is closed after the app starts, a notice says it is still running.
 - **Updates:** Settings › About checks GitHub for a new version, and the app
@@ -90,8 +90,12 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
   a key ends it, and with Windows' animation effects off it simply fades.
 - Protection for unsaved changes when leaving a page or closing the app.
 - Turkish and English interface, light and dark theme.
-- Project: MIT/Apache-2.0 licence, NOTICE (unofficial project, use at your own
-  risk), third-party licence notices, and automatic checks for broken
+- Project: MIT/Apache-2.0 license, NOTICE (unofficial project, use at your own
+  risk), third-party license notices, and automatic checks for broken
   characters, vendor files, versions and dependencies.
+- **Documentation:** a user guide in English and Turkish at
+  cebersaban44-rgb.github.io/keymotion, with every page of the app, help when
+  something goes wrong, the supported keyboards and the ones that could come
+  next, and pages for developers. Settings › About opens it.
 
 [Unreleased]: https://github.com/cebersaban44-rgb/keymotion/commits/develop

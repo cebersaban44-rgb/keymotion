@@ -1,12 +1,12 @@
-name: Keyboard support request
-description: Ask for Keymotion to support another keyboard.
+name: Keyboard request or test report
+description: Ask for another keyboard, or tell us how Keymotion works with yours.
 title: "[Keyboard] "
 labels: ["keyboard support"]
 body:
   - type: markdown
     attributes:
       value: |
-        Keymotion supports the **AJAZZ AK980 PRO** today. Other keyboards are added once someone can test them, so the details below matter most.
+        Keymotion supports the **AJAZZ AK980 PRO** today. Other keyboards are added once someone can test them, so the details below matter most. The [supported keyboards](https://cebersaban44-rgb.github.io/keymotion/help/keyboards/) page lists the ones that look like they share its platform.
 
         When Keymotion sees a keyboard it doesn't support yet, it offers **Request support**. That copies the keyboard's details: its USB ids, its name and the descriptions Windows reads from it. Paste them into the "Keyboard details" box below. Keymotion only reads these; it writes nothing to the keyboard.
 
@@ -16,6 +16,18 @@ body:
     attributes:
       label: Keyboard model
       placeholder: AJAZZ AK820 PRO
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: What happens when you plug it in with Keymotion open?
+      description: Keymotion only reads a keyboard it doesn't support; it never writes to it.
+      options:
+        - Keymotion says it isn't supported yet
+        - Keymotion finds it, and everything I tried works
+        - Keymotion finds it, but something doesn't work (say what below)
+        - I haven't tried it yet
     validations:
       required: true
   - type: checkboxes

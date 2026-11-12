@@ -1,9 +1,9 @@
 //! The factory animation from AJAZZ's official driver, if the user installed
 //! it. The app does not ship AJAZZ's animation; it can back up the copy the
-//! driver put on this PC (docs/urun-eksikleri.md B1).
+//! driver put on this PC (the first upload erases the keyboard's for good).
 //!
 //! The driver keeps it as `gif/<model folder>/0.gif` under its install
-//! folder (docs/research/ekran-derin-arastirma.md §1.2). Install folders
+//! folder. Install folders
 //! differ, so the usual program folders are searched a few levels deep for
 //! GIF files of the screen's size in a folder whose path names the model.
 //! Only each candidate's first ten bytes are read.

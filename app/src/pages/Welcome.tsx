@@ -8,7 +8,7 @@ import { ArrowUpRight, BellRing, Images, Keyboard, Timer, type LucideIcon } from
 import { ModeSwitch } from "../components/ModeSwitch";
 import { useT, type MessageKey } from "../lib/i18n";
 import { openLink } from "../lib/ipc";
-import { SUPPORTED_MODEL, SUPPORT_LIST_URL } from "../lib/offline";
+import { SUPPORTED_MODEL, docsPage } from "../lib/offline";
 import { useReport, useUnsupportedKeyboards } from "../lib/report";
 import { useApp } from "../lib/store";
 
@@ -17,6 +17,7 @@ const STEPS: MessageKey[] = ["welcome.step1", "welcome.step2", "welcome.step3"];
 export function Welcome() {
   const t = useT();
   const setPage = useApp((s) => s.setPage);
+  const locale = useApp((s) => s.locale);
   const openScreen = useApp((s) => s.openScreen);
   const openReport = useReport((s) => s.openReport);
   const unsupported = useUnsupportedKeyboards();
@@ -92,7 +93,7 @@ export function Welcome() {
         </div>
         <button
           type="button"
-          onClick={() => openLink(SUPPORT_LIST_URL).catch(console.error)}
+          onClick={() => openLink(docsPage("help/keyboards/", locale)).catch(console.error)}
           className="flex items-center gap-1 rounded-md text-[13px] text-signal hover:underline"
           data-welcome-other
         >

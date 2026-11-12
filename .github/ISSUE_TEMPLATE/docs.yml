@@ -1,0 +1,36 @@
+name: Guide or translation problem
+description: Something in the user guide, the README or the app's wording is wrong, unclear or badly translated.
+title: "[Docs] "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping the guide get better. Small fixes can also go straight into a pull request: every page of the guide has an "Edit this page" link.
+
+        *Türkçe yazabilirsiniz.*
+  - type: input
+    id: where
+    attributes:
+      label: Where is it?
+      description: A link to the page, or the place in the app (page and button).
+      placeholder: https://cebersaban44-rgb.github.io/keymotion/guide/lighting/
+    validations:
+      required: true
+  - type: dropdown
+    id: language
+    attributes:
+      label: Language
+      options:
+        - English
+        - Türkçe
+        - Both
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's wrong?
+      description: What it says now, and what it should say if you know.
+    validations:
+      required: true

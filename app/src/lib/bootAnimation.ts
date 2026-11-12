@@ -1,8 +1,8 @@
-// Keymotion's own animation for the keyboard's screen (docs/yol-haritasi.md,
-// stage 3; the owner chose design A with the wordmark, 2026-11-12): the "K"
-// of the logo drawn stroke by stroke, the orange stroke glows, "keymotion"
-// opens beside it, a hold, a fade, and again. It is for keyboards whose
-// factory animation has no backup (AJAZZ's animation is not shipped).
+// Keymotion's own animation for the keyboard's screen (the design with the
+// wordmark, chosen 2026-11-12): the "K" of the logo drawn stroke by stroke,
+// the orange stroke glows, "keymotion" opens beside it, a hold, a fade, and
+// again. It is for keyboards whose factory animation has no backup (AJAZZ's
+// animation is not shipped).
 //
 // Drawn here because the wordmark needs the app's font; stored once in the
 // library as the built-in "keymotion" item (screen.ts). Few frames, long

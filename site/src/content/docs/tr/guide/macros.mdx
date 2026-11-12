@@ -1,0 +1,89 @@
+---
+title: Makrolar
+description: Tuşlara basarak bir makro kaydedin, adımlarını ve beklemelerini düzenleyin, oynatma biçimiyle bir tuşa atayın ve klavye belleğinde ne kadar yer kaldığını görün.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Makro, bir dizi tuş basışını ve fare tıklamasını tek tuşla oynatır. Makroları **Makrolar** sayfasında kaydedip düzenlersiniz, sonra [Tuş atama](/keymotion/tr/guide/key-mapping/) sayfasında bir tuşa atarsınız.
+
+<Screenshot name="macros" alt="Makrolar sayfasında kaydedilmiş bir makro seçili ve adımları listelenmiş" />
+
+## Makro kaydetme
+
+<Steps>
+
+1. Kenar çubuğunda **Makrolar**'ı açın ve **Ekle**'ye tıklayın. "Makro 1" gibi bir adla yeni bir makro açılır.
+2. İsterseniz üstteki kutuya en çok 40 karakterlik bir ad yazın.
+3. **Bekleme süresi** için basışlarınız arasındaki gerçek süreyi korumak üzere **Kaydedildiği gibi**'yi, her adıma aynı beklemeyi vermek için **Sabit**'i seçin. Sabit bekleme milisaniye olarak yazılır.
+4. **Kayda başla**'ya tıklayın ve Keymotion penceresi öndeyken tuşlara basın. Her basış ve her bırakış bir adım olur.
+5. **Kaydı durdur**'a tıklayın.
+
+</Steps>
+
+Windows tuşu ve Alt+Tab gibi sistem kısayolları kaydedilemez. Basılı tuttuğunuz tuş tekrar etmez, tek basış olarak kaydedilir. Kaydı durdurduğunuzda hâlâ basılı olan tuşlara bir bırakma adımı eklenir; böylece makro hiçbir tuşu basılı bırakmaz. Fare tıklamaları kayda girmez, onları aşağıdaki düğmelerle eklersiniz.
+
+## Adımları düzenleme
+
+Her satır bir adımdır: basılan (aşağı ok) ya da bırakılan (yukarı ok) bir tuş ve sonraki adımdan önceki bekleme, milisaniye olarak.
+
+- Beklemeyi değiştirmek için kutusuna yeni bir değer yazın. 10 ile 65535 ms arasında olabilir.
+- Fareyle bir adımın üzerine gelince **Yukarı taşı**, **Aşağı taşı** ve **Adımı sil** düğmeleri görünür.
+- **Sol tıklama**, **Sağ tıklama** ve **Orta tıklama**, listenin sonuna o fare düğmesinin basılma ve bırakılma adımlarını ekler. Sonra onları istediğiniz yere taşıyın.
+- **Adımları temizle** bütün adımları siler.
+
+Listenin altında adım sayısı ve makronun ne kadar sürdüğü yazar. "Bir tuş bırakılmıyor, makro oynatılınca basılı kalabilir." uyarısını görürseniz bir bırakma adımı eksik demektir.
+
+## Makroları kaydetme
+
+Alttaki çubuk değişiklikleri sayar, örneğin **1 makro değişti**; listede de değişen her makronun yanında bir nokta görünür. **Klavyeye kaydet** bütün makrolarınızı tek seferde klavyeye yazar. **Geri al**, henüz kaydedilmemiş bütün değişiklikleri bırakır.
+
+<Aside type="note" title="Listede ne görünür">
+Makrolar ve adları klavyeden geri okunamaz, bu yüzden liste Keymotion'dan en son neyi ve ne zaman kaydettiğinizi gösterir. Kaydetmek klavyedeki bütün makroların yerini alır; başka bir programla kaydedilmiş makrolar da buna dahildir.
+</Aside>
+
+## Makroyu bir tuşa atama
+
+<Screenshot name="key-mapping-macro" alt="Tuş atama sayfasında Makro türü açık, oynatma biçimi Belirli sayıda ve bir makro seçili" />
+
+<Steps>
+
+1. Makroyu kaydedin, sonra adımların altındaki **Tuş atamaya git**'e tıklayın.
+2. Klavye resminde bir tuşa tıklayın ve **Atanacak işlev** altında **Makro**'yu seçin.
+3. **Oynatma** için tuşun makroyu nasıl oynatacağını seçin.
+4. Makroya tıklayın. Her makro M1 gibi numarası ve adıyla listelenir.
+5. **Tuş atama** sayfasında da **Klavyeye kaydet**'e tıklayın.
+
+</Steps>
+
+Oynatma biçimleri:
+
+- **Bir kez:** Tuşa her bastığınızda makro bir kez oynar.
+- **Belirli sayıda:** Yanındaki kutuya yazdığınız kadar, 1 ile 255 kez arasında oynar.
+- **Tekrar basana kadar:** Tuşa yeniden basana kadar oynamaya devam eder.
+- **Basılı tuttukça:** Tuşu basılı tuttuğunuz sürece oynar.
+
+Henüz kaydetmediğiniz bir makronun yanında bu listede **Kaydedilmedi** yazar. **Makrolar** sayfasındaki **Atandığı tuşlar**, seçili makroyu oynatan tuşları gösterir; Fn katmanındaki tuşlar "Fn + tuş" diye yazılır.
+
+## Klavye belleği
+
+Sayfanın sağ üstündeki **Klavye belleği**, makrolarınızın klavyenin makro belleğinin ne kadarını kullandığını gösterir. Her adım ve her makro aynı payı kullanır ve bellekte toplam 337 pay vardır: tek bir makro 336 adım alabilir, on makro ise toplam 327 adımı paylaşır. En çok 100 makro olabilir, M1'den M100'e.
+
+Makrolar sığmadığında çubuk kırmızıya döner, **Klavyeye kaydet** çalışmaz ve alttaki çubukta "Makrolar klavye belleğine sığmıyor. Birkaç adım silin." yazar.
+
+## Makroyu silme
+
+<Steps>
+
+1. Makroyu seçin ve adının yanındaki çöp kutusu simgesine tıklayın.
+2. Onaylamak için **Makroyu sil**'e, vazgeçmek için **Vazgeç**'e tıklayın.
+3. **Klavyeye kaydet**'e tıklayın.
+
+</Steps>
+
+Diğer makroların numaraları değişmez. Silinen makroyu oynatan tuşlar varsayılana döner ve onay sırasında listelenir. Bu değişiklik **Tuş atama** sayfasında kaydedilmeyi bekler, orada da kaydedin.
+
+<Aside type="note" title="USB kablosu gerekir">
+Klavye 2.4 GHz alıcı ya da Bluetooth ile bağlıyken de makro kaydedip düzenleyebilirsiniz. Klavyeye kaydetmek için USB kablosunu takın ve klavyenin arkasındaki anahtarı ortaya alın.
+</Aside>

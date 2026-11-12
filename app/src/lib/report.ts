@@ -1,6 +1,6 @@
-// Reporting problems on GitHub (docs/yol-haritasi.md, Aşama 4). The app
-// sends nothing by itself: the report dialog shows the text first, puts it
-// on the clipboard and opens GitHub's issue form in the browser.
+// Reporting problems on GitHub. The app sends nothing by itself: the
+// report dialog shows the text first, puts it on the clipboard and opens
+// GitHub's issue form in the browser.
 //
 // Offered from: Settings, a page that failed to draw (ErrorBoundary), an
 // unexpected error (errors.ts; each one once a session), a crash note from

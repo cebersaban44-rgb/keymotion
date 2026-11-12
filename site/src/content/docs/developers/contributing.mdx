@@ -1,0 +1,159 @@
+---
+title: Contributing
+description: How to build Keymotion, the branches and checks a pull request goes through, and the rules for working with a real keyboard.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Keymotion is a Rust workspace with a Tauri 2 shell and a React/TypeScript interface. This page covers building it, how a change reaches a release, and the rules that keep people's keyboards safe. Issues, discussions and pull requests can be written in English or Turkish.
+
+## Set up
+
+Keymotion is a Windows app: it uses Windows HID, Bluetooth LE and WebView2, and CI builds and tests it on Windows. You need:
+
+- **Rust.** The release is pinned in `rust-toolchain.toml`; rustup installs it on the first `cargo` command. Raise it only on purpose, in its own pull request.
+- **The Tauri prerequisites for Windows**: the Microsoft C++ build tools and WebView2. See [Tauri's prerequisites](https://v2.tauri.app/start/prerequisites/).
+- **Node.js 24** and **pnpm**. The pnpm version is pinned in `app/package.json` (`packageManager`).
+
+<Steps>
+
+1. Install the interface's dependencies:
+
+   ```bash
+   pnpm --dir app install
+   ```
+
+2. Run the Rust tests. Besides testing, this writes the TypeScript bindings and the browser mock's data into `app/src/bindings`:
+
+   ```bash
+   cargo test --workspace
+   ```
+
+3. Start the interface's development server (`http://127.0.0.1:1420`):
+
+   ```bash
+   pnpm --dir app dev
+   ```
+
+4. In a second terminal, build and start the app:
+
+   ```bash
+   cargo build -p keymotion
+   ./target/debug/keymotion.exe
+   ```
+
+   A debug build loads its interface from the development server, so keep step 3 running. Without it the window stays empty.
+
+</Steps>
+
+To work on the interface without the app or a keyboard, open `http://127.0.0.1:1420/?mock=usb` in a browser while step 3 runs. The [browser mock](/keymotion/developers/architecture/#the-browser-mock) stands in for the backend.
+
+### The `kb` developer tool
+
+`crates/kb-cli` builds `kb`, a command-line tool on the same crates as the app. Its messages are in Turkish.
+
+```bash
+cargo run -p kb-cli -- list          # keyboards in every connection mode
+cargo run -p kb-cli -- descriptors   # report descriptors of the vendor collections
+cargo run -p kb-cli -- read-colors   # the colors the keys show now (read-only)
+cargo run -p kb-cli -- --help        # everything else
+```
+
+Commands that write the keyboard's permanent memory refuse to run without `--yes`. `kb` talks to the keyboard directly: it does not run the app's checks for other programs, untested firmware or the shape of the HID collections. Close Keymotion and any other keyboard software before you use it.
+
+## Branches and pull requests
+
+| Branch | What it holds |
+|---|---|
+| `main` | The released code. Every merge into `main` is a release, tagged `vX.Y.Z`. |
+| `develop` | Where work lands; the default branch on GitHub. It always builds and passes its tests. |
+
+- Work on a short-lived branch from `develop`, named in lowercase English with hyphens: `feature/keymap-editor`, `fix/mirror-gamma`, `docs/…`, `chore/…`.
+- Open the pull request against **`develop`**. Keep it to one change. It is squash-merged once CI is green.
+- In the description, say what changed, why, and how you tested it.
+- If people will see the change, add a line under **Unreleased** in `CHANGELOG.md`, and update the user guide in `site/` in English and Turkish.
+- If the change alters behavior, try it in the running app, not only in tests.
+- Commit messages are in English. The first line is in the imperative and at most 72 characters; the body says why.
+- Never commit personal data: Bluetooth addresses, local paths with your user name, calendar addresses, keys.
+
+Releases are made by the maintainer. The version number lives in `Cargo.toml`, `app/package.json` and `app/src-tauri/tauri.conf.json`, and `tools/check-version.mjs` checks that they agree. A release pull request merges `develop` into `main`; a tag on `main` starts the release workflow (`.github/workflows/release.yml`), which builds the installer and drafts a GitHub release for the maintainer to publish. Release files are only ever built by that workflow.
+
+## The checks
+
+CI (`.github/workflows/ci.yml`) runs on every pull request to `develop` or `main` and on every merge into them. It has two jobs.
+
+**Build and test** runs on Windows. It must pass before a pull request can be merged.
+
+| Check | Command |
+|---|---|
+| Text hygiene: no byte order mark, valid UTF-8, no broken Turkish characters | `node tools/check-text.mjs` |
+| No vendor files (see [below](#vendor-files)) | `node tools/check-vendor-files.mjs` |
+| The version number agrees in all three files | `node tools/check-version.mjs` |
+| Tests of the release scripts | `node --test "tools/release/*.test.mjs"` |
+| TypeScript type check and the interface build | `pnpm --dir app build` |
+| ESLint, where a single warning fails | `pnpm --dir app lint` |
+| rustfmt | `cargo fmt --all -- --check` |
+| Clippy, warnings as errors | `cargo clippy --workspace --all-targets -- -D warnings` |
+| Rust tests | `cargo test --workspace` |
+| The TypeScript bindings are committed and up to date | `app/src/bindings` has no changes after the tests |
+
+**Supply chain** runs `cargo deny --locked check` with `deny.toml`: licenses, security advisories, duplicate crates and crate sources. A new advisory can turn it red without any change in the repository, so it is a separate job and not required for merging.
+
+Run the same checks before you push:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+pnpm --dir app build
+pnpm --dir app lint
+node tools/check-text.mjs
+node tools/check-vendor-files.mjs
+node tools/check-version.mjs
+```
+
+For `cargo deny`, install it once with `cargo install --locked cargo-deny`, then run `cargo deny check`.
+
+### Dependencies
+
+Dependabot opens weekly update pull requests against `develop`. When you add, remove or update a dependency yourself:
+
+- Regenerate the third-party notices with `node tools/notices.mjs` and commit `app/public/third-party-notices.txt`. It needs `cargo install --locked --features cli cargo-about` once.
+- A license that is not allowed yet is reviewed first, then added on purpose to `deny.toml` and `about.toml`.
+
+## Working with the keyboard
+
+<Aside type="caution" title="These rules protect people's keyboards">
+Lighting, key assignments, macros and screen images are written to the keyboard's permanent memory. A wrong command can leave a keyboard in a state with no known way back. A pull request that breaks one of these rules is not merged.
+</Aside>
+
+- **Only measured commands.** A command is added only after it has been measured on that keyboard: sent once with care, its answer checked and its effect seen. The allowlist in `kb-protocol` rejects everything else. A pull request that adds to it describes the measurement: the date, the firmware version, the tool, what was sent, what came back and what the keyboard did. The [protocol reference](/keymotion/developers/protocol/) lists what has been measured so far.
+- **Firmware, bootloader and over-the-air update paths stay blocked.** Keymotion does not update firmware and never will. The guard in `kb-protocol` rejects those sequences, and the Bluetooth module has no write function at all. Changes that loosen either are not accepted.
+- **Writes need the user's action.** The app writes the keyboard's permanent memory only when the user asks: a button such as **Save to keyboard** or **Upload to keyboard**, loading a profile, or a feature they switched on, like the **Live screen**, which runs on a daily upload limit. Never while a slider is dragged and never as a side effect. Previews use live frames, which the keyboard keeps in RAM only.
+- **Test on a real keyboard, carefully.**
+  - Start with what only reads (`kb list`, `kb descriptors`, `kb read-colors`), then live frames (`kb live`), and write to permanent memory last.
+  - Note the keyboard's own settings before you start and put them back afterwards. The keyboard cannot report its key assignments or macros.
+  - Every screen upload erases flash. Keep uploads few, and never go past the model's frame limit.
+  - Use a keyboard you own, and say in the pull request which firmware version you tested on.
+
+[Supporting another keyboard](/keymotion/developers/adding-a-keyboard/) explains what has to be measured before a new model is added.
+
+### Vendor files
+
+The keyboard's factory screen animation and the vendor's driver and its files are never added to the repository, the installer or a release. `tools/check-vendor-files.mjs` fails on programs, drivers and archives (by extension or content), on GIF files outside `docs/media/`, and on images or raw data with "factory" in their path. The app can back up the factory animation from the official driver on the user's own computer; it never ships it.
+
+## Issues and discussions
+
+Blank issues are turned off; every issue starts from a form:
+
+- **Problem report** (`bug.yml`): something went wrong. In the app, **Settings › Report a problem** copies the details the form asks for.
+- **Keyboard support request** (`keyboard.yml`): see [Supporting another keyboard](/keymotion/developers/adding-a-keyboard/).
+- **Idea or improvement** (`idea.yml`).
+
+Questions and loose ideas go to [Discussions](https://github.com/cebersaban44-rgb/keymotion/discussions). Security problems are reported privately, never in a public issue: see [SECURITY.md](https://github.com/cebersaban44-rgb/keymotion/blob/develop/SECURITY.md). Taking part means accepting the [code of conduct](https://github.com/cebersaban44-rgb/keymotion/blob/develop/CODE_OF_CONDUCT.md).
+
+## License
+
+Keymotion is licensed under either of the [Apache License, Version 2.0](https://github.com/cebersaban44-rgb/keymotion/blob/develop/LICENSE-APACHE) or the [MIT license](https://github.com/cebersaban44-rgb/keymotion/blob/develop/LICENSE-MIT), at your option (`MIT OR Apache-2.0`). Unless you say otherwise, any contribution you submit for inclusion is licensed the same way, without any additional terms or conditions.
+
+Keymotion is an independent project, not affiliated with AJAZZ; see [NOTICE](https://github.com/cebersaban44-rgb/keymotion/blob/develop/NOTICE).

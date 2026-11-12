@@ -14,6 +14,7 @@ import type { CalendarState } from "../bindings/CalendarState";
 import type { MessageKey } from "./i18n";
 import { inTauri, invoke, listen } from "./ipc";
 import { mockLiveHold, mockReturnAfter, submitLive, useLive } from "./live";
+import { useApp } from "./store";
 import type { Prepared } from "./screenImport";
 
 export const CALENDAR_SOURCE = "calendar";
@@ -100,11 +101,13 @@ function mockEvents(source: string, color: [number, number, number]): CalendarEv
     color,
     source,
   });
+  // Sample names in the interface language, so screenshots read naturally.
+  const tr = useApp.getState().locale === "tr";
   return [
-    ev("Proje teslimi", "", day.getTime(), 24 * 60 * MIN, true),
-    ev("Günlük toplantı", "Meet", now + 3 * MIN, 15 * MIN),
-    ev("Tasarım incelemesi", "Toplantı odası 2", now + 120 * MIN, 60 * MIN),
-    ev("Birebir görüşme", "Ofis", now + 22 * 60 * MIN, 30 * MIN),
+    ev(tr ? "Proje teslimi" : "Project deadline", "", day.getTime(), 24 * 60 * MIN, true),
+    ev(tr ? "Günlük toplantı" : "Daily stand-up", "Meet", now + 3 * MIN, 15 * MIN),
+    ev(tr ? "Tasarım incelemesi" : "Design review", tr ? "Toplantı odası 2" : "Meeting room 2", now + 120 * MIN, 60 * MIN),
+    ev(tr ? "Birebir görüşme" : "One-to-one", tr ? "Ofis" : "Office", now + 22 * 60 * MIN, 30 * MIN),
   ];
 }
 

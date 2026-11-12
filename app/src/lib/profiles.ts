@@ -91,8 +91,8 @@ export function profileOnKeyboard(s: ProfilesState): ProfileInfo | null {
   return [...s.profiles, s.factory].filter((p) => p.onKeyboard).sort((a, b) => size(b) - size(a))[0] ?? null;
 }
 
-// Measured write times (docs/donanim-dogrulama.md): an effect 0.3 s, a
-// per-key design 0.9 s, a keymap layer 0.6 s; macros about as long.
+// Measured write times (docs site: developers/protocol): an effect 0.3 s,
+// a per-key design 0.9 s, a keymap layer 0.6 s; macros about as long.
 const SECONDS: Record<Exclude<ProfilePart, "screen">, number> = { lighting: 0.3, keymap: 1.3, macros: 0.6 };
 
 /** About how long loading `p` takes, in whole seconds. */

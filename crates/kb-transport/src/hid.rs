@@ -139,7 +139,7 @@ impl HidChannel {
     ///
     /// Refused on the SONiX display channel (usage page 0xFF68): a
     /// GET_FEATURE there locks the firmware until a power cycle (sibling
-    /// AK35i, docs/research/ekran-derin-arastirma.md §6).
+    /// AK35i; docs site: developers/protocol).
     pub fn get_feature(&self, report_id: u8, len: usize) -> Result<Vec<u8>> {
         if self.info.usage_page == DISPLAY_USAGE_PAGE {
             return Err(TransportError::Refused("GET_FEATURE on the display channel"));

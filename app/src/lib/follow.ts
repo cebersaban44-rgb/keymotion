@@ -2,9 +2,9 @@
 // one. Reading first and listening after loses an event that comes in
 // between, and a read's answer can arrive after a newer event and overwrite
 // it. The installed app starts fast enough to hit this: it opened showing
-// "Waiting for a keyboard" with the keyboard connected (docs/DURUM.md,
-// lesson 61). So: listen first, then read, and drop the read's answer when
-// an event came in while it was under way (the event is newer).
+// "Waiting for a keyboard" with the keyboard connected. So: listen first,
+// then read, and drop the read's answer when an event came in while it was
+// under way (the event is newer).
 
 import type { UnlistenFn } from "@tauri-apps/api/event";
 

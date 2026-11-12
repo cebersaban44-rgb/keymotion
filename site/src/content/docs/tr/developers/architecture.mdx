@@ -1,0 +1,138 @@
+---
+title: Mimari
+description: Keymotion'ın Rust crate'lerinin, Tauri kabuğunun ve React arayüzünün nasıl bir arada çalıştığı, bir tıklamanın nasıl HID raporuna dönüştüğü ve yol boyunca hangi güvenlik katmanlarından geçtiği.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Keymotion tek bir Windows programıdır. İşin tamamını Rust yapar: klavyeleri bulur, her paketi oluşturur, donanımla konuşur ve arka plandaki özellikleri çalıştırır. React arayüzü yalnızca gösterir ve kullanıcının seçimlerini toplar. Tauri 2 bu arayüzü WebView2 içinde çalıştırır ve Rust'a bağlar.
+
+```text
+app/src            React + TypeScript   sayfalar, düzenleyiciler, önizlemeler
+   │  invoke() ve olaylar; tipler ts-rs ile üretilir
+app/src-tauri      Tauri 2 kabuğu       komutlar, cihaz aktörü, arka plan işleri, bildirim alanı, güncelleyici
+   │
+kb-core            ortak mantık         tanıma, protokol sürücüsü, renk, geri okuma
+   ├── kb-protocol   paketler ve güvenlik denetimi   (G/Ç yok)
+   ├── kb-devices    model dosyaları ve eşleştirme   (G/Ç yok)
+   └── kb-transport  HID ve Bluetooth LE erişimi     (bayt taşır)
+kb-winsys          Windows okumaları    işlemci, ekran kartı, ses, çalışan programlar
+kb-cli (kb)        aynı crate'leri kullanan geliştirici aracı
+```
+
+## Crate'ler
+
+Cargo çalışma alanı `crates/*` ile `app/src-tauri`'den oluşur. Çalışma alanı `unsafe` kodu yasaklar; yalnızca `kb-winsys` buna izin verir.
+
+| Crate | Görevi |
+|---|---|
+| `kb-protocol` | AK980 PRO'nun konuştuğu SONiX komut ailesi için saf paket kodlama ve çözme: komut başlıkları, ışık, tuş başına renk tabloları, tuş atamaları, makrolar, ekran görselleri, saat. Komut izin listesi ve gönderilmeden önce her paketin geçtiği `guard` buradadır. G/Ç yoktur; bu sayede her paket birim testiyle denetlenir. |
+| `kb-devices` | Klavye model dosyaları (`models/` altındaki TOML dosyaları, derleme sırasında programa gömülür) ve eşleştirme: bir HID koleksiyonunun hangi modele ve bağlantı moduna ait olduğu. G/Ç yoktur. |
+| `kb-transport` | Aygıtlara ham erişim. `hid`, HID koleksiyonlarını listeler ve hidapi üzerinden feature, output ve input raporları alıp verir. `ble`, pil düzeyini WinRT ile Bluetooth LE'den okur ve yazma işlevi yoktur. Bayt taşır, protokollerden habersizdir. |
+| `kb-core` | Uygulamanın ve `kb`'nin ortak mantığı: tanıma (`detect`), HID tanımlayıcısının şekil denetimi (`shape`), oturumları, yankıları, bayt toplamları ve ekran yüklemesiyle komut kanalı sürücüsü (`sonix`), renk kalibrasyonu (`color`), geri okumanın yorumlanması (`readback`), klavyeyle çakışan programlar (`conflicts`), saat, tuş atama kuralları ve ekran için dosya içe aktarma. |
+| `kb-winsys` | Sistem göstergeleri ve hatırlatıcılar için Windows'tan okunanlar: işlemci, ekran kartı ve bellek yükü, hoparlör sesi, mikrofonun sessizde olup olmadığı, boşta geçen süre, çalışan programlar. Ayrıca Windows sürümü, takvim adresleri için kullanıcıya özel veri koruması, başlangıç kaydı ve bildirim kimliği. Win32 ve COM'u doğrudan çağıran tek crate'tir; bunları küçük ve güvenli tiplerin arkasında tutar. |
+| `kb-cli` | `kb` geliştirici aracı: klavyeleri listeler, tanımlayıcıları ve renkleri okur, canlı kare akışı yapar, ölçülmüş yazma komutlarını `--yes` ile çalıştırır. |
+
+## Tauri kabuğu
+
+`app/src-tauri`, `keymotion` programını derler. Bilerek ince tutulur: Tauri komutlarını ve olaylarını crate'lere bağlar.
+
+- **Komutlar.** Her `#[tauri::command]` `lib.rs`'tedir. Bir komut girdisini arayüzün tiplerinden dönüştürür, işi devreder ve bir sonuç ya da İngilizce bir hata metni döndürür. Arayüz bu hataları kendi iletilerine çevirir (`app/src/lib/errors.ts`).
+- **Cihaz aktörü** (`device.rs`), klavyelerle konuşan tek koddur. HID alt sistemine tek bir iş parçacığı sahip olur. İstekler bir kanaldan gelir ve birer birer çalışır; böylece iki protokol oturumu asla iç içe geçmez. İstekler arasında aktör her 2 saniyede bir aygıtları yeniden listeler, o anki canlı kareyi her 50 ms'de bir yeniden gönderir, arayüz aynayı gösterirken tuşların renklerini her 250 ms'de bir okur ve klavye bağlanınca saatini ayarlar (günde en çok bir kez). Klavye tuş atamalarını ve makroları geri okuyamadığı için bunların kaydını uygulama kendisi tutar.
+- **Arka plan işleri**; her birinin kendi tutamacı vardır ve `setup` içinde başlatılır: canlı ekran işçisi (`live.rs`), Windows'un çalıyor dediği şarkı (`now_playing.rs`), odak zamanlayıcısı (`pomodoro.rs`), sistem göstergeleri (`gauges.rs`), takvim (`calendar.rs`, `ics.rs`), hatırlatıcılar (`reminders.rs`) ve güncellemeler (`updates.rs`). Işık katmanlarını cihaz aktörüne, ekran kartlarını canlı ekran işçisine verirler.
+- **Bildirim alanı** (`tray.rs`). Pencereyi kapatmak onu gizleyebilir ve uygulama bildirim alanında çalışmayı sürdürür; çünkü odak zamanlayıcısı, hatırlatıcılar, takvim kartları, canlı ekran ve göstergeler yalnızca uygulama çalışırken işler. Menü klavyeyi gösterir; odak zamanlayıcısını, hatırlatıcıları, göstergeleri, profilleri ve çıkışı sunar. Menüden seçilen bir profil, onaylanmak üzere pencereyi açar; çünkü kalıcı belleğe her yazma kullanıcının onayını ister.
+- **Güncelleyici** (`updates.rs`, `tauri-plugin-updater`). Sürüm iş akışı her GitHub sürümüyle birlikte `latest.json` yayımlar; güncelleyici indirilen dosyayı `tauri.conf.json`'daki ortak anahtarla doğrular. Kullanıcı izin verirse uygulama günde bir kez bakar. Kullanıcı seçmedikçe hiçbir şey kurulmaz; kurulum, klavyeye süren bir yazmanın bitmesini bekler.
+- **Kayıtlar.** Ayarlar `%APPDATA%\dev.keymotion` içinde sürüm numaralı JSON dosyalarıdır (`settings.rs`); bozuk bir dosya kenara alınır ve kullanıcıya bir kez bildirilir. Klavye yüklenen görseli geri veremediği için ekran kütüphanesi (`screen_lib.rs`) bu görsellerin tek kopyasıdır. Günlükler `%LOCALAPPDATA%\dev.keymotion\logs` altına, her gün için bir dosya olarak yazılır.
+- **Tek kopya.** `tauri-plugin-single-instance` ikinci bir kopya başlatmak yerine açık pencereyi öne getirir; iki kopya klavyeye aynı anda komut gönderirdi.
+
+## Arayüz
+
+`app/src` React 19 ve TypeScript ile yazılır, Vite ile derlenir, Tailwind CSS ile biçimlenir.
+
+- `pages/` her kenar çubuğu sayfası için bir bileşen, `components/` ortak parçalar içerir.
+- `lib/` her özelliğin mantığını ve durumunu (zustand depoları), `lib/ipc.ts` arka uca yapılan bütün çağrıları, `lib/i18n.ts` bütün Türkçe ve İngilizce metinleri tutar.
+- Arayüzde klavye mantığı yoktur. Arayüz veriyi hazırlar, örneğin ekran görselini klavyenin biçimine çevirir (`lib/screen.ts`); ama arka uç her şeyi yeniden doğrular, çünkü klavyenin biçimi konusunda arayüze güvenilmez.
+- Tauri komutları aynı anda çalıştırır; art arda gelen iki çağrı yanlış sırayla ulaşabilir. Bu yüzden durum değiştiren komutlar `lib/ipc.ts`'teki tek bir sıradan geçer.
+
+### Rust'tan gelen tipler (ts-rs)
+
+Arayüzle arka ucun alıp verdiği tipler bir kez, Rust'ta, `app/src-tauri/src/dto.rs` içinde tanımlanır:
+
+```rust
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct UiEnvironment {
+    pub app_version: String,
+    pub mica: bool,
+    pub os_build: u32,
+}
+```
+
+`cargo test` bunları ts-rs ile `app/src/bindings/*.ts` dosyalarına yazar (`TS_RS_EXPORT_DIR` ayarı `.cargo/config.toml`'dadır), arayüz de onları içe aktarır:
+
+```ts
+import type { UiEnvironment } from "../bindings/UiEnvironment";
+```
+
+Aynı test çalışması, tarayıcıdaki sahte arka ucun verilerini de Rust'tan yazar: efekt kataloğu, tuş atama kataloğu ve her modelin geometrisi (`lighting-catalog.json`, `keymap-catalog.json`, `geometry-<model>.json`). `app/src/bindings` klasörünü asla elle düzenlemeyin. `cargo test`'ten sonra commit'leyin; güncel değilse CI kırmızı olur.
+
+### Tarayıcıdaki sahte arka uç
+
+Arayüz üzerinde uygulama ya da klavye olmadan çalışmak için `pnpm --dir app dev` komutunu çalıştırın ve tarayıcıda `http://127.0.0.1:1420/` adresini açın. Tauri dışında `lib/ipc.ts`'teki her işlev arka ucu çağırmak yerine örnek veri döndürür; `lib/screen.ts`, `live.ts`, `pomodoro.ts`, `calendar.ts`, `reminders.ts` ve `gauges.ts`'in kendi örnekleri vardır. Adrese eklenebilecek anahtarlar:
+
+| Anahtar | Ne yapar |
+|---|---|
+| `?mock=usb`, `bluetooth`, `dongle`, `none` | Taklit edilecek bağlantı. Varsayılan: `bluetooth`. |
+| `?fw=1.07` | Kimsenin denemediği bir klavye yazılımı sürümü; yazmadan önceki onayı görmek için. |
+| `?unsupported` | Uygulamanın henüz desteklemediği bir klavye ve **Destek iste** düğmesi. |
+| `?reset=keymap,macros` | Varsayılana dönen ayar dosyaları hakkındaki bildirim. |
+| `?failPart=lighting` | Yüklenemeyen bir profil parçası. |
+| `?crash` | Geçen sefer yaşanan sorunla ilgili not. |
+| `?update=available`, `none`, `offline`, `norelease` | Güncelleme denetiminin cevabı. |
+
+`window.dispatchEvent(new Event("mock-close-requested"))` pencerenin kapatma düğmesinin yerine geçer.
+
+Sahte arka uç yalnızca geliştirme sırasında vardır. Her sahte dal `import.meta.env.DEV` ile korunur; Vite sürüm derlemesinde bunu `false` yapar, böylece sahte kod ve anahtarları kurulan uygulamada bulunmaz. Orada Tauri dışından yapılan bir çağrı açık bir hatayla reddedilir. Sahte arka uç klavyeyle hiç konuşmaz: her değişikliği gerçek uygulamada da deneyin.
+
+## Tıklamadan HID raporuna
+
+Bir ışık efektinin kaydedilmesi, adım adım:
+
+<Steps>
+
+1. Kullanıcı Işıklar sayfasında **Klavyeye kaydet** düğmesine basar. `lib/ipc.ts`'teki `applyEffect`, çağrıyı `flashWrite` ile sarar (klavye yazılımı denenmemişse kullanıcıya sorar) ve sıraya `invoke("apply_effect", { request })` olarak ekler.
+
+2. `lib.rs`'teki `apply_effect` komutu `EffectRequest`'i `EffectSettings`'e çevirir ve engelleyici bir iş parçacığında cihaz aktörüne verir.
+
+3. Cihaz aktörü kalıcı belleğe yazma başladığını duyurur (`flash-write`), kullanıcının renk kalibrasyonunu uygular ve yazma kapısını çalıştırır: kabloda tek klavye, çakışan program yok, klavye yazılımı denenmiş ya da kullanıcı onaylamış. Gerekirse komut kanalını açar; açmadan önce koleksiyonun tanımlayıcı şeklini denetler.
+
+4. `kb_core::sonix::SonixFf13::apply_effect`, efekti doğrulayıp kodlaması için `kb_protocol::sonix::lighting_data`'yı çağırır, sonra oturumu yürütür: oturumu açar, bir veri paketi geleceğini duyurur, paketi gönderir, kaydeder ve klavyenin bayt toplamını karşılaştırır, uygular.
+
+5. Her paket `kb_protocol::sonix::guard`'dan geçer, önüne 0 rapor kimliği eklenir ve `kb_transport::hid::HidChannel::send_feature` ile 65 baytlık bir HID feature raporu olarak gider. Yankılar `get_feature` ile okunur; Windows takılan bir istek bildirirse okuma yeniden denenir.
+
+6. Sonuç aynı yoldan geri döner. Arayüz **Klavyeye kaydedildi** gösterir, `flash-write` de yazmanın bittiğini bildirir.
+
+</Steps>
+
+Öteki yollar da aynı katmanları kullanır. Bir önizleme `set_live_frame` gönderir; aktör kareyi tutar ve altında odak zamanlayıcısının ya da göstergelerin ışık katmanıyla birlikte her 50 ms'de bir, yalnızca RAM'e giden bir canlı kare olarak yollar. Ekran yüklemesi, arayüzün hazırladığı bir görselle başlar; `screen_add` onu yeniden doğrular, `screen_upload` da ekran kanalından sayfa sayfa gönderir ve ilerlemeyi olaylarla bildirir. Odak zamanlayıcısının, takvimin, hatırlatıcıların ve çalan şarkının canlı kartları, kabloyu ve günlük yükleme sınırını bekleyen canlı ekran işçisinden geçer.
+
+## Güvenlik katmanları
+
+Her katman kendi başına çalışır; birindeki bir hatayı bir sonraki yakalar.
+
+| Katman | Nerede | Ne yapar |
+|---|---|---|
+| Komut izin listesi | `kb_protocol::sonix::guard`, `Op` | Bir komut başlığı `04` ile başlamalı ve listedeki bir işlem kodunu taşımalıdır. Klavye yazılımının kabul ettiği ama burada kimsenin ölçmediği komutlar dahil, geri kalan her şey reddedilir. |
+| Kapalı önyükleyici | `guard`, `guard_screen_page`, `kb_transport::ble` | Klavye yazılımı güncelleme ve sistem içi programlama dizileri, iki kanalda da her paketin başında reddedilir. Kodlayıcılar kullanıcı verisini (bir rengi, bir tuş girdisini) bu dizilerden biriyle başlayamayacak şekilde düzeltir. Bluetooth modülünün yazma işlevi yoktur. Yalnızca bir model dosyasıyla eşleşen koleksiyonlar açılır. |
+| Şekil denetimi | `kb_core::shape`, `device::open_checked` | Bir kanal açılırken rapor tanımlayıcısı (Windows'tan okunur, klavyeye bir şey gönderilmez) beklenen düzende olmalıdır: komutlar için rapor kimliği olmayan 64 baytlık feature ve output raporları, ekran için 4096 baytlık output raporu. Kimlikleri aynı olup başka bir komut ailesi konuşan klavyeler burada takılır ve onlara hiçbir şey gönderilmez. |
+| Boyut ve değer sınırları | `kb-protocol`, `kb_core::screen_import` | Paketler en çok 64 bayt, ekran sayfaları tam 4096 bayttır. Bir yükleme en çok 140 kare ve 2.215 sayfadır. LED ve tuş numaraları, parlaklık, hız, yön, makro boyutu ve saat alanları kodlanmadan önce aralık denetiminden geçer. İçe aktarılan dosyaların boyut, kare ve bellek sınırları vardır. |
+| Teslim denetimleri | `kb_core::sonix` | Kaydetme yankısındaki bayt toplamı gönderilenle karşılaştırılır; tutmazsa yazma başarısız sayılır ve uygulanmaz. Saat verisinin yankısı bayt bayt karşılaştırılır. Her ekran sayfası kendi onayını bekler. Başlamış bir canlı kare her zaman tamamlanır. |
+| Yazma kapısı | `device::write_block` | Kabloda birden çok klavye varken, bilinen bir program klavyeyle konuşurken (resmi sürücü, SignalRGB, OpenRGB, `kb`) ya da modelin denenmiş sürümler listesinde olmayan bir klavye yazılımında, kullanıcı bu oturum için onaylayana kadar kalıcı belleğe yazılmaz. |
+| Tek yazar | cihaz aktörü, tek sıra, tek kopya | İstekler tek bir iş parçacığında birer birer çalışır; oturumlar asla iç içe geçmez. |
+| Günlük yükleme sınırı | `live.rs` | Her yükleme kalıcı belleği silip yeniden yazdığı için canlı ekran bir jeton kovasıyla çalışır: **Düşük** günde 8 (art arda 3), **Dengeli** 24 (6), **Yüksek** 48 (8). Kullanıcının elle başlattığı yüklemeler de sayılır ama hiç engellenmez; borç, canlı ekran uzun süre kilitli kalmasın diye sınırlıdır. Klavyeye hiç ulaşmayan bir yükleme geri verilir. |
+| Süren yazmalar | `flash-write`, `kb-winsys` | Kalıcı belleğe yazılırken uygulamayı kapatmak yazmanın bitmesini bekler; Windows'a da şimdi kapatmanın neden kötü bir fikir olduğu bildirilir. |
+
+<Aside type="note" title="Önce ölçüldü">
+`kb_core::sonix`'teki her akış gerçek bir AK980 PRO'da ölçülmüştür. Bu ölçümler [Protokol ayrıntıları](/keymotion/tr/developers/protocol/) sayfasında.
+</Aside>

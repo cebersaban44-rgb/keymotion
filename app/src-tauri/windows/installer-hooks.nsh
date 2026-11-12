@@ -1,5 +1,5 @@
 ; Keymotion's additions to Tauri's NSIS installer (tauri.conf.json:
-; bundle > windows > nsis > installerHooks). docs/yol-haritasi.md, stage 5.
+; bundle > windows > nsis > installerHooks).
 ;
 ; Tauri's uninstaller already removes the app, its shortcuts, its entry in
 ; Windows' installed apps, the "Run" value named after the product (start

@@ -10,7 +10,8 @@
 //
 // Rules: ESLint and typescript-eslint "recommended" (no type information), plus
 // the two classic React hooks rules. React hooks mistakes caused real bugs here
-// (docs/DURUM.md §6, lessons 20, 27, 33). Warnings fail too: the `lint` script
+// (a stale value in a handler, a timer left running after unmount, a selector
+// that returned a new object each call). Warnings fail too: the `lint` script
 // passes --max-warnings 0, and CI runs it.
 
 import js from "@eslint/js";

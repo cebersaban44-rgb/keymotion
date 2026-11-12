@@ -10,6 +10,7 @@ import type { TrackInfo } from "../bindings/TrackInfo";
 import { inTauri, invoke, listen } from "./ipc";
 import { mockFactoryAtRisk, mockLiveUploaded, mockRestored, mockShown, useScreen } from "./screen";
 import { toBlob, type Prepared } from "./screenImport";
+import { useApp } from "./store";
 
 // ------------------------------------------------------------------- ipc
 
@@ -156,11 +157,12 @@ async function mockTrackLoop() {
   x.arc(150, 150, 70, 0, Math.PI * 2);
   x.fill();
   mock.cover = await new Promise((r) => c.toBlob(r, "image/png"));
+  const tr = useApp.getState().locale === "tr";
   const track: TrackInfo = {
     key: "mock",
-    title: "Gece Yarısı Treni",
-    artist: "Örnek Sanatçı",
-    album: "Deneme",
+    title: tr ? "Gece Yarısı Treni" : "Midnight Train",
+    artist: tr ? "Örnek Sanatçı" : "Sample Artist",
+    album: tr ? "Deneme" : "Demo",
     app: "Spotify",
     playing: true,
     settled: false,

@@ -1126,7 +1126,7 @@ impl From<&StoredMacros> for MacrosState {
 // ------------------------------------------------------------- live screen
 
 /// How many automatic screen uploads a day the live mode may use (flash
-/// wear budget, docs/research/ekran-ve-veri-kaynaklari.md §3.4).
+/// wear budget; docs site: developers/architecture).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]

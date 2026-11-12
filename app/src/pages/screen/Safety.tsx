@@ -1,4 +1,4 @@
-// Screen safety notices shown over any page (docs/urun-eksikleri.md B1, B2):
+// Screen safety notices shown over any page:
 //
 // * An upload that stopped partway in an earlier run (a quit, a crash, the
 //   cable): offered again once, on the next start.
