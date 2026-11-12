@@ -5,7 +5,7 @@ import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { ScreenItem } from "../bindings/ScreenItem";
 import { percent, useT, type MessageKey } from "../lib/i18n";
 import { useLive } from "../lib/live";
-import { itemData, useScreen } from "../lib/screen";
+import { builtIn, itemData, useScreen } from "../lib/screen";
 import { fromBlob, uploadSeconds, type Source } from "../lib/screenImport";
 import { useApp, type ScreenTab } from "../lib/store";
 import {
@@ -325,6 +325,15 @@ function FactoryLine() {
   const t = useT();
   const hasFactory = useHasFactory();
   const driver = useScreen((s) => s.driver);
+  const keymotion = useScreen((s) => s.state?.items.find((i) => i.kind === "keymotion") ?? null);
+  /** Bring Keymotion's animation into view in the library, its upload
+   *  button focused (uploading still asks first). */
+  const showKeymotion = () => {
+    const row = keymotion ? document.querySelector<HTMLElement>(`[data-library-item="${CSS.escape(keymotion.id)}"]`) : null;
+    const target = row ?? document.querySelector<HTMLElement>("[data-library]");
+    target?.scrollIntoView({ block: "center", behavior: "smooth" });
+    row?.querySelector<HTMLButtonElement>("button:not([disabled])")?.focus({ preventScroll: true });
+  };
   const [backedUp, setBackedUp] = useState(false);
   useEffect(() => {
     if (!hasFactory) useScreen.getState().findDriver();
@@ -348,6 +357,14 @@ function FactoryLine() {
       <div className="pl-[22px]">
         <DriverBackup onDone={() => setBackedUp(true)} />
       </div>
+      {keymotion && (
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-[22px]" data-keymotion-offer>
+          <span>{t("sc.keymotion.offer")}</span>
+          <button type="button" onClick={showKeymotion} className="text-signal underline-offset-2 hover:underline">
+            {t("sc.keymotion.show")}
+          </button>
+        </p>
+      )}
     </div>
   );
 }
@@ -560,6 +577,7 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
           return (
             <li
               key={it.id}
+              data-library-item={it.id}
               className={`flex gap-3 rounded-lg border p-3 transition-colors ${
                 onKeyboard ? "border-ok/40 bg-ok/5" : cut ? "border-warn/40 bg-warn/5" : "border-line hover:bg-surface-2/60"
               }`}
@@ -599,6 +617,9 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
                   {it.kind === "factory" && (
                     <span className="rounded-full bg-surface-2 px-2 py-px text-[11px] text-ink-2">{t("sc.badge.factory")}</span>
                   )}
+                  {it.kind === "keymotion" && (
+                    <span className="rounded-full bg-surface-2 px-2 py-px text-[11px] text-ink-2">{t("sc.badge.keymotion")}</span>
+                  )}
                   {onKeyboard && (
                     <span className="rounded-full bg-ok/15 px-2 py-px text-[11px] text-ok">{t("sc.badge.onKeyboard")}</span>
                   )}
@@ -630,7 +651,7 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
                       <Palette size={13} />
                     </button>
                   )}
-                  {it.kind !== "factory" && (
+                  {!builtIn(it.kind) && (
                     <button
                       type="button"
                       title={t("sc.rename")}
@@ -641,7 +662,7 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
                       <Pencil size={13} />
                     </button>
                   )}
-                  {it.kind !== "factory" && (
+                  {!builtIn(it.kind) && (
                     <button
                       type="button"
                       title={deleting === it.id ? t("sc.remove.confirm") : t("sc.remove")}

@@ -374,7 +374,7 @@ impl Default for TrayTexts {
             default_profile: s("Default"),
             quit: s("Quit"),
             hidden_title: s("Still running in the background"),
-            hidden_body: s("Its icon is next to the clock. To quit, right-click the icon and choose Quit."),
+            hidden_body: s("Its icon is next to the clock; if you can't see it, click the ^ arrow. To quit, right-click the icon and choose Quit."),
         }
     }
 }
@@ -926,6 +926,17 @@ pub enum ScreenItemKind {
     Animation,
     /// The keyboard's factory animation (backup; cannot be removed).
     Factory,
+    /// Keymotion's own start-up animation, drawn by the app for keyboards
+    /// without a factory backup (built in: one per library, cannot be
+    /// removed or renamed).
+    Keymotion,
+}
+
+impl ScreenItemKind {
+    /// Comes with the app or the keyboard: kept, and named by the UI.
+    pub fn built_in(self) -> bool {
+        matches!(self, Self::Factory | Self::Keymotion)
+    }
 }
 
 /// One prepared animation in the app's screen library.

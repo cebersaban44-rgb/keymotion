@@ -44,6 +44,10 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
   volume on the function keys, microphone mute on a chosen key.
 - **Focus timer:** the whole keyboard fills with the phase colour and empties
   as time runs out; phase cards on the screen.
+- **Keymotion animation:** an animation of its own for the keyboard's screen,
+  built into the library: the logo's "K" drawn stroke by stroke, then the
+  wordmark (37 frames, about 1.5 minutes to upload). It is offered when there's
+  no backup of the factory animation.
 - **Tray:** closing the window keeps Keymotion running next to the clock,
   so the focus timer, reminders, calendar cards, the live screen and the key
   gauges go on. The tray menu shows the keyboard and its battery, runs the

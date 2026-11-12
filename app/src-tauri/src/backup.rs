@@ -319,7 +319,7 @@ pub fn check(mut backup: Backup, in_library: &dyn Fn(&str) -> bool) -> Result<(P
             return Err(ERR_TOO_LARGE.into());
         }
         for item in s.items {
-            if item.kind == ScreenItemKind::Factory {
+            if item.kind.built_in() {
                 continue;
             }
             let blob = B64.decode(item.data.as_bytes()).map_err(|_| ERR_DAMAGED.to_string())?;
@@ -412,7 +412,8 @@ pub fn collect(app: &AppHandle, with_addresses: bool) -> Result<Backup, String> 
     let library = app.state::<Arc<Mutex<ScreenLibrary>>>();
     let lib = library.lock().map_err(|_| "screen library unavailable")?;
     let mut items = Vec::new();
-    for item in lib.state("").items.iter().filter(|i| i.kind != ScreenItemKind::Factory) {
+    // Built-in items stay out: the app has them already.
+    for item in lib.state("").items.iter().filter(|i| !i.kind.built_in()) {
         match lib.data(&item.id) {
             Ok(blob) => items.push(ScreenItemBackup::new(&item.name, item.kind, item.created_ms, &blob)),
             Err(e) => tracing::warn!(id = %item.id, "library item left out of the backup: {e}"),

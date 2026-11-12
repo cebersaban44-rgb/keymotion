@@ -247,11 +247,23 @@ impl ScreenLibrary {
     /// Store a validated animation. The same content keeps its first entry
     /// (the name is updated).
     pub fn add(&mut self, name: &str, kind: ScreenItemKind, anim: &ScreenAnimation) -> io::Result<ScreenItem> {
+        // One Keymotion animation per library: a second one (a backup or
+        // a profile from another computer) is the one already here.
+        if kind == ScreenItemKind::Keymotion {
+            if let Some(item) = self.index.items.iter().find(|i| i.kind == ScreenItemKind::Keymotion) {
+                return Ok(item.clone());
+            }
+        }
         let data = screen::blob_unpadded(anim);
         let id = content_id(&data);
         let name = clean_name(name);
         if let Some(item) = self.index.items.iter_mut().find(|i| i.id == id) {
-            if item.kind != ScreenItemKind::Factory {
+            if kind == ScreenItemKind::Keymotion && !item.kind.built_in() {
+                // The same picture stored as an ordinary item (by hand, or by
+                // a backend that did not know the kind yet) becomes it.
+                item.kind = kind;
+                item.name = name;
+            } else if !item.kind.built_in() {
                 item.name = name;
             }
             let item = item.clone();
@@ -300,18 +312,19 @@ impl ScreenLibrary {
     }
 
     pub fn rename(&mut self, id: &str, name: &str) -> io::Result<()> {
-        if let Some(item) = self.index.items.iter_mut().find(|i| i.id == id && i.kind != ScreenItemKind::Factory) {
+        if let Some(item) = self.index.items.iter_mut().find(|i| i.id == id && !i.kind.built_in()) {
             item.name = clean_name(name);
             self.save_index()?;
         }
         Ok(())
     }
 
-    /// Remove an item (the factory backup cannot be removed).
+    /// Remove an item (the factory backup and Keymotion's animation
+    /// cannot be removed).
     pub fn remove(&mut self, id: &str) -> io::Result<()> {
         let Some(pos) = self.index.items.iter().position(|i| i.id == id) else { return Ok(()) };
-        if self.index.items[pos].kind == ScreenItemKind::Factory {
-            return Err(io::Error::other("the factory backup cannot be removed"));
+        if self.index.items[pos].kind.built_in() {
+            return Err(io::Error::other("a built-in item cannot be removed"));
         }
         self.index.items.remove(pos);
         if let Some(path) = self.data_path(id) {
@@ -436,12 +449,13 @@ impl ScreenLibrary {
 
     pub fn state(&self, model_id: &str) -> ScreenState {
         let mut items = self.index.items.clone();
-        // Factory first, then newest first.
-        items.sort_by(|a, b| {
-            (b.kind == ScreenItemKind::Factory)
-                .cmp(&(a.kind == ScreenItemKind::Factory))
-                .then(b.created_ms.total_cmp(&a.created_ms))
-        });
+        // Factory first, then Keymotion's own, then newest first.
+        let rank = |k: ScreenItemKind| match k {
+            ScreenItemKind::Factory => 2,
+            ScreenItemKind::Keymotion => 1,
+            _ => 0,
+        };
+        items.sort_by(|a, b| rank(b.kind).cmp(&rank(a.kind)).then(b.created_ms.total_cmp(&a.created_ms)));
         let incomplete = self.incomplete_for(model_id).map(|w| ScreenIncomplete {
             id: w.id.clone().filter(|id| items.iter().any(|i| &i.id == id)),
             at_ms: w.at_ms,
@@ -617,6 +631,30 @@ mod tests {
         assert_eq!(lib.state("m").items.iter().filter(|i| i.kind == ScreenItemKind::Factory).count(), 1);
         assert!(ScreenLibrary::open(None).store_factory(&gif, &anim).is_err(), "nowhere to keep it");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn keymotion_animation_is_one_and_kept() {
+        let mut lib = ScreenLibrary::open(None);
+        let a = ScreenAnimation::new(vec![(Frame::filled(1), 50), (Frame::filled(2), 50)]).unwrap();
+        let b = ScreenAnimation::new(vec![(Frame::filled(3), 50), (Frame::filled(4), 50)]).unwrap();
+        let first = lib.add("Keymotion", ScreenItemKind::Keymotion, &a).unwrap();
+        assert_eq!(first.kind, ScreenItemKind::Keymotion);
+        // Another one (drawn by a newer app, or from a backup) is the same item.
+        assert_eq!(lib.add("Keymotion", ScreenItemKind::Keymotion, &b).unwrap().id, first.id);
+        assert_eq!(lib.state("m").items.len(), 1);
+        lib.rename(&first.id, "Benim").unwrap();
+        assert_eq!(lib.state("m").items[0].name, "Keymotion", "not renamed");
+        assert!(lib.remove(&first.id).is_err(), "not removed");
+        // The same picture added by hand does not take its name.
+        assert_eq!(lib.add("kopya", ScreenItemKind::Animation, &a).unwrap().name, "Keymotion");
+
+        // Stored as an ordinary item first: it becomes the Keymotion item.
+        let mut lib = ScreenLibrary::open(None);
+        let plain = lib.add("Keymotion", ScreenItemKind::Animation, &a).unwrap();
+        let item = lib.add("Keymotion", ScreenItemKind::Keymotion, &a).unwrap();
+        assert_eq!((item.id, item.kind), (plain.id, ScreenItemKind::Keymotion));
+        assert_eq!(lib.state("m").items.len(), 1);
     }
 
     #[test]
