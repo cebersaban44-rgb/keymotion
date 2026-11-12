@@ -30,6 +30,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 | 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bitti (PR #63); GitHub ayarları kullanıcı onayıyla açıldı |
 | 5 | Kurulum dosyası (NSIS), imzasız | 1, 2 | Kurulum ayrıntılarına onay | Yapıldı (PR'da); kullanıcının elle denemesi ve kurulum görselleri bekliyor |
 | 5c | Kurulum denemesi bulguları (K1–K11): simge ve görseller, GitHub bağlantıları, hatırlatıcı kartı, ekran durumu, odak zamanlayıcısı, bildirim, Genel bakış | 5 | Kararlar verildi: K9 her açılışta bir kez; K2, K7, K11 için A | Yapıldı (PR #72–#77); klavyede gerçek yüklemeyle deneme kullanıcıda |
+| 5d | Kullanıcının geri bildirimleri (K12 Genel bakış'taki klavye çizimi, K13 açılış logosunun keskinliği) ve denemeleri | 5c | K12 için önizlemeden seçim | Sırada (sıkıştırmadan sonra) |
 | 6 | Sürüm hattı (GitHub Actions) ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Bekliyor |
 | 6b | Uygulama penceresinin açılış animasyonu | 5 (kurulu sürümle ölçülür) | Seçim A (2026-11-12) | Yapıldı (PR #78); kurulu sürümde açılış süresi ölçülecek |
 | 7 | GitHub sayfası ve bütün belgeler, SignPath'in sayfa şartları dahil | 5, 6 (kurulum ve indirme adımları belli) | Belge yapısına ve görünümüne onay (önce önizleme) | Bekliyor |
@@ -474,6 +475,63 @@ Kullanıcı kurulum dosyasını Explorer'dan, yani Claude'un kutusunun dışınd
   - Yapılacak: `tray.rs` `take_notice` kalıcı `notice_shown` yerine oturum başına bir bayrak kullanır. `background.json` içindeki eski alan okunur ama artık kullanılmaz. Windows açılınca gizli başlamada (`--hidden`) pencere hiç gösterilmediği için bildirim gelmez.
   - Logo hâlâ doğrulanmadı; bildirim çıkınca kutunun dışında bakılacak. Hatırlatıcının Windows bildirimi de kurulu sürümde denenecek.
 
+## Aşama 5d: kullanıcının geri bildirimleri ve denemeleri (2026-11-12, öğleden sonra)
+
+Kullanıcı 5c'nin sonucunu gördü. **Sıra (kullanıcının talimatı):**
+1. Belgeler güncellenir; kullanıcı oturumu sıkıştırır.
+2. Sıkıştırmadan sonra önce aşağıdaki geri bildirimler (K12, K13) düzeltilir.
+3. Sonra kullanıcı, bu bölümdeki deneme listesini dener; bulduğu sorunlar düzeltilir.
+4. Hepsi bitince yol haritasına dönülür: Aşama 6, sürüm hattı.
+
+### Geri bildirimler (sıkıştırmadan sonra ilk iş)
+
+- **K12. Genel bakış'taki klavye çizimi kötü görünüyor.**
+  - Kullanıcı: Genel bakış "biraz daha düzgün olmuş, güzel", ama klavye çizimi görsel olarak çok kötü; eskiden tuşların üstünde harfler ve rakamlar yazıyordu.
+  - Sebep: yeni düzende (PR #77) çizim, ekran görselinin yanında daha dar bir sütunda (1.6fr / 1fr) duruyor. `KeyboardView` tuş yazılarını çizimin genişliğine göre gösteriyor (`useLegendSize`): eşiğin altında yazılar tamamen gizleniyor.
+  - Yapılacak: çizim tuş yazılarıyla, düzgün ve okunur olsun. Seçenekler:
+    - klavye üstte tam genişlikte, ekran görseli altta ya da yanda daha küçük;
+    - yazı eşikleri ve boyutları bu genişliğe göre;
+    - ikisi birlikte.
+  - Önce önizlemeyle bir ya da iki seçenek gösterilir (tasarım kuralı), kullanıcı seçer, sonra kod. Ekran ve sistem genişlikleri (geniş ve dar pencere) denenir.
+- **K13. Açılış animasyonundaki logo pikselli, düşük çözünürlüklü görünüyor.**
+  - Kullanıcı: animasyonun üstündeki logo "piksel piksel" geliyor; Claude'un aldığı ekran görüntüsünde de görülüyor. Altındaki "keymotion" yazısı düzgün.
+  - Yapılacak: logo her ölçekte keskin olsun. İncelenecek olası sebepler:
+    - `.intro-stage`'deki `will-change: transform`: katman bir kez bitmap olarak çiziliyor;
+    - SVG'nin içindeki `rect`'in `transform: scale` animasyonu;
+    - `pathLength="1"` ile kesik çizgi (`stroke-dasharray`) çizimi;
+    - pencerenin ölçeği (Windows %125/%150) ile yakın plan karşılaştırma: gerçek WebView2'de, cihaz ölçeğinde çekilen kareyle.
+  - Bitti sayılır: gerçek pencerede, cihaz ölçeğinde çekilen karelerde logonun kenarları yazı kadar keskin; kullanıcı görüp onaylar.
+
+### Kullanıcının denemesi (K12 ve K13'ten sonra)
+
+Claude'un denemediği ya da yalnızca tarayıcı önizlemesinde denediği her şey. Klavyeye yükleme yapan adımlar klavyenin belleğine yazar; bunlar kullanıcının kendi eylemi.
+
+**A. Geliştirme sürümünde (uygulama açıkken):**
+1. **K4, GitHub bağlantıları:** Ayarlar › Geri bildirim › "Sorun bildir" penceresinde "GitHub'da bildir", ayrıca "Öneri gönder": tarayıcıda GitHub'ın formu açılmalı, Belgeler klasörü açılmamalı.
+2. **K9, arka plan bildirimi:** pencereyi kapat: "Arka planda çalışıyor" bildirimi gelmeli. Tepsiden aç ve yine kapat: gelmemeli. Uygulamadan çık, yeniden aç, kapat: yine bir kez gelmeli.
+3. **K7, odak zamanlayıcısı:**
+   - "25 / 5 klasik"i seç (şu anki ayar kurulum denemesinden kalma "1 dk odak, 1 dk mola");
+   - blok ekle, sil, tutamaçtan sürükle, ok tuşlarıyla taşı; "Sıra bitince" seçenekleri;
+   - Başlat: tuş ışıkları, tepsi menüsünde "Odak · Blok 1/6 · … dk kaldı", kenar çubuğundaki satır; "Atla" ile bloklar arasında geçiş;
+   - ekran kartları ve canlı ekran açıksa kartlar klavyeye yüklenir: "1/3 odak", "Sonra: 5 dk mola".
+4. **K8, Ekran sayfası:** odak zamanlayıcısıyla art arda kart gidip yükleme hakkı dolunca:
+   - Ekran sayfasında ve Genel bakış'ta "Sırada bekleyen kart: …, henüz klavyeye gönderilmedi" satırı;
+   - "Şimdi gönder"in yanındaki "Gönderme": bekleyen kart düşmeli, klavyede şu anki görsel kalmalı;
+   - seri bitip kendi görseline dönünce sayfalar kendi görselini göstermeli (önceden son kartı gösteriyordu).
+5. **K5, hatırlatıcı kartı:**
+   - kartlı bir hatırlatıcının satırındaki "Dene": canlı ekran açıkken ışık, ses ve kart, altında "Kart gönderildi, 1 dakika ekranda kalır"; canlı ekran kapalıyken "Yalnızca ışık ve ses denendi: canlı ekran kapalı";
+   - hatırlatıcı kendi saatinde çalınca kart gelmeli; gelmezse satırın altında sebebi yazmalı;
+   - yükleme hakkı doluyken sayfanın üstünde uyarı; odak zamanlayıcısı çalışırken bile hatırlatıcının kartı gidebilmeli (son hak hatırlatıcıya ayrılıyor).
+6. **K11 ve K12, Genel bakış:** kutular gerçek verilerle; klavye çizimi tuş yazılarıyla; odak kutusundan "Başlat".
+7. **6b ve K13, açılış animasyonu:** uygulamadan çık ve yeniden aç: K çizgi çizgi çizilmeli, logo keskin olmalı, logo kenar çubuğuna gitmeli. Tepsiden açınca oynamamalı. Tıklayınca ya da bir tuşa basınca hemen bitmeli.
+
+**B. Sondaki kurulum derlemesiyle (Explorer'dan, Claude'un kutusunun dışında; ders 62):**
+8. **K1, K2, K3, kurulum:** kurulum dosyasının ve pencerelerin simgesi Keymotion; karşılama ve bitiş sayfasının solunda Keymotion görseli, üst bantta logo; karşılama metni sade ("Keymotion, klavyenizin ışıklarını…"); diğer sayfaların Türkçesi.
+9. **K10, kaldırma:** "Ayarlarımı ve kayıtlarımı da sil" kutusu işaretsiz gelmeli; kaldırma penceresinin üst bandında logo.
+10. **K9, bildirim logosu:** "Arka planda çalışıyor" bildiriminde Keymotion adı ve logosu.
+11. **6b, açılış süresi:** derlenmiş sürümde animasyon açılışı uzatmamalı (ölçülür).
+12. **K4, kurulu sürümde:** GitHub bağlantıları yine tarayıcıda açılmalı.
+
 ## Aşama 6: sürüm hattı ve otomatik güncelleyici
 
 - **GitHub Actions:**
@@ -638,6 +696,7 @@ Eskiden "Aşama 1b: erken başvuru" idi. 2026-11-12'de SignPath'in şartları ve
 | 5c | K9: arka plan bildirimi ne sıklıkla? | **Karar verildi:** her açılışta bir kez (2026-11-12) |
 | 5c | K2 kurulum görselleri, K7 odak zamanlayıcısı sırası, K11 Genel bakış tasarımı | **Karar verildi:** K2 A (sade), K7 önizlemedeki sıra, "25 / 5 klasik" varsayılan, K11 A (kutulu kontrol paneli) (2026-11-12) |
 | 6b | Uygulama açılış animasyonunun tasarımı | **Karar verildi:** A, çizgi çizgi K (2026-11-12) |
+| 5d | K12: Genel bakış'ta klavye çiziminin yeri ve tuş yazıları | Önizlemeden seçim |
 | 7 | GitHub sayfasının yapısı, biçimi (yalnız repo sayfaları mı, ayrıca belge sitesi mi) ve görünümü | Aşamanın başında önizlemeyle |
 | 8 | İlk sürümün nerede duyurulacağı (kullanım kanıtı için) | Kullanıcı seçer |
 | 4 | GitHub'da özel güvenlik bildirimi açılsın mı? | Evet (açıldı, 2026-11-12) |
