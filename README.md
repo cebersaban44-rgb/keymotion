@@ -10,8 +10,8 @@ AJAZZ AK980 PRO (ve ileride benzer SONiX tabanlı klavyeler) için Windows kontr
 cargo test --workspace          # testler, TS tipleri ve mock verileri üretir
 pnpm --dir app install
 pnpm --dir app dev              # arayüz sunucusu (127.0.0.1:1420)
-cargo build -p klavye-studio
-./target/debug/klavye-studio.exe
+cargo build -p keymotion
+./target/debug/keymotion.exe
 ```
 
 Ayarlar (ışık, tuş atama, ekran) için klavye **USB kabloyla** bağlı ve arkadaki mod anahtarı **ortada (USB)** olmalı. Bluetooth üzerinden yalnızca pil okunur.

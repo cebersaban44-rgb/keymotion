@@ -290,7 +290,7 @@ mod tests {
     use super::*;
 
     /// Reads what Windows reports as playing right now; touches no keyboard.
-    /// `cargo test -p klavye-studio now_playing_probe -- --ignored --nocapture`
+    /// `cargo test -p keymotion now_playing_probe -- --ignored --nocapture`
     #[cfg(windows)]
     #[test]
     #[ignore]

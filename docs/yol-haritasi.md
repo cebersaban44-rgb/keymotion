@@ -21,8 +21,8 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 
 | Sıra | Aşama | Bağımlılık | Kullanıcıdan gereken | Durum |
 |---|---|---|---|---|
-| 0 | Açık işleri kapat (lint/mock yardımcısı, PR #58) | — | — | Sürüyor |
-| 1 | Rust paket ve exe adı `keymotion` | 0 | Onay (öneri: evet) | Bekliyor |
+| 0 | Açık işleri kapat (lint/mock yardımcısı, PR #58) | — | — | PR #58 birleşti; yardımcı sürüyor |
+| 1 | Rust paket ve exe adı `keymotion` | 0 | Onay (öneri: evet) | Yapıldı |
 | 1b | Kod imzalama başvurusu (SignPath Foundation) | — | Başvuruyu kullanıcı yapar | Başlatılacak |
 | 2 | Tepsi ve arka plan | 1 | Karar verildi: tepsi | Bekliyor |
 | 3 | Keymotion açılış animasyonu | — (2 ile paralel olabilir) | Önizlemeye onay | Bekliyor |
@@ -46,7 +46,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 
 - **Öneri:** `klavye-studio` → `keymotion`.
   - Kurulu exe `keymotion.exe` olur; Görev Yöneticisi'nde ve Windows'la başlatma kaydında bu ad görünür.
-  - Kütüphane adı `keymotion_lib`, ya da `klavye_studio` bırakılabilir; karar uygulama sırasında.
+  - Kütüphane adı `keymotion_lib`. Paket ve kütüphane aynı adı taşırsa Windows'ta `.pdb` dosyaları çakışır.
 - **Neden şimdi:** Windows'la başlatma kaydı (Aşama 2), kısayollar, imza (Aşama 5) ve güncelleyici (Aşama 6) exe adına bağlı.
 - **Dokunulacak yerler:**
   - `app/src-tauri/Cargo.toml` (paket ve lib adı), `main.rs` (`klavye_studio::`);

@@ -883,7 +883,7 @@ cd app && pnpm typecheck
 ```bash
 # Uygulama (geliştirme): Vite sunucusu ve debug exe (debug exe devUrl'den yükler)
 pnpm --dir app dev                 # ya da Claude için .claude/launch.json "ui"
-cargo build -p klavye-studio && ./target/debug/klavye-studio.exe
+cargo build -p keymotion && ./target/debug/keymotion.exe
 ```
 
 ```bash
@@ -912,19 +912,19 @@ kb keymap --layer base kp-slash=macro:0 kp-star=macro:0:times:3 --yes   # makroy
 **Gerçek uygulamada uçtan uca test** (tarayıcı panelinde değil):
 
 ```bash
-WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222" ./target/debug/klavye-studio.exe
+WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222" ./target/debug/keymotion.exe
 node tools/cdp.mjs "document.body.innerText"   # ya da "@dosya.js"
 node tools/cdp.mjs --shot ekran.png            # pencerenin ekran görüntüsü
 ```
 
-Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust log'unu (`RUST_LOG=klavye_studio=debug`) karşılaştırabilirsin. Hata ayıklama portunu kullanıcının normal çalıştırmasında açık bırakma.
+Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust log'unu (`RUST_LOG=keymotion_lib=debug`) karşılaştırabilirsin. Hata ayıklama portunu kullanıcının normal çalıştırmasında açık bırakma.
 
 **Arayüz testinde işe yarayanlar:**
 - **Sahte arka uç:** `http://127.0.0.1:1420/?mock=usb` (ayrıca `mock=dongle`, `mock=bluetooth`, `mock=none`). `&pomofast` eklenirse odak zamanlayıcısında bir dakika 2 sn sürer. Yalnız geliştirme sunucusunda (`pnpm dev`) çalışır: sahte arka ucun her dalı `import.meta.env.DEV` ile korunur, kurulu sürümde ne kod ne anahtarlar var (`lib/ipc.ts` başındaki not).
 - **Ekran görüntüsü:** Uygulamanın içindeki tarayıcı paneli geniş sayfalarda yalnızca görünen kısmı yakalıyor. Tam görüntü için Playwright (`browser_resize` + `browser_take_screenshot`, dosya adı vermeden) daha güvenilir.
 - **Panel gizliyse** sayfa geçişleri ilerlemez (ders 51). Sahte arka uçla sayfa sayfa tarama Playwright'ta sorunsuz çalışıyor (2026-11-11: 17 sayfa ve sekme, TR ve EN, `ks.locale` localStorage ile).
 - **Sayfanın kendi modülleri:** Test için bir modülü `import()` ile alırken, uygulamanın yüklediği adresi kullan (`performance.getEntriesByType('resource')`). Oturumda değişen dosyaları Vite `?t=…` ile yükler; düz adres ayrı bir kopya açar (ders 43).
-- **Kullanıcının uygulaması** Vite'tan, yani çalışma ağacından yüklenir. Önce dalı hazırla, uygulamayı en son başlat (ders 39). Rust değişince uygulamayı durdur, `cargo build -p klavye-studio`, yeniden başlat.
+- **Kullanıcının uygulaması** Vite'tan, yani çalışma ağacından yüklenir. Önce dalı hazırla, uygulamayı en son başlat (ders 39). Rust değişince uygulamayı durdur, `cargo build -p keymotion`, yeniden başlat.
 
 **Klavyeye yazan testler:** Kullanıcının kayıtlı tasarımını ve uygulama durumunu (veri klasöründeki `lighting.json`, `localStorage` içindeki `ks.keymap.v1`) önce yedekle, testten sonra geri yükle. Yalnızca gereken kadar flash yazımı yap.
 - **Tuş atama** klavyeden okunamaz: yazmadan önce kullanıcıya mevcut atamasını sor. Testten sonra katmanı fabrika ayarına döndür. CLI yazımı uygulamanın `keymap.json` kaydına girmez; uygulamayla çalışırken atamayı uygulamadan yaz.
@@ -958,7 +958,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 20 | Tuş, fırça değiştikten hemen sonra eski rengi aldı | Olay işleyicisi önceki render'ın kapanışındaki rengi kullandı | Kullanıcı eylemi anında gereken durumu depodan (`getState()`) oku. |
 | 21 | CDP testinde sürükleyerek boyama çalışmadı | React `onPointerEnter`'ı yerel `pointerenter`'dan değil, bırakılan öğenin `pointerout` olayından türetiyor | Sürüklemeyi `pointerout` (relatedTarget = yeni tuş) ve `pointerover` çiftiyle taklit et. |
 | 22 | Kısayol dinleyicisi `window`'dan gelen olayda çöktü | `e.target.closest` her hedefte yok | Hedefi `instanceof Element` ile denetle. |
-| 23 | Kapatma uyarısı nasıl test edilir? | CDP pencerenin X düğmesine basamıyor | `(Get-Process klavye-studio).CloseMainWindow()` gerçek WM_CLOSE gönderir; tarayıcı tarafını CDP ile sür. |
+| 23 | Kapatma uyarısı nasıl test edilir? | CDP pencerenin X düğmesine basamıyor | `(Get-Process keymotion).CloseMainWindow()` gerçek WM_CLOSE gönderir; tarayıcı tarafını CDP ile sür. |
 | 24 | Bindings kontrolü içerik aynıyken "değişti" dedi | Windows'ta git dosyaları CRLF açıyor, ts-rs LF yazıyor | `.gitattributes` (`* text=auto eol=lf`). Kontrol `git status` yerine içerik farkına (`git diff --quiet`) ve commit'lenmemiş dosyalara bakıyor. |
 | 25 | Çalışan uygulamanın arayüzü dal değişince değişti | Debug exe arayüzü Vite'tan yüklüyor; Vite o anki çalışma ağacını sunuyor | Kullanıcı uygulamayı kullanırken başka dala geçme; geçtiysen işi bitirince güncel dala dön. |
 | 26 | Ayna mor rengi lacivert gösterdi; FF "FA" okununca "6 bit çözünürlük" sanıldı | `F5` kırmızıyı `2·r mod 256` bildiriyor. FF→FA tesadüfen "yakın" göründü. | Okumayı tek değerle değil, **birkaç ara tonla ve her kanal için ayrı** doğrula. "Yaklaşık tuttu" sistematik bir hatayı gizleyebilir. |
@@ -1308,6 +1308,6 @@ Kullanıcının fikirleri. Şimdi yapılmayacak; uygulamanın bütün özellikle
 ## 9. Ortam notları
 
 - Windows 11, Rust 1.99.1 (stable, MSVC), Node 24, pnpm 10, TypeScript 7, WebView2 157.
-- Uygulamanın adı **Keymotion** (2026-11-11, kullanıcının seçimi; önceki geçici ad "Klavye Stüdyo"). Kimlik `dev.keymotion`; ayarlar `%APPDATA%\dev.keymotion`, WebView verisi `%LOCALAPPDATA%\dev.keymotion`. Eski `dev.klavye.studio` klasörleri ilk açılışta taşınır (`app/src-tauri/src/migrate.rs`). Rust paket adı (`klavye-studio`) ve repo adı şimdilik değişmedi.
+- Uygulamanın adı **Keymotion** (2026-11-11, kullanıcının seçimi; önceki geçici ad "Klavye Stüdyo"). Kimlik `dev.keymotion`; ayarlar `%APPDATA%\dev.keymotion`, WebView verisi `%LOCALAPPDATA%\dev.keymotion`. Eski `dev.klavye.studio` klasörleri ilk açılışta taşınır (`app/src-tauri/src/migrate.rs`). Rust paketi `keymotion` (kütüphanesi `keymotion_lib`), exe `keymotion.exe` (2026-11-12, Aşama 1).
 - `.claude/launch.json` → "ui" (Vite, 127.0.0.1:1420).
 - GitHub hesabı **Pro** (2026-11-12, kullanıcı bildirdi). Repo herkese açık (`cebersaban44-rgb/keymotion`; 2026-11-12 tarihinde `klavye-studio` adından yeniden adlandırıldı, eski adresler yönleniyor): koruma kuralları, Actions, Pages ve Discussions zaten ücretsiz, Pro burada pek bir şey değiştirmiyor. İşe yaradığı yer: özel bir repo (koruma kuralları, Pages, kod sahipleri) ve Codespaces. `main` korumalı: PR zorunlu, "Build and test" geçmeli, yöneticiler de uyar. Discussions açık (2026-11-12, kullanıcının isteği); cevaplanabilir "Q&A" kategorisi var.

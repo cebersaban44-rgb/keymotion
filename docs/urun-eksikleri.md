@@ -38,7 +38,7 @@ GitHub sayfası planı (H) ve kullanıcının kararları en sonda.
   Eski klasörler ilk açılışta yeni ada taşınır (`migrate.rs`), WebView verisi de dahil.
 - **Yapıldı:** İngilizce arayüzde yarım çevrilmiş ad ("Klavye Studio"), pencere başlığı ve ekran kartı örneği artık Keymotion.
 - **Yapıldı:** Uygulama simgeleri (ICO 16–256 ve PNG'ler) yeni logodan üretildi. Logoda degrade ve parlama yok; 16 pikselde de okunuyor. Kurulum simgesi ve tepsi simgesi ürünleştirmede yapılacak.
-- **Sonra:** Rust paket adı (`klavye-studio`) ve GitHub repo adı (`klavye-studio`). Repo adının değişmesi dış bağlantıları etkiler; kullanıcıya sorulacak.
+- **Yapıldı (2026-11-12):** GitHub repo adı `keymotion` (eski adresler yönleniyor). Rust paketi `keymotion`, exe `keymotion.exe`, kütüphane `keymotion_lib`. Veri klasörleri kimliğe bağlı olduğu için taşıma gerekmedi.
 - **Olmalı:** Bağlantı sayfasındaki "Aygıt: SONiX AK980 PRO" satırı çip üreticisinin adını gösteriyor. Model adı yeterli.
 
 ## B. Güven ve güvenlik
