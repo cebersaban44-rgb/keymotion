@@ -31,7 +31,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 | 5 | Kurulum dosyası (NSIS), imzasız | 1, 2 | Kurulum ayrıntılarına onay | Yapıldı (PR'da); kullanıcının elle denemesi ve kurulum görselleri bekliyor |
 | 5c | Kurulum denemesi bulguları (K1–K11): simge ve görseller, GitHub bağlantıları, hatırlatıcı kartı, ekran durumu, odak zamanlayıcısı, bildirim, Genel bakış | 5 | Kararlar verildi: K9 her açılışta bir kez; K2, K7, K11 için A | Yapıldı (PR #72–#77); klavyede gerçek yüklemeyle deneme kullanıcıda |
 | 5d | Kullanıcının geri bildirimleri (K12 Genel bakış'taki klavye çizimi, K13 açılış logosunun keskinliği) ve denemeleri | 5c | — | K12 yapıldı (A); K13 kapandı (kod değişikliği gerekmedi); A denemeleri yapıldı, K14 düzeltildi; B kurulum derlemesiyle |
-| 6 | Sürüm hattı (GitHub Actions) ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Kod yapıldı; kalan: anahtarı Secrets'a koymak, iş akışını denemek, rc.1 → rc.2 güncelleme denemesi |
+| 6 | Sürüm hattı (GitHub Actions) ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Kod yapıldı; anahtar Secrets'ta; iş akışı denendi (taslak doğru, silindi); kalan: rc.1 → rc.2 güncelleme denemesi |
 | 6b | Uygulama penceresinin açılış animasyonu | 5 (kurulu sürümle ölçülür) | Seçim A (2026-11-12) | Yapıldı (PR #78); kurulu sürümde açılış süresi ölçülecek |
 | 7 | GitHub sayfası ve bütün belgeler, SignPath'in sayfa şartları dahil | 5, 6 (kurulum ve indirme adımları belli) | Belge yapısına ve görünümüne onay (önce önizleme) | Bekliyor |
 | 8 | Son denemeler ve ilk sürüm 0.1.0 (imzasız) | hepsi | Elle denemeler; `main`'e birleştirme onayı | Bekliyor |
@@ -570,7 +570,12 @@ Claude'un denemediği ya da yalnızca tarayıcı önizlemesinde denediği her ş
   - Denendi: tarayıcı önizlemesinde (iki dilde; yeni sürüm, indirme, vazgeçme, internet yok, henüz sürüm yok) ve gerçek uygulamada (günlük denetim ve düğme GitHub'a gitti, henüz sürüm olmadığı için "GitHub'da henüz yayımlanmış bir sürüm yok").
 - **Kalan (kullanıcının onayıyla):**
   1. **Yapıldı (2026-11-12, kullanıcının onayıyla):** gizli anahtar ve parolası GitHub Secrets'ta (`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`). Yedeği kullanıcı kendi parola yöneticisine alır.
-  2. İş akışını `develop`'dan elle bir kez çalıştırmak (derlenmiş sürüm, taslak; incelenip silinir).
+  2. **Yapıldı (2026-11-12, kullanıcının onayıyla):** iş akışı elle çalıştırıldı.
+     - İlk çalıştırma kurulumu paketlerken durdu: NSIS, `English.nsh`'nin ilk satırında `Invalid command` dedi. Sebep: Tauri kullanıcının dil dosyalarını kendi BOM'uyla yeniden yazıyor (`tauri-bundler` `nsis/mod.rs`); K3'teki dosyalarda da BOM vardı, iki BOM oldu. K3'te betik yalnızca NSIS'le ayrıca denenmişti, Tauri'nin paketlemesinden geçmemişti. Düzeltme PR #85: BOM kaldırıldı, metin denetimi artık `.nsh` dosyalarını da tarıyor.
+     - İkinci çalıştırma başarılı (yaklaşık 20 dk). Taslakta: `Keymotion_0.1.0_x64-setup.exe` (5,3 MB), `.exe.sig`, `latest.json` (6,8 KB). İmzanın anahtar kimliği uygulamadaki ortak anahtarla aynı (`B9EAB4ACA904885A`); `latest.json`'daki imza `.sig` ile birebir aynı; adres `releases/download/v0.1.0/…`. Notlar yalnızca İngilizce (Türkçe `docs/surum-notlari.md` henüz yok); başta "Test build" satırı, sonda SHA-256.
+     - Taslak kullanıcının onayıyla silindi; `v0.1.0` etiketi oluşmadı.
+     - Ayrıca: PR #83, zorunlu olmayan "Supply chain (cargo-deny)" denetimi kırmızıyken birleşti (ISC lisanslı `ring`, `untrusted`, `rustls-webpki`); düzeltme PR #84 (ISC izinli, üçüncü taraf bildirimleri yeniden üretildi). Öneri: bu denetimi de zorunlu yapmak (depo ayarı, kullanıcının onayıyla).
+     - Aşama 8 için not: gerçek sürümden önce `CHANGELOG.md`'de `## [0.1.0] - <tarih>` bölümü ve Türkçe notlar için `docs/surum-notlari.md` yazılır.
   3. Uçtan uca deneme: 0.1.0-rc.1 ve 0.1.0-rc.2 ön sürüm olarak yayımlanır (herkese açık, ama "en son sürüm" sayılmaz), rc.1 kurulur, rc.2'ye güncellenir. Sonra ön sürümler silinebilir.
 
 ## Aşama 6b: uygulama penceresinin açılış animasyonu
