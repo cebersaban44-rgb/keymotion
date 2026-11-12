@@ -1,9 +1,10 @@
 import { AlertTriangle, BoxSelect, Eraser, MousePointer2, PaintBucket, Paintbrush, RotateCcw, Usb, Gauge, X } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import type { EffectInfo } from "../bindings/EffectInfo";
 import type { EffectMotion } from "../bindings/EffectMotion";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
+import type { KeyGeo } from "../bindings/KeyGeo";
 import { ActionBar } from "../components/ActionBar";
 import { ColorPicker, Field, Segmented, Steps, Toggle } from "../components/controls";
 import { EffectThumb } from "../components/EffectThumb";
@@ -299,6 +300,9 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
   );
 }
 
+/** One empty list, so a keyboard without geometry keeps the memos below stable. */
+const NO_KEYS: readonly KeyGeo[] = [];
+
 function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey: ColorMap }) {
   const t = useT();
   const {
@@ -316,7 +320,7 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
     tool,
     setTool,
   } = useLighting();
-  const keys = kb.geometry?.keys ?? [];
+  const keys = kb.geometry?.keys ?? NO_KEYS;
   const live = usb && livePreview;
 
   // Select tool: keys stay selected and every colour pick recolours them.
@@ -361,26 +365,28 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
   const eraseSelection = () => paint([...selectionRef.current], null);
   const selectAll = () => select(new Set(keys.map((k) => k.led)));
 
-  // Select-tool shortcuts; ignored while typing in a field.
+  // Select-tool shortcuts; ignored while typing in a field. An effect event,
+  // so the listener always sees the current keys and handlers without being
+  // added again on every render.
+  const onShortcut = useEffectEvent((e: KeyboardEvent) => {
+    const target = e.target instanceof Element ? e.target : null;
+    if (target?.closest("input, textarea, [contenteditable]")) return;
+    if (e.key === "Escape") {
+      select(new Set());
+    } else if ((e.key === "Delete" || e.key === "Backspace") && selectionRef.current.size) {
+      e.preventDefault();
+      eraseSelection();
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
+      e.preventDefault();
+      selectAll();
+    }
+  });
   useEffect(() => {
     if (tool !== "select") return;
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target instanceof Element ? e.target : null;
-      if (target?.closest("input, textarea, [contenteditable]")) return;
-      if (e.key === "Escape") {
-        select(new Set());
-      } else if ((e.key === "Delete" || e.key === "Backspace") && selectionRef.current.size) {
-        e.preventDefault();
-        eraseSelection();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
-        e.preventDefault();
-        selectAll();
-      }
-    };
+    const onKey = (e: KeyboardEvent) => onShortcut(e);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // `select`, `eraseSelection` and `selectAll` only use refs and store setters.
-  }, [tool, keys]);
+  }, [tool]);
 
   // Stream the design to the keyboard's RAM while previewing; stop on leave.
   const timer = useRef<number | undefined>(undefined);

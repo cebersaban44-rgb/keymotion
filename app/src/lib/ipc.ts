@@ -1,9 +1,16 @@
 // Typed bridge to the Rust backend. Types come from ts-rs bindings.
-// Outside Tauri (plain `pnpm dev` in a browser) a mock backend keeps the
-// UI usable for design work.
+//
+// Browser mock (development only): outside Tauri, `pnpm dev` in a browser
+// uses stand-ins for the backend so the UI can be designed and tested
+// (`?mock=usb|bluetooth|dongle|none`, `?fw=`, `?reset=`, `?failPart=`,
+// `mock-close-requested`; lib/screen.ts, live.ts, pomodoro.ts, calendar.ts,
+// reminders.ts and gauges.ts have their own). Every mock branch is guarded
+// by `import.meta.env.DEV`, written out at the guard itself: Vite replaces
+// it with `false` in a production build, so the mock code and its switches
+// are not in the installed app. There, outside Tauri, calls reject (below).
 
-import { invoke, isTauri } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { invoke as tauriInvoke, isTauri, type InvokeArgs, type InvokeOptions } from "@tauri-apps/api/core";
+import { listen as tauriListen, type EventCallback, type EventName, type UnlistenFn } from "@tauri-apps/api/event";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { ThemePreference } from "../bindings/ThemePreference";
 import type { UiEnvironment } from "../bindings/UiEnvironment";
@@ -41,27 +48,41 @@ import mockCatalog from "../bindings/lighting-catalog.json";
 
 export const inTauri = isTauri();
 
+const outsideApp = (what: string) => new Error(`Keymotion's backend is not available: this page runs outside the app (${what})`);
+
+/** Tauri's `invoke`; outside the app it rejects with a clear error. Use this one, not Tauri's. */
+export function invoke<T>(cmd: string, args?: InvokeArgs, options?: InvokeOptions): Promise<T> {
+  if (!inTauri) return Promise.reject(outsideApp(cmd));
+  return tauriInvoke<T>(cmd, args, options);
+}
+
+/** Tauri's `listen`; outside the app it rejects with a clear error. Use this one, not Tauri's. */
+export function listen<T>(event: EventName, handler: EventCallback<T>): Promise<UnlistenFn> {
+  if (!inTauri) return Promise.reject(outsideApp(event));
+  return tauriListen<T>(event, handler);
+}
+
 const EVENT_KEYBOARDS_CHANGED = "keyboards-changed";
 
 export async function getKeyboards(): Promise<KeyboardInfo[]> {
-  if (!inTauri) return mockKeyboards();
+  if (import.meta.env.DEV && !inTauri) return mockKeyboards();
   return invoke<KeyboardInfo[]>("keyboards");
 }
 
 export async function refreshKeyboards(): Promise<void> {
-  if (!inTauri) return;
+  if (import.meta.env.DEV && !inTauri) return;
   await invoke("refresh_keyboards");
 }
 
 export async function getUiEnvironment(): Promise<UiEnvironment> {
-  if (!inTauri) return { appVersion: "0.1.0-dev", mica: false, osBuild: 0 };
+  if (import.meta.env.DEV && !inTauri) return { appVersion: "0.1.0-dev", mica: false, osBuild: 0 };
   return invoke<UiEnvironment>("ui_environment");
 }
 
 /** Open one of the project's own pages in the browser (the backend opens
  *  nothing else). */
 export async function openLink(url: string): Promise<void> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     window.open(url, "_blank", "noopener");
     return;
   }
@@ -69,7 +90,7 @@ export async function openLink(url: string): Promise<void> {
 }
 
 export async function setWindowTheme(theme: ThemePreference): Promise<void> {
-  if (!inTauri) return;
+  if (import.meta.env.DEV && !inTauri) return;
   await invoke("set_window_theme", { theme });
 }
 
@@ -77,7 +98,7 @@ export async function setWindowTheme(theme: ThemePreference): Promise<void> {
 
 /** Tell the backend whether closing should ask about unsaved changes. */
 export async function setUnsavedFlag(unsaved: boolean): Promise<void> {
-  if (!inTauri) return;
+  if (import.meta.env.DEV && !inTauri) return;
   await invoke("set_unsaved", { unsaved });
 }
 
@@ -86,7 +107,7 @@ export async function setUnsavedFlag(unsaved: boolean): Promise<void> {
  * handler must acknowledge (done here) or the backend closes anyway.
  */
 export async function onCloseRequested(cb: () => void): Promise<UnlistenFn> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     // Browser mock: `dispatchEvent(new Event("mock-close-requested"))`
     // stands in for the window's close button.
     const on = () => cb();
@@ -101,31 +122,33 @@ export async function onCloseRequested(cb: () => void): Promise<UnlistenFn> {
 
 /** Close the window without asking again (after save or discard). */
 export async function closeWindow(): Promise<void> {
-  if (!inTauri) return;
+  if (import.meta.env.DEV && !inTauri) return;
   await invoke("close_window");
 }
 
 export async function onKeyboardsChanged(cb: (k: KeyboardInfo[]) => void): Promise<UnlistenFn> {
-  if (!inTauri) return () => {};
+  if (import.meta.env.DEV && !inTauri) return () => {};
   return listen<KeyboardInfo[]>(EVENT_KEYBOARDS_CHANGED, (e) => cb(e.payload));
 }
 
 // ---------------------------------------------------------------- lighting
 
 export async function getLightingCatalog(): Promise<EffectInfo[]> {
-  if (!inTauri) return mockCatalog as EffectInfo[];
+  if (import.meta.env.DEV && !inTauri) return mockCatalog as EffectInfo[];
   return invoke<EffectInfo[]>("lighting_catalog");
 }
 
 /** Store a firmware effect on the keyboard (flash write). */
 export function applyEffect(request: EffectRequest): Promise<void> {
-  return flashWrite(() => (inTauri ? serial(() => invoke<void>("apply_effect", { request })) : mockDelay(300)));
+  return flashWrite(() =>
+    import.meta.env.DEV && !inTauri ? mockDelay(300) : serial(() => invoke<void>("apply_effect", { request })),
+  );
 }
 
 /** Store per-key colours on the keyboard (flash write). */
 export function applyPerKey(colors: LedColor[], brightness: number): Promise<void> {
   return flashWrite(() =>
-    inTauri ? serial(() => invoke<void>("apply_per_key", { colors, brightness })) : mockDelay(900),
+    import.meta.env.DEV && !inTauri ? mockDelay(900) : serial(() => invoke<void>("apply_per_key", { colors, brightness })),
   );
 }
 
@@ -153,7 +176,7 @@ const UNTESTED = /untested keyboard firmware (\S+)/i;
  */
 export async function flashWrite<T>(run: () => Promise<T>): Promise<T> {
   try {
-    if (!inTauri) mockFirmwareCheck();
+    if (import.meta.env.DEV && !inTauri) mockFirmwareCheck();
     return await run();
   } catch (e) {
     const version = (e instanceof Error ? e.message : String(e)).match(UNTESTED)?.[1];
@@ -165,7 +188,7 @@ export async function flashWrite<T>(run: () => Promise<T>): Promise<T> {
 
 /** Allow writes on this untested firmware version until the app closes. */
 export async function confirmFirmware(version: string): Promise<void> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     mockConfirmedFirmware = version;
     return;
   }
@@ -174,13 +197,13 @@ export async function confirmFirmware(version: string): Promise<void> {
 
 /** A write was refused for untested firmware (also from the live mode). */
 export async function onFirmwareUnverified(cb: (version: string) => void): Promise<UnlistenFn> {
-  if (!inTauri) return () => {};
+  if (import.meta.env.DEV && !inTauri) return () => {};
   return listen<string>("firmware-unverified", (e) => cb(e.payload));
 }
 
 /** Settings files that could not be read and went back to their defaults. */
 export async function getSettingsResets(): Promise<SettingsReset[]> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     // `?reset=keymap,macros` shows the notice in the browser.
     const names = new URLSearchParams(location.search).get("reset");
     return names ? names.split(",").map((n) => ({ file: `${n}.json`, backup: `${n}.json.bak-20261111-120000` })) : [];
@@ -190,7 +213,7 @@ export async function getSettingsResets(): Promise<SettingsReset[]> {
 
 /** The notice about the resets was shown; it does not come back. */
 export async function dismissSettingsResets(): Promise<void> {
-  if (!inTauri) return;
+  if (import.meta.env.DEV && !inTauri) return;
   await invoke("dismiss_settings_resets");
 }
 
@@ -222,7 +245,7 @@ let frameInFlight = false;
  * firmware's own brightness scale, so the preview matches the saved design.
  */
 export function setLiveFrame(colors: LedColor[] | null, brightness = 5): Promise<void> {
-  if (!inTauri) return Promise.resolve();
+  if (import.meta.env.DEV && !inTauri) return Promise.resolve();
   pendingFrame = { colors, brightness };
   if (frameInFlight) return Promise.resolve();
   frameInFlight = true;
@@ -244,12 +267,12 @@ export function setLiveFrame(colors: LedColor[] | null, brightness = 5): Promise
  * what the app last saved there; it resolves the read-back's red channel.
  */
 export function setMirror(enabled: boolean, hint: MirrorHint | null = null): Promise<void> {
-  if (!inTauri) return Promise.resolve();
+  if (import.meta.env.DEV && !inTauri) return Promise.resolve();
   return serial(() => invoke<void>("set_mirror", { enabled, hint }));
 }
 
 export async function onMirror(cb: (colors: LedColor[]) => void): Promise<UnlistenFn> {
-  if (!inTauri) return () => {};
+  if (import.meta.env.DEV && !inTauri) return () => {};
   return listen<LedColor[]>("lighting-mirror", (e) => cb(e.payload));
 }
 
@@ -258,13 +281,13 @@ let mockClock: ClockStatus = { autoSync: true, lastSyncMs: Date.now() - 3 * 60_0
 
 /** Keyboard clock sync state. */
 export function getClockStatus(): Promise<ClockStatus> {
-  if (!inTauri) return Promise.resolve(mockClock);
+  if (import.meta.env.DEV && !inTauri) return Promise.resolve(mockClock);
   return invoke<ClockStatus>("clock_status");
 }
 
 /** Set the keyboard clock to the PC's local time now (USB only). */
 export async function syncClock(): Promise<ClockStatus> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     await mockDelay(300);
     return (mockClock = { ...mockClock, lastSyncMs: Date.now() });
   }
@@ -273,20 +296,20 @@ export async function syncClock(): Promise<ClockStatus> {
 
 /** Turn automatic clock sync (on USB connect, at most once a day) on or off. */
 export function setClockAuto(enabled: boolean): Promise<ClockStatus> {
-  if (!inTauri) return Promise.resolve((mockClock = { ...mockClock, autoSync: enabled }));
+  if (import.meta.env.DEV && !inTauri) return Promise.resolve((mockClock = { ...mockClock, autoSync: enabled }));
   return serial(() => invoke<ClockStatus>("set_clock_auto", { enabled }));
 }
 
 /** Clock state changes, including automatic syncs in the background. */
 export async function onClockChanged(cb: (status: ClockStatus) => void): Promise<UnlistenFn> {
-  if (!inTauri) return () => {};
+  if (import.meta.env.DEV && !inTauri) return () => {};
   return listen<ClockStatus>("clock-changed", (e) => cb(e.payload));
 }
 
 // ------------------------------------------------------------------ keymap
 
 export async function getKeymapCatalog(): Promise<KeymapCatalog> {
-  if (!inTauri) return mockKeymapCatalog as KeymapCatalog;
+  if (import.meta.env.DEV && !inTauri) return mockKeymapCatalog as KeymapCatalog;
   return invoke<KeymapCatalog>("keymap_catalog");
 }
 
@@ -301,7 +324,7 @@ let mockKeymap: KeymapState = {
  * report its keymap; layers never written are the factory default.
  */
 export function getKeymapState(modelId: string): Promise<KeymapState> {
-  if (!inTauri) return Promise.resolve(mockKeymap);
+  if (import.meta.env.DEV && !inTauri) return Promise.resolve(mockKeymap);
   return invoke<KeymapState>("keymap_state", { modelId });
 }
 
@@ -311,10 +334,12 @@ export function getKeymapState(modelId: string): Promise<KeymapState> {
  */
 export function applyKeymap(layer: KeymapLayer, assignments: KeyAssignment[]): Promise<KeymapState> {
   return flashWrite(async () => {
-    if (inTauri) return serial(() => invoke<KeymapState>("apply_keymap", { layer, assignments }));
-    await mockDelay(700);
-    mockKeymap = { ...mockKeymap, [layer]: { assignments, writtenMs: Date.now() } };
-    return mockKeymap;
+    if (import.meta.env.DEV && !inTauri) {
+      await mockDelay(700);
+      mockKeymap = { ...mockKeymap, [layer]: { assignments, writtenMs: Date.now() } };
+      return mockKeymap;
+    }
+    return serial(() => invoke<KeymapState>("apply_keymap", { layer, assignments }));
   });
 }
 
@@ -332,7 +357,7 @@ let mockMacros: MacrosState = {
 
 /** What the app last wrote to this model's macros, with the keyboard's limits. */
 export function getMacrosState(modelId: string): Promise<MacrosState> {
-  if (!inTauri) return Promise.resolve(mockMacros);
+  if (import.meta.env.DEV && !inTauri) return Promise.resolve(mockMacros);
   return invoke<MacrosState>("macros_state", { modelId });
 }
 
@@ -342,11 +367,13 @@ export function getMacrosState(modelId: string): Promise<MacrosState> {
  */
 export function applyMacros(slots: (MacroInfo | null)[]): Promise<MacrosState> {
   return flashWrite(async () => {
-    if (inTauri) return serial(() => invoke<MacrosState>("apply_macros", { slots }));
-    await mockDelay(600);
-    while (slots.length && slots[slots.length - 1] === null) slots = slots.slice(0, -1);
-    mockMacros = { ...mockMacros, slots, writtenMs: Date.now() };
-    return mockMacros;
+    if (import.meta.env.DEV && !inTauri) {
+      await mockDelay(600);
+      while (slots.length && slots[slots.length - 1] === null) slots = slots.slice(0, -1);
+      mockMacros = { ...mockMacros, slots, writtenMs: Date.now() };
+      return mockMacros;
+    }
+    return serial(() => invoke<MacrosState>("apply_macros", { slots }));
   });
 }
 
@@ -360,7 +387,7 @@ const MOCK_CALIBRATION: CalibrationInfo = {
 };
 
 export async function getCalibration(): Promise<CalibrationInfo> {
-  if (!inTauri) return MOCK_CALIBRATION;
+  if (import.meta.env.DEV && !inTauri) return MOCK_CALIBRATION;
   return invoke<CalibrationInfo>("calibration");
 }
 
@@ -373,7 +400,7 @@ let calibrationInFlight = false;
  * the promise reports whether saving worked; previews are coalesced.
  */
 export function setCalibration(calibration: Calibration, persist: boolean): Promise<void> {
-  if (!inTauri) return persist ? mockDelay(120) : Promise.resolve();
+  if (import.meta.env.DEV && !inTauri) return persist ? mockDelay(120) : Promise.resolve();
   if (persist) return serial(() => invoke<void>("set_calibration", { calibration, persist: true }));
   pendingCalibration = calibration;
   if (calibrationInFlight) return Promise.resolve();
@@ -395,7 +422,7 @@ export function setCalibration(calibration: Calibration, persist: boolean): Prom
 
 /** The Lighting page's saved state (lighting.ts owns the fields); `null` when none was saved yet. */
 export async function lightingLoad(): Promise<Record<string, unknown> | null> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     try {
       const raw = localStorage.getItem(MOCK_LIGHTING);
       return raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
@@ -407,7 +434,7 @@ export async function lightingLoad(): Promise<Record<string, unknown> | null> {
 }
 
 export async function lightingSave(state: Record<string, unknown>): Promise<void> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     try {
       localStorage.setItem(MOCK_LIGHTING, JSON.stringify(state));
     } catch {
@@ -422,13 +449,13 @@ const MOCK_LIGHTING = "ks.mock.lighting";
 
 /** Put a UI failure into the app's log (the backend removes addresses). */
 export function logUiError(message: string): Promise<void> {
-  if (!inTauri) return Promise.resolve();
+  if (import.meta.env.DEV && !inTauri) return Promise.resolve();
   return invoke<void>("log_ui_error", { message }).catch(() => undefined);
 }
 
 /** The diagnostics report as plain text (versions, keyboards, last log lines). */
 export async function getDiagnostics(language: string): Promise<string> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     await mockDelay(150);
     return `Browser preview diagnostics\nUI language: ${language}\nUser agent: ${navigator.userAgent}\n`;
   }
@@ -437,7 +464,7 @@ export async function getDiagnostics(language: string): Promise<string> {
 
 /** Open the app's log or data folder in Explorer. */
 export async function openFolder(folder: AppFolder): Promise<void> {
-  if (!inTauri) return;
+  if (import.meta.env.DEV && !inTauri) return;
   await invoke("open_folder", { folder });
 }
 
@@ -446,7 +473,7 @@ export async function openFolder(folder: AppFolder): Promise<void> {
  * only with `withAddresses`. In the browser preview the file downloads.
  */
 export async function exportBackup(withAddresses: boolean, fileName: string): Promise<BackupExported> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     const lighting = await lightingLoad();
     const backup = { kind: "kb-backup", version: 1, createdMs: Date.now(), appVersion: "0.1.0-dev", lighting };
     const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" }));
@@ -460,7 +487,7 @@ export async function exportBackup(withAddresses: boolean, fileName: string): Pr
 
 /** Show the last exported file in Explorer. */
 export async function revealExport(): Promise<void> {
-  if (!inTauri) return;
+  if (import.meta.env.DEV && !inTauri) return;
   await invoke("backup_reveal");
 }
 
@@ -469,13 +496,13 @@ let mockPending: Record<string, unknown> | null = null;
 
 /** Read and check a backup file; it waits for `importBackup`. Nothing changes yet. */
 export async function inspectBackup(bytes: ArrayBuffer): Promise<BackupSummary> {
-  if (!inTauri) return mockInspect(bytes);
+  if (import.meta.env.DEV && !inTauri) return mockInspect(bytes);
   return invoke<BackupSummary>("backup_inspect", bytes);
 }
 
 /** Restore the chosen parts of the inspected backup. Nothing is written to the keyboard. */
 export async function importBackup(sections: BackupSection[]): Promise<BackupImported> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     await mockDelay(300);
     const lighting = mockPending?.lighting;
     if (sections.includes("lighting") && lighting && typeof lighting === "object") {
@@ -496,7 +523,7 @@ export async function importBackup(sections: BackupSection[]): Promise<BackupImp
 
 /** Forget the inspected backup. */
 export async function cancelImport(): Promise<void> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     mockPending = null;
     return;
   }
@@ -553,24 +580,24 @@ async function mockInspect(bytes: ArrayBuffer): Promise<BackupSummary> {
 
 /** The profiles for the keyboard of `modelId`: which one it has, what loading each would write. */
 export async function getProfiles(modelId: string): Promise<ProfilesState> {
-  if (!inTauri) return mockProfilesState(modelId);
+  if (import.meta.env.DEV && !inTauri) return mockProfilesState(modelId);
   return invoke<ProfilesState>("profiles_state", { modelId });
 }
 
 /** A new profile from what this computer recorded as saved on the keyboard (not the editors' drafts). */
 export async function createProfile(modelId: string, name: string, parts: ProfileParts): Promise<ProfileSaved> {
-  if (!inTauri) return mockCreateProfile(modelId, name, parts);
+  if (import.meta.env.DEV && !inTauri) return mockCreateProfile(modelId, name, parts);
   return invoke<ProfileSaved>("profiles_create", { modelId, name, parts });
 }
 
 /** The profile's own parts from what the keyboard has now. */
 export async function updateProfile(modelId: string, id: string): Promise<void> {
-  if (!inTauri) return mockUpdateProfile(modelId, id);
+  if (import.meta.env.DEV && !inTauri) return mockUpdateProfile(modelId, id);
   await invoke("profiles_update", { modelId, id });
 }
 
 export async function renameProfile(id: string, name: string): Promise<void> {
-  if (!inTauri) return mockChange(id, (list, p) => {
+  if (import.meta.env.DEV && !inTauri) return mockChange(id, (list, p) => {
     if (mockNameTaken(list, name, id)) throw new Error("profile name taken");
     p.name = name.trim().slice(0, 40);
   });
@@ -579,7 +606,7 @@ export async function renameProfile(id: string, name: string): Promise<void> {
 
 /** A copy named `name` (made unique when taken). */
 export async function duplicateProfile(id: string, name: string): Promise<ProfileSaved> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     const source = id === MOCK_DEFAULT.id ? MOCK_DEFAULT : mockProfiles().find((p) => p.id === id);
     if (!source) throw new Error("unknown profile");
     return mockAdd({ ...structuredClone(source), name });
@@ -588,7 +615,7 @@ export async function duplicateProfile(id: string, name: string): Promise<Profil
 }
 
 export async function deleteProfile(id: string): Promise<void> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     if (!mockProfiles().some((p) => p.id === id)) throw new Error("unknown profile");
     saveMockProfiles(mockProfiles().filter((p) => p.id !== id));
     return;
@@ -598,7 +625,7 @@ export async function deleteProfile(id: string): Promise<void> {
 
 /** Write one profile to a file in the Downloads folder (its screen picture with it). */
 export async function exportProfile(id: string, fileName: string): Promise<BackupExported> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     const p = mockProfiles().find((x) => x.id === id);
     if (!p) throw new Error("unknown profile");
     const profile = { name: p.name, lighting: p.lighting, keymap: p.keymap, macros: p.macros, screen: p.screen };
@@ -614,7 +641,7 @@ export async function exportProfile(id: string, fileName: string): Promise<Backu
 
 /** Add the profile in a file; it is checked whole first. */
 export async function importProfile(bytes: ArrayBuffer): Promise<ProfileSaved> {
-  if (!inTauri) return mockImportProfile(bytes);
+  if (import.meta.env.DEV && !inTauri) return mockImportProfile(bytes);
   return invoke<ProfileSaved>("profiles_import", bytes);
 }
 
@@ -624,9 +651,9 @@ export async function importProfile(bytes: ArrayBuffer): Promise<ProfileSaved> {
  */
 export function loadProfilePart(modelId: string, id: string, part: ProfilePart): Promise<PartLoaded> {
   return flashWrite(() =>
-    inTauri
-      ? serial(() => invoke<PartLoaded>("profiles_load", { modelId, id, part }))
-      : mockLoadProfilePart(modelId, id, part),
+    import.meta.env.DEV && !inTauri
+      ? mockLoadProfilePart(modelId, id, part)
+      : serial(() => invoke<PartLoaded>("profiles_load", { modelId, id, part })),
   );
 }
 

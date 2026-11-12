@@ -769,14 +769,14 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
         - PR #57 birleşti; ana klasör `develop`'ta, arayüz yeniden ana klasörden sunuluyor ("ui", 1420).
         - Birleşmiş 8 yardımcı klasörü ve dalı silindi; boş yer 17 GB'tan 21 GB'a çıktı (ders 55).
         - Kullanıcının düzeltebileceği durumlar (başka program açık, kablo yok, ad alınmış, yanlış dosya) günlüğe uyarı olarak yazılıyor ("action refused"; `errors.ts` `EXPECTED`, `log_ui_error`).
-        - PR #55 (Dependabot `toml` 1.2) otomatik birleştirmede.
-      - Yardımcıda (`a0ca5d5edacfcd31b`):
-        - 15 ESLint uyarısı, davranış değişmeden;
-        - ESLint CI'da engelleyici (sıfır uyarı);
-        - ders 40;
-        - sahte arka uç (`?mock` vb.) yalnızca geliştirme sürümünde, kurulu sürümde yok.
+        - PR #55 (Dependabot `toml` 1.2) birleşti; `third-party-notices.txt` yenilendi (PR #58).
+        - Yardımcı (`a0ca5d5edacfcd31b`, Aşama 0):
+          - 15 ESLint uyarısı davranış değişmeden giderildi. Tek `eslint-disable`: `TextFlow`'daki dile bağlı çevirici (`useLocaleT`).
+          - ESLint CI'da engelleyici, sıfır uyarı (`--max-warnings 0`); ders 40.
+          - Sahte arka uç yalnızca geliştirme sürümünde. Her dal `import.meta.env.DEV && !inTauri` ile korunuyor. Üretim derlemesinde işaretlerin hiçbiri yok (`mock-close-requested`, `failPart`, `__ksMock`, `?mock` okuması); JS 928 KB'tan 892 KB'a indi.
+          - `invoke` ve `listen` artık `lib/ipc.ts` üzerinden: uygulama dışında açık bir hatayla reddediliyor.
+          - Dikkat: `SlideFlow`'da `show` hesabı "duraklar yalnızca eklenir" varsayımına dayanıyor; duraklar silinir ya da değiştirilirse `version` geri eklenmeli (kodda not var). `useEffectEvent` React 19.2+ ister (proje 19.3.1).
       - Kalan:
-        - PR #55 birleşince `node tools/notices.mjs` ile `third-party-notices.txt`'yi yenile.
         - **Keymotion açılış animasyonu:** fabrika yedeği olmayanların GIF sayfasına koyabileceği özgün görsel (K harfinin çizgileri sırayla belirir, turuncu çizgi yanar). Önce önizlemeyle göster, onaydan sonra üret.
         - İstenirse `cargo clean`: ortak `target` klasöründe eski yardımcıların derlemeleri duruyor. Silmeden önce kullanıcıya sor; tam derleme birkaç dakika sürer.
     - **Kullanıcının elle deneyeceği şeyler** (ben yapamıyorum):
@@ -920,7 +920,7 @@ node tools/cdp.mjs --shot ekran.png            # pencerenin ekran görüntüsü
 Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust log'unu (`RUST_LOG=klavye_studio=debug`) karşılaştırabilirsin. Hata ayıklama portunu kullanıcının normal çalıştırmasında açık bırakma.
 
 **Arayüz testinde işe yarayanlar:**
-- **Sahte arka uç:** `http://127.0.0.1:1420/?mock=usb` (ayrıca `mock=dongle`, `mock=bluetooth`, `mock=none`). `&pomofast` eklenirse odak zamanlayıcısında bir dakika 2 sn sürer.
+- **Sahte arka uç:** `http://127.0.0.1:1420/?mock=usb` (ayrıca `mock=dongle`, `mock=bluetooth`, `mock=none`). `&pomofast` eklenirse odak zamanlayıcısında bir dakika 2 sn sürer. Yalnız geliştirme sunucusunda (`pnpm dev`) çalışır: sahte arka ucun her dalı `import.meta.env.DEV` ile korunur, kurulu sürümde ne kod ne anahtarlar var (`lib/ipc.ts` başındaki not).
 - **Ekran görüntüsü:** Uygulamanın içindeki tarayıcı paneli geniş sayfalarda yalnızca görünen kısmı yakalıyor. Tam görüntü için Playwright (`browser_resize` + `browser_take_screenshot`, dosya adı vermeden) daha güvenilir.
 - **Panel gizliyse** sayfa geçişleri ilerlemez (ders 51). Sahte arka uçla sayfa sayfa tarama Playwright'ta sorunsuz çalışıyor (2026-11-11: 17 sayfa ve sekme, TR ve EN, `ks.locale` localStorage ile).
 - **Sayfanın kendi modülleri:** Test için bir modülü `import()` ile alırken, uygulamanın yüklediği adresi kullan (`performance.getEntriesByType('resource')`). Oturumda değişen dosyaları Vite `?t=…` ile yükler; düz adres ayrı bir kopya açar (ders 43).
@@ -975,7 +975,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 37 | Canlı kart yüklenince GIF önizlemesi yenilenmedi | "İlk durum" `null` ile ayırt ediliyordu; ilk gerçek değişiklik de `null`'dan geliyordu | "Henüz bilinmiyor" için `undefined`, "yok" için `null` kullan. |
 | 38 | CI'da yalnızca rustfmt kırıldı | Push'tan önce `cargo fmt --check` çalıştırılmadı | Push'tan önce CI'ın adımlarını yerelde çalıştır: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `pnpm --dir app build`. |
 | 39 | Uygulama penceresi boş kaldı ("crash oldu herhalde") | Uygulama yeniden başlatıldıktan hemen sonra `git stash` + `switch` yapıldı; arayüz Vite'tan yüklenirken dosyalar geçici olarak eksikti | Önce dalı hazırla, uygulamayı en son başlat. Başlattıktan sonra çalışma ağacını değiştirme; şüphede CDP ile sayfanın çizildiğini doğrula (bkz. #25). |
-| 40 | `npx eslint` bir paketi indirip çalıştırdı | Projede ESLint (ve Prettier) yok; `npx` eksik aracı sormadan indiriyor | Bir aracı çalıştırmadan önce `app/node_modules/.bin`'de olduğuna bak ya da `npx --no-install` kullan. Projenin denetimleri: `tsc` (`pnpm build`), rustfmt, clippy. İndirilen paket önbellekten silindi. |
+| 40 | `npx eslint` bir paketi indirip çalıştırdı | O sırada projede ESLint (ve Prettier) yoktu; `npx` eksik aracı sormadan indiriyor | Bir aracı çalıştırmadan önce `app/node_modules/.bin`'de olduğuna bak ya da `npx --no-install` kullan. ESLint artık `tools/eslint` içinde; `pnpm --dir app lint` ile çalışır ve CI'ı engeller: tek bir uyarı bile kontrolü kırmızı yapar (`--max-warnings 0`). Projenin denetimleri: `tsc` (`pnpm build`), ESLint, rustfmt, clippy. İndirilen paket önbellekten silindi. |
 | 41 | Türkçe arayüze "Pomodoro" ve "flash" girdi | Tekniğin yabancı adı ve teknik terim, Türkçe metne olduğu gibi yazıldı | Türkçe sayfada yalnız Türkçe içerik: yabancı adın Türkçe karşılığını kullan ("Odak zamanlayıcısı", "kalıcı bellek"). Emin değilsen TDK sözlüğüne bak (`sozluk.gov.tr/gts?ara=…`). Yabancı ad gerekiyorsa yalnız belgelerde, parantez içinde. |
 | 42 | Uygulamadaki odak önizlemesinde renk neredeyse görünmedi | Klavye çizimi ışığı gerçekteki gibi tuşun altından hafif bir parlama olarak gösteriyor; küçük boyutta bu sönük kalıyor | Amaç bir hareketi anlatmaksa tuşları düz renkle çiz (sohbetteki önizlemenin onaylanan hâli). Gerçekçi çizim, ışığın tasarımına bakılan yerde kalsın. |
 | 43 | Tarayıcı testinde eklenen deneme görselleri sayfada görünmedi | `import('/src/lib/screen.ts')` uygulamanın kullandığı modül değildi: oturumda değişen dosyaları Vite `?t=…` ile yüklüyor, düz adres ayrı bir kopya açıyor | Test için modül alırken uygulamanın yüklediği adresi kullan: `performance.getEntriesByType('resource')` içinden bul. |

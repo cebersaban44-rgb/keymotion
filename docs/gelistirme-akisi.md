@@ -118,7 +118,7 @@ Yayındaki bir sürümde, bir sonraki sürümü bekleyemeyecek bir hata çıkars
    - `node tools/check-vendor-files.mjs`: resmi sürücünün dosyaları, programlar (.exe, .dll), arşivler (.rar, .7z) ve fabrika animasyonu repoya giremez. GIF yalnız `docs/media/` altında olabilir.
    - `node tools/check-version.mjs`: sürüm numarası üç dosyada aynı mı (aşağıda "Sürüm çıkarma").
 2. Arayüz: bağımlılıkları kurar, typecheck ve derleme (`pnpm build`) yapar.
-3. ESLint (`pnpm --dir app lint`): şimdilik yalnız rapor verir, kontrolü kırmızı yapmaz. Kurallar `tools/eslint/eslint.config.mjs`'de. ESLint ayrı bir pakette, çünkü typescript-eslint TypeScript 7'yi henüz desteklemiyor; o paket yalnız ayrıştırıcı için TypeScript 6 kurar.
+3. ESLint (`pnpm --dir app lint`): tek bir uyarı bile kontrolü kırmızı yapar (`--max-warnings 0`, betiğin içinde). Kurallar `tools/eslint/eslint.config.mjs`'de. ESLint ayrı bir pakette, çünkü typescript-eslint TypeScript 7'yi henüz desteklemiyor; o paket yalnız ayrıştırıcı için TypeScript 6 kurar.
 4. Rust: `rust-toolchain.toml`'daki sürümü kurar; rustfmt, clippy (`-D warnings`) ve `cargo test --workspace` çalıştırır.
 5. Bindings kontrolü: `cargo test` TypeScript tiplerini Rust'tan yeniden üretir. `app/src/bindings` commit'lenmiş halinden farklıysa ya da commit'lenmemiş yeni dosya varsa kontrol kırmızı olur.
 

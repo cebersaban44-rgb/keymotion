@@ -2,7 +2,7 @@
 // own colours (phase B1).
 
 import { AlignCenter, AlignLeft, AlignRight, Type } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Field, Segmented, Slider, Toggle } from "../../components/controls";
 import { useT, type MessageKey } from "../../lib/i18n";
 import { H, PROVEN_FRAMES, W, toRgba, type Prepared } from "../../lib/screenImport";
@@ -60,6 +60,18 @@ function withTemplate(spec: CardSpec, id: TemplateId, edited: boolean, t: T): Ca
 
 /** The last card in this session, so "Yazı kartı" reopens where it was. */
 let remembered: { spec: CardSpec; edited: boolean } | null = null;
+
+/**
+ * `useT()` returns a new function on every render; this one changes only
+ * with the language, so the sample-text memos below recompute when the
+ * language changes and not on every render.
+ */
+function useLocaleT(): T {
+  const t = useT();
+  const locale = useApp((s) => s.locale);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `t` is new every render but depends only on `locale`
+  return useCallback((k: MessageKey) => t(k), [locale]);
+}
 
 // ---------------------------------------------------------------- canvas
 
@@ -122,9 +134,8 @@ export function TextTile({ onStart }: { onStart: () => void }) {
     return () => window.clearInterval(id);
   }, []);
   const id = TEMPLATES[k]!;
-  const locale = useApp((s) => s.locale);
-  // `t` changes identity every render; the locale is what matters.
-  const spec = useMemo(() => withTemplate(defaultSpec(id), id, false, t), [id, locale]);
+  const localeT = useLocaleT();
+  const spec = useMemo(() => withTemplate(defaultSpec(id), id, false, localeT), [id, localeT]);
   return (
     <div
       data-tile="text"
@@ -160,6 +171,7 @@ export function TextFlow({
   onFinished: (d: Done) => void;
 }) {
   const t = useT();
+  const localeT = useLocaleT();
   const locale = useApp((s) => s.locale);
   const [spec, setSpec] = useState<CardSpec>(() => remembered?.spec ?? withTemplate(defaultSpec(), "name", false, t));
   const [edited, setEdited] = useState(remembered?.edited ?? false);
@@ -214,7 +226,7 @@ export function TextFlow({
   const loopMs = frames * (layout?.delayMs ?? 100);
   const contrast = Math.min(contrastRatio(spec.fg, spec.bg1), spec.gradient ? contrastRatio(spec.fg, spec.bg2) : 99);
   const raised = layout?.speed != null && layout.speed > spec.speed * 1.15;
-  const thumbs = useMemo(() => TEMPLATES.map((id) => withTemplate(spec, id, edited, t)), [spec, edited, locale]);
+  const thumbs = useMemo(() => TEMPLATES.map((id) => withTemplate(spec, id, edited, localeT)), [spec, edited, localeT]);
 
   return (
     <StudioFrame step={step} locked={busy} onCancel={onCancel} title={t("sc.src.text")} detail={t(TEMPLATE_KEY[spec.template])}>

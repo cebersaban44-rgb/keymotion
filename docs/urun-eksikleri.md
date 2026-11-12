@@ -197,7 +197,7 @@ GitHub sayfası planı (H) ve kullanıcının kararları en sonda.
   - ESLint `react-hooks`: dersler 20, 27 ve 33'ü yakalardı.
   - Sahte arka uçla e2e testleri. Sahte arka uçtaki kural kopyaları (`gauges.ts`, `pomodoroLights.ts`, `calendar.ts`, `reminders.ts`) Rust ile eşleşmeli.
   - Tedarik zinciri: cargo-deny/audit, Dependabot, sabit Rust sürümü.
-- **Sonra:** `?mock` ve `?pomofast` adres anahtarları kurulu sürümden çıkarılmalı.
+- ~~**Sonra:** `?mock` ve `?pomofast` adres anahtarları kurulu sürümden çıkarılmalı.~~ Bitti: sahte arka uç yalnız geliştirme sunucusunda var.
 
 ## İyi olanlar (korunacak)
 
@@ -297,7 +297,7 @@ Ayrıntı ve yardımcıların listesi: `DURUM.md` madde 38.
 | E. Veri ve tanılama | Günlük, tanılama, ErrorBoundary, dışa/içe aktarma, ışık durumu, takvim şifresi, gizlilik belgesi | **Birleşti** (PR #57). Gerçek uygulamada denendi |
 | E. Profiller | Profiller sayfası, Genel Bakış kartı | **Birleşti** (PR #57). Gerçek uygulamada dört yükleme denemesi geçti |
 | F. Ürünleştirme | Tepsi, NSIS, imza, sürüm hattı, güncelleyici, güç | Sırası ve ayrıntısı `docs/yol-haritasi.md` (Aşama 1–6) |
-| G. Repo ve hukuk | Lisans, NOTICE, üçüncü taraf lisansları, CI denetimleri, ESLint, Dependabot, cargo-deny, CHANGELOG | **Bitti** (PR #54). Kalan: ESLint'in 15 uyarısı, `?mock` anahtarlarının kurulu sürümden çıkarılması |
+| G. Repo ve hukuk | Lisans, NOTICE, üçüncü taraf lisansları, CI denetimleri, ESLint, Dependabot, cargo-deny, CHANGELOG | **Bitti** (PR #54; ESLint uyarıları temizlendi ve CI'ı engelliyor, `?mock` anahtarları kurulu sürümde yok) |
 | H. GitHub sayfası | İki dilli README ve belgeler, ekran görüntüleri, issue formları, topluluk dosyaları | Ürünleştirmeden sonra. Kararlar verildi: varsayılan İngilizce (`README.md`) + Türkçe (`README.tr.md`), repo adı `keymotion` (yapıldı), Discussions açık (yapıldı) |
 | I. Sorun bildirme | Uygulama içinden sorun bildirme, desteklenmeyen klavye bildirimi | Planlandı, ürünleştirmeyle birlikte (bölüm I) |
 | Dil | Uygulamanın varsayılan dili | **İngilizce** (2026-11-12, yapıldı); Türkçe seçilebilir |
