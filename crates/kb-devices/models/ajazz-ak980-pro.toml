@@ -28,6 +28,9 @@ command_usage_page = 0xFF13
 display_usage_page = 0xFF68
 capabilities = ["lighting", "per-key-rgb", "keymap", "macros", "options", "screen", "clock"]
 verified = true
+# Firmware versions (bcdDevice) every write was tested on. Others ask the
+# user once per session before the first write.
+verified_firmware = [0x0106]
 
 [[modes]]
 kind = "dongle"

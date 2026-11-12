@@ -50,4 +50,10 @@ own: LiveRestore | null,
 /**
  * The screen goes back to the user's own picture at this time.
  */
-goingBack: LiveBack | null, };
+goingBack: LiveBack | null, 
+/**
+ * Turning the live mode on asks first: there is no factory backup and
+ * the GIF page probably still shows the factory animation, which the
+ * first card erases for good. Asked once.
+ */
+factoryAckNeeded: boolean, };

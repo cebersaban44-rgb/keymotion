@@ -136,6 +136,37 @@ export const useKeymap = create<KeymapStore>((set, get) => {
   };
 });
 
+/**
+ * A keymap from a backup, opened as unsaved edits for `modelId`: nothing is
+ * written to the keyboard until the user saves it on the Key mapping page.
+ */
+export function stageKeymapImport(modelId: string, state: KeymapState) {
+  const draft = layersOf(state);
+  const store = useKeymap.getState();
+  if (store.modelId === modelId) useKeymap.setState({ draft });
+  persist({ modelId, draft, layer: store.layer });
+}
+
+/**
+ * The record may have changed outside the editor (a profile was loaded):
+ * read it again. When it did, the draft (made against the old one) goes.
+ */
+export async function adoptKeymapRecord(modelId: string) {
+  const state = await getKeymapState(modelId);
+  const saved = layersOf(state);
+  const store = useKeymap.getState();
+  const old = store.modelId === modelId ? store.saved : null;
+  if (old && LAYERS.every((l) => sameLayer(old[l], saved[l]))) return;
+  if (store.modelId === modelId) {
+    useKeymap.setState({
+      saved,
+      writtenMs: { base: state.base.writtenMs, fn: state.fn.writtenMs },
+      draft: clone(saved),
+    });
+  }
+  persist({ modelId, draft: clone(saved), layer: store.layer });
+}
+
 function clone(l: Layers): Layers {
   return { base: { ...l.base }, fn: { ...l.fn } };
 }

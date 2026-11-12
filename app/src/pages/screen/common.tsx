@@ -10,12 +10,14 @@
 //              and says what was done.
 // "Vazgeç" leaves the flow at any step before the upload.
 
-import { AlertTriangle, Check, Info, Library, Loader2, Pencil, Play, Upload, Usb, X } from "lucide-react";
+import { AlertTriangle, Check, Download, Info, Library, Loader2, Pencil, Play, Upload, Usb, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { ScreenItem } from "../../bindings/ScreenItem";
 import { Field } from "../../components/controls";
 import { decimal, percent, tNow, useT, type MessageKey } from "../../lib/i18n";
+import { useLive } from "../../lib/live";
 import { itemData, useScreen } from "../../lib/screen";
 import {
   H,
@@ -24,7 +26,6 @@ import {
   PROVEN_FRAMES,
   W,
   fromBlob,
-  pagesFor,
   toRgba,
   uploadSeconds,
   type Prepared,
@@ -68,6 +69,69 @@ export function loadFrames(id: string, first?: boolean) {
 
 /** The frame that shows the most (library thumbnails, confirmations). */
 export const pickThumb = brightestFrame;
+
+/**
+ * The name to show for a library item, or for something put back from the
+ * library: the factory backup gets its translated label (the backend keeps
+ * one stored name for it). Without an id, the stored name is compared.
+ */
+export function useItemName() {
+  const t = useT();
+  const factory = useScreen((s) => s.state?.items.find((i) => i.kind === "factory") ?? null);
+  return (x: { id?: string | null; name: string }) =>
+    factory && (x.id ? x.id === factory.id : x.name === factory.name) ? t("sc.factory.name") : x.name;
+}
+
+/** The library has the factory backup (`true` until the library is known). */
+export function useHasFactory() {
+  return useScreen((s) => (s.state ? s.state.items.some((i) => i.kind === "factory") : true));
+}
+
+/**
+ * "Resmi sürücüden yedek al": while there is no factory backup and AJAZZ's
+ * official driver left its copy on this PC (looked for once per run). It
+ * copies that file into the library as the factory backup.
+ */
+export function DriverBackup({ onDone }: { onDone?: () => void }) {
+  const t = useT();
+  const driver = useScreen((s) => s.driver);
+  const hasFactory = useHasFactory();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!hasFactory) useScreen.getState().findDriver();
+  }, [hasFactory]);
+  if (hasFactory || driver !== "found") return null;
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await useScreen.getState().backupFromDriver();
+      // The live mode no longer needs to ask about the factory animation.
+      await useLive.getState().load();
+      onDone?.();
+    } catch (e) {
+      setError(friendlyError(e, t));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={run}
+        disabled={busy}
+        className="flex h-8 w-fit items-center gap-1.5 rounded-lg border border-signal/50 px-3 text-[12px] font-semibold text-signal hover:bg-signal/10 disabled:opacity-50"
+        data-driver-backup
+      >
+        {busy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+        {busy ? t("sc.factory.backingUp") : t("sc.factory.backup")}
+      </button>
+      {error && <Hint tone="error">{error}</Hint>}
+    </div>
+  );
+}
 
 export function errorKey(e: unknown): MessageKey {
   if (e instanceof ImportError) {
@@ -241,15 +305,8 @@ export function Stats({ frames, loopMs }: { frames: number; loopMs: number }) {
   return (
     <div className="num flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-ink-2">
       <span>{t("sc.frames", { count: frames })}</span>
-      {frames > 1 && (
-        <span>
-          {t("sc.loop")}: {fmtSeconds(loopMs / 1000)}
-        </span>
-      )}
-      <span>{t("sc.pages", { count: pagesFor(frames) })}</span>
-      <span>
-        {t("sc.uploadTime")}: ~{fmtSeconds(uploadSeconds(frames))}
-      </span>
+      {frames > 1 && <span>{t("sc.loopOf", { time: fmtSeconds(loopMs / 1000) })}</span>}
+      <span>{t("sc.uploadAbout", { time: fmtSeconds(uploadSeconds(frames)) })}</span>
     </div>
   );
 }
@@ -352,7 +409,7 @@ export function PreviewPanel({
 
   return (
     <>
-      <div className="grid grid-cols-[480px_minmax(280px,1fr)] gap-6">
+      <div className="grid grid-cols-1 gap-6 @min-[860px]:grid-cols-[480px_minmax(280px,1fr)]">
         <div className="flex flex-col gap-2">
           <div className="relative">
             <FramePlayer frames={prepared.frames} delaysMs={prepared.delaysMs} className="h-[270px] w-[480px] rounded-lg bg-black" />
@@ -477,6 +534,60 @@ function InlineProgress() {
   );
 }
 
+/** The upload confirmation for a library item (its first frame as preview). */
+export function LibraryConfirm({ item, onCancel, onConfirm }: { item: ScreenItem; onCancel: () => void; onConfirm: () => void }) {
+  const [first, setFirst] = useState<Uint16Array | null>(null);
+  useEffect(() => {
+    loadFrames(item.id, item.frames === 1).then((d) => setFirst(pickThumb(d.frames)), console.error);
+  }, [item.id, item.frames]);
+  if (!first) return null;
+  return <ConfirmUpload frames={item.frames} loopMs={item.loopMs} preview={first} onCancel={onCancel} onConfirm={onConfirm} />;
+}
+
+/**
+ * "Yeniden yükle" for an upload that was cut short: confirms like any
+ * upload, then uploads the item again (the progress toast follows it).
+ */
+export function RetryUpload({ item, usb, onDone }: { item: ScreenItem; usb: boolean; onDone?: () => void }) {
+  const t = useT();
+  const upload = useScreen((s) => s.upload);
+  const [confirm, setConfirm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const run = async () => {
+    setConfirm(false);
+    setError(null);
+    try {
+      await useScreen.getState().uploadToKeyboard(item, "library");
+      onDone?.();
+    } catch (e) {
+      setError(friendlyError(e, t));
+    }
+  };
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        disabled={!usb || !!upload}
+        title={!usb ? t("sc.needsUsbShort") : undefined}
+        onClick={() => setConfirm(true)}
+        className="flex h-8 w-fit items-center gap-1.5 rounded-lg bg-signal px-3 text-[12px] font-semibold text-signal-ink disabled:opacity-40"
+        data-retry-upload
+      >
+        {upload?.id === item.id ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+        {t("sc.incomplete.action")}
+      </button>
+      {error && <Hint tone="error">{error}</Hint>}
+      {/* On the page body: the button may sit in a floating notice. */}
+      {createPortal(
+        <AnimatePresence>
+          {confirm && <LibraryConfirm item={item} onCancel={() => setConfirm(false)} onConfirm={run} />}
+        </AnimatePresence>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
 export function ConfirmUpload({
   frames,
   loopMs,
@@ -514,16 +625,10 @@ export function ConfirmUpload({
         <div className="flex gap-4">
           <FramePlayer frames={[preview]} delaysMs={[100]} className="h-[68px] w-[120px] shrink-0 rounded-md bg-black" />
           <div className="num flex flex-col gap-0.5 text-[13px] text-ink-2">
-            <span>
-              {t("sc.frames", { count: frames })}
-              {frames > 1 ? ` · ${t("sc.loop")} ${fmtSeconds(loopMs / 1000)}` : ""}
-            </span>
-            <span>
-              {t("sc.pages", { count: pagesFor(frames) })} · ~{fmtSeconds(uploadSeconds(frames))}
-            </span>
-            <span>
-              {t("sc.confirm.todayCount")}: {(state?.uploadsToday ?? 0) + 1}
-            </span>
+            <span>{t("sc.frames", { count: frames })}</span>
+            {frames > 1 && <span>{t("sc.loopOf", { time: fmtSeconds(loopMs / 1000) })}</span>}
+            <span>{t("sc.uploadAbout", { time: fmtSeconds(uploadSeconds(frames)) })}</span>
+            <span>{t("sc.confirm.todayNth", { n: (state?.uploadsToday ?? 0) + 1 })}</span>
           </div>
         </div>
         <ul className="flex flex-col gap-2 text-[13px] text-ink-2">
@@ -539,7 +644,10 @@ export function ConfirmUpload({
             ) : (
               <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" />
             )}
-            {factory ? t("sc.confirm.factoryKept") : t("sc.confirm.noFactory")}
+            <span className="flex flex-col gap-2">
+              {factory ? t("sc.confirm.factoryKept") : t("sc.confirm.noFactory")}
+              <DriverBackup />
+            </span>
           </li>
           <li className="flex gap-2">
             <Info size={14} className="mt-0.5 shrink-0 text-ink-3" /> {t("sc.wear.hint")}

@@ -29,6 +29,7 @@ import {
   Thumb,
   loadFrames,
   pickThumb,
+  useItemName,
   type Done,
   type Step,
 } from "./common";
@@ -65,8 +66,11 @@ export function SlideTile({ onStart }: { onStart: () => void }) {
 }
 
 /** Three library pictures fanned out, or plain panels when it is empty. */
+const NO_ITEMS: ScreenItem[] = [];
+
 function SlideStackArt() {
-  const items = useScreen((s) => s.state?.items ?? []);
+  // The store value itself (lesson 33): a fresh [] each call loops forever.
+  const items = useScreen((s) => s.state?.items) ?? NO_ITEMS;
   const picks = items.slice(0, 3);
   return (
     <div className="relative h-[90px] w-[200px]">
@@ -105,6 +109,7 @@ export function SlideFlow({
   onFinished: (d: Done) => void;
 }) {
   const t = useT();
+  const itemName = useItemName();
   const [slides, setSlides] = useState<Slide[]>([]);
   const [transition, setTransition] = useState<Transition>("fade");
   const [dither, setDither] = useState(true);
@@ -200,10 +205,10 @@ export function SlideFlow({
       if (!still) return;
       const key = newKey();
       stills.current.set(key, still);
-      setSlides((s) => [...s, { key, kind: "library", name: item.name, seconds: SLIDE_DEFAULT_S }]);
+      setSlides((s) => [...s, { key, kind: "library", name: itemName(item), seconds: SLIDE_DEFAULT_S }]);
     } catch (e) {
       console.error(e);
-      setFailed([item.name]);
+      setFailed([itemName(item)]);
     }
   };
 
@@ -259,7 +264,7 @@ export function SlideFlow({
           void addFiles([...e.dataTransfer.files]);
         }}
       >
-        <div className="grid grid-cols-[480px_minmax(280px,1fr)] gap-6">
+        <div className="grid grid-cols-1 gap-6 @min-[860px]:grid-cols-[480px_minmax(280px,1fr)]">
           <div className="flex flex-col gap-2">
             <div className="relative h-[270px] w-[480px] overflow-hidden rounded-lg bg-black">
               {show ? (
@@ -526,7 +531,9 @@ function LibraryPicker({
   disabled: boolean;
 }) {
   const t = useT();
-  const items = useScreen((s) => s.state?.items ?? []);
+  const itemName = useItemName();
+  // The store value itself (lesson 33): a fresh [] each call loops forever.
+  const items = useScreen((s) => s.state?.items) ?? NO_ITEMS;
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2/40 p-3">
       <div className="flex items-center justify-between">
@@ -550,11 +557,11 @@ function LibraryPicker({
                 type="button"
                 disabled={disabled}
                 onClick={() => onPick(it)}
-                title={it.name}
+                title={itemName(it)}
                 className="flex w-full flex-col items-start gap-1 rounded-lg p-1 text-left hover:bg-surface disabled:opacity-40"
               >
                 <Thumb item={it} />
-                <span className="w-full truncate text-[11px] text-ink-2">{it.name}</span>
+                <span className="w-full truncate text-[11px] text-ink-2">{itemName(it)}</span>
               </button>
             </li>
           ))}

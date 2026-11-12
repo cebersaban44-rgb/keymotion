@@ -685,22 +685,23 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - PR #53: Keymotion adı, logo ve simgeler.
         - Kimlik `dev.keymotion`; eski `dev.klavye.studio` klasörleri ilk açılışta `migrate.rs` ile taşınıyor.
         - Gerçek uygulamada doğrulandı: ayarlar, kayıtlar, ekran kütüphanesi ve WebView verisi taşındı.
-    - **Açık PR:** #54 (lisans ve CI), auto-merge açık, CI bekleniyordu. İçeriği:
+    - **Birleşen PR'lar:** #54 (lisans ve CI) ve #56 (bu maddenin ilk hâli). #54'ün içeriği:
       - LICENSE-MIT/APACHE ve NOTICE;
       - üçüncü taraf lisansları: `node tools/notices.mjs` → `app/public/third-party-notices.txt`; önce bir kez `cargo install --locked --features cli cargo-about`;
       - CI'da engelleyen denetimler: `tools/check-text.mjs` (BOM ve bozuk karakter), `check-vendor-files.mjs`, `check-version.mjs`;
       - ESLint `tools/eslint` içinde (typescript-eslint TS 7'yi desteklemiyor), `pnpm --dir app lint`, engellemiyor; 15 `exhaustive-deps` uyarısı;
       - `rust-toolchain.toml` (1.99.1), Dependabot, ayrı ve zorunlu olmayan cargo-deny işi, CHANGELOG.md.
-    - **Yardımcılar** (2026-11-12 itibarıyla):
+    - **Yardımcılar** (hepsi bitti, 2026-11-12):
 
-      | Alan (eksik listesi) | Ajan id | Durum | Ne yapıyor |
+      | Alan (eksik listesi) | Ajan id | Commit | Ne yaptı |
       |---|---|---|---|
-      | Cihaz güvenliği (B4, B5, B7, B10) | aef20208906d41455 | **Bitti**, commit `7d765cf` | Ayrıntısı tablonun altında. |
-      | Ekran güvenliği (B1, B2, B3, B6) | aee38f5d748799452 | Çalışıyor | Resmi sürücüden fabrika GIF'ini bulup yedekleme; canlı modu açarken onay; yarım kalan yüklemeyi işaretleme; yükleme sürerken kapatma koruması ve `ShutdownBlockReasonCreate`; dürüst ömür metni; fabrika etiketinin çevirisi. |
-      | Günlük, tanılama, veri (E) | aec6769c6efcff3ff | Çalışıyor | Günlük dosyası ve panik notu; "Tanılama bilgisini kopyala"; ErrorBoundary; dışa/içe aktarma; ışık durumunu arka uca taşıma; takvim adresi DPAPI; `PRIVACY.md` ve `docs/gizlilik.md`. |
-      | Görsel tur: ortak parçalar (C3, C4, C7–C9) | a9b9fd62f33be953b | Çalışıyor | Tek `KeyboardView` (gerçek renk, sönük tuş koyu); `ActionBar` (Işıklar, Tuş atama, Makrolar); kontrast; `MotionConfig`; kart içinde kart temizliği; efekt küçük resimleri. |
-      | Görsel tur: iskelet ve içerik (C1, C2, C5, C6, D, hatırlatıcı bildirimi) | a8d589af398a32a3a | Çalışıyor | Açılış ekranı; kenar çubuğu (Profiller `PROFILES_ENABLED=false` arkasında, ayrı Takvim sayfası); dar pencere ve en küçük boyut; yeni Genel Bakış; içerik düzeltmeleri; hatırlatıcılar için Windows bildirimi. |
-      | Repo ve lisans (G) | a84c1a27b55bfcb20 | **Bitti** → PR #54 | |
+      | Cihaz güvenliği (B4, B5, B7, B10) | aef20208906d41455 | `7d765cf` | Ayrıntısı tablonun altında. |
+      | Ekran güvenliği (B1, B2, B3, B6) | aee38f5d748799452 | `cb87c58` | Resmi sürücüden fabrika GIF'ini bulup yedekleme (`official_driver.rs`); canlı modu açarken bir kez onay; yarım kalan yüklemeyi diskte işaretleme ve sonraki açılışta önerme (`pages/screen/Safety.tsx`); her kalıcı yazmada `flash-write` olayı, kapatma koruması ve `ShutdownBlockReasonCreate`; "tahmini" ömür metni. |
+      | Günlük, tanılama, veri (E) | aec6769c6efcff3ff | `1e55109` | Günlük dosyası (`%LOCALAPPDATA%\dev.keymotion\logs`, 7 gün, adres ve kullanıcı adı ayıklanır) ve panik notu; "Tanılama bilgisini kopyala"; ErrorBoundary; dışa/içe aktarma (`backup.rs`, klavyeye yazmaz); ışık durumu `lighting.json`; takvim adresi DPAPI (`dpapi:` öneki); `PRIVACY.md` ve `docs/gizlilik.md`. |
+      | Görsel tur: ortak parçalar (C3, C4, C7–C9) | a9b9fd62f33be953b | `9dc8f2c` | Tek `KeyboardView`; `ActionBar` ("Klavyeye kaydet"/"Geri al"); kontrast ≥ 4.5:1; `MotionConfig`; tek `PALETTE`; efekt küçük resimleri (`EffectThumb`). |
+      | Görsel tur: iskelet ve içerik (C1, C2, C5, C6, D, hatırlatıcı bildirimi) | a8d589af398a32a3a | `e895284` | Açılış ekranı (`Welcome.tsx`); klavyesiz araç sayfaları (`OFFLINE_KEYBOARD`); gruplu kenar çubuğu ve ayrı Takvim sayfası; 1200 px altında simgeli kenar çubuğu; en küçük pencere 960×600; yeni Genel Bakış; içerik düzeltmeleri; hatırlatıcılar için Windows bildirimi (`notify.rs`); `open_link` yalnızca proje GitHub adresini açar. |
+      | Repo ve lisans (G) | a84c1a27b55bfcb20 | PR #54 | |
+      | Profiller (E, tuvalin 4. ekranı) | a91c8367cc573f58f | `0502c57` | `profiles.rs` (`profiles.json`, en çok 100 profil, ad 40 karakter), `Profiles.tsx`, `lib/profiles.ts`; parça parça yükleme (ışık, tuş atama, makrolar, sonra ekran görseli), aynı olan parça yazılmaz; silinemeyen "Varsayılan" (fabrika efekti: kayan gökkuşağı, parlaklık 5, hız 3, `EffectSettings::factory()`; iki katman boş; makro yok); profil dosyası `kind: "keymotion-profile"`; yedekte `profiles` bölümü (kimliğe göre birleşir); Genel Bakış'ta "Profil" kartı; sahte arka uçta `?failPart=keymap`. |
 
       Cihaz güvenliği yardımcısının yaptıkları:
       - tek örnek (`tauri-plugin-single-instance`);
@@ -710,38 +711,68 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
       - bozuk ayar dosyası `.bak-…` olarak saklanır ve bir kez bildirilir;
       - yeni dosyalar `lib/safety.ts`, `components/SafetyDialogs.tsx`; sahte arka uçta `?fw=1.07` ve `?reset=keymap,macros`.
 
-      Görsel turun tasarımı onaylı. Tuval: https://claude.ai/artifact/EdVTxhZYprdoGeiHPB1QuS; yerel kopyası scratchpad'deki `ui-canvas/project/*.dc.html`, yardımcılar oradan okuyor.
+      Görsel turun tasarımı onaylı. Tuval: https://claude.ai/artifact/EdVTxhZYprdoGeiHPB1QuS; yerel kopyası scratchpad'deki `ui-canvas/project/*.dc.html`. Tuval hataları sürüm 13'te bitti (ders 53).
+    - **Birleştirme (2026-11-12): PR #57, dal `integrate/pre-release`, worktree `.claude/worktrees/integrate`.** Otomatik birleştirme kapalı; profiller eklenip gerçek uygulamada denenince açılacak.
+      - Sıra: cihaz → ekran → tanılama → ortak parçalar → iskelet. Çakışmalar "iki tarafı da tut" türündeydi.
+      - `i18n.ts` son birleştirmede anahtar anahtar üç yönlü birleştirildi (ortak ata `8260281`): bir tarafın sildiği ya da değiştirdiği metin geri gelmedi. Sonuç: 1165 anahtar, TR ve EN eşit, kullanılmayan yok.
+      - Birleştirme sonrası düzeltmeler:
+        - üç ESLint hatası;
+        - Genel Bakış `kb.firmware`'i doğrudan okuyor;
+        - testlerdeki eski "Klavye Stüdyo" adı;
+        - efekt için "kaydedilmedi" metni;
+        - açılış başlığı "Keymotion'a hoş geldiniz" (tuvaldeki gibi);
+        - kullanılmayan `BatteryGauge` silindi.
+      - Denetimler: fmt, clippy `-D warnings`, `cargo test --workspace` (303 test), tsc, ESLint (0 hata, 15 bilinen uyarı), metin, sürüm ve satıcı dosyası denetimleri temiz.
+      - Sahte cihazla tarayıcıda: her sayfa USB, BT, alıcı ve klavyesiz; TR/EN; açık/koyu; 960×600, 1024×640 ve 1360×900. Çökme, yatay kaydırma, taşma ya da konsol hatası yok.
+    - **Gerçek uygulamada doğrulananlar (2026-11-12, CDP).** Önce `%APPDATA%\dev.keymotion` ve WebView "Local Storage" yedeği alındı (ders 54); yedek scratchpad'de `appdata-backup-2026-11-12`.
+      - 11 sayfa açılıyor. Genel Bakış klavye yazılımını (1.06) ve "Şarj tamamlandı"yı gösteriyor.
+      - `lighting.json` oluştu, eski `ks.lighting.v1` silindi.
+      - Takvim adresi `dpapi:` ile şifrelendi ve takvim hatasız okunuyor.
+      - Günlük dosyası oluşuyor; kullanıcı adı ve tam adres yok. Tanılama metni doğru. Sürücü araması 1,6 sn sürdü (resmi sürücü bu bilgisayarda kurulu değil; kütüphanede fabrika yedeği zaten var).
+      - İkinci açılış hemen çıkıyor ve açık pencereyi öne getiriyor.
+      - Bozuk `keymap.json`: bildirim çıktı, dosya `.bak-…` olarak saklandı. Gerçek kayıt yedekten aynen geri kondu.
+      - Hatırlatıcı Windows bildirimi: geçici bir hatırlatıcı zamanında çaldı (`notify=true`, hata yok). Hatırlatıcı silindi, bildirim ayarı eski hâline (kapalı) döndü. Bildirimin ekranda göründüğünü kullanıcı henüz söylemedi.
+      - Dışa aktarma (4 MB, takvim adresi yok) ve içe aktarma penceresi ("Vazgeç" ile kapatıldı). Deneme dosyası İndirilenler'den scratchpad'e taşındı.
+      - Kullanıcının onayıyla üç yazma denemesi:
+        1. Mevcut tuş başına renk tasarımı (hepsi sönük, parlaklık 5) aynen yeniden kaydedildi: 1,3 sn, engel yok.
+        2. Adı `SignalRgb.exe` olan zararsız bir program (`PING.EXE` kopyası) açıkken kayıt 55 ms'de reddedildi, hiçbir şey yazılmadı.
+        3. "cat" yeniden yüklenirken pencere kapatılmak istendi: uyarı çıktı, uygulama açık kaldı. Yükleme 37 sn'de eksiksiz bitti, ardından uygulama kendiliğinden kapandı (`useCloseGuard`: sorulacak bir şey kalmayınca kapatır).
+      - Bu denemelerden çıkan düzeltmeler (PR #57'de):
+        - Kapatma penceresi süren yazmayı "Değişiklikler kaydedilsin mi? / Kaydet ve çık" diye soruyordu. Artık yalnızca süren yazma varsa "Klavyeye kaydediliyor / Kayıt bitince uygulama kendiliğinden kapanır" diyor; düğmeler "Vazgeç" ve "Hemen çık". Bu yeni hâl gerçek bir yüklemeyle henüz görülmedi.
+        - İlk pencere küçük ekranlara sığacak kadar küçülüyor (`fit_to_screen`). Bu bilgisayar 2560×1440 %125, burada küçültme devreye girmiyor; küçültme kısmı denenmedi.
+        - Geri yükleme penceresi "0 makro" yerine "Makro yok" diyor.
+        - Sahte arka uçta kapatma isteği: `dispatchEvent(new Event("mock-close-requested"))`.
+      - Not: günlükte saatte birkaç kez `keyboard refused 0xF5` (ayna okuması) uyarısı var; okuma yeniden deneniyor, zararsız.
+      - **Profiller (kullanıcının onayıyla, 2026-11-12):**
+        - Önce geri dönüş noktası olarak "Kendi ayarlarım" oluşturuldu (yalnızca `profiles.json`'a yazar). Profil klavyedeki durumu doğru tanıdı: tuş başına renk tüm tuşlar sönük, parlaklık 5; tuş atama fabrika ayarında; makro yok.
+        1. "Varsayılan" yüklendi: yalnızca ışık yazıldı (1 sn), tuş atama ve makrolar aynı olduğu için atlandı. Klavye kayan gökkuşağına döndü; Genel Bakış'ta Işık "Akan ışık", Profil "Varsayılan".
+        2. "Kendi ayarlarım" geri yüklendi: ışık yeniden tüm tuşlar sönük, `lighting.json` eski hâline döndü.
+        3. Sahte `SignalRgb.exe` açıkken "Varsayılan": ilk parçada reddedildi ("SignalRGB açık…"), hiçbir şey yazılmadı.
+        4. Ekran görselli profil ("cat"): önce GIF sayfasına "Günaydın" yüklendi (2,9 sn). Profil yüklenirken pencere kapatılmak istendi: yeni pencere çıktı ("Klavyeye kaydediliyor", "Bitmesi bekleniyor…", "Vazgeç"/"Hemen çık", odak "Vazgeç"te). "Vazgeç"ten sonra yükleme 41 sn'de eksiksiz bitti, uygulama açık kaldı, GIF sayfasında yine "cat".
+        - Deneme profili silindi; "Kendi ayarlarım" kullanıcının profili olarak kaldı.
+        - Deneme notları: CDP'den Türkçe metin PowerShell üzerinden geçince bozuluyor, Bash'ten çalıştır. `Process.CloseMainWindow()` bazen başlıksız bir yardımcı pencereyi hedefliyor; kapatma denemesinde "Keymotion" başlıklı pencereye `WM_CLOSE` gönder. Arka uçtan oluşturulan profil sayfaya ancak sayfa yeniden açılınca gelir.
+      - Denenmeyenler:
+        - klavye yokken açılış ekranı (kablo çekilmeli);
+        - yükleme ortasında kablo çekip "yarım kaldı" önerisi;
+        - Windows'u yükleme sırasında kapatma;
+        - "Klasörü aç" ve "Başka bir klavyeniz mi var?" bağlantısı;
+        - 1280 genişlikte %150 kenar çubuğu.
     - **Sıradaki adımlar:**
-      1. **Birleştirme.** Kalan dört yardımcı bitince dallar, develop'tan açılan tek bir entegrasyon dalında birleştirilir (bir entegrasyon ajanı yapabilir).
-         - Sıra: cihaz → ekran → tanılama → ortak parçalar → iskelet.
-         - `i18n.ts` çatışmalarında iki taraf da korunur; geçici `merge=union` kullanılabilir, sonra tsc çift anahtarı yakalar.
-         - Bazı worktree'ler yeniden adlandırmadan önceki `8260281`'den açıldı. Develop'taki Keymotion adı, simgeler ve `dev.keymotion` korunmalı, ajan dallarındaki eski değerler bunları ezmemeli.
-      2. **Denetimler:** cargo test/clippy/fmt, tsc, `node tools/check-*.mjs`, `pnpm --dir app lint`.
-      3. **Gerçek uygulamada doğrulama (CDP):**
-         - ikinci açılış eski pencereyi öne getiriyor;
-         - kullanıcının klavyesinde kayıt çalışıyor (fw 1.06, tek klavye);
-         - SignalRGB açıkken uyarı çıkıyor;
-         - bozuk `keymap.json` için bildirim ve `.bak` dosyası;
-         - klavye yokken açılış ekranı;
-         - yeni Genel Bakış, tek klavye çizimi, kaydetme çubuğu, 1024×640 pencere;
-         - günlük dosyası, tanılama ve dışa/içe aktarma;
-         - takvim adresi şifreli ve okunuyor;
-         - hatırlatıcı Windows bildirimi;
-         - fabrika yedeği bulma ve canlı mod onayı.
-      4. **Profiller** (yeni ajan, ilk birleştirmeden sonra): `profiles.rs`, `Profiles.tsx` ve Genel Bakış'ta profil kartı; `PROFILES_ENABLED` açılır. Tasarım tuvalin 4. ekranında.
-      5. **Keymotion'ın kendi açılış animasyonu:** fabrika yedeği olmayanların dönebileceği özgün görsel.
-      6. **Küçükler:**
+      1. ~~Profiller~~: birleşti, denetimler temiz (324 test), gerçek uygulamada denendi. PR #57 develop'a birleştirilir.
+      2. **Keymotion'ın kendi açılış animasyonu:** fabrika yedeği olmayanların dönebileceği özgün görsel.
+      3. **Küçükler:**
          - ESLint uyarıları;
          - ders 40'ı güncellemek (ESLint artık var);
-         - Dependabot'tan sonra notices dosyasını yenilemek.
-      7. **Sonra ürünleştirme (F):**
+         - Dependabot'tan sonra notices dosyasını yenilemek (PR #55 toml 1.2 bekliyor).
+      4. **Sonra ürünleştirme (F):**
          - tepsi ve arka plan: canlı kartlar WebView'da çiziliyor, bunun için önce karar gerekli;
          - NSIS ayarları ve imza (SignPath Foundation ya da Azure Artifact Signing);
          - sürüm hattı ve güncelleyici;
-         - güç kullanımı.
+         - güç kullanımı;
+         - **uygulama içinden sorun bildirme** (kullanıcının fikri, 2026-11-12): `docs/urun-eksikleri.md` bölüm I.
 
          Ardından GitHub sayfası (H): iki dilli, TR/EN ve açık/koyu ekran görüntüleriyle.
-      8. **Kullanıcıya sorulacak:** GitHub repo adının `keymotion` olması ve Rust paket adı.
+      5. **Kullanıcıya sorulacak:** GitHub repo adının `keymotion` olması ve Rust paket adı. (Sorun bildirimi kararı verildi: yalnızca GitHub, e-posta yok.)
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -761,7 +792,8 @@ crates/
                 keymap.rs (katmanı modele göre denetler: Fn kilidi, bilinmeyen tuş, kanonik biçim).
   kb-winsys/    Windows okumaları (göstergeler için): işlemci, ekran kartı (PDH), bellek, hoparlör ses düzeyi ve
                 mikrofon sessizliği (Core Audio); son girdiden bu yana geçen süre (hatırlatıcılar). `unsafe` yalnız
-                burada; examples/probe.rs bu PC'nin değerlerini yazar.
+                burada; examples/probe.rs bu PC'nin değerlerini yazar. os.rs: Windows sürümü (tanılama için);
+                secret.rs: kullanıcıya özel şifreleme (DPAPI; takvim adresleri).
   kb-cli/       `kb` geliştirici aracı (bkz. §5).
 app/
   src-tauri/    İnce kabuk. device.rs: TEK cihaz aktörü (HID'e dokunan tek yer; istek kuyruğu, canlı akış
@@ -778,6 +810,11 @@ app/
                 reminders.rs: hatırlatıcılar (zamanlama, dalga katmanı, kartla ekranı tutma, reminders.json). Işık katmanları
                 device.rs'te: Göstergeler → Zamanlayıcı → Uyarılar → Hatırlatmalar → Dalga (`Nudges`), en üstte Işıklar
                 önizlemesi (`LightLayer`, `compose`).
+                logging.rs: günlük dosyası (uygulamanın log klasöründe günde bir dosya, 7 gün, 4 MB; adresler ve
+                kullanıcı adı yazılmadan çıkarılır) ve çökme notu. diagnostics.rs: "Tanılama bilgisini kopyala" metni,
+                klasörleri açma. lighting.rs: Işıklar sayfasının durumu (lighting.json; eskiden localStorage'daydı).
+                backup.rs: dışa/içe aktarma (tek JSON dosya, biçim dosyanın başında; içe aktarma klavyeye yazmaz).
+                calendar.json'daki takvim adresleri DPAPI ile şifreli (`dpapi:` öneki).
   src/          React 19 + TS 7 + Tailwind 4 + motion. lib/ipc.ts (tipli köprü, seri kuyruk), lib/lighting.ts
                 (Işıklar durumu), lib/mirror.ts, components/KeyboardView.tsx (geometriden çizim, boyama),
                 components/CalibrationCard.tsx, components/UnsavedDialog.tsx, lib/unsaved.ts (kaydedilmemiş
@@ -866,7 +903,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 - **Sayfanın kendi modülleri:** Test için bir modülü `import()` ile alırken, uygulamanın yüklediği adresi kullan (`performance.getEntriesByType('resource')`). Oturumda değişen dosyaları Vite `?t=…` ile yükler; düz adres ayrı bir kopya açar (ders 43).
 - **Kullanıcının uygulaması** Vite'tan, yani çalışma ağacından yüklenir. Önce dalı hazırla, uygulamayı en son başlat (ders 39). Rust değişince uygulamayı durdur, `cargo build -p klavye-studio`, yeniden başlat.
 
-**Klavyeye yazan testler:** Kullanıcının kayıtlı tasarımını ve uygulama durumunu (`localStorage` içindeki `ks.lighting.v1`, `ks.keymap.v1`) önce yedekle, testten sonra geri yükle. Yalnızca gereken kadar flash yazımı yap.
+**Klavyeye yazan testler:** Kullanıcının kayıtlı tasarımını ve uygulama durumunu (veri klasöründeki `lighting.json`, `localStorage` içindeki `ks.keymap.v1`) önce yedekle, testten sonra geri yükle. Yalnızca gereken kadar flash yazımı yap.
 - **Tuş atama** klavyeden okunamaz: yazmadan önce kullanıcıya mevcut atamasını sor. Testten sonra katmanı fabrika ayarına döndür. CLI yazımı uygulamanın `keymap.json` kaydına girmez; uygulamayla çalışırken atamayı uygulamadan yaz.
 - Kullanıcıdan tuşa basmasını isterken tuşu belirsizliksiz adlandır ("sayı tuş takımındaki / tuşu, Num Lock'a dokunmadan"). Uygulamadaki tuş testi kutusu ya da zaman damgalı bir dinleyici, kullanıcının kendi basışlarını ayırmaya yarar.
 
@@ -928,7 +965,8 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 50 | `cargo build` ve bir test koşusu çıktısız "exit 101" verdi (2026-11-11) | C: sürücüsü dolmuştu (0 MB boş); `target` 35 GB, bunun 17 GB'ı `debug\incremental` | Çıktısız derleme hatasında önce boş yere bak (`Get-PSDrive C`). Silmeden önce kullanıcıya sor; `target\debug\incremental` güvenle silinir, kendiliğinden yeniden oluşur. |
 | 51 | Tarayıcı panelinde sayfa sayfa metin taraması ilerlemedi (2026-11-11) | Sayfa geçişleri animasyonlu; panel gizliyken tarayıcı animasyonları çalıştırmıyor, yeni sayfa hiç açılmıyor | Bütün sayfaları gezen denetimleri gerçek uygulamada (CDP, görünür pencere) yap. Panel gizliyse ekran görüntüsü de zaman aşımına uğrar; `get_page_text` ya da CDP kullan. |
 | 52 | Genel Bakış'ta "240×135" yerine bozuk karakter çıktı; PR #50 develop'a öyle birleşti (2026-11-11) | Bir dosyada küçük bir değişiklik PowerShell 5.1'in `Get-Content -Raw` / `Set-Content -Encoding utf8` ikilisiyle yapıldı. `Get-Content` kodlama verilmezse dosyayı ANSI (cp1254) okur; Türkçe harfler ve × bozulup UTF-8 (BOM'lu) yazıldı. Tarama bunu yakalamadı: aranan kelimeler değil, bozuk harf dizisiydi | Dosya içeriğini PowerShell'de okuyup yazma; Edit aracını ya da `python -I` (açık `encoding="utf-8"`) kullan. Taramaya bozuk kodlama denetimi ekle (`Ã`, `Ä±`, `ÅŸ` gibi diziler). Bozulan dosya `metin.encode("cp1254").decode("utf-8")` ile birebir geri döndü. |
-| 53 | Claude Design tuvalinde artboard'lar hata verdi (2026-11-11/12) | Tuval aracı `.dc.html` betiğini kaçış karakterlerine duyarlı bir metnin içine koyuyor: betikteki ters eğik çizgi, ters tırnak ve `${` kodu bozdu (`Unexpected token ';'`). Ayrıca SVG öznitelikleri tireli yazılmıştı (`stroke-width`; React `strokeWidth` ister), stil delikleri metin olarak verilmişti (React stil nesnesi ister), form alanlarında `value`/`checked` vardı | Tuval betiklerinde bu karakterleri yazma, `String.fromCharCode` ile üret. SVG özniteliklerini camelCase yaz, `style="{{x}}"` deliğine nesne ver, statik form alanında `defaultValue`/`defaultChecked` kullan. Tuvali kendin göremiyorsan (claude.ai girişi) kullanıcıdan hatanın ekran görüntüsünü iste. |
+| 53 | Claude Design tuvalinde artboard'lar hata verdi (2026-11-11/12) | Tuval aracı `.dc.html` betiğini kaçış karakterlerine duyarlı bir metnin içine koyuyor: betikteki ters eğik çizgi, ters tırnak ve `${` kodu bozdu (`Unexpected token ';'`). Ayrıca SVG öznitelikleri tireli yazılmıştı (`stroke-width`; React `strokeWidth` ister), stil delikleri metin olarak verilmişti (React stil nesnesi ister), form alanlarında `value`/`checked` vardı | Tuval betiklerinde bu karakterleri yazma, `String.fromCharCode` ile üret. SVG özniteliklerini camelCase yaz, `style="{{x}}"` deliğine nesne ver, statik form alanında `defaultValue`/`defaultChecked` kullan. Tuvali kendin göremiyorsan (claude.ai girişi) kullanıcıdan hatanın ekran görüntüsünü iste. **Sonradan bulunan asıl neden (sürüm 13):** `K.map(... => { ... };` — kapanış parantezi eksikti; karakter düzeltmeleri hatayı gidermedi. Kaydetmeden önce her tuval betiğini `node tools/check-dc.mjs project/*.dc.html` ile derleyip `renderVals()`'ı çalıştır. |
+| 54 | Yeni sürümü gerçek uygulamada denemek kullanıcının verisini tek yönlü değiştirdi (2026-11-12) | Birleşik sürüm ilk açılışta takvim adresini DPAPI ile şifreliyor ve ışık durumunu WebView'dan `lighting.json`'a taşıyor; eski sürüm bunları geri okuyamaz. Bozuk kayıt denemesi de gerçek `keymap.json`'u bozmayı gerektirdi | Veri taşıyan bir sürümü ilk kez açmadan önce `%APPDATA%\dev.keymotion` ve `%LOCALAPPDATA%\dev.keymotion\EBWebView\Default\Local Storage` yedeğini scratchpad'e al. Dosya bozma denemesinde önce yedeğin birebir aynı olduğunu (hash) doğrula, denemeden sonra aynen geri koy ve `.bak` dosyasını kaldır. |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 
@@ -977,7 +1015,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
           - **Destek haritası yapıldı** (madde 37, `docs/destek-haritasi.md`): desteklenen ve eklenebilecek klavyeler, bağlantı modlarına göre özellikler, Bağlantı sayfası, 2.4G'de yanlış açık görünen sayfalar düzeltildi, HID şekil denetimi, arayüz metin borçları kapandı, USB'de pil araştırması (yüzde yok; Fn ışığından "şarj oluyor" / "şarj tamamlandı").
           - **İlk sürüm öncesi eksik listesi** (2026-11-11, `docs/urun-eksikleri.md`): iki bağımsız inceleme (tasarım ve kullanım; ürün hazırlığı) ve bu oturumun gözlemleri, ciddi olanlar kodda doğrulandı. Sıra: kimlik (isim, logo, uygulama kimliği) → güven → görsel ve içerik turu → veri ve tanılama → ürünleştirme ve repo. İsim adayları ve logo konseptleri Claude Design tuvalinde (Keypane önerildi).
           - Kullanıcı isim ve logoyu seçti (Keymotion, E konsepti). Ardından eksik listesinin tamamı başladı (madde 38).
-          - **Kalınan yer (2026-11-12): madde 38'deki "Sıradaki adımlar"** — çalışan yardımcıların bitmesini beklemek, dalları birleştirmek, gerçek uygulamada doğrulamak, sonra profiller. Kullanıcıyla klavyede denenecekler: Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri.
+          - **Kalınan yer (2026-11-12, gece): madde 38'deki "Sıradaki adımlar"** — altı yardımcı (profiller dahil) birleşti, gerçek uygulamada denendi, PR #57 develop'a gidiyor. Sırada: Keymotion açılış animasyonu, küçükler, sonra ürünleştirme (F) ve sorun bildirme (I). Kullanıcıyla klavyede denenecekler: Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri.
           - Sonraya: oyun oturumu (ön plandaki uygulama: açılınca kart, kapanınca özet). Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.
@@ -1245,3 +1283,4 @@ Kullanıcının fikirleri. Şimdi yapılmayacak; uygulamanın bütün özellikle
 - Windows 11, Rust 1.99.1 (stable, MSVC), Node 24, pnpm 10, TypeScript 7, WebView2 157.
 - Uygulamanın adı **Keymotion** (2026-11-11, kullanıcının seçimi; önceki geçici ad "Klavye Stüdyo"). Kimlik `dev.keymotion`; ayarlar `%APPDATA%\dev.keymotion`, WebView verisi `%LOCALAPPDATA%\dev.keymotion`. Eski `dev.klavye.studio` klasörleri ilk açılışta taşınır (`app/src-tauri/src/migrate.rs`). Rust paket adı (`klavye-studio`) ve repo adı şimdilik değişmedi.
 - `.claude/launch.json` → "ui" (Vite, 127.0.0.1:1420).
+- GitHub hesabı **Pro** (2026-11-12, kullanıcı bildirdi). Repo herkese açık (`cebersaban44-rgb/klavye-studio`): koruma kuralları, Actions, Pages ve Discussions zaten ücretsiz, Pro burada pek bir şey değiştirmiyor. İşe yaradığı yer: özel bir repo (koruma kuralları, Pages, kod sahipleri) ve Codespaces. `main` korumalı: PR zorunlu, "Build and test" geçmeli, yöneticiler de uyar. Discussions kapalı; GitHub sayfası (H) hazırlanırken açılması kullanıcıya sorulacak.
