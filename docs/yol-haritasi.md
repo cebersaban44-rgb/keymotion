@@ -195,7 +195,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
   - odak zamanlayıcısı (aşama değişince ses, tuşlar ve ekran kartı);
   - takvim (toplantı öncesi tuş yanıp söner ve ekran kartı çıkar);
   - hatalar ve uyarılar (yalnızca uygulama içinde).
-- **Kullanıcıyla karar verilecek:** klavye kablosuzken her hatırlatıcının bildirim göndermesi sık aralıklı hatırlatıcılarda rahatsız edebilir. Seçenekler kullanıcıya soruldu.
+- **Karar (kullanıcı, 2026-11-12): böyle kalsın.** Klavye kablosuzken her hatırlatıcı Windows bildirimi gönderir, çünkü tuşlar yanamaz ve hatırlatıcının ulaşmasının tek yolu bu. Arka plan bildirimi yalnızca ilk seferde çıkar.
 
 **Elle denenecekler** (kullanıcıya verilen senaryolar; simge saatin yanındaki ^ içinde):
 
