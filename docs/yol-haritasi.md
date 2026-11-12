@@ -1,6 +1,6 @@
 # Keymotion yol haritası: ilk sürüme kadar
 
-Durum: 2026-11-12 (sabah: Aşama 0–4 bitti; Aşama 4'ün iki GitHub ayarı kullanıcı onayı bekliyor). Kaynaklar: kullanıcının kararları, `docs/DURUM.md` madde 38, `docs/urun-eksikleri.md`.
+Durum: 2026-11-12 (sabah: Aşama 0–4 bitti; sıradaki 1b ya da 5). Kaynaklar: kullanıcının kararları, `docs/DURUM.md` madde 38, `docs/urun-eksikleri.md`.
 
 Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve kararları da burada. Bir aşama bitince "Durum" sütununu ve DURUM'daki "Kalınan yer" satırını güncelle.
 
@@ -26,7 +26,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 | 1b | Kod imzalama başvurusu (SignPath Foundation) | — | Başvuruyu kullanıcı yapar | Başlatılacak |
 | 2 | Tepsi ve arka plan | 1 | Karar verildi: tepsi | Bitti (PR #61): kullanıcı 1–8, ben 9–13 denedik |
 | 3 | Keymotion açılış animasyonu | — (2 ile paralel olabilir) | Önizlemeye onay | Bitti (PR #62; kullanıcı A'yı, yazılı seçti) |
-| 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bitti (PR'da); iki GitHub ayarı onay bekliyor |
+| 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bitti (PR #63); GitHub ayarları kullanıcı onayıyla açıldı |
 | 5 | Kurulum dosyası (NSIS) ve imza | 1, 2, 1b | Kurulum ayrıntılarına onay | Bekliyor |
 | 6 | Sürüm hattı ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Bekliyor |
 | 7 | GitHub sayfası ve belgeler (EN varsayılan + TR) | 2, 3, 4 (arayüz kesin) | — | Bekliyor |
@@ -301,9 +301,9 @@ Uygulama içi düğme bu formların adresini açacak, o yüzden formlar önce ya
   - `config.yml`: boş sorun kapalı; sorular Discussions Q&A'ya, güvenlik sorunları özel bildirime yönlendirilir;
   - `SECURITY.md`: GitHub'ın özel bildirim formu, ilk yanıt bir hafta içinde (tek kişilik proje), kapsam ve kapsam dışı (klavye yazılımı ve AJAZZ'ın programı).
   - Formlar varsayılan daldan (`develop`) okunur; PR birleşince canlı olur.
-- **Onay bekleyen iki GitHub ayarı** (repo ayarı, kullanıcıya soruldu):
-  - "Private vulnerability reporting" kapalı; açılınca `SECURITY.md`'deki bağlantı çalışır;
-  - "keyboard support" etiketi yok; klavye formu bu etiketi koyar.
+- **İki GitHub ayarı** (kullanıcı onayladı, 2026-11-12):
+  - "Private vulnerability reporting" açıldı; `SECURITY.md`'deki bağlantı çalışıyor;
+  - "keyboard support" etiketi oluşturuldu; klavye formu bu etiketi koyar.
 - **Uygulama tarafı:**
   - **Sorun bildir penceresi** (`components/Reporting.tsx` `ReportDialog`): gönderilecek metni önce gösterir (tanılama bilgisi, en üstte "What happened"). "GitHub'da bildir" metni panoya kopyalar ve formu başlıkla açar (`open_issue`; adres Rust'ta kurulur, başlık ve model kodlanır, başka adres açılamaz). "Kopyala" ayrıca var. Uygulama kendiliğinden hiçbir şey göndermez.
   - **Ayarlar › Hakkında › Geri bildirim:** "Sorun bildir" ve "Öneri gönder" (öneri formu doğrudan açılır).
@@ -393,7 +393,7 @@ Uygulama içi düğme bu formların adresini açacak, o yüzden formlar önce ya
 |---|---|---|
 | 1 | Rust paket ve exe adı `keymotion` olsun mu? | Evet |
 | 1b | SignPath Foundation başvurusu | Kullanıcı başvurur, formu birlikte dolduralım |
-| 4 | GitHub'da özel güvenlik bildirimi açılsın mı? | Evet |
+| 4 | GitHub'da özel güvenlik bildirimi açılsın mı? | Evet (açıldı, 2026-11-12) |
 | 5 | Kurulum ayrıntıları (kısayollar, kaldırırken ayarlar) | Yukarıdaki varsayılanlar |
 | 6 | Güncelleme anahtarı GitHub Secrets'a konulsun mu? | Evet |
 | — | Disk için `cargo clean` (ortak `target` klasörü) | Gerekirse, sorarak |
