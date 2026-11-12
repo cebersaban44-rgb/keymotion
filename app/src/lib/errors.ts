@@ -1,10 +1,12 @@
 // What a failed action says to the user. The backend's error text is
 // technical and English; the user gets what happened and what to do, in
 // the UI language (docs/arayuz-dili.md). The original goes to the console
-// and to the app's log, so "Copy diagnostics" can carry it.
+// and to the app's log, so "Copy diagnostics" can carry it. An unexpected
+// one is also offered for reporting, once a session (lib/report.ts).
 
 import type { MessageKey } from "./i18n";
 import { logUiError } from "./ipc";
+import { offerProblem } from "./report";
 
 const RULES: [RegExp, MessageKey][] = [
   // Writes refused before anything was sent (device.rs `WriteBlock`).
@@ -83,6 +85,7 @@ export function friendlyError(e: unknown, t: (key: MessageKey) => string, quiet 
     const expected = EXPECTED.has(key);
     (expected ? console.warn : console.error)(raw);
     void logUiError(`${expected ? "action refused" : "action failed"}: ${raw}`);
+    if (!expected) offerProblem(raw);
   }
   return t(key);
 }

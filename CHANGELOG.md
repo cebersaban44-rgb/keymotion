@@ -44,6 +44,12 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
   volume on the function keys, microphone mute on a chosen key.
 - **Focus timer:** the whole keyboard fills with the phase colour and empties
   as time runs out; phase cards on the screen.
+- **Reporting problems:** Settings › About › Feedback, a calm notice after an
+  unexpected error, and a one-time notice after a crash open a report window
+  that shows what will be sent first. "Report on GitHub" copies it and opens
+  the project's issue form; the app sends nothing by itself. A SONiX or AJAZZ
+  keyboard that isn't supported yet gets "Request support", with its USB ids
+  and HID descriptions read from Windows (nothing is written to it).
 - **Keymotion animation:** an animation of its own for the keyboard's screen,
   built into the library: the logo's "K" drawn stroke by stroke, then the
   wordmark (37 frames, about 1.5 minutes to upload). It is offered when there's

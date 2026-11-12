@@ -1,8 +1,10 @@
-import { Check, Copy, RotateCw, TriangleAlert } from "lucide-react";
+import { MessageSquareWarning, RotateCw, TriangleAlert } from "lucide-react";
+import { AnimatePresence } from "motion/react";
 import { Component, useState, type ErrorInfo, type ReactNode } from "react";
-import { copyDiagnostics } from "../lib/diagnostics";
 import { useT } from "../lib/i18n";
 import { logUiError } from "../lib/ipc";
+import { problemTitle } from "../lib/report";
+import { ReportDialog } from "./Reporting";
 
 interface Props {
   children: ReactNode;
@@ -12,17 +14,19 @@ interface Props {
 
 interface State {
   failed: boolean;
+  /** The error and where it happened, for a report. */
+  detail: string;
 }
 
 /**
  * A drawing error leaves a calm message instead of an empty window: what
- * happened, "Reload", and "Copy diagnostics" for a report. The error and
- * where it happened go to the app's log, which the diagnostics carry.
+ * happened, "Reload", and "Report the problem". The error and where it
+ * happened go to the app's log, which the report carries.
  */
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = { failed: false };
+  state: State = { failed: false, detail: "" };
 
-  static getDerivedStateFromError(): State {
+  static getDerivedStateFromError(): Partial<State> {
     return { failed: true };
   }
 
@@ -36,24 +40,18 @@ export class ErrorBoundary extends Component<Props, State> {
       .join(" < ");
     console.error(error);
     void logUiError(`page crashed: ${what} [${where}]`);
+    this.setState({ detail: `page crashed: ${what}\n${where}` });
   }
 
   render() {
-    return this.state.failed ? <CrashNotice full={this.props.full} /> : this.props.children;
+    return this.state.failed ? <CrashNotice full={this.props.full} detail={this.state.detail} /> : this.props.children;
   }
 }
 
-function CrashNotice({ full }: { full?: boolean }) {
+function CrashNotice({ full, detail }: { full?: boolean; detail: string }) {
   const t = useT();
-  const [copied, setCopied] = useState<"no" | "yes" | "failed">("no");
-  const copy = () =>
-    copyDiagnostics().then(
-      () => setCopied("yes"),
-      (e) => {
-        console.error(e);
-        setCopied("failed");
-      },
-    );
+  // Its own dialog: when the whole window failed, nothing else is left.
+  const [reporting, setReporting] = useState(false);
   return (
     <div className={`flex items-center justify-center p-6 ${full ? "h-full bg-bg" : "min-h-[60vh]"}`}>
       <div role="alert" className="card flex w-full max-w-[460px] flex-col gap-5 p-6">
@@ -66,16 +64,14 @@ function CrashNotice({ full }: { full?: boolean }) {
             <p className="text-[13px] leading-relaxed text-ink-2">{t("crash.body")}</p>
           </div>
         </div>
-        {copied === "yes" && <p className="text-[13px] text-ink-2">{t("data.diag.copied")}</p>}
-        {copied === "failed" && <p className="text-[13px] text-danger">{t("data.diag.failed")}</p>}
         <div className="flex items-center justify-end gap-2">
           <button
             type="button"
-            onClick={copy}
+            onClick={() => setReporting(true)}
             className="flex h-9 items-center gap-2 rounded-lg border border-line bg-bg-raise px-3.5 text-[13px] text-ink transition-colors hover:border-line-strong"
           >
-            {copied === "yes" ? <Check size={14} /> : <Copy size={14} />}
-            {t("data.diag.copy")}
+            <MessageSquareWarning size={14} />
+            {t("report.problem.report")}
           </button>
           <button
             type="button"
@@ -88,6 +84,14 @@ function CrashNotice({ full }: { full?: boolean }) {
           </button>
         </div>
       </div>
+      <AnimatePresence>
+        {reporting && (
+          <ReportDialog
+            request={{ kind: "bug", title: problemTitle(detail), context: detail }}
+            onClose={() => setReporting(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

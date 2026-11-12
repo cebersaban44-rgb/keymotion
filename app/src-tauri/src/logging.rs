@@ -10,7 +10,8 @@
 //!   user name in paths is replaced. Code never logs reminder titles or
 //!   meeting names in the first place.
 //! * A panic writes a short crash note (`crash-….txt`) next to the logs:
-//!   version, time, thread, message and source location.
+//!   version, time, thread, message and source location. The next start
+//!   offers the newest one once for reporting ([`unseen_crash`]).
 //! * Lines logged before the folder is known (start-up) wait in memory.
 
 use std::cell::Cell;
@@ -18,6 +19,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, SystemTime};
 
 /// Daily log files kept.
 pub const KEEP_FILES: usize = 7;
@@ -29,6 +31,10 @@ const PENDING_MAX: usize = 256 * 1024;
 const KEEP_CRASHES: usize = 10;
 /// Longest panic message written to a crash note.
 const CRASH_MESSAGE_MAX: usize = 2_000;
+/// Crash notes older than this are not offered for reporting any more.
+const CRASH_OFFER_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+/// Holds the name of the newest crash note offered so far.
+const CRASH_SEEN: &str = "crash.seen";
 const FULL_NOTE: &str = "-- today's log reached its size limit; later lines are left out --\n";
 
 struct OpenFile {
@@ -47,6 +53,9 @@ struct Sink {
 static SINK: Mutex<Sink> = Mutex::new(Sink { dir: None, pending: Vec::new(), open: None });
 /// Log folder and app version, for crash notes.
 static CRASH: OnceLock<(PathBuf, String)> = OnceLock::new();
+/// When this run started writing logs: crash notes from before it are
+/// from an earlier run.
+static STARTED: OnceLock<SystemTime> = OnceLock::new();
 
 thread_local! {
     /// This thread is inside the sink: a panic there must not log again.
@@ -182,6 +191,7 @@ pub fn set_dir(dir: &Path, version: &str) {
         return;
     }
     let _ = CRASH.set((dir.to_path_buf(), version.to_string()));
+    STARTED.get_or_init(SystemTime::now);
     prune(dir, KEEP_CRASHES, is_crash_name);
     let mut sink = SINK.lock().unwrap_or_else(|e| e.into_inner());
     sink.dir = Some(dir.to_path_buf());
@@ -252,6 +262,44 @@ fn crash_note(version: &str, time: &str, thread: &str, location: &str, message: 
         "Crash note\nVersion: {version}\nTime: {time}\nThread: {thread}\nLocation: {}\nMessage: {message}\n",
         redact(location)
     )
+}
+
+/// The newest crash note from an earlier run that wasn't offered yet and is
+/// at most a week old: its file name and text (redacted).
+pub fn unseen_crash(dir: &Path) -> Option<(String, String)> {
+    let seen = fs::read_to_string(dir.join(CRASH_SEEN)).ok();
+    let before = STARTED.get().copied().unwrap_or_else(SystemTime::now);
+    let name = newest_unseen_crash(dir, seen.as_deref().map(str::trim), before)?;
+    let text = fs::read_to_string(dir.join(&name)).ok()?;
+    Some((name, redact(&text)))
+}
+
+fn newest_unseen_crash(dir: &Path, seen: Option<&str>, before: SystemTime) -> Option<String> {
+    let entries = fs::read_dir(dir).ok()?;
+    entries
+        .filter_map(|e| {
+            let e = e.ok()?;
+            let name = e.file_name().into_string().ok()?;
+            if !is_crash_name(&name) || seen.is_some_and(|s| name.as_str() <= s) {
+                return None;
+            }
+            let written = e.metadata().ok()?.modified().ok()?;
+            let age = before.duration_since(written).ok()?;
+            (age <= CRASH_OFFER_AGE).then_some(name)
+        })
+        .max()
+}
+
+/// Remember that the crash note `name` was offered, with the ones before it.
+pub fn mark_crash_seen(dir: &Path, name: &str) -> io::Result<()> {
+    if !is_crash_name(name) || name.contains(['/', '\\']) || name.contains("..") {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "not a crash note name"));
+    }
+    let seen = fs::read_to_string(dir.join(CRASH_SEEN)).unwrap_or_default();
+    if seen.trim() >= name {
+        return Ok(());
+    }
+    fs::write(dir.join(CRASH_SEEN), name)
 }
 
 // --------------------------------------------------------------- redaction
@@ -362,6 +410,33 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn the_newest_unseen_crash_from_before_this_run_is_offered_once() {
+        let dir = temp_dir("crash-offer");
+        let now = SystemTime::now();
+        assert_eq!(newest_unseen_crash(&dir, None, now), None);
+        fs::write(dir.join("crash-2026-11-10-090000.txt"), "Crash note\n").unwrap();
+        fs::write(dir.join("crash-2026-11-11-140322.txt"), "Crash note\nMessage: boom\n").unwrap();
+        fs::write(dir.join("2026-11-11.log"), "x").unwrap();
+        // Written before this run started: offered.
+        let later = now + Duration::from_secs(5);
+        assert_eq!(newest_unseen_crash(&dir, None, later).as_deref(), Some("crash-2026-11-11-140322.txt"));
+        // Written during this run: not "last time".
+        assert_eq!(newest_unseen_crash(&dir, None, now - Duration::from_secs(60)), None);
+        // Too old.
+        assert_eq!(newest_unseen_crash(&dir, None, now + CRASH_OFFER_AGE + Duration::from_secs(60)), None);
+
+        mark_crash_seen(&dir, "crash-2026-11-11-140322.txt").unwrap();
+        let seen = fs::read_to_string(dir.join(CRASH_SEEN)).unwrap();
+        assert_eq!(newest_unseen_crash(&dir, Some(&seen), later), None);
+        // An older name doesn't move the mark back.
+        mark_crash_seen(&dir, "crash-2026-11-10-090000.txt").unwrap();
+        assert_eq!(fs::read_to_string(dir.join(CRASH_SEEN)).unwrap(), "crash-2026-11-11-140322.txt");
+        assert!(mark_crash_seen(&dir, "../crash-x.txt").is_err());
+        assert!(mark_crash_seen(&dir, "notes.txt").is_err());
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

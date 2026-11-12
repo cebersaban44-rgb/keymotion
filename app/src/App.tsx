@@ -2,6 +2,7 @@ import { Lock } from "lucide-react";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { Reporting } from "./components/Reporting";
 import { Sidebar } from "./components/Sidebar";
 import { UnsavedDialog } from "./components/UnsavedDialog";
 import { SafetyDialogs, useSafetyDialogOpen } from "./components/SafetyDialogs";
@@ -332,6 +333,7 @@ export default function App() {
       <ScreenUploadToast />
       <SafetyDialogs />
       <ScreenNotices />
+      <Reporting />
       <AnimatePresence>
         {guard.asking && <UnsavedDialog items={guard.items} onCancel={guard.cancel} />}
       </AnimatePresence>
