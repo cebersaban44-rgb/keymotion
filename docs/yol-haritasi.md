@@ -569,7 +569,7 @@ Claude'un denemediği ya da yalnızca tarayıcı önizlemesinde denediği her ş
   - Gizlilik belgesi ve Ayarlar'daki gizlilik metni güncellendi; `docs/gelistirme-akisi.md`'ye sürüm çıkarma adımları eklendi.
   - Denendi: tarayıcı önizlemesinde (iki dilde; yeni sürüm, indirme, vazgeçme, internet yok, henüz sürüm yok) ve gerçek uygulamada (günlük denetim ve düğme GitHub'a gitti, henüz sürüm olmadığı için "GitHub'da henüz yayımlanmış bir sürüm yok").
 - **Kalan (kullanıcının onayıyla):**
-  1. Gizli anahtarı ve parolasını GitHub Secrets'a koymak; anahtarın yedeğini kullanıcının parola yöneticisine almak.
+  1. **Yapıldı (2026-11-12, kullanıcının onayıyla):** gizli anahtar ve parolası GitHub Secrets'ta (`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`). Yedeği kullanıcı kendi parola yöneticisine alır.
   2. İş akışını `develop`'dan elle bir kez çalıştırmak (derlenmiş sürüm, taslak; incelenip silinir).
   3. Uçtan uca deneme: 0.1.0-rc.1 ve 0.1.0-rc.2 ön sürüm olarak yayımlanır (herkese açık, ama "en son sürüm" sayılmaz), rc.1 kurulur, rc.2'ye güncellenir. Sonra ön sürümler silinebilir.
 
