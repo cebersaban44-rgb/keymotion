@@ -8,6 +8,7 @@
 import { create } from "zustand";
 import type { FlashWrite } from "../bindings/FlashWrite";
 import { tNow } from "./i18n";
+import { follow } from "./follow";
 import { inTauri, invoke, listen } from "./ipc";
 import { useApp } from "./store";
 
@@ -23,10 +24,11 @@ let started = false;
 export function startWriting() {
   if (started || !inTauri) return;
   started = true;
-  listen<FlashWrite | null>("flash-write", (e) => useWriting.setState({ kind: e.payload })).catch(console.error);
-  invoke<FlashWrite | null>("flash_write_state")
-    .then((kind) => useWriting.setState({ kind }))
-    .catch(console.error);
+  follow(
+    () => invoke<FlashWrite | null>("flash_write_state"),
+    (cb) => listen<FlashWrite | null>("flash-write", (e) => cb(e.payload)),
+    (kind) => useWriting.setState({ kind }),
+  );
   const sendReason = () => invoke("set_write_reason", { reason: tNow("write.reason") }).catch(console.error);
   sendReason();
   useApp.subscribe((s, prev) => {
