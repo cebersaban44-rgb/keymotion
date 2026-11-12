@@ -1,7 +1,7 @@
 //! TFT screen upload (`04 72` + display channel FF68): the image format.
 //!
-//! Sources and measurements: docs/research/protokol-ff13.md §10 and
-//! docs/research/ekran-derin-arastirma.md §6.
+//! Sources and measurements: the screen upload part of the protocol page
+//! (docs site: developers/protocol).
 //!
 //! Only a validated [`ScreenAnimation`] can be turned into upload pages, so
 //! whatever the user imported, the keyboard always receives the one format

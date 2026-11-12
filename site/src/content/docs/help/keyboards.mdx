@@ -1,0 +1,75 @@
+---
+title: Supported keyboards
+description: The keyboards Keymotion works with, the ones built on the same platform that could come next, and how to tell us about yours.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+import { Image } from "astro:assets";
+import ak980 from "../../../assets/keyboards/ajazz-ak980-pro.webp";
+
+Keymotion works with the **AJAZZ AK980 PRO**. Many keyboards are built on the same platform: the same kind of chip, the same command set and often the same vendor program, sold under different names. They could come next, but each one is added only after someone has tried it, because the details that keep a keyboard safe differ from model to model.
+
+## Tested and working
+
+<Image src={ak980} alt="AJAZZ AK980 PRO" width={520} />
+
+| Keyboard | USB cable | 2.4 GHz receiver | Bluetooth | Status |
+|---|---|---|---|---|
+| **AJAZZ AK980 PRO** | Everything | Typing, media keys and the knob | Typing, media keys, the knob and the battery level | <span class="km-status" data-s="works">Works · tested</span> |
+
+Some shops sell the same keyboard as the **AJAZZ AK980 V2**. It reports the same USB identity, "SONiX AK980 PRO", so Keymotion treats it as an AK980 PRO; we haven't tried one separately.
+
+Settings travel over the USB cable; that is how the keyboard is built. [Connecting the keyboard](/keymotion/guide/connecting/) explains the three connections.
+
+## Same platform, not tested yet
+
+These keyboards appear to speak the same command set as the AK980 PRO, according to other open-source projects that measured them on real keyboards. Keymotion doesn't recognise them yet: when you plug one in, it says **This keyboard isn't supported yet** and offers **Request support**. That button copies the keyboard's details (its USB identity, its name and how Windows describes it) without writing anything to the keyboard. Those details are exactly what we need to add it.
+
+| Keyboard | Screen | What is known | Status | Have one? |
+|---|---|---|---|---|
+| **AULA F108 Pro**, also sold as EPOMAKER x AULA F108 Pro | 240×135, up to 141 frames | The closest relative: the same commands, the same key numbers for every shared key and the same vendor program. A full-size layout with more keys. | Not tested yet | [Tell us](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+F108+Pro&model=AULA+F108+Pro) |
+| **AULA NOVA75** | 240×135, up to 107 frames | Same commands; screen and clock measured by others. | Not tested yet | [Tell us](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+NOVA75&model=AULA+NOVA75) |
+| **AULA F75 Max** (also EPOMAKER x AULA) | 128×128, up to 255 frames | Same commands; measured by others. | Not tested yet | [Tell us](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+F75+Max&model=AULA+F75+Max) |
+| **AULA EA75 Max** | 135×240, upright | Same commands; measured by others. | Not tested yet | [Tell us](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+EA75+Max&model=AULA+EA75+Max) |
+| **AULA S75 Pro** | 135×240, upright | Same commands, from one source only. | Not tested yet | [Tell us](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+S75+Pro&model=AULA+S75+Pro) |
+| **AULA F98 Pro** | 1.14 inch | Lighting commands only, from one source. | Not tested yet | [Tell us](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+F98+Pro&model=AULA+F98+Pro) |
+| **AJAZZ AK820 Pro**, the version with the SONiX program (also EPOMAKER AK820 Pro) | 128×128 | Same commands; measured by others. Another AK820 Pro version uses a different command family; see below. | Not tested yet | [Tell us](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK820+Pro&model=AJAZZ+AK820+Pro) |
+| **AJAZZ AK820 MAX / MAX PLUS**, the version with a SONiX screen | 128×128 | Same commands; measured by others. | Not tested yet | [Tell us](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK820+MAX&model=AJAZZ+AK820+MAX) |
+| **AJAZZ AK35I V3 MAX** | 240×135, up to 141 frames | Same commands. It calls itself only "USB KEYBOARD", so it can never be recognised by name alone. | Not tested yet | [Tell us](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK35I+V3+MAX&model=AJAZZ+AK35I+V3+MAX) |
+| **AJAZZ AKS075** | 128×128 | Screen and clock measured by others. | Not tested yet | [Tell us](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AKS075&model=AJAZZ+AKS075) |
+| **AJAZZ AK650 / AK650 Pro** | 0.85 inch | Only the clock is known. | Not tested yet | [Tell us](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK650&model=AJAZZ+AK650) |
+| **AJAZZ AK980**, without a screen | None | Only the lighting is known. | Not tested yet | [Tell us](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK980+%28no+screen%29&model=AJAZZ+AK980+%28no+screen%29) |
+| **LangTu LT-104** | 160×80 | Same command family; measured by its author. | Not tested yet | [Tell us](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+LangTu+LT-104&model=LangTu+LT-104) |
+
+Your keyboard isn't in the list? Plug it in anyway: if Keymotion offers **Request support**, [send us its details](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml).
+
+<Aside type="caution" title="Why we don't just switch them on">
+These keyboards accept what they are sent without checking it. On an AULA F108 Pro, a screen animation longer than its limit overwrote the keyboard's own menu pictures for good. The limits are different on every model (107, 140, 141 or 255 frames), so a model is added only with its own measured limits.
+</Aside>
+
+### How a keyboard moves up this list
+
+1. Someone with the keyboard sends its details with **Request support**, or [the keyboard form](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml).
+2. We describe the model in Keymotion and prepare a test build for it.
+3. The tester tries each feature and reports back. Each report is tracked on GitHub with the `keyboard support` label.
+4. Once everything has been tried, the model moves to **Tested and working**, with what works in each connection mode.
+
+The status column goes from **Not tested yet** to **Being tested**, then **Works** or **Doesn't work**.
+
+## Look alike, different inside
+
+Some keyboards look like the AK980 PRO or share a name with one on this page, but use another chip or another command family. Keymotion never sends them anything.
+
+| Keyboard | Why it is different |
+|---|---|
+| AJAZZ AK980 MAX | Another command family |
+| AJAZZ AK820 Pro, the version with firmware 1.07 or 1.16 | Another command family |
+| AJAZZ AK820 MAX with the web configurator (MAX HE included) | Another command family |
+| AJAZZ AK820 Max Plus (SinoWealth version), AK820 (non-Pro), AK992 | Another chip |
+| AULA F75, F87, F87 Pro, F99, F99 Pro | Another chip |
+| AULA F87S 8K, Nova98; AJAZZ AK680 V2 / MAX | Another command family |
+| AJAZZ AKS068 | VIA/QMK keyboard |
+
+Not known yet: AJAZZ AK870 V2, AK820 MAX Ultra, AK870, AK873, AK966 and AULA F99 Max. If you have one, [send its details](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml) and we'll find out.
+
+<p class="km-unofficial">What we know about these keyboards comes from other open-source projects that measured them, among them OpenKey, sonix-keyboard-studio, ak820pro-modder and OpenRGB. Thank you. Product names are used only to say which hardware this software works with; Keymotion isn't affiliated with any of these brands.</p>

@@ -1,0 +1,88 @@
+---
+title: Keymotion'ı kurma
+description: Kurulum dosyasını GitHub'dan indirme, Windows uyarısını geçme, Keymotion'ı daha sonra güncelleme ve kaldırma.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Keymotion, Windows için tek bir kurulum dosyasıyla gelir. Yalnızca sizin Windows hesabınıza kurulur, yönetici izni istemez ve birkaç saniye sürer.
+
+## Gerekenler
+
+- 64 bit Windows 10 ya da Windows 11.
+- WebView2: uygulamanın penceresini çizen Windows bileşeni. Windows 11'de zaten vardır. Bilgisayarınızda yoksa kurulum onu indirip kurar; bu yüzden kurarken internete bağlı kalın.
+- Klavyenin ayarlarını değiştirmek için bir AJAZZ AK980 PRO ve USB-C kablosu. Keymotion klavye olmadan da açılır.
+
+## Kurulum dosyasını indirin
+
+<Steps>
+
+1. Keymotion'ın [GitHub'daki sürümler sayfasını](https://github.com/cebersaban44-rgb/keymotion/releases) açın.
+2. En yeni sürümün altındaki **Assets** listesini bulun.
+3. Adı `x64-setup.exe` ile biten dosyayı indirin; örneğin `Keymotion_0.1.0_x64-setup.exe`.
+
+</Steps>
+
+O sayfadaki sürüm notlarında dosyanın SHA-256 özeti de yazar. İndirdiğiniz dosyayı denetlemek isterseniz onu kullanabilirsiniz.
+
+## Windows bilgisayarınızı korudu derse
+
+0.1.0 sürümü henüz imzalı değil; bu yüzden Windows kurulum dosyasını kimin yayımladığını bilemez. Dosyayı açtığınızda **Windows bilgisayarınızı korudu** başlıklı mavi bir pencere çıkabilir.
+
+<Steps>
+
+1. **Ek bilgi**'yi seçin.
+2. Görünen dosya adının indirdiğiniz kurulum dosyası olduğundan emin olun.
+3. **Yine de çalıştır**'ı seçin.
+
+</Steps>
+
+<Aside type="note" title="Neden henüz imzalı değil">
+Nedenini ve Keymotion imzalanınca neyin değişeceğini [Kod imzalama](/keymotion/tr/about/code-signing/) sayfası anlatır.
+</Aside>
+
+## Kurulumu çalıştırın
+
+Windows Türkçeyse kurulum da Türkçe açılır, değilse İngilizce.
+
+<Steps>
+
+1. **Keymotion kurulumuna hoş geldiniz** sayfasında **İleri**'ye tıklayın.
+2. Önerilen klasörü bırakın ya da başka bir klasör seçin, sonra devam edin. Önerilen klasör (`%LOCALAPPDATA%\Keymotion`) kendi kullanıcı klasörünüzün içindedir.
+3. Keymotion kurulurken bekleyin. Bilgisayarda WebView2 yoksa önce o indirilir. İlerleme çubuğu dolunca **İleri**'ye tıklayın.
+4. Son sayfada masaüstü kısayolu istiyorsanız **Masaüstüne kısayol koy** kutusunu işaretli bırakın. Öteki kutu, kurulum bitince Keymotion'ı hemen açar. Kurulumu bitirin.
+
+</Steps>
+
+Keymotion açıksa kurulum önce onu kapatmayı önerir. Bilgisayarda bir sürüm zaten kuruluysa kurulum **Zaten kurulu** sayfasını gösterir ve ne yapmak istediğinizi sorar; bir seçenek seçip **İleri**'ye tıklayın.
+
+## Başlat menüsü ve masaüstü
+
+Kurulum, Başlat menüsüne her zaman **Keymotion** kısayolunu ekler; kutuyu işaretli bıraktıysanız masaüstüne de. Keymotion, Windows'un yüklü uygulamalar listesinde de görünür; onu oradan kaldırırsınız.
+
+Keymotion aynı anda yalnızca bir kez çalışır. Arka planda çalışırken, yani simgesi saatin yanındayken, Başlat menüsünden yeniden açarsanız penceresi geri gelir. Açıldığında neler gördüğünüzü [İlk açılış](/keymotion/tr/guide/first-launch/) sayfası anlatır.
+
+## Keymotion'ı güncelleyin
+
+Keymotion açıldıktan kısa bir süre sonra, günde bir kez, GitHub'da daha yeni bir sürüm olup olmadığına bakar. Yeni sürüm bulursa sayfanın üstünde bir şerit çıkar.
+
+<Screenshot name="update-strip" alt="Genel bakış sayfasının üstünde, yeni Keymotion sürümünün hazır olduğunu söyleyen, Sonra ve Şimdi kur düğmeli şerit" />
+
+**Şimdi kur**'a tıklayın, **Neler yeni** bölümünü okuyun, sonra **Kur ve yeniden başlat**'a tıklayın. Keymotion yeni sürümü indirir, kapanır, küçük bir pencerede kurulur ve yeniden açılır. Ayarlarınız ve kütüphaneniz olduğu gibi kalır. Siz tıklamadan hiçbir şey kurulmaz. Elle denetlemeyi ya da günlük denetimi kapatmayı [Ayarlar](/keymotion/tr/guide/settings/) sayfası anlatır.
+
+## Keymotion'ı kaldırın
+
+<Steps>
+
+1. Windows **Ayarlar**'ı açın, sonra **Uygulamalar** ve **Yüklü uygulamalar**'a gidin. Windows 10'da bu listenin adı **Uygulamalar ve özellikler**'dir.
+2. **Keymotion**'ı bulun. Windows 11'de yanındaki **⋯** menüsünü açın. **Kaldır**'ı seçip onaylayın.
+3. Keymotion'ın kaldırma penceresi açılır. Ayarlarınız ve kayıtlarınız da silinsin istiyorsanız **Ayarlarımı ve kayıtlarımı da sil** kutusunu işaretleyin, sonra onaylayın.
+
+</Steps>
+
+Kaldırma; uygulamayı, kısayollarını, yüklü uygulamalar listesindeki kaydını, Windows'la başlatma kaydını ve Windows'un Keymotion bildirimlerinde gösterdiği adı siler. Kutuyu işaretlemezseniz ayarlarınız, kayıtlarınız ve görsel kütüphaneniz bilgisayarda kalır; Keymotion'ı yeniden kurduğunuzda kaldığınız yerden devam edersiniz. Keymotion açıksa kaldırma penceresi onu kapatmayı önerir.
+
+<Aside type="caution" title="Klavye kendi ayarlarını saklar">
+Işık, tuş atamaları, makrolar ve ekrandaki görsel klavyenin kendi belleğinde durur; Keymotion'ı kaldırmak onları değiştirmez. Kaldırmadan önce [Profiller](/keymotion/tr/guide/profiles/) sayfasından **Varsayılan** profili yükleyerek fabrika ışığına ve tuş düzenine dönebilir, makroları silebilirsiniz. Daha fazlası için [Kurtarma](/keymotion/tr/help/recovery/) sayfasına bakın.
+</Aside>

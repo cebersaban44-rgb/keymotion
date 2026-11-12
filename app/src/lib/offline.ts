@@ -7,11 +7,14 @@ import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 // Generated from Rust by `cargo test` (dto.rs export_mock_geometry).
 import ak980Geometry from "../bindings/geometry-ajazz-ak980-pro.json";
 
-/** The keyboard the app supports today (docs/destek-haritasi.md). */
+/** The keyboard the app supports today (site: help/keyboards). */
 export const SUPPORTED_MODEL = "AJAZZ AK980 PRO";
 
-/** The supported keyboards and what works in each connection mode. */
-export const SUPPORT_LIST_URL = "https://github.com/cebersaban44-rgb/keymotion/blob/develop/docs/destek-haritasi.md";
+/** The project's documentation site (site/, published from main). */
+export const DOCS_URL = "https://cebersaban44-rgb.github.io/keymotion/";
+
+/** A page of the documentation site in the interface language ("" is the home page). */
+export const docsPage = (path: string, locale: string) => `${DOCS_URL}${locale === "tr" ? "tr/" : ""}${path}`;
 
 /**
  * Stand-in for the supported model while nothing is connected. No channel

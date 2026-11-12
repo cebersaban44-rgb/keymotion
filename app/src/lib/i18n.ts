@@ -1220,6 +1220,9 @@ const tr = {
   "report.crash.title": "Keymotion geçen sefer bir sorunla karşılaştı",
   "report.crash.body": "Bildirirseniz düzeltmemize yardımcı olur. Göndermeden önce neyin ekleneceğini görürsünüz.",
   "report.crash.report": "Bildir",
+  "settings.guide": "Kullanım kılavuzu",
+  "settings.guide.hint": "Uygulamanın her sayfası, projenin sitesinde adım adım anlatılıyor.",
+  "settings.guide.open": "Kılavuzu aç",
   "report.feedback": "Geri bildirim",
   "report.feedback.hint": "GitHub'da açılır. Sorun bildirirken eklenecek bilgileri önce görürsünüz.",
   "report.settings.problem": "Sorun bildir",
@@ -2656,6 +2659,9 @@ const en: Record<MessageKey, string> = {
   "report.crash.title": "Keymotion ran into a problem last time",
   "report.crash.body": "Reporting it helps us fix it. You'll see what's included before anything is sent.",
   "report.crash.report": "Report",
+  "settings.guide": "User guide",
+  "settings.guide.hint": "Every page of the app, explained step by step on the project's website.",
+  "settings.guide.open": "Open the guide",
   "report.feedback": "Feedback",
   "report.feedback.hint": "Opens on GitHub. When reporting a problem, you see what's included first.",
   "report.settings.problem": "Report a problem",
@@ -2908,6 +2914,12 @@ function message(locale: Locale, key: MessageKey, vars?: MessageVars) {
 /** Translate outside React (current locale at call time). */
 export function tNow(key: MessageKey, vars?: MessageVars) {
   return message(useApp.getState().locale, key, vars);
+}
+
+// Development only (`pnpm dev` in a browser): tools/screenshots finds buttons
+// by their text in the current language. Vite drops this from the installed app.
+if (import.meta.env.DEV && typeof window !== "undefined") {
+  (window as unknown as { __keymotionT?: typeof tNow }).__keymotionT = tNow;
 }
 
 export function useT(): Translate {

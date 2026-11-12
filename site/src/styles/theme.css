@@ -1,0 +1,138 @@
+/* Keymotion's look on top of Starlight. The app's own tokens
+   (app/src/styles.css): anodized aluminium surfaces, and one saturated colour,
+   the "signal" orange of an indicator LED. Keyboard lighting brings every
+   other colour. Starlight's default theme is dark; light is
+   [data-theme="light"]. */
+
+:root {
+  --sl-font: "Instrument Sans Variable", "Segoe UI", system-ui, sans-serif;
+  --sl-font-mono: "JetBrains Mono Variable", ui-monospace, Consolas, monospace;
+  --km-display: "Bricolage Grotesque Variable", "Segoe UI", system-ui, sans-serif;
+
+  --sl-color-accent-low: #3a1d0a;
+  --sl-color-accent: #ff8a3d;
+  --sl-color-accent-high: #ffc49c;
+  --sl-color-white: #faf8f4;
+  --sl-color-gray-1: #ece9e3;
+  --sl-color-gray-2: #cfccc6;
+  --sl-color-gray-3: #a9a8a4;
+  --sl-color-gray-4: #8a8b8e;
+  --sl-color-gray-5: #34363b;
+  --sl-color-gray-6: #17191c;
+  --sl-color-black: #0d0e10;
+  --km-signal: #ff8a3d;
+  --km-plate: #0a0b0d;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #fbe2cf;
+  --sl-color-accent: #a8480d;
+  --sl-color-accent-high: #6e2f07;
+  --sl-color-white: #16171a;
+  --sl-color-gray-1: #24262a;
+  --sl-color-gray-2: #3a3c41;
+  --sl-color-gray-3: #55565b;
+  --sl-color-gray-4: #707175;
+  --sl-color-gray-5: #c4c1ba;
+  --sl-color-gray-6: #e6e3dd;
+  --sl-color-gray-7: #f2f0ec;
+  --sl-color-black: #faf9f6;
+  --km-signal: #d65f12;
+  --km-plate: #1f2125;
+}
+
+/* Type: a characterful display face for titles, a calm text face for reading. */
+.site-title,
+h1#_top,
+.sl-markdown-content :is(h1, h2, h3),
+.hero h1 {
+  font-family: var(--km-display);
+  letter-spacing: -0.015em;
+}
+h1#_top { font-weight: 750; }
+.sl-markdown-content h2 { font-weight: 700; }
+.sl-markdown-content h3 { font-weight: 650; }
+.site-title { font-weight: 700; gap: 0.6rem; }
+.site-title img { height: 1.75rem; width: auto; }
+
+/* Sidebar: the current page carries the LED colour as a thin edge. */
+.sidebar-content a[aria-current="page"] {
+  background: color-mix(in srgb, var(--km-signal) 12%, transparent);
+  color: var(--sl-color-white);
+  box-shadow: inset 2px 0 0 var(--km-signal);
+  border-radius: 0 0.4rem 0.4rem 0;
+  font-weight: 600;
+}
+
+/* Home page hero: the keyboard photo, a big title, two actions. */
+.hero { padding-block: clamp(2rem, 5vw, 4rem) clamp(1.5rem, 4vw, 3rem); gap: 2rem; }
+.hero h1 {
+  font-size: clamp(2.4rem, 5.2vw, 4rem);
+  font-weight: 760;
+  line-height: 1.02;
+  letter-spacing: -0.028em;
+  text-wrap: balance;
+}
+.hero .tagline { font-size: clamp(1.05rem, 1.6vw, 1.2rem); max-width: 44ch; }
+.hero > .hero-html { width: min(100%, 44rem); }
+.hero img {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 24px 36px rgb(0 0 0 / 0.5));
+}
+:root[data-theme="light"] .hero img { filter: drop-shadow(0 22px 30px rgb(40 30 20 / 0.2)); }
+@media (min-width: 50rem) {
+  .hero { grid-template-columns: 5fr 6fr; }
+  .hero > .hero-html { width: 100%; }
+}
+
+/* Cards: flat panels, the icon in the LED colour. */
+.card { border-radius: 0.9rem; border-color: var(--sl-color-gray-5); background: var(--sl-color-gray-6); }
+:root[data-theme="light"] .card { background: #fff; border-color: var(--sl-color-gray-6); }
+.card .icon { color: var(--km-signal); }
+.card .title { font-family: var(--km-display); font-weight: 650; }
+
+/* Screenshots: a quiet frame around the app window. */
+.km-shot { margin: 1.5rem 0; }
+.km-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 0.75rem;
+  border: 1px solid var(--sl-color-gray-5);
+}
+:root[data-theme="light"] .km-shot img { border-color: var(--sl-color-gray-6); }
+.km-shot figcaption { margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3); }
+.km-shot-missing {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 10;
+  border: 1px dashed var(--sl-color-gray-4);
+  border-radius: 0.75rem;
+  color: var(--sl-color-gray-3);
+  font: 500 var(--sl-text-sm) var(--sl-font-mono);
+}
+
+/* Tables of keyboards and connection modes. */
+.km-status { font: 500 0.75rem var(--sl-font-mono); letter-spacing: 0.03em; white-space: nowrap; }
+.km-status[data-s="works"] { color: var(--km-signal); }
+.km-kb-img { width: 9rem; max-width: 100%; height: auto; }
+.km-unofficial { font-size: var(--sl-text-sm); color: var(--sl-color-gray-3); }
+
+/* The site title in the ink colour; the LED orange stays for actions. */
+.site-title { color: var(--sl-color-white); }
+
+/* Primary actions in the LED orange, with dark text (5:1 on both oranges). */
+.sl-link-button.primary {
+  background: var(--km-signal);
+  border-color: var(--km-signal);
+  color: #1a0d04;
+}
+.sl-link-button.primary:hover { filter: brightness(1.06); }
+
+/* Cards: one accent, not Starlight's rotating colours. */
+.card {
+  --sl-card-border: var(--km-signal);
+  --sl-card-bg: color-mix(in srgb, var(--km-signal) 14%, transparent);
+}

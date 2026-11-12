@@ -1,0 +1,78 @@
+---
+title: Tuş atama
+description: Temel ya da Fn katmanında herhangi bir tuşa başka bir işlev, kısayol, medya tuşu, fare düğmesi ya da makro atayın ve klavyeye kaydedin.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+**Tuş atama** sayfasında her tuşun ne yapacağını değiştirirsiniz. Bir tuş başka bir tuş ya da kısayol gönderebilir, medya tuşu ya da fare düğmesi gibi çalışabilir, sayfayı kaydırabilir, makro oynatabilir ya da hiçbir şey yapmayabilir.
+
+<Screenshot name="key-mapping" alt="Tuş atama sayfasında Num / tuşu seçili, Medya altında Sesi aç seçilmiş" />
+
+## Temel katman ve Fn katmanı
+
+Sağ üstteki iki sekme, düzenlediğiniz katmanı seçer:
+
+- **Temel katman:** Tuşa tek başına bastığınızda ne olacağı.
+- **Fn katmanı:** Fn tuşunu basılı tuttuğunuzda ne olacağı. Bazı tuşların burada hazır bir kısayolu vardır; ışıklar için Fn+X gibi.
+
+Klavye resminin altındaki yazı hangi katmanın açık olduğunu hatırlatır. Fn tuşunun kendisi değiştirilemez, çünkü Fn katmanı ve hazır kısayollar ona bağlıdır.
+
+<Aside type="caution" title="Hazır Fn kısayolları">
+Fn katmanında değiştirdiğiniz tuşun hazır kısayolu çalışmaz. Tuşu **Varsayılan**'a döndürünce kısayol geri gelir.
+</Aside>
+
+## Bir tuşu değiştirme
+
+<Steps>
+
+1. Kenar çubuğunda **Tuş atama**'yı açın ve **Temel katman** ya da **Fn katmanı**'nı seçin.
+2. Klavye resminde tuşa tıklayın. **Seçili tuş** kartı tuşun şu an ne yaptığını gösterir.
+3. **Atanacak işlev** altında bir tür seçin: **Tuşlar**, **Medya**, **Fare**, **Makro** ya da **Özel**.
+4. İşleve tıklayın. Resimdeki tuşta yeni adı görünür.
+5. İsterseniz başka tuşları da değiştirin, sonra alttaki çubukta **Klavyeye kaydet**'e tıklayın.
+
+</Steps>
+
+Değiştirdiğiniz tuşların kenarı turuncu, devre dışı bıraktıklarınızınki kırmızı olur. Küçük bir nokta henüz kaydedilmemiş tuşları gösterir.
+
+## Bir tuşun yapabildikleri
+
+| Tür | Seçebilecekleriniz |
+|---|---|
+| **Tuşlar** | Harfler, Rakamlar, İşlev tuşları, Düzenleme, Gezinme, Simgeler, Sayısal tuş takımı ve Değiştirici tuşlar başlıkları altında her tuş. Ctrl + C gibi bir kısayol için önce **Birlikte basılı** satırında **Ctrl**, **Shift**, **Alt** ya da **Win**'i seçin, sonra tuşa tıklayın. |
+| **Medya** | Oynat / duraklat, Sonraki parça, Önceki parça, Durdur, Sesi aç, Sesi kıs ve Sesi kapat; Medya oynatıcı, E-posta, Hesap makinesi ve Bu bilgisayar; tarayıcının ana sayfa, geri, ileri, durdur, yenile, sık kullanılanlar ve arama tuşları. |
+| **Fare** | Sol tıklama, Sağ tıklama, Orta tıklama, Geri düğmesi, İleri düğmesi ve Çift tıklama; ayrıca Tekerlek yukarı ve Tekerlek aşağı. |
+| **Makro** | Makrolarınızdan biri ve oynatma biçimi. [Makrolar](/keymotion/tr/guide/macros/) sayfasına bakın. |
+| **Özel** | **Varsayılan**, tuşun fabrika işlevi ya da Fn katmanındaki hazır kısayoludur. **Devre dışı** seçilirse tuşa basınca hiçbir şey olmaz. |
+
+## Değişiklikleri geri alma ve katmanı sıfırlama
+
+- Seçili tuşun altındaki **Varsayılana döndür** yalnızca o tuşu eski haline getirir.
+- Tuşların yanındaki kartta bulunan **Katmanı sıfırla**, açık katmandaki bütün tuşları fabrika düzenine döndürür.
+- Alttaki çubukta **Geri al**, henüz kaydedilmemiş bütün değişiklikleri bırakır.
+
+Bir katmanın tamamını fabrika düzenine döndürmek için:
+
+<Steps>
+
+1. Katmanın sekmesini seçin.
+2. **Katmanı sıfırla**'ya tıklayın. Katmandaki bütün tuşlar zaten varsayılandaysa düğme soluk görünür.
+3. **Klavyeye kaydet**'e tıklayın.
+
+</Steps>
+
+## Kaydetme ve deneme
+
+Alttaki çubuk değişiklikleri sayar, örneğin **3 tuş değişti**. **Klavyeye kaydet** değişen her katmanı klavyeye yazar; her katman bir saniyeden kısa sürer. Bitince **Klavyeye kaydedildi** yazar. Kaydetmediğiniz değişiklikler başka bir sayfaya geçince kaybolmaz; kenar çubuğunda **Tuş atama**'nın yanındaki nokta onları hatırlatır.
+
+Sonucu denemek için sayfanın altındaki **Tuş testi** kartında kutuya tıklayıp tuşlara basın. Kutu Windows'a ne ulaştığını gösterir: tuşlar, kısayollar, medya tuşları, fare düğmeleri ve tekerlek.
+
+<Aside type="note" title="Sayfada ne görünür">
+Klavye tuş atamasını bildiremez, bu yüzden sayfa Keymotion'dan en son neyi ve ne zaman kaydettiğinizi gösterir. Başka bir programla yaptığınız değişiklikler burada görünmez ve bir katmanı kaydetmek klavyedeki o katmanın tamamının yerini alır.
+</Aside>
+
+<Aside type="note" title="USB kablosu gerekir">
+Klavye 2.4 GHz alıcı ya da Bluetooth ile bağlıyken de tuşları değiştirebilirsiniz. Kaydetmek için USB kablosunu takın ve klavyenin arkasındaki anahtarı ortaya alın.
+</Aside>

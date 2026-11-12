@@ -1,0 +1,116 @@
+---
+title: Işıklar
+description: Klavyenin hazır efektlerinden birini seçin ya da her tuşa ayrı renk verip klavyeye kaydedin; tuşları canlı izleyin ve renkleri kalibre edin.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+**Işıklar** sayfası tuşların nasıl yanacağını belirler. Sağ üstte iki sekme vardır: klavyenin kendi animasyonları için **Efektler**, kendi tasarımınız için **Tuş başına renk**.
+
+<Aside type="note" title="USB kablosu gerekir">
+Işık ayarları USB kablosuyla gönderilir. Kabloyu takın ve klavyenin arkasındaki anahtarı ortaya alın. 2.4 GHz alıcı ya da Bluetooth ile de efekt seçip tuşları boyayabilirsiniz, ama bunları kaydedemez, tuşları canlı izleyemez, klavyede önizleyemez ve kalibrasyon test desenlerini kullanamazsınız. Bağlantı için [Klavyeyi bağlama](/keymotion/tr/guide/connecting/) sayfasına bakın.
+</Aside>
+
+## Efekt seçme
+
+<Screenshot name="lighting-effects" alt="Efektler sekmesinde Akan ışık seçili; sağda renk, parlaklık, hız ve yön ayarları" />
+
+<Steps>
+
+1. Kenar çubuğunda **Işıklar**'ı açın ve **Efektler** sekmesini seçin.
+2. **Hazır efektler** altında bir efekte tıklayın. Ayarları sağdaki **Ayarlar** bölümünde görünür.
+3. Ayarları istediğiniz gibi değiştirin.
+4. Sayfanın altındaki çubukta **Klavyeye kaydet**'e tıklayın. Klavye bu efekte geçer.
+
+</Steps>
+
+**Kapalı** ile birlikte 20 hazır efekt vardır. **Tuşa basınca** etiketi, kendi kendine hareket etmek yerine siz yazdıkça yanan efektleri gösterir. **Varsayılan** etiketi klavyenin fabrika efekti Akan ışık'ı, küçük yeşil nokta da klavyede şu an kayıtlı efekti gösterir.
+
+| Efektler | Ayarlar |
+|---|---|
+| **Sabit** | Renk, parlaklık |
+| **Tek tuş yanar**, **Tek tuş söner**, **Yıldızlar**, **Uçuşan ışıklar**, **Nefes**, **Yayılan dalga**, **Patlama**, **Fırlatma**, **Halkalar**, **Nabız**, **Mekik** | Renk, parlaklık, hız |
+| **Kayan renkler**, **Akan ışık**, **Dönen ışık**, **Akış**, **Eğik yağmur** | Renk, parlaklık, hız, yön |
+| **Renk cümbüşü**, **Spektrum** | Parlaklık, hız (renkleri kendilerine aittir) |
+| **Kapalı** | Ayarı yok |
+
+- **Renk:** Paletten bir renge tıklayın, istediğiniz rengi seçmek için renkli kareye tıklayın ya da #FF8A3D gibi bir renk kodu yazın. Renk seçmek **Gökkuşağı**'nı kapatır.
+- **Gökkuşağı:** Efekt, seçtiğiniz renk yerine gökkuşağı renkleriyle yanar. Rengi olan her efektte bulunur.
+- **Parlaklık** ve **Hız:** 0'dan 5'e altı basamak. Değer yükseldikçe ışık parlaklaşır ya da hızlanır.
+- **Yön:** Harekete göre adlandırılmış iki seçenek. Kayan renklerde **↓ Aşağı** ve **↑ Yukarı**, Akan ışıkta **→ Sağa** ve **← Sola**, Dönen ışıkta **↺ Saat yönünün tersi** ve **↻ Saat yönü**, Akış'ta **→ İleri** ve **← Geri**, Eğik yağmurda **↗ Sağ yukarı** ve **↙ Sol aşağı**.
+
+Ayarların altındaki **Varsayılan efekti geri yükle**, Akan ışık'ı fabrika ayarlarıyla seçer: gökkuşağı, parlaklık 5, hız 3. Uygulamak için kaydedin.
+
+<Aside type="caution" title="Kapalı">
+**Kapalı** kaydedilirse ışık Fn+X ile yeniden açılmayabilir. Işığı bir süreliğine kapatmak için bunun yerine klavyede Fn+X'e basın.
+</Aside>
+
+## Tuşları canlı izleme
+
+**Efektler** sekmesinin üstündeki klavye resmi, klavyenizde o an yanan renkleri gösterir. Keymotion renkleri klavyeden saniyede yaklaşık dört kez okur ve resmin altında yeşil bir noktayla **Klavyeden canlı** yazar. Okuma yokken orada **Önizleme** yazar. Okuma yalnızca Keymotion penceresi açıkken sürer; uygulama saatin yanında arka planda çalışırken durur.
+
+## Her tuşa ayrı renk verme
+
+<Screenshot name="lighting-per-key" alt="Tuş başına renk sekmesinde tuşlara Gökkuşağı hazır deseni boyanmış" />
+
+<Steps>
+
+1. **Tuş başına renk** sekmesini seçin.
+2. **Fırça rengi** için bir renk seçin.
+3. **Fırça** aracıyla tuşlara tıklayın ya da üzerlerinde sürükleyin.
+4. **Klavyeye kaydet**'e tıklayın.
+
+</Steps>
+
+Tuşların üstünde iki araç vardır:
+
+- **Fırça**, tıkladığınız ya da üzerinden geçtiğiniz her tuşu boyar.
+- **Seç**, tuşları seçili tutar. Tıklayarak ya da sürükleyerek seçin; Ctrl veya Shift ile tuş ekleyip çıkarın. Bundan sonra seçtiğiniz her renk, seçili tuşların hepsine birden uygulanır. Açıklamanın yanında **Tümünü seç**, **Seçilenleri söndür** ve **Seçimi kaldır** düğmeleri çıkar. Kısayol olarak Esc seçimi kaldırır, Delete seçili tuşları söndürür, Ctrl+A tümünü seçer.
+
+Tuşların altında:
+
+- **Parlaklık:** Tasarımın tamamı için 0'dan 5'e.
+- **Hazır desenler:** **WASD ve oklar** ile **Ana sıra** (parmaklarınızın durduğu sekiz tuş) bu tuşları fırça rengiyle yakar. **Gökkuşağı** renkleri soldan sağa yayar. Hazır desen o anki tasarımın yerini alır.
+- **Tüm tuşlar:** **Boya** her tuşu fırça rengine boyar, **Temizle** bütün tuşları söndürür.
+
+Boyamadığınız tuşlar kapalı kalır. Num Lock ve Fn tuşlarının ışığı gösterge olduğu için rengi değişmeyebilir.
+
+Alttaki çubukta bulunan **Klavyede önizle** anahtarı, boyadığınız tasarımı kaydetmeden klavyede gösterir. Başta açıktır. Sekmeden çıkınca klavye kayıtlı ışığına döner.
+
+## Kaydetme ve geri alma
+
+Alttaki çubuk, klavyeye henüz gitmeyen değişikliği yazar: **12 tuş değişti**, **Parlaklık değişti**, **Efekt ayarları değişti** ya da **Henüz klavyeye kaydedilmedi** gibi. **Klavyeye kaydet** ayarı klavyenin kendisine yazar; bu bir saniyeden kısa sürer. **Geri al** klavyede kayıtlı olana döner.
+
+Kaydetmediğiniz değişiklikler başka bir sayfaya geçince kaybolmaz; kenar çubuğunda **Işıklar**'ın yanındaki nokta onları hatırlatır. Pencereyi değişiklikleri kaydetmeden kapatırsanız Keymotion önce kaydetmek isteyip istemediğinizi sorar.
+
+<Aside type="note" title="Klavye tek bir ışık ayarı saklar">
+Klavyede ya bir efekt ya da bir tuş başına tasarım kayıtlıdır. Efekti kaydetmek klavyedeki tasarımın, tasarımı kaydetmek de efektin yerini alır. Keymotion ikisini de saklar; diğerine dönmek için onun sekmesini açıp yeniden kaydedin.
+</Aside>
+
+[Sistem göstergeleri](/keymotion/tr/guide/system-gauges/) açıkken klavye kayıtlı ışığınız yerine onları gösterir. Sayfa bunu belirtir ve **Göstergelere git** düğmesini sunar.
+
+## Renkleri kalibre etme
+
+Tuşlar ve ekran rengi farklı gösterir; mor gibi karışık renkler tuşlarda uygulamadakinden daha soluk görünebilir. **Ayarlar** sayfasındaki **Renk kalibrasyonu**, tuş renklerini ekranda gördüğünüze yaklaştırır.
+
+<Screenshot name="color-calibration" alt="Ayarlar'daki Renk kalibrasyonu bölümü; Gri basamaklar test deseni bir klavye resminin yanında" />
+
+- **Gama** (1,00 ile 3,00 arası, başta 2,20) ara tonların koyuluğunu belirler. Beyazı ve saf renkleri değiştirmez. Kırmızı, yeşil ve mavi için ayrı kaydırıcılar isterseniz **Renk başına gama**'yı açın.
+- **Beyaz dengesi**, **Kırmızı**, **Yeşil** ve **Mavi**'nin en yüksek parlaklığını %0 ile %100 arasında ayarlar.
+- **Düzeltme eğrisi**, sonucu kesikli **Düzeltmesiz** çizgisiyle karşılaştırır.
+
+Değişiklikler kendiliğinden kaydedilir ve kısa bir süre **Kaydedildi** yazar. **Varsayılanları geri yükle** her şeyi başlangıç değerine döndürür.
+
+<Steps>
+
+1. **Ayarlar**'ı açın ve **Renk kalibrasyonu** bölümünü bulun.
+2. **Test deseni** için **Beyaz**'ı seçin. Bütün tuşlar beyaz yanar, aynı desen ekranda da **Klavyenizle karşılaştırın** yazısıyla görünür. Beyaz pembe ya da mavimsi görünüyorsa baskın rengin beyaz dengesini düşürün.
+3. **Gri basamaklar**'ı seçin. Koyudan açığa sekiz gri, ekrandaki gibi eşit aralıkla açılmalıdır. Koyu basamaklar tuşlarda ekrandakinden parlaksa **Gama**'yı artırın, koyuysa azaltın.
+4. **Palet**'i seçin ve turuncu, mor gibi ara renklerin ekrandakine benzediğine bakın.
+5. **Kapalı**'yı seçin. Kayıtlı ışığınız geri gelir; sayfadan çıktığınızda da gelir.
+6. **Işıklar**'ı açıp efektinizi ya da tasarımınızı yeniden kaydedin. Kalibrasyon önizlemelere ve bundan sonra kaydettiğiniz renklere uygulanır.
+
+</Steps>
+
+Kaydırıcılar kablo olmadan da çalışır; test desenleri için kablo gerekir.

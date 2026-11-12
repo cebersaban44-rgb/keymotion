@@ -40,8 +40,10 @@ pub fn register(identifier: &str, dir: &Path) {
     }
 }
 
-/// Pages the app may open: only the project's own GitHub pages.
+/// Pages the app may open: only the project's own GitHub pages and its
+/// documentation site.
 const PROJECT_PAGES: &str = "https://github.com/cebersaban44-rgb/keymotion/";
+const DOCS_SITE: &str = "https://cebersaban44-rgb.github.io/keymotion/";
 
 /// The app id notifications are shown under.
 pub fn app_id(identifier: &str) -> String {
@@ -89,7 +91,7 @@ pub fn show(_app_id: &str, _title: &str, _body: &str) -> Result<(), String> {
 
 /// Whether `url` is one of the project's own pages, written plainly.
 fn project_page(url: &str) -> bool {
-    url.starts_with(PROJECT_PAGES)
+    (url.starts_with(PROJECT_PAGES) || url.starts_with(DOCS_SITE))
         && url.len() < 300
         && !url.contains("..")
         && url.chars().all(|c| c.is_ascii_alphanumeric() || "-._~/:#".contains(c))
@@ -189,7 +191,10 @@ mod tests {
 
     #[test]
     fn only_project_pages_are_opened() {
-        assert!(project_page("https://github.com/cebersaban44-rgb/keymotion/blob/develop/docs/destek-haritasi.md"));
+        assert!(project_page("https://github.com/cebersaban44-rgb/keymotion/releases/tag/v0.1.0"));
+        assert!(project_page("https://cebersaban44-rgb.github.io/keymotion/tr/help/keyboards/"));
+        assert!(!project_page("https://cebersaban44-rgb.github.io/keymotion.example.com/"));
+        assert!(!project_page("https://cebersaban44-rgb.github.io/other-site/"));
         assert!(!project_page("https://github.com/someone-else/repo"));
         assert!(!project_page("https://github.com/cebersaban44-rgb/keymotion/../../someone-else"));
         assert!(!project_page("https://github.com/cebersaban44-rgb/keymotion/\" & calc"));

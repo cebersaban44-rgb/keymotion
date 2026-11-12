@@ -1,0 +1,172 @@
+---
+title: Başka bir klavyeye destek
+description: Bir klavye modelinin nasıl tanımlandığı, tanımanın nasıl çalıştığı ve neden bu kadar sıkı olduğu, bir model eklenmeden önce neyin ölçülmesi gerektiği ve başka klavyesi olanların nasıl yardım edebileceği.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Keymotion bugün AJAZZ AK980 PRO'yu destekliyor. Birçok klavye aynı SONiX altyapısı üzerine kurulu ve aynı komut ailesini konuşuyor görünüyor; bu yüzden bunlar aday klavyelerdir ve [Desteklenen klavyeler](/keymotion/tr/help/keyboards/) sayfasında listelenir. Hiçbiri, o klavyede denenmeden desteklenmiş sayılmaz; çünkü bir klavyeyi güvende tutan ayrıntılar, örneğin kimlikleri, ekran boyutu ve kare sınırı, modelden modele değişir.
+
+## Başka bir klavyeniz varsa
+
+Yardım etmek için kod yazmanız gerekmez. Buradan başlayın:
+
+<Steps>
+
+1. Klavyeyi USB kablosuyla bağlayıp USB moduna alın, sonra Keymotion'ı başlatın.
+
+2. Keymotion desteklemediği bir SONiX ya da AJAZZ klavye görürse, desteklenen bir klavyeyi beklerken gösterdiği sayfada onu **Bu klavye henüz desteklenmiyor** başlığıyla ve bir **Destek iste** düğmesiyle listeler.
+
+3. **Destek iste** düğmesine basın. Açılan pencere gönderilecek bilgileri gösterir; **GitHub'da bildir** bunları panoya kopyalar ve model adı doldurulmuş olarak [Keyboard support request](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml) formunu açar. Göndermek için bir GitHub hesabı gerekir.
+
+4. Bilgileri formdaki **Keyboard details** kutusuna yapıştırın. Klavyenin bağlantı modlarını, resmi yazılımının adını ve sürümünü ve ürün sayfasının bağlantısını ekleyin; deneme sürümlerini deneyebilecekseniz ilgili kutuyu işaretleyin. Form İngilizcedir, ama Türkçe yazabilirsiniz.
+
+</Steps>
+
+Bu bilgiler yalnızca Windows'tan okunur; klavyeye hiçbir şey gönderilmez. İçlerinde şunlar vardır:
+
+- Windows'un bildirdiği klavye adı ve üretici,
+- USB kimlikleri (VID, PID ve klavye yazılımının sürümü olan yayın numarası) ve bağlantı türü,
+- usage page'i, usage'ı ve arayüz numarasıyla her HID koleksiyonu ve onaltılık olarak rapor tanımlayıcısı,
+- Keymotion ve Windows sürümleri.
+
+Seri numarası ve aygıt yolları dışarıda bırakılır: bunlar modeli değil, sizin klavyenizi tanımlar.
+
+## Bir model nasıl tanımlanır
+
+Her model, [`crates/kb-devices/models/`](https://github.com/cebersaban44-rgb/keymotion/tree/develop/crates/kb-devices/models) altındaki bir TOML dosyasıdır ve derleme sırasında uygulamaya gömülür. AK980 PRO'nun dosyasının kısaltılmış hali:
+
+```toml
+id = "ajazz-ak980-pro"          # dosya adıyla aynı olmalı
+name = "AJAZZ AK980 PRO"
+vendor = "AJAZZ"
+protocol = "sonix-ff13"
+layout = "98"
+key_count = 97
+has_knob = true
+has_side_light = true
+
+[screen]
+width = 240
+height = 135
+pixel_format = "rgb565-le"
+verified = false
+
+[[modes]]
+kind = "usb"
+vid = 0x0C45
+pid = 0x8009
+product_contains = "AK980"
+command_usage_page = 0xFF13
+display_usage_page = 0xFF68
+capabilities = ["lighting", "per-key-rgb", "keymap", "macros", "options", "screen", "clock"]
+verified = true
+verified_firmware = [0x0106]
+
+[[modes]]
+kind = "bluetooth"
+vid = 0x0C45
+pid = 0xFEFE
+ble_name_prefix = "AK980 PRO"
+capabilities = ["battery"]
+verified = true
+
+[[indicators]]
+led = 32
+name = "Num Lock"
+color = [255, 255, 255]
+verified = true
+
+[geometry]
+width = 20.5
+height = 6.5
+source = "…"                    # konumların nereden geldiği
+screen = { x = 16.5, y = 0.0, w = 3.0, h = 1.0 }
+knob = { x = 19.5, y = 0.0, d = 1.0 }
+keys = [
+  { id = "esc", label = "Esc", led = 1, hid = 0x29, x = 0.0, y = 0.0 },
+  { id = "f1", label = "F1", led = 2, hid = 0x3A, x = 2.0, y = 0.0 },
+  # … her tuş için bir satır
+]
+```
+
+| Alan | Anlamı |
+|---|---|
+| `id`, `name`, `vendor` | Modelin kimliği. `id` dosya adıyla aynı olmalıdır. |
+| `protocol`, `layout`, `key_count`, `has_knob`, `has_side_light` | Klavyenin türü. `key_count`, `geometry` içindeki tuş sayısına eşit olmalıdır. |
+| `[screen]` | Panelin boyutu ve piksel biçimi. |
+| `[[modes]]` | Her bağlantı için bir girdi: `kind` (`usb`, `dongle` ya da `bluetooth`), `vid` ve `pid` ile bağlantıyı ayrıca tanımlayan alanlar: `product_contains` (USB ürün adında geçmesi gereken, büyük-küçük harf ayırmayan bir parça), üreticiye özel kanallar için `command_usage_page` ve `display_usage_page`, Bluetooth için `ble_name_prefix`. |
+| `capabilities` | Klavyenin o modda sunduğu özellikler: `lighting`, `per-key-rgb`, `keymap`, `macros`, `options`, `screen`, `clock`, `battery`. Uygulama bunlardan yalnızca o modda gerçekten sürdüklerini sunar (`kb_core::app_capabilities`). |
+| `verified` | Yalnızca bu projede gerçek bir klavyede ölçülen bilgiler için `true`. |
+| `verified_firmware` | Her yazmanın denendiği klavye yazılımı sürümleri (`bcdDevice`). Başka bir sürümde uygulama, her oturumda ilk yazmadan önce kullanıcıya bir kez sorar. |
+| `[[indicators]]` | Klavye yazılımının kendi yaktığı ışıklar (Num Lock, Fn): LED'i, ne gösterdiği ve rengi. |
+| `[geometry]` | Klavyenin bir fotoğrafından tuş birimi cinsinden ölçülen fiziksel düzen; kaynağı `source` alanına yazılır. Ekran, topuz ve her tuş: `id`, `label`, `led` numarası (bu ailede aynı zamanda tuşun tuş atama numarası), varsayılan `hid` usage'ı, konumu ve boyutu. |
+
+Bilinmeyen alanlar reddedilir; bu sayede bir yazım hatası görmezden gelinmez, testleri kırmızı yapar.
+
+Bir dosya eklemek için onu `crates/kb-devices/src/lib.rs` içindeki `MODEL_SOURCES` listesine (kimliğe göre sıralı) ekleyin ve `cargo test --workspace` çalıştırın. Testler her modeli okur ve geometrisini denetler: tuş sayısı, yinelenen LED numarası, tuş kimliği ya da HID usage'ı olmaması, her tuşun çerçevenin içinde kalması ve hiçbir iki tuşun üst üste binmemesi. Aynı çalışma `app/src/bindings/geometry-<id>.json` dosyasını yazar; onu modelle birlikte commit'leyin.
+
+### Dosyanın yetmediği durumlar
+
+Aynı komut ailesini, aynı paket boyutlarıyla ve aynı 240×135 ekranla konuşan bir model için dosyası yeter. Geri kalan her şey kod ister ve aynı özenle incelenir:
+
+- başka bir ekran boyutu, piksel düzeni ya da kare sınırı (`kb-protocol`'deki ekran biçimi bugün AK980 PRO'ya göre sabittir),
+- başka bir komut ailesi ya da tanımlayıcı şekli (`kb-protocol`'de yeni bir modül ve `kb-core`'da onun sürücüsü),
+- henüz sürücüsü olmayan 2.4 GHz alıcı.
+
+## Tanıma nasıl çalışır
+
+Cihaz aktörü her 2 saniyede bir HID koleksiyonlarını listeler ve her birini model dosyalarıyla eşleştirir (`kb_devices::match_interface`):
+
+1. **VID ve PID** bir modla eşleşmelidir.
+2. **Veri yolu.** USB ve alıcı modları yalnızca USB veri yolunda, Bluetooth yalnızca Bluetooth veri yolunda eşleşir.
+3. **Ürün adı.** Mod `product_contains` belirtiyorsa USB ürün adı bunu içermelidir.
+4. **Görev.** Koleksiyonun usage page'i onun komut kanalı mı, ekran kanalı mı yoksa uygulamanın yalnızca saydığı standart bir koleksiyon mu (klavye, medya tuşları, fare) olduğunu belirler.
+5. **Bluetooth.** Eşleştirilmiş bir Bluetooth LE aygıtı adına göre eşleştirilir (`ble_name_prefix`).
+
+Uygulama üreticiye özel bir kanalı açarken rapor tanımlayıcısının şeklini de denetler (`kb_core::shape`): komut kanalında rapor kimliği olmayan 64 baytlık feature ve output raporları, ekran kanalında 4096 baytlık bir output raporu olmalıdır. Şekil farklıysa kanal kullanılmaz ve hiçbir şey gönderilmez.
+
+### Neden bu kadar sıkı
+
+- `0C45:8009` ve `0C45:800A` SONiX'in genel amaçlı kimlikleridir ve birçok farklı klavye bunları taşır. AK820 PRO, AK980 PRO'nun kimliklerini taşır ama adı farklıdır; testler onun eşleşmediğinden emin olur.
+- Bu kimlikleri taşıyan bazı klavyeler başka bir komut ailesi konuşur. Bunlardan birinde AK980 PRO'nun kullandığı ekran yükleme komutu, ekrandaki görsel yuvasını siliyor. Ad ve şekil denetimleri komutları bu klavyelerden uzak tutar.
+- `FEFE`, AK980 PRO'da 2.4 GHz alıcının kimliğidir; başka bir klavyede ise Bluetooth'un. Bu yüzden karar veri yoluna bakılarak verilir.
+- Kendini yalnızca "USB KEYBOARD" diye tanıtan bir klavye adından tanınamaz; bu yüzden hiç kendiliğinden tanınmaz.
+- Kabloda aynı modelden iki klavye varsa uygulama kalıcı belleğe yazmayı reddeder; çünkü kullanıcının hangisini kastettiğini bilemez.
+
+SONiX'in üretici kimliğini taşıyan ya da adında "AJAZZ" geçen, standart bir klavye koleksiyonu olan ve hiçbir modelle eşleşmeyen klavye desteklenmeyenler arasında listelenir; **Destek iste** düğmesi buradan gelir (`kb_core::unknown_keyboards`).
+
+## Bir model eklenmeden önce neler ölçülmeli
+
+Bir model yalnızca o klavyeden alınmış ölçümlerle eklenir. Her ölçüm tarihi, klavye yazılımının sürümü, kullanılan araç, ne gönderildiği, ne geldiği ve klavyenin ne yaptığıyla birlikte yazılır; PR bu notları içerir. En güvenli adımdan en riskliye doğru ilerleyin:
+
+<Steps>
+
+1. **Kimlik.** Her bağlantı modunda VID, PID, üretici ve ürün adları, veri yolu, Bluetooth adı ve klavye yazılımının sürümü. Bunların çoğunu **Destek iste** toplar.
+
+2. **Tanımlayıcı şekli.** Her HID koleksiyonu ve rapor tanımlayıcısı. Komut koleksiyonu 64 baytlık şekle, ekran koleksiyonu (varsa) 4096 baytlık şekle sahip olmalıdır. Değilse klavye başka bir aile konuşuyordur: burada durun.
+
+3. **Yalnızca okuma.** Bir daldaki taslak model dosyasıyla (henüz `verified_firmware` olmadan) klavyenin kendiliğinden gönderdiği raporları dinleyin (`kb listen`, hiçbir şey göndermez), sonra renk geri okumasının (`kb read-colors`) AK980 PRO'daki gibi cevap verdiğini denetleyin.
+
+4. **Yalnızca RAM.** Canlı kareler (`kb live`) tuşları yakmalı ve temiz bitmelidir: kareler kesilince klavye kayıtlı ışığına dönmelidir. Her tuşu LED numarasıyla eşleştirmenin ve klavye yazılımının kendi yaktığı ışıkları bulmanın güvenli yolu da numaraları teker teker yakan canlı karelerdir.
+
+5. **Her seferinde tek yazma.** Modelin sunacağı her özellik, bayt toplamı denetlenerek ve sonucu gözle görülerek: bir efekt, tuş başına renk, iki tuş atama katmanı ve sıfırlamaları, makrolar, saat. Sonra klavye sahibinin ayarlarını geri yazın.
+
+6. **Ekran, en son.** Panelin boyutu, yönü ve renk sırası tek bir durağan test deseniyle (`kb screen-test` 240×135 bir panel için bir desen çizer) ve modelin kare sınırı; sınır, birden fazla kare yüklenmeden önce doğrulanmış olmalıdır. Sınırı asla aşmayın.
+
+7. **Düzen.** Tuşların konumu ve boyutu tam karşıdan çekilmiş bir fotoğraftan, tuş sayısı, ekranın ve topuzun yeri.
+
+</Steps>
+
+Ancak bundan sonra model, ölçülen bilgiler için `verified = true` alır ve denenmiş klavye yazılımı `verified_firmware` listesine girer. Aynı PR'da [Desteklenen klavyeler](/keymotion/tr/help/keyboards/) sayfasını ve `CHANGELOG.md`'yi de güncelleyin.
+
+## Güvenlik
+
+<Aside type="danger" title="Yanlış bir yazma kalıcı olabilir">
+Bir AULA F108 Pro'da kare sınırını aşan bir ekran animasyonu klavyenin kendi menü görsellerinin üzerine yazdı ve bu kalıcı oldu. Kare sınırları modelden modele değişir; aynı komut kodunun farklı modellerde farklı anlamlara geldiği de görüldü. Bir modelde ölçülen komutun başka bir modelde aynı davrandığını varsaymayın: onu orada, adım adım ve yalnızca okuyan komutlardan başlayarak ölçün. O model için kimsenin doğrulamadığı bir sınırı asla aşmayın, klavye yazılımı ve önyükleyici yollarına asla dokunmayın.
+</Aside>
+
+- Kendinize ait bir klavyede deneyin; başkasınınsa yalnızca sahibinin onayıyla. Yazılanlar kalıcı belleğe gider.
+- Yalnızca RAM'e giden adımları önce, kalıcı belleğe yazmayı en sona bırakın. Ekran yüklemeleri belleği yıpratır; onları az tutun.
+- `kb`'yi kullanmadan önce resmi yazılımı, SignalRGB'yi, OpenRGB'yi ve Keymotion'ı kapatın. Aynı anda komut gönderen iki program birbirinin oturumunu bozar.
+- [Katkıda bulunma](/keymotion/tr/developers/contributing/) sayfasındaki klavyeyle çalışma kurallarını aklınızda tutun; AK980 PRO'da neyin ölçüldüğü [Protokol ayrıntıları](/keymotion/tr/developers/protocol/) sayfasında.

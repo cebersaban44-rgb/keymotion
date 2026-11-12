@@ -1,6 +1,6 @@
 // What a failed action says to the user. The backend's error text is
 // technical and English; the user gets what happened and what to do, in
-// the UI language (docs/arayuz-dili.md). The original goes to the console
+// the UI language, in plain words. The original goes to the console
 // and to the app's log, so "Copy diagnostics" can carry it. An unexpected
 // one is also offered for reporting, once a session (lib/report.ts).
 

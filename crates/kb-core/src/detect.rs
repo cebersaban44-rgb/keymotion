@@ -48,7 +48,7 @@ pub struct DetectedKeyboard {
 ///   options (`04 17`) are not built yet, and the firmware has no battery
 ///   reading over USB.
 /// - Bluetooth: no vendor channel; only the standard GATT battery service.
-/// - 2.4 GHz receiver: no driver yet (docs/DURUM.md, "Sona bırakılan"), so
+/// - 2.4 GHz receiver: no driver yet (the other modes come after USB), so
 ///   nothing is offered even though the model file lists what the receiver
 ///   is said to carry.
 pub fn app_capabilities(model: &Model, kind: ConnectionKind) -> Vec<Capability> {

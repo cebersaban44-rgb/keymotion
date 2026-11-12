@@ -1,6 +1,6 @@
-# AJAZZ AK980 PRO — ekranlı üç modlu sürüm.
-# `verified = true` yalnızca bu projede gerçek cihazda ölçülen bilgiler içindir.
-# Kaynaklar: docs/teknik-analiz.md, docs/research/
+# AJAZZ AK980 PRO — the tri-mode version with a screen.
+# `verified = true` is only for facts measured on a real device in this project.
+# Sources: protocol research and measurements (docs site: developers/protocol).
 
 id = "ajazz-ak980-pro"
 name = "AJAZZ AK980 PRO"
@@ -18,7 +18,7 @@ pixel_format = "rgb565-le"
 verified = false
 
 # Verified 2026-11-10 on fw 0x0106: IDs, product "AK980 PRO", FF13/FF68
-# interfaces, F5 read-back and the 04 20 real-time stream (docs/donanim-dogrulama.md).
+# interfaces, F5 read-back and the 04 20 real-time stream (docs site: developers/protocol).
 [[modes]]
 kind = "usb"
 vid = 0x0C45
@@ -51,7 +51,7 @@ verified = true
 # Firmware status lights. Read back with `04 F5` on 2026-11-10: Num Lock
 # white (`FE FF FF`) while Num Lock is on, Fn red (`FE 00 00`) in every
 # mode, both at full value whatever the brightness level. What the Fn light
-# reports is still an open question (docs/DURUM.md §8).
+# reports is still an open question.
 [[indicators]]
 led = 32
 name = "Num Lock"
@@ -66,10 +66,10 @@ verified = true
 
 # Physical geometry in key units (1u = one standard key).
 # Positions: measured from a top-down photo of the user's board (2026-11-10,
-# ~89.6 px/u). LED indices: vendor rgb-keyboard.xml map as documented in
-# docs/research/protokol-ff13.md §5.2 (LED index = keymap index).
+# ~89.6 px/u). LED indices: the vendor's rgb-keyboard.xml map (LED index =
+# keymap index).
 # `hid`: the key's default HID usage (page 0x07). Fn is the vendor usage 0xAF
-# and is never remapped (protokol-ff13.md §6.2).
+# and is never remapped (docs site: developers/protocol).
 [geometry]
 width = 20.5
 height = 6.5

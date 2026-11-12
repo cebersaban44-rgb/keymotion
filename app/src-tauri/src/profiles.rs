@@ -33,8 +33,8 @@
 //! key layout (both layers back to the default, the Key mapping page's
 //! "back to factory" write), no macros, and the factory effect the protocol
 //! crate documents (`EffectSettings::factory`: Rolling, rainbow, brightness
-//! 5, speed 3; docs/research/protokol-ff13.md §4.1, docs/donanim-dogrulama.md
-//! "Işık yazma"). No firmware reset command is ever sent.
+//! 5, speed 3; docs site: developers/protocol). No firmware reset command
+//! is ever sent.
 //!
 //! # Profile files
 //!

@@ -9,11 +9,11 @@
 //     and written back as UTF-8. Each two-byte letter turns into two
 //     characters: "ı" (C4 B1) becomes U+00C4 U+00B1, "ş" (C5 9F) becomes
 //     U+00C5 U+0178, "ç" (C3 A7) becomes U+00C3 U+00A7, and an em dash
-//     (E2 80 94) starts with U+00E2 U+20AC (docs/DURUM.md §6, lesson 52).
+//     (E2 80 94) starts with U+00E2 U+20AC (a PowerShell 5.1 edit did this).
 //
 // Lockfiles and the generated TypeScript bindings are skipped. In Markdown, an
 // inline code span that contains nothing but a mojibake sample documents the
-// problem and is allowed (DURUM.md lists the patterns this way).
+// problem and is allowed (so notes can list the patterns this way).
 //
 // Usage: node tools/check-text.mjs            (every tracked file)
 //        node tools/check-text.mjs FILE...    (only these files)

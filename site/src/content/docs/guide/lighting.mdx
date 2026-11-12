@@ -1,0 +1,116 @@
+---
+title: Lighting
+description: Choose one of the keyboard's built-in effects or give every key its own color, save it to the keyboard, watch the keys live and calibrate the colors.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+The **Lighting** page sets how the keys light up. It has two tabs at the top right: **Effects** for the keyboard's own animations, and **Per-key color** for a design of your own.
+
+<Aside type="note" title="Needs the USB cable">
+Lighting settings travel over the USB cable. Connect it and set the switch on the back of the keyboard to the middle. With the 2.4 GHz receiver or Bluetooth you can still pick effects and paint keys, but you can't save them, see the keys live, preview on the keyboard or use the calibration test patterns. See [Connecting the keyboard](/keymotion/guide/connecting/).
+</Aside>
+
+## Choose an effect
+
+<Screenshot name="lighting-effects" alt="The Effects tab with Rolling selected and its color, brightness, speed and direction settings on the right" />
+
+<Steps>
+
+1. Open **Lighting** in the sidebar and choose the **Effects** tab.
+2. Under **Built-in effects**, click an effect. Its controls appear in the **Settings** panel.
+3. Adjust the settings.
+4. Click **Save to keyboard** in the bar at the bottom of the page. The keyboard switches to the effect.
+
+</Steps>
+
+There are 20 built-in effects, counting **Off**. The label **On key press** marks the effects that light up as you type instead of moving on their own. **Default** marks Rolling, the keyboard's factory effect, and a small green dot marks the effect saved on the keyboard now.
+
+| Effects | Settings |
+|---|---|
+| **Static** | Color, brightness |
+| **Single key on**, **Single key off**, **Starlight**, **Fluttering**, **Breathing**, **Outward wave**, **Explosion**, **Launch**, **Ripples**, **Pulse**, **Shuttle** | Color, brightness, speed |
+| **Scrolling**, **Rolling**, **Rotating**, **Flow**, **Slanted rain** | Color, brightness, speed, direction |
+| **Colorful**, **Spectrum** | Brightness, speed (they bring their own colors) |
+| **Off** | None |
+
+- **Color:** click a swatch, click the colored square to pick any color, or type a color code such as #FF8A3D. Picking a color turns **Rainbow** off.
+- **Rainbow:** the effect uses rainbow colors instead of the one you picked. Every effect with a color has it.
+- **Brightness** and **Speed:** six steps from 0 to 5. Higher is brighter or faster.
+- **Direction:** two choices named after the movement. **↓ Down** and **↑ Up** for Scrolling, **→ Right** and **← Left** for Rolling, **↺ Counterclockwise** and **↻ Clockwise** for Rotating, **→ Forward** and **← Backward** for Flow, **↗ Up right** and **↙ Down left** for Slanted rain.
+
+**Restore default effect**, under the settings, picks Rolling with its factory settings: rainbow, brightness 5, speed 3. Save to apply it.
+
+<Aside type="caution" title="Off">
+With **Off** saved, Fn+X may not turn the light back on. To turn the light off for a while, press Fn+X on the keyboard instead.
+</Aside>
+
+## Watch the keys live
+
+On the **Effects** tab, the keyboard picture at the top shows the colors your keyboard is showing right now. Keymotion reads them from the keyboard about four times a second, and the caption under the picture says **Live from your keyboard** with a green dot. When there is no reading, it says **Preview**. The reading runs only while the Keymotion window is open, not while the app runs in the background next to the clock.
+
+## Color each key
+
+<Screenshot name="lighting-per-key" alt="The Per-key color tab with the Rainbow preset painted across the keys" />
+
+<Steps>
+
+1. Choose the **Per-key color** tab.
+2. Pick a color in **Brush color**.
+3. With the **Brush** tool, click keys or drag across them.
+4. Click **Save to keyboard**.
+
+</Steps>
+
+Two tools sit above the keys:
+
+- **Brush** paints every key you click or drag across.
+- **Select** keeps keys selected. Click or drag to select, and hold Ctrl or Shift to add or remove keys. Each color you pick then applies to all selected keys at once. **Select all**, **Turn off selected** and **Clear selection** appear next to the hint. As shortcuts, Esc clears the selection, Delete turns the selected keys off and Ctrl+A selects all.
+
+Below the keys:
+
+- **Brightness:** 0 to 5, for the whole design.
+- **Presets:** **WASD and arrows** and **Home row** (the eight keys under your fingers) light those keys in the brush color. **Rainbow** spreads colors from left to right. A preset replaces your current design.
+- **All keys:** **Fill** paints every key in the brush color, and **Clear** turns every key off.
+
+Keys you don't paint stay off. Num Lock and Fn light up as indicators, so their color may not change.
+
+**Preview on keyboard**, the switch in the bottom bar, shows your design on the keyboard while you paint, without saving it. It is on at first. When you leave the tab, the keyboard goes back to its saved lighting.
+
+## Save or revert
+
+The bar at the bottom says what is not on the keyboard yet, such as **12 keys changed**, **Brightness changed**, **Effect settings changed** or **Not saved to the keyboard yet**. **Save to keyboard** stores the setting in the keyboard, which takes less than a second. **Revert** goes back to what the keyboard has.
+
+Changes you haven't saved stay in the app when you open another page, and a dot next to **Lighting** in the sidebar shows them. If you close the window with changes not saved, Keymotion asks whether to save them.
+
+<Aside type="note" title="One lighting setup at a time">
+The keyboard keeps either an effect or a per-key design. Saving an effect replaces the design on the keyboard, and saving a design replaces the effect. Keymotion keeps both, so you can open the other tab and save it again.
+</Aside>
+
+When the [system gauges](/keymotion/guide/system-gauges/) are on, the keyboard shows them instead of your saved lighting. The page says so and offers **Go to gauges**.
+
+## Calibrate the colors
+
+Keys and screens show color differently: mixed colors such as violet can look paler on the keys than in the app. **Color calibration**, on the **Settings** page, brings the key colors closer to what you see on screen.
+
+<Screenshot name="color-calibration" alt="The Color calibration card in Settings with the Gray steps test pattern shown next to a keyboard picture" />
+
+- **Gamma** (1.00 to 3.00, 2.20 at first) sets how dark the mid tones are. It leaves white and pure colors unchanged. Turn on **Gamma per color** for separate red, green and blue sliders.
+- **White balance** sets the maximum brightness of **Red**, **Green** and **Blue**, from 0 to 100%.
+- **Correction curve** shows the result against the dashed **Uncorrected** line.
+
+Changes are saved by themselves, and **Saved** appears for a moment. **Restore defaults** sets everything back.
+
+<Steps>
+
+1. Open **Settings** and find **Color calibration**.
+2. Under **Test pattern**, choose **White**. All keys light white, and the same pattern appears on screen, marked **Compare with your keyboard**. If white looks pink or bluish, lower the white balance of the color that stands out.
+3. Choose **Gray steps**: eight grays from dark to light, which should brighten as evenly as on screen. If the dark steps look brighter on the keys than on screen, raise **Gamma**; if darker, lower it.
+4. Choose **Palette** and check that mixed colors such as orange and violet match the screen.
+5. Choose **Off**. Your saved lighting comes back, as it also does when you leave the page.
+6. Open **Lighting** and save your effect or design again. Calibration applies to previews and to colors you save from now on.
+
+</Steps>
+
+The sliders work without the cable; the test patterns need it.

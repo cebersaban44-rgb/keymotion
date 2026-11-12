@@ -172,7 +172,7 @@ const LIVE_FAILURES_WARN: u32 = 20;
 /// `04 F5` polling rate for the on-screen mirror.
 const MIRROR_EVERY: Duration = Duration::from_millis(250);
 /// Wait after the keyboard appears before talking to it: all its interfaces
-/// need to be ready (S2, docs/research/protokol-ff13.md §10.4).
+/// need to be ready (S2; docs site: developers/protocol).
 const CLOCK_SETTLE: Duration = Duration::from_secs(2);
 /// Automatic clock sync runs at most this often. Every clock packet also
 /// switches the screen to its clock page, so it should not run on every

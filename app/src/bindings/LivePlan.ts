@@ -2,6 +2,6 @@
 
 /**
  * How many automatic screen uploads a day the live mode may use (flash
- * wear budget, docs/research/ekran-ve-veri-kaynaklari.md §3.4).
+ * wear budget; docs site: developers/architecture).
  */
 export type LivePlan = "saver" | "balanced" | "heavy";

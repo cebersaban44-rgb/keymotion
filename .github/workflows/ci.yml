@@ -1,5 +1,5 @@
 # Checks every pull request and every merge into develop and main.
-# The same checks are listed in docs/gelistirme-akisi.md; branch protection
+# The same checks are listed in CONTRIBUTING.md; branch protection
 # requires the "Build and test" job before a PR can be merged.
 #
 # Actions are pinned to commit SHAs (the release is in the comment next to
@@ -135,3 +135,30 @@ jobs:
 
       - name: cargo deny
         run: cargo deny --locked check
+
+  # The documentation site (site/, published by pages.yml): it must build, and
+  # the build fails on a broken internal link.
+  site:
+    name: Documentation site
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: site/package.json
+          cache: true
+          cache_dependency_path: site/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm --dir site install --frozen-lockfile
+
+      - name: Build
+        run: pnpm --dir site build

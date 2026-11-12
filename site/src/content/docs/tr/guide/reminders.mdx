@@ -1,0 +1,85 @@
+---
+title: Hatırlatıcılar
+description: Zamanı gelince tuşlarda renkli bir dalga geçen hatırlatmalar kurun; isterseniz klavye ekranında bir kart, bir ses ve bir Windows bildirimi de gelsin.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Bir hatırlatmanın zamanı gelince tuşlardan onun renginde bir dalga geçer. İsterseniz klavyenin ekranında bir kart da çıkar, bir ses çalar ve Windows bir bildirim gösterir. Hatırlatmalar bir kez, seçtiğiniz günlerde belli bir saatte ya da çalışma saatlerinde birkaç dakikada bir gelebilir.
+
+Kenar çubuğunda **Araçlar** altından **Hatırlatıcılar** sayfasını açın.
+
+<Screenshot name="reminders" alt="Listede iki hatırlatma ve altında ayarlarla Hatırlatıcılar sayfası" />
+
+<Aside type="note" title="Işık ve kartlar için USB kablosu gerekir">
+Tuşlardaki dalga ve ekrandaki kartlar için kabloyu takın ve klavyenin arkasındaki anahtarı ortaya alın. Bu arada hatırlatmalar Windows bildirimiyle gelir.
+</Aside>
+
+## Hatırlatma ekleme
+
+Hatırlatma eklemek üç adımdır: **Şablon**, **Ne ve ne zaman** ve **Hatırlatma şekli**. **Vazgeç** her adımda kaydetmeden çıkar.
+
+<Steps>
+
+1. **Hatırlatma ekle** düğmesine tıklayın.
+2. Bir şablon seçin. Sonraki adımlarda her şeyi değiştirebilirsiniz.
+   - **Su molası**, **Hareket molası** ve **Göz molası** hafta içi 09:00 ile 18:00 arasında 60, 45 ve 20 dakikada bir gelir; yalnızca ışıkla.
+   - **İlaç saati** her gün 14:00'te gelir; ışık ve kartla.
+   - **Özel hatırlatma** bir kez, bir sonraki tam saatte gelir; ışık ve kartla.
+3. **Ne ve ne zaman** adımında bir **Başlık** ve isterseniz bir **Not (isteğe bağlı)** yazın. Sonra **Ne zaman** için birini seçin:
+   - **Bir kez**: bir **Tarih** ve bir **Saat**.
+   - **Belli saatte**: bir **Saat** ve **Günler**.
+   - **Aralıklarla**: **Sıklık** için 20, 30, 45, 60 ya da 90 dakika; bir **Başlangıç** ve bir **Bitiş** saati; seçtiğiniz **Günler**. İlk hatırlatma, başlangıç saatinden bir aralık sonra gelir.
+4. **İleri** düğmesine tıklayın.
+5. **Hatırlatma şekli** adımında bir **Simge** ve bir **Renk** seçin, hatırlatmanın size nasıl haber vereceğini belirleyin (aşağıya bakın).
+6. **Kaydet** düğmesine tıklayın. Hatırlatma listede görünür.
+
+</Steps>
+
+En çok 20 hatırlatma ekleyebilirsiniz.
+
+<Screenshot name="reminders-alert-style" alt="Hatırlatma şekli adımı: simge ve renk, tuşlarda dalga, ekranda kart ve kart önizlemesi" />
+
+## Hatırlatma nasıl haber verir
+
+### Tuşlarda dalga
+
+Hatırlatmanın renginde bir dalga tuşlardan iki kez geçer; bu yaklaşık 3 saniye sürer. Dalga her zaman açıktır; yükleme ve canlı ekran gerektirmez. Klavyede görmek için **Dene** düğmesine tıklayın.
+
+### Ekranda kart
+
+Klavyenin ekranında da bir kart görmek için **Ekranda kart** anahtarını açın. Kartta saat, başlık, not ve hatırlatmanın bir sonraki zamanı yazar. Kart **Ekranda kalma süresi** ayarındaki süre kadar kalır, sonra ekranda önceki görsel geri gelir.
+
+- Kart için [canlı ekranın](/keymotion/tr/guide/screen/) açık olması gerekir.
+- Her kart, günlük yükleme sınırından 2 yükleme düşer. Sayfa bu hatırlatmanın günde en çok kaç yükleme kullanacağını söyler. Sık hatırlatmalar için yalnızca ışığı önerir.
+- **Kart önizlemesi** kartı yükleme yapmadan sayfada gösterir. **Klavyede dene** kartı 1 dakikalığına klavyeye gönderir; bu 2 yükleme sayılır.
+
+Kart açık olsa da bazen yalnızca tuşlar yanar: ekranda bir toplantı kartı varsa, günlük yükleme sınırı dolmuşsa, canlı ekran kapalıysa, USB kablosu bağlı değilse ya da **Ekranda kart göster** kapalıysa. Bu durumda hatırlatmanın satırında kartın neden gösterilmediği yazar.
+
+### Ses ve Windows bildirimi
+
+**Bildirim sesi** Windows'un bildirim sesini çalar. **Ayarlar** altındaki **Windows bildirimi** ise hatırlatmanın başlığı ve notuyla bir Windows bildirimi de gösterir. Klavye USB kablosuyla bağlı değilken tuşlar yanamaz; bu yüzden bildirim o sırada her zaman gelir.
+
+## Hatırlatmalarınız
+
+**Hatırlatmalarınız** listesi her hatırlatmayı simgesi, başlığı ve zamanlamasıyla gösterir. Küçük simgeler dalgayı, kartı ve sesi gösterir; sağda bir sonraki zamanı yazar. Zamanı geçmiş tek seferlik bir hatırlatmada **Geçti** yazar. Her satırda şunlar vardır:
+
+- **Dene**, ışığı ve sesi hemen dener. Ekranda kart açıksa kart da klavyeye gider, 1 dakika kalır ve günlük yükleme sınırından düşer.
+- **Düzenle** (kalem simgesi), adımları yeniden açar.
+- **Sil** (çöp kutusu simgesi). **Sil** ile onaylayın ya da **Vazgeç** düğmesine tıklayın.
+- Hatırlatmayı açıp kapatan bir anahtar.
+
+Sayfanın üstündeki satır sıradaki hatırlatmayı ve ne zaman geleceğini gösterir.
+
+## Ayarlar
+
+- **Hatırlatmalar** bütün hatırlatmaları açar ya da kapatır.
+- **Ekranda kalma süresi**: Bir kartın ekranda ne kadar kalacağı; 1, 2 ya da 5 dakika. Varsayılan 2 dakikadır.
+- **Windows bildirimi**: Yukarıda anlatıldığı gibi her hatırlatma için bir Windows bildirimi.
+- **Ekranda kart göster**: Kapalıyken hatırlatmalar yalnızca tuşlarda görünür.
+- **Bilgisayar başında değilken duraklat**: Klavye ve fare 5 dakika kullanılmazsa (ekran kilitliyken de) aralıklı hatırlatmalar durur. Döndüğünüzde sayım baştan başlar. Belli saatteki hatırlatmalar yine gelir.
+
+<Aside type="note" title="Hatırlatmalar ne zaman çalışır">
+Hatırlatmalar Keymotion çalıştığı sürece çalışır; penceresini kapattığınızda Keymotion saatin yanında çalışmaya devam ediyorsa da çalışır ([Ayarlar](/keymotion/tr/guide/settings/) sayfasına bakın). Simgesinin menüsü sıradaki hatırlatmayı gösterir ve hatırlatmaları açıp kapatabilir. Bir hatırlatma 10 dakikadan fazla gecikirse, örneğin bilgisayar uykudaysa, atlanır.
+</Aside>

@@ -1,0 +1,58 @@
+---
+title: Keymotion
+description: A free, open-source Windows app for the AJAZZ AK980 PRO keyboard. Set its lighting key by key, remap keys, record macros and put your own pictures on its screen.
+template: splash
+hero:
+  title: Every key, every light, every pixel.
+  tagline: Keymotion is a free Windows app for the AJAZZ AK980 PRO. Set the lighting key by key, remap any key, record macros and put your own pictures on its little screen.
+  image:
+    html: '<img src="/keymotion/images/ajazz-ak980-pro.webp" width="1419" height="521" alt="The AJAZZ AK980 PRO keyboard, lit in rainbow colors, with its screen and knob at the top right.">'
+  actions:
+    - text: Download for Windows
+      link: https://github.com/cebersaban44-rgb/keymotion/releases/latest
+      icon: download
+      variant: primary
+    - text: Read the guide
+      link: /keymotion/guide/install/
+      icon: right-arrow
+      variant: secondary
+---
+
+import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+## What you can do
+
+<CardGrid>
+  <Card title="Lighting" icon="sun">
+    The keyboard's 20 effects, a color for every key, and a live mirror of what the keys show. [Lighting](/keymotion/guide/lighting/)
+  </Card>
+  <Card title="Key mapping" icon="puzzle">
+    Change any key on the base and Fn layers: shortcuts, media keys, mouse buttons. [Key mapping](/keymotion/guide/key-mapping/)
+  </Card>
+  <Card title="Macros" icon="random">
+    Record a sequence by pressing keys, then edit each step and its timing. [Macros](/keymotion/guide/macros/)
+  </Card>
+  <Card title="Screen studio" icon="window">
+    Put images, GIFs, videos and text cards on the 240×135 screen. [Screen](/keymotion/guide/screen/)
+  </Card>
+  <Card title="Live screen" icon="analytics">
+    Cards that update on their own: the song that is playing, your next meeting, the focus timer. [Screen](/keymotion/guide/screen/)
+  </Card>
+  <Card title="Focus and reminders" icon="clock">
+    A focus timer, reminders and system gauges that light up on the keys. [Focus timer](/keymotion/guide/focus-timer/)
+  </Card>
+</CardGrid>
+
+## What works in each connection mode
+
+The switch on the back of the keyboard picks the connection. Settings travel over the USB cable; that is how the keyboard is built.
+
+| Connection | AJAZZ AK980 PRO |
+|---|---|
+| USB cable | Everything: lighting, keys, macros, the screen and live cards |
+| 2.4 GHz receiver | Typing, media keys and the knob |
+| Bluetooth | Typing, media keys, the knob and the battery level |
+
+<LinkCard title="Supported keyboards" description="The keyboards Keymotion works with, and the ones that could come next." href="/keymotion/help/keyboards/" />
+
+<p class="km-unofficial">Keymotion is an independent project. It is not affiliated with, endorsed by or supported by AJAZZ. Free and open source, under the MIT or Apache-2.0 license.</p>

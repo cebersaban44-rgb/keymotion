@@ -1,72 +1,88 @@
-# Privacy
+# Privacy policy
 
-This desktop app controls your keyboard (lighting, key mapping, macros, the screen and the clock) and shows information on it. Everything it does happens on your computer. A Turkish version of this page is in [docs/gizlilik.md](docs/gizlilik.md).
+*Türkçe: [Gizlilik politikası](https://cebersaban44-rgb.github.io/keymotion/tr/about/privacy/).* This file is the same text as the [privacy policy on the website](https://cebersaban44-rgb.github.io/keymotion/about/privacy/).
 
-## No telemetry
+Keymotion is a desktop app that controls your keyboard (lighting, key mapping, macros, the screen and the clock) and shows information on it. Everything it does happens on your computer.
 
-- The app collects no usage data, statistics or crash reports, and sends nothing about you or your computer anywhere.
-- There is no account and no sign-in.
-- Logs and crash notes stay on your computer (see [Where your data lives](#where-your-data-lives)).
+## No usage data
 
-## When the app uses the network
+- Keymotion collects no usage data, statistics or crash reports, and sends nothing about you or your computer anywhere.
+- There's no account and no sign-in.
+- Log files and crash notes stay on your computer (see [Where your data lives](#where-your-data-lives)).
 
-- **Calendars you add.** The app reads each calendar address you add, every 15 minutes and when you ask. It uses the Windows HTTP client, so your system proxy and certificates apply. Only `https://` (and `webcal://`, read as `https://`) addresses are accepted. Nothing else is sent to the calendar server.
-- **Updates (planned).** A future version will check for app updates. This page will say what that check sends before it ships.
+## When Keymotion goes online
 
-The app makes no other network connections.
+Keymotion connects to the internet for two things only: the calendars you add, and the update check. It makes no other network connections.
 
-## What the app reads on your computer
+### Calendars you add
 
-These readings are used only to draw on the keyboard and in the app. They are not stored, except where noted, and never leave your computer.
+- Keymotion reads each calendar address you add, every 15 minutes and whenever you ask. It keeps doing so while it runs, also when its window is closed and it runs next to the clock.
+- It only reads the calendar. Nothing else is sent to the calendar server.
+- It uses Windows' own internet connection, so your system's proxy and certificate settings apply.
+- Only secure `https://` addresses are accepted. `webcal://` addresses are read as `https://`.
+
+### The update check
+
+- **When.** If **Check for updates automatically** is on in **Settings**, under **About** (it's on at first), Keymotion looks at most once a day: a little after it starts, and again each day while it keeps running. **Check for updates** in the same place does the same at any time. With the switch off, Keymotion looks only when you click that button.
+- **What it reads.** A small file, `latest.json`, from the project's release page on GitHub. The request goes to `github.com`, and the file comes from GitHub's download server.
+- **What it sends.** An ordinary download request. Apart from the updater component's name and version (`tauri-plugin-updater`), it holds nothing about you: no account, no usage data, no settings. Like any server, GitHub sees the IP address the request comes from.
+- **When a new version is found.** Keymotion doesn't install it by itself; it asks you. When you choose **Install and restart**, the installer is downloaded from GitHub and its signature is checked with the key built into Keymotion. If it doesn't match, it isn't installed.
+- **Test versions.** Versions with a suffix in their number, such as "-rc", also read GitHub's public list of releases (`api.github.com`), to see test releases too. Normal versions don't read that list.
+
+## What Keymotion reads on your computer
+
+These readings are used only to show things on the keyboard and in the app. They aren't stored, except where noted, and never leave your computer.
 
 | What | When | Why |
 |---|---|---|
-| Now playing (title, artist, cover, the playing app) from the Windows media session | While Live mode and its "Now playing" source are on | The song card on the keyboard screen |
-| Processor, graphics and memory load (performance counters) | While System gauges are on, or their page is open | The gauge bars on the keys |
-| Speaker volume and mute, microphone mute (Windows audio) | While System gauges are on, or their page is open | The volume bar and the mute light |
-| Time since your last keyboard or mouse input | While Reminders are on | Repeating reminders wait while you are away |
-| Your Windows keyboard layout | When the app opens or gets focus | Key labels in your language |
-| Connected keyboards (USB devices, Bluetooth battery) | While the app runs | Finding and controlling the keyboard |
-| A keyboard's HID descriptions (what Windows recorded about its collections) | When you ask for support for a keyboard that isn't supported yet | The support request |
-| Windows and WebView2 versions | When you copy diagnostics or report a problem | The diagnostics report |
+| The song playing (title, artist, cover, the playing app), from Windows | While the live screen and its **Now playing** source are on | The song card on the keyboard's screen |
+| Processor, graphics and memory load, from Windows' performance counters | While system gauges are on, or their page is open | The bars on the keys |
+| Speaker volume and mute, microphone mute, from Windows' sound system | While system gauges are on, or their page is open | The volume bar and the mute light |
+| Time since you last used the keyboard or mouse | While reminders are on | Repeating reminders wait while you're away |
+| Your Windows keyboard layout | When the app opens or comes to the front | Key labels in your language |
+| Connected keyboards (USB devices, Bluetooth battery level) | While the app runs | Finding and controlling the keyboard |
+| A keyboard's HID descriptions (what Windows recorded about it) | When you ask for support for a keyboard that isn't supported yet | The support request |
+| Windows and WebView2 versions | When you copy diagnostics or report a problem | The diagnostics text |
 
 ## Where your data lives
 
-The folder names contain the app's identifier. **Settings → About → Data folder** and **Log files** open them.
+Everything is in your Windows user folder. In **Settings**, under **About**, **Data folder** and **Log files** open these folders.
 
-- **Settings and records** (`%APPDATA%\<app identifier>\`):
-  - `calibration.json`, `clock.json`, `lighting.json`, `pomodoro.json`, `gauges.json`, `reminders.json`, `battery.json`;
-  - `keymap.json` and `macros.json`: the app's only record of what it wrote to the keyboard (the keyboard cannot report them);
-  - `calendar.json`: your calendars. Their addresses work like passwords, so they are encrypted for your Windows user account (Windows Data Protection); another user or computer cannot read them;
-  - `screen\`: your picture library and the last live card.
-- **Logs** (`%LOCALAPPDATA%\<app identifier>\logs\`): one file per day, the last 7 days, at most 4 MB each, and short crash notes. Web addresses are cut to their host name and your Windows user name is removed from paths before anything is written. Reminder titles and meeting names are never logged.
-- **Interface preferences** (`%LOCALAPPDATA%\<app identifier>\EBWebView\`): theme, language and edits you have not saved yet, kept by the app's web view.
+- **Settings and records**, in `%APPDATA%\dev.keymotion\`:
+  - `calibration.json`, `clock.json`, `lighting.json`, `pomodoro.json`, `gauges.json`, `reminders.json`, `battery.json`, `profiles.json`, `background.json`, `updates.json`;
+  - `keymap.json` and `macros.json`: Keymotion's only record of what it wrote to the keyboard, because the keyboard can't report them;
+  - `calendar.json`: your calendars. Their addresses work like passwords, so they're encrypted for your Windows user account (Windows Data Protection). Another user or another computer can't read them;
+  - `screen\`: your picture library, the copy of the factory animation if you made one, and the last live card.
+- **Log files**, in `%LOCALAPPDATA%\dev.keymotion\logs\`: one file per day for the last 7 days, at most 4 MB each, and short crash notes. Before anything is written, web addresses are cut to their server name and your Windows user name is removed from folder paths. Reminder titles and meeting names are never written.
+- **Interface preferences**, in `%LOCALAPPDATA%\dev.keymotion\EBWebView\`: theme, language and edits you haven't saved yet, kept by the app's window.
 
 ## Diagnostics
 
-**Settings → About → Diagnostics → Copy** puts a text report on your clipboard: app, Windows and WebView2 versions, the keyboard model, firmware and connection, the names and sizes of the settings files, and the last 150 log lines (cleaned as described above). It is not sent anywhere; you decide whether to paste it into a message.
+In **Settings**, under **About**, **Copy** next to **Diagnostics** puts a text on your clipboard: the app, Windows and WebView2 versions, the keyboard model, its firmware and connection, the names and sizes of the settings files, and the last 150 lines of the log (cleaned as described above). It isn't sent anywhere. You decide whether to paste it into a message.
 
 ## Reporting a problem or asking for support
 
-Problems are reported on GitHub, by you. The app sends nothing itself.
+You report problems on GitHub yourself. Keymotion sends nothing by itself.
 
-- **Report a problem** (Settings → About → Feedback, the notice after an unexpected error, the notice after a crash) opens a window that shows the text first: the diagnostics above, with what happened at the top. **Report on GitHub** puts the text on your clipboard and opens the project's issue form in your browser. You paste it there and decide whether to send it.
-- **Request support** appears when a SONiX or AJAZZ keyboard isn't supported yet. It works the same way with the keyboard's details: its USB ids, its name, and the HID descriptions Windows keeps of it. Nothing is written to the keyboard. Its serial number and device paths are left out.
+- **Report a problem** (in **Settings**, under **About** › **Feedback**; in the notice after an unexpected error; in the notice after a crash) opens a window that shows the text first: the diagnostics above, with what happened at the top. **Report on GitHub** puts the text on your clipboard and opens the project's form on GitHub in your browser. You paste it there and decide whether to send it.
+- **Request support** appears when a SONiX or AJAZZ keyboard isn't supported yet. It works the same way, with the keyboard's details: its USB identifiers, its name and the HID descriptions Windows keeps of it. Nothing is written to the keyboard. Its serial number and device paths are left out.
 - **After a crash**, the next start offers the newest crash note from the last 7 days, once.
 
 ## Export, import and deletion
 
-- **Export.** **Settings → Backup → Export** saves one JSON file in your Downloads folder with your settings, key mapping and macro records, reminders, calendar settings, lighting and picture library. Calendar addresses are included only if you turn on **Include calendar addresses**; they are then in plain text in the file, so keep it private.
-- **Import.** **Settings → Backup → Choose file** shows what the file holds and what it will replace before anything changes. Import writes nothing to the keyboard: key mapping, macros and lighting open as unsaved changes for you to save.
-- **Deletion.** Uninstall the app, then delete the folders above. You can also delete single files while the app is closed; the app starts again with defaults.
+- **Export.** In **Settings**, **Export** under **Backup** saves one JSON file in your Downloads folder, with your settings, key mapping and macro records, reminders, calendar settings, lighting and picture library. Calendar addresses are included only if you turn on **Include calendar addresses**. They're then in plain text in the file, so keep it private.
+- **Import.** **Choose file** under **Backup** shows what the file holds and what it will replace before anything changes. Importing writes nothing to the keyboard: key mapping, macros and lighting open as unsaved changes for you to save.
+- **Deletion.** Uninstall Keymotion and tick **Also delete my settings and saved data**, or delete the folders above yourself after uninstalling. You can also delete single files while Keymotion is closed; it then starts again with defaults.
 
 ## What stays on the keyboard
 
-The keyboard stores some settings in its own memory and keeps them after you uninstall the app or move it to another computer:
+The keyboard keeps some settings in its own memory. They stay after you uninstall Keymotion or connect the keyboard to another computer:
 
 - key mapping and macros;
-- the lighting effect or per-key design;
+- the lighting effect or per-key color design;
 - the picture on the screen;
 - the clock.
 
-To clear them before you give the keyboard away, set the key mapping back to default, delete the macros and save, and upload a neutral picture with the app.
+To clear them before you give the keyboard away, reset the key mapping, delete the macros and save, then upload a neutral picture with Keymotion. See [If something goes wrong](https://cebersaban44-rgb.github.io/keymotion/help/recovery/).
+
+How Keymotion's releases are built and checked is on the [code signing policy](https://cebersaban44-rgb.github.io/keymotion/about/code-signing/) page.

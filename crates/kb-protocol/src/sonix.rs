@@ -1,6 +1,6 @@
 //! SONiX "FF13" family: wired AJAZZ AK980 PRO (0C45:8009) and relatives.
 //!
-//! Wire format (docs/research/protokol-ff13.md §2):
+//! Wire format (docs site: developers/protocol):
 //! * Commands travel as 65-byte HID feature reports: report ID `00`, then a
 //!   64-byte payload. The payload's leading `04` is data, not a report ID.
 //! * Header packet: `04 OP ARG 00 00 00 00 00 CNT_LO CNT_HI 00…`, where CNT
@@ -283,7 +283,7 @@ pub mod caps {
 /// How a directional effect moves with direction code 0; code 1 runs the
 /// other way. Codes 2 and 3 repeat 1 and 0. Measured on the AK980 PRO (fw
 /// 0x0106) with `kb direction-probe`, which reads frames back with `04 F5`
-/// and estimates the motion (docs/donanim-dogrulama.md, 2026-11-10).
+/// and estimates the motion (2026-11-10; docs site: developers/protocol).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Motion {
     /// 0 down, 1 up.
@@ -316,7 +316,7 @@ impl Effect {
     }
 }
 
-/// Firmware effects in firmware order (docs/research/protokol-ff13.md §4.1).
+/// Firmware effects in firmware order.
 /// `0 = Off` is listed last; it is known to block Fn+X on a sibling board.
 pub const EFFECTS: [Effect; 20] = [
     Effect { id: 1, name: "Static", caps: 0x31, motion: None },
@@ -493,8 +493,8 @@ pub struct ClockTime {
 
 /// Encode the data packet that follows `04 28`: `00 SLOT 5A YY MM DD hh mm
 /// ss 00 DOW`, binary (not BCD), `AA 55` in the last two bytes.
-/// Layout from docs/research/protokol-ff13.md §10.4 (S1, S2; replayed on an
-/// AK980 PRO by S3).
+/// Layout from S1 and S2, replayed on an AK980 PRO by S3
+/// (docs site: developers/protocol).
 pub fn clock_data(t: &ClockTime) -> Result<[u8; PAYLOAD], Invalid> {
     let check = |ok: bool, what| if ok { Ok(()) } else { Err(Invalid::Clock(what)) };
     check((2000..=2255).contains(&t.year), "year")?;

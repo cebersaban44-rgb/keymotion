@@ -1,7 +1,7 @@
 //! Macro storage (`04 19` → `04 15`).
 //!
 //! The keyboard keeps every macro in one image, written as a whole
-//! (docs/research/protokol-ff13.md §7; S1 Macro.cs, S2 macros.rs):
+//! (docs site: developers/protocol; S1 Macro.cs, S2 macros.rs):
 //!
 //! * a directory of 100 × 4 bytes: slot `i` holds `OFS_LO OFS_HI 00 00`,
 //!   the absolute offset of its record; `FF FF FF FF` marks a slot without

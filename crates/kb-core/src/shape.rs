@@ -4,7 +4,7 @@
 //! SONiX boards share VID/PIDs across two command families. The "04 xx"
 //! family (this app's) has a 64-byte FF13 command collection and a 4096-byte
 //! FF68 screen collection; the "AA" family puts 64-byte commands on FF68 and
-//! adds FF67 (docs/research/protokol-ff13.md §1.2). Sending one family's
+//! adds FF67 (docs site: developers/protocol). Sending one family's
 //! commands to the other can erase the screen slot, so the shape is checked
 //! when a channel is opened, on top of the model file's IDs and product name.
 

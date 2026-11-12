@@ -1,0 +1,104 @@
+---
+title: Takvim
+description: Google, Outlook ya da iCloud takviminizi gizli iCal adresiyle ekleyin; toplantıdan önce klavye ekranında bir kart çıksın, başlamadan bir dakika önce Esc yanıp sönsün.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Keymotion takvimlerinizi okuyup toplantıdan önce size haber verebilir: Klavyenin ekranında bir kart çıkar, toplantı başlamadan bir dakika önce de Esc tuşu yanıp söner. Google Takvim, Outlook, Apple iCloud ve iCal (.ics) paylaşım adresi veren her takvimle çalışır. Keymotion takvimlerinizi yalnızca okur, hiçbir zaman değiştirmez.
+
+Kenar çubuğunda **Araçlar** altından **Takvim** sayfasını açın.
+
+<Screenshot name="calendar" alt="Bir takvim eklenmiş Takvim sayfası: önümüzdeki 24 saatteki toplantılar ve kart önizlemesi" />
+
+## Takvim ekleme
+
+Takvim eklemek üç adımdır: **Takvim**, **Adres** ve **Kontrol**. **Vazgeç** her adımda çıkar.
+
+<Steps>
+
+1. **Takvim ekle** düğmesine tıklayın.
+2. **Google Takvim**, **Outlook**, **Apple iCloud** ya da **Diğer takvim** seçeneğini seçin.
+3. Sayfa takvimin adresini nasıl bulacağınızı gösterir (aşağıya bakın). Adresi kopyalayıp **Paylaşım adresi** alanına yapıştırın.
+4. İsterseniz **Kartta görünen ad** alanını değiştirin. Bu ad ekrandaki kartta görünür.
+5. **Ekle** düğmesine tıklayın.
+
+</Steps>
+
+Keymotion takvimi okur, sonra eklendiğini ve kaç etkinlik bulduğunu söyler. Okuyamazsa sayfa nedenini yazar. Adresi yeniden yapıştırmak için **Adresi düzelt**, takvimi yine de tutmak için **Yine de ekle** düğmesine tıklayın; Keymotion birkaç dakikada bir yeniden dener.
+
+Adres `https://` ya da `webcal://` ile başlamalıdır. Tek bir etkinliğin bağlantısı gibi çalışmayacak bir bağlantı yapıştırırsanız sayfa hangi adresi kopyalamanız gerektiğini söyler. En çok 8 takvim ekleyebilirsiniz.
+
+<Screenshot name="calendar-add-google" alt="Google Takvim için Adres adımı: yardım adımları ve Paylaşım adresi alanı" />
+
+<Aside type="caution" title="Adresi kimseyle paylaşmayın">
+Bu adresi bilen herkes takviminizi görebilir, kimseyle paylaşmayın.
+</Aside>
+
+### Adresi Google Takvim'de bulma
+
+<Steps>
+
+1. Bilgisayarda Google Takvim'i açın. Soldaki listede takviminizin üzerine gelin, ⋮ simgesine, ardından **Ayarlar ve paylaşım** seçeneğine tıklayın.
+2. **Takvimi entegre et** bölümüne gidin.
+3. **iCal biçiminde gizli adres** satırındaki adresi kopyalayın.
+
+</Steps>
+
+Doğru adres `…/calendar/ical/…/private-…/basic.ics` biçimindedir. Hemen üstündeki herkese açık adres yalnızca takviminiz herkese açıksa çalışır. İş hesaplarında bu seçeneği yöneticiniz kapatmış olabilir.
+
+### Adresi Outlook'ta bulma
+
+<Steps>
+
+1. Outlook'u web'de açın (outlook.com ya da Microsoft 365) ve **Ayarlar**, **Takvim**, **Paylaşılan takvimler** bölümüne gidin.
+2. **Takvim yayımla** bölümünde takviminizi ve **Tüm ayrıntıları görüntüleyebilir** seçeneğini seçip **Yayımla** düğmesine tıklayın.
+3. Çıkan ICS bağlantısını kopyalayın. Üstündeki HTML bağlantısı çalışmaz.
+
+</Steps>
+
+### Apple iCloud ve diğer takvimler
+
+- **Apple iCloud:** Takvimi ortak yapıp bağlantısını kopyalayın. iPhone'da: Takvim, **Takvimler**, takviminizin yanındaki ⓘ, **Ortak Takvim**. Mac'te: takvime sağ tıklayın, **Paylaşım Ayarları**, **Ortak Takvim**. `webcal://` ile başlayan bağlantıyı değiştirmeden yapıştırın. Ortak takvimi bağlantıyı bilen herkes görebilir.
+- **Diğer takvim:** Takviminizin paylaşım adresini yapıştırın.
+
+## Adres bu bilgisayarda kalır
+
+- Adres yalnızca bu bilgisayarda saklanır. Windows kullanıcı hesabınız için şifrelenir; başka bir kullanıcı ya da bilgisayar onu okuyamaz. Bir takvim, adresinin bu bilgisayarda açılamadığını söylerse takvimi kaldırıp adresini yeniden ekleyin.
+- Keymotion her takvimi 15 dakikada bir ve **Yenile** düğmesine tıkladığınızda okur. Takvim sunucusuna başka hiçbir şey göndermez.
+- Adres ve toplantılarınızın adları Keymotion'ın günlük dosyalarına hiç yazılmaz.
+- Bir takvimi kaldırdığınızda kayıtlı adresi de silinir.
+- [Ayarlar](/keymotion/tr/guide/settings/) sayfasındaki **Ayarları dışa aktar**, **Takvim adreslerini ekle** seçeneğini açmadıkça adresleri yedek dosyasına koymaz. Açarsanız adresler dosyada açık yazılır; dosyayı kimseyle paylaşmayın.
+
+Ayrıntılar için [Gizlilik politikası](/keymotion/tr/about/privacy/) sayfasına bakın.
+
+## Takvimleriniz
+
+**Takvimler** listesi eklediğiniz takvimleri, son okundukları saati ve kaç etkinlikleri olduğunu gösterir. Anahtar, bir takvimi kaldırmadan bir süre dışarıda bırakır; **Kaldır** (çöp kutusu simgesi) onayınızdan sonra takvimi kaldırır. **Yenile** bütün takvimleri hemen okur. Bir takvim okunamazsa satırında **Okunamadı** ve nedeni yazar.
+
+## Toplantıdan önce
+
+Klavye bir toplantıyı size iki yolla haber verir: ekranda bir kartla ve Esc tuşuyla.
+
+### Ekranda kart
+
+Sayfanın üstündeki **Toplantıdan önce ekranda kart** anahtarı başta açıktır. Kartta toplantının saati, adı ve yeri ile sonraki toplantı yazar. Kart ekrana [canlı ekran](/keymotion/tr/guide/screen/) üzerinden gider; bunun için canlı ekranın açık olması gerekir. Canlı ekran kapalıysa sayfa **Canlı ekranı aç** bağlantısını sunar.
+
+- **Ne kadar önce**: Kart toplantıdan 5, 10, 15 ya da 30 dakika önce gelir. Varsayılan 10 dakikadır.
+- **Ne zamana kadar**: Kart **Başlayana kadar**, **Başladıktan 5 dk sonra** (varsayılan) ya da **Bitene kadar** kalır.
+- Tüm gün süren etkinlikler için kart gösterilmez.
+
+**Önümüzdeki 24 saat** listesi sıradaki toplantılarınızı gösterir; kartı ekranda olması gereken toplantı **Kart zamanı** olarak işaretlenir. Altındaki satır bir sonraki kartın ne zaman geleceğini söyler.
+
+**Kart önizlemesi**, sıradaki toplantınızın kartını gösterir; yaklaşan toplantı yoksa örnek bir toplantı gösterir. Önizleme yükleme kullanmaz. Canlı ekran açıkken **Klavyede dene** kartı 1 dakikalığına klavyeye gönderir; bu, günlük yükleme sınırından 2 yükleme düşer.
+
+Ekranda toplantı kartı hatırlatmalardan, odak zamanlayıcısından ve çalan şarkıdan önce gelir. Toplantı kartı ekrandayken hatırlatmalar yalnızca tuşları yakar.
+
+### Toplantıdan önce Esc yanıp söner
+
+**Toplantıdan 1 dk önce Esc yanıp sönsün** anahtarı başta açıktır. Toplantı başlamadan bir dakika önce Esc turuncu yanıp söner. Bunun için canlı ekran gerekmez. Görmek için **Dene** düğmesine tıklayın.
+
+<Aside type="note" title="Klavye neyi gerektirir">
+Keymotion takvimlerinizi klavye bağlı değilken de okur. Ekrandaki kart ve Esc'nin yanıp sönmesi için klavye USB kablosuyla bağlı, arkadaki anahtar ortada olmalıdır.
+</Aside>

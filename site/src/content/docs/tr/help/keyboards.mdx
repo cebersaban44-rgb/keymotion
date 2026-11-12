@@ -1,0 +1,75 @@
+---
+title: Desteklenen klavyeler
+description: Keymotion'ın çalıştığı klavyeler, aynı altyapıyla yapılmış ve sırada olabilecek klavyeler ve kendi klavyenizi bize nasıl bildireceğiniz.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+import { Image } from "astro:assets";
+import ak980 from "../../../../assets/keyboards/ajazz-ak980-pro.webp";
+
+Keymotion **AJAZZ AK980 PRO** ile çalışır. Pek çok klavye aynı altyapıyla yapılıyor ve farklı adlarla satılıyor: aynı tür çip, aynı komutlar, çoğu zaman aynı üretici programı. Bunlar sırada olabilir. Ancak her biri, biri onu denedikten sonra eklenir, çünkü klavyeyi güvende tutan ayrıntılar modelden modele değişiyor.
+
+## Denendi, çalışıyor
+
+<Image src={ak980} alt="AJAZZ AK980 PRO" width={520} />
+
+| Klavye | USB kablo | 2.4 GHz alıcı | Bluetooth | Durum |
+|---|---|---|---|---|
+| **AJAZZ AK980 PRO** | Her şey | Yazma, medya tuşları ve topuz | Yazma, medya tuşları, topuz ve pil düzeyi | <span class="km-status" data-s="works">Çalışıyor · denendi</span> |
+
+Bazı satıcılar aynı klavyeyi **AJAZZ AK980 V2** adıyla satıyor. Aynı USB kimliğini ("SONiX AK980 PRO") bildirdiği için Keymotion onu AK980 PRO olarak tanır; ayrıca denemedik.
+
+Ayarlar USB kablosundan gider; klavye böyle yapılmış. Üç bağlantıyı [Klavyeyi bağlama](/keymotion/tr/guide/connecting/) sayfası anlatır.
+
+## Aynı altyapı, henüz denenmedi
+
+Bu klavyeleri gerçek klavyelerde ölçen başka açık kaynak projelere göre, hepsi AK980 PRO ile aynı komutları kullanıyor görünüyor. Keymotion bunları henüz tanımıyor. Birini taktığınızda **Bu klavye henüz desteklenmiyor** der ve **Destek iste** düğmesini gösterir. Bu düğme klavyenin bilgilerini kopyalar: USB kimliği, adı ve Windows'un onu nasıl tanımladığı. Klavyeye hiçbir şey yazmaz. Bir klavyeyi eklemek için gereken bilgi de tam olarak budur.
+
+| Klavye | Ekran | Bilinenler | Durum | Sizde var mı? |
+|---|---|---|---|---|
+| **AULA F108 Pro**, EPOMAKER x AULA F108 Pro adıyla da satılıyor | 240×135, en çok 141 kare | En yakın akraba: aynı komutlar, ortak her tuş için aynı tuş numaraları, aynı üretici programı. Daha çok tuşlu, tam boy bir düzen. | Henüz denenmedi | [Bildirin](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+F108+Pro&model=AULA+F108+Pro) |
+| **AULA NOVA75** | 240×135, en çok 107 kare | Aynı komutlar; ekranı ve saati başkaları ölçmüş. | Henüz denenmedi | [Bildirin](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+NOVA75&model=AULA+NOVA75) |
+| **AULA F75 Max** (EPOMAKER x AULA da) | 128×128, en çok 255 kare | Aynı komutlar; başkaları ölçmüş. | Henüz denenmedi | [Bildirin](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+F75+Max&model=AULA+F75+Max) |
+| **AULA EA75 Max** | 135×240, dikey | Aynı komutlar; başkaları ölçmüş. | Henüz denenmedi | [Bildirin](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+EA75+Max&model=AULA+EA75+Max) |
+| **AULA S75 Pro** | 135×240, dikey | Aynı komutlar; tek kaynaktan. | Henüz denenmedi | [Bildirin](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+S75+Pro&model=AULA+S75+Pro) |
+| **AULA F98 Pro** | 1,14 inç | Yalnızca ışık komutları biliniyor; tek kaynaktan. | Henüz denenmedi | [Bildirin](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+F98+Pro&model=AULA+F98+Pro) |
+| **AJAZZ AK820 Pro**, SONiX programlı sürüm (EPOMAKER AK820 Pro da) | 128×128 | Aynı komutlar; başkaları ölçmüş. AK820 Pro'nun bir başka sürümü farklı bir komut ailesi kullanıyor; aşağıya bakın. | Henüz denenmedi | [Bildirin](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK820+Pro&model=AJAZZ+AK820+Pro) |
+| **AJAZZ AK820 MAX / MAX PLUS**, SONiX ekranlı sürüm | 128×128 | Aynı komutlar; başkaları ölçmüş. | Henüz denenmedi | [Bildirin](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK820+MAX&model=AJAZZ+AK820+MAX) |
+| **AJAZZ AK35I V3 MAX** | 240×135, en çok 141 kare | Aynı komutlar. Kendini yalnızca "USB KEYBOARD" diye tanıttığı için adından tanınamaz. | Henüz denenmedi | [Bildirin](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK35I+V3+MAX&model=AJAZZ+AK35I+V3+MAX) |
+| **AJAZZ AKS075** | 128×128 | Ekranı ve saati başkaları ölçmüş. | Henüz denenmedi | [Bildirin](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AKS075&model=AJAZZ+AKS075) |
+| **AJAZZ AK650 / AK650 Pro** | 0,85 inç | Yalnızca saat biliniyor. | Henüz denenmedi | [Bildirin](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK650&model=AJAZZ+AK650) |
+| **AJAZZ AK980**, ekransız | Yok | Yalnızca ışıklar biliniyor. | Henüz denenmedi | [Bildirin](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK980+%28no+screen%29&model=AJAZZ+AK980+%28no+screen%29) |
+| **LangTu LT-104** | 160×80 | Aynı komut ailesi; yapımcısı ölçmüş. | Henüz denenmedi | [Bildirin](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+LangTu+LT-104&model=LangTu+LT-104) |
+
+Klavyeniz listede yok mu? Yine de takın. Keymotion **Destek iste** düğmesini gösterirse [bilgilerini bize gönderin](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml). Formu Türkçe doldurabilirsiniz.
+
+<Aside type="caution" title="Neden hepsini hemen açmıyoruz">
+Bu klavyeler kendilerine gönderileni denetlemeden kabul ediyor. Bir AULA F108 Pro'da sınırından uzun bir ekran animasyonu, klavyenin kendi menü görsellerinin üzerine yazdı ve bu kalıcı oldu. Sınırlar her modelde farklı (107, 140, 141 ya da 255 kare). Bu yüzden bir model ancak kendi ölçülmüş sınırlarıyla eklenir.
+</Aside>
+
+### Bir klavye bu listede nasıl ilerler
+
+1. Klavyesi olan biri bilgilerini **Destek iste** düğmesiyle ya da [klavye formuyla](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml) gönderir.
+2. Modeli Keymotion'da tanımlar ve onun için bir deneme sürümü hazırlarız.
+3. Deneyen kişi her özelliği tek tek dener ve sonucu bildirir. Her bildirim GitHub'da `keyboard support` etiketiyle izlenir.
+4. Her şey denenince model **Denendi, çalışıyor** bölümüne, her bağlantıda nelerin çalıştığıyla birlikte geçer.
+
+Durum sütunu **Henüz denenmedi** ile başlar, sonra **Deneniyor**, en sonunda **Çalışıyor** ya da **Çalışmıyor** olur.
+
+## Benzer görünen, içi farklı olanlar
+
+Bazı klavyeler AK980 PRO'ya benziyor ya da bu sayfadaki bir klavyeyle aynı adı taşıyor, ama başka bir çip ya da başka bir komut ailesi kullanıyor. Keymotion bunlara hiçbir şey göndermez.
+
+| Klavye | Farkı |
+|---|---|
+| AJAZZ AK980 MAX | Başka bir komut ailesi |
+| AJAZZ AK820 Pro, ürün yazılımı 1.07 ya da 1.16 olan sürüm | Başka bir komut ailesi |
+| AJAZZ AK820 MAX, web üzerinden ayarlanan sürüm (MAX HE dahil) | Başka bir komut ailesi |
+| AJAZZ AK820 Max Plus (SinoWealth sürümü), AK820 (Pro olmayan), AK992 | Başka bir çip |
+| AULA F75, F87, F87 Pro, F99, F99 Pro | Başka bir çip |
+| AULA F87S 8K, Nova98; AJAZZ AK680 V2 / MAX | Başka bir komut ailesi |
+| AJAZZ AKS068 | VIA/QMK klavye |
+
+Henüz bilinmeyenler: AJAZZ AK870 V2, AK820 MAX Ultra, AK870, AK873, AK966 ve AULA F99 Max. Sizde biri varsa [bilgilerini gönderin](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml), birlikte öğrenelim.
+
+<p class="km-unofficial">Bu klavyeler hakkında bildiklerimiz, onları ölçen başka açık kaynak projelerden geliyor; aralarında OpenKey, sonix-keyboard-studio, ak820pro-modder ve OpenRGB var. Teşekkürler. Ürün adları yalnızca uygulamanın hangi donanımla çalıştığını söylemek için kullanılır; Keymotion'ın bu markalarla bağlantısı yoktur.</p>

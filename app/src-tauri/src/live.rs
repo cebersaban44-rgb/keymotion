@@ -6,7 +6,7 @@
 //! kept, the same content is not uploaded twice, and a card that cannot go
 //! now (budget, no USB cable, another upload) waits and goes later.
 //! Uploads the user starts by hand use the budget too but are never
-//! blocked by it (docs/research/ekran-ve-veri-kaynaklari.md §3.4).
+//! blocked by it (docs site: developers/architecture).
 //!
 //! The focus timer's and the song's cards leave the last upload for a
 //! reminder or a meeting, which rank above them and never wait (K5: after a
