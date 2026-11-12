@@ -1,0 +1,35 @@
+Keymotion
+Copyright (c) 2026 The Keymotion contributors
+
+Keymotion is licensed under either of the Apache License, Version 2.0
+(LICENSE-APACHE) or the MIT license (LICENSE-MIT), at your option.
+Third-party software included in Keymotion builds, and the licenses it is
+distributed under, are listed in app/public/third-party-notices.txt.
+
+
+Unofficial software
+
+Keymotion is an independent project. It is not affiliated with, endorsed by,
+sponsored by or supported by AJAZZ, by the maker of the keyboard's controller
+chip, or by the authors of the keyboard's official software.
+
+AJAZZ and all other product names, trademarks and registered trademarks are
+the property of their respective owners. They are used only to identify the
+hardware this software works with.
+
+
+Use at your own risk
+
+Some features write to the keyboard's permanent memory: lighting effects, key
+assignments, macros and screen images. Writing to a device's permanent memory
+can leave it in an unwanted state, and the software is provided without
+warranty of any kind (see the licenses). You use these features at your own
+risk.
+
+
+Not distributed with this project
+
+The keyboard's factory screen animation and the vendor's driver and software
+(including any file taken from them) are not part of this project. They are
+not in this repository, in the installer or in any release, and they never
+will be.

@@ -1,0 +1,88 @@
+---
+title: Install Keymotion
+description: Download the Keymotion installer from GitHub, get past the Windows warning, and later update or uninstall the app.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Keymotion comes as one installer for Windows. It installs for your Windows account only, needs no administrator rights and takes a few seconds.
+
+## What you need
+
+- Windows 10 or Windows 11, 64-bit.
+- WebView2, the part of Windows that draws the app's window. Windows 11 already has it. If your computer doesn't, the installer downloads and installs it, so stay online while you install.
+- To change the keyboard's settings: an AJAZZ AK980 PRO and its USB-C cable. Keymotion also opens without the keyboard.
+
+## Download the installer
+
+<Steps>
+
+1. Open Keymotion's [Releases page on GitHub](https://github.com/cebersaban44-rgb/keymotion/releases).
+2. Under the newest version, find the **Assets** list.
+3. Download the file whose name ends in `x64-setup.exe`, for example `Keymotion_0.1.0_x64-setup.exe`.
+
+</Steps>
+
+The release notes on that page also give the file's SHA-256 checksum, if you want to check your download.
+
+## If Windows says it protected your PC
+
+Version 0.1.0 is not code-signed yet, so Windows can't tell who published the installer. When you open it, Windows may show a blue window titled **Windows protected your PC**.
+
+<Steps>
+
+1. Select **More info**.
+2. Check that the file name shown is the installer you downloaded.
+3. Select **Run anyway**.
+
+</Steps>
+
+<Aside type="note" title="Why it isn't signed yet">
+[Code signing](/keymotion/about/code-signing/) explains why, and what changes once Keymotion is signed.
+</Aside>
+
+## Run the installer
+
+The installer is in Turkish when Windows is in Turkish, and in English otherwise.
+
+<Steps>
+
+1. On **Welcome to the Keymotion setup**, click **Next**.
+2. Keep the suggested folder or choose another one, then continue. The suggested folder, `%LOCALAPPDATA%\Keymotion`, is inside your own user folder.
+3. Wait while Keymotion is installed. On a computer without WebView2, that is downloaded first. When the progress bar is full, click **Next**.
+4. On the last page, leave **Put a shortcut on the desktop** ticked if you want a desktop shortcut. The other box opens Keymotion right away. Click **Finish**.
+
+</Steps>
+
+If Keymotion is open, the installer offers to close it first. If a version is already installed, the installer shows **Already installed** and asks what you want to do: choose an option and click **Next**.
+
+## Start menu and desktop
+
+The installer always adds **Keymotion** to the Start menu, and to the desktop if you left that box ticked. Keymotion also appears in Windows' list of installed apps, which is where you uninstall it.
+
+Only one copy of Keymotion runs at a time. While it runs in the background, with its icon next to the clock, opening it again from the Start menu brings its window back. [First launch](/keymotion/guide/first-launch/) shows what you see when it opens.
+
+## Update Keymotion
+
+A short while after it opens, Keymotion checks GitHub for a newer version, once a day. When it finds one, a strip appears above the page.
+
+<Screenshot name="update-strip" alt="A strip above the Overview page saying a new version of Keymotion is ready, with Later and Install now" />
+
+Click **Install now**, read **What's new**, then click **Install and restart**. Keymotion downloads the new version, closes, installs it in a small window and opens again. Your settings and your library stay as they are. Nothing is installed until you click. [Settings](/keymotion/guide/settings/) explains how to check by hand or turn off the daily check.
+
+## Uninstall Keymotion
+
+<Steps>
+
+1. Open Windows **Settings**, then **Apps**, then **Installed apps**. On Windows 10, the list is called **Apps & features**.
+2. Find **Keymotion**. On Windows 11, open the **⋯** menu next to it. Choose **Uninstall** and confirm.
+3. Keymotion's uninstaller opens. Tick **Also delete my settings and saved data** only if you want those removed too, then confirm.
+
+</Steps>
+
+The uninstaller removes the app, its shortcuts, its entry in the list of installed apps, its start-with-Windows entry and the name Windows shows on Keymotion's notifications. Unless you tick the box, your settings, records and picture library stay on the computer, so a later install carries on where you left off. If Keymotion is open, the uninstaller offers to close it.
+
+<Aside type="caution" title="The keyboard keeps its own settings">
+Lighting, key mapping, macros and the picture on the screen are stored in the keyboard's own memory, and uninstalling Keymotion doesn't change them. Before you uninstall, you can load the **Default** profile on the [Profiles](/keymotion/guide/profiles/) page to put back the factory lighting and key layout and remove the macros. See [Recovery](/keymotion/help/recovery/) for more.
+</Aside>

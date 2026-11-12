@@ -11,9 +11,16 @@ app/src-tauri/gen/
 
 # Local tooling output
 .playwright-mcp/
+.claude/worktrees/
 *.log
 *.pcapng
 
 # OS
 Thumbs.db
 .DS_Store
+
+# Claude Code session files (the preview launcher stays local)
+.claude/
+
+# Astro
+.astro/

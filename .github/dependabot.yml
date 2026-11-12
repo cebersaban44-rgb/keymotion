@@ -1,0 +1,53 @@
+# Weekly dependency update PRs against develop. Minor and patch updates of each
+# ecosystem arrive as one grouped PR; major updates come one PR each, because
+# they need reading. CI must pass before a PR is merged, as for any other PR.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      cargo-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /app
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  # ESLint and the TypeScript 6 compiler it needs (see tools/eslint/eslint.config.mjs).
+  - package-ecosystem: npm
+    directory: /tools/eslint
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      eslint-minor-patch:
+        update-types: [minor, patch]
+    ignore:
+      # typescript-eslint supports TypeScript <6.1 only.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major, version-update:semver-minor]
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]

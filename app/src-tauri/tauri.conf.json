@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Klavye Stüdyo",
+  "productName": "Keymotion",
   "version": "0.1.0",
-  "identifier": "dev.klavye.studio",
+  "identifier": "dev.keymotion",
   "build": {
     "devUrl": "http://127.0.0.1:1420",
     "frontendDist": "../dist",
@@ -13,11 +13,11 @@
     "windows": [
       {
         "label": "main",
-        "title": "Klavye Stüdyo",
+        "title": "Keymotion",
         "width": 1320,
         "height": 860,
-        "minWidth": 1040,
-        "minHeight": 700,
+        "minWidth": 960,
+        "minHeight": 600,
         "center": true,
         "transparent": true,
         "visible": false
@@ -30,13 +30,46 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
     "category": "Utility",
-    "shortDescription": "Klavye kontrol uygulaması",
+    "publisher": "Keymotion",
+    "copyright": "Copyright © 2026 Keymotion contributors",
+    "homepage": "https://github.com/cebersaban44-rgb/keymotion",
+    "license": "MIT OR Apache-2.0",
+    "shortDescription": "Lighting, keys and screen for your keyboard",
+    "longDescription": "Keymotion controls the lighting, key assignments, macros and screen of AJAZZ AK980 PRO keyboards on Windows, and shows a focus timer, reminders, calendar cards and system gauges on the keys and the screen.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["English", "Turkish"],
+        "customLanguageFiles": {
+          "English": "windows/lang/English.nsh",
+          "Turkish": "windows/lang/Turkish.nsh"
+        },
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "sidebarImage": "windows/images/sidebar.bmp",
+        "headerImage": "windows/images/header.bmp",
+        "uninstallerHeaderImage": "windows/images/header.bmp",
+        "installerHooks": "windows/installer-hooks.nsh"
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI5RUFCNEFDQTkwNDg4NUEKUldSYWlBU3ByTFRxdVRrcDVFeGxpVHlPV1gycUdRMTUrdWNkSmpWcEM2NTdSQkFiN1RVZEE5RmYK",
+      "endpoints": [
+        "https://github.com/cebersaban44-rgb/keymotion/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

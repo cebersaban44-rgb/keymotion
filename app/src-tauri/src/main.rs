@@ -2,5 +2,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    klavye_studio::run();
+    keymotion_lib::migrate::move_old_data();
+    keymotion_lib::run();
 }

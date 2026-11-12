@@ -84,11 +84,23 @@ impl Hid {
     pub fn open(&self, iface: &HidInterface) -> Result<HidChannel> {
         let path = CString::new(iface.path.as_bytes()).map_err(|_| TransportError::BadPath)?;
         let device = self.api.open_path(&path)?;
-        Ok(HidChannel {
-            device,
-            info: iface.clone(),
-        })
+        Ok(HidChannel { device, info: iface.clone() })
     }
+
+    /// The report descriptor of the collection at `path`, as the OS rebuilds
+    /// it. Nothing is sent to the device: Windows answers from what it read
+    /// when the device was plugged in.
+    pub fn report_descriptor_at(&self, path: &str) -> Result<Vec<u8>> {
+        let path = CString::new(path.as_bytes()).map_err(|_| TransportError::BadPath)?;
+        read_descriptor(&self.api.open_path(&path)?)
+    }
+}
+
+fn read_descriptor(device: &HidDevice) -> Result<Vec<u8>> {
+    let mut buf = vec![0u8; hidapi::MAX_REPORT_DESCRIPTOR_SIZE];
+    let n = device.get_report_descriptor(&mut buf)?;
+    buf.truncate(n);
+    Ok(buf)
 }
 
 /// An open HID collection.
@@ -96,6 +108,9 @@ pub struct HidChannel {
     device: HidDevice,
     info: HidInterface,
 }
+
+/// SONiX display channel (screen image pages).
+pub const DISPLAY_USAGE_PAGE: u16 = 0xFF68;
 
 /// Upper bound for one report including the report-ID byte. The largest
 /// report we know of is the 4096-byte display channel.
@@ -108,10 +123,7 @@ impl HidChannel {
 
     /// Raw report descriptor as reconstructed by the OS (read-only).
     pub fn report_descriptor(&self) -> Result<Vec<u8>> {
-        let mut buf = vec![0u8; hidapi::MAX_REPORT_DESCRIPTOR_SIZE];
-        let n = self.device.get_report_descriptor(&mut buf)?;
-        buf.truncate(n);
-        Ok(buf)
+        read_descriptor(&self.device)
     }
 
     /// Send a feature report. `report` starts with the report ID (0 when the
@@ -124,7 +136,14 @@ impl HidChannel {
     }
 
     /// Read a feature report of `len` bytes (including the report-ID byte).
+    ///
+    /// Refused on the SONiX display channel (usage page 0xFF68): a
+    /// GET_FEATURE there locks the firmware until a power cycle (sibling
+    /// AK35i; docs site: developers/protocol).
     pub fn get_feature(&self, report_id: u8, len: usize) -> Result<Vec<u8>> {
+        if self.info.usage_page == DISPLAY_USAGE_PAGE {
+            return Err(TransportError::Refused("GET_FEATURE on the display channel"));
+        }
         check_len(len)?;
         let mut buf = vec![0u8; len];
         buf[0] = report_id;
@@ -172,4 +191,37 @@ pub fn hex(bytes: &[u8]) -> String {
         s.push_str(&format!("{b:02x}"));
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Needs a SONiX keyboard on the cable (run with `--ignored`): every
+    /// collection's descriptor reads through `report_descriptor_at`, the
+    /// keyboard collection too (Windows opens it without read or write
+    /// access). Nothing is sent to the keyboard.
+    #[test]
+    #[ignore = "needs a SONiX keyboard on the cable"]
+    fn descriptors_of_every_collection_read() {
+        let hid = Hid::new().expect("HID");
+        let sonix: Vec<HidInterface> = hid.interfaces().into_iter().filter(|i| i.vid == 0x0C45).collect();
+        assert!(!sonix.is_empty(), "no SONiX device found");
+        for iface in &sonix {
+            let d = hid.report_descriptor_at(&iface.path);
+            println!(
+                "{:04X}:{:04X} page {:04X} usage {:04X} if {}: {}",
+                iface.vid,
+                iface.pid,
+                iface.usage_page,
+                iface.usage,
+                iface.interface_number,
+                match &d {
+                    Ok(b) => format!("{} bytes, {}", b.len(), hex(&b[..b.len().min(8)])),
+                    Err(e) => format!("error {e}"),
+                }
+            );
+            assert!(d.is_ok_and(|b| !b.is_empty()), "descriptor of {:04X}/{:04X}", iface.usage_page, iface.usage);
+        }
+    }
 }

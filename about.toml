@@ -1,0 +1,26 @@
+# cargo-about: licence texts of the Rust crates that end up in the app.
+# Used by tools/notices.mjs, which writes app/public/third-party-notices.txt.
+#   cargo install --locked --features cli cargo-about
+#   node tools/notices.mjs
+
+# Same list as deny.toml [licenses] allow. When a crate offers a choice
+# ("MIT OR Apache-2.0"), the first licence in this list is used.
+accepted = [
+  "Apache-2.0",
+  "MIT",
+  "BSD-3-Clause",
+  "ISC",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Zlib",
+]
+
+# The app is Windows-only.
+targets = ["x86_64-pc-windows-msvc"]
+
+# Build scripts and tests do not end up in the app.
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+
+# Workspace crates are this project's own code (publish = false).
+private = { ignore = true }

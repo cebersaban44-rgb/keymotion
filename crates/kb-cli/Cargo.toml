@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
 
 [[bin]]
 name = "kb"
@@ -12,11 +13,13 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+chrono.workspace = true
 clap.workspace = true
 kb-core.workspace = true
 kb-devices.workspace = true
 kb-protocol.workspace = true
 kb-transport.workspace = true
+kb-winsys.workspace = true
 tracing-subscriber.workspace = true
 
 [lints]

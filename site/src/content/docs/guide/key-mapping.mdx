@@ -1,0 +1,78 @@
+---
+title: Key mapping
+description: Give any key another function, a shortcut, a media key, a mouse button or a macro, on the base layer or the Fn layer, and save it to the keyboard.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+On the **Key mapping** page you change what each key does. A key can send another key or a shortcut, work as a media key or a mouse button, scroll, play a macro, or do nothing at all.
+
+<Screenshot name="key-mapping" alt="The Key mapping page with the Num / key selected and Volume up chosen under Media" />
+
+## Base and Fn layers
+
+The two tabs at the top right choose the layer you are editing:
+
+- **Base layer:** what a key does when you press it on its own.
+- **Fn layer:** what it does while you hold Fn. Some keys already have a built-in shortcut here, such as Fn+X for the lights.
+
+The caption under the keyboard picture reminds you which layer is open. The Fn key itself can't be changed, because the Fn layer and the built-in shortcuts depend on it.
+
+<Aside type="caution" title="Built-in Fn shortcuts">
+A key you change on the Fn layer loses its built-in shortcut. Setting the key back to **Default** brings it back.
+</Aside>
+
+## Change a key
+
+<Steps>
+
+1. Open **Key mapping** in the sidebar and choose **Base layer** or **Fn layer**.
+2. Click the key on the keyboard picture. The **Selected key** card shows what it does now.
+3. Under **Function to assign**, choose a category: **Keys**, **Media**, **Mouse**, **Macro** or **Special**.
+4. Click the function. The key on the picture shows its new label.
+5. Change more keys if you like, then click **Save to keyboard** in the bar at the bottom.
+
+</Steps>
+
+Changed keys get an orange outline, and disabled keys a red one. A small dot marks keys that are not saved yet.
+
+## What a key can do
+
+| Category | What you can choose |
+|---|---|
+| **Keys** | Any key, grouped as Letters, Digits, Function keys, Editing, Navigation, Symbols, Number pad and Modifier keys. For a shortcut such as Ctrl + C, first turn on **Ctrl**, **Shift**, **Alt** or **Win** under **Held with**, then click the key. |
+| **Media** | Play / pause, Next track, Previous track, Stop, Volume up, Volume down and Mute; Media player, Email, Calculator and This PC; and the browser's home, back, forward, stop, refresh, favorites and search. |
+| **Mouse** | Left click, Right click, Middle click, Back button, Forward button and Double-click, plus Wheel up and Wheel down. |
+| **Macro** | One of your macros, with a play mode. See [Macros](/keymotion/guide/macros/). |
+| **Special** | **Default** is the key's factory function, or its built-in shortcut on the Fn layer. **Disabled** means pressing the key does nothing. |
+
+## Undo changes and reset a layer
+
+- **Restore default**, under the selected key, sets that one key back.
+- **Reset layer**, in the card beside the keys, sets every key on the open layer back to the factory layout.
+- **Revert**, in the bottom bar, drops every change that is not saved yet.
+
+To put a whole layer back to the factory layout:
+
+<Steps>
+
+1. Choose the layer's tab.
+2. Click **Reset layer**. If every key on the layer is already at its default, the button is dimmed.
+3. Click **Save to keyboard**.
+
+</Steps>
+
+## Save and test
+
+The bottom bar counts your changes, for example **3 keys changed**. **Save to keyboard** writes each changed layer to the keyboard, in less than a second per layer, and then shows **Saved to the keyboard**. Changes you haven't saved stay in the app when you open another page, and a dot next to **Key mapping** in the sidebar shows them.
+
+To check the result, click the box in the **Key test** card at the bottom of the page and press keys. It shows what reaches Windows: keys, shortcuts, media keys, mouse buttons and the wheel.
+
+<Aside type="note" title="What the page shows">
+The keyboard can't report its key mapping, so the page shows what you last saved from Keymotion and when. Changes made with other software don't appear here, and saving a layer replaces that whole layer on the keyboard.
+</Aside>
+
+<Aside type="note" title="Needs the USB cable">
+You can change keys while the keyboard is connected with the 2.4 GHz receiver or Bluetooth. To save them, connect the USB cable and set the switch on the back of the keyboard to the middle.
+</Aside>

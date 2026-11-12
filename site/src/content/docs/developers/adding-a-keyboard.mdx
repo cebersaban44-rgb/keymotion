@@ -1,0 +1,172 @@
+---
+title: Supporting another keyboard
+description: How a keyboard model is described, how detection works and why it is strict, what to measure before a model is added, and how owners of other keyboards can help.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Keymotion supports the AJAZZ AK980 PRO today. Many keyboards are built on the same SONiX platform and appear to speak the same command family, so they are candidates: [Supported keyboards](/keymotion/help/keyboards/) lists them. None of them is supported until it has been tested on that keyboard, because the details that keep a keyboard safe, such as its IDs, its screen size and its frame limit, differ from model to model.
+
+## If you have another keyboard
+
+You don't need to write code to help. Start here:
+
+<Steps>
+
+1. Connect the keyboard with its USB cable and set it to USB mode, then start Keymotion.
+
+2. If Keymotion sees a SONiX or AJAZZ keyboard it doesn't support, the page it shows while it waits for a supported keyboard lists it under **This keyboard isn't supported yet**, with a **Request support** button.
+
+3. Press **Request support**. The window shows what will be sent; **Report on GitHub** copies it to the clipboard and opens the [Keyboard support request](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml) form with the model filled in. You need a GitHub account to send it.
+
+4. Paste the details into the **Keyboard details** box. Add the connection modes it has, the name and version of its official software and a link to its product page, and tick the box if you can try test builds.
+
+</Steps>
+
+The details are read from Windows only; nothing is sent to the keyboard. They contain:
+
+- the keyboard's name and maker as Windows reports them,
+- its USB IDs (VID, PID and the release number, which is the firmware version) and the connection,
+- every HID collection with its usage page, usage and interface number, and its report descriptor in hexadecimal,
+- the Keymotion and Windows versions.
+
+The serial number and device paths are left out: they identify your keyboard, not the model.
+
+## How a model is described
+
+Each model is one TOML file in [`crates/kb-devices/models/`](https://github.com/cebersaban44-rgb/keymotion/tree/develop/crates/kb-devices/models), embedded in the app at compile time. A shortened version of the AK980 PRO's file:
+
+```toml
+id = "ajazz-ak980-pro"          # must match the file name
+name = "AJAZZ AK980 PRO"
+vendor = "AJAZZ"
+protocol = "sonix-ff13"
+layout = "98"
+key_count = 97
+has_knob = true
+has_side_light = true
+
+[screen]
+width = 240
+height = 135
+pixel_format = "rgb565-le"
+verified = false
+
+[[modes]]
+kind = "usb"
+vid = 0x0C45
+pid = 0x8009
+product_contains = "AK980"
+command_usage_page = 0xFF13
+display_usage_page = 0xFF68
+capabilities = ["lighting", "per-key-rgb", "keymap", "macros", "options", "screen", "clock"]
+verified = true
+verified_firmware = [0x0106]
+
+[[modes]]
+kind = "bluetooth"
+vid = 0x0C45
+pid = 0xFEFE
+ble_name_prefix = "AK980 PRO"
+capabilities = ["battery"]
+verified = true
+
+[[indicators]]
+led = 32
+name = "Num Lock"
+color = [255, 255, 255]
+verified = true
+
+[geometry]
+width = 20.5
+height = 6.5
+source = "…"                    # where the positions come from
+screen = { x = 16.5, y = 0.0, w = 3.0, h = 1.0 }
+knob = { x = 19.5, y = 0.0, d = 1.0 }
+keys = [
+  { id = "esc", label = "Esc", led = 1, hid = 0x29, x = 0.0, y = 0.0 },
+  { id = "f1", label = "F1", led = 2, hid = 0x3A, x = 2.0, y = 0.0 },
+  # … one entry for every key
+]
+```
+
+| Field | Meaning |
+|---|---|
+| `id`, `name`, `vendor` | The model's identity. `id` must equal the file name. |
+| `protocol`, `layout`, `key_count`, `has_knob`, `has_side_light` | What kind of keyboard it is. `key_count` must equal the number of keys in `geometry`. |
+| `[screen]` | Panel size and pixel format. |
+| `[[modes]]` | One entry per connection: `kind` (`usb`, `dongle` or `bluetooth`), `vid` and `pid`, and what identifies it further: `product_contains` (a case-insensitive part of the USB product name), `command_usage_page` and `display_usage_page` for the vendor channels, `ble_name_prefix` for Bluetooth. |
+| `capabilities` | What the keyboard offers in that mode: `lighting`, `per-key-rgb`, `keymap`, `macros`, `options`, `screen`, `clock`, `battery`. The app offers only those it drives in that mode (`kb_core::app_capabilities`). |
+| `verified` | `true` only for facts measured on a real keyboard in this project. |
+| `verified_firmware` | Firmware versions (`bcdDevice`) on which every write was tested. On any other version the app asks the user once per session before the first write. |
+| `[[indicators]]` | Lights the firmware draws itself (Num Lock, Fn): the LED, what it shows and its color. |
+| `[geometry]` | The physical layout in key units, measured from a photo of the keyboard, with its `source` noted: the screen, the knob, and every key with an `id`, a `label`, its `led` index (on this family also the key's keymap index), its default `hid` usage and its position and size. |
+
+Unknown fields are rejected, so a typo fails the tests instead of being ignored.
+
+To add a file, list it in `MODEL_SOURCES` in `crates/kb-devices/src/lib.rs` (kept sorted by id) and run `cargo test --workspace`. The tests parse every model and check its geometry: the key count, no duplicate LED indices, key ids or HID usages, every key inside the outline and no two keys overlapping. The same run writes `app/src/bindings/geometry-<id>.json`; commit it with the model.
+
+### When a file isn't enough
+
+A model that speaks the same command family, with the same packet sizes and the same 240×135 screen, needs only its file. Anything else needs code, reviewed with the same care:
+
+- another screen size, pixel layout or frame limit (the screen format in `kb-protocol` is fixed to the AK980 PRO's today),
+- another command family or descriptor shape (a new module in `kb-protocol` and its driver in `kb-core`),
+- the 2.4 GHz receiver, which has no driver yet.
+
+## How detection works
+
+The device actor lists the HID collections every 2 seconds and matches each one against the model files (`kb_devices::match_interface`):
+
+1. **VID and PID** must match a mode.
+2. **Bus.** USB and receiver modes match only on the USB bus, Bluetooth only on the Bluetooth bus.
+3. **Product name.** If the mode declares `product_contains`, the USB product name must contain it.
+4. **Role.** The collection's usage page decides whether it is the command channel, the screen channel or a standard collection (keyboard, media keys, mouse), which the app only counts.
+5. **Bluetooth.** A paired Bluetooth LE device is matched by its name (`ble_name_prefix`).
+
+When the app opens a vendor channel, it then checks the shape of its report descriptor (`kb_core::shape`): the command channel must have 64-byte feature and output reports without report IDs, the screen channel a 4096-byte output report. If the shape is different, the channel is not used and nothing is sent.
+
+### Why it is strict
+
+- `0C45:8009` and `0C45:800A` are SONiX's general-purpose IDs, and many different keyboards carry them. An AK820 PRO has the AK980 PRO's IDs but another name, and the tests make sure it doesn't match.
+- Some keyboards with those IDs speak a different command family. On one of them, the screen upload command the AK980 PRO uses erases the screen's picture slot. The name check and the shape check keep commands away from them.
+- `FEFE` is the AK980 PRO's 2.4 GHz receiver, but another keyboard's Bluetooth ID, so the bus decides.
+- A keyboard that calls itself only "USB KEYBOARD" can't be recognised by name, so it isn't recognised automatically at all.
+- With two identical keyboards on the cable, the app refuses to write to permanent memory, because it can't tell which one the user means.
+
+A keyboard that has SONiX's vendor ID, or "AJAZZ" in its name, has a standard keyboard collection and matches no model is listed as unsupported, which is where **Request support** comes from (`kb_core::unknown_keyboards`).
+
+## What to measure before a model is added
+
+A model is added only with measurements from that keyboard. Each one is written up with the date, the firmware version, the tool, what was sent, what came back and what the keyboard did, and the pull request includes them. Work from the safest step to the riskiest:
+
+<Steps>
+
+1. **Identity.** VID, PID, manufacturer and product names, the bus in every connection mode, the Bluetooth name, and the firmware version. **Request support** collects most of it.
+
+2. **Descriptor shape.** Every HID collection and its report descriptor. The command collection must have the 64-byte shape and the screen collection, if there is one, the 4096-byte shape. If not, the keyboard speaks another family: stop here.
+
+3. **Reading only.** With a draft model file on a branch (no `verified_firmware` yet), listen for reports the keyboard sends on its own (`kb listen`, which sends nothing), then check that the color read-back (`kb read-colors`) answers as it does on the AK980 PRO.
+
+4. **RAM only.** Live frames (`kb live`) must light the keys and stop cleanly: the keyboard should go back to its saved lighting when they stop. Live frames are also the safe way to map every key to its LED index, one index at a time, and to find the lights the firmware draws itself.
+
+5. **One write at a time.** Each feature the model will offer, with its checksum checked and its result seen: an effect, per-key colors, both keymap layers and their reset, macros, the clock. Put the owner's settings back afterwards.
+
+6. **The screen, last.** The panel size, orientation and color order with a single still test pattern (`kb screen-test` draws one for a 240×135 panel), and the model's frame limit, confirmed before anything longer than one frame is uploaded. Never upload past it.
+
+7. **The layout.** Key positions and sizes from a straight-on photo, the key count, and where the screen and the knob are.
+
+</Steps>
+
+Only then does the model get `verified = true` for what was measured, and its tested firmware in `verified_firmware`. Update [Supported keyboards](/keymotion/help/keyboards/) and `CHANGELOG.md` in the same pull request.
+
+## Safety
+
+<Aside type="danger" title="A wrong write can be permanent">
+On an AULA F108 Pro, a screen animation past its frame limit overwrote the keyboard's own menu graphics for good. Frame limits differ by model, and the same command code has been seen to mean different things on different models. Don't assume a command measured on one model behaves the same on another: measure it there, one step at a time, starting with what only reads. Never go past a limit nobody has confirmed for that model, and never touch firmware or bootloader paths.
+</Aside>
+
+- Test on a keyboard you own, and only with the owner's consent if it's someone else's. Writes go to permanent memory.
+- Keep RAM-only steps first and writes to permanent memory last. Screen uploads wear the flash, so keep them few.
+- Close the official software, SignalRGB, OpenRGB and Keymotion before you use `kb`. Two programs sending commands at once break each other's sessions.
+- Keep the rules in [Contributing](/keymotion/developers/contributing/#working-with-the-keyboard) in mind, and see the [protocol reference](/keymotion/developers/protocol/) for what has been measured on the AK980 PRO.

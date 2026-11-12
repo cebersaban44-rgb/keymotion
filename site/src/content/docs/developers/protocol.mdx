@@ -1,0 +1,246 @@
+---
+title: Protocol reference
+description: What has been measured on the AJAZZ AK980 PRO over USB and Bluetooth, how the command and screen channels work, and which commands are blocked and why.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+This page lists what has been measured on one AJAZZ AK980 PRO with firmware 1.06 (USB `bcdDevice` `0x0106`), in November 2026, with the `kb` developer tool and the app itself. The code that implements it is in `crates/kb-protocol` (packets), `crates/kb-core/src/sonix.rs` (sessions and timing) and `crates/kb-devices/models/ajazz-ak980-pro.toml` (the model). AJAZZ does not publish this protocol, and Keymotion is not affiliated with AJAZZ.
+
+<Aside type="caution" title="A reference, not a recipe">
+Several of these commands write the keyboard's permanent memory. Don't send them by hand: use the app or `kb`, which validate every value and pass every packet through the safety guard. Only firmware 1.06 has been tested; other versions may behave differently.
+</Aside>
+
+## Identity and connection modes
+
+A switch on the back picks the connection. From left to right it reads **2.4G · USB · BT**; USB is the middle position. Settings travel only over the USB cable.
+
+| Mode | How Windows sees it | What Keymotion does |
+|---|---|---|
+| USB cable | VID `0C45`, PID `8009`. Manufacturer string `SONiX`, product string `AK980 PRO`. | Everything. The app matches VID, PID, the USB bus and "AK980" in the product name. |
+| Bluetooth | Name `AK980 PRO-1`; the suffix is the Bluetooth channel. PnP ID: VID `0C45`, PID `FEFE`, version `0x0138`. | Reads the battery level. There is no vendor channel over Bluetooth. |
+| 2.4 GHz receiver | VID `0C45`, PID `FEFE` on the USB bus, with a vendor collection on usage page `FF60`. This comes from the model file and has not been measured here. | Recognises it; there is no driver for it. |
+
+The receiver and Bluetooth share `0C45:FEFE`, so the app tells them apart by bus. Windows reports the firmware version only over the cable; over the receiver or Bluetooth it reports the radio's own version.
+
+## USB interfaces
+
+On Windows every top-level collection is a separate device path.
+
+| Interface | Usage page / usage | Role |
+|---|---|---|
+| 0 | `0x0001` / `0x06` | Boot keyboard |
+| 1 | `0x000C` / `0x01`, `0x0001` / `0x80`, `0x0001` / `0x06`, `0x0001` / `0x02`, `0xFFFF` / `0x01` | Consumer control, system control, NKRO keyboard, mouse, and a vendor collection (report `05`, 3-byte input) |
+| 2 | `0xFF68` / `0x61` | Screen channel |
+| 3 | `0xFF13` / `0x01` | Command channel |
+
+### Report sizes
+
+Read from the report descriptors (`kb descriptors`), and kept as test data in `crates/kb-core/src/shape.rs`:
+
+| Collection | Descriptor | Input | Output | Feature | Report IDs |
+|---|---|---|---|---|---|
+| Command, `FF13` | 48 bytes | 64 bytes | 64 bytes | 64 bytes | none |
+| Screen, `FF68` | 35 bytes | 64 bytes | 4096 bytes | none | none |
+| Vendor, `FFFF` | 23 bytes | 3 bytes (report `05`) | none | none | yes |
+
+Windows adds a report ID byte of `00` in front, so a command travels as 65 bytes and a screen page as 4,097. In a 20-second passive listen on the `FF13` and `FFFF` collections, the keyboard sent no input reports at all.
+
+These shapes are what the app checks before it uses a channel (`kb_core::shape`). Keyboards of the other SONiX command family, some of which share the AK980 PRO's USB IDs, put 64-byte commands on `FF68` and add an `FF67` collection; they fail the check, and nothing is sent to them.
+
+## The command channel
+
+Every command is a 64-byte **feature report** on `FF13`. A session sends headers and the data packets a header announces, and ends with `04 02`, in some sessions followed by `04 F0`. The keyboard's answer to each header is read back with GET_FEATURE.
+
+| Payload byte | Content |
+|---|---|
+| 0 | `04`. This is data, not a report ID. |
+| 1 | Opcode |
+| 2 | Argument: the screen slot for `04 72`, otherwise 0 |
+| 3–7 | 0 |
+| 8–9 | How many 64-byte data packets follow, little-endian |
+| 10–63 | 0 |
+
+Data packets are raw 64-byte payloads without a header. Lighting, clock, table and macro data carry the two bytes `AA 55`: at bytes 14–15 of a lighting packet, at the very end of the others.
+
+### Answers
+
+The echo repeats the header with a status in byte 3. A GET_FEATURE before anything has been sent returns 65 zero bytes.
+
+| Echo | Status seen |
+|---|---|
+| `04 18`, `04 13`, `04 28`, `04 72` | `01` |
+| `04 19` | accepted (not `FF`) |
+| `04 20` | `00` |
+| `04 F5` | `00`, then `01` once the color table is ready |
+| `04 02` after lighting, per-key colors, a keymap or macros | `01`, and in bytes 4–5 the 16-bit byte sum of the data received, little-endian |
+| `04 02` after the clock or a screen upload | `01`, with a sum of 0 |
+| `04 F0` after a keymap | `01` |
+
+Only `FF` means refused. Both `00` and `01` count as accepted. The byte sum wraps at 16 bits; `kb-core` compares it with what it sent and stops the write on a mismatch. The keyboard now and then stalls a GET_FEATURE (Windows error `0x1F`); a retry after 5, 10 or 15 ms succeeds.
+
+### Opcodes and sessions
+
+These are the opcodes on the allowlist that the app uses. Each one was measured in the session shown; the number in brackets is the packet count in bytes 8–9.
+
+| Feature | Session | Measured time |
+|---|---|---|
+| Built-in effect | `04 18` → `04 13` (1) → 1 data packet → `04 02` → `04 F0` | 285 ms (`kb`), 341 ms (app) |
+| Per-key colors | an effect session with mode `0x80`, then `04 18` → `04 23` (9) → 9 packets → `04 02` → `04 F0` | 856 ms for 8 keys (`kb`), 869 ms for 97 keys (app) |
+| Key mapping | `04 18` → `04 11` base layer or `04 27` Fn layer (9) → 9 packets → `04 02` → `04 F0` | 608 ms (`kb`), 631 ms (app) |
+| Macros | `04 19` → `04 15` (pages) → the pages → `04 02` | 600 ms for 9 pages |
+| Clock | `04 18` → `04 28` (1) → 1 data packet → `04 02` | 251 ms (`kb`), 250 ms (app) |
+| Screen upload | `04 18` → `04 72` slot 1 (pages) → the pages on `FF68` → `04 02` | about 143 ms a page |
+| Live frame (RAM only) | `04 20` (8) → 8 packets → `04 02` | 29.5 frames a second |
+| Color read-back | `04 F5` (9) → 9 reads → `04 02` | the app reads every 250 ms |
+
+`04 17` (keyboard options such as sleep and the Windows key lock) is not on the allowlist: it writes to flash and has not been measured. It goes on the list together with its encoder once it is.
+
+`kb-core` keeps a fixed pause before and after configuration packets (`CMD_DELAY` in `crates/kb-core/src/sonix.rs`). Measured: a `04 02` sent right after the last read-back packet is not processed, the session stays open and the next read-back fails.
+
+## Lighting
+
+### Built-in effects
+
+The effect packet carries the mode, a color, a rainbow flag, brightness (0–5), speed (0–5) and a direction, and ends with `AA 55` in bytes 14–15. The modes are 0 (off) to 19, and `0x80` selects the per-key table. For example, the packet `0B FF 00 00 00 00 00 00 01 05 03 00 00 00 AA 55` stores mode 11 in rainbow colors at brightness 5 and speed 3; the commit echo was `04 02 00 01 12 02`, a byte sum of `0x0212` (530), equal to the bytes sent. The app uses the same settings as the factory lighting (`EffectSettings::factory`).
+
+Each directional effect moves in only two ways. Code 2 behaves like code 1, and code 3 like code 0:
+
+| Mode | Code 0 | Code 1 |
+|---|---|---|
+| 10 | down | up |
+| 11 | right | left |
+| 12 | counter-clockwise | clockwise |
+| 16 | a short train of lights moves forward along the LED order | backward |
+| 18 | up and to the right | down and to the left |
+
+Measured with `kb direction-probe`, which stores each effect with each code, reads frames back and estimates the motion.
+
+### Per-key colors
+
+The per-key table is 9 packets (576 bytes): entry `idx` at byte `idx × 4` as `idx R G B`, `AA 55` in the last two bytes, so the highest usable index is 142. As with [live frames](#live-frames-ram-only), `kb-protocol` writes every entry from 1 to 142 with its own index, so keys not given are stored as black.
+
+### Brightness and color
+
+- At brightness level `n`, a color value `v` is driven as `v × m[n] >> 10`, with `m = [0, 191, 382, 573, 764, 1016]`. Level 3 is about 56 %, not 60 %. Effects and per-key tables use the same scale; all 40 values measured at levels 1 to 5 match it exactly.
+- Colors are stored with 8 bits per channel, and the firmware applies no gamma. LEDs respond linearly while screens don't, so the app converts colors with the user's calibration (gamma 2.2 by default) before it sends them.
+- Num Lock (LED 32, white) and Fn (LED 96, red while the battery charges, off when it is full) are drawn by the firmware itself. They ignore effects, per-key tables and live frames, and they are not scaled by brightness.
+
+## Live frames (RAM only)
+
+`04 20` announces 8 packets: 512 bytes holding 128 entries of `idx R G B` at `idx × 4`. There is no `04 18` and no `04 F0`. The highest LED index on a key is 123.
+
+- Nothing is written to permanent memory. When frames stop coming, the keyboard returns to its saved lighting, so the app re-sends the current frame every 50 ms.
+- Measured with `kb live`: 177 frames in 6 seconds (29.5 a second) with 2 ms between packets.
+- The firmware applies entries by their index byte, and an all-zero slot changes nothing. A frame that listed only some LEDs left the others showing their previous color, so every slot now carries its own index and missing LEDs are sent as black.
+- A frame must be completed once its header is sent. If the data doesn't follow, the keyboard takes the next packets as frame data, later commands are lost and the next read-back fails. A complete frame recovers the session.
+- About 1 frame in 100 is refused with `FF`; the next one goes through.
+- Live frames show even when the saved lighting is off. The brightness level is not applied to them, so the app scales them with the table above.
+
+## Read-back
+
+`04 F5` returns the colors the keys show at that moment, including animated effects and live frames.
+
+- The header must announce 9 packets. With a count of 0, only the first read on a connection worked: the session never closed, later reads were ignored and the commands after them were swallowed. With 9, eight reads in a row 250 ms apart all succeeded.
+- The echo reads `00` until the table is ready, then `01`. Nine GET_FEATURE reads follow, 576 bytes of `idx R G B`, then `04 02`.
+- Green and blue come back as they are. Red comes back as `2 × r mod 256`, so its top bit is lost and every red byte stands for two values. `kb-core` picks the one that fits what the app expects the keys to show; with nothing to expect (rainbow effects) it guesses from the frame.
+- Keymotion has no measured way to read back the stored effect, the keymap, the macros or the screen image. The app keeps its own record of each, updated only after a write the keyboard confirmed.
+
+## Key mapping
+
+A layer is 144 entries of 4 bytes at `idx × 4`, the index being the key's LED index, with `AA 55` in the last two bytes. Writing a layer replaces all of it.
+
+| Entry | Meaning |
+|---|---|
+| `00 00 00 00` | The factory default for that key. A layer of zeros is the factory layout. |
+| `02 MODS KEY 00` | A key (HID keyboard usage) with modifiers, the bits as in the boot keyboard report. Shift+A: `02 02 04 00`; Ctrl+Shift+A: `02 03 04 00`. |
+| `03 LO HI 00` | A consumer usage, little-endian (Volume up: `03 E9 00 00`) |
+| `01 01 BTN 00` | A mouse button; `08` arrives in Windows as button 4 (back) |
+| `05 03 00 00` | The key does nothing |
+| `06 SLOT MODE COUNT` | Plays macro `SLOT`: mode 0 once, mode 1 `COUNT` times. Modes 2 and 3 have not been tested. |
+
+All of these were checked by pressing the keys and watching the events in Windows. The Fn layer works on a key that has no Fn function of its own. The Fn key itself (usage `0xAF`) is never reassigned: without it, the Fn layer and the keyboard's own Fn functions would be gone.
+
+## Macros
+
+`04 19` opens a macro session and clears the stored macros; it needs no `04 18`. `04 15` announces the pages, the pages follow, and `04 02` closes with a byte sum that matches the image.
+
+The image is a directory of 100 four-byte slots followed by one record per macro. Each step is two 4-byte events: the action (key or mouse button, down or up) and the pause after it, at least 10 ms. A test image of three slots (a two-letter word; an empty slot; a right click, a 200 ms pause and a key) took 9 pages, and the keys played every step with its pause.
+
+## Clock
+
+`04 28` announces one data packet: `00 01 5A`, then year minus 2000, month, day, hour, minute, second, `00` and the weekday (0 = Sunday), in binary local time, with `AA 55` in the last two bytes. The keyboard echoes that packet byte for byte, which is the proof of delivery here, since the `04 02` sum is 0 in this session.
+
+Every clock packet also switches the screen to its clock page, so the app sets the clock automatically at most once a day, 2 seconds after the keyboard connects, plus whenever the user asks.
+
+## The screen
+
+The panel is 240×135 pixels (1.14 inch). Images are RGB565, little-endian, rows from top to bottom; a test pattern with colored corners and an arrow confirmed the orientation and the color order.
+
+- **Format.** A 256-byte header (the frame count and one delay byte per frame, in 2 ms units), then the frames, padded to whole 4096-byte pages. One frame takes 16 pages.
+- **Upload.** `04 18`, then `04 72` with slot 1 and the page count. Each page goes to the `FF68` collection as a 4096-byte output report, and the keyboard answers each one with an input report starting `01 5A 02 00`. `04 02` closes the upload, with a sum of 0, so the per-page answers are the proof of delivery.
+- **Where it goes.** The upload replaces the single animation on the screen's GIF page (opened with Fn+Home), including the factory animation. The home page with the date and time is not affected. The picture stays after unplugging the cable and after switching to 2.4 GHz and back.
+- **While it runs.** The screen shows LOADING and a percentage, and the keyboard keeps typing.
+- **Speed.** The first page takes about 283 ms, then about 143 ms each (133 to 283 ms), which fits writing flash. One still image (16 pages) takes about 2.7 seconds, 16 frames (254 pages) 37 seconds, and the 135-frame factory animation (2,136 pages) 308 seconds.
+
+If a page fails, the app closes the session with `04 02`. The GIF page then stays incomplete until the next upload.
+
+## Battery and charging
+
+- **USB:** the keyboard reports no battery level over the cable. Its descriptors declare no battery usage, and it sends nothing on its own. The firmware lights Fn red while it charges and turns it off when the battery is full; the app reads that through `04 F5` and shows the charging state.
+- **Bluetooth:** the standard GATT Battery Service is readable (94 % in the first test).
+
+Over Bluetooth the keyboard offers only standard HID reports (system control, boot keyboard with its LED output, mouse, NKRO keyboard, consumer control, Windows Dial for the knob, and Eject with the Apple Fn key) and the battery service. Its vendor GATT service is the radio chip's firmware-update channel.
+
+## Timings at a glance
+
+| What | Measured |
+|---|---|
+| Effect saved | 285–341 ms |
+| Per-key colors saved | 856–869 ms |
+| Keymap layer saved | 608–631 ms |
+| Macros saved (9 pages) | 600 ms |
+| Clock set | about 250 ms |
+| Screen page | first about 283 ms, then about 143 ms |
+| Live frame stream | 29.5 frames a second with 2 ms between packets; the app sends 20 a second |
+| Frame refusals | about 1 in 100 live frames |
+| Color read-back | eight reads in a row, 250 ms apart, without a failure |
+
+## What is blocked, and why
+
+These are refused in the code, whatever the caller asks for. The byte sequences are not given here on purpose.
+
+| Blocked | Why |
+|---|---|
+| Firmware-update and bootloader sequences, and the controller's in-system-programming commands | They switch the keyboard's controller into update mode. Keymotion never updates firmware, and a wrong firmware write can leave a keyboard unusable. `guard` refuses them at the start of any packet on both channels, and the encoders make sure user data (a color, a key entry, a macro page) can never start like one. |
+| Every opcode not on the allowlist | Other projects list more opcodes that the firmware accepts, some of them destructive. None of them has been measured here, so their effect on this keyboard's memory is unknown. |
+| Writing to the Bluetooth firmware-update service | It reprograms the radio chip. `kb_transport::ble` has no write function. |
+| Feature reads on the screen channel, and screen pages sent as SET_REPORT | On related keyboards, a feature read locked the firmware until power was removed, and pages sent as SET_REPORT crashed it. Pages always go as output reports, and `kb-transport` refuses GET_FEATURE on `FF68`. |
+| `04 F0` after a screen upload | Other projects report that it restarts the animation and the upload doesn't stay. The upload is closed with `04 02` only. |
+| Uploads over 140 frames or 2,215 pages | On an AULA F108 Pro, an animation past its limit overwrote the keyboard's menu graphics for good. The largest upload measured here is 135 frames. |
+| Commands to the 2.4 GHz receiver | Nothing has been measured through it here. |
+
+## Credits
+
+Keymotion's protocol code is its own. These community projects documented this keyboard family first and showed where to look; the facts on this page were then measured on our keyboard, except where a reason above comes from a related keyboard. Thank you.
+
+- [sonix-keyboard-studio](https://github.com/donglover69/sonix-keyboard-studio): AK980 V2 and AULA F108 Pro
+- [ajazz-ak980-v2-linux](https://github.com/YellowHearth1/ajazz-ak980-v2-linux): AK980 V2 on Linux
+- [ajazz-control-center](https://github.com/Aiacos/ajazz-control-center): AJAZZ devices, including the AK980 PRO
+- [ak980_web](https://github.com/SlightlyLookAround/ak980_web): AK980 V2 in the browser
+- [ak35i-v3-max-macos-control-center](https://github.com/Ike-li/ak35i-v3-max-macos-control-center): AK35I V3 MAX on macOS
+- [TFTTimeSync-node](https://github.com/KyleBoyer/TFTTimeSync-node): AK35I V3 MAX clock and lighting
+- [openajazz](https://github.com/not-nullptr/openajazz): AK35I and F75 Max
+- [ak820pro-modder](https://github.com/wsclx/ak820pro-modder): AK820 Pro
+- [ak820-mac](https://github.com/gha-projects/ak820-mac): AK820 on macOS
+- [ak820ctl](https://github.com/DarkTiengo/ak820ctl): AK820 Pro and its receiver
+- [ajazz-ak820-pro-mac](https://github.com/gusleig/ajazz-ak820-pro-mac): AK820 Pro on macOS
+- [ajazz-ak820-pro (kabelklaus)](https://github.com/kabelklaus/ajazz-ak820-pro): AK820 Pro in the browser
+- [EPOMAKER-Ajazz-AK820-Pro](https://github.com/gohv/EPOMAKER-Ajazz-AK820-Pro): AK820 Pro on the command line
+- [ajazz-ak820-pro (fpb)](https://github.com/fpb/ajazz-ak820-pro): AK820 Pro hardware
+- [ak820-screen](https://github.com/fromagge/ak820-screen): the AK820 Pro screen on newer firmware
+- [freejazz](https://github.com/fraustiz/freejazz): AK980 MAX, a different command family
+- [f108-pro](https://github.com/parsiya/f108-pro): AULA F108 Pro, including the report on its damaged screen
+- [OpenRGB with AULA F108 Pro support](https://github.com/hcode10/OpenRGB-With-AulaF108Pro-support): live lighting on the F108 Pro
+- [aks075-linux](https://github.com/aar-rafi/aks075-linux): AKS075 on Linux
+- [sonix-flasher](https://github.com/SonixQMK/sonix-flasher): SONiX flashing, which showed which sequences to block

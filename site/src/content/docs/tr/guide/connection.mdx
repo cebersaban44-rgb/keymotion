@@ -1,0 +1,48 @@
+---
+title: Bağlantı
+description: Klavyenin şu an nasıl bağlı olduğu, Keymotion'ın her bağlantıda neler yapabildiği ve klavye ekranındaki saat.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside } from "@astrojs/starlight/components";
+
+**Bağlantı** sayfası klavyenizin nasıl bağlı olduğunu, Keymotion'ın her bağlantıda neler yapabildiğini ve klavye ekranındaki saati gösterir.
+
+<Screenshot name="connection" alt="USB kablosuyla Bağlantı sayfası: şu anki bağlantı, USB konumundaki anahtar çizimi, özellik tablosu ve klavye saati" />
+
+## Şu anki bağlantı
+
+İlk kart bağlantının adını (**USB kablo**, **2.4 GHz alıcı** ya da **Bluetooth**) ve bu bağlantının neye izin verdiğini tek cümleyle söyler:
+
+| Bağlantı | Sayfada yazan |
+|---|---|
+| USB kablo | **Uygulamanın bütün özellikleri kullanılabilir.** |
+| 2.4 GHz alıcı | **Klavyeniz çalışıyor, ama bu bağlantıda henüz ayar yapılamıyor.** |
+| Bluetooth | **Klavyeniz çalışıyor. Bu bağlantıda yalnızca pil düzeyi okunur.** |
+
+Altında klavyenin bilgileri durur: **Aygıt** satırında model, kabloda **Klavye yazılımı** sürümü. Bluetooth'ta **Bluetooth adı**, klavyenin üç Bluetooth kanalından hangisinde olduğunu gösteren **Kanal** ve **Bluetooth adresi** görünür.
+
+Sağdaki **Klavyedeki anahtarın konumu** çizimi, klavyenin arkasındaki anahtarı şu anki konumunda gösterir. Bu yalnızca bir resimdir, tıklanarak değişmez: **Modu bu anahtarla değiştirirsiniz.** Üç konumu [Klavyeyi bağlama](/keymotion/tr/guide/connecting/) sayfası anlatır.
+
+## Bağlantıya göre özellikler
+
+Tablo, Keymotion'ın USB kabloyla, 2.4 GHz alıcıyla ve Bluetooth'la neler yapabildiğini sıralar. Şu anki bağlantınızın sütunu **Şu an** diye işaretlidir.
+
+- Onay işareti **Kullanılabilir**, çizgi **Kullanılamaz** demektir.
+- Pil satırındaki **Son okuma**, Keymotion'ın kabloda Bluetooth'tan en son okuduğu pil düzeyini gösterdiği anlamına gelir.
+
+Tablonun altındaki iki not, canlı ışık ve kartların odak zamanlayıcısını, sistem göstergelerini, hatırlatıcıları, takvimi ve çalan şarkıyı kapsadığını; ayarların yalnızca USB kablosuyla, arkadaki anahtar ortadayken değiştirilebildiğini söyler.
+
+## Klavye saati
+
+Klavyenin ekranında bir saat sayfası vardır. **Klavye saati** kartı bu saati doğru tutar.
+
+- Kart, saatin ne kadar önce eşitlendiğini ya da **Henüz eşitlenmedi** yazar. Üstüne gelince tam tarih ve saat çıkar.
+- **Şimdi eşitle**, klavyenin saatini bilgisayarınızın saatine ayarlar. Eşitleme, klavyenin ekranını saat sayfasına da geçirir.
+- **Bağlanınca eşitle**, klavye USB ile bağlandığında saati kendiliğinden eşitler; bunu günde en fazla bir kez yapar. Başta açıktır.
+
+2.4 GHz alıcıyla ya da Bluetooth'la kartta **Eşitlemek için kabloyu takın ve arkadaki anahtarı ortaya alın.** yazar ve **Şimdi eşitle** tıklanamaz.
+
+<Aside type="note">
+Klavye bağlı değilken bu sayfada hoş geldiniz sayfası görünür; [İlk açılış](/keymotion/tr/guide/first-launch/) sayfasına bakın.
+</Aside>

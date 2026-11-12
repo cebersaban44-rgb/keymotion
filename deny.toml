@@ -1,0 +1,44 @@
+# cargo-deny: licences, security advisories, duplicate crates and sources of
+# every Rust dependency. Runs in CI ("Supply chain" job); locally:
+#   cargo install --locked cargo-deny
+#   cargo deny check
+
+[graph]
+# The app is Windows-only; checking other targets would pull in Linux and macOS
+# crates that never ship.
+targets = ["x86_64-pc-windows-msvc"]
+
+[advisories]
+# Security vulnerabilities and yanked crates fail the check. Unmaintained-crate
+# notices fail only for crates this workspace depends on directly; transitive
+# ones (usually deep in Tauri) are not ours to replace.
+yanked = "deny"
+unmaintained = "workspace"
+ignore = []
+
+[licenses]
+# Every licence that actually occurs in the dependency tree, and nothing else.
+# A new licence must be reviewed and added here (and in about.toml).
+allow = [
+  "Apache-2.0",
+  "BSD-3-Clause",
+  "ISC",
+  "MIT",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Zlib",
+]
+confidence-threshold = 0.93
+# Workspace crates are not published (publish = false).
+private = { ignore = true }
+
+[bans]
+# Two major versions of the same crate are common under Tauri; report, don't fail.
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

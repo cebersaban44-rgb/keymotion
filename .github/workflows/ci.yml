@@ -1,0 +1,164 @@
+# Checks every pull request and every merge into develop and main.
+# The same checks are listed in CONTRIBUTING.md; branch protection
+# requires the "Build and test" job before a PR can be merged.
+#
+# Actions are pinned to commit SHAs (the release is in the comment next to
+# each); Dependabot proposes updates (.github/dependabot.yml).
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR cancels the run in progress.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  build-and-test:
+    name: Build and test
+    # The app targets Windows (WinRT Bluetooth, HID, WebView2), so it is
+    # built and tested there.
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Keep LF line endings so rustfmt and the bindings check see the files
+      # exactly as they are committed.
+      - name: Keep LF line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      # Repository checks need only Node, so they run first and fail fast.
+      # Each one also runs locally: `node tools/<script>`.
+      - name: Text hygiene (BOM, broken characters)
+        run: node tools/check-text.mjs
+
+      - name: No vendor files
+        run: node tools/check-vendor-files.mjs
+
+      - name: Versions agree
+        run: node tools/check-version.mjs
+
+      # The scripts the release (release.yml) and site (pages.yml) workflows use.
+      - name: Release and site script tests
+        run: node --test "tools/release/*.test.mjs" "tools/site/*.test.mjs"
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: app/package.json
+          cache: true
+          cache_dependency_path: app/pnpm-lock.yaml
+
+      - name: Install UI dependencies
+        run: pnpm --dir app install --frozen-lockfile
+
+      - name: Typecheck and build the UI
+        run: pnpm --dir app build
+
+      # Any finding fails the build, warnings included: the `lint` script
+      # passes --max-warnings 0 (rules: tools/eslint/eslint.config.mjs).
+      - name: ESLint
+        run: pnpm --dir app lint
+
+      # The release is pinned in rust-toolchain.toml.
+      - name: Rust toolchain
+        run: |
+          channel="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal -c rustfmt -c clippy --no-self-update
+          rustc --version
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace
+
+      # `cargo test` regenerates the TypeScript bindings from the Rust types.
+      # They must be committed and up to date, or the UI and the backend
+      # disagree about the data they exchange.
+      - name: Bindings are up to date
+        run: |
+          new="$(git ls-files --others --exclude-standard -- app/src/bindings)"
+          if ! git diff --quiet -- app/src/bindings || [ -n "$new" ]; then
+            echo "::error::app/src/bindings is out of date. Run 'cargo test --workspace' and commit the changes."
+            git diff -- app/src/bindings
+            [ -n "$new" ] && printf 'Not committed:\n%s\n' "$new"
+            exit 1
+          fi
+
+  # Licences, security advisories, duplicate crates and crate sources
+  # (deny.toml). A separate job, because a new advisory can turn it red
+  # without any change in this repository; it is not required for merging.
+  supply-chain:
+    name: Supply chain (cargo-deny)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Rust toolchain
+        run: |
+          channel="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal -c rustfmt -c clippy --no-self-update
+
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        with:
+          tool: cargo-deny@0.20.2
+
+      - name: cargo deny
+        run: cargo deny --locked check
+
+  # The documentation site (site/, published by pages.yml): it must build, and
+  # the build fails on a broken internal link.
+  site:
+    name: Documentation site
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: site/package.json
+          cache: true
+          cache_dependency_path: site/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm --dir site install --frozen-lockfile
+
+      - name: Build
+        run: pnpm --dir site build

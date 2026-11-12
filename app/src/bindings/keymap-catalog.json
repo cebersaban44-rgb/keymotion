@@ -1,0 +1,794 @@
+{
+  "keys": [
+    {
+      "code": 4,
+      "id": "a",
+      "label": "A",
+      "group": "letter"
+    },
+    {
+      "code": 5,
+      "id": "b",
+      "label": "B",
+      "group": "letter"
+    },
+    {
+      "code": 6,
+      "id": "c",
+      "label": "C",
+      "group": "letter"
+    },
+    {
+      "code": 7,
+      "id": "d",
+      "label": "D",
+      "group": "letter"
+    },
+    {
+      "code": 8,
+      "id": "e",
+      "label": "E",
+      "group": "letter"
+    },
+    {
+      "code": 9,
+      "id": "f",
+      "label": "F",
+      "group": "letter"
+    },
+    {
+      "code": 10,
+      "id": "g",
+      "label": "G",
+      "group": "letter"
+    },
+    {
+      "code": 11,
+      "id": "h",
+      "label": "H",
+      "group": "letter"
+    },
+    {
+      "code": 12,
+      "id": "i",
+      "label": "I",
+      "group": "letter"
+    },
+    {
+      "code": 13,
+      "id": "j",
+      "label": "J",
+      "group": "letter"
+    },
+    {
+      "code": 14,
+      "id": "k",
+      "label": "K",
+      "group": "letter"
+    },
+    {
+      "code": 15,
+      "id": "l",
+      "label": "L",
+      "group": "letter"
+    },
+    {
+      "code": 16,
+      "id": "m",
+      "label": "M",
+      "group": "letter"
+    },
+    {
+      "code": 17,
+      "id": "n",
+      "label": "N",
+      "group": "letter"
+    },
+    {
+      "code": 18,
+      "id": "o",
+      "label": "O",
+      "group": "letter"
+    },
+    {
+      "code": 19,
+      "id": "p",
+      "label": "P",
+      "group": "letter"
+    },
+    {
+      "code": 20,
+      "id": "q",
+      "label": "Q",
+      "group": "letter"
+    },
+    {
+      "code": 21,
+      "id": "r",
+      "label": "R",
+      "group": "letter"
+    },
+    {
+      "code": 22,
+      "id": "s",
+      "label": "S",
+      "group": "letter"
+    },
+    {
+      "code": 23,
+      "id": "t",
+      "label": "T",
+      "group": "letter"
+    },
+    {
+      "code": 24,
+      "id": "u",
+      "label": "U",
+      "group": "letter"
+    },
+    {
+      "code": 25,
+      "id": "v",
+      "label": "V",
+      "group": "letter"
+    },
+    {
+      "code": 26,
+      "id": "w",
+      "label": "W",
+      "group": "letter"
+    },
+    {
+      "code": 27,
+      "id": "x",
+      "label": "X",
+      "group": "letter"
+    },
+    {
+      "code": 28,
+      "id": "y",
+      "label": "Y",
+      "group": "letter"
+    },
+    {
+      "code": 29,
+      "id": "z",
+      "label": "Z",
+      "group": "letter"
+    },
+    {
+      "code": 30,
+      "id": "1",
+      "label": "1",
+      "group": "digit"
+    },
+    {
+      "code": 31,
+      "id": "2",
+      "label": "2",
+      "group": "digit"
+    },
+    {
+      "code": 32,
+      "id": "3",
+      "label": "3",
+      "group": "digit"
+    },
+    {
+      "code": 33,
+      "id": "4",
+      "label": "4",
+      "group": "digit"
+    },
+    {
+      "code": 34,
+      "id": "5",
+      "label": "5",
+      "group": "digit"
+    },
+    {
+      "code": 35,
+      "id": "6",
+      "label": "6",
+      "group": "digit"
+    },
+    {
+      "code": 36,
+      "id": "7",
+      "label": "7",
+      "group": "digit"
+    },
+    {
+      "code": 37,
+      "id": "8",
+      "label": "8",
+      "group": "digit"
+    },
+    {
+      "code": 38,
+      "id": "9",
+      "label": "9",
+      "group": "digit"
+    },
+    {
+      "code": 39,
+      "id": "0",
+      "label": "0",
+      "group": "digit"
+    },
+    {
+      "code": 58,
+      "id": "f1",
+      "label": "F1",
+      "group": "function"
+    },
+    {
+      "code": 59,
+      "id": "f2",
+      "label": "F2",
+      "group": "function"
+    },
+    {
+      "code": 60,
+      "id": "f3",
+      "label": "F3",
+      "group": "function"
+    },
+    {
+      "code": 61,
+      "id": "f4",
+      "label": "F4",
+      "group": "function"
+    },
+    {
+      "code": 62,
+      "id": "f5",
+      "label": "F5",
+      "group": "function"
+    },
+    {
+      "code": 63,
+      "id": "f6",
+      "label": "F6",
+      "group": "function"
+    },
+    {
+      "code": 64,
+      "id": "f7",
+      "label": "F7",
+      "group": "function"
+    },
+    {
+      "code": 65,
+      "id": "f8",
+      "label": "F8",
+      "group": "function"
+    },
+    {
+      "code": 66,
+      "id": "f9",
+      "label": "F9",
+      "group": "function"
+    },
+    {
+      "code": 67,
+      "id": "f10",
+      "label": "F10",
+      "group": "function"
+    },
+    {
+      "code": 68,
+      "id": "f11",
+      "label": "F11",
+      "group": "function"
+    },
+    {
+      "code": 69,
+      "id": "f12",
+      "label": "F12",
+      "group": "function"
+    },
+    {
+      "code": 104,
+      "id": "f13",
+      "label": "F13",
+      "group": "function"
+    },
+    {
+      "code": 105,
+      "id": "f14",
+      "label": "F14",
+      "group": "function"
+    },
+    {
+      "code": 106,
+      "id": "f15",
+      "label": "F15",
+      "group": "function"
+    },
+    {
+      "code": 107,
+      "id": "f16",
+      "label": "F16",
+      "group": "function"
+    },
+    {
+      "code": 108,
+      "id": "f17",
+      "label": "F17",
+      "group": "function"
+    },
+    {
+      "code": 109,
+      "id": "f18",
+      "label": "F18",
+      "group": "function"
+    },
+    {
+      "code": 110,
+      "id": "f19",
+      "label": "F19",
+      "group": "function"
+    },
+    {
+      "code": 111,
+      "id": "f20",
+      "label": "F20",
+      "group": "function"
+    },
+    {
+      "code": 112,
+      "id": "f21",
+      "label": "F21",
+      "group": "function"
+    },
+    {
+      "code": 113,
+      "id": "f22",
+      "label": "F22",
+      "group": "function"
+    },
+    {
+      "code": 114,
+      "id": "f23",
+      "label": "F23",
+      "group": "function"
+    },
+    {
+      "code": 115,
+      "id": "f24",
+      "label": "F24",
+      "group": "function"
+    },
+    {
+      "code": 41,
+      "id": "esc",
+      "label": "Esc",
+      "group": "editing"
+    },
+    {
+      "code": 43,
+      "id": "tab",
+      "label": "Tab",
+      "group": "editing"
+    },
+    {
+      "code": 57,
+      "id": "caps",
+      "label": "Caps Lock",
+      "group": "editing"
+    },
+    {
+      "code": 40,
+      "id": "enter",
+      "label": "Enter",
+      "group": "editing"
+    },
+    {
+      "code": 42,
+      "id": "backspace",
+      "label": "Backspace",
+      "group": "editing"
+    },
+    {
+      "code": 44,
+      "id": "space",
+      "label": "Space",
+      "group": "editing"
+    },
+    {
+      "code": 101,
+      "id": "menu",
+      "label": "Menu",
+      "group": "editing"
+    },
+    {
+      "code": 70,
+      "id": "print-screen",
+      "label": "Print Screen",
+      "group": "editing"
+    },
+    {
+      "code": 71,
+      "id": "scroll-lock",
+      "label": "Scroll Lock",
+      "group": "editing"
+    },
+    {
+      "code": 72,
+      "id": "pause",
+      "label": "Pause",
+      "group": "editing"
+    },
+    {
+      "code": 73,
+      "id": "insert",
+      "label": "Insert",
+      "group": "navigation"
+    },
+    {
+      "code": 76,
+      "id": "delete",
+      "label": "Delete",
+      "group": "navigation"
+    },
+    {
+      "code": 74,
+      "id": "home",
+      "label": "Home",
+      "group": "navigation"
+    },
+    {
+      "code": 77,
+      "id": "end",
+      "label": "End",
+      "group": "navigation"
+    },
+    {
+      "code": 75,
+      "id": "pgup",
+      "label": "Page Up",
+      "group": "navigation"
+    },
+    {
+      "code": 78,
+      "id": "pgdn",
+      "label": "Page Down",
+      "group": "navigation"
+    },
+    {
+      "code": 82,
+      "id": "up",
+      "label": "↑",
+      "group": "navigation"
+    },
+    {
+      "code": 81,
+      "id": "down",
+      "label": "↓",
+      "group": "navigation"
+    },
+    {
+      "code": 80,
+      "id": "left",
+      "label": "←",
+      "group": "navigation"
+    },
+    {
+      "code": 79,
+      "id": "right",
+      "label": "→",
+      "group": "navigation"
+    },
+    {
+      "code": 53,
+      "id": "grave",
+      "label": "`",
+      "group": "symbol"
+    },
+    {
+      "code": 45,
+      "id": "minus",
+      "label": "-",
+      "group": "symbol"
+    },
+    {
+      "code": 46,
+      "id": "equal",
+      "label": "=",
+      "group": "symbol"
+    },
+    {
+      "code": 47,
+      "id": "lbracket",
+      "label": "[",
+      "group": "symbol"
+    },
+    {
+      "code": 48,
+      "id": "rbracket",
+      "label": "]",
+      "group": "symbol"
+    },
+    {
+      "code": 49,
+      "id": "backslash",
+      "label": "\\",
+      "group": "symbol"
+    },
+    {
+      "code": 51,
+      "id": "semicolon",
+      "label": ";",
+      "group": "symbol"
+    },
+    {
+      "code": 52,
+      "id": "quote",
+      "label": "'",
+      "group": "symbol"
+    },
+    {
+      "code": 54,
+      "id": "comma",
+      "label": ",",
+      "group": "symbol"
+    },
+    {
+      "code": 55,
+      "id": "period",
+      "label": ".",
+      "group": "symbol"
+    },
+    {
+      "code": 56,
+      "id": "slash",
+      "label": "/",
+      "group": "symbol"
+    },
+    {
+      "code": 50,
+      "id": "iso-hash",
+      "label": "ISO #",
+      "group": "symbol"
+    },
+    {
+      "code": 100,
+      "id": "iso-backslash",
+      "label": "ISO \\",
+      "group": "symbol"
+    },
+    {
+      "code": 83,
+      "id": "numlock",
+      "label": "Num Lock",
+      "group": "keypad"
+    },
+    {
+      "code": 84,
+      "id": "kp-slash",
+      "label": "Num /",
+      "group": "keypad"
+    },
+    {
+      "code": 85,
+      "id": "kp-star",
+      "label": "Num *",
+      "group": "keypad"
+    },
+    {
+      "code": 86,
+      "id": "kp-minus",
+      "label": "Num −",
+      "group": "keypad"
+    },
+    {
+      "code": 87,
+      "id": "kp-plus",
+      "label": "Num +",
+      "group": "keypad"
+    },
+    {
+      "code": 88,
+      "id": "kp-enter",
+      "label": "Num Enter",
+      "group": "keypad"
+    },
+    {
+      "code": 89,
+      "id": "kp1",
+      "label": "Num 1",
+      "group": "keypad"
+    },
+    {
+      "code": 90,
+      "id": "kp2",
+      "label": "Num 2",
+      "group": "keypad"
+    },
+    {
+      "code": 91,
+      "id": "kp3",
+      "label": "Num 3",
+      "group": "keypad"
+    },
+    {
+      "code": 92,
+      "id": "kp4",
+      "label": "Num 4",
+      "group": "keypad"
+    },
+    {
+      "code": 93,
+      "id": "kp5",
+      "label": "Num 5",
+      "group": "keypad"
+    },
+    {
+      "code": 94,
+      "id": "kp6",
+      "label": "Num 6",
+      "group": "keypad"
+    },
+    {
+      "code": 95,
+      "id": "kp7",
+      "label": "Num 7",
+      "group": "keypad"
+    },
+    {
+      "code": 96,
+      "id": "kp8",
+      "label": "Num 8",
+      "group": "keypad"
+    },
+    {
+      "code": 97,
+      "id": "kp9",
+      "label": "Num 9",
+      "group": "keypad"
+    },
+    {
+      "code": 98,
+      "id": "kp0",
+      "label": "Num 0",
+      "group": "keypad"
+    },
+    {
+      "code": 99,
+      "id": "kp-dot",
+      "label": "Num .",
+      "group": "keypad"
+    },
+    {
+      "code": 224,
+      "id": "lctrl",
+      "label": "L Ctrl",
+      "group": "modifier"
+    },
+    {
+      "code": 225,
+      "id": "lshift",
+      "label": "L Shift",
+      "group": "modifier"
+    },
+    {
+      "code": 226,
+      "id": "lalt",
+      "label": "L Alt",
+      "group": "modifier"
+    },
+    {
+      "code": 227,
+      "id": "lwin",
+      "label": "L Win",
+      "group": "modifier"
+    },
+    {
+      "code": 228,
+      "id": "rctrl",
+      "label": "R Ctrl",
+      "group": "modifier"
+    },
+    {
+      "code": 229,
+      "id": "rshift",
+      "label": "R Shift",
+      "group": "modifier"
+    },
+    {
+      "code": 230,
+      "id": "ralt",
+      "label": "R Alt",
+      "group": "modifier"
+    },
+    {
+      "code": 231,
+      "id": "rwin",
+      "label": "R Win",
+      "group": "modifier"
+    }
+  ],
+  "media": [
+    {
+      "usage": 205,
+      "id": "play-pause"
+    },
+    {
+      "usage": 181,
+      "id": "next"
+    },
+    {
+      "usage": 182,
+      "id": "previous"
+    },
+    {
+      "usage": 183,
+      "id": "stop"
+    },
+    {
+      "usage": 233,
+      "id": "volume-up"
+    },
+    {
+      "usage": 234,
+      "id": "volume-down"
+    },
+    {
+      "usage": 226,
+      "id": "mute"
+    },
+    {
+      "usage": 387,
+      "id": "media-player"
+    },
+    {
+      "usage": 394,
+      "id": "mail"
+    },
+    {
+      "usage": 402,
+      "id": "calculator"
+    },
+    {
+      "usage": 404,
+      "id": "my-computer"
+    },
+    {
+      "usage": 547,
+      "id": "browser-home"
+    },
+    {
+      "usage": 548,
+      "id": "browser-back"
+    },
+    {
+      "usage": 549,
+      "id": "browser-forward"
+    },
+    {
+      "usage": 550,
+      "id": "browser-stop"
+    },
+    {
+      "usage": 551,
+      "id": "browser-refresh"
+    },
+    {
+      "usage": 554,
+      "id": "browser-favorites"
+    },
+    {
+      "usage": 545,
+      "id": "browser-search"
+    }
+  ],
+  "mouse": [
+    "left",
+    "right",
+    "middle",
+    "back",
+    "forward",
+    "double-click"
+  ]
+}

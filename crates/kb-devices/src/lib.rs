@@ -12,10 +12,7 @@ use serde::Deserialize;
 use std::sync::OnceLock;
 
 /// Embedded model files. Keep sorted by id.
-const MODEL_SOURCES: &[(&str, &str)] = &[(
-    "ajazz-ak980-pro",
-    include_str!("../models/ajazz-ak980-pro.toml"),
-)];
+const MODEL_SOURCES: &[(&str, &str)] = &[("ajazz-ak980-pro", include_str!("../models/ajazz-ak980-pro.toml"))];
 
 #[derive(Debug, thiserror::Error)]
 pub enum ModelError {
@@ -89,6 +86,24 @@ pub struct ModeSpec {
     #[serde(default)]
     pub capabilities: Vec<Capability>,
     pub verified: bool,
+    /// Firmware versions (USB `bcdDevice`, e.g. `0x0106`) this project has
+    /// tested writes on. Writing to the keyboard's memory on any other
+    /// version needs the user's confirmation first.
+    #[serde(default)]
+    pub verified_firmware: Vec<u16>,
+}
+
+impl ModeSpec {
+    /// Whether writes were tested on this firmware version.
+    pub fn firmware_verified(&self, release: u16) -> bool {
+        self.verified_firmware.contains(&release)
+    }
+}
+
+/// A firmware version (USB `bcdDevice`, binary-coded decimal) as people
+/// read it: `0x0106` is "1.06".
+pub fn firmware_text(release: u16) -> String {
+    format!("{:x}.{:02x}", release >> 8, release & 0xFF)
 }
 
 fn one() -> f32 {
@@ -103,6 +118,8 @@ pub struct KeySpec {
     pub label: String,
     /// LED index; equals the keymap index on SONiX boards.
     pub led: u8,
+    /// Default HID usage (keyboard page 0x07; 0xAF is the vendor Fn key).
+    pub hid: u8,
     pub x: f32,
     pub y: f32,
     #[serde(default = "one")]
@@ -158,6 +175,22 @@ pub struct Model {
     pub modes: Vec<ModeSpec>,
     #[serde(default)]
     pub geometry: Option<Geometry>,
+    /// Status lights driven by the firmware itself (Num Lock, Fn, …). They
+    /// ignore effects, per-key tables and live frames.
+    #[serde(default)]
+    pub indicators: Vec<Indicator>,
+}
+
+/// A firmware status light on one LED.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Indicator {
+    pub led: u8,
+    /// What it shows, e.g. "Num Lock".
+    pub name: String,
+    /// Colour when lit, as the LED is driven (not affected by brightness).
+    pub color: [u8; 3],
+    pub verified: bool,
 }
 
 impl Model {
@@ -210,13 +243,9 @@ pub fn catalogue() -> Result<&'static [Model], &'static ModelError> {
             MODEL_SOURCES
                 .iter()
                 .map(|(file, src)| {
-                    let model: Model = toml::from_str(src)
-                        .map_err(|source| ModelError::Parse { file, source })?;
+                    let model: Model = toml::from_str(src).map_err(|source| ModelError::Parse { file, source })?;
                     if model.id != *file {
-                        return Err(ModelError::IdMismatch {
-                            file,
-                            found: model.id,
-                        });
+                        return Err(ModelError::IdMismatch { file, found: model.id });
                     }
                     Ok(model)
                 })
@@ -244,9 +273,7 @@ pub fn match_interface<'m>(models: &'m [Model], probe: &InterfaceProbe<'_>) -> O
                 continue;
             }
             if let Some(needle) = &mode.product_contains {
-                let hit = probe
-                    .product
-                    .is_some_and(|p| p.to_ascii_lowercase().contains(&needle.to_ascii_lowercase()));
+                let hit = probe.product.is_some_and(|p| p.to_ascii_lowercase().contains(&needle.to_ascii_lowercase()));
                 if !hit {
                     continue;
                 }
@@ -309,13 +336,7 @@ mod tests {
 
     #[test]
     fn dongle_and_bluetooth_split_by_bus() {
-        let base = InterfaceProbe {
-            vid: 0x0C45,
-            pid: 0xFEFE,
-            usage_page: 0xFF60,
-            product: None,
-            bus: Bus::Usb,
-        };
+        let base = InterfaceProbe { vid: 0x0C45, pid: 0xFEFE, usage_page: 0xFF60, product: None, bus: Bus::Usb };
         let dongle = match_interface(models(), &base).unwrap();
         assert_eq!(dongle.mode.kind, ConnectionKind::Dongle);
         assert_eq!(dongle.role, InterfaceRole::Command);
@@ -339,6 +360,10 @@ mod tests {
             ids.sort_unstable();
             ids.dedup();
             assert_eq!(ids.len(), g.keys.len(), "{}: duplicate key id", m.id);
+            let mut hids: Vec<u8> = g.keys.iter().map(|k| k.hid).collect();
+            hids.sort_unstable();
+            hids.dedup();
+            assert_eq!(hids.len(), g.keys.len(), "{}: duplicate HID usage", m.id);
             for k in &g.keys {
                 assert!(k.x >= 0.0 && k.x + k.w <= g.width + 0.01, "{}: {} out of bounds", m.id, k.id);
                 assert!(k.y >= 0.0 && k.y + k.h <= g.height + 0.01, "{}: {} out of bounds", m.id, k.id);
@@ -354,6 +379,19 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn firmware_versions() {
+        assert_eq!(firmware_text(0x0106), "1.06");
+        assert_eq!(firmware_text(0x0138), "1.38");
+        assert_eq!(firmware_text(0x1210), "12.10");
+        assert_eq!(firmware_text(0x0009), "0.09");
+        let usb = models()[0].mode(ConnectionKind::Usb).unwrap();
+        assert!(usb.firmware_verified(0x0106), "the owner's keyboard");
+        assert!(!usb.firmware_verified(0x0107));
+        let dongle = models()[0].mode(ConnectionKind::Dongle).unwrap();
+        assert!(!dongle.firmware_verified(0x0106), "no list: nothing is verified");
     }
 
     #[test]

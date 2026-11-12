@@ -1,0 +1,55 @@
+---
+title: İlk açılış
+description: Keymotion ilk açıldığında klavyeyle ve klavye olmadan neler gösterir, dilini ve temasını nasıl seçer.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside } from "@astrojs/starlight/components";
+
+Keymotion ilk açıldığında klavyenizi arar, dilini ve temasını Windows'tan alır. Klavyeyi bağlamadan da uygulamanın bir bölümünü kullanabilirsiniz.
+
+## Keymotion'ı açma
+
+**Keymotion**'ı Başlat menüsünden ya da masaüstü kısayolundan açın. Pencere açılırken kısa bir animasyon Keymotion logosunu çizer ve kenar çubuğunun üstündeki yerine taşır. Uygulama hazırlanırken yaklaşık bir saniye sürer; daha erken bitirmek için tıklayın ya da bir tuşa basın. Windows'un animasyon efektleri kapalıysa pencere yalnızca yavaşça belirir.
+
+## Dil ve tema
+
+- **Dil.** Windows'un görüntü dili Türkçeyse Keymotion Türkçe, değilse İngilizce açılır. Değiştirmek için **Ayarlar**'ı açın ve **Dil** satırında **Türkçe** ya da **English**'i seçin.
+- **Tema.** Keymotion, Windows'un açık ya da koyu modunu izler. Birinde sabit kalsın istiyorsanız **Ayarlar**'da **Tema** satırından **Açık** ya da **Koyu**'yu seçin. **Sistem** yeniden Windows'u izler.
+
+Pencere darken kenar çubuğunda yalnızca simgeler görünür. Bir simgenin üstüne gelince adı çıkar.
+
+## Hoş geldiniz sayfası
+
+Klavye bulunana kadar **Genel bakış** ve **Bağlantı** sayfaları hoş geldiniz sayfasını gösterir.
+
+<Screenshot name="welcome" alt="Hoş geldiniz sayfası: bağlantı adımları, klavyenin arkasındaki anahtarın USB konumundaki çizimi ve klavye olmadan kullanılabilen araçlar" />
+
+- **Klavyenizi bağlayın** üç adımı sıralar: USB-C kablosunu takın, klavyenin arkasındaki anahtarı ortaya, USB konumuna getirin ve bekleyin. Adımların altındaki **Klavye aranıyor…** yazısı Keymotion'ın klavyeyi aradığını gösterir; uygulama iki saniyede bir bakar. Adımların yanındaki çizim, anahtarın nerede olması gerektiğini gösterir. Anahtarı [Klavyeyi bağlama](/keymotion/tr/guide/connecting/) sayfası anlatır.
+- **Desteklenen klavye** satırında AJAZZ AK980 PRO yazar. **Başka bir klavyeniz mi var?** GitHub'daki klavye listesini açar; aynı liste [Desteklenen klavyeler](/keymotion/tr/help/keyboards/) sayfasında da var.
+- **Klavye olmadan da kullanabilirsiniz** bölümü **Odak zamanlayıcısı**, **Hatırlatıcılar** ve **Ekran görselleri** sayfalarına götürür. Ekran görsellerini klavye olmadan hazırlayıp kütüphaneye kaydedebilirsiniz.
+
+Klavye bulunur bulunmaz hoş geldiniz sayfasının yerini Genel bakış alır. Hiçbir şeyi yeniden başlatmanız gerekmez.
+
+<Aside type="note" title="Bağımsız bir uygulama">
+Hoş geldiniz sayfasının altında, Keymotion'ın AJAZZ ile bağlantısı olmayan bağımsız bir uygulama olduğu ve klavyenin kalıcı belleğine yalnızca sizin onayınızla yazdığı belirtilir. Keymotion'ı AJAZZ yapmaz ve desteklemez; uygulamayla ilgili sorunları GitHub'da projeye bildirin. Nasıl yapılacağını [Ayarlar](/keymotion/tr/guide/settings/) sayfası anlatır.
+</Aside>
+
+### Henüz desteklenmeyen bir klavye
+
+Keymotion'ın henüz desteklemediği bir SONiX ya da AJAZZ klavye takarsanız üstte, klavyenin adıyla birlikte **Bu klavye henüz desteklenmiyor** kartı çıkar. **Destek iste**, klavyenin bilgilerini gösteren bir pencere açar; bu bilgileri GitHub'da projeye gönderebilirsiniz. Klavyeye hiçbir şey yazılmaz.
+
+## Klavye bağlı değilken
+
+- **Genel bakış** ve **Bağlantı** hoş geldiniz sayfasını gösterir.
+- **Işıklar**, **Tuş atama** ve **Makrolar** kenar çubuğunda kilitlidir ve **Klavyeniz bağlı değil** der. **Bağlantı adımları** sizi hoş geldiniz sayfasına götürür.
+- **Ekran**, **Profiller**, **Odak zamanlayıcısı**, **Sistem göstergeleri**, **Hatırlatıcılar**, **Takvim** ve **Ayarlar** her zamanki gibi açılır. Bu sayfaların klavyede gösterdikleri, yani ışıklar, ekran kartları ve yüklemeler kablo ister; gerisi uygulamada çalışır.
+- Kenar çubuğunun altındaki kutuda **Klavye bekleniyor** ve **USB kablosunu takın** yazar.
+
+## Klavye bağlıyken
+
+Klavye USB kablosuyla bağlıysa ve anahtarı ortadaysa Keymotion [Genel bakış](/keymotion/tr/guide/overview/) sayfasını açar. Kenar çubuğunun altındaki kutuda yeşil bir noktayla **AJAZZ AK980 PRO** ve **USB kablo** görünür.
+
+2.4 GHz alıcıyla ya da Bluetooth'la da klavye bulunur, ama ayarlarını değiştiren sayfalar kilitli kalır ve Genel bakış'ta **Tüm özellikler USB kablosuyla açılır** kartı çıkar. Her bağlantıda neyin çalıştığını [Klavyeyi bağlama](/keymotion/tr/guide/connecting/) sayfası gösterir.
+
+Klavye USB'yle bağlanınca Keymotion, klavye ekranındaki saati de günde en fazla bir kez ayarlar. Bunu [Bağlantı](/keymotion/tr/guide/connection/) sayfasından kapatabilirsiniz.

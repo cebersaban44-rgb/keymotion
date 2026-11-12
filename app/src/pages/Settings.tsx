@@ -1,55 +1,48 @@
-import type { ReactNode } from "react";
+import { ArrowUpRight, Check, Copy } from "lucide-react";
+import { useState } from "react";
 import type { ThemePreference } from "../bindings/ThemePreference";
+import { BackgroundCard } from "../components/BackgroundCard";
+import { BackupCard, Row, secondaryButton } from "../components/BackupCard";
+import { UpdateRows } from "../components/Updates";
+import { CalibrationCard } from "../components/CalibrationCard";
+import { Segmented } from "../components/controls";
+import { copyDiagnostics } from "../lib/diagnostics";
 import { useT, type Locale, type MessageKey } from "../lib/i18n";
+import { openFolder, openIssue, openLink } from "../lib/ipc";
+import { docsPage } from "../lib/offline";
+import { useReport } from "../lib/report";
 import { useApp } from "../lib/store";
-
-function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-  label,
-}: {
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (v: T) => void;
-  label: string;
-}) {
-  return (
-    <div role="radiogroup" aria-label={label} className="inline-flex rounded-xl border border-line bg-bg-raise p-1">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          role="radio"
-          aria-checked={o.value === value}
-          onClick={() => onChange(o.value)}
-          className={`rounded-lg px-3.5 py-1.5 text-[12.5px] transition-colors ${
-            o.value === value ? "bg-surface-2 text-ink shadow-[inset_0_0_0_1px_var(--line)]" : "text-ink-2 hover:text-ink"
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function Row({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-6 border-t border-line py-4 first:border-t-0">
-      <span className="text-[13.5px]">{label}</span>
-      {children}
-    </div>
-  );
-}
 
 export function Settings() {
   const t = useT();
   const { theme, setTheme, locale, setLocale, env } = useApp();
-  const themes: ThemePreference[] = ["system", "dark", "light"];
+  // The order Windows uses.
+  const themes: ThemePreference[] = ["light", "dark", "system"];
+  // An import may replace the calibration: its card reads it again.
+  const [imports, setImports] = useState(0);
+  const [copied, setCopied] = useState<"no" | "busy" | "yes" | "failed">("no");
+  const openReport = useReport((s) => s.openReport);
+
+  const copy = () => {
+    setCopied("busy");
+    copyDiagnostics().then(
+      () => {
+        setCopied("yes");
+        setTimeout(() => setCopied((c) => (c === "yes" ? "no" : c)), 2500);
+      },
+      (e) => {
+        console.error(e);
+        setCopied("failed");
+      },
+    );
+  };
+
   return (
     <div className="flex max-w-[760px] flex-col gap-6">
-      <h1 className="font-display text-[40px] leading-none font-semibold tracking-[-0.035em]">{t("nav.settings")}</h1>
+      <header className="flex flex-col gap-2">
+        <h1 className="page-title">{t("nav.settings")}</h1>
+        <p className="page-desc">{t("settings.desc")}</p>
+      </header>
 
       <section className="card px-5 py-1">
         <div className="eyebrow pt-4 pb-1">{t("settings.appearance")}</div>
@@ -74,17 +67,74 @@ export function Settings() {
         </Row>
       </section>
 
+      <BackgroundCard />
+
+      <CalibrationCard key={imports} />
+
+      <BackupCard onImported={() => setImports((n) => n + 1)} />
+
       <section className="card px-5 py-1">
         <div className="eyebrow pt-4 pb-1">{t("settings.about")}</div>
-        <Row label={t("settings.version")}>
-          <span className="num text-[12.5px] text-ink-2">{env?.appVersion ?? "—"}</span>
-        </Row>
+        <UpdateRows />
         <Row label={t("settings.backdrop")}>
-          <span className="num text-[12.5px] text-ink-2">
+          <span className="num text-[13px] text-ink-2" title={env && env.osBuild > 0 ? t("settings.build", { build: env.osBuild }) : undefined}>
             {env?.mica ? t("settings.backdrop.mica") : t("settings.backdrop.solid")}
-            {env && env.osBuild > 0 ? ` · build ${env.osBuild}` : ""}
           </span>
         </Row>
+        <Row label={t("settings.guide")} hint={t("settings.guide.hint")}>
+          <button
+            type="button"
+            onClick={() => openLink(docsPage("", locale)).catch(console.error)}
+            className={secondaryButton}
+            data-guide-open
+          >
+            {t("settings.guide.open")}
+            <ArrowUpRight size={14} aria-hidden />
+          </button>
+        </Row>
+        <Row label={t("report.feedback")} hint={t("report.feedback.hint")}>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => openReport({ kind: "bug", title: "" })}
+              className={secondaryButton}
+              data-report-open
+            >
+              {t("report.settings.problem")}
+            </button>
+            <button
+              type="button"
+              onClick={() => openIssue("idea", "").catch(console.error)}
+              className={secondaryButton}
+            >
+              {t("report.settings.idea")}
+              <ArrowUpRight size={14} aria-hidden />
+            </button>
+          </div>
+        </Row>
+        <Row
+          label={t("data.diag")}
+          hint={copied === "yes" ? t("data.diag.copied") : copied === "failed" ? t("data.diag.failed") : t("data.diag.hint")}
+        >
+          <button type="button" onClick={copy} disabled={copied === "busy"} className={secondaryButton}>
+            {copied === "yes" ? <Check size={14} /> : <Copy size={14} />}
+            {t("data.diag.copyShort")}
+          </button>
+        </Row>
+        <Row label={t("data.logs")} hint={t("data.logs.hint")}>
+          <button type="button" onClick={() => openFolder("logs").catch(console.error)} className={secondaryButton}>
+            {t("data.open")}
+          </button>
+        </Row>
+        <Row label={t("data.folder")} hint={t("data.folder.hint")}>
+          <button type="button" onClick={() => openFolder("data").catch(console.error)} className={secondaryButton}>
+            {t("data.open")}
+          </button>
+        </Row>
+        <div className="flex flex-col gap-0.5 border-t border-line py-4">
+          <span className="text-[13.5px]">{t("data.privacy")}</span>
+          <p className="text-[12.5px] text-ink-2">{t("data.privacy.body")}</p>
+        </div>
       </section>
     </div>
   );

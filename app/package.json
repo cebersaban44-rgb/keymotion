@@ -1,13 +1,15 @@
 {
-  "name": "klavye-studio-ui",
+  "name": "keymotion-ui",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
   "type": "module",
   "packageManager": "pnpm@10.14.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
+    "lint": "pnpm --dir ../tools/eslint install --frozen-lockfile --reporter=silent && node ../tools/eslint/node_modules/eslint/bin/eslint.js --config ../tools/eslint/eslint.config.mjs --max-warnings 0 .",
     "tauri": "tauri"
   },
   "dependencies": {

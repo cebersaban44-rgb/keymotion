@@ -1,0 +1,67 @@
+---
+title: Klavyeyi bağlama
+description: AK980 PRO'nun arkasındaki anahtar, USB kablosu ve Keymotion'ın kabloyla, 2.4 GHz alıcıyla ve Bluetooth'la neler yapabildiği.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+AJAZZ AK980 PRO bilgisayarınıza üç yoldan bağlanır. Üçünde de yazabilirsiniz, ama Keymotion klavyenin ayarlarını yalnızca USB kablosuyla değiştirir.
+
+## Arkadaki anahtar
+
+Bağlantıyı klavyenin arkasındaki küçük bir anahtarla seçersiniz. Anahtarın üç konumu soldan sağa şöyledir:
+
+| 2.4G | USB | BT |
+|---|---|---|
+| 2.4 GHz alıcı | USB kablo | Bluetooth |
+
+USB ortadaki konumdur. Keymotion anahtarı sizin yerinize çeviremez; uygulamadaki anahtar çizimleri yalnızca anahtarın nerede olduğunu ya da nerede olması gerektiğini gösterir.
+
+## USB kablosuyla bağlayın
+
+<Steps>
+
+1. USB-C kablosunu klavyeye ve bilgisayarınıza takın.
+2. Klavyenin arkasındaki anahtarı ortaya, USB konumuna getirin.
+3. Biraz bekleyin. Keymotion iki saniyede bir bakar ve klavyeyi kendiliğinden bulur. Ardından kenar çubuğunun altındaki kutuda **AJAZZ AK980 PRO** ve **USB kablo** görünür.
+
+</Steps>
+
+Klavyeyi taktığınızda, çıkardığınızda ya da anahtarı çevirdiğinizde Keymotion bunu fark eder; uygulamayı yeniden başlatmanız gerekmez.
+
+<Aside type="tip" title="Yalnızca kablo yetmez">
+Ayarlar için ikisi birden gerekir: takılı kablo ve ortadaki anahtar. Kablo takılıyken ayar sayfaları kilitli kalıyorsa önce anahtara bakın.
+</Aside>
+
+## Her bağlantıda neler çalışır
+
+| | USB kablo | 2.4 GHz alıcı | Bluetooth |
+|---|---|---|---|
+| Yazma, medya tuşları ve döner düğme | Kullanılabilir | Kullanılabilir | Kullanılabilir |
+| Işık efektleri ve tuş başına renk | Kullanılabilir | — | — |
+| Tuş atama ve makrolar | Kullanılabilir | — | — |
+| Ekranda görsel ve GIF | Kullanılabilir | — | — |
+| Saat eşitleme | Kullanılabilir | — | — |
+| Canlı ışık ve kartlar | Kullanılabilir | — | — |
+| Pil düzeyi | Son okuma | — | Kullanılabilir |
+
+- **Canlı ışık ve kartlar**; odak zamanlayıcısını, sistem göstergelerini, hatırlatıcıları, takvimi ve çalan şarkıyı tuşlarda ve ekranda gösterir.
+- **Pil düzeyi.** Keymotion pil düzeyini Bluetooth'ta okur. Kabloda klavye pil düzeyini bildirmez; bu yüzden Keymotion son Bluetooth okumasını gösterir, [Genel bakış](/keymotion/tr/guide/overview/) da klavyenin şarj olup olmadığını söyler.
+- **2.4 GHz alıcı.** Klavyeyle yazabilirsiniz, ama Keymotion alıcı üzerinden henüz ayar değiştiremez.
+
+Uygulamanın içindeki araçlar her bağlantıda, klavye olmadan da çalışır: odak zamanlayıcısı süreyi uygulamada sayar, hatırlatıcılar Windows bildirimi gösterir, ekran kütüphanesinde görsel hazırlayabilirsiniz. Yalnızca klavyede gösterdikleri için kablo gerekir.
+
+[Bağlantı](/keymotion/tr/guide/connection/) sayfası aynı tabloyu klavyeniz için gösterir; şu anki bağlantı **Şu an** diye işaretlidir.
+
+<Screenshot name="connection-bluetooth" alt="Klavye Bluetooth'la bağlıyken Bağlantı sayfası: anahtar çizimi BT konumunda, özellik tablosunda Bluetooth sütunu Şu an diye işaretli" />
+
+## Klavyeyi başka bir program kullanıyorsa
+
+Klavyeyle konuşan başka bir program açıkken Keymotion klavyeye kaydetmez. Bu programlar AJAZZ'ın kendi sürücü yazılımı, SignalRGB ve OpenRGB'dir. İki program aynı anda komut gönderirse komutlar birbirine karışabilir. Kaydetmeye çalıştığınızda Keymotion bulduğu programın adını söyler; örneğin:
+
+> **AJAZZ sürücüsü açık. Klavyeye kaydetmeden önce onu kapatın.**
+
+O programı kapatın; saatin yanındaki simgelerde çalışmaya devam ediyorsa oradan da kapatın. Sonra yeniden kaydedin. Keymotion her kayıtta yeniden bakar.
+
+Aynı şekilde, bu modelden birden fazla klavye USB'ye bağlıysa Keymotion kaydetmez ve **Birden fazla klavye USB'ye bağlı. Kaydetmek için yalnızca birini bağlı bırakın.** der.

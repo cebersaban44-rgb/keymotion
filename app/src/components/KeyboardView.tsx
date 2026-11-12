@@ -1,19 +1,64 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { Connection } from "../bindings/Connection";
 import type { GeometryInfo } from "../bindings/GeometryInfo";
+import { useT } from "../lib/i18n";
+import { colorNameKey, keyTone, parseColor } from "../lib/keyColor";
+import { useApp } from "../lib/store";
 
 interface Props {
   geometry: GeometryInfo;
   battery?: number | null;
   connection: Connection;
   /**
-   * led → CSS colour. When set, keys show these colours instead of the idle
-   * animation (mirror of the real keyboard, or a per-key design).
+   * led → CSS colour ("#rrggbb" or "rgb(r,g,b)") the key is lit with. Lit
+   * keys take the colour on the whole cap; keys missing from the map (or
+   * black) are drawn unlit. `null`/`undefined` plays an idle rainbow, a
+   * stand-in when the real lights are unknown.
    */
   colors?: Record<number, string> | null;
-  /** Makes keys paintable: click, or press and drag across keys. */
-  onPaint?: (led: number) => void;
+  /**
+   * "lights" (default): the drawing shows key lights. "plain": every cap
+   * unlit and no colour in the key names (keymap).
+   */
+  look?: "lights" | "plain";
+  /** Small preview (focus timer, gauges): plain screen, own plate. */
+  compact?: boolean;
+  /** Accessible name of the drawing when its keys are not buttons. */
+  label?: string;
+  /**
+   * Makes keys interactive. `press` on pointer down (or Enter/Space on a
+   * focused key), `drag` when the pointer enters a key with the button
+   * held. `additive` is true while Ctrl, Shift or ⌘ is held.
+   */
+  onKeyAction?: (led: number, action: KeyAction, additive: boolean) => void;
+  /** Keys drawn with a selection ring. */
+  selected?: ReadonlySet<number>;
+  /** Pointer and ARIA semantics: painting (default) or selecting keys. */
+  tool?: "brush" | "select";
+  /**
+   * led → legend shown instead of the keycap label, with the original
+   * label small underneath (keymap view).
+   */
+  legends?: Record<number, Legend>;
+  /** led → extra class on the key (`is-pending`, `is-locked`, `is-pressed`, …). */
+  keyClass?: Record<number, string>;
 }
+
+export interface Legend {
+  main: ReactNode;
+  /** Text for assistive technology when `main` is an icon. */
+  text: string;
+  sub?: ReactNode;
+}
+
+export type KeyAction = "press" | "drag";
+
+/** Legend size as a share of one key unit; hidden when it would be under 9 px. */
+const LEGEND = 0.3;
+const SUB = 0.22;
+const MIN_PX = 9;
+
+type LegendSize = "full" | "main" | "none";
 
 /** Ticks once a second; kept local so only the mini screen re-renders. */
 function useNow() {
@@ -25,21 +70,54 @@ function useNow() {
   return now;
 }
 
+/** Which legends fit, from the drawing's width. Changes only at the thresholds. */
+function useLegendSize(ref: React.RefObject<HTMLDivElement | null>, units: number): LegendSize {
+  const [size, setSize] = useState<LegendSize>("full");
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const u = el.clientWidth / units;
+      setSize(u * SUB >= MIN_PX ? "full" : u * LEGEND >= MIN_PX ? "main" : "none");
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref, units]);
+  return size;
+}
+
 type Vars = CSSProperties & Record<`--${string}`, string | number>;
 
 /**
- * Top-down render of the keyboard from the model's measured geometry.
- * LEDs sit under the south edge of each key like the real south-facing
- * RGB, so light bleeds below the legend.
+ * Top-down drawing of the keyboard from the model's measured geometry, the
+ * one used everywhere in the app. A lit key's cap takes its light colour
+ * (legend dark or light by luminance); an unlit key is a dark cap.
  */
-export function KeyboardView({ geometry: g, battery, connection, colors, onPaint }: Props) {
+export function KeyboardView({
+  geometry: g,
+  battery,
+  connection,
+  colors,
+  look = "lights",
+  compact = false,
+  label,
+  onKeyAction,
+  selected,
+  tool = "brush",
+  legends,
+  keyClass,
+}: Props) {
+  const t = useT();
+  const locale = useApp((s) => s.locale);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const legendSize = useLegendSize(stageRef, g.width);
+  const plain = look === "plain";
+  const idle = !plain && colors == null;
   const stage: Vars = { "--u": `calc(100cqw / ${g.width})`, "--rows": g.height };
-  const box = (x: number, y: number, w: number, h: number, led?: number): Vars => {
-    const v: Vars = { "--x": x, "--y": y, "--w": w, "--h": h };
-    if (colors && led !== undefined) v["--c"] = colors[led] ?? "transparent";
-    return v;
-  };
-  const paintable = !!onPaint;
+  const paintable = !!onKeyAction;
+  const additive = (e: { ctrlKey: boolean; shiftKey: boolean; metaKey: boolean }) => e.ctrlKey || e.shiftKey || e.metaKey;
   const at = (x: number, y: number, w: number, h: number): CSSProperties => ({
     left: `calc(${x} * var(--u))`,
     top: `calc(${y} * var(--u))`,
@@ -47,55 +125,118 @@ export function KeyboardView({ geometry: g, battery, connection, colors, onPaint
     height: `calc(${h} * var(--u))`,
   });
 
-  return (
-    <div className="kb-stage" aria-hidden={!paintable}>
-      <div className={`kb ${colors ? "kb-static" : ""} ${paintable ? "kb-paint" : ""}`} style={stage}>
-        {g.keys.map((k) => (
-          <div key={`led-${k.id}`} className="kb-led" style={box(k.x, k.y, k.w, k.h, k.led)} />
-        ))}
-        {g.keys.map((k) =>
-          paintable ? (
-            <button
-              key={k.id}
-              type="button"
-              className="kb-key"
-              style={box(k.x, k.y, k.w, k.h, k.led)}
-              aria-label={`${k.label || k.id} ${colors?.[k.led] ?? ""}`}
-              onPointerDown={(e) => {
+  const keys = g.keys.map((k) => {
+    const name = k.label || k.id;
+    const rgb = plain || idle ? null : parseColor(colors?.[k.led]);
+    const tone = idle ? "idle" : keyTone(rgb);
+    const style: Vars = { "--x": k.x, "--y": k.y, "--w": k.w, "--h": k.h };
+    // Even a very dim light tints the cap (a draining timer's faint track).
+    if (rgb) style["--c"] = `rgb(${rgb[0]} ${rgb[1]} ${rgb[2]})`;
+    const legend = legends?.[k.led];
+    let aria = name;
+    if (legend) aria = t("kb.key.action", { key: name, action: legend.text });
+    else if (!plain && !idle) {
+      const color = colorNameKey(rgb);
+      aria = color ? t("kb.key.color", { key: name, color: t(color).toLocaleLowerCase(locale) }) : t("kb.key.off", { key: name });
+    }
+    const long = k.label.length >= 4 && k.w <= 1;
+    const cls = [
+      "kb-key",
+      `tone-${tone}`,
+      long ? "kb-long" : "",
+      selected?.has(k.led) ? "is-selected" : "",
+      keyClass?.[k.led] ?? "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    return { k, aria, style, cls, legend };
+  });
+
+  const drawing = (
+    <div
+      className={[
+        "kb",
+        idle ? "kb-idle" : "",
+        paintable ? "kb-paint" : "",
+        tool === "select" ? "kb-select" : "",
+        compact ? "kb-compact" : "",
+        legendSize === "none" ? "kb-nolegend" : legendSize === "main" ? "kb-nosub" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      style={stage}
+    >
+      {keys.map(({ k, aria, style, cls, legend }) =>
+        paintable ? (
+          <button
+            key={k.id}
+            type="button"
+            className={cls}
+            style={style}
+            data-key={k.id}
+            aria-label={aria}
+            aria-pressed={tool === "select" ? (selected?.has(k.led) ?? false) : undefined}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              onKeyAction(k.led, "press", additive(e));
+            }}
+            onPointerEnter={(e) => {
+              if (e.buttons & 1) onKeyAction(k.led, "drag", true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                onPaint(k.led);
-              }}
-              onPointerEnter={(e) => {
-                if (e.buttons & 1) onPaint(k.led);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onPaint(k.led);
-                }
-              }}
-            >
-              <span>{k.label}</span>
-            </button>
-          ) : (
-            <div key={k.id} className="kb-key" style={box(k.x, k.y, k.w, k.h, k.led)}>
-              <span>{k.label}</span>
-            </div>
-          ),
-        )}
-        {g.screen && (
-          <div className="kb-screen" style={at(g.screen.x + 0.06, g.screen.y + 0.06, g.screen.w - 0.12, g.screen.h - 0.12)}>
-            <MiniScreen battery={battery ?? null} connection={connection} />
+                onKeyAction(k.led, "press", additive(e));
+              }
+            }}
+          >
+            <KeyLegend label={k.label} legend={legend} />
+          </button>
+        ) : (
+          <div key={k.id} className={cls} style={style} data-key={k.id}>
+            <KeyLegend label={k.label} legend={legend} />
           </div>
-        )}
-        {g.knob && (
-          <div
-            className="kb-knob"
-            style={at(g.knob.x + 0.08, g.knob.y + 0.08, g.knob.d - 0.16, g.knob.d - 0.16)}
-          />
-        )}
-      </div>
+        ),
+      )}
+      {g.screen && (
+        <div className="kb-screen" style={at(g.screen.x + 0.06, g.screen.y + 0.06, g.screen.w - 0.12, g.screen.h - 0.12)}>
+          {!compact && <MiniScreen battery={battery ?? null} connection={connection} />}
+        </div>
+      )}
+      {g.knob && (
+        <div className="kb-knob" style={at(g.knob.x + 0.08, g.knob.y + 0.08, g.knob.d - 0.16, g.knob.d - 0.16)} />
+      )}
     </div>
+  );
+
+  const a11y = {
+    role: !paintable && label ? "img" : undefined,
+    "aria-label": !paintable ? label : undefined,
+    "aria-hidden": !paintable && !label ? true : undefined,
+  };
+  const stageEl = (
+    <div ref={stageRef} className="kb-stage" {...(compact ? {} : a11y)}>
+      {drawing}
+    </div>
+  );
+  // A compact preview brings its own plate; the full drawing sits on the
+  // page's plate.
+  return compact ? (
+    <div className="kb-plate-compact" {...a11y}>
+      {stageEl}
+    </div>
+  ) : (
+    stageEl
+  );
+}
+
+function KeyLegend({ label, legend }: { label: string; legend?: Legend }) {
+  if (!legend) return <span className="kb-cap">{label}</span>;
+  return (
+    <>
+      <span className="kb-legend">{legend.main}</span>
+      {legend.sub !== undefined && <span className="sub">{legend.sub}</span>}
+    </>
   );
 }
 

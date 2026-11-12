@@ -1,12 +1,15 @@
 //! Driver for the SONiX FF13 command channel (wired AK980 PRO).
 //!
 //! Every packet goes through [`kb_protocol::sonix::guard`] before it is
-//! written. Only flows documented in docs/research/protokol-ff13.md §2.3
+//! written. Only the documented flows (docs site: developers/protocol)
 //! are implemented, and each one follows the official driver's sequence.
 
+use kb_protocol::sonix::keymap::{keymap_table, KeyAction, Layer};
+use kb_protocol::sonix::macros::{macro_image, MacroStep};
+use kb_protocol::sonix::screen::{self, ScreenAnimation};
 use kb_protocol::sonix::{
-    self as proto, guard, header, parse_ack, payload_of, report, Ack, Blocked, EffectSettings, Invalid, Op, PacketKind,
-    Rgb, PAYLOAD, REPORT_LEN,
+    self as proto, guard, guard_screen_page, header, parse_ack, payload_of, report, Ack, Blocked, ClockTime,
+    EffectSettings, Invalid, Op, PacketKind, Rgb, PAYLOAD, REPORT_LEN,
 };
 use kb_transport::hid::HidChannel;
 use std::thread::sleep;
@@ -22,6 +25,11 @@ const ECHO_POLL: Duration = Duration::from_millis(4);
 /// `04 F5`: time for the echo to turn 01, then for the 9 data reports.
 const READ_ACCEPT_TIMEOUT: Duration = Duration::from_millis(150);
 const READ_DATA_TIMEOUT: Duration = Duration::from_millis(400);
+/// Pause before and after the macro pages (official driver, S1 :322-335).
+const MACRO_GAP: Duration = Duration::from_millis(30);
+/// How long to wait for the display channel's ack after one page (the
+/// keyboard answers once the page is in flash; ~145 ms expected).
+const PAGE_ACK_TIMEOUT: Duration = Duration::from_millis(3000);
 /// START retries while a previous session is still closing.
 const BEGIN_ATTEMPTS: usize = 10;
 const BEGIN_RETRY: Duration = Duration::from_millis(300);
@@ -42,6 +50,10 @@ pub enum DriverError {
     Busy,
     #[error("keyboard received different data (checksum 0x{got:04X}, expected 0x{expected:04X})")]
     Checksum { expected: u16, got: u16 },
+    #[error("keyboard echoed different data for 0x{0:02X}")]
+    DataEcho(u8),
+    #[error("screen upload stopped at page {page} of {total}: {reason}")]
+    ScreenPage { page: usize, total: usize, reason: String },
 }
 
 /// LE16 byte sum the keyboard reports in the `04 02` echo (wrapping).
@@ -60,11 +72,7 @@ pub trait FeaturePort {
 /// Back-off between GET_FEATURE attempts. The keyboard occasionally
 /// STALLs the control request (Windows: ERROR_GEN_FAILURE 0x1F, seen in the
 /// app on 2026-11-10); a short retry succeeds. Same policy as S2 hid.rs.
-const GET_RETRY: [Duration; 3] = [
-    Duration::from_millis(5),
-    Duration::from_millis(10),
-    Duration::from_millis(15),
-];
+const GET_RETRY: [Duration; 3] = [Duration::from_millis(5), Duration::from_millis(10), Duration::from_millis(15)];
 
 impl FeaturePort for HidChannel {
     fn set_feature(&mut self, report: &[u8; REPORT_LEN]) -> Result<()> {
@@ -86,6 +94,60 @@ impl FeaturePort for HidChannel {
         }
         Err(last.expect("at least one attempt").into())
     }
+}
+
+/// Display channel (usage page FF68): 4096-byte output pages, each answered
+/// by an input report. Implemented by the real HID channel and test fakes.
+/// There is deliberately no feature-report access here (see kb-transport).
+pub trait DisplayPort {
+    /// Drop input reports already queued; returns how many.
+    fn drain(&mut self) -> usize;
+    /// Send one page as an output report (WriteFile), never as SET_REPORT.
+    fn write_page(&mut self, page: &[u8; screen::PAGE]) -> Result<()>;
+    /// Wait for the page's input report.
+    fn read_ack(&mut self, timeout: Duration) -> Result<Vec<u8>>;
+}
+
+impl DisplayPort for HidChannel {
+    fn drain(&mut self) -> usize {
+        let mut n = 0;
+        while n < 64 && self.read_input(PAYLOAD + 1, 0).is_ok() {
+            n += 1;
+        }
+        n
+    }
+    fn write_page(&mut self, page: &[u8; screen::PAGE]) -> Result<()> {
+        let mut r = vec![0u8; screen::PAGE + 1];
+        r[1..].copy_from_slice(page);
+        let n = self.write_output(&r)?;
+        if n == 0 {
+            return Err(DriverError::ScreenPage { page: 0, total: 0, reason: "nothing written".into() });
+        }
+        Ok(())
+    }
+    fn read_ack(&mut self, timeout: Duration) -> Result<Vec<u8>> {
+        Ok(self.read_input(PAYLOAD + 1, timeout.as_millis().min(i32::MAX as u128) as i32)?)
+    }
+}
+
+/// What a screen upload measured (the first uploads are experiments;
+/// docs site: developers/protocol).
+#[derive(Debug, Clone)]
+pub struct ScreenUploadReport {
+    pub pages: usize,
+    /// Input reports that were already queued before the upload.
+    pub drained: usize,
+    /// Status byte of the `04 72` echo.
+    pub announce_status: u8,
+    /// Write-to-ack time of every page.
+    pub page_times: Vec<Duration>,
+    /// The first page's ack, as read.
+    pub first_ack: Vec<u8>,
+    /// First 8 payload bytes of the `04 02` echo.
+    pub commit_echo: Vec<u8>,
+    /// Byte sums of everything sent on the display channel.
+    pub sum16: u16,
+    pub sum32: u32,
 }
 
 pub struct SonixFf13<P: FeaturePort> {
@@ -111,6 +173,12 @@ impl<P: FeaturePort> SonixFf13<P> {
     /// Send a header and wait for its echo, skipping unrelated reports
     /// (e.g. data left over from an earlier read).
     fn command(&mut self, op: Op, arg: u8, count: u16, delay: Duration) -> Result<Ack> {
+        let reply = self.command_reply(op, arg, count, delay)?;
+        parse_ack(&reply).ok_or(DriverError::NoEcho(op as u8))
+    }
+
+    /// Like [`Self::command`], returning the raw echo.
+    fn command_reply(&mut self, op: Op, arg: u8, count: u16, delay: Duration) -> Result<Vec<u8>> {
         sleep(delay);
         self.write(&header(op, arg, count), PacketKind::Header)?;
         sleep(delay);
@@ -118,8 +186,8 @@ impl<P: FeaturePort> SonixFf13<P> {
         loop {
             match self.port.get_feature() {
                 Ok(r) => {
-                    if let Some(a) = parse_ack(&r).filter(|a| a.op == op as u8) {
-                        return Ok(a);
+                    if parse_ack(&r).is_some_and(|a| a.op == op as u8) {
+                        return Ok(r);
                     }
                 }
                 Err(e) if Instant::now() >= deadline => return Err(e),
@@ -145,10 +213,7 @@ impl<P: FeaturePort> SonixFf13<P> {
         // read on a connection works; the session never closes, every later
         // F5 is ignored and following commands are swallowed. With 09 every
         // read succeeds and the commit echoes status 01.
-        self.write(
-            &header(Op::ReadColors, 0, proto::COLOR_TABLE_PACKETS as u16),
-            PacketKind::Header,
-        )?;
+        self.write(&header(Op::ReadColors, 0, proto::COLOR_TABLE_PACKETS as u16), PacketKind::Header)?;
 
         // 1. Wait for the echo to report 01 (accepted) or FF (refused).
         let mut table = Vec::with_capacity(proto::COLOR_TABLE_PACKETS * PAYLOAD);
@@ -303,15 +368,135 @@ impl<P: FeaturePort> SonixFf13<P> {
         let mode = proto::per_key_mode_data(brightness)?;
         let table = proto::per_key_table(colors)?;
         self.write_lighting(&mode)?;
+        self.write_table(Op::PerKeyColors, &table)?;
+        self.apply()
+    }
+
+    /// Store one keymap layer: `04 18` → `04 11` (base) or `04 27` (Fn)
+    /// announcing 9 packets → the table → `04 02` → `04 F0`. **Writes
+    /// flash** and replaces the whole layer: keys not in `entries` go back
+    /// to the firmware default. The keyboard cannot report its keymap, so
+    /// the caller has to remember what it wrote.
+    pub fn apply_keymap(&mut self, layer: Layer, entries: impl IntoIterator<Item = (u8, KeyAction)>) -> Result<()> {
+        let table = keymap_table(entries)?;
+        self.write_table(layer.op(), &table)?;
+        // The official driver reads the APPLY echo in this flow (S1 :300-315).
+        self.acked(Op::Apply, 0, 0).map(|_| ())
+    }
+
+    /// Store every macro: `04 19` → `04 15` announcing the pages → 30 ms →
+    /// the pages → 30 ms → `04 02`. No `04 18` and no `04 F0`, like the
+    /// official driver. **Writes flash** and replaces all macros: `04 19`
+    /// clears the stored ones first, and an empty list leaves none.
+    pub fn write_macros(&mut self, slots: &[Vec<MacroStep>]) -> Result<()> {
+        let image = macro_image(slots)?;
+        self.acked(Op::MacroBegin, 0, 0)?;
+        self.acked(Op::MacroData, 0, (image.len() / PAYLOAD) as u16)?;
+        sleep(MACRO_GAP);
+        for chunk in image.chunks_exact(PAYLOAD) {
+            let mut p = [0u8; PAYLOAD];
+            p.copy_from_slice(chunk);
+            self.data(&p)?;
+        }
+        sleep(MACRO_GAP);
+        self.commit_verified(&image)
+    }
+
+    /// `04 18` → `op` announcing the table's packets → the table → `04 02`
+    /// with its byte sum checked.
+    fn write_table(&mut self, op: Op, table: &[u8]) -> Result<()> {
         self.begin()?;
-        self.acked(Op::PerKeyColors, 0, proto::PER_KEY_PACKETS)?;
+        self.acked(op, 0, (table.len() / PAYLOAD) as u16)?;
         for chunk in table.chunks_exact(PAYLOAD) {
             let mut p = [0u8; PAYLOAD];
             p.copy_from_slice(chunk);
             self.data(&p)?;
         }
-        self.commit_verified(&table)?;
-        self.apply()
+        self.commit_verified(table)
+    }
+
+    /// Set the keyboard clock: `04 18` → `04 28` (1) → data → `04 02`, no
+    /// `04 F0`. Sets the clock (RTC); the screen switches to its clock page.
+    ///
+    /// Measured on fw 0x0106 (2026-11-10): the keyboard echoes the data
+    /// packet byte for byte (the official driver reads it too), and the
+    /// `04 02` echo carries status 01 but a byte sum of 0 in this flow. So
+    /// the data echo is what proves delivery here, not the sum.
+    pub fn set_clock(&mut self, time: &ClockTime) -> Result<()> {
+        let data = proto::clock_data(time)?;
+        self.begin()?;
+        self.acked(Op::Clock, 0, 1)?;
+        self.data(&data)?;
+        let echo = self.port.get_feature()?;
+        if payload_of(&echo).get(..PAYLOAD) != Some(&data[..]) {
+            tracing::debug!(echo = ?payload_of(&echo).get(..11), "clock data echo differs");
+            return Err(DriverError::DataEcho(Op::Clock as u8));
+        }
+        self.acked(Op::Commit, 0, 0).map(|_| ())
+    }
+
+    /// Upload an image or animation to the screen's GIF page: `04 18` →
+    /// `04 72 01 … PAGES` → the pages on the display channel, each followed
+    /// by its ack → `04 02`. Never `04 F0` (it restarts the player and
+    /// breaks persistence). **Writes the keyboard's external flash**: every
+    /// page erases one 4 KiB sector, and the previous animation (including
+    /// the factory one) is gone. Call only on an explicit user action.
+    ///
+    /// Every page is checked before the first byte is sent. If a page fails,
+    /// the session is closed with `04 02` and the GIF page stays incomplete
+    /// until the next upload; the home page is not affected.
+    pub fn upload_screen<D: DisplayPort>(
+        &mut self,
+        display: &mut D,
+        anim: &ScreenAnimation,
+        mut progress: impl FnMut(usize, usize),
+    ) -> Result<ScreenUploadReport> {
+        let pages = screen::upload_pages(anim)?;
+        for p in &pages {
+            guard_screen_page(p)?;
+        }
+        let total = pages.len();
+        let sum16 = pages.iter().flatten().fold(0u16, |s, &b| s.wrapping_add(b as u16));
+        let sum32 = pages.iter().flatten().fold(0u32, |s, &b| s.wrapping_add(b as u32));
+
+        let drained = display.drain();
+        self.begin()?;
+        let announce = self.acked(Op::ScreenUpload, screen::SLOT, total as u16)?;
+        let mut page_times = Vec::with_capacity(total);
+        let mut first_ack = Vec::new();
+        for (i, page) in pages.iter().enumerate() {
+            let t = Instant::now();
+            let sent = display.write_page(page).and_then(|_| display.read_ack(PAGE_ACK_TIMEOUT));
+            match sent {
+                Ok(ack) => {
+                    if i == 0 {
+                        first_ack = ack;
+                    }
+                    page_times.push(t.elapsed());
+                }
+                Err(e) => {
+                    let close = self.command(Op::Commit, 0, 0, CMD_DELAY);
+                    tracing::warn!(page = i, ?close, "screen upload aborted");
+                    return Err(DriverError::ScreenPage { page: i + 1, total, reason: e.to_string() });
+                }
+            }
+            progress(i + 1, total);
+        }
+        let reply = self.command_reply(Op::Commit, 0, 0, CMD_DELAY)?;
+        let ack = parse_ack(&reply).ok_or(DriverError::NoEcho(Op::Commit as u8))?;
+        if ack.status == proto::STATUS_REFUSED {
+            return Err(DriverError::Refused { op: ack.op, status: ack.status });
+        }
+        Ok(ScreenUploadReport {
+            pages: total,
+            drained,
+            announce_status: announce.status,
+            page_times,
+            first_ack,
+            commit_echo: payload_of(&reply).iter().take(8).copied().collect(),
+            sum16,
+            sum32,
+        })
     }
 
     pub fn into_inner(self) -> P {
@@ -334,6 +519,8 @@ mod tests {
         sum: u16,
         /// Corrupt the reported checksum (simulates a transfer error).
         corrupt: bool,
+        /// Echo data packets with one byte changed.
+        garble_echo: bool,
     }
 
     impl FeaturePort for Fake {
@@ -342,6 +529,12 @@ mod tests {
             if self.pending > 0 {
                 self.pending -= 1;
                 self.sum = self.sum.wrapping_add(byte_sum(&r[1..]));
+                // Data packets are echoed as they are.
+                let mut echo = r.to_vec();
+                if self.garble_echo {
+                    echo[4] ^= 1;
+                }
+                self.last = Some(echo);
                 return Ok(());
             }
             if r[1] == 0x04 {
@@ -364,6 +557,64 @@ mod tests {
         }
     }
 
+    /// Fake display channel: records pages, answers each with an ack.
+    #[derive(Default)]
+    struct FakeDisplay {
+        pages: Vec<Vec<u8>>,
+        queued: usize,
+        fail_at: Option<usize>,
+    }
+
+    impl DisplayPort for FakeDisplay {
+        fn drain(&mut self) -> usize {
+            std::mem::take(&mut self.queued)
+        }
+        fn write_page(&mut self, page: &[u8; screen::PAGE]) -> Result<()> {
+            self.pages.push(page.to_vec());
+            Ok(())
+        }
+        fn read_ack(&mut self, _: Duration) -> Result<Vec<u8>> {
+            if self.fail_at == Some(self.pages.len() - 1) {
+                return Err(DriverError::Transport(kb_transport::TransportError::Timeout(3000)));
+            }
+            Ok(vec![0x01, 0x5A, 0x02, 0x00])
+        }
+    }
+
+    #[test]
+    fn screen_upload_sequence_matches_official_flow() {
+        let anim = ScreenAnimation::still(screen::test_pattern());
+        let mut d = SonixFf13::new(Fake::default());
+        let mut display = FakeDisplay { queued: 2, ..FakeDisplay::default() };
+        let mut seen = Vec::new();
+        let r = d.upload_screen(&mut display, &anim, |done, total| seen.push((done, total))).unwrap();
+        let w = d.into_inner().writes;
+        // START, 04 72, COMMIT on the command channel; no 04 F0.
+        assert_eq!(w.len(), 3);
+        assert_eq!(w[0][2], 0x18);
+        assert_eq!(&w[1][1..11], &[0x04, 0x72, 0x01, 0, 0, 0, 0, 0, 16, 0], "slot 1, 16 pages");
+        assert_eq!(w[2][2], 0x02);
+        assert!(w.iter().all(|r| r[2] != 0xF0));
+        assert_eq!(display.pages.len(), 16);
+        assert_eq!(&display.pages[0][..3], &[1, screen::STILL_DELAY, 0xFF]);
+        assert_eq!((r.pages, r.drained, r.page_times.len()), (16, 2, 16));
+        assert_eq!(r.first_ack, vec![0x01, 0x5A, 0x02, 0x00]);
+        assert_eq!(seen.last(), Some(&(16, 16)));
+    }
+
+    #[test]
+    fn screen_upload_closes_the_session_when_a_page_fails() {
+        let anim = ScreenAnimation::still(screen::test_pattern());
+        let mut d = SonixFf13::new(Fake::default());
+        let mut display = FakeDisplay { fail_at: Some(3), ..FakeDisplay::default() };
+        let err = d.upload_screen(&mut display, &anim, |_, _| {}).unwrap_err();
+        assert!(matches!(err, DriverError::ScreenPage { page: 4, total: 16, .. }), "{err:?}");
+        assert_eq!(display.pages.len(), 4, "no page after the failed one");
+        let w = d.into_inner().writes;
+        assert_eq!(w.last().unwrap()[2], 0x02, "session closed with 04 02");
+        assert!(w.iter().all(|r| r[2] != 0xF0));
+    }
+
     #[test]
     fn realtime_frame_sequence() {
         let mut d = SonixFf13::new(Fake::default());
@@ -374,6 +625,29 @@ mod tests {
         assert_eq!(&w[1][5..9], &[1, 255, 0, 0], "LED 1 at offset 4 of the table");
         assert_eq!(&w[9][..3], &[0, 4, 0x02]);
         assert!(w.iter().all(|r| r[0] == 0), "report ID 0 everywhere");
+    }
+
+    #[test]
+    fn clock_sequence_matches_official_flow() {
+        let mut d = SonixFf13::new(Fake::default());
+        let t = ClockTime { year: 2026, month: 10, day: 29, hour: 15, minute: 7, second: 32, weekday: 4 };
+        d.set_clock(&t).unwrap();
+        let w = d.into_inner().writes;
+        let ops: Vec<(u8, u8)> = w.iter().map(|r| (r[1], r[2])).collect();
+        assert_eq!(ops.len(), 4, "START, header, data, COMMIT; no APPLY");
+        assert_eq!(ops[0], (0x04, 0x18));
+        assert_eq!((ops[1], w[1][9]), ((0x04, 0x28), 1), "clock header announces 1 packet");
+        assert_eq!(&w[2][1..12], &[0x00, 0x01, 0x5A, 0x1A, 0x0A, 0x1D, 0x0F, 0x07, 0x20, 0x00, 0x04]);
+        assert_eq!(ops[3], (0x04, 0x02));
+    }
+
+    #[test]
+    fn clock_fails_when_the_echo_differs() {
+        let mut d = SonixFf13::new(Fake { garble_echo: true, ..Fake::default() });
+        let t = ClockTime { year: 2026, month: 11, day: 10, hour: 5, minute: 9, second: 0, weekday: 2 };
+        assert!(matches!(d.set_clock(&t), Err(DriverError::DataEcho(0x28))));
+        let w = d.into_inner().writes;
+        assert_eq!(w.len(), 3, "no COMMIT after a bad echo");
     }
 
     #[test]
@@ -402,6 +676,57 @@ mod tests {
         assert_eq!(&w[7][5..9], &[1, 0, 255, 0]);
         assert_eq!(&w[15][63..65], &[0xAA, 0x55]);
         assert_eq!(w.last().unwrap()[2], 0xF0);
+    }
+
+    #[test]
+    fn keymap_sequence_matches_official_flow() {
+        let mut d = SonixFf13::new(Fake::default());
+        d.apply_keymap(Layer::Fn, [(33, KeyAction::key(0x04))]).unwrap();
+        let w = d.into_inner().writes;
+        // START + header + 9 data + COMMIT + APPLY
+        assert_eq!(w.len(), 1 + 1 + 9 + 1 + 1);
+        assert_eq!(w[0][2], 0x18);
+        assert_eq!((w[1][2], w[1][9]), (0x27, 9), "Fn layer header announces 9 packets");
+        // Entry 33 at byte 132: packet 2 (bytes 128..192), offset 4.
+        assert_eq!(&w[4][5..9], &[0x02, 0x00, 0x04, 0x00]);
+        assert_eq!(&w[10][63..65], &[0xAA, 0x55]);
+        assert_eq!(w[11][2], 0x02);
+        assert_eq!(w[12][2], 0xF0);
+
+        let mut d = SonixFf13::new(Fake::default());
+        d.apply_keymap(Layer::Base, []).unwrap();
+        let w = d.into_inner().writes;
+        assert_eq!(w[1][2], 0x11, "base layer");
+        assert!(w[2..10].iter().all(|r| r[1..].iter().all(|&b| b == 0)), "reset = all default");
+    }
+
+    #[test]
+    fn macro_sequence_matches_official_flow() {
+        use kb_protocol::sonix::macros::text_steps;
+        let mut d = SonixFf13::new(Fake::default());
+        d.write_macros(&[text_steps("ok", 25)]).unwrap();
+        let w = d.into_inner().writes;
+        // "ok" is 4 steps: 400 + 8 + 32 = 440 bytes → 8 pages.
+        // 04 19 + 04 15 + 8 pages + 04 02; no 04 18, no 04 F0.
+        assert_eq!(w.len(), 1 + 1 + 8 + 1);
+        assert_eq!(w[0][1..3], [0x04, 0x19]);
+        assert_eq!((w[1][2], w[1][9]), (0x15, 8), "04 15 announces 8 pages");
+        assert_eq!(&w[2][1..5], &[0x90, 0x01, 0, 0], "directory: slot 0 at 400");
+        assert_eq!(&w[9][63..65], &[0xAA, 0x55]);
+        assert_eq!(w[10][2], 0x02);
+        assert!(w.iter().all(|r| r[2] != 0x18 && r[2] != 0xF0));
+
+        let mut d = SonixFf13::new(Fake::default());
+        d.write_macros(&[]).unwrap();
+        let w = d.into_inner().writes;
+        assert_eq!(w[1][9], 8, "no macros: 8 empty pages");
+    }
+
+    #[test]
+    fn keymap_checksum_mismatch_skips_apply() {
+        let mut d = SonixFf13::new(Fake { corrupt: true, ..Fake::default() });
+        assert!(matches!(d.apply_keymap(Layer::Base, []), Err(DriverError::Checksum { .. })));
+        assert!(d.into_inner().writes.iter().all(|r| r[2] != 0xF0));
     }
 
     #[test]

@@ -7,20 +7,24 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
 publish = false
+license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 kb-core = { path = "crates/kb-core" }
 kb-devices = { path = "crates/kb-devices" }
 kb-protocol = { path = "crates/kb-protocol" }
 kb-transport = { path = "crates/kb-transport" }
+kb-winsys = { path = "crates/kb-winsys" }
 
 anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap = { version = "4", features = ["derive"] }
+gif = "0.14"
 hidapi = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-toml = "0.9"
+toml = "1.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 windows = { version = "0.62", features = [
@@ -29,6 +33,9 @@ windows = { version = "0.62", features = [
     "Devices_Bluetooth",
     "Devices_Bluetooth_GenericAttributeProfile",
     "Devices_Enumeration",
+    "Media_Control",
+    "Media_Core",
+    "Media_Playback",
     "Storage_Streams",
 ] }
 

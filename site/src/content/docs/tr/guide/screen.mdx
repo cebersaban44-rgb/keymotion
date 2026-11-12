@@ -1,0 +1,211 @@
+---
+title: Ekran
+description: Klavyenin 240×135 ekranına görsel, animasyon, video, yazı kartı ve slayt gösterisi yükleyin; canlı ekranla kartlar kendiliğinden gelsin.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+AK980 PRO'nun üzerinde 240×135 boyutunda küçük bir ekran var. **Ekran** sayfasında bu ekran için görsel hazırlar, görsellerinizi bir kütüphanede saklar ve canlı ekranı açarsınız. Canlı ekran da toplantılarınız, hatırlatmalarınız, odak zamanlayıcısı ve çalan şarkı için kartları kendiliğinden gösterir.
+
+Sayfada iki sekme var: kendi görselleriniz için **Görseller**, kartlar için **Canlı ekran**. İkisinin üstünde klavye ekranının şu an ne gösterdiğini görürsünüz.
+
+<Screenshot name="screen-studio" alt="Görseller sekmesinde Ekran sayfası: üstte klavyenin saat sayfası ve GIF sayfası, altta üç kaynak" />
+
+<Aside type="note" title="Yüklemek için USB kablosu gerekir">
+Yüklemek için kabloyu takın ve klavyenin arkasındaki anahtarı ortaya alın. 2.4 GHz alıcı ya da Bluetooth ile bağlıyken de görsel hazırlayıp kütüphaneye kaydedebilir, sonra yükleyebilirsiniz.
+</Aside>
+
+## Klavyenin iki sayfası
+
+Ekranın iki sayfası vardır:
+
+- **Saat sayfası:** Saati ve tarihi klavye kendisi çizer. Bu sayfa değiştirilemez ve hep yerinde kalır.
+- **GIF sayfası:** Yüklediğiniz görsel burada görünür. Sayfa aynı anda tek görsel tutar; her yükleme bir öncekinin yerini alır.
+
+İki sayfa arasında geçmek için klavyede **Fn+Home** tuşlarına basın. Keymotion klavye saatini ayarladığında ekran saat sayfasına döner.
+
+Ekran sayfasının üstünde iki sayfa yan yana çizilir. Yanında bugün ve toplamda kaç yükleme yaptığınız yazar.
+
+## Görsel hazırlama
+
+Görsel hazırlamak dört adımdır ve adımlar stüdyonun üstünde görünür: **Kaynak**, **Düzenle**, **Önizle** ve **Yükle**. Yükleme başlayana kadar sağ üstteki **Vazgeç** sizi başa döndürür; klavyeye hiçbir şey gönderilmez.
+
+<Steps>
+
+1. Kenar çubuğundan **Ekran** sayfasını açın ve **Görseller** sekmesinde kalın.
+2. **Ekranda ne olsun?** başlığının altında bir kaynak seçin: **Görsel ya da video**, **Yazı kartı** ya da **Slayt gösterisi**.
+3. Kaynağı düzenleyin (aşağıya bakın), sonra **Önizle** düğmesine tıklayın.
+4. Önizlemeyi kontrol edin. **Klavyedeki görünüm**, klavyeye gidecek görüntünün birebir aynısını oynatır. **Ad** alanına bir ad yazın.
+5. **Klavyeye yükle** düğmesine tıklayın. Sonra yüklemek üzere saklamak isterseniz **Kütüphaneye kaydet** düğmesini, bir şeyi değiştirmek isterseniz **Düzenlemeye dön** düğmesini kullanın.
+6. **Klavyeye yüklensin mi?** penceresi kare sayısını, yüklemenin ne kadar süreceğini ve bunun bugünün kaçıncı yüklemesi olduğunu gösterir. **Yükle** düğmesine tıklayın.
+
+</Steps>
+
+Yükleme sürerken bir çubuk ilerlemeyi ve kalan süreyi gösterir. Klavyenin ekranında da LOADING % yazar. Yükleme bitince stüdyo ilk adıma döner; neyin yüklendiğini ve ne kadar sürdüğünü söyler. Yüklediğiniz her görsel kütüphaneye de kaydedilir.
+
+Durağan bir görsel birkaç saniyede yüklenir. Animasyonlar daha uzun sürer: ekran en çok 140 kare alır ve 140 karelik bir animasyonun yüklenmesi yaklaşık beş buçuk dakika sürer. Her düzenleyici, başlamadan önce yükleme süresini gösterir.
+
+<Screenshot name="screen-text-card" alt="Yazı kartının Düzenle adımı: Ad kartı şablonu, yazı alanları ve renkler" />
+
+### Görsel ya da video
+
+**Dosya seç** düğmesine tıklayın ya da dosyayı kutunun üzerine sürükleyin. PNG, JPEG, GIF, WebP, APNG, MP4 ve WebM dosyaları kullanılabilir. Resim ve GIF en çok 64 MB, video en çok 1 GB olabilir. Görsel en çok 8192×8192 piksel, dosya en çok 3000 kare olabilir.
+
+- Görseli sürükleyerek konumlayın, fare tekerleğiyle yakınlaştırın. **Yerleşim** için **Doldur**, **Sığdır** ve **Uzat** seçenekleri vardır. **Ortala** görseli yeniden ortaya alır.
+- Animasyon ve videolarda **Başlangıç** ve **Bitiş** istediğiniz bölümü seçer. **Önizleme konumu** o bölümün herhangi bir anını gösterir.
+- **Kare hızı** saniyede kaç kare alınacağını belirler. Hareketli bir görselde **Özgün**, dosyadaki zamanlamayı korur. Videolar ve çok uzun animasyonlar saniyede 10 kareyle başlar; böylece 14 saniye 140 kareye sığar. Seçtiğiniz bölüm daha uzunsa fazlası kesilir ve bir not bunu söyler. Bölümü kısaltın ya da kare hızını düşürün.
+- **Degrade yumuşatma**, fotoğraf ve videolardaki renk bantlarını azaltır.
+
+Düzenleyicideki renkler, ekranın gösterebildiği renklerdir.
+
+### Yazı kartı
+
+**Kart hazırla** düğmesine tıklayın ve bir **Şablon** seçin: **Ad kartı**, **Söz**, **Kayan yazı**, **Dağ teması** ya da **Rozet**.
+
+- Yazınızı önizlemenin yanındaki alanlara yazın. Türkçe harfler desteklenir.
+- **Yazı stili** için **Belirgin**, **Sade** ve **Teknik** seçenekleri vardır. **Büyük harf**, **Yazı boyutu** ve **Hizalama** da ayarlanabilir.
+- **Renkler** bölümünde hazır bir renk teması seçin ya da yazı, vurgu ve arka plan renklerini kendiniz belirleyin. **Degrade** iki arka plan rengini birbirine geçirir.
+- **Kayan yazı** şablonunda ayrıca **Hız** ve **Kare hızı** vardır.
+
+Yazı rengi arka plana çok yakınsa bir not, yazının ekranda zor okunabileceğini söyler.
+
+### Slayt gösterisi
+
+**Slayt gösterisi hazırla** düğmesine tıklayın. Görselleri **Dosya ekle** ile, önizlemenin üzerine sürükleyerek ya da **Kütüphaneden ekle** ile ekleyin. Slayt gösterisi için en az iki görsel gerekir; en çok 24 slayt eklenebilir.
+
+- Her slaytın **Süre** ayarı 1 ile 20 saniye arasındadır. Dosyadan gelen slaytlar için **Doldur** ya da **Sığdır** seçilebilir.
+- Slaytları **Yukarı taşı** ve **Aşağı taşı** ile sıralayın, **Slaytı çıkar** ile çıkarın.
+- **Geçiş** için **Kesme** ya da **Yumuşak** seçin. Yumuşak geçiş 0,3 saniye sürer.
+- **Kullanılan kare**, gösterinin 140 karenin ne kadarını kullandığını gösterir. Slaytlarda her 0,5 saniye bir kare sayılır. Toplam 140'ı aşarsa süreleri kısaltın, bir slayt çıkarın ya da **Kesme** geçişini seçin.
+
+## Kütüphane
+
+Stüdyonun altındaki **Kütüphane**, yüklediğiniz ya da kaydettiğiniz her görseli saklar. Tek kopya buradadır: Klavye bir görseli geri veremez.
+
+<Screenshot name="screen-library" alt="Kütüphane: Keymotion animasyonu ve kaydedilmiş iki görsel, biri Klavyede olarak işaretli" />
+
+Klavyedeki görsel en başta durur ve **Klavyede** olarak işaretlenir. Her görselin kare sayısı, döngü süresi ve yükleme süresi yazar. Şu düğmeler vardır:
+
+- **Yükle**, görseli GIF sayfasına yükler. Her yüklemede olduğu gibi önce sorar.
+- **Işıkları eşleştir** (palet simgesi), görselden tuş renkleri hazırlar. Aşağıya bakın.
+- **Yeniden adlandır** (kalem simgesi), adını değiştirir.
+- **Sil** (çöp kutusu simgesi), görseli kaldırır. Onaylamak için bir kez daha tıklayın.
+
+Altıdan fazla görsel olunca **Tümü**, **Durağan** ya da **Hareketli** görselleri ayrı gösterebilirsiniz. On ikiden fazla görsel olunca **Kütüphanede ara** ile bir görseli adından bulabilirsiniz.
+
+[Ayarlar](/keymotion/tr/guide/settings/) sayfasındaki **Ayarları dışa aktar**, kütüphaneyi de yedek dosyasına kaydeder.
+
+## Işıkları eşleştir
+
+**Işıkları eşleştir**, bir görselden tuş başına renk tasarımı hazırlar. Bir yüklemeden ya da kayıttan sonra çıkar; kütüphanedeki her görselde palet düğmesi olarak da bulunur.
+
+<Screenshot name="screen-match-lights" alt="Işıkları görselle eşleştir penceresi: görselin renkleri ve seçili Degrade seçeneği" />
+
+<Steps>
+
+1. **Işıkları eşleştir** düğmesine tıklayın. Pencerede görsel ve **Görselin renkleri** görünür.
+2. Renklerin tuşlara nasıl dağılacağını seçin:
+   - **Degrade:** Görselin renkleri, görselde göründükleri sırayla soldan sağa.
+   - **Tek renk:** Görselin baskın rengi tüm tuşlarda.
+   - **Görsel:** Görsel tuşlara yayılır; siyah alanlar sönük kalır.
+3. **Işıklar'da aç** düğmesine tıklayın.
+
+</Steps>
+
+Tasarım [Işıklar](/keymotion/tr/guide/lighting/) sayfasında tuş başına renk olarak açılır ve tuşlarda görünür. Oradaki tuş başına renk tasarımının yerine geçer. Kaydetmezseniz klavyedeki kayıtlı ışık değişmez.
+
+## Fabrika animasyonu ve Keymotion animasyonu
+
+Yeni bir klavyenin GIF sayfasında AJAZZ'ın bir animasyonu vardır. İlk yüklemeniz onun yerini alır ve klavye onu geri veremez. Keymotion, AJAZZ'ın dosyasını içermez.
+
+- **AJAZZ'ın resmi sürücüsü bu bilgisayarda kuruluysa** Keymotion animasyonu oradan kopyalayabilir. Ekran sayfasında ya da yükleme penceresinde **Resmi sürücüden yedek al** düğmesine tıklayın. Bundan sonra kütüphanede **Fabrika** olarak işaretli **AJAZZ fabrika animasyonu** durur. **Geri yükle** düğmesi onu GIF sayfasına geri koyar; bu yaklaşık 5 dakika sürer.
+- **Yedek yoksa** Ekran sayfası bunu söyler. Animasyonu yalnızca AJAZZ'ın resmi sürücüsü geri getirebilir; nasıl yapılacağı [Bir şey ters giderse](/keymotion/tr/help/recovery/) sayfasında anlatılır.
+
+Keymotion'ın kendi animasyonu da kütüphanede hazırdır ve **Uygulamayla gelir** olarak işaretlidir. Keymotion simgesindeki "K" harfi çizgi çizgi çizilir, ardından adı belirir. 37 karedir ve yüklemesi yaklaşık bir buçuk dakika sürer. Fabrika yedeği yoksa Ekran sayfası bu animasyonu önerir; **Kütüphanede göster** sizi ona götürür. Onu da diğer görseller gibi yükleyin.
+
+Fabrika yedeği ve Keymotion animasyonu yeniden adlandırılamaz ve silinemez.
+
+## Canlı ekran
+
+Canlı ekran açıkken Keymotion GIF sayfasını kendiliğinden günceller: toplantıdan önce bir kart, bir hatırlatma, odak zamanlayıcısının aşamaları ya da çalan şarkı. Her kart bir yüklemedir.
+
+<Screenshot name="screen-live" alt="Canlı ekran sekmesi: canlı ekran açık, beş kaynak sırasıyla ve günlük yükleme sınırı" />
+
+<Steps>
+
+1. **Ekran** sayfasını açın ve **Canlı ekran** sekmesine tıklayın.
+2. **Canlı ekran** anahtarını açın.
+3. Kartları görmek için klavyede **Fn+Home** ile GIF sayfasına geçin.
+
+</Steps>
+
+Fabrika animasyonu klavyede hâlâ duruyor olabilir. Yedeği yoksa Keymotion ilk karttan önce bir kez sorar: **Canlı ekran açılsın mı?** İlk kart animasyonu kalıcı olarak siler. Devam etmek için **Canlı ekranı aç**, vazgeçmek için **Vazgeç** düğmesine tıklayın.
+
+Canlı ekran Keymotion çalıştığı sürece çalışır; penceresini kapattığınızda Keymotion saatin yanında çalışmaya devam ediyorsa da çalışır ([Ayarlar](/keymotion/tr/guide/settings/) sayfasına bakın). Keymotion'dan tamamen çıkarsanız ekranda son kart kalır.
+
+### Ekranda ne görünür?
+
+**Ekranda ne görünür?** listesi kaynakları bir sıraya koyar. Gösterecek bir şeyi olan en üstteki kaynak ekranda görünür. O bitince sıra alttakine geçer.
+
+1. **Takvim:** Toplantıdan önce bir kart. [Takvim](/keymotion/tr/guide/calendar/) sayfasında ayarlanır.
+2. **Hatırlatıcılar:** Hatırlatmanın kartı, [Hatırlatıcılar](/keymotion/tr/guide/reminders/) sayfasında seçtiğiniz süre boyunca.
+3. **Odak zamanlayıcısı:** Zamanlayıcı çalışırken odak ve mola kartları. [Odak zamanlayıcısı](/keymotion/tr/guide/focus-timer/) sayfasında ayarlanır.
+4. **Çalan şarkı:** Spotify'da, tarayıcıda ya da başka bir oynatıcıda çalan şarkı ve kapağı. 4 saniye dolmadan geçtiğiniz şarkılar yüklenmez.
+5. **Kendi görseliniz:** **Görseller** sekmesinden en son yüklediğiniz görsel.
+
+Her kaynağın yanında şu an ne yaptığı yazar; örneğin **Şu an ekranda**, **Bekliyor** ya da **Çalmıyor**. Ekrandaki kaynak vurgulanır. Takvim, hatırlatıcı ve şarkı kaynaklarının kendi anahtarı vardır; istemediğinizi kapatabilirsiniz.
+
+Canlı ekran kapalıyken ekran yalnızca sizin yüklemelerinizle değişir.
+
+### Kendi görselinize dönüş
+
+Bir karttan sonra kendi görseliniz kendiliğinden geri gelir:
+
+- **Toplantı kartı**, Takvim sayfasındaki seçiminize göre toplantı başlayana kadar, başladıktan 5 dakika sonrasına kadar ya da toplantı bitene kadar kalır.
+- **Hatırlatma kartı**, Hatırlatıcılar sayfasındaki seçiminize göre 1, 2 ya da 5 dakika kalır.
+- **Odak zamanlayıcısı**, Odak zamanlayıcısı sayfasındaki seçiminize göre seri bittikten 15 saniye sonra görselinizi geri koyar ya da bir özet kartı gösterir.
+- **Şarkının kartı** için **Şarkı durunca** altında **5 dk sonra görselinize dönsün** ya da **Kart kalsın** seçeneğini seçin.
+
+Listede daha altta olup gösterecek bir şeyi olan bir kaynak varsa önce o gelir. Örneğin toplantı kartından sonra şarkının kartı geri gelir.
+
+**Kendi görseliniz** satırı görselinizi ve ne zaman geri geleceğini gösterir. Hemen geri koymak için **Şimdi dön** düğmesine tıklayın. Geri dönüş de bir yüklemedir.
+
+Ekranda bir kart varken canlı ekranı kapatırsanız Keymotion **Canlı ekran kapatılsın mı?** diye sorar. **Önceki görseli geri yükle** ya da **Kartı ekranda bırak** seçeneğini seçin. Kartı bırakırsanız sekme daha sonra yine **Önceki görseli geri yükle** düğmesini sunar.
+
+## Günlük yükleme sınırı
+
+Her yükleme ekranın belleğine yazar ve bu bellek kullandıkça yıpranır. Ömrü kesin olarak bilinmiyor. Bu tür bellekler genellikle 100.000 kez yazılabilir; bu tahmine göre günde birkaç yükleme yıllarca sorun çıkarmaz. Bunu korumak için canlı ekranın bir **Günlük yükleme sınırı** vardır:
+
+| Seçenek | Canlı yükleme |
+|---|---|
+| **Düşük (8)** | Günde en çok 8; ekran belleğini en az yıpratan seçenek |
+| **Dengeli (24)** | Günde en çok 24; çoğu kullanım için yeterli |
+| **Yüksek (48)** | Günde en çok 48; belleği Dengeli'nin iki katı hızla yıpratır |
+
+Seçeneğin altındaki çubuk şu an kaç yükleme hakkınız olduğunu ve bir sonrakinin ne zaman geleceğini gösterir. Kullanılan haklar gün içinde birer birer geri gelir.
+
+Kendi yüklemeleriniz de bu sınırdan düşer, ama hiçbir zaman engellenmez.
+
+Sınır dolunca kart sırada bekler. Ekran sayfası hangi kartın beklediğini ve henüz klavyeye gönderilmediğini söyler. **Canlı ekran** sekmesinde bekleyen kartın iki düğmesi vardır:
+
+- **Şimdi gönder**, kartı beklemeden yükler. Yükleme yine de sınırdan düşer.
+- **Gönderme**, kartı bırakır. Klavyede şu anki görsel kalır.
+
+Odak zamanlayıcısı ve çalan şarkı son yükleme hakkını kullanmaz; o hak bir hatırlatma ya da toplantı için saklanır. Hatırlatma kartı hiç beklemez: Yükleme hakkı yoksa yalnızca tuşlar yanar.
+
+## Yükleme yarım kalırsa
+
+Yükleme bitene kadar kabloyu çıkarmayın. Klavyedeki diğer değişiklikler de yükleme bitene kadar bekler.
+
+Yükleme sırasında kablo çıkarsa, Keymotion kapanırsa ya da bilgisayar kapanırsa GIF sayfasında görselin yalnızca bir kısmı kalır ve bozuk görünebilir. Keymotion bunu hatırlar:
+
+- Ekran sayfasında **Son yükleme yarım kaldı** uyarısı ve **Yeniden yükle** düğmesi çıkar. Düğme aynı görseli baştan yeniden yükler.
+- Kütüphanede o görsel **Yarım kaldı** olarak işaretlenir ve düğmesinde **Yeniden yükle** yazar.
+- Keymotion bir sonraki açılışında sağ altta bir uyarıyla **Yeniden yükle** ve **Ekran sayfasına git** seçeneklerini sunar.
+
+Görsel artık kütüphanede yoksa sayfayı düzeltmek için kütüphaneden herhangi bir görseli yükleyin. [Bir şey ters giderse](/keymotion/tr/help/recovery/) sayfasına da bakabilirsiniz.
+
+<Screenshot name="screen-incomplete-upload" alt="Ekran sayfasında Son yükleme yarım kaldı uyarısı ve Yeniden yükle düğmesi" />
+
+Yükleme sürerken Keymotion'dan çıkmak isterseniz **Klavyeye kaydediliyor** penceresi açılır ve yükleme bitince uygulama kendiliğinden kapanır. **Vazgeç** Keymotion'ı açık tutar. **Hemen çık** uygulamayı hemen kapatır ve GIF sayfası yarım kalır.

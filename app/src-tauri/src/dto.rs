@@ -1,9 +1,12 @@
 //! Types shared with the UI. `cargo test` exports them to
 //! `app/src/bindings/*.ts` through ts-rs, so the UI never re-declares them.
 
+use crate::settings::{StoredKeymap, StoredLayer, StoredMacro, StoredMacros, StoredStep};
 use kb_core::DetectedKeyboard;
 use kb_devices::{Capability, ConnectionKind, Model};
-use serde::Serialize;
+use kb_protocol::sonix::keymap::{KeyAction, Layer, MacroPlay, MouseButton, UsageGroup};
+use kb_protocol::sonix::macros::{MacroStep, StepKind};
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
@@ -54,8 +57,8 @@ impl From<Capability> for Feature {
     }
 }
 
-/// What one connection mode of a model offers, for "switch to USB to
-/// unlock" guidance in the UI.
+/// What the app offers in one connection mode of a model, for the
+/// connection map and "switch to USB to unlock" guidance in the UI.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -81,6 +84,8 @@ pub struct KeyGeo {
     pub id: String,
     pub label: String,
     pub led: u8,
+    /// Default HID usage; 0xAF is the Fn key (never remapped).
+    pub hid: u8,
     pub x: f32,
     pub y: f32,
     pub w: f32,
@@ -132,6 +137,7 @@ impl GeometryInfo {
                     id: k.id.clone(),
                     label: k.label.clone(),
                     led: k.led,
+                    hid: k.hid,
                     x: k.x,
                     y: k.y,
                     w: k.w,
@@ -142,7 +148,7 @@ impl GeometryInfo {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Battery {
@@ -150,6 +156,45 @@ pub struct Battery {
     /// Unix epoch milliseconds of the reading.
     #[ts(type = "number")]
     pub read_at_ms: u64,
+}
+
+/// A keyboard that looks like a SONiX or AJAZZ one but isn't supported yet
+/// (kb_core `unknown_keyboards`): the UI offers "Request support".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct UnsupportedKeyboard {
+    /// Ids and bus, "0C45:8009:usb".
+    pub id: String,
+    /// The name the keyboard reports, when it has one.
+    pub name: Option<String>,
+}
+
+impl UnsupportedKeyboard {
+    pub fn from_unknown(k: &kb_core::UnknownKeyboard) -> Self {
+        Self { id: k.key(), name: k.name().map(str::to_string) }
+    }
+}
+
+/// A crash note from an earlier run, offered once for reporting.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CrashNote {
+    /// File name (`crash-….txt`): marks it seen.
+    pub name: String,
+    /// Its text (version, time, message), already redacted.
+    pub text: String,
+}
+
+/// Which GitHub issue form to open (`.github/ISSUE_TEMPLATE/<kind>.yml`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum IssueKind {
+    Bug,
+    Keyboard,
+    Idea,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
@@ -168,6 +213,8 @@ pub struct KeyboardInfo {
     pub screen: Option<ScreenInfo>,
     pub connection: Connection,
     pub product: Option<String>,
+    /// Firmware version over the cable, as people read it ("1.06").
+    pub firmware: Option<String>,
     /// Features usable right now in this connection mode.
     pub features: Vec<Feature>,
     /// What every connection mode of this model offers.
@@ -192,20 +239,17 @@ impl KeyboardInfo {
             key_count: m.key_count,
             has_knob: m.has_knob,
             has_side_light: m.has_side_light,
-            screen: m.screen.as_ref().map(|s| ScreenInfo {
-                width: s.width,
-                height: s.height,
-                verified: s.verified,
-            }),
+            screen: m.screen.as_ref().map(|s| ScreenInfo { width: s.width, height: s.height, verified: s.verified }),
             connection: k.connection.into(),
             product: k.product.clone(),
+            firmware: k.firmware.map(kb_devices::firmware_text),
             features: k.capabilities().into_iter().map(Feature::from).collect(),
             modes: m
                 .modes
                 .iter()
                 .map(|mode| ModeInfo {
                     connection: mode.kind.into(),
-                    features: mode.capabilities.iter().copied().map(Feature::from).collect(),
+                    features: kb_core::app_capabilities(m, mode.kind).into_iter().map(Feature::from).collect(),
                     verified: mode.verified,
                 })
                 .collect(),
@@ -221,7 +265,7 @@ impl KeyboardInfo {
 
 #[cfg(test)]
 mod tests {
-    use super::{EffectInfo, GeometryInfo};
+    use super::{EffectInfo, GeometryInfo, KeymapCatalog};
 
     /// Writes each model's geometry and the effect catalog for the UI's
     /// browser-only mock backend, so the mock never drifts from Rust.
@@ -231,11 +275,33 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let catalog = serde_json::to_string_pretty(&EffectInfo::catalog()).unwrap();
         std::fs::write(dir.join("lighting-catalog.json"), catalog + "\n").unwrap();
+        let keymap = serde_json::to_string_pretty(&KeymapCatalog::build()).unwrap();
+        std::fs::write(dir.join("keymap-catalog.json"), keymap + "\n").unwrap();
         for m in kb_devices::catalogue().unwrap() {
             let Some(g) = &m.geometry else { continue };
             let json = serde_json::to_string_pretty(&GeometryInfo::from_model(g)).unwrap();
             std::fs::write(dir.join(format!("geometry-{}.json", m.id)), json + "\n").unwrap();
         }
+    }
+}
+
+/// A settings file that could not be read at start-up and went back to its
+/// defaults. The old file was kept beside it (`backup`); the UI names the
+/// record once.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SettingsReset {
+    /// File name, e.g. `keymap.json`.
+    pub file: String,
+    /// Name of the kept copy; `None` when it could not be moved aside (it is
+    /// then left in place and not overwritten).
+    pub backup: Option<String>,
+}
+
+impl From<crate::settings::Reset> for SettingsReset {
+    fn from(r: crate::settings::Reset) -> Self {
+        Self { file: r.file, backup: r.backup }
     }
 }
 
@@ -247,6 +313,107 @@ pub struct UiEnvironment {
     /// Windows 11 Mica backdrop is active behind the webview.
     pub mica: bool,
     pub os_build: u32,
+}
+
+/// Running in the background (tray.rs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct BackgroundSettings {
+    /// Closing the window hides it; the app goes on in the tray.
+    pub close_to_tray: bool,
+    /// Windows starts the app (hidden) when the user signs in.
+    pub start_with_windows: bool,
+    /// The startup entry is there but Task Manager or Settings turned it
+    /// off (read only: setting `start_with_windows` turns it on again).
+    #[serde(default)]
+    pub start_turned_off: bool,
+}
+
+/// The tray menu's words and the background notice, in the UI language.
+/// Templates keep their `{name}` places; the backend fills them in.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TrayTexts {
+    /// "tr" or "en": how a date further than tomorrow is written.
+    pub locale: String,
+    pub open: String,
+    pub no_keyboard: String,
+    /// `{n}`: percent.
+    pub battery: String,
+    pub conn_usb: String,
+    pub conn_dongle: String,
+    pub conn_bluetooth: String,
+    pub focus: String,
+    pub focus_start: String,
+    pub focus_pause: String,
+    pub focus_resume: String,
+    pub focus_skip: String,
+    pub focus_stop: String,
+    pub phase_focus: String,
+    pub phase_break: String,
+    /// Block `{n}` of `{total}`.
+    pub round: String,
+    /// `{min}`.
+    pub left: String,
+    pub paused: String,
+    /// `{blocks}` blocks, `{min}` minutes in all.
+    pub ready: String,
+    pub reminders: String,
+    pub reminders_on: String,
+    pub reminders_off: String,
+    /// `{time}`, `{title}`.
+    pub reminders_next: String,
+    pub reminders_none: String,
+    pub tomorrow: String,
+    pub gauges: String,
+    pub profiles: String,
+    pub default_profile: String,
+    pub quit: String,
+    pub hidden_title: String,
+    pub hidden_body: String,
+}
+
+/// Until the UI has sent its words (a start with Windows, before the page
+/// has loaded).
+impl Default for TrayTexts {
+    fn default() -> Self {
+        let s = |t: &str| t.to_string();
+        Self {
+            locale: s("en"),
+            open: s("Open Keymotion"),
+            no_keyboard: s("No keyboard connected"),
+            battery: s("battery {n}%"),
+            conn_usb: s("USB cable"),
+            conn_dongle: s("2.4 GHz receiver"),
+            conn_bluetooth: s("Bluetooth"),
+            focus: s("Focus timer"),
+            focus_start: s("Start"),
+            focus_pause: s("Pause"),
+            focus_resume: s("Resume"),
+            focus_skip: s("Skip to the next phase"),
+            focus_stop: s("Stop"),
+            phase_focus: s("Focus"),
+            phase_break: s("Break"),
+            round: s("Block {n}/{total}"),
+            left: s("{min} min left"),
+            paused: s("Paused"),
+            ready: s("Ready: {blocks} blocks, {min} min"),
+            reminders: s("Reminders"),
+            reminders_on: s("Reminders on"),
+            reminders_off: s("Reminders off"),
+            reminders_next: s("Next: {time} · {title}"),
+            reminders_none: s("No reminders coming up"),
+            tomorrow: s("tomorrow"),
+            gauges: s("System gauges on the keys"),
+            profiles: s("Profiles"),
+            default_profile: s("Default"),
+            quit: s("Quit"),
+            hidden_title: s("Still running"),
+            hidden_body: s("To open it again, click the Keymotion icon next to the clock."),
+        }
+    }
 }
 
 /// One LED and its colour (live frames, mirror read-back, per-key tables).
@@ -273,7 +440,39 @@ pub struct EffectInfo {
     pub rainbow: bool,
     /// 0, 2 or 4 selectable directions.
     pub directions: u8,
+    /// How direction 0 moves (1 is the other way), for directional effects.
+    pub motion: Option<EffectMotion>,
     pub factory_default: bool,
+}
+
+/// How a directional effect moves with direction 0; 1 runs the other way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum EffectMotion {
+    /// 0 down, 1 up.
+    Vertical,
+    /// 0 right, 1 left.
+    Horizontal,
+    /// 0 counter-clockwise, 1 clockwise.
+    Rotation,
+    /// A train of lights along the LED order: 0 forward, 1 backward.
+    Path,
+    /// 0 up-right, 1 down-left.
+    Diagonal,
+}
+
+impl From<kb_protocol::sonix::Motion> for EffectMotion {
+    fn from(m: kb_protocol::sonix::Motion) -> Self {
+        use kb_protocol::sonix::Motion as M;
+        match m {
+            M::Vertical => Self::Vertical,
+            M::Horizontal => Self::Horizontal,
+            M::Rotation => Self::Rotation,
+            M::Path => Self::Path,
+            M::Diagonal => Self::Diagonal,
+        }
+    }
 }
 
 impl EffectInfo {
@@ -295,10 +494,42 @@ impl EffectInfo {
                 } else {
                     0
                 },
+                motion: e.motion.map(EffectMotion::from),
                 factory_default: e.id == FACTORY_EFFECT,
             })
             .collect()
     }
+}
+
+/// Keyboard clock sync state.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ClockStatus {
+    /// Set the clock when the keyboard connects over USB, at most once a day.
+    pub auto_sync: bool,
+    /// Last successful sync, Unix time in milliseconds.
+    pub last_sync_ms: Option<f64>,
+}
+
+impl From<crate::settings::ClockSettings> for ClockStatus {
+    fn from(c: crate::settings::ClockSettings) -> Self {
+        Self { auto_sync: c.auto_sync, last_sync_ms: c.last_sync_ms.map(|ms| ms as f64) }
+    }
+}
+
+/// What the UI believes the keyboard shows, so the mirror can resolve the
+/// read-back's ambiguous red byte (`04 F5` reports red as `2·r mod 256`).
+#[derive(Debug, Clone, serde::Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct MirrorHint {
+    /// Brightness level (0–5) of the saved effect or design.
+    pub brightness: u8,
+    /// Single-colour firmware effect: its colour, `#RRGGBB`.
+    pub color: Option<String>,
+    /// Per-key design: the saved colours (keys not listed are off).
+    pub keys: Option<Vec<LedColor>>,
 }
 
 /// Effect settings as the UI edits them.
@@ -337,6 +568,39 @@ impl EffectRequest {
     }
 }
 
+/// sRGB → LED colour calibration, per channel (R, G, B).
+#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize, Serialize, TS)]
+#[ts(export)]
+pub struct Calibration {
+    /// Exponent per channel; 1.0 sends raw values.
+    pub gamma: [f32; 3],
+    /// Gain per channel, 0.0–1.0 (white balance).
+    pub gain: [f32; 3],
+}
+
+impl From<kb_core::color::LedCalibration> for Calibration {
+    fn from(c: kb_core::color::LedCalibration) -> Self {
+        Self { gamma: c.gamma, gain: c.gain }
+    }
+}
+
+impl From<Calibration> for kb_core::color::LedCalibration {
+    fn from(c: Calibration) -> Self {
+        Self { gamma: c.gamma, gain: c.gain }.sanitized()
+    }
+}
+
+/// The active calibration plus the values the UI needs to edit it.
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CalibrationInfo {
+    pub current: Calibration,
+    pub factory: Calibration,
+    pub gamma_min: f32,
+    pub gamma_max: f32,
+}
+
 #[derive(Debug, Clone, Copy, serde::Deserialize, Serialize, TS)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
@@ -344,4 +608,1465 @@ pub enum ThemePreference {
     System,
     Dark,
     Light,
+}
+
+// ------------------------------------------------------------------ keymap
+
+/// Which keymap layer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum KeymapLayer {
+    Base,
+    Fn,
+}
+
+impl From<KeymapLayer> for Layer {
+    fn from(l: KeymapLayer) -> Self {
+        match l {
+            KeymapLayer::Base => Layer::Base,
+            KeymapLayer::Fn => Layer::Fn,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum MouseButtonName {
+    Left,
+    Right,
+    Middle,
+    /// Side button 4: browser back.
+    Back,
+    /// Side button 5: browser forward.
+    Forward,
+    DoubleClick,
+}
+
+impl From<MouseButton> for MouseButtonName {
+    fn from(b: MouseButton) -> Self {
+        match b {
+            MouseButton::Left => Self::Left,
+            MouseButton::Right => Self::Right,
+            MouseButton::Middle => Self::Middle,
+            MouseButton::Back => Self::Back,
+            MouseButton::Forward => Self::Forward,
+            MouseButton::DoubleClick => Self::DoubleClick,
+        }
+    }
+}
+
+impl From<MouseButtonName> for MouseButton {
+    fn from(b: MouseButtonName) -> Self {
+        match b {
+            MouseButtonName::Left => Self::Left,
+            MouseButtonName::Right => Self::Right,
+            MouseButtonName::Middle => Self::Middle,
+            MouseButtonName::Back => Self::Back,
+            MouseButtonName::Forward => Self::Forward,
+            MouseButtonName::DoubleClick => Self::DoubleClick,
+        }
+    }
+}
+
+/// How a key plays its macro.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum MacroPlayMode {
+    /// Once per press.
+    Once,
+    /// `count` times per press.
+    Times,
+    /// Until the key is pressed again.
+    Toggle,
+    /// While the key is held.
+    Hold,
+}
+
+/// What a key does, as the UI edits it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Serialize, TS)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+#[ts(export)]
+pub enum KeyActionInfo {
+    /// The firmware's own function.
+    Default,
+    /// The key does nothing.
+    Disabled,
+    /// A keyboard usage with modifier bits (`code` 0: modifiers only).
+    Key {
+        modifiers: u8,
+        code: u8,
+    },
+    /// A consumer-control usage (media, volume, apps).
+    Media {
+        usage: u16,
+    },
+    Mouse {
+        button: MouseButtonName,
+    },
+    /// One wheel notch.
+    Wheel {
+        up: bool,
+    },
+    /// Play stored macro `slot`; `count` is used with `times` (1–255).
+    Macro {
+        slot: u8,
+        mode: MacroPlayMode,
+        count: u8,
+    },
+}
+
+impl From<KeyAction> for KeyActionInfo {
+    fn from(a: KeyAction) -> Self {
+        match a {
+            KeyAction::Default => Self::Default,
+            KeyAction::Disabled => Self::Disabled,
+            KeyAction::Key { mods, code } => Self::Key { modifiers: mods, code },
+            KeyAction::Consumer(usage) => Self::Media { usage },
+            KeyAction::Mouse(b) => Self::Mouse { button: b.into() },
+            KeyAction::Wheel { up } => Self::Wheel { up },
+            KeyAction::Macro { slot, play } => {
+                let (mode, count) = match play {
+                    MacroPlay::Once => (MacroPlayMode::Once, 1),
+                    MacroPlay::Times(n) => (MacroPlayMode::Times, n),
+                    MacroPlay::Toggle => (MacroPlayMode::Toggle, 1),
+                    MacroPlay::WhileHeld => (MacroPlayMode::Hold, 1),
+                };
+                Self::Macro { slot, mode, count }
+            }
+        }
+    }
+}
+
+impl From<KeyActionInfo> for KeyAction {
+    fn from(a: KeyActionInfo) -> Self {
+        match a {
+            KeyActionInfo::Default => Self::Default,
+            KeyActionInfo::Disabled => Self::Disabled,
+            KeyActionInfo::Key { modifiers, code } => Self::Key { mods: modifiers, code },
+            KeyActionInfo::Media { usage } => Self::Consumer(usage),
+            KeyActionInfo::Mouse { button } => Self::Mouse(button.into()),
+            KeyActionInfo::Wheel { up } => Self::Wheel { up },
+            KeyActionInfo::Macro { slot, mode, count } => Self::Macro {
+                slot,
+                play: match mode {
+                    MacroPlayMode::Once => MacroPlay::Once,
+                    MacroPlayMode::Times => MacroPlay::Times(count),
+                    MacroPlayMode::Toggle => MacroPlay::Toggle,
+                    MacroPlayMode::Hold => MacroPlay::WhileHeld,
+                },
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Serialize, TS)]
+#[ts(export)]
+pub struct KeyAssignment {
+    pub led: u8,
+    pub action: KeyActionInfo,
+}
+
+/// One layer as last written by this app.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct KeymapLayerState {
+    /// Keys that differ from the firmware default.
+    pub assignments: Vec<KeyAssignment>,
+    /// Unix ms of the last write; `null` when the app never wrote this
+    /// layer (taken to be the factory default).
+    pub written_ms: Option<f64>,
+}
+
+impl From<&StoredLayer> for KeymapLayerState {
+    fn from(l: &StoredLayer) -> Self {
+        Self {
+            assignments: l.actions().into_iter().map(|(led, a)| KeyAssignment { led, action: a.into() }).collect(),
+            written_ms: l.written_ms.map(|ms| ms as f64),
+        }
+    }
+}
+
+/// What the app last wrote to a model's keymap. The keyboard cannot report
+/// its keymap, so this is the app's own record.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct KeymapState {
+    pub base: KeymapLayerState,
+    #[serde(rename = "fn")]
+    pub fn_layer: KeymapLayerState,
+}
+
+impl From<&StoredKeymap> for KeymapState {
+    fn from(k: &StoredKeymap) -> Self {
+        Self { base: (&k.base).into(), fn_layer: (&k.fn_layer).into() }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum KeyUsageGroup {
+    Letter,
+    Digit,
+    Function,
+    Editing,
+    Navigation,
+    Symbol,
+    Keypad,
+    Modifier,
+}
+
+impl From<UsageGroup> for KeyUsageGroup {
+    fn from(g: UsageGroup) -> Self {
+        match g {
+            UsageGroup::Letter => Self::Letter,
+            UsageGroup::Digit => Self::Digit,
+            UsageGroup::Function => Self::Function,
+            UsageGroup::Editing => Self::Editing,
+            UsageGroup::Navigation => Self::Navigation,
+            UsageGroup::Symbol => Self::Symbol,
+            UsageGroup::Keypad => Self::Keypad,
+            UsageGroup::Modifier => Self::Modifier,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct KeyUsageInfo {
+    pub code: u8,
+    pub id: String,
+    /// Keycap legend (US positions).
+    pub label: String,
+    pub group: KeyUsageGroup,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct MediaUsageInfo {
+    pub usage: u16,
+    /// Stable id; the UI translates it.
+    pub id: String,
+}
+
+/// Everything a key can be assigned.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct KeymapCatalog {
+    pub keys: Vec<KeyUsageInfo>,
+    pub media: Vec<MediaUsageInfo>,
+    pub mouse: Vec<MouseButtonName>,
+}
+
+impl KeymapCatalog {
+    pub fn build() -> Self {
+        use kb_protocol::sonix::keymap::{CONSUMER, USAGES};
+        Self {
+            keys: USAGES
+                .iter()
+                .map(|u| KeyUsageInfo { code: u.code, id: u.id.into(), label: u.label.into(), group: u.group.into() })
+                .collect(),
+            media: CONSUMER.iter().map(|c| MediaUsageInfo { usage: c.code, id: c.id.into() }).collect(),
+            mouse: MouseButton::ALL.into_iter().map(MouseButtonName::from).collect(),
+        }
+    }
+}
+
+// ------------------------------------------------------------------ macros
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum MacroStepKind {
+    KeyDown,
+    KeyUp,
+    MouseDown,
+    MouseUp,
+}
+
+/// One macro step: press or release, then wait.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct MacroStepInfo {
+    pub kind: MacroStepKind,
+    /// Keyboard usage (modifiers as 0xE0–0xE7) or mouse mask (1 left, 2 right, 4 middle).
+    pub code: u8,
+    /// Pause after the step, in ms.
+    pub delay_ms: u16,
+}
+
+impl From<MacroStep> for MacroStepInfo {
+    fn from(s: MacroStep) -> Self {
+        let kind = match s.kind {
+            StepKind::KeyDown => MacroStepKind::KeyDown,
+            StepKind::KeyUp => MacroStepKind::KeyUp,
+            StepKind::MouseDown => MacroStepKind::MouseDown,
+            StepKind::MouseUp => MacroStepKind::MouseUp,
+        };
+        Self { kind, code: s.code, delay_ms: s.delay_ms }
+    }
+}
+
+impl From<MacroStepInfo> for MacroStep {
+    fn from(s: MacroStepInfo) -> Self {
+        let kind = match s.kind {
+            MacroStepKind::KeyDown => StepKind::KeyDown,
+            MacroStepKind::KeyUp => StepKind::KeyUp,
+            MacroStepKind::MouseDown => StepKind::MouseDown,
+            MacroStepKind::MouseUp => StepKind::MouseUp,
+        };
+        MacroStep { kind, code: s.code, delay_ms: s.delay_ms }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, Serialize, TS)]
+#[ts(export)]
+pub struct MacroInfo {
+    /// The app's own name; the keyboard stores none.
+    pub name: String,
+    pub steps: Vec<MacroStepInfo>,
+}
+
+impl From<&StoredMacro> for MacroInfo {
+    fn from(m: &StoredMacro) -> Self {
+        Self { name: m.name.clone(), steps: m.steps.iter().map(|s| s.0.into()).collect() }
+    }
+}
+
+impl From<MacroInfo> for StoredMacro {
+    fn from(m: MacroInfo) -> Self {
+        Self {
+            name: m.name.trim().chars().take(MACRO_NAME_MAX).collect(),
+            steps: m.steps.into_iter().map(|s| StoredStep(s.into())).collect(),
+        }
+    }
+}
+
+/// Longest macro name the app keeps.
+pub const MACRO_NAME_MAX: usize = 40;
+
+// ------------------------------------------------------------------ screen
+
+/// What a library item holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum ScreenItemKind {
+    /// One still image.
+    Image,
+    /// Several frames (GIF, video, slideshow).
+    Animation,
+    /// The keyboard's factory animation (backup; cannot be removed).
+    Factory,
+    /// Keymotion's own start-up animation, drawn by the app for keyboards
+    /// without a factory backup (built in: one per library, cannot be
+    /// removed or renamed).
+    Keymotion,
+}
+
+impl ScreenItemKind {
+    /// Comes with the app or the keyboard: kept, and named by the UI.
+    pub fn built_in(self) -> bool {
+        matches!(self, Self::Factory | Self::Keymotion)
+    }
+}
+
+/// One prepared animation in the app's screen library.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ScreenItem {
+    /// Content hash (16 hex digits).
+    pub id: String,
+    pub name: String,
+    pub kind: ScreenItemKind,
+    pub frames: u32,
+    /// One loop, in ms.
+    pub loop_ms: u32,
+    /// Display-channel pages an upload takes.
+    pub pages: u32,
+    pub created_ms: f64,
+    /// Last upload the keyboard confirmed; `null` when never uploaded.
+    pub uploaded_ms: Option<f64>,
+}
+
+/// The panel and upload limits (kb-protocol `screen`).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ScreenLimits {
+    pub width: u32,
+    pub height: u32,
+    pub max_frames: u32,
+    /// Frames proven on this keyboard (its own factory animation).
+    pub proven_frames: u32,
+    pub min_delay_ms: u32,
+    pub max_delay_ms: u32,
+    pub still_delay_ms: u32,
+    /// Measured time per page (E1/E4, 2026-11-10).
+    pub page_ms: u32,
+    pub header_len: u32,
+    pub frame_bytes: u32,
+    pub max_pages: u32,
+    pub name_max: u32,
+}
+
+impl ScreenLimits {
+    pub fn new() -> Self {
+        use kb_protocol::sonix::screen as s;
+        Self {
+            width: s::WIDTH as u32,
+            height: s::HEIGHT as u32,
+            max_frames: s::MAX_FRAMES as u32,
+            proven_frames: s::PROVEN_FRAMES as u32,
+            min_delay_ms: s::MIN_DELAY as u32 * s::DELAY_UNIT_MS,
+            max_delay_ms: s::MAX_DELAY as u32 * s::DELAY_UNIT_MS,
+            still_delay_ms: s::STILL_DELAY as u32 * s::DELAY_UNIT_MS,
+            page_ms: 145,
+            header_len: s::HEADER_LEN as u32,
+            frame_bytes: s::FRAME_BYTES as u32,
+            max_pages: s::MAX_PAGES as u32,
+            name_max: crate::screen_lib::NAME_MAX as u32,
+        }
+    }
+}
+
+impl Default for ScreenLimits {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// The screen library and what the keyboard's GIF page shows.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ScreenState {
+    /// Factory backup first, then newest first.
+    pub items: Vec<ScreenItem>,
+    /// Item the GIF page shows, as far as the app knows (`null`: unknown,
+    /// for example the factory animation the keyboard shipped with).
+    pub shown: Option<String>,
+    pub uploads_today: u32,
+    pub uploads_total: u32,
+    pub limits: ScreenLimits,
+    /// The last upload to the GIF page stopped partway (an error, a quit, a
+    /// crash): the page holds part of it. `shown` is `null` meanwhile.
+    pub incomplete: Option<ScreenIncomplete>,
+}
+
+/// An upload that was cut short (see [`ScreenState::incomplete`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ScreenIncomplete {
+    /// Library item to upload again: the one cut short, or for a live card
+    /// the user's own picture. `null` when there is none.
+    pub id: Option<String>,
+    /// When the upload started (Unix ms).
+    pub at_ms: f64,
+}
+
+/// A write to the keyboard's flash in progress (`flash-write` event).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum FlashWrite {
+    /// A screen upload (up to ~5 minutes).
+    Screen,
+    /// Lighting, keymap or macros (under a second or two).
+    Settings,
+}
+
+/// `screen-upload-progress` event payload.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ScreenProgress {
+    pub id: String,
+    pub done: u32,
+    pub total: u32,
+}
+
+/// What the app last wrote to a model's macro memory, plus its limits.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct MacrosState {
+    /// Slot `i` is macro `i`; `null` marks an unused slot.
+    pub slots: Vec<Option<MacroInfo>>,
+    /// Unix ms of the last write; `null` when the app never wrote macros.
+    pub written_ms: Option<f64>,
+    /// Memory limit: `(steps + slots) × 8` bytes may not exceed this.
+    pub budget: u32,
+    pub max_slots: u32,
+    pub min_delay_ms: u16,
+    pub max_name: u32,
+}
+
+impl From<&StoredMacros> for MacrosState {
+    fn from(m: &StoredMacros) -> Self {
+        use kb_protocol::sonix::macros::{BUDGET, MAX_MACROS, MIN_DELAY_MS};
+        Self {
+            slots: m.slots.iter().map(|s| s.as_ref().map(MacroInfo::from)).collect(),
+            written_ms: m.written_ms.map(|ms| ms as f64),
+            budget: BUDGET as u32,
+            max_slots: MAX_MACROS as u32,
+            min_delay_ms: MIN_DELAY_MS,
+            max_name: MACRO_NAME_MAX as u32,
+        }
+    }
+}
+
+// ------------------------------------------------------------- live screen
+
+/// How many automatic screen uploads a day the live mode may use (flash
+/// wear budget; docs site: developers/architecture).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum LivePlan {
+    /// 8 a day.
+    Saver,
+    /// 24 a day (default).
+    #[default]
+    Balanced,
+    /// 48 a day.
+    Heavy,
+}
+
+impl LivePlan {
+    pub fn per_day(self) -> u32 {
+        match self {
+            Self::Saver => 8,
+            Self::Balanced => 24,
+            Self::Heavy => 48,
+        }
+    }
+
+    /// Uploads that may run back to back before the hourly refill limits them.
+    pub fn burst(self) -> u32 {
+        match self {
+            Self::Saver => 3,
+            Self::Balanced => 6,
+            Self::Heavy => 8,
+        }
+    }
+}
+
+/// A card waiting for, or going through, an automatic upload.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveItem {
+    /// Source id, e.g. `now-playing`.
+    pub source: String,
+    pub name: String,
+}
+
+/// The last card the live mode put on the GIF page.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveShown {
+    pub source: String,
+    pub name: String,
+    pub at_ms: f64,
+}
+
+/// What Windows reports as playing (System Media Transport Controls).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TrackInfo {
+    /// Stable id of the track (app + title + artist).
+    pub key: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    /// Friendly name of the playing app when known (Spotify, Chrome, …).
+    pub app: String,
+    pub playing: bool,
+    /// Played long enough (and not paused) to be worth an upload.
+    pub settled: bool,
+    pub has_cover: bool,
+}
+
+/// What the GIF page showed before the live mode replaced it: offered to
+/// put back when the live mode is turned off.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveRestore {
+    /// Library item id.
+    pub id: String,
+    pub name: String,
+    pub frames: u32,
+    pub pages: u32,
+}
+
+/// Live mode, its budget and sources (`live-screen` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveState {
+    pub enabled: bool,
+    pub plan: LivePlan,
+    pub per_day: u32,
+    pub burst: u32,
+    /// Uploads available now (may be fractional while refilling, negative
+    /// after manual uploads beyond the budget).
+    pub tokens: f64,
+    /// Time until the next upload is allowed, when none is available now.
+    pub next_token_ms: Option<f64>,
+    pub pending: Option<LiveItem>,
+    /// Time until the waiting card may go, when it waits for the budget.
+    /// The focus timer's and the song's cards leave one upload for a
+    /// reminder or a meeting, so theirs can be later than `next_token_ms`.
+    pub pending_wait_ms: Option<f64>,
+    pub uploading: Option<LiveItem>,
+    pub last: Option<LiveShown>,
+    pub last_error: Option<String>,
+    /// Source switch: the song playing.
+    pub now_playing: bool,
+    pub track: Option<TrackInfo>,
+    /// A live card is on the GIF page and this library item was there
+    /// before it.
+    pub restore: Option<LiveRestore>,
+    /// The source whose card is on the GIF page now (`calendar`,
+    /// `reminder`, `pomodoro`, `now-playing`), as far as the app knows;
+    /// null when the user's own picture or the factory animation is there.
+    /// Not the same as `restore`: the first card can replace the factory
+    /// animation, which has nothing to put back.
+    pub showing: Option<String>,
+    /// Someone holds the screen (the calendar around a meeting, the focus
+    /// timer while it runs): "Çalan şarkı" waits.
+    pub held: bool,
+    /// Who holds it (`calendar`, `pomodoro`).
+    pub holders: Vec<String>,
+    /// What "Çalan şarkı" does when the music stops.
+    pub song_stop: SongStop,
+    /// The user's own picture: what the screen goes back to when no source
+    /// has anything to show (the last library item uploaded by hand).
+    pub own: Option<LiveRestore>,
+    /// The screen goes back to the user's own picture at this time.
+    pub going_back: Option<LiveBack>,
+    /// Turning the live mode on asks first: there is no factory backup and
+    /// the GIF page probably still shows the factory animation, which the
+    /// first card erases for good. Asked once.
+    pub factory_ack_needed: bool,
+}
+
+/// What the "Çalan şarkı" source does when the music stops.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum SongStop {
+    /// After a while without music, the user's own picture comes back.
+    #[default]
+    Back,
+    /// The song's card stays until the next card.
+    Keep,
+}
+
+/// A source has nothing to show any more: the screen goes back to the
+/// user's own picture unless something else comes first.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveBack {
+    /// Source whose card is on the screen now.
+    pub source: String,
+    pub at_ms: f64,
+}
+
+/// What a block of the focus timer is: focus or a break. A break is a
+/// break, whatever its length (K7: the owner found "short" and "long"
+/// breaks that differ only in length pointless).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum PomodoroPhase {
+    #[default]
+    Focus,
+    Break,
+}
+
+/// One block of the sequence the user builds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PomodoroBlock {
+    pub phase: PomodoroPhase,
+    /// 1–`BLOCK_MAX_MIN`.
+    pub minutes: u16,
+}
+
+impl PomodoroBlock {
+    pub const fn focus(minutes: u16) -> Self {
+        Self { phase: PomodoroPhase::Focus, minutes }
+    }
+
+    pub const fn rest(minutes: u16) -> Self {
+        Self { phase: PomodoroPhase::Break, minutes }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum PomodoroStatus {
+    #[default]
+    Idle,
+    Running,
+    Paused,
+}
+
+/// How the light leaves the keyboard while a phase runs. The keyboard is
+/// full at the start of a phase and empties towards its end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum PomodoroMotion {
+    /// The right side goes dark first; the light ends on the left.
+    #[default]
+    RightToLeft,
+    /// The left side goes dark first.
+    LeftToRight,
+    /// The top rows go dark first, like a level falling.
+    TopToBottom,
+    /// Both sides go dark first; the light ends in the middle.
+    ToCenter,
+    /// The whole keyboard dims evenly.
+    Fade,
+}
+
+/// What the keys do when a phase starts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum PomodoroTransition {
+    /// The whole keyboard blinks twice in the new colour.
+    #[default]
+    Blink,
+    /// The new colour washes over the keyboard from the side that stays
+    /// lit longest.
+    Wave,
+}
+
+/// Pomodoro settings (persisted in `pomodoro.json`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct PomodoroSettings {
+    /// The sequence the user built, in order (1–`BLOCKS_MAX` blocks).
+    /// Owner's design, 2026-11-12 (K7): blocks are added, removed and
+    /// dragged into order; "25 / 5 klasik" is the default.
+    pub blocks: Vec<PomodoroBlock>,
+    /// How many times the sequence runs: 1–`REPEAT_MAX`, 0 until stopped.
+    pub repeat: u8,
+    /// Progress on the key lights (RAM only, no flash write).
+    pub lights: bool,
+    /// A card on the screen when a phase starts (through the live mode).
+    pub screen: bool,
+    pub motion: PomodoroMotion,
+    /// Phase colours (UI colours, sRGB).
+    pub focus_color: [u8; 3],
+    pub break_color: [u8; 3],
+    /// Light brightness in the keyboard's own steps, 1–5.
+    pub brightness: u8,
+    /// The light that is left breathes in the last minute of a phase.
+    pub pulse: bool,
+    pub transition: PomodoroTransition,
+    /// The Windows notification sound when a phase ends by itself.
+    pub sound: bool,
+    /// What the screen shows when a series ends or is stopped.
+    pub end_screen: PomodoroEndScreen,
+    /// Settings files from before the sequence (focus, short and long
+    /// break, rounds): read once, turned into `blocks` by `sanitized`,
+    /// never written.
+    #[serde(skip_serializing)]
+    #[ts(skip)]
+    pub focus_min: Option<u16>,
+    #[serde(skip_serializing)]
+    #[ts(skip)]
+    pub short_min: Option<u16>,
+    #[serde(skip_serializing)]
+    #[ts(skip)]
+    pub long_min: Option<u16>,
+    #[serde(skip_serializing)]
+    #[ts(skip)]
+    pub rounds: Option<u8>,
+    /// The old short break's colour becomes the break colour (the long
+    /// break's is dropped).
+    #[serde(skip_serializing)]
+    #[ts(skip)]
+    pub short_color: Option<[u8; 3]>,
+}
+
+/// Longest block, in minutes.
+pub const BLOCK_MAX_MIN: u16 = 180;
+/// Most blocks in a sequence.
+pub const BLOCKS_MAX: usize = 16;
+/// Most runs of the sequence (0 means until stopped).
+pub const REPEAT_MAX: u8 = 9;
+
+/// "25 / 5 klasik": three focus blocks of 25 minutes, 5-minute breaks
+/// between them, a 15-minute break at the end (the owner's choice from the
+/// preview, 2026-11-12).
+pub fn classic_blocks() -> Vec<PomodoroBlock> {
+    use PomodoroBlock as B;
+    vec![B::focus(25), B::rest(5), B::focus(25), B::rest(5), B::focus(25), B::rest(15)]
+}
+
+/// What the screen shows when a series ends or is stopped (with screen
+/// cards on). A song that plays always comes back first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum PomodoroEndScreen {
+    /// The user's own picture comes back (owner's choice, 2026-11-10).
+    #[default]
+    Back,
+    /// A summary card (rounds, minutes) stays until the next card.
+    Summary,
+}
+
+impl Default for PomodoroSettings {
+    fn default() -> Self {
+        Self {
+            blocks: classic_blocks(),
+            repeat: 1,
+            lights: true,
+            screen: true,
+            motion: PomodoroMotion::default(),
+            focus_color: [255, 80, 20],
+            break_color: [30, 220, 100],
+            brightness: 4,
+            pulse: true,
+            transition: PomodoroTransition::default(),
+            sound: false,
+            end_screen: PomodoroEndScreen::default(),
+            focus_min: None,
+            short_min: None,
+            long_min: None,
+            rounds: None,
+            short_color: None,
+        }
+    }
+}
+
+impl PomodoroSettings {
+    /// In range, and an older file's focus, breaks and rounds turned into
+    /// the sequence they made: each round a focus block, a short break
+    /// between rounds and the long break at the end.
+    pub fn sanitized(mut self) -> Self {
+        if let Some(rounds) = self.rounds.take() {
+            let focus = self.focus_min.take().unwrap_or(25);
+            let short = self.short_min.take().unwrap_or(5);
+            let long = self.long_min.take().unwrap_or(15);
+            let rounds = rounds.clamp(1, 8);
+            self.blocks = (1..=rounds)
+                .flat_map(|r| {
+                    [PomodoroBlock::focus(focus), PomodoroBlock::rest(if r == rounds { long } else { short })]
+                })
+                .collect();
+            self.repeat = 1;
+        }
+        if let Some(c) = self.short_color.take() {
+            self.break_color = c;
+        }
+        (self.focus_min, self.short_min, self.long_min) = (None, None, None);
+        self.blocks.truncate(BLOCKS_MAX);
+        for b in &mut self.blocks {
+            b.minutes = b.minutes.clamp(1, BLOCK_MAX_MIN);
+        }
+        if self.blocks.is_empty() {
+            self.blocks = classic_blocks();
+        }
+        self.repeat = self.repeat.min(REPEAT_MAX);
+        self.brightness = self.brightness.clamp(1, 5);
+        self
+    }
+
+    pub fn color(&self, phase: PomodoroPhase) -> [u8; 3] {
+        match phase {
+            PomodoroPhase::Focus => self.focus_color,
+            PomodoroPhase::Break => self.break_color,
+        }
+    }
+
+    /// Focus blocks in one run of the sequence (at least 1, for the cards).
+    pub fn focus_blocks(&self) -> u8 {
+        self.blocks.iter().filter(|b| b.phase == PomodoroPhase::Focus).count().clamp(1, 255) as u8
+    }
+
+    /// Minutes of one run of the sequence.
+    pub fn total_minutes(&self) -> u32 {
+        self.blocks.iter().map(|b| u32::from(b.minutes)).sum()
+    }
+}
+
+/// How the last series ended.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PomodoroSummary {
+    /// Focus phases finished (or skipped forward).
+    pub focus_done: u8,
+    /// Minutes actually spent in focus.
+    pub focus_min: u32,
+    /// All rounds done, the long break included.
+    pub complete: bool,
+    pub ended_ms: f64,
+}
+
+/// Pomodoro state (`pomodoro` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PomodoroState {
+    pub settings: PomodoroSettings,
+    pub status: PomodoroStatus,
+    pub phase: PomodoroPhase,
+    /// The current block in the sequence (1-based).
+    pub block: u8,
+    /// The focus block the current one is or follows (1-based, of
+    /// `settings.focus_blocks()`).
+    pub round: u8,
+    /// The run of the sequence (1-based).
+    pub cycle: u8,
+    /// Length of the current phase.
+    pub phase_ms: f64,
+    /// Time left in the phase as of `at_ms` (counts down from there while
+    /// running).
+    pub remaining_ms: f64,
+    pub at_ms: f64,
+    pub focus_done: u8,
+    /// The last series, once the timer is idle again.
+    pub last: Option<PomodoroSummary>,
+    /// "Klavyede dene" is showing a short run on the keys.
+    pub trying: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum PomodoroCardKind {
+    /// A phase started.
+    Phase,
+    /// The timer stopped: a summary that stays true afterwards.
+    Done,
+}
+
+/// A card the UI should draw and hand to the live mode
+/// (`pomodoro-card` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PomodoroCard {
+    pub kind: PomodoroCardKind,
+    pub phase: PomodoroPhase,
+    /// The focus block this one is or follows, of the focus blocks in one
+    /// run (the ring on the card).
+    pub round: u8,
+    pub rounds: u8,
+    /// The run of the sequence and how many there are (0: until stopped).
+    pub cycle: u8,
+    pub cycles: u8,
+    /// Phase length in minutes.
+    pub minutes: u16,
+    /// The block that comes next, `None` when this is the last.
+    pub next: Option<PomodoroBlock>,
+    pub focus_done: u8,
+    pub focus_min: u32,
+    /// Summary: every round was done, the long break included.
+    pub complete: bool,
+    pub ended_ms: f64,
+}
+
+// ------------------------------------------------------------ system gauges
+
+/// How a gauge bar is coloured.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum GaugeStyle {
+    /// Green, then yellow, then red towards the end of the bar: the load
+    /// reads at a glance (owner's choice, 2026-11-10).
+    #[default]
+    Heat,
+    /// Each gauge in its own colour.
+    Own,
+}
+
+/// What the keys outside the gauges show while the gauges are on. A live
+/// frame covers the whole keyboard, so the saved effect cannot show under
+/// them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum GaugeBase {
+    #[default]
+    Dark,
+    /// A faint colour (`GaugesSettings::tint`).
+    Tint,
+}
+
+/// System gauges settings (persisted in `gauges.json`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct GaugesSettings {
+    /// The gauges are on the keys (RAM only, no flash write).
+    pub enabled: bool,
+    /// Processor load on the number row (1 … 0).
+    pub cpu: bool,
+    /// Graphics load on the Q row (Q … P).
+    pub gpu: bool,
+    /// Memory in use on the home row (A … ;).
+    pub ram: bool,
+    /// The volume on the F row for a moment when it changes (the knob).
+    pub volume: bool,
+    /// A key lit red while the microphone is muted in Windows.
+    pub mic: bool,
+    /// Id of that key in the model's geometry.
+    pub mic_key: String,
+    pub style: GaugeStyle,
+    /// The empty part of a bar is faintly lit, so its length shows.
+    pub track: bool,
+    pub base: GaugeBase,
+    /// The faint colour of `GaugeBase::Tint` (UI colour, sRGB).
+    pub tint: [u8; 3],
+    /// Light brightness in the keyboard's own steps, 1–5.
+    pub brightness: u8,
+}
+
+impl Default for GaugesSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            cpu: true,
+            gpu: true,
+            ram: false,
+            volume: true,
+            mic: true,
+            mic_key: "delete".into(),
+            style: GaugeStyle::default(),
+            track: true,
+            base: GaugeBase::default(),
+            tint: [124, 92, 255],
+            brightness: 4,
+        }
+    }
+}
+
+impl GaugesSettings {
+    pub fn sanitized(self) -> Self {
+        let key_ok = !self.mic_key.is_empty()
+            && self.mic_key.len() <= 32
+            && self.mic_key.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+        Self {
+            brightness: self.brightness.clamp(1, 5),
+            mic_key: if key_ok { self.mic_key } else { Self::default().mic_key },
+            ..self
+        }
+    }
+}
+
+/// The latest readings (`None`: not read, or not there on this PC).
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GaugeReadings {
+    /// Processor load, 0–100.
+    pub cpu: Option<f32>,
+    /// Graphics load, 0–100 (the busiest card).
+    pub gpu: Option<f32>,
+    /// Memory in use, 0–100.
+    pub ram: Option<f32>,
+    /// Speaker volume, 0–100.
+    pub volume: Option<f32>,
+    pub muted: Option<bool>,
+    pub mic_muted: Option<bool>,
+}
+
+/// System gauges state (`gauges` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GaugesState {
+    pub settings: GaugesSettings,
+    pub readings: GaugeReadings,
+    /// What the gauges put on the keys now, alerts included (UI colours,
+    /// before brightness). Empty when nothing would show.
+    pub frame: Vec<LedColor>,
+    /// The volume bar shows (for a moment after a change).
+    pub volume_showing: bool,
+}
+
+// ---------------------------------------------------------------- calendar
+
+/// Where a published calendar comes from (help text and icon only).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum CalendarProvider {
+    Google,
+    Outlook,
+    Apple,
+    Other,
+}
+
+/// How long a meeting's card stays on the screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum CalendarUntil {
+    /// Until the meeting starts.
+    Start,
+    /// Until 5 minutes after it starts (owner's choice, 2026-11-11).
+    #[default]
+    Shortly,
+    /// Until it ends.
+    End,
+}
+
+/// Calendar settings (persisted in `calendar.json` with the calendars).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct CalendarSettings {
+    /// A card on the screen before a meeting (through the live mode).
+    pub screen: bool,
+    /// Minutes before the start the card comes (1–60).
+    pub lead_min: u16,
+    pub until: CalendarUntil,
+    /// A key blinks in the minute before a meeting starts (RAM only).
+    pub reminder: bool,
+    /// Id of that key in the model's geometry.
+    pub reminder_key: String,
+}
+
+impl Default for CalendarSettings {
+    fn default() -> Self {
+        Self { screen: true, lead_min: 10, until: CalendarUntil::default(), reminder: true, reminder_key: "esc".into() }
+    }
+}
+
+impl CalendarSettings {
+    pub fn sanitized(self) -> Self {
+        let key_ok = !self.reminder_key.is_empty()
+            && self.reminder_key.len() <= 32
+            && self.reminder_key.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+        Self {
+            lead_min: self.lead_min.clamp(1, 60),
+            reminder_key: if key_ok { self.reminder_key } else { Self::default().reminder_key },
+            ..self
+        }
+    }
+}
+
+/// One calendar the user added. Its address is a secret and stays in the
+/// backend; the UI only sees where it is hosted.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CalendarSourceInfo {
+    pub id: String,
+    pub name: String,
+    pub provider: CalendarProvider,
+    pub host: String,
+    pub color: [u8; 3],
+    pub enabled: bool,
+    /// Last successful read.
+    pub last_ok_ms: Option<f64>,
+    /// Why the last read failed (none when it worked).
+    pub error: Option<String>,
+    /// Events read for the next two days.
+    pub events: u32,
+}
+
+/// One meeting (or an instance of a repeating one).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CalendarEvent {
+    pub title: String,
+    pub location: String,
+    pub start_ms: f64,
+    pub end_ms: f64,
+    pub all_day: bool,
+    /// Its calendar's colour.
+    pub color: [u8; 3],
+    pub source: String,
+}
+
+/// Calendar state (`calendar` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CalendarState {
+    pub settings: CalendarSettings,
+    pub sources: Vec<CalendarSourceInfo>,
+    /// From now (running ones included) to a day ahead, at most 12.
+    pub upcoming: Vec<CalendarEvent>,
+    /// The meeting whose card time it is now.
+    pub showing: Option<CalendarEvent>,
+    /// When the next card would come.
+    pub next_card_ms: Option<f64>,
+    /// A calendar is being read now.
+    pub reading: bool,
+}
+
+/// A card the UI should draw and hand to the live mode
+/// (`calendar-card` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CalendarCard {
+    pub event: CalendarEvent,
+    /// The meeting after it the same day.
+    pub next: Option<CalendarEvent>,
+}
+
+// --------------------------------------------------------------- reminders
+
+/// The picture on a reminder's card.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ReminderIcon {
+    #[default]
+    Bell,
+    Drop,
+    Stand,
+    Eye,
+    Pill,
+}
+
+/// When a reminder goes off. Times of day are minutes after local
+/// midnight; `days`: bit 0 Monday … bit 6 Sunday.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(export)]
+pub enum ReminderWhen {
+    /// Once, at this moment (ms since the epoch).
+    Once { at: f64 },
+    /// At this time on the chosen days.
+    Daily { minute: u16, days: u8 },
+    /// Every `every` minutes from `from` to `to` on the chosen days: the
+    /// first `every` after `from`, the last at `to` at the latest. Counted
+    /// from the last time it went off (or from the user's return).
+    Every { every: u16, from: u16, to: u16, days: u8 },
+}
+
+impl Default for ReminderWhen {
+    fn default() -> Self {
+        Self::Daily { minute: 9 * 60, days: 0b001_1111 }
+    }
+}
+
+/// One reminder. The light always shows; the card and the sound are the
+/// user's choice.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct Reminder {
+    /// Empty when adding.
+    pub id: String,
+    pub title: String,
+    /// A short line under the title ("20 sn uzağa bak").
+    pub note: String,
+    pub icon: ReminderIcon,
+    pub color: [u8; 3],
+    pub when: ReminderWhen,
+    pub enabled: bool,
+    /// A card on the screen too (through the live mode).
+    pub card: bool,
+    /// The Windows notification sound.
+    pub sound: bool,
+}
+
+impl Default for Reminder {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            title: String::new(),
+            note: String::new(),
+            icon: ReminderIcon::default(),
+            color: [255, 176, 32],
+            when: ReminderWhen::default(),
+            enabled: true,
+            card: true,
+            sound: false,
+        }
+    }
+}
+
+/// Reminder settings (persisted in `reminders.json` with the reminders).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReminderSettings {
+    /// Reminders go off at all.
+    pub enabled: bool,
+    /// Cards on the screen (through the live mode).
+    pub screen: bool,
+    /// Minutes a card stays on the screen: 1, 2 or 5.
+    pub stay_min: u8,
+    /// Repeating reminders wait while nobody is at the computer and count
+    /// again from the return (owner's choice, 2026-11-11).
+    pub away_wait: bool,
+    /// A Windows notification each time, too. Without the keyboard on the
+    /// USB cable reminders always come as a notification, since the keys
+    /// cannot light up.
+    pub notify: bool,
+}
+
+impl Default for ReminderSettings {
+    fn default() -> Self {
+        Self { enabled: true, screen: true, stay_min: 2, away_wait: true, notify: false }
+    }
+}
+
+impl ReminderSettings {
+    pub fn sanitized(self) -> Self {
+        Self { stay_min: if [1, 2, 5].contains(&self.stay_min) { self.stay_min } else { 2 }, ..self }
+    }
+}
+
+/// A reminder and when it goes off next.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReminderInfo {
+    pub reminder: Reminder,
+    /// `None`: off, or a one-time reminder that has gone by.
+    pub next_ms: Option<f64>,
+}
+
+/// Reminder state (`reminders` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReminderState {
+    pub settings: ReminderSettings,
+    pub reminders: Vec<ReminderInfo>,
+    /// The reminder whose card holds the screen now, and until when.
+    pub showing: Option<String>,
+    pub showing_until_ms: Option<f64>,
+    /// Nobody has touched the computer for a while: repeating reminders wait.
+    pub away: bool,
+    /// The last reminder whose card could not go on the screen, and why;
+    /// cleared when a reminder's card shows (K5).
+    pub card_skip: Option<CardSkip>,
+}
+
+/// Why a reminder's card did not go on the screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum CardSkipReason {
+    /// "Show cards on the screen" is off on the Reminders page.
+    CardsOff,
+    /// The live screen is off.
+    LiveOff,
+    /// The keyboard is not on the USB cable.
+    NoCable,
+    /// A meeting's card holds the screen.
+    Meeting,
+    /// No upload left in the budget.
+    Budget,
+}
+
+/// A reminder's card that did not go on the screen.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CardSkip {
+    pub id: String,
+    pub reason: CardSkipReason,
+    /// When the reminder went off.
+    pub at_ms: f64,
+}
+
+/// A card the UI should draw and hand to the live mode
+/// (`reminder-card` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReminderCard {
+    pub reminder: Reminder,
+    /// When it went off (the time on the card).
+    pub at_ms: f64,
+    /// When it goes off next, if it repeats.
+    pub next_ms: Option<f64>,
+}
+
+/// Updates (updates.rs): what the app knows about a newer version.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct UpdateState {
+    /// The version running now ("0.1.0").
+    pub current: String,
+    /// Look on GitHub once a day when the app starts.
+    pub auto_check: bool,
+    /// When GitHub was last asked (ms since the epoch).
+    pub last_check_ms: Option<f64>,
+    pub status: UpdateStatus,
+}
+
+/// Where an update stands.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(export)]
+pub enum UpdateStatus {
+    /// Not asked in this run.
+    Idle,
+    Checking,
+    UpToDate,
+    /// A newer version is on GitHub. `notes`: the release notes as the
+    /// release pipeline wrote them (a JSON object with "en" and maybe "tr").
+    #[serde(rename_all = "camelCase")]
+    Available {
+        version: String,
+        notes: Option<String>,
+        date_ms: Option<f64>,
+    },
+    /// Bytes so far; `total` when the server said.
+    Downloading {
+        version: String,
+        done: f64,
+        total: Option<f64>,
+    },
+    /// The installer starts; the app closes and opens again when it is done.
+    Installing {
+        version: String,
+    },
+    Failed {
+        reason: UpdateFailure,
+    },
+}
+
+/// Why asking or installing did not work, in words the UI can say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum UpdateFailure {
+    /// No connection to GitHub.
+    Offline,
+    /// GitHub has no release yet.
+    NoRelease,
+    /// The download did not match the signature: not installed.
+    Signature,
+    /// A write to the keyboard did not finish in time.
+    KeyboardBusy,
+    Other,
 }

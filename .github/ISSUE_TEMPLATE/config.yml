@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: User guide
+    url: https://cebersaban44-rgb.github.io/keymotion/
+    about: How every page of the app works, and what to do if something goes wrong. / Kullanım kılavuzu.
+  - name: Questions and help
+    url: https://github.com/cebersaban44-rgb/keymotion/discussions/categories/q-a
+    about: Ask how something works or get help with a setup. / Sorular ve yardım.
+  - name: Security problem
+    url: https://github.com/cebersaban44-rgb/keymotion/security/advisories/new
+    about: Please report security problems privately, not as a public issue. / Güvenlik sorunlarını gizli bildirin.

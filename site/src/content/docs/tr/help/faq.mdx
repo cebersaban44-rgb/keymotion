@@ -1,0 +1,103 @@
+---
+title: Sık sorulanlar
+description: Windows uyarısı, AJAZZ'ın kendi yazılımı, ekrana GIF koyma, Bluetooth ve 2.4 GHz alıcı, klavyenin güvenliği, verileriniz, AK980 V2, başka klavyeler ve sorun bildirme üzerine kısa yanıtlar.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+En çok sorulan soruların kısa yanıtları. Adım adım çözümler [Bir şey ters giderse](/keymotion/tr/help/recovery/) sayfasında.
+
+## Keymotion'ı kurarken Windows neden uyarı veriyor?
+
+Keymotion 0.1.0 henüz kod imzalı değil. Bu yüzden Windows kurulum dosyasını "Windows bilgisayarınızı korudu" uyarısıyla durdurabilir. Kurulum dosyasını yalnızca projenin [GitHub'daki sürüm sayfasından](https://github.com/cebersaban44-rgb/keymotion/releases) indirin. Ardından **Ek bilgi**'ye, sonra **Yine de çalıştır**'a tıklayın.
+
+Proje ücretsiz kod imzalama için başvuruyor. Ayrıntılar [Kod imzalama politikası](/keymotion/tr/about/code-signing/) ve [Keymotion'ı kurma](/keymotion/tr/guide/install/) sayfalarında.
+
+## AJAZZ'ın resmi yazılımı açıkken çalışır mı?
+
+AJAZZ'ın yazılımını kaldırmanız gerekmez. Ama sürücüsü açıkken Keymotion klavyeye hiçbir şey kaydetmez ve "AJAZZ sürücüsü açık. Klavyeye kaydetmeden önce onu kapatın." der. SignalRGB ve OpenRGB için de aynısı geçerlidir.
+
+Klavye aynı anda tek bir programın komutlarını izler; iki programın komutları karışabilir. Öbür programı kapatıp yeniden kaydedin.
+
+Sürücünün kurulu olması bir açıdan da işe yarar: Keymotion klavyenin fabrika ekran animasyonunu ondan kopyalayabilir. Bkz. [Bir şey ters giderse](/keymotion/tr/help/recovery/#fabrika-ekran-animasyonunu-geri-getirme).
+
+## Keymotion için AJAZZ'ın yazılımı gerekir mi?
+
+Hayır. Keymotion klavyeyle USB kablosu üzerinden kendisi konuşur ve her şeyi kendi başına yapar: ışıklar, tuş atama, makrolar ve ekran. AJAZZ'ın yazılımını kaldırabilirsiniz.
+
+Kurulu kalmasının tek bir faydası var: klavyenin fabrika ekran animasyonunu bir gün geri isterseniz Keymotion onu oradan kopyalayabilir. Bkz. [Bir şey ters giderse](/keymotion/tr/help/recovery/#fabrika-ekran-animasyonunu-geri-getirme).
+
+## AK980 PRO'nun ekranına GIF ya da kendi görselimi nasıl koyarım?
+
+1. USB kablosunu takın ve klavyenin arkasındaki anahtarı ortaya alın.
+2. Keymotion'da **Ekran** sayfasını açın ve **Görsel ya da video**'yu seçin.
+3. Bir PNG, JPEG, GIF, WebP, APNG, MP4 ya da WebM dosyası seçin, yerleştirin ve istediğiniz bölümü belirleyin.
+4. **Önizle**'ye, ardından **Klavyeye yükle**'ye tıklayın.
+
+Durağan bir görsel birkaç saniyede yüklenir. Ekran en çok 140 kare alır ve 140 karelik bir animasyonun yüklenmesi yaklaşık beş buçuk dakika sürer. Klavyede **Fn+Home**, saat ile sizin görseliniz arasında geçiş yapar. Yazı kartları ve slayt gösterileri de hazırlayabilirsiniz: bkz. [Ekran](/keymotion/tr/guide/screen/).
+
+## Bluetooth'ta neden ayar yapamıyorum?
+
+Klavye Bluetooth'ta yazmayı ve pil düzeyini sunar, ama ayarlarını değiştirmenin bir yolunu sunmaz. Bu yüzden Keymotion orada yalnızca pil düzeyini okur. Ayarları değiştirmek için USB kablosunu takın ve arkadaki anahtarı ortaya alın.
+
+USB kablosunda ise tersi geçerlidir: klavye pil düzeyini bildirmez. Keymotion son Bluetooth okumasını ve ne kadar önce okunduğunu gösterir.
+
+## 2.4 GHz alıcıyla ne olur?
+
+Klavye alıcıyla normal çalışır ve Keymotion onu tanır, ama alıcı üzerinden henüz ayar yapılamaz. Ayarları değiştirmek için USB kablosunu kullanın. Her bağlantıda nelerin çalıştığı [Bağlantı](/keymotion/tr/guide/connection/) sayfasında.
+
+## Keymotion klavyeme zarar verebilir mi?
+
+Keymotion klavyeye özenle davranacak biçimde yapıldı:
+
+- Yalnızca bu klavyede denenmiş komutları gönderir. Başka her komut bilgisayarınızdan çıkmadan engellenir; klavye yazılımını güncellemeye başlatacak komutlar da bunlara dahildir. Keymotion klavyenin yazılımını hiçbir zaman güncellemez, Bluetooth'ta ise klavyeye hiçbir şey yazmaz.
+- Ayarlarınız klavyenin kalıcı belleğine yalnızca siz kaydettiğinizde ya da yüklediğinizde gider, örneğin **Klavyeye kaydet** ile. Önizlemeler kaydedilmez.
+- Kaydetmeden önce denetler. Klavyenizin yazılım sürümü Keymotion'la denenmemişse önce size sorar. Klavye yazılımını tanımazsa hiçbir şey göndermez. Klavyeyi başka bir program kullanıyorsa ya da USB'ye birden fazla klavye bağlıysa kaydetmez.
+- Kayıt sürerken Keymotion'ı kapatırsanız kaydın bitmesini bekler, sonra kapanır. Windows'u kapatırsanız Windows, Keymotion'ın klavyeye kayıt yaptığını gösterir.
+
+Ekranın belleği her yüklemeyle biraz yıpranır. Ömrü kesin bilinmiyor; bu tür belleklerin bilinen ömrüne göre günde birkaç yükleme yıllarca sorun çıkarmaz. Canlı ekranın günlük yükleme sınırı bu yüzden vardır.
+
+<Aside type="caution" title="Sorumluluk sizde">
+Bir aygıtın kalıcı belleğine yazmak onu her zaman istenmeyen bir durumda bırakabilir ve Keymotion hiçbir güvence olmadan sunulur. Çoğu değişiklik geri alınabilir: bkz. [Bir şey ters giderse](/keymotion/tr/help/recovery/).
+</Aside>
+
+## Keymotion'ı açık tutmam gerekir mi?
+
+Kaydettikleriniz için gerekmez. Işıklar, tuş atamaları, makrolar ve ekrandaki görsel klavyenin kendisinde saklanır.
+
+Odak zamanlayıcısı, hatırlatıcılar, takvim kartları, canlı ekran ve sistem göstergeleri için Keymotion'ın çalışıyor olması gerekir. Penceresini kapattığınızda Keymotion saatin yanındaki simgesiyle çalışmaya devam eder. Bunu **Ayarlar**'da, **Kapatma ve açılış** bölümünde değiştirebilirsiniz. Bkz. [Ayarlar](/keymotion/tr/guide/settings/).
+
+## Ayarlarım nerede saklanıyor?
+
+Bilgisayarınızda, Windows kullanıcı klasörünüzde:
+
+- ayarlar ve kayıtlar `%APPDATA%\dev.keymotion\` klasöründe;
+- günlük dosyaları `%LOCALAPPDATA%\dev.keymotion\logs\` klasöründe.
+
+**Ayarlar**'da, **Hakkında** bölümündeki **Veri klasörü** ve **Günlük dosyaları** bu klasörleri açar. Klavye tuş atamasını ve makroları geri okutmadığı için Keymotion'daki kayıtları tek kopyadır. Bir kopyasını almak için **Ayarlar**'ı açıp **Yedekleme** bölümünde **Dışa aktar**'a tıklayın: her şey tek bir dosyaya kaydedilir. Tam liste [Gizlilik politikası](/keymotion/tr/about/privacy/#verileriniz-nerede-durur) sayfasında.
+
+## Keymotion bir yere bilgi gönderiyor mu?
+
+Hayır. Kullanım bilgisi toplamaz, hesap istemez, sizinle ya da bilgisayarınızla ilgili hiçbir şey göndermez. İnternete yalnızca eklediğiniz takvimleri okumak ve GitHub'da yeni sürüm olup olmadığına bakmak için bağlanır. Sorun bildirimleri GitHub'a yalnızca siz gönderdiğinizde gider. Ayrıntılar [Gizlilik politikası](/keymotion/tr/about/privacy/) sayfasında.
+
+## Başka klavyelerle çalışır mı?
+
+Henüz çalışmaz. Keymotion AJAZZ AK980 PRO'yu destekler. Henüz desteklenmeyen bir SONiX ya da AJAZZ klavye takarsanız Keymotion bunu söyler, klavyeye hiçbir şey göndermez ve GitHub'da destek istemeniz için **Destek iste**'yi sunar. Bkz. [Desteklenen klavyeler](/keymotion/tr/help/keyboards/).
+
+## AJAZZ AK980 V2'de çalışır mı?
+
+Bazı satıcılar aynı klavyeyi **AJAZZ AK980 V2** adıyla satıyor. AK980 PRO ile aynı USB kimliğini bildirdiği için Keymotion onu AK980 PRO olarak tanır. Ayrıca denemedik: sizde varsa lütfen [nasıl çalıştığını bize yazın](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK980+V2&model=AJAZZ+AK980+V2). Bkz. [Desteklenen klavyeler](/keymotion/tr/help/keyboards/).
+
+## Keymotion'ı AJAZZ mı yaptı?
+
+Hayır. Keymotion bağımsız bir projedir. AJAZZ'la, klavyenin denetim yongasını üretenle ya da klavyenin resmi yazılımını yazanlarla bir bağı yoktur; onlar tarafından onaylanmaz, desteklenmez. AJAZZ adı yalnızca Keymotion'ın hangi klavyeyle çalıştığını söylemek için geçer.
+
+## Ücretsiz mi?
+
+Evet. Keymotion ücretsiz ve açık kaynaklıdır; MIT ya da Apache 2.0 lisansından birini seçerek kullanabilirsiniz. Hesap açmanız ya da bir şey satın almanız gerekmez. Kaynak kodu [GitHub'da](https://github.com/cebersaban44-rgb/keymotion).
+
+## Bir sorunu nasıl bildiririm?
+
+**Ayarlar**'ı açın. **Hakkında** bölümünde, **Geri bildirim** satırında **Sorun bildir**'e tıklayın. Açılan pencere eklenecek bilgileri gösterir. **GitHub'da bildir** bunları kopyalar ve projenin GitHub'daki formunu açar; bilgileri oraya yapıştırıp gönderirsiniz. Bunun için bir GitHub hesabı gerekir. Siz göndermeden hiçbir şey gitmez.
+
+Sorularınız için [Sorular ve yardım](https://github.com/cebersaban44-rgb/keymotion/discussions/categories/q-a) bölümünü kullanın. Güvenlik sorunlarını lütfen [gizli bildirim formuyla](https://github.com/cebersaban44-rgb/keymotion/security/advisories/new) bildirin.
