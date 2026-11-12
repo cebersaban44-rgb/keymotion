@@ -1,6 +1,7 @@
 import { Clock3, Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ClockStatus } from "../bindings/ClockStatus";
+import { follow } from "../lib/follow";
 import { getClockStatus, onClockChanged, setClockAuto, syncClock } from "../lib/ipc";
 import { useAgo, useT } from "../lib/i18n";
 import { useApp } from "../lib/store";
@@ -24,16 +25,10 @@ export function ClockCard({ usb }: { usb: boolean }) {
   const [, tick] = useState(0);
 
   useEffect(() => {
-    let alive = true;
-    let off: (() => void) | undefined;
-    getClockStatus()
-      .then((s) => alive && setStatus(s))
-      .catch(console.error);
-    onClockChanged((s) => alive && setStatus(s)).then((u) => (off = u));
+    const off = follow(getClockStatus, onClockChanged, setStatus);
     const timer = window.setInterval(() => tick((n) => n + 1), 30_000);
     return () => {
-      alive = false;
-      off?.();
+      off();
       window.clearInterval(timer);
     };
   }, []);
