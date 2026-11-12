@@ -65,11 +65,11 @@ Klavyenin kalıcı belleğine yazan komutlar `--yes` olmadan çalışmaz. `kb` k
 
 | Dal | İçeriği |
 |---|---|
-| `main` | Yayımlanmış kod. `main`'e yapılan her birleştirme bir sürümdür ve `vX.Y.Z` etiketi alır. |
-| `develop` | İşlerin toplandığı yer; GitHub'daki varsayılan dal. Her zaman derlenir ve testlerini geçer. |
+| `main` | Yayımlanmış kod; GitHub'daki varsayılan dal. `main`'e yapılan her birleştirme bir sürümdür ve `vX.Y.Z` etiketi alır. |
+| `develop` | İşlerin toplandığı yer. Her zaman derlenir ve testlerini geçer. |
 
 - `develop`'tan kısa ömürlü bir dal açın. Dal adları küçük harfli, İngilizce ve tireyle yazılır: `feature/keymap-editor`, `fix/mirror-gamma`, `docs/…`, `chore/…`.
-- PR'ı **`develop`** dalına açın ve tek bir değişiklikle sınırlı tutun. CI yeşil olunca PR tek commit'e indirilerek (squash) birleştirilir.
+- PR'ı **`develop`** dalına açın: GitHub varsayılan dal olan `main`'i önerir, hedef dalı değiştirin. PR'ı tek bir değişiklikle sınırlı tutun. CI yeşil olunca PR tek commit'e indirilerek (squash) birleştirilir.
 - Açıklamada neyin değiştiğini, nedenini ve nasıl denediğinizi yazın.
 - Değişiklik kullanıcıya görünüyorsa `CHANGELOG.md`'de **Unreleased** başlığının altına bir satır ekleyin ve `site/` altındaki kullanıcı kılavuzunu Türkçe ve İngilizce güncelleyin.
 - Değişiklik davranışı etkiliyorsa onu yalnızca testlerde değil, çalışan uygulamada da deneyin.
