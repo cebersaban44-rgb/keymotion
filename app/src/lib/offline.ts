@@ -31,7 +31,7 @@ export const OFFLINE_KEYBOARD: KeyboardInfo = {
   keyCount: 97,
   hasKnob: true,
   hasSideLight: true,
-  screen: { width: 240, height: 135, verified: false },
+  screen: { width: 240, height: 135, verified: true },
   connection: "usb",
   product: null,
   firmware: null,

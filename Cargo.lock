@@ -2097,6 +2097,7 @@ dependencies = [
  "kb-devices",
  "kb-protocol",
  "kb-transport",
+ "kb-winsys",
  "tracing-subscriber",
 ]
 

@@ -94,7 +94,7 @@ Uygulamanın kullandığı ve izin listesinde olan işlem kodları bunlardır. H
 | Canlı kare (yalnızca RAM) | `04 20` (8) → 8 paket → `04 02` | saniyede 29,5 kare |
 | Renk geri okuma | `04 F5` (9) → 9 okuma → `04 02` | uygulama her 250 ms'de bir okur |
 
-`04 17` (uyku ve Windows tuşu kilidi gibi klavye seçenekleri) de izin listesindedir; ama ne uygulama ne de `kb` onu gönderir ve ölçülmemiştir.
+`04 17` (uyku ve Windows tuşu kilidi gibi klavye seçenekleri) izin listesinde değildir: kalıcı belleğe yazar ve ölçülmemiştir. Ölçüldüğünde, onu kuran kodla birlikte listeye eklenir.
 
 `kb-core`, ayar paketlerinin önünde ve arkasında sabit bir bekleme yapar (`crates/kb-core/src/sonix.rs` içindeki `CMD_DELAY`). Ölçüldü: son geri okuma paketinin hemen ardından gönderilen `04 02` işlenmiyor, oturum açık kalıyor ve bir sonraki geri okuma başarısız oluyor.
 

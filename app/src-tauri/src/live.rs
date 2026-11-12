@@ -831,6 +831,7 @@ fn snapshot(lib: &mut ScreenLibrary, rt: &Runtime) -> LiveState {
         } else {
             lib.live_restore_target()
         },
+        showing: lib.live_showing(),
         held: !rt.holders.is_empty(),
         holders: rt.holders.clone(),
         song_stop: live.song_stop,

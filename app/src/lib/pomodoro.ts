@@ -100,6 +100,12 @@ export function fmtClock(ms: number) {
 /** Browser preview without Tauri: the same timer in memory. With
  *  `pomofast` in the address a minute lasts two seconds. */
 const MINUTE = import.meta.env.DEV && typeof location !== "undefined" && location.search.includes("pomofast") ? 2_000 : 60_000;
+/** `pomoskip=7`: the first block starts 7 minutes in, so a screenshot shows
+ *  a timer partly run, at normal speed and with a real time on the ring. */
+const SKIP_MS =
+  import.meta.env.DEV && typeof location !== "undefined"
+    ? Math.max(0, Number(new URLSearchParams(location.search).get("pomoskip") ?? 0) || 0) * MINUTE
+    : 0;
 
 const mock = {
   settings: { ...DEFAULT_SETTINGS },
@@ -168,7 +174,8 @@ function mockBegin(block: number) {
   const phase = s.blocks[mock.block]?.phase ?? "focus";
   mock.phase = phase;
   mock.phaseMs = minutesAt(s, mock.block) * MINUTE;
-  mock.anchor = Date.now();
+  const first = mock.block === 0 && mock.cycle === 1 && mock.focusDone === 0;
+  mock.anchor = Date.now() - (first ? Math.min(SKIP_MS, mock.phaseMs - MINUTE) : 0);
   mock.status = "running";
   if (mockCardsWanted()) {
     const card: PomodoroCard = {

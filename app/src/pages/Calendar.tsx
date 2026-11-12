@@ -17,7 +17,7 @@ export function Calendar() {
   const live = useLive((x) => x.state);
   const openScreen = useApp((s) => s.openScreen);
   if (!c) return null;
-  const key = live ? calendarStatus(live, c, !!live.restore && live.last?.source === CALENDAR_SOURCE) : null;
+  const key = live ? calendarStatus(live, c, live.showing === CALENDAR_SOURCE) : null;
   const status = key ? (key === "calendar.st.next" && c.nextCardMs != null ? t(key, { time: hhmm(c.nextCardMs) }) : t(key)) : null;
 
   return (

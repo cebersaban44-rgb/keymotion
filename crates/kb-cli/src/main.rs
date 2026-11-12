@@ -4,6 +4,13 @@
 //! `direction-probe` write the keyboard's flash, and all need `--yes`. `live` and `live-probe` stream RAM-only real-time LED frames;
 //! `clock` sets the keyboard clock; everything else only reads. Flash-writing commands are added only after
 //! they are verified on the hardware.
+//!
+//! Like the app, every packet passes `kb_protocol::sonix::guard`, a channel
+//! is used only when its report layout is the "04 xx" family's, and nothing
+//! is sent while another program talks to the keyboard (the app itself
+//! included). Unlike the app, it does not ask about firmware versions the
+//! model file has not listed: measuring a new firmware is what it is for,
+//! and `--yes` is the confirmation for flash writes.
 
 mod motion;
 mod png;
@@ -515,14 +522,36 @@ fn keymap_targets() {
     println!("Diğer: default (firmware varsayılanı), off (devre dışı)");
 }
 
+/// Refuse to talk to the keyboard while another program does: the ones the
+/// app watches for (kb_core::conflicts) and the app itself. Two programs'
+/// packets mix in one session, and a broken flash write does not recover.
+fn ensure_alone() -> Result<()> {
+    let programs = kb_winsys::running_programs();
+    let own = std::process::id();
+    let running = programs.iter().map(|p| (p.pid, p.name.as_str(), p.path.as_deref()));
+    if let Some(c) = kb_core::conflicts::find_conflict(running, own) {
+        anyhow::bail!("Klavyeyi başka bir program kullanıyor ({}). Önce onu kapatın.", c.id());
+    }
+    if programs.iter().any(|p| p.pid != own && p.name.eq_ignore_ascii_case("keymotion.exe")) {
+        anyhow::bail!("Keymotion açık. Önce ondan çıkın (saatin yanındaki simge › Çık).");
+    }
+    Ok(())
+}
+
 /// Open the wired command channel of the first supported keyboard.
 fn open_command() -> Result<(kb_core::sonix::SonixFf13<kb_transport::hid::HidChannel>, &'static kb_devices::Model)> {
+    ensure_alone()?;
     let models = catalogue().map_err(|e| anyhow::anyhow!("{e}"))?;
     let hid = Hid::new()?;
     for iface in hid.interfaces() {
         let Some(m) = match_interface(models, &probe(&iface)) else { continue };
         if m.role == InterfaceRole::Command && m.mode.kind == kb_devices::ConnectionKind::Usb {
             let ch = hid.open(&iface).context("komut kanalı açılamadı")?;
+            let desc = ch.report_descriptor().context("komut kanalının tanımlayıcısı okunamadı")?;
+            anyhow::ensure!(
+                kb_core::shape::is_command_shape(&desc),
+                "komut kanalının rapor düzeni beklenen \"04 xx\" ailesinin değil; hiçbir şey gönderilmedi"
+            );
             return Ok((kb_core::sonix::SonixFf13::new(ch), m.model));
         }
     }
@@ -531,13 +560,20 @@ fn open_command() -> Result<(kb_core::sonix::SonixFf13<kb_transport::hid::HidCha
 
 /// Open the wired display channel (FF68) of the first supported keyboard.
 fn open_display() -> Result<kb_transport::hid::HidChannel> {
+    ensure_alone()?;
     let models = catalogue().map_err(|e| anyhow::anyhow!("{e}"))?;
     let hid = Hid::new()?;
     for iface in hid.interfaces() {
         let Some(m) = match_interface(models, &probe(&iface)) else { continue };
         if m.role == InterfaceRole::Display && m.mode.kind == kb_devices::ConnectionKind::Usb {
             anyhow::ensure!(iface.usage_page == hid::DISPLAY_USAGE_PAGE, "ekran kanalı beklenmeyen usage page");
-            return hid.open(&iface).context("ekran kanalı açılamadı");
+            let ch = hid.open(&iface).context("ekran kanalı açılamadı")?;
+            let desc = ch.report_descriptor().context("ekran kanalının tanımlayıcısı okunamadı")?;
+            anyhow::ensure!(
+                kb_core::shape::is_display_shape(&desc),
+                "ekran kanalının rapor düzeni beklenen gibi değil; hiçbir şey gönderilmedi"
+            );
+            return Ok(ch);
         }
     }
     anyhow::bail!("USB modunda ekran kanalı yok. Kablo takılı ve arkadaki anahtar ortada (USB) olmalı.")

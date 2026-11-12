@@ -40,6 +40,7 @@ const mock = {
     nowPlaying: true,
     track: null,
     restore: null,
+    showing: null,
     held: false,
     holders: [],
     songStop: "back",
@@ -71,6 +72,7 @@ function mockEmit() {
   const shown = mockShown();
   mock.state.own = shown === "live" ? mock.before : shown;
   mock.state.restore = shown === "live" && !mock.state.uploading ? mock.before : null;
+  mock.state.showing = shown === "live" ? (mock.state.last?.source ?? null) : null;
   mock.state.factoryAckNeeded = !mock.factoryAck && mockFactoryAtRisk();
   mock.emit?.({ ...mock.state });
 }

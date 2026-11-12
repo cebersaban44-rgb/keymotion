@@ -9,13 +9,17 @@ protocol = "sonix-ff13"
 layout = "98"
 key_count = 97
 has_knob = true
+# From the product listing, not measured: whether there is a side strip or
+# only the logo light (Fn+Z) is still open, and nothing in the app drives it.
 has_side_light = true
 
+# Verified 2026-11-10 on fw 0x0106: 240×135 uploads over FF68 (04 72), shown
+# on the GIF page in the right colors, RGB565 little-endian.
 [screen]
 width = 240
 height = 135
 pixel_format = "rgb565-le"
-verified = false
+verified = true
 
 # Verified 2026-11-10 on fw 0x0106: IDs, product "AK980 PRO", FF13/FF68
 # interfaces, F5 read-back and the 04 20 real-time stream (docs site: developers/protocol).
