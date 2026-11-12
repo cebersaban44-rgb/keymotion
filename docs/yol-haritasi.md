@@ -1,6 +1,6 @@
 # Keymotion yol haritası: ilk sürüme kadar
 
-Durum: 2026-11-12. Kaynaklar: kullanıcının kararları, `docs/DURUM.md` madde 38, `docs/urun-eksikleri.md`.
+Durum: 2026-11-12 (gece sonu: Aşama 0–3 bitti; sıradaki 4 ya da 1b, kullanıcı seçecek). Kaynaklar: kullanıcının kararları, `docs/DURUM.md` madde 38, `docs/urun-eksikleri.md`.
 
 Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve kararları da burada. Bir aşama bitince "Durum" sütununu ve DURUM'daki "Kalınan yer" satırını güncelle.
 
@@ -25,7 +25,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 | 1 | Rust paket ve exe adı `keymotion` | 0 | Onay (öneri: evet) | Bitti (PR #60) |
 | 1b | Kod imzalama başvurusu (SignPath Foundation) | — | Başvuruyu kullanıcı yapar | Başlatılacak |
 | 2 | Tepsi ve arka plan | 1 | Karar verildi: tepsi | Bitti (PR #61): kullanıcı 1–8, ben 9–13 denedik |
-| 3 | Keymotion açılış animasyonu | — (2 ile paralel olabilir) | Önizlemeye onay | Bekliyor |
+| 3 | Keymotion açılış animasyonu | — (2 ile paralel olabilir) | Önizlemeye onay | Bitti (PR #62; kullanıcı A'yı, yazılı seçti) |
 | 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bekliyor |
 | 5 | Kurulum dosyası (NSIS) ve imza | 1, 2, 1b | Kurulum ayrıntılarına onay | Bekliyor |
 | 6 | Sürüm hattı ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Bekliyor |
@@ -246,6 +246,27 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
   3. kütüphaneye yerleşik "Keymotion" öğesi olarak eklenmesi;
   4. fabrika yedeği yoksa "Fabrika animasyonunun yedeği yok" uyarısında öneri olarak sunulması.
 - **Ne zaman:** Aşama 2 ile paralel yürüyebilir (ayrı yardımcı). Ekran görüntülerinden (Aşama 7) önce bitmeli.
+
+### Yapılan (2026-11-12)
+
+- **Önizleme ve seçim:** sohbette iki seçenek gösterildi: A "Çizerek" ve B "Işık süpürmesi", ikisi de yazılı ya da yazısız. Gerçek kare sayısı ve yükleme süresi önizlemedeydi. **Kullanıcı A'yı, "keymotion" yazısıyla seçti.**
+- **Animasyon** (`app/src/lib/bootAnimation.ts`):
+  - sıra: dikey çizgi iner, üst kol uzar, turuncu bacak çizilir, turuncu çizgi parlar, "keymotion" soldan açılır ("key" krem, "motion" turuncu, uygulamanın Bricolage yazı tipi), 2 sn bekler, söner;
+  - 37 kare, döngü 3,7 sn, yükleme yaklaşık 1 dk 25 sn (586 sayfa);
+  - düz renkler, titreşimsiz (dither yok) RGB565.
+  - Az kare bilinçli: her kare yaklaşık 2,3 sn yükleme ve flash aşınması demek. Uzun duruşlar aynı karenin uzun gecikmesiyle yapılıyor (en çok 508 ms).
+- **Kütüphane:** yeni öğe türü `keymotion` (yerleşik).
+  - Kütüphanede tek; silinemez, yeniden adlandırılamaz.
+  - Sırada fabrika yedeğinden sonra gelir.
+  - Adı arayüzde çevrilir: "Keymotion animasyonu" / "Keymotion animation". Etiketi "Uygulamayla gelir".
+  - Arayüz kütüphaneyi ilk yüklediğinde öğe yoksa kareleri çizip ekler. Klavyeye hiçbir şey yazılmaz; yüklemek kullanıcının işi ve yine onay ister.
+  - Aynı resim sıradan bir öğe olarak kayıtlıysa yerleşik öğeye dönüşür.
+  - Yedeğe girmez (uygulama zaten çizer). Yedekten ya da başka bilgisayardan gelen profil, buradaki öğeyi kullanır.
+- **Öneri:** "Fabrika animasyonunun yedeği yok" uyarısının altında "Onun yerine Keymotion animasyonunu koyabilirsiniz; kütüphanede hazır." ve "Kütüphanede göster" bağlantısı var. Bağlantı öğeyi gösterip "Yükle" düğmesine odaklanıyor.
+- **Denemeler:**
+  - gerçek uygulamada öğe ekleniyor, kareler doğru (altı karenin görüntüsüne bakıldı), düğmeler doğru;
+  - öneri tarayıcı önizlemesinde (fabrika yedeği yok) çalışıyor;
+  - Rust testi: tek öğe, silinemez, adı değişmez, sıradan kopya dönüşür.
 
 ## Aşama 4: sorun bildirme ve GitHub sorun formları
 

@@ -828,6 +828,18 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
         - Arka plan bildiriminin başlığı "Arka planda çalışmaya devam ediyor" oldu.
         - Bildirimlerin tam listesi ve kullanıcıya sorulan karar: `docs/yol-haritasi.md` Aşama 2 "Bildirimler".
 
+40. **Aşama 3: Keymotion animasyonu ve sade ayar metinleri (2026-11-12, gece).**
+    - **Animasyon:** kullanıcı önizlemeden A'yı ("Çizerek", "keymotion" yazısıyla) seçti. Kütüphanede yerleşik `keymotion` türü; ayrıntı `docs/yol-haritasi.md` Aşama 3.
+      - Kodda: `bootAnimation.ts`, `screen.ts` `addKeymotion`, `ScreenItemKind::Keymotion` (`built_in()`), yedek dışı.
+    - **Sade metinler (kullanıcının isteği):** "Kullanıcı tepsi mepsi anlamaz."
+      - Ayarlar'daki kart "Kapatma ve açılış" oldu.
+      - "Pencereyi kapatınca çalışmaya devam et": simgenin yeri, saatin yanındaki ^ oku ve Çık anlatılıyor.
+      - "Bilgisayar açılınca Keymotion'ı başlat".
+      - "Görev Yöneticisi" yerine "Windows'un başlangıç ayarları".
+      - "Windows 11 Mica" yerine "Yarı saydam".
+      - İngilizceleri aynı sadelikte. Kural hafızada: arayüz metinleri teknik olmayan dille.
+    - **Ders 59:** açık uygulama, düzenlenen arayüzü Vite'tan anında aldı; yeni arayüz eski arka uca bilmediği öğe türünü gönderdi ve öğe sıradan animasyon olarak kaydoldu. Düzeltme: aynı resim sıradan öğe olarak duruyorsa yerleşik öğeye dönüşüyor.
+
 ## 4. Sistem nasıl kurulu (as-built)
 
 ```
@@ -1026,6 +1038,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 56 | Tepsiden sonra `close-keymotion.ps1` uygulamayı kapatmıyor (2026-11-12) | Pencerenin X'i (WM_CLOSE) artık pencereyi gizliyor; uygulama tepside kalıyor | Denemede uygulamayı kapatmak için CDP ile `window.__TAURI_INTERNALS__.invoke('close_window')` (pencereyi yok eder, uygulama çıkar). WM_CLOSE gizlemeyi denemek içindir. Tepsi menüsünü otomatik denemek fareyi oynatıyor: kullanıcı ekrandayken yapma, senaryoyu ona ver. Hata ayıklama portuyla açılan kopyayı işin sonunda kapat, uygulamayı portsuz yeniden aç. |
 | 57 | Kullanıcı "ikinci açılış İngilizce ve tepsi simgesiz" dedi (2026-11-12) | Günlükte o saatte açılış yoktu. Açılan, Claude uygulamasının önizleme panelindeki tarayıcı kopyasıydı: `localStorage` boş olduğu için İngilizce, arka ucu olmadığı için tepsisi yok | Böyle bir gözlemde önce günlükte `app started` satırına ve `Get-Process keymotion`'a bak. Kullanıcıya uygulamayı `target\debug\keymotion.exe` ile açmasını söyle; önizleme paneli yalnızca tasarım içindir. |
 | 58 | Geliştirme sürümünün bildirimleri "Windows PowerShell" adı ve simgesiyle çıktı (2026-11-12) | Bildirim, uygulama kimliğinin adını gösterir. Kısayolu olmayan geliştirme sürümü PowerShell'in kimliğini ödünç alıyordu | Uygulama açılışta kendi kimliğini `HKCU\Software\Classes\AppUserModelId\<kimlik>` altına `DisplayName` ve `IconUri` ile kaydediyor; kısayol gerekmez. Doğrulama: `ToastNotificationManager.History.GetHistory('dev.keymotion')`. Kaldırıcı bu anahtarı silmeli (Aşama 5). |
+| 59 | Kütüphaneye eklenen Keymotion animasyonu "yerleşik" yerine sıradan animasyon olarak kaydoldu (2026-11-12) | Kod yazılırken eski sürüm açıktı. Arayüzü Vite'tan anında aldı (ders 25) ve yeni öğe türünü (`x-kind: keymotion`) eski arka uca gönderdi; eski arka uç türü tanımadı | Arka uçla birlikte değişen bir arayüz özelliğini yazarken açık uygulamayı önce kapat, ya da yeni sürümü derleyip yeniden başlatana kadar o sayfaya dokunma. Kalıcı veri bırakan yollarda eski kaydı yeni türe dönüştüren yol düşün (burada `add`, sıradan kopyayı `keymotion` yapıyor). |
 
 ## 7. Kalan işler (öncelik sırasıyla)
 
@@ -1074,7 +1087,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
           - **Destek haritası yapıldı** (madde 37, `docs/destek-haritasi.md`): desteklenen ve eklenebilecek klavyeler, bağlantı modlarına göre özellikler, Bağlantı sayfası, 2.4G'de yanlış açık görünen sayfalar düzeltildi, HID şekil denetimi, arayüz metin borçları kapandı, USB'de pil araştırması (yüzde yok; Fn ışığından "şarj oluyor" / "şarj tamamlandı").
           - **İlk sürüm öncesi eksik listesi** (2026-11-11, `docs/urun-eksikleri.md`): iki bağımsız inceleme (tasarım ve kullanım; ürün hazırlığı) ve bu oturumun gözlemleri, ciddi olanlar kodda doğrulandı. Sıra: kimlik (isim, logo, uygulama kimliği) → güven → görsel ve içerik turu → veri ve tanılama → ürünleştirme ve repo. İsim adayları ve logo konseptleri Claude Design tuvalinde (Keypane önerildi).
           - Kullanıcı isim ve logoyu seçti (Keymotion, E konsepti). Ardından eksik listesinin tamamı başladı (madde 38).
-          - **Kalınan yer (2026-11-12, gece, son): Aşama 0, 1 ve 2 bitti** (PR #58–#61). Tepsi kullanıcı ve ben tarafından denendi; bildirimler artık Keymotion adı ve logosuyla. Sıradaki (`docs/yol-haritasi.md`): Aşama 1b (SignPath başvurusu, kullanıcı yapar, formu birlikte doldururuz), Aşama 3 (Keymotion açılış animasyonu, önce sohbette önizleme), Aşama 4 (GitHub sorun formları, sonra uygulama içi sorun bildirme). Kullanıcıyla klavyede denenecekler: Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri.
+          - **Kalınan yer (2026-11-12, gece, son): Aşama 0–3 bitti** (PR #58–#62; madde 39 ve 40). Sıradaki adımı kullanıcı seçecek: **Aşama 4** (GitHub sorun formları ve `SECURITY.md`, sonra uygulama içinden sorun bildirme) ya da **Aşama 1b** (SignPath başvurusu; kullanıcı yapar, formu birlikte doldururuz). Durum: uygulama `target/debug/keymotion.exe` olarak hata ayıklama portu kapalı çalışıyor; arayüz ana klasörden ("ui", 1420) geliyor. Kullanıcının verisinde: kütüphanede yerleşik "Keymotion animasyonu"; `background.json` `noticeShown: true` (tek seferlik bildirim kullanıldı); Windows'la başlatma kaydı yok. Kurallar: arayüz metinleri teknik olmayan dille (hafıza); tasarım önce sohbette önizleme; klavyeye yazan her deneme önce sorulur. Kullanıcıyla klavyede denenecekler: Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri.
           - Sonraya: oyun oturumu (ön plandaki uygulama: açılınca kart, kapanınca özet). Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.

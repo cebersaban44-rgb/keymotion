@@ -72,19 +72,25 @@ export const pickThumb = brightestFrame;
 
 /**
  * The name to show for a library item, or for something put back from the
- * library: the factory backup gets its translated label (the backend keeps
- * one stored name for it). Without an id, the stored name is compared.
+ * library: the built-in items (the factory backup, Keymotion's animation)
+ * get their translated labels (the backend keeps one stored name for each).
+ * Without an id, the stored name is compared.
  */
 export function useItemName() {
   const t = useT();
   const factoryName = t("sc.factory.name");
+  const keymotionName = t("sc.keymotion.name");
   const factory = useScreen((s) => s.state?.items.find((i) => i.kind === "factory") ?? null);
-  // The same function until the factory item or the language changes, so a
+  const keymotion = useScreen((s) => s.state?.items.find((i) => i.kind === "keymotion") ?? null);
+  // The same function until a built-in item or the language changes, so a
   // memo that uses it does not recompute on every render.
   return useCallback(
-    (x: { id?: string | null; name: string }) =>
-      factory && (x.id ? x.id === factory.id : x.name === factory.name) ? factoryName : x.name,
-    [factory, factoryName],
+    (x: { id?: string | null; name: string }) => {
+      const is = (item: { id: string; name: string } | null) =>
+        !!item && (x.id ? x.id === item.id : x.name === item.name);
+      return is(factory) ? factoryName : is(keymotion) ? keymotionName : x.name;
+    },
+    [factory, factoryName, keymotion, keymotionName],
   );
 }
 

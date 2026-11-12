@@ -302,4 +302,4 @@ Ayrıntı ve yardımcıların listesi: `DURUM.md` madde 38.
 | I. Sorun bildirme | Uygulama içinden sorun bildirme, desteklenmeyen klavye bildirimi | Planlandı, ürünleştirmeyle birlikte (bölüm I) |
 | Dil | Uygulamanın varsayılan dili | **İngilizce** (2026-11-12, yapıldı); Türkçe seçilebilir |
 | Tepsi ve arka plan | Pencere kapanınca uygulamanın tepside çalışmaya devam etmesi | **Bitti** (PR #61, 2026-11-12): kapatınca gizlenir, tepsi menüsü (klavye, odak alt menüsü, hatırlatıcılar, göstergeler, profiller, çık), Ayarlar › Arka plan, Windows'la gizli başlama. Kullanıcı ve ben denedik; bildirimler Keymotion adı ve logosuyla. Ayrıntı: `docs/yol-haritasi.md` Aşama 2 |
-| Keymotion açılış animasyonu | Fabrika yedeği olmayanlar için özgün görsel | Profillerle birlikte ya da hemen sonra |
+| Keymotion açılış animasyonu | Fabrika yedeği olmayanlar için özgün görsel | **Bitti** (2026-11-12): kullanıcı A'yı (çizerek, yazılı) seçti; kütüphanede yerleşik "Keymotion animasyonu", yedek yok uyarısında öneri. Ayrıntı: `docs/yol-haritasi.md` Aşama 3 |
