@@ -3,4 +3,4 @@
 /**
  * What a library item holds.
  */
-export type ScreenItemKind = "image" | "animation" | "factory";
+export type ScreenItemKind = "image" | "animation" | "factory" | "keymotion";

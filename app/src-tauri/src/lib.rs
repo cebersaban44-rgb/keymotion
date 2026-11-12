@@ -117,7 +117,8 @@ fn screen_state(library: Library<'_>, model_id: String) -> Result<ScreenState, S
 
 /// Store an animation the UI prepared. The body is the blob (header +
 /// RGB565 frames, kb-protocol `screen::blob`); headers `x-name` (URI
-/// encoded) and `x-kind` (`image` | `animation`). Everything is validated
+/// encoded) and `x-kind` (`image` | `animation` | `keymotion`, the app's own
+/// start-up animation, one per library). Everything is validated
 /// again here: the UI is not trusted with the keyboard's format.
 #[tauri::command]
 fn screen_add(library: Library<'_>, request: tauri::ipc::Request<'_>) -> Result<ScreenItem, String> {
@@ -129,6 +130,7 @@ fn screen_add(library: Library<'_>, request: tauri::ipc::Request<'_>) -> Result<
     let name = percent_decode(header("x-name"));
     let kind = match header("x-kind") {
         "animation" => ScreenItemKind::Animation,
+        "keymotion" => ScreenItemKind::Keymotion,
         _ if anim.frames().len() > 1 => ScreenItemKind::Animation,
         _ => ScreenItemKind::Image,
     };
