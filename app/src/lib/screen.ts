@@ -4,8 +4,10 @@
 import { create } from "zustand";
 import type { ScreenIncomplete } from "../bindings/ScreenIncomplete";
 import type { ScreenItem } from "../bindings/ScreenItem";
+import type { ScreenItemKind } from "../bindings/ScreenItemKind";
 import type { ScreenProgress } from "../bindings/ScreenProgress";
 import type { ScreenState } from "../bindings/ScreenState";
+import { keymotionAnimation } from "./bootAnimation";
 import { flashWrite, inTauri, invoke, listen } from "./ipc";
 import { FRAME_PIXELS, HEADER_LEN, pagesFor, toBlob, type Prepared } from "./screenImport";
 
@@ -39,12 +41,19 @@ const mock = {
  *  installed, so its factory animation can be backed up. */
 const MOCK_DRIVER = import.meta.env.DEV && typeof location !== "undefined" && /[?&]driver\b/.test(location.search);
 
+function kindRank(k: ScreenItemKind): number {
+  return k === "factory" ? 2 : k === "keymotion" ? 1 : 0;
+}
+
+/** Comes with the app or the keyboard: not renamed or removed. */
+export function builtIn(k: ScreenItemKind): boolean {
+  return k === "factory" || k === "keymotion";
+}
+
 function mockState(): ScreenState {
   return {
-    // Like the backend: the factory backup first, then newest first.
-    items: [...mock.items].sort(
-      (a, b) => Number(b.kind === "factory") - Number(a.kind === "factory") || b.createdMs - a.createdMs,
-    ),
+    // Like the backend: the factory backup, Keymotion's own, then newest first.
+    items: [...mock.items].sort((a, b) => kindRank(b.kind) - kindRank(a.kind) || b.createdMs - a.createdMs),
     shown: mock.incomplete ? null : mock.shown,
     uploadsToday: mock.today,
     uploadsTotal: mock.total,
@@ -120,8 +129,9 @@ export function getScreenState(modelId: string): Promise<ScreenState> {
   return invoke<ScreenState>("screen_state", { modelId });
 }
 
-/** Store a prepared animation in the library (validated again in Rust). */
-export async function addToLibrary(p: Prepared): Promise<ScreenItem> {
+/** Store a prepared animation in the library (validated again in Rust).
+ *  `kind` "keymotion" stores the built-in Keymotion animation. */
+export async function addToLibrary(p: Prepared, kind: ScreenItemKind = p.kind): Promise<ScreenItem> {
   const blob = toBlob(p);
   if (import.meta.env.DEV && !inTauri) {
     const id = Math.random().toString(16).slice(2, 18).padEnd(16, "0");
@@ -129,7 +139,7 @@ export async function addToLibrary(p: Prepared): Promise<ScreenItem> {
     const item: ScreenItem = {
       id,
       name: p.name,
-      kind: p.kind,
+      kind,
       frames: p.frames.length,
       loopMs: loop,
       pages: pagesFor(p.frames.length),
@@ -141,7 +151,7 @@ export async function addToLibrary(p: Prepared): Promise<ScreenItem> {
     return item;
   }
   return invoke<ScreenItem>("screen_add", blob, {
-    headers: { "x-name": encodeURIComponent(p.name), "x-kind": p.kind },
+    headers: { "x-name": encodeURIComponent(p.name), "x-kind": kind },
   });
 }
 
@@ -253,6 +263,24 @@ interface ScreenStore {
   remove: (id: string) => Promise<void>;
 }
 
+let keymotionAdding = false;
+
+/** The built-in Keymotion animation is drawn and stored once: a new
+ *  library, or one from before it existed. Nothing goes to the keyboard. */
+async function addKeymotion() {
+  if (keymotionAdding) return;
+  keymotionAdding = true;
+  try {
+    await addToLibrary(await keymotionAnimation(), "keymotion");
+    const modelId = useScreen.getState().modelId;
+    if (modelId) useScreen.setState({ state: await getScreenState(modelId) });
+  } catch (e) {
+    console.error(e);
+    // Tried again on the next load.
+    keymotionAdding = false;
+  }
+}
+
 export const useScreen = create<ScreenStore>((set, get) => ({
   modelId: null,
   state: null,
@@ -278,6 +306,7 @@ export const useScreen = create<ScreenStore>((set, get) => ({
   load: async (modelId) => {
     const state = await getScreenState(modelId);
     set({ modelId, state });
+    if (!state.items.some((i) => i.kind === "keymotion")) void addKeymotion();
   },
   add: async (p) => {
     const item = await addToLibrary(p);
