@@ -73,8 +73,9 @@ fn failure(e: &tauri_plugin_updater::Error) -> UpdateFailure {
     }
 }
 
-/// `latest.json` of the newest release that is not a draft, pre-releases
-/// included, from GitHub's list of releases.
+/// `latest.json` of the release with the highest version that is not a
+/// draft, pre-releases included, from GitHub's list of releases (by version,
+/// not by the list's order, which follows when each was created).
 fn newest_manifest(releases_json: &str) -> Option<String> {
     #[derive(Deserialize)]
     struct Asset {
@@ -83,6 +84,7 @@ fn newest_manifest(releases_json: &str) -> Option<String> {
     }
     #[derive(Deserialize)]
     struct Release {
+        tag_name: String,
         draft: bool,
         assets: Vec<Asset>,
     }
@@ -90,7 +92,13 @@ fn newest_manifest(releases_json: &str) -> Option<String> {
     releases
         .into_iter()
         .filter(|r| !r.draft)
-        .find_map(|r| r.assets.into_iter().find(|a| a.name == "latest.json").map(|a| a.browser_download_url))
+        .filter_map(|r| {
+            let version = semver::Version::parse(r.tag_name.trim_start_matches('v')).ok()?;
+            let url = r.assets.into_iter().find(|a| a.name == "latest.json")?.browser_download_url;
+            Some((version, url))
+        })
+        .max_by(|a, b| a.0.cmp(&b.0))
+        .map(|(_, url)| url)
 }
 
 /// Updates (managed Tauri state).
@@ -374,16 +382,20 @@ mod tests {
     }
 
     #[test]
-    fn a_test_version_takes_the_newest_published_manifest() {
+    fn a_test_version_takes_the_highest_published_manifest() {
         let list = r#"[
-            {"draft": true, "assets": [{"name": "latest.json", "browser_download_url": "https://x/draft/latest.json"}]},
-            {"draft": false, "assets": [{"name": "Keymotion_0.1.0-rc.2_x64-setup.exe", "browser_download_url": "https://x/rc2/setup.exe"}]},
-            {"draft": false, "assets": [
+            {"tag_name": "v0.2.0", "draft": true, "assets": [{"name": "latest.json", "browser_download_url": "https://x/draft/latest.json"}]},
+            {"tag_name": "v0.1.0-rc.1", "draft": false, "assets": [
                 {"name": "Keymotion_0.1.0-rc.1_x64-setup.exe", "browser_download_url": "https://x/rc1/setup.exe"},
                 {"name": "latest.json", "browser_download_url": "https://x/rc1/latest.json"}
-            ]}
+            ]},
+            {"tag_name": "v0.1.0-rc.3", "draft": false, "assets": [{"name": "Keymotion_0.1.0-rc.3_x64-setup.exe", "browser_download_url": "https://x/rc3/setup.exe"}]},
+            {"tag_name": "v0.1.0-rc.2", "draft": false, "assets": [{"name": "latest.json", "browser_download_url": "https://x/rc2/latest.json"}]},
+            {"tag_name": "nightly", "draft": false, "assets": [{"name": "latest.json", "browser_download_url": "https://x/nightly/latest.json"}]}
         ]"#;
-        assert_eq!(newest_manifest(list).as_deref(), Some("https://x/rc1/latest.json"));
+        // Listed after rc.1 but higher; rc.3 has no manifest; drafts and tags
+        // that are not versions do not count.
+        assert_eq!(newest_manifest(list).as_deref(), Some("https://x/rc2/latest.json"));
         assert_eq!(newest_manifest("[]"), None);
         assert_eq!(newest_manifest("not json"), None);
     }

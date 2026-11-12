@@ -25,6 +25,7 @@ kb-protocol.workspace = true
 kb-transport.workspace = true
 kb-winsys.workspace = true
 rrule = "0.14"
+semver = "1"
 serde.workspace = true
 serde_json.workspace = true
 tauri = { version = "2", features = ["tray-icon"] }
