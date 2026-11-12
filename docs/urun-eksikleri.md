@@ -282,6 +282,7 @@ Ek kararlar (2026-11-12):
 - Repo adı `keymotion` (yeniden adlandırıldı).
 - GitHub Discussions açık (soru-cevap).
 - Sorun bildirme yalnızca GitHub üzerinden.
+- Uygulama penceresi açılırken bir giriş animasyonu olacak (`docs/yol-haritasi.md` Aşama 6b): önce nasıl yapılacağı araştırılır, görünümü önizlemeyle seçilir.
 - Yol haritasının sırası: 5 kurulum dosyası (imzasız) → 6 sürüm hattı → 7 GitHub sayfası ve bütün belgeler → 8 ilk sürüm (imzasız) → 9 SignPath başvurusu ve imzalı sürüm. Kod imzalama başvurusu ilk sürümden sonraya kaydı: SignPath yayınlanmış bir sürüm ve kullanım kanıtı istiyor.
 
 ## Uygulama durumu (2026-11-12, birleştirme sonrası)

@@ -30,6 +30,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 | 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bitti (PR #63); GitHub ayarları kullanıcı onayıyla açıldı |
 | 5 | Kurulum dosyası (NSIS), imzasız | 1, 2 | Kurulum ayrıntılarına onay | Yapıldı (PR'da); kullanıcının elle denemesi ve kurulum görselleri bekliyor |
 | 6 | Sürüm hattı (GitHub Actions) ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Bekliyor |
+| 6b | Uygulama penceresinin açılış animasyonu | 5 (kurulu sürümle ölçülür) | Önizlemeden tasarım seçimi | Planlandı (kullanıcının kararı, 2026-11-12) |
 | 7 | GitHub sayfası ve bütün belgeler, SignPath'in sayfa şartları dahil | 5, 6 (kurulum ve indirme adımları belli) | Belge yapısına ve görünümüne onay (önce önizleme) | Bekliyor |
 | 8 | Son denemeler ve ilk sürüm 0.1.0 (imzasız) | hepsi | Elle denemeler; `main`'e birleştirme onayı | Bekliyor |
 | 9 | Kod imzalama: SignPath Foundation başvurusu ve imzalı sürüm (eskiden 1b) | 8 ve kullanım kanıtı | Başvuruyu kullanıcı yapar; formu birlikte doldururuz | İlk sürümden sonra |
@@ -377,6 +378,25 @@ Uygulama içi düğme bu formların adresini açacak, o yüzden formlar önce ya
 - **Dallar:** sürüm için `develop` → `main` PR'ı açılır, kullanıcı onayıyla birleşir. Etiket `main`'de atılır.
 - **Deneme:** 0.1.0-rc → 0.1.0-rc.2 güncellemesi gerçekten iniyor ve kuruluyor mu?
 
+## Aşama 6b: uygulama penceresinin açılış animasyonu
+
+Kullanıcının kararı (2026-11-12): uygulama açılırken bir giriş animasyonu olacak. Bugün yok; pencere hazır olunca doğrudan açılıyor. Klavyenin ekranındaki "Keymotion animasyonu" (Aşama 3) ve klavye yokken çıkan hoş geldiniz ekranı bu değil; ikisi de pencerenin açılışında görünmez.
+
+- **Ne zaman:** Aşama 7'den önce. Ekran görüntüleri ve GitHub sayfasındaki tanıtım, uygulamanın son görünümüyle hazırlanır.
+- **Araştırılacak (nasıl yapılır):**
+  - Tauri 2'de açılış ekranı yolları: ayrı küçük bir açılış penceresi mi, yoksa ana pencerede arayüz yüklenene kadar duran bir katman mı. Bugün pencere görünmez açılıyor (`visible: false`) ve arayüz hazır olunca gösteriliyor; saydam ve Windows 11'in yarı saydam arka planı (Mica) ile uyumu.
+  - Ölçüm: kurulu sürümde pencerenin görünmesi ve arayüzün hazır olması kaç ms sürüyor (derlenmiş sürümle; ders 61). Animasyon açılışı geciktirmemeli; uygulama hazır olunca bitmeli ya da kısalmalı.
+  - Ne zaman oynamaz:
+    - Windows açılınca gizli başlarken (`--hidden`);
+    - pencere tepsiden yeniden açılırken; yalnızca uygulamanın gerçek açılışında oynar;
+    - Windows'un "animasyon efektleri" kapalıysa sade bir geçiş (`MotionConfig reducedMotion`).
+  - Başka masaüstü uygulamalarının açılış ekranları örnek olarak incelenir, kopyalanmaz.
+- **Hazırlanacak (nasıl görünür):**
+  - Klavyedeki animasyonla aynı dil: logodaki "K" çizgi çizgi çizilir, turuncu çizgi parlar, "keymotion" yazısı açılır, uygulamaya yumuşak geçiş. Kısa: yaklaşık 1 sn ya da daha az.
+  - Açık ve koyu temada, uygulamanın renkleri ve Bricolage yazı tipiyle.
+  - Önce sohbette etkileşimli önizlemeyle iki ya da üç seçenek gösterilir; kullanıcı seçer, sonra kod yazılır (hafıza kuralı).
+- **Bitti sayılır:** kurulu sürümde açılış ölçülmüş, animasyon açılışı uzatmıyor, gizli başlamada ve tepsiden açmada oynamıyor, kullanıcı görüp onaylamış.
+
 ## Aşama 7: GitHub sayfası ve bütün belgeler
 
 Kullanıcının kararı (2026-11-12): GitHub sayfası yalnızca imza şartları için yapılmaz. Bizim belgelerle ilgili bütün notlarımız ve isteklerimiz, SignPath'in şartları ve ürünün görünümü bu aşamada bir araya gelir. GitHub sayfası baştan sona, tek bir yapıyla düzenlenir; ürünün GitHub'daki profesyonel görünümü ve içeriği burada tamamlanır.
@@ -486,6 +506,7 @@ Eskiden "Aşama 1b: erken başvuru" idi. 2026-11-12'de SignPath'in şartları ve
 |---|---|---|
 | 1 | Rust paket ve exe adı `keymotion` olsun mu? | Evet |
 | 9 | SignPath Foundation başvurusu (ilk sürümden sonra) | Kullanıcı başvurur, formu birlikte dolduralım |
+| 6b | Uygulama açılış animasyonunun tasarımı | Önizlemeden seçim |
 | 7 | GitHub sayfasının yapısı, biçimi (yalnız repo sayfaları mı, ayrıca belge sitesi mi) ve görünümü | Aşamanın başında önizlemeyle |
 | 8 | İlk sürümün nerede duyurulacağı (kullanım kanıtı için) | Kullanıcı seçer |
 | 4 | GitHub'da özel güvenlik bildirimi açılsın mı? | Evet (açıldı, 2026-11-12) |

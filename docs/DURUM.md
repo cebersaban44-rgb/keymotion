@@ -869,6 +869,8 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **Ders 61:** derlenmiş sürüm hızlı açıldığı için arayüz klavye olayını kaçırdı; geliştirme sürümünde hiç görülmemişti. `lib/follow.ts` ile düzeltildi.
     - Kalan: kullanıcının elle denemesi ve kurulum görselleri.
 
+44. **Karar: uygulama açılış animasyonu (2026-11-12, kullanıcı).** Uygulama penceresi açılırken bir giriş animasyonu olacak; bugün yok. Klavye ekranındaki Keymotion animasyonu ve klavye yokken çıkan hoş geldiniz ekranı bu değil. Yapılacak iş, araştırılacaklar ve görünüm: `docs/yol-haritasi.md` Aşama 6b (Aşama 7'den önce, tasarım önce önizlemeyle).
+
 ## 4. Sistem nasıl kurulu (as-built)
 
 ```
