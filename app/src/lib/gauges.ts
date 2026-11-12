@@ -182,6 +182,15 @@ export const useGauges = create<GaugesStore>((set, get) => ({
  * few times a second, even with the gauges off. `geometry` only feeds the
  * browser preview's own frame. Returns the clean-up for the page's effect.
  */
+/** Follow changes made elsewhere (the tray menu's switch). */
+export function followGauges(): () => void {
+  if (import.meta.env.DEV && !inTauri) return () => {};
+  const off = listen<GaugesState>("gauges", (e) => useGauges.setState({ state: e.payload }));
+  return () => {
+    off.then((f) => f()).catch(console.error);
+  };
+}
+
 export function watchGauges(geometry: GeometryInfo | null): () => void {
   if (import.meta.env.DEV && !inTauri) {
     mock.geometry = geometry;

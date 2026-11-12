@@ -4,12 +4,16 @@ import type { MirrorHint } from "../bindings/MirrorHint";
 import catalog from "../bindings/lighting-catalog.json";
 import { onMirror, setMirror } from "./ipc";
 import { rgbToHex, toLedColors, useLighting, type ColorMap, type LightingState } from "./lighting";
+import { useApp } from "./store";
 
 /**
  * Colours currently shown on the keyboard, read back with `04 F5` about
- * four times a second while `enabled`. `null` until the first reading.
+ * four times a second while `enabled` and the window is on screen (not
+ * while the app runs in the tray). `null` until the first reading.
  */
-export function useMirror(enabled: boolean): ColorMap | null {
+export function useMirror(wanted: boolean): ColorMap | null {
+  const shown = useApp((s) => s.windowShown);
+  const enabled = wanted && shown;
   const [colors, setColors] = useState<ColorMap | null>(null);
   const appliedEffect = useLighting((s) => s.appliedEffect);
   const savedPerKey = useLighting((s) => s.savedPerKey);

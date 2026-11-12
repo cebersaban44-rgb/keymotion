@@ -6,22 +6,27 @@ import { Sidebar } from "./components/Sidebar";
 import { UnsavedDialog } from "./components/UnsavedDialog";
 import { SafetyDialogs, useSafetyDialogOpen } from "./components/SafetyDialogs";
 import {
+  cancelQuit,
   closeWindow,
   getKeyboards,
   getUiEnvironment,
+  isWindowShown,
   onCloseRequested,
   onKeyboardsChanged,
+  onTrayProfile,
+  onWindowShown,
+  setTrayTexts,
   setUnsavedFlag,
   setWindowTheme,
 } from "./lib/ipc";
 import { useUnsaved } from "./lib/unsaved";
-import { tNow, useT, type MessageKey } from "./lib/i18n";
+import { connectionKey, tNow, useT, type MessageKey } from "./lib/i18n";
 import { useKeymap } from "./lib/keymap";
 import { useLayout } from "./lib/layout";
 import { startLive } from "./lib/live";
 import { calendarCard, calendarWords, nowPlayingCard, pomodoroCard, pomodoroWords, reminderCard, reminderWords } from "./lib/liveCards";
 import { startPomodoro, usePomodoro, DEFAULT_SETTINGS } from "./lib/pomodoro";
-import { useGauges } from "./lib/gauges";
+import { followGauges, useGauges } from "./lib/gauges";
 import { startCalendar, useCalendar } from "./lib/calendar";
 import { startReminders } from "./lib/reminders";
 import { useMacros } from "./lib/macros";
@@ -121,10 +126,71 @@ function useLiveScreen() {
     [],
   );
   useEffect(() => startReminders((card) => reminderCard(card, reminderWords(tNow, useApp.getState().locale))), []);
-  // Whether the system gauges are on (the Lighting page says so).
+  // Whether the system gauges are on (the Lighting page says so); the
+  // tray menu can switch them too.
   useEffect(() => {
     useGauges.getState().load().catch(console.error);
+    return followGauges();
   }, []);
+}
+
+/**
+ * The tray: its menu's words in the UI language, whether the window is on
+ * screen (hidden, the app runs in the tray), and profiles chosen there.
+ */
+function useTray() {
+  const locale = useApp((s) => s.locale);
+  const setWindowShown = useApp((s) => s.setWindowShown);
+  const requestProfile = useApp((s) => s.requestProfile);
+  useEffect(() => {
+    // Templates go as they are: the backend fills in {min}, {n}, ….
+    setTrayTexts({
+      locale,
+      open: tNow("tray.open"),
+      noKeyboard: tNow("tray.noKeyboard"),
+      battery: tNow("tray.battery"),
+      connUsb: tNow(connectionKey("usb")),
+      connDongle: tNow(connectionKey("dongle")),
+      connBluetooth: tNow(connectionKey("bluetooth")),
+      focus: tNow("tray.focus"),
+      focusStart: tNow("tray.focus.start"),
+      focusPause: tNow("tray.focus.pause"),
+      focusResume: tNow("tray.focus.resume"),
+      focusSkip: tNow("tray.focus.skip"),
+      focusStop: tNow("tray.focus.stop"),
+      phaseFocus: tNow("tray.phase.focus"),
+      phaseShort: tNow("tray.phase.short"),
+      phaseLong: tNow("tray.phase.long"),
+      round: tNow("tray.round"),
+      left: tNow("tray.left"),
+      paused: tNow("tray.paused"),
+      ready: tNow("tray.ready"),
+      reminders: tNow("tray.reminders"),
+      remindersOn: tNow("tray.reminders.on"),
+      remindersOff: tNow("tray.reminders.off"),
+      remindersNext: tNow("tray.reminders.next"),
+      remindersNone: tNow("tray.reminders.none"),
+      tomorrow: tNow("tray.tomorrow"),
+      gauges: tNow("tray.gauges"),
+      profiles: tNow("tray.profiles"),
+      defaultProfile: tNow("prof.default"),
+      quit: tNow("tray.quit"),
+      hiddenTitle: tNow("tray.hidden.title"),
+      hiddenBody: tNow("tray.hidden.body"),
+    }).catch(console.error);
+  }, [locale]);
+  useEffect(() => {
+    let alive = true;
+    const offs: (() => void)[] = [];
+    const keep = (off: () => void) => (alive ? offs.push(off) : off());
+    isWindowShown().then(setWindowShown).catch(console.error);
+    onWindowShown(setWindowShown).then(keep);
+    onTrayProfile(requestProfile).then(keep);
+    return () => {
+      alive = false;
+      offs.forEach((off) => off());
+    };
+  }, [setWindowShown, requestProfile]);
 }
 
 /**
@@ -147,7 +213,12 @@ function useCloseGuard() {
   useEffect(() => {
     if (asking && !unsaved) closeWindow().catch(console.error);
   }, [asking, unsaved]);
-  return { items, asking: asking && unsaved, cancel: () => setAsking(false) };
+  const cancel = () => {
+    setAsking(false);
+    // After "Quit" in the tray: closing hides the window again.
+    cancelQuit().catch(console.error);
+  };
+  return { items, asking: asking && unsaved, cancel };
 }
 
 /** Pages that change the keyboard's own settings: without it they say so. */
@@ -195,6 +266,7 @@ export default function App() {
   useThemeSync();
   useKeyboardRecords();
   useLiveScreen();
+  useTray();
   const guard = useCloseGuard();
   const safetyOpen = useSafetyDialogOpen();
   const page = useApp((s) => s.page);
