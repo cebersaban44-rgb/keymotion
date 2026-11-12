@@ -20,6 +20,7 @@ import {
   setUnsavedFlag,
   setWindowTheme,
 } from "./lib/ipc";
+import { follow } from "./lib/follow";
 import { useUnsaved } from "./lib/unsaved";
 import { connectionKey, tNow, useT, type MessageKey } from "./lib/i18n";
 import { useKeymap } from "./lib/keymap";
@@ -53,17 +54,15 @@ function useBootstrap() {
   const setKeyboards = useApp((s) => s.setKeyboards);
   const setEnv = useApp((s) => s.setEnv);
   useEffect(() => {
-    let off: (() => void) | undefined;
     getUiEnvironment().then(setEnv).catch(console.error);
-    getKeyboards().then(setKeyboards).catch(console.error);
-    onKeyboardsChanged(setKeyboards).then((u) => (off = u));
+    const off = follow(getKeyboards, onKeyboardsChanged, setKeyboards);
     // Key labels follow the Windows keyboard layout; it can change while
     // the app is in the background.
     const refreshLayout = () => void useLayout.getState().refresh();
     refreshLayout();
     window.addEventListener("focus", refreshLayout);
     return () => {
-      off?.();
+      off();
       window.removeEventListener("focus", refreshLayout);
     };
   }, [setKeyboards, setEnv]);
