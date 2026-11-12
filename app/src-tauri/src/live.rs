@@ -7,6 +7,11 @@
 //! now (budget, no USB cable, another upload) waits and goes later.
 //! Uploads the user starts by hand use the budget too but are never
 //! blocked by it (docs/research/ekran-ve-veri-kaynaklari.md §3.4).
+//!
+//! The focus timer's and the song's cards leave the last upload for a
+//! reminder or a meeting, which rank above them and never wait (K5: after a
+//! busy focus session a waiting timer card took every new upload, so no
+//! reminder card could go).
 
 use crate::device::DeviceHandle;
 use crate::dto::{LiveBack, LiveItem, LivePlan, LiveShown, LiveState, SongStop, TrackInfo};
@@ -69,9 +74,15 @@ impl Budget {
     }
 
     /// Take one upload for the live mode, if one is available.
+    #[cfg(test)]
     pub fn try_take(&mut self, now: f64) -> bool {
+        self.try_take_keeping(now, 0.0)
+    }
+
+    /// Take one upload only if `keep` more stay available afterwards.
+    pub fn try_take_keeping(&mut self, now: f64, keep: f64) -> bool {
         self.refill(now);
-        if self.tokens >= 1.0 {
+        if self.tokens >= 1.0 + keep {
             self.tokens -= 1.0;
             true
         } else {
@@ -94,8 +105,13 @@ impl Budget {
 
     /// Time until one upload is available, `None` if one is available now.
     pub fn ms_until_token(&mut self, now: f64) -> Option<f64> {
+        self.ms_until(now, 1.0)
+    }
+
+    /// Time until `need` uploads are available, `None` if they are now.
+    fn ms_until(&mut self, now: f64, need: f64) -> Option<f64> {
         self.refill(now);
-        (self.tokens < 1.0).then(|| (1.0 - self.tokens) / self.per_hour() * HOUR_MS)
+        (self.tokens < need).then(|| (need - self.tokens) / self.per_hour() * HOUR_MS)
     }
 
     pub fn set_plan(&mut self, plan: LivePlan, now: f64) {
@@ -141,6 +157,21 @@ impl Default for LiveStored {
             factory_ack: false,
         }
     }
+}
+
+/// Uploads a source's card leaves for the sources above it: the focus
+/// timer and the song keep one for a reminder or a meeting.
+fn keep_for(source: &str) -> f64 {
+    if source == crate::pomodoro::SOURCE || source == crate::now_playing::SOURCE {
+        1.0
+    } else {
+        0.0
+    }
+}
+
+/// Time until the waiting card may go on the budget, `None` if it may now.
+fn pending_wait(lib: &mut ScreenLibrary, pending: &Pending, now: f64) -> Option<f64> {
+    lib.live_mut().budget.ms_until(now, 1.0 + keep_for(&pending.item.source))
 }
 
 /// Turning the live mode on must ask first (see `LiveState::factory_ack_needed`).
@@ -485,6 +516,21 @@ impl LiveHandle {
         self.emit();
     }
 
+    /// The user does not want the waiting card on the keyboard: forget it.
+    /// The keyboard keeps what it shows now.
+    pub fn drop_waiting(&self) -> Result<LiveState, String> {
+        let dropped = {
+            let mut rt = self.rt.lock().map_err(|_| "live state unavailable")?;
+            rt.send_now = false;
+            rt.pending.take()
+        };
+        if let Some(p) = dropped {
+            tracing::info!(source = %p.item.source, "waiting live card not sent (user)");
+        }
+        self.emit();
+        self.state()
+    }
+
     /// Send the waiting card now instead of waiting for the budget. Asked
     /// for by the user, so it is counted like a manual upload.
     pub fn send_now(&self) -> Result<LiveState, String> {
@@ -542,7 +588,7 @@ impl LiveHandle {
         if let Some(b) = &rt.back {
             wait = wait.min((b.at_ms - now).max(0.0));
         }
-        if let Some(ms) = lib.live_mut().budget.ms_until_token(now) {
+        if let Some(ms) = rt.pending.as_ref().and_then(|p| pending_wait(&mut lib, p, now)) {
             wait = wait.min(ms + 50.0);
         }
         Duration::from_millis(wait.max(0.0) as u64)
@@ -644,10 +690,11 @@ impl LiveHandle {
             if rt.retry_at.is_some_and(|t| now < t) {
                 return;
             }
+            let keep = rt.pending.as_ref().map_or(0.0, |p| keep_for(&p.item.source));
             if std::mem::take(&mut rt.send_now) {
                 // The user's choice: counted, never refused.
                 lib.live_mut().budget.charge(now);
-            } else if !lib.live_mut().budget.try_take(now) {
+            } else if !lib.live_mut().budget.try_take_keeping(now, keep) {
                 drop(rt);
                 drop(lib);
                 self.emit();
@@ -702,7 +749,7 @@ impl LiveHandle {
 
 /// A card waits and may go now (budget, or the user said "send now").
 fn card_ready(lib: &mut ScreenLibrary, rt: &Runtime, now: f64) -> bool {
-    rt.pending.is_some() && (rt.send_now || lib.live_mut().budget.ms_until_token(now).is_none())
+    rt.pending.as_ref().is_some_and(|p| rt.send_now || pending_wait(lib, p, now).is_none())
 }
 
 /// A scheduled return is due: turn it into a put-back. True when something
@@ -746,6 +793,7 @@ fn snapshot(lib: &mut ScreenLibrary, rt: &Runtime) -> LiveState {
     let plan = live.budget.plan;
     let tokens = live.budget.tokens(now);
     let next_token_ms = live.budget.ms_until_token(now);
+    let pending_wait_ms = rt.pending.as_ref().and_then(|p| pending_wait(lib, p, now));
     let live = lib.live();
     LiveState {
         enabled: live.enabled,
@@ -755,6 +803,7 @@ fn snapshot(lib: &mut ScreenLibrary, rt: &Runtime) -> LiveState {
         tokens,
         next_token_ms,
         pending: rt.pending.as_ref().map(|p| p.item.clone()),
+        pending_wait_ms,
         uploading: rt.uploading.clone(),
         last: match (&live.last_source, &live.last_name, live.last_ms) {
             (Some(source), Some(name), Some(at_ms)) => {
@@ -785,6 +834,26 @@ mod tests {
     use super::*;
 
     const H: f64 = HOUR_MS;
+
+    #[test]
+    fn the_timer_and_the_song_leave_one_upload_for_reminders() {
+        let mut b = Budget::default();
+        let t0 = 1_000_000.0;
+        let keep = keep_for(crate::pomodoro::SOURCE);
+        assert_eq!(keep, 1.0);
+        assert_eq!(keep_for(crate::now_playing::SOURCE), 1.0);
+        assert_eq!(keep_for(crate::reminders::SOURCE), 0.0);
+        assert_eq!(keep_for(crate::calendar::SOURCE), 0.0);
+        for _ in 0..5 {
+            assert!(b.try_take_keeping(t0, keep));
+        }
+        assert!(!b.try_take_keeping(t0, keep), "the last one is kept");
+        assert_eq!(b.ms_until(t0, 1.0), None, "a reminder can still go");
+        assert!(b.try_take(t0), "the reminder takes it");
+        // One more for the timer needs two: two hours on 24 a day.
+        let wait = b.ms_until(t0, 1.0 + keep).unwrap();
+        assert!((wait - 2.0 * H).abs() < 1.0, "{wait}");
+    }
 
     #[test]
     fn bucket_starts_full_and_refills_hourly() {

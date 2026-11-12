@@ -207,6 +207,7 @@ function mockState(): ReminderState {
     showing: mock.showing?.id ?? null,
     showingUntilMs: mock.showing?.until ?? null,
     away: false,
+    cardSkip: null,
   };
 }
 
