@@ -1,20 +1,50 @@
 //! Windows notifications, and opening the project's own pages in the
 //! browser.
 //!
-//! Notifications need an app id Windows knows. The installer gives the
-//! Start menu shortcut the bundle identifier as its id, so an installed app
-//! uses that. A development build has no shortcut; it borrows PowerShell's
-//! id, as tauri-plugin-notification does, so the notification still shows.
+//! Windows shows a notification under its app id, with that id's name and
+//! logo. The app registers its bundle identifier at start
+//! (`kb_winsys::appid`: the name "Keymotion" and the logo as a PNG in the
+//! local data folder), so notifications say Keymotion, with or without a
+//! Start menu shortcut. Should that fail, a development build borrows
+//! PowerShell's id, which every Windows knows, so the notification still
+//! shows (under PowerShell's name).
 
-/// PowerShell's app id: registered on every Windows, used by dev builds.
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// PowerShell's app id: registered on every Windows; the fallback above.
 const DEV_APP_ID: &str = r"{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe";
+
+/// The logo notifications show (written next to the app's local data).
+const ICON: &[u8] = include_bytes!("../icons/128x128.png");
+const ICON_FILE: &str = "notification-icon.png";
+
+/// The app's own id is registered with its name and logo.
+static REGISTERED: AtomicBool = AtomicBool::new(false);
+
+/// Register `identifier` as "Keymotion" with its logo (written into
+/// `dir`). Call once at start, before anything is shown.
+pub fn register(identifier: &str, dir: &Path) {
+    let icon = dir.join(ICON_FILE);
+    let result = (|| {
+        if std::fs::read(&icon).ok().as_deref() != Some(ICON) {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+            std::fs::write(&icon, ICON).map_err(|e| format!("notification logo not written: {e}"))?;
+        }
+        kb_winsys::appid::register(identifier, "Keymotion", &icon)
+    })();
+    match result {
+        Ok(()) => REGISTERED.store(true, Ordering::SeqCst),
+        Err(e) => tracing::warn!("notifications keep a borrowed name: {e}"),
+    }
+}
 
 /// Pages the app may open: only the project's own GitHub pages.
 const PROJECT_PAGES: &str = "https://github.com/cebersaban44-rgb/keymotion/";
 
 /// The app id notifications are shown under.
 pub fn app_id(identifier: &str) -> String {
-    if tauri::is_dev() {
+    if tauri::is_dev() && !REGISTERED.load(Ordering::SeqCst) {
         DEV_APP_ID.to_string()
     } else {
         identifier.to_string()

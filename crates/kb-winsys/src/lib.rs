@@ -26,6 +26,7 @@
 
 #![allow(unsafe_code)]
 
+pub mod appid;
 pub mod os;
 pub mod secret;
 pub mod startup;

@@ -151,6 +151,9 @@ impl Background {
 
     pub fn set_texts(&self, texts: TrayTexts) {
         if let Ok(mut t) = self.texts.lock() {
+            if t.locale != texts.locale {
+                tracing::info!(locale = %texts.locale, "tray menu language");
+            }
             *t = texts;
         }
     }

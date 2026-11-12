@@ -161,6 +161,42 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 
 **Kullanıcının denediği (ilk menü):** odak başlat/duraklat çalıştı, ama bitirme yoktu. Bunun üzerine alt menülü düzene geçildi.
 
+**Kullanıcının denediği (alt menülü sürüm):** aşağıdaki 1–8 tamam.
+- Bildirim "Windows PowerShell" adı ve simgesiyle geldi. Düzeltildi, aşağıda "Bildirimler".
+- "İkinci açılış İngilizce ve simgesiz" gözlemi: günlükte o saatte uygulama açılışı yok. Açılan, Claude uygulamasının önizleme panelindeki tarayıcı kopyasıydı (`ui`, 1420): arka ucu yok, İngilizce başlar, tepsisi yok (DURUM ders 57).
+
+**Benim denediklerim (9–13, CDP ile, fare kullanmadan):**
+- **9:** "Kapatınca tepside…" kapalıyken X uygulamayı tamamen kapattı.
+- **10:** Windows'la başlatma:
+  - açınca `Run` kaydı `--hidden` ile yazıldı;
+  - Görev Yöneticisi'nin kapatma işareti (`StartupApproved\Run`, 03…) yazılınca Ayarlar'da anahtar kapalı göründü ve "Görev Yöneticisi'nde kapatılmış" notu çıktı;
+  - Ayarlar'dan yeniden açınca işaret silindi;
+  - kapatınca kayıt kalktı.
+- **11:** ikinci açılış gizli pencereyi getirdi, tek süreç kaldı.
+- **12:** dil İngilizceye geçince tepsi menüsü de geçti (günlük: `tray menu language locale=en`), Türkçeye dönünce geri döndü.
+- **13:** sonucu aşağıda "Ölçümler"de.
+
+### Bildirimler (2026-11-12)
+
+**Kimlik:** Windows bildirimi uygulamanın kimliğiyle (AUMID) gösterir.
+- Kurulu sürümde kimliği Başlat menüsü kısayolu verir. Geliştirme sürümünde kısayol yok; bu yüzden PowerShell'in kimliği ödünç alınıyordu ve bildirim "Windows PowerShell" adıyla çıkıyordu.
+- Artık uygulama açılışta kendi kimliğini (`dev.keymotion`) kaydediyor: `HKCU\Software\Classes\AppUserModelId\dev.keymotion`, `DisplayName` "Keymotion" ve `IconUri` (logo, `%LOCALAPPDATA%\dev.keymotion\notification-icon.png`). Kısayol gerekmiyor.
+- Kayıt olmazsa geliştirme sürümü PowerShell'in kimliğine düşer.
+- Doğrulama: arka plan bildirimi Windows'un bildirim geçmişinde `dev.keymotion` altında göründü.
+- Bildirim başlığında uygulama adı zaten görünüyor. Bu yüzden metin "Arka planda çalışmaya devam ediyor" oldu, ad tekrarlanmıyor.
+
+**Uygulamanın gönderdiği Windows bildirimleri (tam liste):**
+1. **Arka planda çalışıyor:** pencere ilk kez tepsiye gittiğinde, bir kez (bilgisayar başına; `background.json` `noticeShown`). Sonraki kapatmalarda yok.
+2. **Hatırlatıcı:** bir hatırlatıcı çaldığında başlığı ve notu. Hangi durumda çıkar:
+   - "Windows bildirimi de gönder" ayarı açıksa (varsayılan kapalı) her seferinde;
+   - klavye USB kablosunda değilse her zaman, çünkü tuşlar yanamaz.
+   - Bildirimin kendi sesi yok; hatırlatıcının sesi açıksa Windows sesi ayrıca çalar.
+- **Bildirim göndermeyenler:**
+  - odak zamanlayıcısı (aşama değişince ses, tuşlar ve ekran kartı);
+  - takvim (toplantı öncesi tuş yanıp söner ve ekran kartı çıkar);
+  - hatalar ve uyarılar (yalnızca uygulama içinde).
+- **Kullanıcıyla karar verilecek:** klavye kablosuzken her hatırlatıcının bildirim göndermesi sık aralıklı hatırlatıcılarda rahatsız edebilir. Seçenekler kullanıcıya soruldu.
+
 **Elle denenecekler** (kullanıcıya verilen senaryolar; simge saatin yanındaki ^ içinde):
 
 1. **Kapatma:** X → pencere kaybolur, simge kalır, "Keymotion arka planda çalışıyor" bildirimi bir kez çıkar.
@@ -244,7 +280,8 @@ Uygulama içi düğme bu formların adresini açacak, o yüzden formlar önce ya
   - WebView2 önyükleyicisi.
 - **Kaldırıcı:**
   - "ayarlarımı da sil" seçeneği, varsayılan: sakla;
-  - Windows'la başlatma kaydını siler;
+  - Windows'la başlatma kaydını siler (`Run` ve `StartupApproved\Run` altındaki "Keymotion");
+  - bildirim kimliğini siler (`HKCU\Software\Classes\AppUserModelId\dev.keymotion`);
   - çalışan uygulamayı kapatır.
 - **Exe bilgileri:** ürün adı, açıklama, sürüm, simge.
 - **İmza:** onay gelince sürüm hattına eklenir (Aşama 1b).

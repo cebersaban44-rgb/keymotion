@@ -373,7 +373,7 @@ impl Default for TrayTexts {
             profiles: s("Profiles"),
             default_profile: s("Default"),
             quit: s("Quit"),
-            hidden_title: s("Keymotion is still running"),
+            hidden_title: s("Still running in the background"),
             hidden_body: s("Its icon is next to the clock. To quit, right-click the icon and choose Quit."),
         }
     }

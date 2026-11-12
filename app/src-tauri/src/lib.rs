@@ -1299,6 +1299,12 @@ pub fn run() {
                 Ok(dir) => logging::set_dir(&dir, &version),
                 Err(e) => tracing::warn!("no log folder: {e}"),
             }
+            // Notifications carry the app's name and logo (before anything
+            // can show one).
+            match app.path().app_local_data_dir() {
+                Ok(dir) => notify::register(&app.config().identifier, &dir),
+                Err(e) => tracing::warn!("no local data folder: {e}"),
+            }
             let window = app.get_webview_window("main").expect("main window is declared in tauri.conf.json");
             fit_to_screen(&window);
             let build = os_build();

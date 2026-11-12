@@ -266,7 +266,7 @@ const tr = {
   "tray.gauges": "Tuşlarda sistem göstergeleri",
   "tray.profiles": "Profiller",
   "tray.quit": "Çık",
-  "tray.hidden.title": "Keymotion arka planda çalışıyor",
+  "tray.hidden.title": "Arka planda çalışmaya devam ediyor",
   "tray.hidden.body": "Simgesi saatin yanında. Tamamen kapatmak için simgeye sağ tıklayıp Çık'ı seçin.",
 
   "cal.title": "Renk kalibrasyonu",
@@ -1590,7 +1590,7 @@ const en: Record<MessageKey, string> = {
   "tray.gauges": "System gauges on the keys",
   "tray.profiles": "Profiles",
   "tray.quit": "Quit",
-  "tray.hidden.title": "Keymotion is still running",
+  "tray.hidden.title": "Still running in the background",
   "tray.hidden.body": "Its icon is next to the clock. To quit, right-click the icon and choose Quit.",
 
   "cal.title": "Color calibration",
