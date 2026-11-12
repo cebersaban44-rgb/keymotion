@@ -37,6 +37,7 @@ import { Gauges } from "./pages/Gauges";
 import { Reminders } from "./pages/Reminders";
 import { Lighting } from "./pages/Lighting";
 import { Overview } from "./pages/Overview";
+import { Profiles } from "./pages/Profiles";
 import { Screen, ScreenUploadToast } from "./pages/Screen";
 import { ScreenNotices } from "./pages/screen/Safety";
 import { Settings } from "./pages/Settings";
@@ -203,9 +204,11 @@ export default function App() {
   const content = () => {
     if (page === "settings") return <Settings />;
     if (!loaded) return null;
-    // Tools and the screen library work without the keyboard.
+    // Tools, the screen library and the profiles work without the keyboard.
     const tool = kb ?? OFFLINE_KEYBOARD;
     switch (page) {
+      case "profiles":
+        return <Profiles kb={tool} />;
       case "focus":
         return <Focus kb={tool} />;
       case "gauges":

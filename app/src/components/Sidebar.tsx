@@ -21,8 +21,8 @@ import { fmtClock, phaseColor, remainingNow, usePomodoro } from "../lib/pomodoro
 import { useActiveKeyboard, useApp, useNarrowWindow, type PageId } from "../lib/store";
 import { useUnsaved } from "../lib/unsaved";
 
-/** The Profiles page is being built; its entry shows once it exists. */
-export const PROFILES_ENABLED = false;
+/** The Profiles page's entry (it works without the keyboard; loading needs the cable). */
+export const PROFILES_ENABLED = true;
 
 interface NavItem {
   id: PageId;

@@ -13,7 +13,7 @@ export type BackupImported = { keymaps: Array<ImportedKeymap>, macros: Array<Imp
  */
 failed: Array<BackupSection>, 
 /**
- * Reminders, calendars or pictures left out (invalid, over a limit,
- * or a one-time reminder whose time has passed).
+ * Reminders, calendars, pictures or profiles left out (invalid, over a
+ * limit, or a one-time reminder whose time has passed).
  */
 skipped: number, };

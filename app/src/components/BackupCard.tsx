@@ -15,6 +15,7 @@ import { stageKeymapImport } from "../lib/keymap";
 import { initLighting } from "../lib/lighting";
 import { stageMacrosImport } from "../lib/macros";
 import { usePomodoro } from "../lib/pomodoro";
+import { useProfiles } from "../lib/profiles";
 import { useReminders } from "../lib/reminders";
 import { useScreen } from "../lib/screen";
 import { useApp } from "../lib/store";
@@ -34,6 +35,7 @@ const SECTION_LABEL: Record<BackupSection, MessageKey> = {
   gauges: "nav.gauges",
   reminders: "nav.reminders",
   calendar: "data.section.calendar",
+  profiles: "nav.profiles",
 };
 
 export const secondaryButton =
@@ -82,6 +84,8 @@ function sectionHint(info: BackupSectionInfo, screenNew: number, t: Translate) {
       return count > 0 ? t("data.section.reminders", { count }) : t("data.section.reminders.none");
     case "calendar":
       return count > 0 ? t("data.section.calendar.with", { count }) : t("data.section.calendar.settings");
+    case "profiles":
+      return t("data.section.profiles", { count });
     default:
       return t("data.section.replace");
   }
@@ -93,8 +97,10 @@ async function refreshAfterImport(result: BackupImported) {
   for (const m of result.macros) stageMacrosImport(m.modelId, m.slots);
   await initLighting();
   const modelId = useScreen.getState().modelId;
+  const profilesModel = useProfiles.getState().modelId;
   const loads = [
     modelId ? useScreen.getState().load(modelId) : Promise.resolve(),
+    profilesModel ? useProfiles.getState().load(profilesModel) : Promise.resolve(),
     usePomodoro.getState().load(),
     useGauges.getState().load(),
     useReminders.getState().load(),

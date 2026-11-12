@@ -15,6 +15,18 @@ const RULES: [RegExp, MessageKey][] = [
   [/another program is using the keyboard \(kb-cli\)/i, "err.conflict.kb"],
   [/untested keyboard firmware/i, "err.untested"],
   [/write cancelled by the user/i, "err.cancelled"],
+  // Profiles and profile files (profiles.rs). A load's own failure reads
+  // "profile part failed (keymap): …" and falls through to its cause.
+  [/a backup file, not a profile/i, "err.profile.backup"],
+  [/not a profile file/i, "err.profile.notProfile"],
+  [/profile from a newer version/i, "err.profile.newer"],
+  [/profile file damaged/i, "err.profile.damaged"],
+  [/profile file too large/i, "err.profile.tooLarge"],
+  [/profile for another keyboard model/i, "err.profile.otherModel"],
+  [/profile name taken/i, "err.profile.nameTaken"],
+  [/profile name empty/i, "err.profile.name"],
+  [/profile limit reached/i, "err.profile.full"],
+  [/nothing to put in the profile/i, "err.profile.nothing"],
   [/blocked by safety guard/i, "err.guard"],
   [/screen upload stopped/i, "err.uploadStopped"],
   [/live mode is off/i, "err.liveOff"],

@@ -19,7 +19,8 @@
 //!   "reminders": { "settings": { … }, "reminders": [ … ] },
 //!   "calendar": { "settings": { … }, "sources": [ { "name", "url", "color", "enabled" } ] },
 //!   "lighting": { … },                                      // lighting.json's state
-//!   "screen": { "items": [ { "name", "kind", "createdMs", "data": "<base64>" } ] }
+//!   "screen": { "items": [ { "name", "kind", "createdMs", "data": "<base64>" } ] },
+//!   "profiles": { "profiles": [ { "id", "name", "modelId", … } ] }  // profiles.json
 //! }
 //! ```
 //!
@@ -39,7 +40,9 @@
 //! editors, the lighting design as an unsaved edit on the Lighting page
 //! (this computer's record of what the keyboard has stays). Settings,
 //! reminders and calendars replace this computer's; library items are added
-//! to the library (the same picture is stored once).
+//! to the library (the same picture is stored once). Profiles are added to
+//! this computer's, and one with the same id replaces it. A profile's
+//! screen picture is a library item, by id: it comes with the screen part.
 
 use crate::calendar::{CalendarBackup, CalendarHandle};
 use crate::device::{DeviceHandle, Request};
@@ -48,6 +51,7 @@ use crate::dto::{
 };
 use crate::gauges::GaugesHandle;
 use crate::pomodoro::PomodoroHandle;
+use crate::profiles::{Profile, ProfileStore};
 use crate::reminders::RemindersHandle;
 use crate::screen_lib::ScreenLibrary;
 use crate::settings::{self, ClockSettings, Keymaps, MacroRecord};
@@ -110,6 +114,8 @@ pub struct Backup {
     pub lighting: Option<Map<String, Value>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub screen: Option<ScreenBackup>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profiles: Option<ProfilesBackup>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -129,6 +135,12 @@ pub struct RemindersBackup {
 #[serde(default, rename_all = "camelCase")]
 pub struct ScreenBackup {
     pub items: Vec<ScreenItemBackup>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ProfilesBackup {
+    pub profiles: Vec<Profile>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -197,6 +209,7 @@ pub enum BackupSection {
     Gauges,
     Reminders,
     Calendar,
+    Profiles,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
@@ -204,8 +217,8 @@ pub enum BackupSection {
 #[ts(export)]
 pub struct BackupSectionInfo {
     pub section: BackupSection,
-    /// Macros, library items, reminders or calendars in it (0 for the
-    /// others; for the calendar, 0 means its settings only).
+    /// Macros, library items, reminders, calendars or profiles in it (0 for
+    /// the others; for the calendar, 0 means its settings only).
     pub count: u32,
 }
 
@@ -247,8 +260,8 @@ pub struct BackupImported {
     pub macros: Vec<ImportedMacros>,
     /// Parts that could not be restored.
     pub failed: Vec<BackupSection>,
-    /// Reminders, calendars or pictures left out (invalid, over a limit,
-    /// or a one-time reminder whose time has passed).
+    /// Reminders, calendars, pictures or profiles left out (invalid, over a
+    /// limit, or a one-time reminder whose time has passed).
     pub skipped: u32,
 }
 
@@ -295,6 +308,9 @@ pub fn check(mut backup: Backup, in_library: &dyn Fn(&str) -> bool) -> Result<(P
     }
     if let Some(l) = backup.lighting.take() {
         backup.lighting = Some(crate::lighting::check(Value::Object(l)).map_err(|_| ERR_DAMAGED.to_string())?);
+    }
+    if let Some(p) = backup.profiles.take() {
+        backup.profiles = Some(ProfilesBackup { profiles: crate::profiles::check_backup(p.profiles)? });
     }
     let mut items = Vec::new();
     let mut screen_new = 0;
@@ -353,6 +369,9 @@ pub fn check(mut backup: Backup, in_library: &dyn Fn(&str) -> bool) -> Result<(P
     if let Some(c) = &backup.calendar {
         add(BackupSection::Calendar, c.sources.as_ref().map_or(0, Vec::len));
     }
+    if let Some(p) = backup.profiles.as_ref().filter(|p| !p.profiles.is_empty()) {
+        add(BackupSection::Profiles, p.profiles.len());
+    }
     let summary = BackupSummary {
         created_ms: backup.created_ms,
         app_version: backup.app_version.chars().take(32).collect(),
@@ -400,6 +419,10 @@ pub fn collect(app: &AppHandle, with_addresses: bool) -> Result<Backup, String> 
         }
     }
     b.screen = Some(ScreenBackup { items });
+    drop(lib);
+    let profiles = app.state::<Arc<Mutex<ProfileStore>>>();
+    let profiles = profiles.lock().map_err(|_| "profiles unavailable")?.profiles().to_vec();
+    b.profiles = Some(ProfilesBackup { profiles });
     Ok(b)
 }
 
@@ -534,6 +557,13 @@ pub fn apply(app: &AppHandle, pending: Pending, sections: &[BackupSection]) -> B
             Ok(skipped)
         });
     }
+    if let Some(p) = b.profiles {
+        run(BackupSection::Profiles, &mut out, &mut || {
+            let store = app.state::<Arc<Mutex<ProfileStore>>>();
+            let mut store = store.lock().map_err(|_| "profiles unavailable")?;
+            store.merge(p.profiles.clone(), now_ms())
+        });
+    }
     if want(BackupSection::Keymap) {
         out.keymaps = b
             .keymaps
@@ -616,6 +646,19 @@ mod tests {
                 ScreenItemBackup::new("AJAZZ", ScreenItemKind::Factory, 0.0, &screen::blob_unpadded(&still)),
             ],
         });
+        let profile = Profile {
+            id: "p1".into(),
+            name: "Oyun".into(),
+            created_ms: 1.0,
+            updated_ms: 1.0,
+            model_id: MODEL.into(),
+            lighting: None,
+            keymap: None,
+            macros: Some(Vec::new()),
+            screen: None,
+        };
+        let alien = Profile { id: "p2".into(), model_id: "unknown-model".into(), ..profile.clone() };
+        b.profiles = Some(ProfilesBackup { profiles: vec![profile, alien] });
         b
     }
 
@@ -655,6 +698,7 @@ mod tests {
         assert_eq!(count(BackupSection::Reminders), Some(1));
         assert_eq!(count(BackupSection::Calendar), Some(0), "settings only: no addresses in the file");
         assert_eq!(count(BackupSection::Lighting), Some(0));
+        assert_eq!(count(BackupSection::Profiles), Some(1), "a profile for an unknown model is left out");
         assert_eq!(summary.screen_new, 1, "one picture is in the library already");
         assert_eq!(pending.items.len(), 2);
         assert!(!pending.backup.keymaps.as_ref().unwrap().models.contains_key("unknown-model"));
@@ -672,6 +716,14 @@ mod tests {
         let mut b = sample();
         b.lighting = serde_json::json!({ "perKey": "x".repeat(crate::lighting::MAX_BYTES) }).as_object().cloned();
         assert_eq!(check(b, &|_| false).err(), Some(ERR_DAMAGED.into()));
+        let mut b = sample();
+        b.profiles.as_mut().unwrap().profiles[0].macros = None;
+        assert_eq!(check(b, &|_| false).err(), Some(ERR_DAMAGED.into()), "a profile with nothing in it");
+        // A backup without the section is fine.
+        let mut b = sample();
+        b.profiles = None;
+        let (_, summary) = check(b, &|_| false).unwrap();
+        assert!(!summary.sections.iter().any(|i| i.section == BackupSection::Profiles));
     }
 
     #[test]

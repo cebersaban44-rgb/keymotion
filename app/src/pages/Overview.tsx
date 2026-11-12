@@ -1,7 +1,7 @@
 // Genel Bakış: the connected keyboard at a glance. Its drawing shows the
 // keyboard's real light (read back over USB about four times a second) and
 // the keys held down while the app is in front; under it, quick cards for
-// the light, the screen and the focus timer. The connection details and the
+// the light, the screen, the focus timer and the profile. The connection details and the
 // clock live on the Bağlantı page.
 
 import { BatteryCharging, BatteryFull, BatteryMedium, Play, Radio, Usb } from "lucide-react";
@@ -16,6 +16,7 @@ import { useLighting } from "../lib/lighting";
 import { useLive } from "../lib/live";
 import { useMirror } from "../lib/mirror";
 import { DEFAULT_SETTINGS, fmtClock, phaseColor, remainingNow, usePomodoro } from "../lib/pomodoro";
+import { profileName, profileOnKeyboard, useProfiles } from "../lib/profiles";
 import { useScreen } from "../lib/screen";
 import { useApp } from "../lib/store";
 import { Thumb } from "./screen/common";
@@ -192,11 +193,11 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
         </div>
       </section>
 
-      {/* Room for a fourth card (profiles) in the same row. */}
       <div className="grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-4" data-overview-cards>
         <LightCard />
         <ScreenCard />
         <FocusCard />
+        <ProfileCard modelId={kb.modelId} />
       </div>
 
       {!usb && (
@@ -309,6 +310,31 @@ function ScreenCard() {
         <span className="text-[13px] text-ink-3">{t(factory ? "sc.page.gif.maybeFactory" : "overview.screen.unknown")}</span>
       )}
       {liveOn && !showsLive && <span className="text-[12px] text-ink-3">{t("overview.screen.liveOn")}</span>}
+    </QuickCard>
+  );
+}
+
+/** The profile the keyboard has (all its parts match this computer's
+ *  records), or that it matches none. */
+function ProfileCard({ modelId }: { modelId: string }) {
+  const t = useT();
+  const setPage = useApp((s) => s.setPage);
+  const state = useProfiles((s) => (s.modelId === modelId ? s.state : null));
+  useEffect(() => {
+    useProfiles.getState().load(modelId).catch(console.error);
+  }, [modelId]);
+  const match = state ? profileOnKeyboard(state) : null;
+  return (
+    <QuickCard title="overview.profile" data="profile" link="overview.profile.go" onLink={() => setPage("profiles")}>
+      {state && (
+        <span
+          className={match ? "truncate text-[15px]" : "text-[13px] text-ink-3"}
+          title={match ? profileName(match, t) : undefined}
+          data-overview-profile={match ? match.id : "none"}
+        >
+          {match ? profileName(match, t) : t("overview.profile.none")}
+        </span>
+      )}
     </QuickCard>
   );
 }
