@@ -47,8 +47,11 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
   live screen off, no USB cable, a meeting card).
 - **System gauges:** processor, graphics and memory load as bars on key rows,
   volume on the function keys, microphone mute on a chosen key.
-- **Focus timer:** the whole keyboard fills with the phase colour and empties
-  as time runs out; phase cards on the screen.
+- **Focus timer:** a sequence you build from focus and break blocks of any
+  length, in any order (drag to reorder), run once, a few times or until you
+  stop it; "25 / 5 classic" by default, and older settings become the
+  sequence they made. The whole keyboard fills with the block's colour and
+  empties as time runs out; a card on the screen for each block.
 - **Installer:** a per-user Windows installer in English and Turkish, with the
   Keymotion icon and a plain welcome text; no administrator rights needed.
   Uninstalling keeps your settings unless you tick "Also delete my settings and

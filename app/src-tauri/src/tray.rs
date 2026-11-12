@@ -303,12 +303,12 @@ fn minutes_left(p: &PomodoroState, now_ms: f64) -> u32 {
     (left.max(0.0) / 60_000.0).ceil().max(1.0) as u32
 }
 
-/// "Focus · Round 2/4 · 18 min left", "Paused · Short break · 3 min left",
-/// "Ready: 4 × 25 min focus".
+/// "Focus · Block 3/6 · 18 min left", "Paused · Break · 3 min left",
+/// "Ready: 6 blocks, 100 min".
 fn focus_status(t: &TrayTexts, p: &PomodoroState, now_ms: f64) -> String {
     if p.status == PomodoroStatus::Idle {
-        let (rounds, min) = (p.settings.rounds.to_string(), p.settings.focus_min.to_string());
-        return fill(&t.ready, &[("rounds", &rounds), ("min", &min)]);
+        let (blocks, min) = (p.settings.blocks.len().to_string(), p.settings.total_minutes().to_string());
+        return fill(&t.ready, &[("blocks", &blocks), ("min", &min)]);
     }
     let mut parts = Vec::new();
     if p.status == PomodoroStatus::Paused {
@@ -316,11 +316,10 @@ fn focus_status(t: &TrayTexts, p: &PomodoroState, now_ms: f64) -> String {
     }
     parts.push(match p.phase {
         PomodoroPhase::Focus => t.phase_focus.clone(),
-        PomodoroPhase::ShortBreak => t.phase_short.clone(),
-        PomodoroPhase::LongBreak => t.phase_long.clone(),
+        PomodoroPhase::Break => t.phase_break.clone(),
     });
-    if p.phase == PomodoroPhase::Focus && p.settings.rounds > 1 {
-        let (n, total) = (p.round.to_string(), p.settings.rounds.to_string());
+    if p.settings.blocks.len() > 1 {
+        let (n, total) = (p.block.to_string(), p.settings.blocks.len().to_string());
         parts.push(fill(&t.round, &[("n", &n), ("total", &total)]));
     }
     parts.push(fill(&t.left, &[("min", &minutes_left(p, now_ms).to_string())]));
@@ -739,12 +738,15 @@ mod tests {
     use super::*;
     use chrono::FixedOffset;
 
-    fn pomodoro(status: PomodoroStatus, phase: PomodoroPhase, round: u8, remaining_ms: f64) -> PomodoroState {
+    /// The classic sequence (6 blocks, 100 minutes), at block `block`.
+    fn pomodoro(status: PomodoroStatus, phase: PomodoroPhase, block: u8, remaining_ms: f64) -> PomodoroState {
         PomodoroState {
-            settings: crate::dto::PomodoroSettings { focus_min: 25, rounds: 4, ..Default::default() },
+            settings: crate::dto::PomodoroSettings::default(),
             status,
             phase,
-            round,
+            block,
+            round: 1,
+            cycle: 1,
             phase_ms: 25.0 * 60_000.0,
             remaining_ms,
             at_ms: 1_000.0,
@@ -759,7 +761,7 @@ mod tests {
         TrayTexts {
             locale: s("tr"),
             tomorrow: s("yarın"),
-            round: s("Tur {n}/{total}"),
+            round: s("Blok {n}/{total}"),
             left: s("{min} dk kaldı"),
             ..TrayTexts::default()
         }
@@ -768,20 +770,20 @@ mod tests {
     const UTC3: i32 = 3 * 3600;
 
     #[test]
-    fn focus_line_shows_phase_round_and_minutes() {
+    fn focus_line_shows_phase_block_and_minutes() {
         let t = TrayTexts::default();
         let idle = pomodoro(PomodoroStatus::Idle, PomodoroPhase::Focus, 1, 0.0);
-        assert_eq!(focus_status(&t, &idle, 0.0), "Ready: 4 × 25 min focus");
+        assert_eq!(focus_status(&t, &idle, 0.0), "Ready: 6 blocks, 100 min");
         // 18 min 40 s left at 1 s; 20 s later 18 min 20 s: 19 (rounded up).
-        let p = pomodoro(PomodoroStatus::Running, PomodoroPhase::Focus, 2, 18.0 * 60_000.0 + 40_000.0);
-        assert_eq!(focus_status(&t, &p, 21_000.0), "Focus · Round 2/4 · 19 min left");
-        let p = pomodoro(PomodoroStatus::Running, PomodoroPhase::ShortBreak, 2, 30_000.0);
-        assert_eq!(focus_status(&t, &p, 1_000.0), "Short break · 1 min left");
+        let p = pomodoro(PomodoroStatus::Running, PomodoroPhase::Focus, 3, 18.0 * 60_000.0 + 40_000.0);
+        assert_eq!(focus_status(&t, &p, 21_000.0), "Focus · Block 3/6 · 19 min left");
+        let p = pomodoro(PomodoroStatus::Running, PomodoroPhase::Break, 2, 30_000.0);
+        assert_eq!(focus_status(&t, &p, 1_000.0), "Break · Block 2/6 · 1 min left");
         // Ran past its end (the worker had not ticked yet): 1, not 0.
-        assert_eq!(focus_status(&t, &p, 90_000.0), "Short break · 1 min left");
+        assert_eq!(focus_status(&t, &p, 90_000.0), "Break · Block 2/6 · 1 min left");
         // Paused: the time does not run down.
         let p = pomodoro(PomodoroStatus::Paused, PomodoroPhase::Focus, 3, 12.0 * 60_000.0);
-        assert_eq!(focus_status(&t, &p, 9e9), "Paused · Focus · Round 3/4 · 12 min left");
+        assert_eq!(focus_status(&t, &p, 9e9), "Paused · Focus · Block 3/6 · 12 min left");
     }
 
     #[test]
@@ -809,7 +811,7 @@ mod tests {
         assert_eq!(v.reminders_next, "Next: 14:30 · Su iç");
         assert!(v.gauges_on);
         assert_eq!(v.profiles[0].1, "Default");
-        assert_eq!(v.tooltip, "Keymotion — Focus · Tur 1/4 · 1 dk kaldı");
+        assert_eq!(v.tooltip, "Keymotion — Focus · Blok 1/6 · 1 dk kaldı");
 
         f.reminders = Some((true, Some((at(13, 9, 0), String::new()))));
         assert_eq!(view_of(&t, &f, now, &tz).reminders_next, "Next: yarın 09:00 · —");

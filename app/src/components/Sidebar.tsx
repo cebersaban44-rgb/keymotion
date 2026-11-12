@@ -209,10 +209,9 @@ function PomodoroChip({ collapsed, showTip, hideTip }: { collapsed: boolean; sho
   // Not needed on the timer's own page.
   if (!p || p.status === "idle" || onPage) return null;
   const color = phaseColor(p.settings, p.phase);
-  const phase =
-    p.phase === "focus" ? t("pomo.phase.focus") : p.phase === "shortBreak" ? t("pomo.phase.shortBreak") : t("pomo.phase.longBreak");
+  const phase = p.phase === "focus" ? t("pomo.phase.focus") : t("pomo.phase.break");
   const left = fmtClock(remainingNow(p));
-  const sub = t("pomo.chip.sub", { phase, round: p.round, rounds: p.settings.rounds });
+  const sub = t("pomo.chip.sub", { phase, round: p.block, rounds: p.settings.blocks.length });
   const summary = t("pomo.chip", { phase, time: left });
   return (
     <button
