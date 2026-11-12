@@ -79,7 +79,13 @@ export async function setUnsavedFlag(unsaved: boolean): Promise<void> {
  * handler must acknowledge (done here) or the backend closes anyway.
  */
 export async function onCloseRequested(cb: () => void): Promise<UnlistenFn> {
-  if (!inTauri) return () => {};
+  if (!inTauri) {
+    // Browser mock: `dispatchEvent(new Event("mock-close-requested"))`
+    // stands in for the window's close button.
+    const on = () => cb();
+    window.addEventListener("mock-close-requested", on);
+    return () => window.removeEventListener("mock-close-requested", on);
+  }
   return listen("close-requested", () => {
     invoke("ack_close_request").catch(console.error);
     cb();

@@ -29,6 +29,9 @@ export interface UnsavedItem {
   discard: () => void;
   /** A write the app runs by itself: closing asks, the sidebar shows no mark. */
   background?: boolean;
+  /** A write already running (an upload, a save): "save" waits for it, it
+   *  cannot be undone. */
+  running?: boolean;
 }
 
 /** Lighting: the most recently edited setup (an effect or a per-key design). */
@@ -91,6 +94,7 @@ function useScreenItem(): UnsavedItem | null {
     needsUsb: true,
     save: () => useScreen.getState().running ?? Promise.resolve(),
     discard: () => {},
+    running: true,
   };
 }
 
@@ -111,6 +115,7 @@ function useWriteItem(manualUpload: boolean): UnsavedItem | null {
     save: writingDone,
     discard: () => {},
     background: true,
+    running: true,
   };
 }
 
