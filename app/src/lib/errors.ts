@@ -43,13 +43,46 @@ const RULES: [RegExp, MessageKey][] = [
   [/not saved|os error|permission/i, "err.save"],
 ];
 
+/** Situations the user can fix (another program open, no cable, a name
+ *  taken, a wrong file): the log records them as warnings ("action
+ *  refused"), so real errors stand out in the diagnostics. */
+const EXPECTED: ReadonlySet<MessageKey> = new Set<MessageKey>([
+  "err.several",
+  "err.conflict.ajazz",
+  "err.conflict.signalrgb",
+  "err.conflict.openrgb",
+  "err.conflict.kb",
+  "err.untested",
+  "err.cancelled",
+  "err.profile.backup",
+  "err.profile.notProfile",
+  "err.profile.newer",
+  "err.profile.damaged",
+  "err.profile.tooLarge",
+  "err.profile.otherModel",
+  "err.profile.nameTaken",
+  "err.profile.name",
+  "err.profile.full",
+  "err.profile.nothing",
+  "err.liveOff",
+  "err.fn",
+  "err.factory",
+  "err.noDriver",
+  "err.factoryAck",
+  "err.tooLarge",
+  "err.badFile",
+  "err.noKeyboard",
+]);
+
 /** A short, translated message for an error from the backend. */
 export function friendlyError(e: unknown, t: (key: MessageKey) => string, quiet = false): string {
   const raw = e instanceof Error ? e.message : String(e);
-  if (!quiet) {
-    console.error(raw);
-    void logUiError(`action failed: ${raw}`);
-  }
   const hit = RULES.find(([re]) => re.test(raw));
-  return t(hit ? hit[1] : "err.generic");
+  const key = hit ? hit[1] : "err.generic";
+  if (!quiet) {
+    const expected = EXPECTED.has(key);
+    (expected ? console.warn : console.error)(raw);
+    void logUiError(`${expected ? "action refused" : "action failed"}: ${raw}`);
+  }
+  return t(key);
 }
