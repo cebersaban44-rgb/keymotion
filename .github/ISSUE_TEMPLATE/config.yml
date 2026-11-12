@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and help
+    url: https://github.com/cebersaban44-rgb/keymotion/discussions/categories/q-a
+    about: Ask how something works or get help with a setup. / Sorular ve yardım.
+  - name: Security problem
+    url: https://github.com/cebersaban44-rgb/keymotion/security/advisories/new
+    about: Please report security problems privately, not as a public issue. / Güvenlik sorunlarını gizli bildirin.

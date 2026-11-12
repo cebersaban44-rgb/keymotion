@@ -30,11 +30,11 @@ use calendar::CalendarHandle;
 use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request, ScreenWriteStep};
 use diagnostics::{AppFolder, LastExport};
 use dto::{
-    BackgroundSettings, CalendarSettings, CalendarState, Calibration, CalibrationInfo, ClockStatus, EffectInfo,
-    EffectRequest, FlashWrite, GaugesSettings, GaugesState, KeyAssignment, KeyboardInfo, KeymapCatalog, KeymapLayer,
-    KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, PomodoroSettings, PomodoroState,
-    Reminder, ReminderSettings, ReminderState, ScreenItem, ScreenItemKind, ScreenState, SettingsReset, SongStop,
-    ThemePreference, TrayTexts, UiEnvironment,
+    BackgroundSettings, CalendarSettings, CalendarState, Calibration, CalibrationInfo, ClockStatus, CrashNote,
+    EffectInfo, EffectRequest, FlashWrite, GaugesSettings, GaugesState, IssueKind, KeyAssignment, KeyboardInfo,
+    KeymapCatalog, KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint,
+    PomodoroSettings, PomodoroState, Reminder, ReminderSettings, ReminderState, ScreenItem, ScreenItemKind,
+    ScreenState, SettingsReset, SongStop, ThemePreference, TrayTexts, UiEnvironment, UnsupportedKeyboard,
 };
 use gauges::GaugesHandle;
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
@@ -473,6 +473,33 @@ fn keyboards(device: Device<'_>) -> Vec<KeyboardInfo> {
     device.snapshot.lock().map(|s| s.keyboards.clone()).unwrap_or_default()
 }
 
+/// Keyboards that look like SONiX or AJAZZ ones but aren't supported yet.
+#[tauri::command]
+fn unsupported_keyboards(device: Device<'_>) -> Vec<UnsupportedKeyboard> {
+    device.snapshot.lock().map(|s| s.unsupported.clone()).unwrap_or_default()
+}
+
+/// A support request for the unsupported keyboard `id`: versions, the
+/// keyboard's ids, names, collections and report descriptors (read from
+/// Windows; nothing is sent to the keyboard).
+#[tauri::command]
+async fn unsupported_report(app: AppHandle, id: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let device = app.state::<Arc<DeviceHandle>>();
+        let details = device.call(|reply| Request::DescribeUnsupported { id, reply })?;
+        let windows = kb_winsys::os::windows_release()
+            .map_or_else(|| format!("unknown (build {})", os_build()), |r| r.describe());
+        Ok(diagnostics::support_request(
+            &app.package_info().name,
+            &app.package_info().version.to_string(),
+            &windows,
+            &details,
+        ))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 fn refresh_keyboards(device: Device<'_>) -> Result<(), String> {
     device.send(Request::Refresh)
@@ -730,6 +757,27 @@ fn open_link(url: String) -> Result<(), String> {
     notify::open_project_page(&url)
 }
 
+/// Open a new issue on the project's GitHub page with its form, the title
+/// and (for a keyboard) the model filled in.
+#[tauri::command]
+fn open_issue(kind: IssueKind, title: String, model: Option<String>) -> Result<(), String> {
+    notify::open_issue_form(kind, &title, model.as_deref())
+}
+
+/// The newest crash note from an earlier run not offered yet, if any.
+#[tauri::command]
+fn crash_pending(app: AppHandle) -> Option<CrashNote> {
+    let dir = app.path().app_log_dir().ok()?;
+    logging::unseen_crash(&dir).map(|(name, text)| CrashNote { name, text })
+}
+
+/// The crash note `name` was offered: don't offer it again.
+#[tauri::command]
+fn crash_seen(app: AppHandle, name: String) -> Result<(), String> {
+    let dir = app.path().app_log_dir().map_err(|e| e.to_string())?;
+    logging::mark_crash_seen(&dir, &name).map_err(|e| format!("crash note not marked: {e}"))
+}
+
 #[tauri::command]
 fn ui_environment(env: State<'_, UiEnvironment>) -> UiEnvironment {
     env.inner().clone()
@@ -778,9 +826,10 @@ fn log_ui_error(message: String) {
     }
 }
 
-/// The diagnostics report, plain text for the clipboard.
+/// The diagnostics report, plain text for the clipboard. A problem report
+/// passes what happened (`context`: an error, a crash note) for the top.
 #[tauri::command]
-async fn diagnostics_report(app: AppHandle, language: String) -> Result<String, String> {
+async fn diagnostics_report(app: AppHandle, language: String, context: Option<String>) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let keyboards: Vec<String> = app
             .state::<Arc<DeviceHandle>>()
@@ -796,6 +845,7 @@ async fn diagnostics_report(app: AppHandle, language: String) -> Result<String, 
                 .map_or_else(|| format!("unknown (build {})", os_build()), |r| r.describe()),
             webview: tauri::webview_version().unwrap_or_else(|e| format!("unknown ({e})")),
             ui_language: language.chars().take(8).collect(),
+            context,
             keyboards,
             data_files: app.path().app_config_dir().map(|d| diagnostics::data_files(&d)).unwrap_or_default(),
             log_lines: app
@@ -1365,6 +1415,11 @@ pub fn run() {
             tray_texts,
             ui_environment,
             open_link,
+            open_issue,
+            crash_pending,
+            crash_seen,
+            unsupported_keyboards,
+            unsupported_report,
             set_window_theme,
             clock_status,
             sync_clock,

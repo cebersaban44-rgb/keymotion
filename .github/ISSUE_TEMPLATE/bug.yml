@@ -1,0 +1,55 @@
+name: Problem report
+description: Something in Keymotion went wrong or doesn't work as it should.
+title: "[Problem] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. The quickest way: in Keymotion, open **Settings › Report a problem**. It fills in the title and copies the app's details for you; paste them into the "Details from the app" box below.
+
+        *Türkçe yazabilirsiniz.*
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, and what did you see?
+      placeholder: "I pressed Save to keyboard on the Lighting page and got \"The keyboard didn't answer\"."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Can you make it happen again?
+      description: The steps, if you know them. "It happened once" is fine too.
+      placeholder: |
+        1. Open the Screen page
+        2. ...
+    validations:
+      required: false
+  - type: dropdown
+    id: connection
+    attributes:
+      label: How is the keyboard connected?
+      options:
+        - USB cable
+        - 2.4 GHz receiver
+        - Bluetooth
+        - Not connected / not sure
+    validations:
+      required: false
+  - type: textarea
+    id: details
+    attributes:
+      label: Details from the app
+      description: |
+        Paste what Keymotion copied (Settings › Report a problem, or Copy diagnostics). It has the app, Windows and keyboard versions and the last lines of the app's log. Web addresses and your Windows user name are already removed; please look it over before sending.
+      render: text
+    validations:
+      required: false

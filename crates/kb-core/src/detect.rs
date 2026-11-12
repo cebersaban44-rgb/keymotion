@@ -182,6 +182,102 @@ fn is_meaningful_product(p: &str) -> bool {
     !p.is_empty() && !p.eq_ignore_ascii_case("Model_Number") && !p.eq_ignore_ascii_case("Model Number")
 }
 
+/// SONiX's USB vendor id, which AJAZZ keyboards carry.
+pub const SONIX_VID: u16 = 0x0C45;
+
+/// A keyboard that looks like a SONiX or AJAZZ one but matches no model
+/// file: the app can't drive it, and the user can ask for support.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownKeyboard {
+    pub vid: u16,
+    pub pid: u16,
+    pub bus: hid::Bus,
+    pub release: u16,
+    pub manufacturer: Option<String>,
+    pub product: Option<String>,
+    /// Its HID collections (usage page, usage, USB interface number), in
+    /// the order the OS lists them.
+    pub collections: Vec<(u16, u16, i32)>,
+    /// The OS paths of those collections, same order (for reading their
+    /// descriptors; never shown or sent).
+    pub paths: Vec<String>,
+}
+
+impl UnknownKeyboard {
+    /// Stable identity: ids and bus.
+    pub fn key(&self) -> String {
+        let bus = match self.bus {
+            hid::Bus::Usb => "usb",
+            hid::Bus::Bluetooth => "bluetooth",
+            hid::Bus::Other => "other",
+        };
+        format!("{:04X}:{:04X}:{bus}", self.vid, self.pid)
+    }
+
+    /// The name to show: the product string, else the maker's.
+    pub fn name(&self) -> Option<&str> {
+        self.product
+            .as_deref()
+            .filter(|p| is_meaningful_product(p))
+            .or(self.manufacturer.as_deref())
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+    }
+}
+
+/// Keyboards that look like SONiX or AJAZZ ones (SONiX's vendor id, or
+/// "AJAZZ" in their names) but match no model. Only devices with a
+/// standard keyboard collection count, so a SONiX webcam's buttons don't.
+pub fn unknown_keyboards(interfaces: &[HidInterface]) -> Vec<UnknownKeyboard> {
+    let Ok(models) = catalogue() else { return Vec::new() };
+    let named = |s: &Option<String>| s.as_deref().is_some_and(|s| s.to_ascii_lowercase().contains("ajazz"));
+    let mut out: Vec<UnknownKeyboard> = Vec::new();
+    for iface in interfaces {
+        if iface.vid != SONIX_VID && !named(&iface.product) && !named(&iface.manufacturer) {
+            continue;
+        }
+        let probe = InterfaceProbe {
+            vid: iface.vid,
+            pid: iface.pid,
+            usage_page: iface.usage_page,
+            product: iface.product.as_deref(),
+            bus: match iface.bus {
+                hid::Bus::Usb => Bus::Usb,
+                hid::Bus::Bluetooth => Bus::Bluetooth,
+                hid::Bus::Other => Bus::Other,
+            },
+        };
+        if match_interface(models, &probe).is_some() {
+            continue;
+        }
+        let same = |k: &UnknownKeyboard| {
+            k.vid == iface.vid && k.pid == iface.pid && k.bus == iface.bus && k.product == iface.product
+        };
+        let k = match out.iter_mut().position(|k| same(k)) {
+            Some(i) => &mut out[i],
+            None => {
+                out.push(UnknownKeyboard {
+                    vid: iface.vid,
+                    pid: iface.pid,
+                    bus: iface.bus,
+                    release: iface.release,
+                    manufacturer: iface.manufacturer.clone(),
+                    product: iface.product.clone(),
+                    collections: Vec::new(),
+                    paths: Vec::new(),
+                });
+                out.last_mut().expect("just pushed")
+            }
+        };
+        k.collections.push((iface.usage_page, iface.usage, iface.interface_number));
+        k.paths.push(iface.path.clone());
+    }
+    // Generic desktop (0x01), keyboard (0x06).
+    out.retain(|k| k.collections.iter().any(|&(page, usage, _)| page == 0x0001 && usage == 0x0006));
+    out.sort_by_key(UnknownKeyboard::key);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,5 +391,45 @@ mod tests {
         assert_eq!(found[0].connection, ConnectionKind::Dongle);
         assert!(found[0].command.is_some());
         assert!(found[0].capabilities().is_empty());
+    }
+
+    fn collection(pid: u16, page: u16, usage: u16, product: &str) -> HidInterface {
+        HidInterface { usage, ..iface(pid, page, hid::Bus::Usb, product) }
+    }
+
+    #[test]
+    fn unknown_sonix_and_ajazz_keyboards_are_found() {
+        // An AK820 PRO shares the AK980's ids but not its name.
+        let ak820 = [
+            collection(0x8009, 0x0001, 0x0006, "SONiX AK820 PRO"),
+            collection(0x8009, 0x000C, 0x0001, "SONiX AK820 PRO"),
+            collection(0x8009, 0xFF13, 0x0001, "SONiX AK820 PRO"),
+        ];
+        let found = unknown_keyboards(&ak820);
+        assert_eq!(found.len(), 1);
+        let k = &found[0];
+        assert_eq!(k.key(), "0C45:8009:usb");
+        assert_eq!(k.name(), Some("SONiX AK820 PRO"));
+        assert_eq!(k.collections, vec![(0x0001, 0x0006, -1), (0x000C, 0x0001, -1), (0xFF13, 0x0001, -1)]);
+        assert_eq!(k.paths.len(), 3);
+
+        // Another maker's id with AJAZZ in the name.
+        let other = HidInterface { vid: 0x3151, ..collection(0x4011, 0x0001, 0x0006, "AJAZZ AK35") };
+        assert_eq!(unknown_keyboards(&[other])[0].key(), "3151:4011:usb");
+    }
+
+    #[test]
+    fn supported_and_non_keyboard_devices_are_not_unknown() {
+        let ak980 = [
+            collection(0x8009, 0x0001, 0x0006, "SONiX AK980 PRO"),
+            collection(0x8009, 0xFF13, 0x0001, "SONiX AK980 PRO"),
+        ];
+        assert!(unknown_keyboards(&ak980).is_empty());
+        // A SONiX webcam's button collection is not a keyboard.
+        let camera = collection(0x6366, 0x000C, 0x0001, "USB Camera");
+        assert!(unknown_keyboards(&[camera]).is_empty());
+        // Other makers' keyboards are none of our business.
+        let other = HidInterface { vid: 0x046D, ..collection(0xC31C, 0x0001, 0x0006, "USB Keyboard") };
+        assert!(unknown_keyboards(&[other]).is_empty());
     }
 }

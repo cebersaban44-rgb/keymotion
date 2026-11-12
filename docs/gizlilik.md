@@ -27,7 +27,8 @@ Bu bilgiler yalnızca klavyede ve uygulamada göstermek için kullanılır. Beli
 | Klavye ya da fareye son dokunuşunuzdan bu yana geçen süre | Hatırlatıcılar açıkken | Tekrarlayan hatırlatmalar siz yokken bekler |
 | Windows klavye düzeniniz | Uygulama açılınca ve öne gelince | Tuş adlarının sizin dilinizde yazılması |
 | Bağlı klavyeler (USB aygıtları, Bluetooth pil düzeyi) | Uygulama çalışırken | Klavyeyi bulmak ve yönetmek |
-| Windows ve WebView2 sürümleri | Tanılama bilgisini kopyaladığınızda | Tanılama metni |
+| Bir klavyenin HID tanımları (Windows'un o klavye hakkında kaydettikleri) | Henüz desteklenmeyen bir klavye için destek istediğinizde | Destek isteği |
+| Windows ve WebView2 sürümleri | Tanılama bilgisini kopyaladığınızda ya da sorun bildirdiğinizde | Tanılama metni |
 
 ## Verileriniz nerede durur
 
@@ -44,6 +45,14 @@ Klasör adlarında uygulamanın kimliği geçer. **Ayarlar → Hakkında → Ver
 ## Tanılama bilgisi
 
 **Ayarlar → Hakkında → Tanılama bilgisi → Kopyala** panoya bir metin koyar: uygulama, Windows ve WebView2 sürümleri; klavye modeli, klavye yazılımı ve bağlantısı; ayar dosyalarının adları ve boyutları; günlüğün son 150 satırı (yukarıdaki gibi temizlenmiş). Bu metin hiçbir yere gönderilmez; bir iletiye yapıştırıp yapıştırmamaya siz karar verirsiniz.
+
+## Sorun bildirme ve destek isteme
+
+Sorunlar GitHub'da, sizin elinizle bildirilir. Uygulama kendiliğinden hiçbir şey göndermez.
+
+- **Sorun bildir** (Ayarlar → Hakkında → Geri bildirim, beklenmeyen bir hatadan sonraki bildirim, çökmeden sonraki bildirim) bir pencere açar ve gönderilecek metni önce gösterir: yukarıdaki tanılama bilgisi, en üstte ne olduğu. **GitHub'da bildir** metni panoya koyar ve projenin sorun formunu tarayıcınızda açar. Metni oraya siz yapıştırır, göndermeye siz karar verirsiniz.
+- **Destek iste**, henüz desteklenmeyen bir SONiX ya da AJAZZ klavye takılınca görünür. Aynı şekilde çalışır; metinde klavyenin bilgileri vardır: USB kimlikleri, adı ve Windows'un tuttuğu HID tanımları. Klavyeye hiçbir şey yazılmaz. Seri numarası ve aygıt yolları eklenmez.
+- **Bir çökmeden sonra** uygulama bir sonraki açılışta son 7 günün en yeni çökme notunu bir kez önerir.
 
 ## Dışa aktarma, içe aktarma ve silme
 
