@@ -2,14 +2,12 @@
 // that hand finished cards to the backend. The backend decides when a card
 // may go (budget, cable, another upload); the UI only draws cards.
 
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type { LivePlan } from "../bindings/LivePlan";
 import type { LiveState } from "../bindings/LiveState";
 import type { SongStop } from "../bindings/SongStop";
 import type { TrackInfo } from "../bindings/TrackInfo";
-import { inTauri } from "./ipc";
+import { inTauri, invoke, listen } from "./ipc";
 import { mockFactoryAtRisk, mockLiveUploaded, mockRestored, mockShown, useScreen } from "./screen";
 import { toBlob, type Prepared } from "./screenImport";
 
@@ -61,7 +59,7 @@ const mock = {
 };
 
 /** In the browser preview with `pomofast`, waits are short too. */
-const FAST = typeof location !== "undefined" && location.search.includes("pomofast");
+const FAST = import.meta.env.DEV && typeof location !== "undefined" && location.search.includes("pomofast");
 
 function mockLiveShowing() {
   return mockShown() === "live";
@@ -93,7 +91,7 @@ function mockPutBack() {
 /** Like `LiveHandle::return_after`: only while this source's card shows. */
 export function mockReturnAfter(source: string, ms: number) {
   const s = mock.state;
-  if (inTauri || !s.enabled || !mockLiveShowing() || s.last?.source !== source) return;
+  if (!import.meta.env.DEV || inTauri || !s.enabled || !mockLiveShowing() || s.last?.source !== source) return;
   window.clearTimeout(mock.backTimer);
   s.goingBack = { source, atMs: Date.now() + ms };
   mock.backTimer = window.setTimeout(() => {
@@ -112,7 +110,7 @@ export function mockReturnAfter(source: string, ms: number) {
 }
 
 export function mockCancelReturn(source: string) {
-  if (inTauri || mock.state.goingBack?.source !== source) return;
+  if (!import.meta.env.DEV || inTauri || mock.state.goingBack?.source !== source) return;
   window.clearTimeout(mock.backTimer);
   mock.state.goingBack = null;
   mockEmit();
@@ -127,13 +125,13 @@ function mockTrackPlaying(playing: boolean) {
   if (playing) mockCancelReturn(NOW_PLAYING_SOURCE);
   mockEmit();
 }
-if (!inTauri && typeof window !== "undefined") {
+if (import.meta.env.DEV && !inTauri && typeof window !== "undefined") {
   (window as unknown as { __ksMockTrack: (p: boolean) => void }).__ksMockTrack = mockTrackPlaying;
 }
 
 /** A mock source holds the screen or lets go (browser preview only). */
 export function mockLiveHold(source: string, on: boolean) {
-  if (inTauri) return;
+  if (!import.meta.env.DEV || inTauri) return;
   const has = mock.state.holders.includes(source);
   if (on === has) return;
   mock.state.holders = on ? [...mock.state.holders, source] : mock.state.holders.filter((h) => h !== source);
@@ -180,7 +178,7 @@ async function mockTrackLoop() {
 }
 
 export function getLiveState(): Promise<LiveState> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     mock.state.factoryAckNeeded = !mock.factoryAck && mockFactoryAtRisk();
     return Promise.resolve({ ...mock.state });
   }
@@ -190,7 +188,7 @@ export function getLiveState(): Promise<LiveState> {
 /** The user accepted, once, that live cards erase the factory animation
  *  (there is no backup of it). */
 async function ackFactory(): Promise<LiveState> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     mock.factoryAck = true;
     mock.state.factoryAckNeeded = false;
     return { ...mock.state };
@@ -209,7 +207,7 @@ export interface LivePatch {
 }
 
 export async function configureLive(patch: LivePatch): Promise<LiveState> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     const s = mock.state;
     if (patch.restore && patch.enabled !== true && s.restore) mockPutBack();
     if (patch.enabled !== undefined) s.enabled = patch.enabled;
@@ -267,7 +265,7 @@ async function mockUploadPending() {
 /** Hand a finished card to the backend; it waits for budget and cable. */
 export async function submitLive(p: Prepared, source: string): Promise<LiveState> {
   const blob = toBlob(p);
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     const s = mock.state;
     if (!s.enabled) throw new Error("live mode is off");
     s.pending = { source, name: p.name };
@@ -288,7 +286,7 @@ export async function submitLive(p: Prepared, source: string): Promise<LiveState
 /** Send the waiting card now instead of waiting for the budget (the
  *  user's choice: counted, never refused). */
 export async function sendLiveNow(): Promise<LiveState> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     void mockUploadPending();
     return { ...mock.state };
   }
@@ -297,7 +295,7 @@ export async function sendLiveNow(): Promise<LiveState> {
 
 /** Cover art of the announced track, if Windows gave one. */
 export async function nowPlayingCover(): Promise<Blob | null> {
-  if (!inTauri) return mock.cover;
+  if (import.meta.env.DEV && !inTauri) return mock.cover;
   try {
     const data = await invoke<ArrayBuffer>("now_playing_cover");
     return new Blob([data]);
@@ -386,7 +384,7 @@ export function startLive(draw: (t: TrackInfo, cover: Blob | null) => Promise<Pr
   };
 
   useLive.getState().load().catch(console.error);
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     mock.emit = onState;
     mock.onTrack = (t) => void onTrack(t);
     return () => {

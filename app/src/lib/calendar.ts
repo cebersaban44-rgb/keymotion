@@ -5,8 +5,6 @@
 // The browser preview keeps a small copy of the card times for its fake
 // meetings: keep the two in step.
 
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type { CalendarCard } from "../bindings/CalendarCard";
 import type { CalendarEvent } from "../bindings/CalendarEvent";
@@ -14,7 +12,7 @@ import type { CalendarProvider } from "../bindings/CalendarProvider";
 import type { CalendarSettings } from "../bindings/CalendarSettings";
 import type { CalendarState } from "../bindings/CalendarState";
 import type { MessageKey } from "./i18n";
-import { inTauri } from "./ipc";
+import { inTauri, invoke, listen } from "./ipc";
 import { mockLiveHold, mockReturnAfter, submitLive, useLive } from "./live";
 import type { Prepared } from "./screenImport";
 
@@ -184,12 +182,12 @@ function mockStart() {
 // ------------------------------------------------------------------- ipc
 
 export function getCalendar(): Promise<CalendarState> {
-  if (!inTauri) return Promise.resolve(mockState());
+  if (import.meta.env.DEV && !inTauri) return Promise.resolve(mockState());
   return invoke<CalendarState>("calendar_state");
 }
 
 export function configureCalendar(settings: CalendarSettings): Promise<CalendarState> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     mock.settings = { ...settings };
     return Promise.resolve(mockState());
   }
@@ -197,7 +195,7 @@ export function configureCalendar(settings: CalendarSettings): Promise<CalendarS
 }
 
 export async function addCalendar(url: string, name: string): Promise<CalendarState> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     if (!addressOk(url)) throw new Error("not https");
     await new Promise((r) => setTimeout(r, 600));
     const n = mock.sources.length;
@@ -231,7 +229,7 @@ export function updateCalendar(
   id: string,
   patch: { name?: string; color?: [number, number, number]; enabled?: boolean },
 ): Promise<CalendarState> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     const src = mock.sources.find((s) => s.id === id);
     if (src) Object.assign(src, patch);
     return Promise.resolve(mockState());
@@ -245,7 +243,7 @@ export function updateCalendar(
 }
 
 export function removeCalendar(id: string): Promise<CalendarState> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     mock.sources = mock.sources.filter((s) => s.id !== id);
     return Promise.resolve(mockState());
   }
@@ -253,7 +251,7 @@ export function removeCalendar(id: string): Promise<CalendarState> {
 }
 
 export function refreshCalendars(): Promise<CalendarState> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     for (const s of mock.sources) s.lastOkMs = Date.now();
     return Promise.resolve(mockState());
   }
@@ -263,7 +261,7 @@ export function refreshCalendars(): Promise<CalendarState> {
 /** After a tried card went to the live mode: send it now, own picture
  *  back after a minute. */
 export function tryCardBack(): Promise<void> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     mockReturnAfter(CALENDAR_SOURCE, 60_000);
     return Promise.resolve();
   }
@@ -302,7 +300,7 @@ export function previewCard(
 }
 
 export function tryReminder(): Promise<void> {
-  if (!inTauri) return Promise.resolve();
+  if (import.meta.env.DEV && !inTauri) return Promise.resolve();
   return invoke("calendar_try_reminder");
 }
 
@@ -358,7 +356,7 @@ export function startCalendar(draw: (c: CalendarCard) => Promise<Prepared>): () 
     }
   };
   useCalendar.getState().load().catch(console.error);
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     mock.emit = (s) => useCalendar.setState({ state: s });
     mock.onCard = (c) => void onCard(c);
     return () => {
