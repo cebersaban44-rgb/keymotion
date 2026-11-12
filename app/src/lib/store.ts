@@ -57,6 +57,18 @@ function load<T extends string>(key: string, allowed: readonly T[], fallback: T)
   }
 }
 
+/** The language to start in until the user picks one in Settings: Windows'
+ *  display language when the app has it (Turkish), English for every other
+ *  (owner's decision, 2026-11-12). WebView2 starts with Windows' display
+ *  language, so `navigator.language` is it. */
+function windowsLocale(): Locale {
+  try {
+    return navigator.language.toLowerCase().startsWith("tr") ? "tr" : "en";
+  } catch {
+    return "en";
+  }
+}
+
 function save(key: string, value: string) {
   try {
     localStorage.setItem(key, value);
@@ -72,7 +84,7 @@ export const useApp = create<AppState>((set) => ({
   page: "overview",
   screenTab: load<ScreenTab>("ks.screenTab", ["visuals", "live"], "visuals"),
   theme: load<ThemePreference>("ks.theme", ["system", "dark", "light"], "system"),
-  locale: load<Locale>("ks.locale", ["tr", "en"], "en"),
+  locale: load<Locale>("ks.locale", ["tr", "en"], windowsLocale()),
   windowShown: true,
   profileRequest: null,
   setKeyboards: (keyboards) => set({ keyboards, loaded: true }),
