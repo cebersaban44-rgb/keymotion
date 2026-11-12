@@ -40,6 +40,9 @@ type Slide =
   | { key: string; kind: "file"; name: string; source: Source; atMs: number; fit: SlideFit; seconds: number }
   | { key: string; kind: "library"; name: string; seconds: number };
 
+/** Where a slide's panel frame is cached: files per fit and dither. */
+const stillKey = (s: Slide, dither: boolean) => (s.kind === "file" ? `${s.key}:${s.fit}:${dither ? 1 : 0}` : s.key);
+
 // ------------------------------------------------------------ step 1 tile
 
 export function SlideTile({ onStart }: { onStart: () => void }) {
@@ -128,9 +131,10 @@ export function SlideFlow({
   const step: Step = busy ? 4 : prepared ? 3 : 2;
 
   // Panel frames per slide (and per fit/dither for files), kept between edits.
+  // A still is stored once under its key and never replaced; a new one
+  // re-renders (`setVersion`) so `ready` below sees it.
   const stills = useRef(new Map<string, Uint16Array>());
-  const [version, setVersion] = useState(0);
-  const stillKey = (s: Slide) => (s.kind === "file" ? `${s.key}:${s.fit}:${dither ? 1 : 0}` : s.key);
+  const [, setVersion] = useState(0);
 
   // Decoded files hold bitmaps and decoders: free them with their slide.
   const sources = useRef(new Set<Source>());
@@ -147,7 +151,7 @@ export function SlideFlow({
     void (async () => {
       for (const s of slides) {
         if (s.kind !== "file") continue;
-        const k = stillKey(s);
+        const k = stillKey(s, dither);
         if (stills.current.has(k)) continue;
         const px = await renderStill(s.source, s.fit, s.atMs, dither);
         if (!live) return;
@@ -158,16 +162,16 @@ export function SlideFlow({
     return () => {
       live = false;
     };
-    // stillKey depends only on dither, listed.
   }, [slides, dither]);
 
-  const seconds = slides.map((s) => s.seconds);
+  const seconds = useMemo(() => slides.map((s) => s.seconds), [slides]);
   const plan = budget(seconds, transition);
-  const ready = slides.length > 0 && slides.every((s) => stills.current.has(stillKey(s)));
+  const ready = slides.length > 0 && slides.every((s) => stills.current.has(stillKey(s, dither)));
+  // Stills are only ever added, so once `ready` is true for these slides and
+  // this dither, the frames are fixed: `ready` turning true is the signal.
   const show = useMemo(
-    () => (ready ? assemble(slides.map((s) => stills.current.get(stillKey(s))!), seconds, transition) : null),
-    // `version` signals new stills.
-    [ready, version, slides, transition, dither],
+    () => (ready ? assemble(slides.map((s) => stills.current.get(stillKey(s, dither))!), seconds, transition) : null),
+    [ready, slides, dither, seconds, transition],
   );
   const full = slides.length >= MAX_SLIDES;
   const fallbackName = `${t("sc.src.slides")} · ${t("sc.sl.images", { count: slides.length })}`;
@@ -318,7 +322,7 @@ export function SlideFlow({
                     index={i}
                     count={slides.length}
                     slide={s}
-                    still={stills.current.get(stillKey(s)) ?? null}
+                    still={stills.current.get(stillKey(s, dither)) ?? null}
                     onSeconds={(seconds) => update(s.key, { seconds })}
                     onFit={(fit) => update(s.key, { fit })}
                     onMove={(d) => move(i, d)}

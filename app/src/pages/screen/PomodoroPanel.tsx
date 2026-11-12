@@ -27,7 +27,7 @@ import {
   Volume2,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import type { KeyboardInfo } from "../../bindings/KeyboardInfo";
 import type { LiveRestore } from "../../bindings/LiveRestore";
 import type { PomodoroEndScreen } from "../../bindings/PomodoroEndScreen";
@@ -498,8 +498,9 @@ function CardStrip({ settings, own }: { settings: PomodoroSettings; own: LiveRes
   const locale = useApp((x) => x.locale);
   const [cards, setCards] = useState<Uint16Array[] | null>(null);
   const { focusMin, shortMin, longMin, rounds, focusColor, shortColor, longColor, endScreen } = settings;
-  useEffect(() => {
-    let live = true;
+  // Draws the cards from the current settings and language. An effect event:
+  // the effect below decides when to redraw, this reads the latest values.
+  const drawCards = useEffectEvent(() => {
     const w = pomodoroWords(t);
     const s = settings;
     const breakPhase = rounds > 1 ? "shortBreak" : "longBreak";
@@ -512,22 +513,33 @@ function CardStrip({ settings, own }: { settings: PomodoroSettings; own: LiveRes
       const done = { kind: "done" as const, phase: "focus" as const, round: rounds, rounds, minutes: 0 };
       list.push(pomodoroCard({ ...done, focusDone: rounds, focusMin: rounds * focusMin, complete: true, endedMs: Date.now() }, s, w));
     }
-    Promise.all(list).then((p) => live && setCards(p.map((c) => c.frames[0]!)), console.error);
+    return Promise.all(list);
+  });
+  // The colours are arrays: compare them by value.
+  const focusRgb = focusColor.join();
+  const shortRgb = shortColor.join();
+  const longRgb = longColor.join();
+  useEffect(() => {
+    let live = true;
+    drawCards().then((p) => live && setCards(p.map((c) => c.frames[0]!)), console.error);
     return () => {
       live = false;
     };
-    // The colours are arrays: compare them by value.
-  }, [locale, focusMin, shortMin, longMin, rounds, endScreen, focusColor.join(), shortColor.join(), longColor.join()]);
+    // Redraw only when what the cards show changes.
+  }, [locale, focusMin, shortMin, longMin, rounds, endScreen, focusRgb, shortRgb, longRgb]);
   const [ownFrame, setOwnFrame] = useState<Uint16Array | null>(null);
+  // By id and length: the `own` object is new whenever the live state is.
+  const ownId = own?.id;
+  const ownFrames = own?.frames;
   useEffect(() => {
     setOwnFrame(null);
-    if (!own || endScreen !== "back") return;
+    if (ownId === undefined || endScreen !== "back") return;
     let live = true;
-    loadFrames(own.id, own.frames === 1).then((d) => live && setOwnFrame(pickThumb(d.frames) ?? null), console.error);
+    loadFrames(ownId, ownFrames === 1).then((d) => live && setOwnFrame(pickThumb(d.frames) ?? null), console.error);
     return () => {
       live = false;
     };
-  }, [own?.id, own?.frames, endScreen]);
+  }, [ownId, ownFrames, endScreen]);
 
   const box = "h-[76px] w-[135px] shrink-0 rounded-md bg-black";
   const labels = [t("pomo.phase.focus"), t(rounds > 1 ? "pomo.phase.shortBreak" : "pomo.phase.longBreak")];

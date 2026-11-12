@@ -208,18 +208,21 @@ function KeyboardScreens({ usb }: { usb: boolean }) {
   const shown = state?.items.find((i) => i.id === shownId) ?? null;
   // A page holding part of an upload shows nothing we could draw.
   const item = incomplete ? null : (shown ?? factory);
+  // Reload by id only: the item object is new whenever the screen state is.
+  const itemId = item?.id;
+  const liveAt = liveLast?.atMs;
   const [frames, setFrames] = useState<{ frames: Uint16Array[]; delaysMs: number[] } | null>(null);
 
   useEffect(() => {
     setFrames(null);
     let live = true;
     // A live card changes under the same id: read it fresh each time.
-    const load = showsLive ? itemData("live").then(fromBlob) : item ? loadFrames(item.id) : null;
+    const load = showsLive ? itemData("live").then(fromBlob) : itemId !== undefined ? loadFrames(itemId) : null;
     load?.then((f) => live && setFrames(f), console.error);
     return () => {
       live = false;
     };
-  }, [item?.id, showsLive, liveLast?.atMs]);
+  }, [itemId, showsLive, liveAt]);
 
   return (
     <section className="card grid grid-cols-[1fr_1fr_minmax(220px,0.8fr)] items-start gap-6 p-5">
@@ -446,6 +449,8 @@ const LIBRARY_PAGE = 6;
 const LIBRARY_MORE = 12;
 /** A search box once the library is this big. */
 const LIBRARY_SEARCH_FROM = 12;
+/** One empty list, so the library memo stays put before the library is known. */
+const NO_ITEMS: readonly ScreenItem[] = [];
 type LibraryFilter = "all" | "image" | "animation";
 const LIBRARY_FILTERS: { id: LibraryFilter; label: MessageKey }[] = [
   { id: "all", label: "sc.lib.filter.all" },
@@ -466,16 +471,17 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
   const [kind, setKind] = useState<LibraryFilter>("all");
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(LIBRARY_PAGE);
-  const all = state?.items ?? [];
+  const all = state?.items ?? NO_ITEMS;
+  const shownId = state?.shown;
   // What the keyboard shows first, then the factory animation, then newest.
+  // `name` is stable until the factory item or the language changes.
   const items = useMemo(() => {
     const q = query.trim().toLocaleLowerCase();
-    const shownId = state?.shown;
     return all
       .filter((it) => kind === "all" || (kind === "image" ? it.kind === "image" : it.kind !== "image"))
       .filter((it) => !q || name(it).toLocaleLowerCase().includes(q))
       .sort((a, b) => Number(b.id === shownId) - Number(a.id === shownId));
-  }, [all, kind, query, state?.shown]);
+  }, [all, kind, query, shownId, name]);
   const visible = items.slice(0, limit);
   const rest = items.length - visible.length;
   useEffect(() => setLimit(LIBRARY_PAGE), [kind, query]);

@@ -4,15 +4,13 @@
 // the frame the backend works out. The browser preview keeps a small copy
 // of the rules for its fake readings: keep the two in step.
 
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type { GaugeReadings } from "../bindings/GaugeReadings";
 import type { GaugesSettings } from "../bindings/GaugesSettings";
 import type { GaugesState } from "../bindings/GaugesState";
 import type { GeometryInfo } from "../bindings/GeometryInfo";
 import type { LedColor } from "../bindings/LedColor";
-import { inTauri } from "./ipc";
+import { inTauri, invoke, listen } from "./ipc";
 
 export const DEFAULT_GAUGES: GaugesSettings = {
   enabled: false,
@@ -129,7 +127,7 @@ function mockTick() {
   mock.emit?.(mockState());
 }
 
-if (!inTauri && typeof window !== "undefined") {
+if (import.meta.env.DEV && !inTauri && typeof window !== "undefined") {
   const w = window as unknown as Record<string, unknown>;
   /** Browser preview: the knob turned (0–100), or the speakers muted. */
   w.__ksMockVolume = (level: number, muted = false) => {
@@ -147,12 +145,12 @@ if (!inTauri && typeof window !== "undefined") {
 // ------------------------------------------------------------------- ipc
 
 export function getGauges(): Promise<GaugesState> {
-  if (!inTauri) return Promise.resolve(mockState());
+  if (import.meta.env.DEV && !inTauri) return Promise.resolve(mockState());
   return invoke<GaugesState>("gauges_state");
 }
 
 export function configureGauges(settings: GaugesSettings): Promise<GaugesState> {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     mock.settings = { ...settings };
     return Promise.resolve(mockState());
   }
@@ -185,7 +183,7 @@ export const useGauges = create<GaugesStore>((set, get) => ({
  * browser preview's own frame. Returns the clean-up for the page's effect.
  */
 export function watchGauges(geometry: GeometryInfo | null): () => void {
-  if (!inTauri) {
+  if (import.meta.env.DEV && !inTauri) {
     mock.geometry = geometry;
     mock.emit = (s) => useGauges.setState({ state: s });
     mock.timer = window.setInterval(mockTick, 400);

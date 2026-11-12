@@ -24,10 +24,12 @@ export function UnsavedDialog({ items, onCancel }: { items: UnsavedItem[]; onCan
   const [error, setError] = useState<string | null>(null);
   const primary = useRef<HTMLButtonElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
+  // Focus once, when the dialog opens: the target is decided by the first
+  // render's state and kept, so later changes do not move the focus.
+  const focusPrimary = useRef(canSave && !writing);
 
   useEffect(() => {
-    (canSave && !writing ? primary.current : cancel.current)?.focus();
-    // Focus once, when the dialog opens.
+    (focusPrimary.current ? primary.current : cancel.current)?.focus();
   }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

@@ -5,12 +5,10 @@
 // shutdown meanwhile; the reason Windows shows comes from here, in the UI
 // language.
 
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import type { FlashWrite } from "../bindings/FlashWrite";
 import { tNow } from "./i18n";
-import { inTauri } from "./ipc";
+import { inTauri, invoke, listen } from "./ipc";
 import { useApp } from "./store";
 
 interface WritingStore {

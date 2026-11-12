@@ -107,6 +107,9 @@ export function Keymap({ kb }: { kb: KeyboardInfo }) {
   );
 }
 
+/** One empty list, so a keyboard without geometry keeps the memo below stable. */
+const NO_KEYS: readonly KeyGeo[] = [];
+
 function Plate({
   kb,
   layer,
@@ -123,7 +126,7 @@ function Plate({
   const t = useT();
   const draft = useKeymap((s) => s.draft[layer]);
   const saved = useKeymap((s) => s.saved?.[layer] ?? null);
-  const keys = kb.geometry?.keys ?? [];
+  const keys = kb.geometry?.keys ?? NO_KEYS;
   const names = useMacroNames();
   const layoutMap = useLayout((s) => s.map);
 

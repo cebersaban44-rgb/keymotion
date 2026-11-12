@@ -72,10 +72,9 @@ jobs:
       - name: Typecheck and build the UI
         run: pnpm --dir app build
 
-      # Report only for now: findings are listed in the log but do not fail
-      # the build (rules: tools/eslint/eslint.config.mjs).
-      - name: ESLint (not blocking yet)
-        continue-on-error: true
+      # Any finding fails the build, warnings included: the `lint` script
+      # passes --max-warnings 0 (rules: tools/eslint/eslint.config.mjs).
+      - name: ESLint
         run: pnpm --dir app lint
 
       # The release is pinned in rust-toolchain.toml.
