@@ -77,6 +77,11 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
   profile's load confirmation and quits the app. Settings › Background can turn
   this off, and can start Keymotion hidden when Windows starts. The first time
   the window is closed after the app starts, a notice says it is still running.
+- **Launch animation:** when the window opens, the logo's "K" is drawn stroke
+  by stroke and the name opens, then the logo moves to its place in the
+  sidebar (about a second, while the app gets ready). It does not play when
+  Keymotion starts hidden with Windows or comes back from the tray, a click or
+  a key ends it, and with Windows' animation effects off it simply fades.
 - Protection for unsaved changes when leaving a page or closing the app.
 - Turkish and English interface, light and dark theme.
 - Project: MIT/Apache-2.0 licence, NOTICE (unofficial project, use at your own
