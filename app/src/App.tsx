@@ -31,6 +31,8 @@ import { startPomodoro, usePomodoro, DEFAULT_SETTINGS } from "./lib/pomodoro";
 import { followGauges, useGauges } from "./lib/gauges";
 import { startCalendar, useCalendar } from "./lib/calendar";
 import { startReminders } from "./lib/reminders";
+import { startUpdates, useUpdates } from "./lib/updates";
+import { UpdateDialog, UpdateStrip } from "./components/Updates";
 import { useMacros } from "./lib/macros";
 import { useScreen } from "./lib/screen";
 import { OFFLINE_KEYBOARD } from "./lib/offline";
@@ -127,6 +129,7 @@ function useLiveScreen() {
     [],
   );
   useEffect(() => startReminders((card) => reminderCard(card, reminderWords(tNow, useApp.getState().locale))), []);
+  useEffect(() => startUpdates(), []);
   // Whether the system gauges are on (the Lighting page says so); the
   // tray menu can switch them too.
   useEffect(() => {
@@ -269,6 +272,7 @@ export default function App() {
   useTray();
   const guard = useCloseGuard();
   const safetyOpen = useSafetyDialogOpen();
+  const updateOpen = useUpdates((s) => s.dialog);
   const page = useApp((s) => s.page);
   const loaded = useApp((s) => s.loaded);
   const kb = useActiveKeyboard();
@@ -320,7 +324,7 @@ export default function App() {
     // Follows Windows' "Animation effects" setting.
     <MotionConfig reducedMotion="user">
     <div className="flex h-full bg-bg">
-      <div className="contents" inert={guard.asking || safetyOpen}>
+      <div className="contents" inert={guard.asking || safetyOpen || updateOpen}>
         <Sidebar />
         <main className="relative min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
           <AnimatePresence mode="wait">
@@ -332,6 +336,8 @@ export default function App() {
               transition={{ duration: 0.18 }}
               className="@container mx-auto min-h-full max-w-[1240px] px-6 pt-7 pb-10 min-[1200px]:px-10 min-[1200px]:pt-9"
             >
+              {/* A new version found by the daily look (or downloading). */}
+              <UpdateStrip />
               {/* A page that fails to draw leaves the sidebar usable. */}
               <ErrorBoundary>{content()}</ErrorBoundary>
             </motion.div>
@@ -342,6 +348,7 @@ export default function App() {
       <SafetyDialogs />
       <ScreenNotices />
       <Reporting />
+      <UpdateDialog />
       <AnimatePresence>
         {guard.asking && <UnsavedDialog items={guard.items} onCancel={guard.cancel} />}
       </AnimatePresence>

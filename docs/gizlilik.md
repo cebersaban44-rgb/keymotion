@@ -11,7 +11,10 @@ Bu masaüstü uygulaması klavyenizi yönetir (ışıklar, tuş atama, makrolar,
 ## Uygulama internete ne zaman bağlanır
 
 - **Eklediğiniz takvimler.** Uygulama eklediğiniz her takvim adresini 15 dakikada bir ve siz istediğinizde okur. Bunun için Windows'un kendi HTTP istemcisini kullanır; sistemdeki vekil sunucu ve sertifika ayarları geçerlidir. Yalnızca `https://` adresleri kabul edilir (`webcal://` adresleri `https://` olarak okunur). Takvim sunucusuna başka bir şey gönderilmez.
-- **Güncellemeler (planlanıyor).** Sonraki bir sürüm uygulama güncellemelerini denetleyecek. Bu denetimin ne gönderdiği, sürüm çıkmadan önce bu sayfaya yazılacak.
+- **Güncellemeler.** **Ayarlar → Hakkında → Güncellemeleri kendiliğinden denetle** açıksa (başlangıçta açıktır), uygulama açıldıktan biraz sonra ve sonra günde en çok bir kez GitHub'daki sürüm sayfasından `latest.json` dosyasını okur; **Güncellemeleri denetle** düğmesi de aynısını yapar. İstek GitHub'a gider (`github.com`; dosya GitHub'ın indirme sunucusundan gelir) ve sıradan bir indirme isteğidir: istekte yalnızca güncelleyicinin adı (`tauri-plugin-updater`) bulunur; hesap, kullanım bilgisi ya da ayar gönderilmez. GitHub, her sunucu gibi, isteğin geldiği IP adresini görür.
+  - Yeni sürüm bulunursa uygulama kendiliğinden kurmaz, size sorar. **Kur ve yeniden başlat** denince kurulum dosyası GitHub'dan indirilir. Uygulamanın içindeki ortak anahtarla imzası denetlenir; tutmazsa kurulmaz.
+  - Deneme sürümleri (sürüm numarasında "-rc" gibi bir ek olanlar) ayrıca GitHub'ın herkese açık sürüm listesini (`api.github.com`) okur, ön sürümleri de görmek için. Normal sürümler bu listeyi okumaz.
+  - Anahtar kapalıyken uygulama yalnızca düğmeye bastığınızda bakar.
 
 Uygulama başka bir ağ bağlantısı kurmaz.
 
