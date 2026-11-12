@@ -49,6 +49,7 @@ import { Screen, ScreenUploadToast } from "./pages/Screen";
 import { ScreenNotices } from "./pages/screen/Safety";
 import { Settings } from "./pages/Settings";
 import { Welcome } from "./pages/Welcome";
+import { finishIntro } from "./lib/intro";
 
 function useBootstrap() {
   const setKeyboards = useApp((s) => s.setKeyboards);
@@ -271,6 +272,15 @@ export default function App() {
   const page = useApp((s) => s.page);
   const loaded = useApp((s) => s.loaded);
   const kb = useActiveKeyboard();
+  // The launch animation (index.html) ends once the first page can show,
+  // and never later than a few seconds, should the keyboards not answer.
+  useEffect(() => {
+    if (loaded) void finishIntro();
+  }, [loaded]);
+  useEffect(() => {
+    const id = window.setTimeout(() => void finishIntro(), 4000);
+    return () => window.clearTimeout(id);
+  }, []);
 
   const content = () => {
     if (page === "settings") return <Settings />;
