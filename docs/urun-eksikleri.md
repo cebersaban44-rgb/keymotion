@@ -254,8 +254,7 @@ Kurulu sürümde bir hata olduğunda ya da bir özellik başka bir klavyede çal
 - **Bildirme penceresi:**
   - gönderilecek metni önce gösterir: sürüm, Windows, klavye modeli ve yazılımı, son günlük satırları (adresler ve kullanıcı adı zaten ayıklanıyor);
   - "GitHub'da bildir": hazır formu (`.github/ISSUE_TEMPLATE/bug.yml`) başlık ve özetle açar; uzun metin panoya kopyalanır, kullanıcı yapıştırır (adres uzunluğu sınırlı);
-  - "E-postayla gönder": `mailto:` ile; ayrı bir proje adresi gerekir, kişisel adres kullanılmaz;
-  - GitHub hesabı olmayanlar için e-posta yeterli; ikisi de kullanıcının kendi programıyla gider.
+  - **Yalnızca GitHub** (kullanıcının kararı, 2026-11-12): e-posta seçeneği yok. GitHub hesabı olmayanlar için tanılama metni kopyalanabilir kalır.
 - **Desteklenmeyen klavye:** AJAZZ/SONiX kimlikli ama listede olmayan bir klavye takılınca "Bu klavye henüz desteklenmiyor — destek iste". Bildirime VID/PID, ürün adı, arayüzler ve HID tanımlayıcıları eklenir (yalnızca okunur, klavyeye bir şey yazılmaz). Yeni model eklemek için en değerli bilgi bu.
 - **GitHub tarafı (H ile birlikte):** issue formları (hata, klavye desteği, öneri), `SECURITY.md` (güvenlik açığı özel kanaldan), Discussions (soru-cevap), etiketler.
 - **Yapılmayacak:** otomatik hata gönderme (Sentry vb.) ilk sürümde yok. İstenirse sonra, açıkça "izin ver" seçeneğiyle ve gizlilik belgesi güncellenerek.

@@ -764,9 +764,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
          - **uygulama içinden sorun bildirme** (kullanıcının fikri, 2026-11-12): `docs/urun-eksikleri.md` bölüm I.
 
          Ardından GitHub sayfası (H): iki dilli, TR/EN ve açık/koyu ekran görüntüleriyle.
-      5. **Kullanıcıya sorulacak:**
-         - GitHub repo adının `keymotion` olması ve Rust paket adı;
-         - sorun bildirimi için ayrı bir proje e-posta adresi (kişisel adres kullanılmaz).
+      5. **Kullanıcıya sorulacak:** GitHub repo adının `keymotion` olması ve Rust paket adı. (Sorun bildirimi kararı verildi: yalnızca GitHub, e-posta yok.)
 
 ## 4. Sistem nasıl kurulu (as-built)
 
@@ -1277,3 +1275,4 @@ Kullanıcının fikirleri. Şimdi yapılmayacak; uygulamanın bütün özellikle
 - Windows 11, Rust 1.99.1 (stable, MSVC), Node 24, pnpm 10, TypeScript 7, WebView2 157.
 - Uygulamanın adı **Keymotion** (2026-11-11, kullanıcının seçimi; önceki geçici ad "Klavye Stüdyo"). Kimlik `dev.keymotion`; ayarlar `%APPDATA%\dev.keymotion`, WebView verisi `%LOCALAPPDATA%\dev.keymotion`. Eski `dev.klavye.studio` klasörleri ilk açılışta taşınır (`app/src-tauri/src/migrate.rs`). Rust paket adı (`klavye-studio`) ve repo adı şimdilik değişmedi.
 - `.claude/launch.json` → "ui" (Vite, 127.0.0.1:1420).
+- GitHub hesabı **Pro** (2026-11-12, kullanıcı bildirdi). Repo herkese açık (`cebersaban44-rgb/klavye-studio`): koruma kuralları, Actions, Pages ve Discussions zaten ücretsiz, Pro burada pek bir şey değiştirmiyor. İşe yaradığı yer: özel bir repo (koruma kuralları, Pages, kod sahipleri) ve Codespaces. `main` korumalı: PR zorunlu, "Build and test" geçmeli, yöneticiler de uyar. Discussions kapalı; GitHub sayfası (H) hazırlanırken açılması kullanıcıya sorulacak.
