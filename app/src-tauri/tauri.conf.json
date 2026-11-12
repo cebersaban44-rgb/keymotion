@@ -31,7 +31,19 @@
     "active": true,
     "targets": ["nsis"],
     "category": "Utility",
+    "publisher": "Keymotion",
+    "copyright": "Copyright © 2026 Keymotion contributors",
+    "homepage": "https://github.com/cebersaban44-rgb/keymotion",
+    "license": "MIT OR Apache-2.0",
     "shortDescription": "Lighting, keys and screen for your keyboard",
+    "longDescription": "Keymotion controls the lighting, key assignments, macros and screen of AJAZZ AK980 PRO keyboards on Windows, and shows a focus timer, reminders, calendar cards and system gauges on the keys and the screen.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["English", "Turkish"],
+        "installerHooks": "windows/installer-hooks.nsh"
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
