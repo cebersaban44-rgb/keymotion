@@ -24,7 +24,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 | 0 | Açık işleri kapat (lint/mock yardımcısı, PR #58) | — | — | Bitti (PR #58, #59) |
 | 1 | Rust paket ve exe adı `keymotion` | 0 | Onay (öneri: evet) | Bitti (PR #60) |
 | 1b | Kod imzalama başvurusu (SignPath Foundation) | — | Başvuruyu kullanıcı yapar | Başlatılacak |
-| 2 | Tepsi ve arka plan | 1 | Karar verildi: tepsi | Kod hazır (`feat/tray`); kullanıcının elle denemesi bekleniyor |
+| 2 | Tepsi ve arka plan | 1 | Karar verildi: tepsi | Bitti (PR #61): kullanıcı 1–8, ben 9–13 denedik |
 | 3 | Keymotion açılış animasyonu | — (2 ile paralel olabilir) | Önizlemeye onay | Bekliyor |
 | 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bekliyor |
 | 5 | Kurulum dosyası (NSIS) ve imza | 1, 2, 1b | Kurulum ayrıntılarına onay | Bekliyor |
@@ -144,10 +144,12 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
   - 100 ms'lik zamanlayıcı 1,5 sn'de 15 kez çalıştı;
   - `requestAnimationFrame` çalıştı;
   - örnek hatırlatıcı kartı 137 ms'de çizildi.
-  - Bu yüzden WebView2 argümanı eklenmedi. 5 dakikadan uzun gizli kalmada yeniden ölçülmeli (Chromium'un yoğun kısma eşiği).
+  - Bu yüzden WebView2 argümanı eklenmedi.
+  - **6 dakika 20 saniye gizli kaldıktan sonra** (Chromium'un 5 dakikalık yoğun kısma eşiğinin ötesi; senaryo 13) yine aynı: sayfa "visible", zamanlayıcı 1,5 sn'de 15 kez, `requestAnimationFrame` çalıştı, kart 457 ms'de çizildi.
 - **Ayna okuması (`04 F5`) pencere gizliyken duruyor:** `useMirror` artık `windowShown`'a bağlı.
 - **Bellek:** pencere gizliyken 7 süreç, toplam çalışma kümesi yaklaşık 270 MB (debug sürüm, hata ayıklama portu açık). Kurulu sürümde yeniden ölçülecek.
-- **Güç kullanımı:** henüz ölçülmedi; kullanıcının uzun süreli denemesinde Görev Yöneticisi › Güç kullanımı.
+- **Bellek, 6 dk gizli kaldıktan sonra:** çalışma kümesi 170 MB (Windows boştaki sayfaları geri aldı), özel bellek 317 MB.
+- **İşlemci:** 6 dk 20 sn gizliyken toplam 5,6 sn işlemci zamanı, yani tek çekirdeğin ortalama yaklaşık %1,5'i. Bu ölçüm debug sürümde, hata ayıklama portu açıkken alındı; kurulu sürümde Görev Yöneticisi › Güç kullanımı ile yeniden bakılacak.
 
 ### Doğrulama (gerçek uygulama)
 
@@ -174,7 +176,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
   - kapatınca kayıt kalktı.
 - **11:** ikinci açılış gizli pencereyi getirdi, tek süreç kaldı.
 - **12:** dil İngilizceye geçince tepsi menüsü de geçti (günlük: `tray menu language locale=en`), Türkçeye dönünce geri döndü.
-- **13:** sonucu aşağıda "Ölçümler"de.
+- **13:** 6 dk 20 sn gizli kaldıktan sonra kısılma yok (kullanıcı 10 dakikayı beklemeye gerek görmedi). Ayrıntı "Ölçümler"de.
 
 ### Bildirimler (2026-11-12)
 
