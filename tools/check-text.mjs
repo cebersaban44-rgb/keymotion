@@ -25,8 +25,11 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
+// .nsh: the installer's scripts and language files. Tauri writes the language
+// files again with a BOM of its own, so a BOM in the source makes two and NSIS
+// fails (release run, 2026-11-12).
 const EXTENSIONS = new Set([
-  ".rs", ".ts", ".tsx", ".mjs", ".cjs", ".js", ".md", ".json", ".toml", ".css", ".html", ".yml", ".yaml",
+  ".rs", ".ts", ".tsx", ".mjs", ".cjs", ".js", ".md", ".json", ".toml", ".css", ".html", ".yml", ".yaml", ".nsh",
 ]);
 const SKIP_NAMES = new Set(["Cargo.lock", "pnpm-lock.yaml", "package-lock.json", "yarn.lock"]);
 const SKIP_PREFIXES = ["app/src/bindings/"];
