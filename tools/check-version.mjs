@@ -10,10 +10,21 @@
 // same one.
 //
 // Usage: node tools/check-version.mjs
+//        node tools/check-version.mjs --tag v0.2.0     also: the release tag is
+//                                                      "v" + that version
+//        node tools/check-version.mjs --github-output  in GitHub Actions: on
+//                                                      success, write
+//                                                      version=<version> to
+//                                                      $GITHUB_OUTPUT
 
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { appendFileSync, readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
+
+const { values: args } = parseArgs({
+  options: { tag: { type: "string" }, "github-output": { type: "boolean", default: false } },
+});
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const read = (p) => readFileSync(join(root, p), "utf8");
@@ -81,9 +92,24 @@ if (existsSync(join(root, "Cargo.lock")) && app.name) {
   else if (m[1] !== expected) problems.push(`Cargo.lock: ${app.name} ${m[1]} (expected ${expected}; run cargo update -w)`);
 }
 
+// A release tag names the version it builds.
+if (args.tag !== undefined && args.tag !== `v${expected}`) {
+  problems.push(`tag ${args.tag} (expected v${expected}, the version in the files above)`);
+}
+
 if (problems.length) {
   const ci = !!process.env.GITHUB_ACTIONS;
   for (const p of problems) console.log(ci ? `::error::Version mismatch: ${p}` : `Version mismatch: ${p}`);
   process.exit(1);
 }
-console.log(`Version check: ${expected} in ${sources.map(([f]) => f).join(", ")} and Cargo.lock.`);
+console.log(
+  `Version check: ${expected} in ${sources.map(([f]) => f).join(", ")} and Cargo.lock` +
+    (args.tag !== undefined ? `, and tag ${args.tag}.` : "."),
+);
+if (args["github-output"]) {
+  if (!process.env.GITHUB_OUTPUT) {
+    console.log("--github-output: GITHUB_OUTPUT is not set (it is set in GitHub Actions).");
+    process.exit(1);
+  }
+  appendFileSync(process.env.GITHUB_OUTPUT, `version=${expected}\n`);
+}

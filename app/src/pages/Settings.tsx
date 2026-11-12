@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { ThemePreference } from "../bindings/ThemePreference";
 import { BackgroundCard } from "../components/BackgroundCard";
 import { BackupCard, Row, secondaryButton } from "../components/BackupCard";
+import { UpdateRows } from "../components/Updates";
 import { CalibrationCard } from "../components/CalibrationCard";
 import { Segmented } from "../components/controls";
 import { copyDiagnostics } from "../lib/diagnostics";
@@ -73,9 +74,7 @@ export function Settings() {
 
       <section className="card px-5 py-1">
         <div className="eyebrow pt-4 pb-1">{t("settings.about")}</div>
-        <Row label={t("settings.version")}>
-          <span className="num text-[13px] text-ink-2">{env?.appVersion ?? "—"}</span>
-        </Row>
+        <UpdateRows />
         <Row label={t("settings.backdrop")}>
           <span className="num text-[13px] text-ink-2" title={env && env.osBuild > 0 ? t("settings.build", { build: env.osBuild }) : undefined}>
             {env?.mica ? t("settings.backdrop.mica") : t("settings.backdrop.solid")}

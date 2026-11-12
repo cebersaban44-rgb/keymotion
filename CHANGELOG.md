@@ -78,6 +78,11 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
   profile's load confirmation and quits the app. Settings › Background can turn
   this off, and can start Keymotion hidden when Windows starts. The first time
   the window is closed after the app starts, a notice says it is still running.
+- **Updates:** Settings › About checks GitHub for a new version, and the app
+  looks by itself once a day when it opens (it can be turned off). A new
+  version shows a strip above the page; nothing installs until you choose
+  "Install and restart". The download is checked against the app's key, and
+  installing waits for a write to the keyboard to finish.
 - **Launch animation:** when the window opens, the logo's "K" is drawn stroke
   by stroke and the name opens, then the logo moves to its place in the
   sidebar (about a second, while the app gets ready). It does not play when

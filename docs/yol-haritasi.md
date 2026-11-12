@@ -31,7 +31,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 | 5 | Kurulum dosyası (NSIS), imzasız | 1, 2 | Kurulum ayrıntılarına onay | Yapıldı (PR'da); kullanıcının elle denemesi ve kurulum görselleri bekliyor |
 | 5c | Kurulum denemesi bulguları (K1–K11): simge ve görseller, GitHub bağlantıları, hatırlatıcı kartı, ekran durumu, odak zamanlayıcısı, bildirim, Genel bakış | 5 | Kararlar verildi: K9 her açılışta bir kez; K2, K7, K11 için A | Yapıldı (PR #72–#77); klavyede gerçek yüklemeyle deneme kullanıcıda |
 | 5d | Kullanıcının geri bildirimleri (K12 Genel bakış'taki klavye çizimi, K13 açılış logosunun keskinliği) ve denemeleri | 5c | — | K12 yapıldı (A); K13 kapandı (kod değişikliği gerekmedi); A denemeleri yapıldı, K14 düzeltildi; B kurulum derlemesiyle |
-| 6 | Sürüm hattı (GitHub Actions) ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Bekliyor |
+| 6 | Sürüm hattı (GitHub Actions) ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Kod yapıldı; kalan: anahtarı Secrets'a koymak, iş akışını denemek, rc.1 → rc.2 güncelleme denemesi |
 | 6b | Uygulama penceresinin açılış animasyonu | 5 (kurulu sürümle ölçülür) | Seçim A (2026-11-12) | Yapıldı (PR #78); kurulu sürümde açılış süresi ölçülecek |
 | 7 | GitHub sayfası ve bütün belgeler, SignPath'in sayfa şartları dahil | 5, 6 (kurulum ve indirme adımları belli) | Belge yapısına ve görünümüne onay (önce önizleme) | Bekliyor |
 | 8 | Son denemeler ve ilk sürüm 0.1.0 (imzasız) | hepsi | Elle denemeler; `main`'e birleştirme onayı | Bekliyor |
@@ -559,6 +559,19 @@ Claude'un denemediği ya da yalnızca tarayıcı önizlemesinde denediği her ş
   - Gizlilik belgeleri güncellenir: uygulama ağa takvimler ve güncelleme denetimi için çıkar.
 - **Dallar:** sürüm için `develop` → `main` PR'ı açılır, kullanıcı onayıyla birleşir. Etiket `main`'de atılır.
 - **Deneme:** 0.1.0-rc → 0.1.0-rc.2 güncellemesi gerçekten iniyor ve kuruluyor mu?
+- **Kullanıcının kararları (2026-11-12):** güncelleyicinin tasarımı önizlemeden onaylandı (Ayarlar › Hakkında'da satır ve "Güncellemeleri kendiliğinden denetle", yeni sürümde sayfanın üstünde şerit, kurulum penceresi); plan "Uygun, başla".
+- **Yapılan (2026-11-12):**
+  - Güncelleyici (`updates.rs`, `tauri-plugin-updater`): açılıştan 30 sn sonra ve sonra saatte bir "bir gün geçti mi" bakılır, geçtiyse GitHub'a sorulur (`updates.json`: anahtar ve son denetim). Kurulum, klavyeye yazma bitene kadar bekler (en çok bir ekran yüklemesi süresi); Windows'ta uygulama kapanır, kurulum küçük bir pencerede ilerler (`installMode: passive`). İndirme durdurulabilir. Hatalar sade dille: internet yok, henüz sürüm yok, imza tutmadı, klavyeye yazma bitmedi.
+  - Deneme sürümleri (sürümde "-" eki) GitHub'ın sürüm listesinden en yeni yayımlanmış `latest.json`'u okur, ön sürümler dahil; normal sürümler yalnızca `releases/latest`'e bakar. Sebep: derlenmiş sürüm güncellemeyi yalnızca https'ten indiriyor, yerel bir sunucuyla deneme yapılamıyor; rc.1 → rc.2 denemesi GitHub'daki ön sürümlerle yapılacak.
+  - Sürüm notları `latest.json`'da `{"en", "tr"}` olarak durur; uygulama arayüz dilindekini gösterir, o dilde not yoksa GitHub'daki sürüm sayfasına bağlantı verir (Türkçe arayüzde İngilizce metin gösterilmez).
+  - İmza anahtarı üretildi: gizli yarısı ve parolası proje sahibinin kullanıcı klasöründe, `.tauri\keymotion\` altında (depoda değil); ortak yarısı `tauri.conf.json`'da.
+  - Sürüm hattı (`.github/workflows/release.yml`, `tools/release/latest-json.mjs`, testleri CI'da): etiket ya da elle başlatma, sürüm ve not denetimi, derleme, SHA-256, `latest.json`, taslak sürüm; SignPath için yer ayrıldı (imza sonrası `.sig` yeniden üretilmeli).
+  - Gizlilik belgesi ve Ayarlar'daki gizlilik metni güncellendi; `docs/gelistirme-akisi.md`'ye sürüm çıkarma adımları eklendi.
+  - Denendi: tarayıcı önizlemesinde (iki dilde; yeni sürüm, indirme, vazgeçme, internet yok, henüz sürüm yok) ve gerçek uygulamada (günlük denetim ve düğme GitHub'a gitti, henüz sürüm olmadığı için "GitHub'da henüz yayımlanmış bir sürüm yok").
+- **Kalan (kullanıcının onayıyla):**
+  1. Gizli anahtarı ve parolasını GitHub Secrets'a koymak; anahtarın yedeğini kullanıcının parola yöneticisine almak.
+  2. İş akışını `develop`'dan elle bir kez çalıştırmak (derlenmiş sürüm, taslak; incelenip silinir).
+  3. Uçtan uca deneme: 0.1.0-rc.1 ve 0.1.0-rc.2 ön sürüm olarak yayımlanır (herkese açık, ama "en son sürüm" sayılmaz), rc.1 kurulur, rc.2'ye güncellenir. Sonra ön sürümler silinebilir.
 
 ## Aşama 6b: uygulama penceresinin açılış animasyonu
 

@@ -90,7 +90,14 @@ Sürüm numarası üç yerde tutulur ve hepsi aynı olmalıdır:
    git push origin v0.x.0
    ```
 
-4. GitHub Release oluşturulur: CHANGELOG'daki notlar ve NSIS kurulum dosyası (.exe). İleride CI, etiketten kurulumu otomatik derleyip imzalayacak (DURUM.md P3).
+4. Etiket gelince **Release** iş akışı (`.github/workflows/release.yml`) Windows'ta kurulumu derler ve bir **taslak** GitHub sürümü açar: kurulum dosyası (.exe), güncelleyicinin imzası (.exe.sig), `latest.json` ve notlar (CHANGELOG'daki bölüm ve kurulum dosyasının SHA-256 özeti). Bunun için `CHANGELOG.md`'de o sürümün bölümü olmalı (`## [0.x.0] - <tarih>`); Türkçe notlar isteğe bağlı olarak `docs/surum-notlari.md`'de aynı başlıkla durur ve yalnızca uygulamanın kurulum penceresinde görünür.
+5. Proje sahibi taslağı inceler ve yayımlar. Yayımlanınca kurulu uygulamalar yeni sürümü görür (`releases/latest`: ön sürümler ve taslaklar hariç).
+
+Sürüm dosyaları yalnızca bu iş akışında üretilir, bilgisayardan yüklenmez (SignPath'in şartı, Aşama 9).
+
+**Deneme derlemesi:** Actions › Release › Run workflow (ya da `gh workflow run release.yml --ref develop`) daldaki sürümü derler; o sürümün CHANGELOG bölümü yoksa "Unreleased" notlarını kullanır. Oluşan taslak yayımlanmaz, silinir: yayımlamak etiketi o commit'e koyar.
+
+**Güncelleyicinin imza anahtarı:** `tauri signer generate` ile üretildi (2026-11-12). Ortak yarısı `app/src-tauri/tauri.conf.json`'da (`plugins.updater.pubkey`); gizli yarısı ve parolası proje sahibinde ve GitHub Secrets'ta (`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`). **Gizli anahtar kaybolursa kurulu uygulamalar bir daha güncelleme alamaz**; yedeği proje sahibinin parola yöneticisinde durur.
 
 ## Acil düzeltme (hotfix)
 
