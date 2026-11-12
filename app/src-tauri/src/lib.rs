@@ -859,6 +859,29 @@ fn os_build() -> u32 {
     0
 }
 
+/// Shrink the (still hidden) main window when its configured size does not
+/// fit the screen's work area, as on 1920×1080 at 125 % or 150 % scale,
+/// then center it again. The configured size stays the upper bound and the
+/// minimum size still applies.
+fn fit_to_screen(window: &WebviewWindow) {
+    let Ok(Some(monitor)) = window.current_monitor() else { return };
+    let (Ok(outer), Ok(inner)) = (window.outer_size(), window.inner_size()) else { return };
+    let area = monitor.work_area().size;
+    // The frame (title bar, borders) sits around the inner size.
+    let frame_w = outer.width.saturating_sub(inner.width);
+    let frame_h = outer.height.saturating_sub(inner.height);
+    let margin = (monitor.scale_factor() * 16.0) as u32;
+    let max_w = area.width.saturating_sub(frame_w + 2 * margin);
+    let max_h = area.height.saturating_sub(frame_h + 2 * margin);
+    if inner.width <= max_w && inner.height <= max_h {
+        return;
+    }
+    let size = tauri::PhysicalSize::new(inner.width.min(max_w), inner.height.min(max_h));
+    tracing::info!(width = size.width, height = size.height, "window shrunk to fit the screen");
+    let _ = window.set_size(size);
+    let _ = window.center();
+}
+
 /// Apply the Windows 11 Mica backdrop when the OS supports it.
 fn apply_backdrop(window: &WebviewWindow, build: u32) -> bool {
     if !cfg!(windows) || build < 22000 {
@@ -944,6 +967,7 @@ pub fn run() {
                 Err(e) => tracing::warn!("no log folder: {e}"),
             }
             let window = app.get_webview_window("main").expect("main window is declared in tauri.conf.json");
+            fit_to_screen(&window);
             let build = os_build();
             tracing::info!(%version, os_build = build, "app started");
             let mica = apply_backdrop(&window, build);
