@@ -29,9 +29,9 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 | 3 | Keymotion açılış animasyonu | — (2 ile paralel olabilir) | Önizlemeye onay | Bitti (PR #62; kullanıcı A'yı, yazılı seçti) |
 | 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bitti (PR #63); GitHub ayarları kullanıcı onayıyla açıldı |
 | 5 | Kurulum dosyası (NSIS), imzasız | 1, 2 | Kurulum ayrıntılarına onay | Yapıldı (PR'da); kullanıcının elle denemesi ve kurulum görselleri bekliyor |
-| 5c | Kurulum denemesi bulguları (K1–K11): simge ve görseller, GitHub bağlantıları, hatırlatıcı kartı, ekran durumu, odak zamanlayıcısı, bildirim, Genel bakış | 5 | K2, K7, K11 için önizlemeden seçim (K9 kararı verildi: her açılışta bir kez) | Sürüyor: K1, K3, K4, K5, K8, K9, K10 yapıldı; K2, K7, K11 önizlemede |
+| 5c | Kurulum denemesi bulguları (K1–K11): simge ve görseller, GitHub bağlantıları, hatırlatıcı kartı, ekran durumu, odak zamanlayıcısı, bildirim, Genel bakış | 5 | Kararlar verildi: K9 her açılışta bir kez; K2, K7, K11 için A | Yapıldı (PR #72–#77); klavyede gerçek yüklemeyle deneme kullanıcıda |
 | 6 | Sürüm hattı (GitHub Actions) ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Bekliyor |
-| 6b | Uygulama penceresinin açılış animasyonu | 5 (kurulu sürümle ölçülür) | Önizlemeden tasarım seçimi | Planlandı (kullanıcının kararı, 2026-11-12) |
+| 6b | Uygulama penceresinin açılış animasyonu | 5 (kurulu sürümle ölçülür) | Seçim A (2026-11-12) | Yapıldı (PR #78); kurulu sürümde açılış süresi ölçülecek |
 | 7 | GitHub sayfası ve bütün belgeler, SignPath'in sayfa şartları dahil | 5, 6 (kurulum ve indirme adımları belli) | Belge yapısına ve görünümüne onay (önce önizleme) | Bekliyor |
 | 8 | Son denemeler ve ilk sürüm 0.1.0 (imzasız) | hepsi | Elle denemeler; `main`'e birleştirme onayı | Bekliyor |
 | 9 | Kod imzalama: SignPath Foundation başvurusu ve imzalı sürüm (eskiden 1b) | 8 ve kullanım kanıtı | Başvuruyu kullanıcı yapar; formu birlikte doldururuz | İlk sürümden sonra |
@@ -388,7 +388,11 @@ Kullanıcı kurulum dosyasını Explorer'dan, yani Claude'un kutusunun dışınd
 - **Denetlendi, K10:** Tauri'nin oluşturduğu betikte kutu işaretsiz oluşturuluyor (`BM_SETCHECK` yok). Ekran görüntüsündeki işaret kullanıcının tıklaması; gerçek AppData'daki `dev.keymotion` klasörleri bu yüzden silinmiş (denetlendi). Kutunun metni artık "Ayarlarımı ve kayıtlarımı da sil".
 - **Yapıldı, PR #73:** K5 ve K8 (ayrıntılar maddelerin altında). Tarayıcı önizlemesinde denendi; klavyede gerçek yüklemeyle denenmedi (her yükleme flaşa yazar, kullanıcının denemesine kaldı).
 - **K6:** hata değil; K7 ile ortadan kalkacak.
-- **Önizleme sohbette, seçim bekleniyor:** K2 (üç görsel seçeneği: sade, tuş deseni, ışık dalgası), K7 (blokları sürüklenebilir sıra, hazır sıralar, tekrar), K11 (iki yerleşim: kutulu kontrol paneli, günün akışı).
+- **Seçildi ve yapıldı (2026-11-12, öğleden sonra):**
+  - K2, seçenek A (sade): logo, keymotion yazısı ve "AJAZZ AK980 PRO" koyu zeminde (164×314), üst bantta beyaz zeminde logo ve yazı (150×57). `tools/installer-images.py` ile çizilir; dil yazısı olmadığı için iki dilde aynı. PR #75.
+  - K7: kullanıcının kurduğu sıra. Odak ve mola blokları (1–180 dk, en çok 16), sürükleyerek ya da ok tuşlarıyla taşınır; hazır sıralar ("25 / 5 klasik" varsayılan: 25-5-25-5-25-15, "50 / 10 derin", boş); sıra bir kez, 2 kez, 3 kez ya da durdurulana kadar. Kartlar, tepsi satırı ve kenar çubuğu bloğu söyler. Eski ayarlar kurdukları sıraya dönüşür (kullanıcının 1/1/1 dk deneme ayarı "1 dk odak, 1 dk mola" oldu; "25 / 5 klasik"e bir tıkla geçilir). PR #76.
+  - K11, seçenek A (kutulu kontrol paneli): klavye çizimi ve yanında klavye ekranındaki görsel; altında altı kutu: ışık, odak zamanlayıcısı, sıradaki hatırlatma, sıradaki toplantı, sistem göstergeleri (canlı çubuklar), profil. Hızlı renk değiştirme yok: renk Işıklar sayfasında kaydetmeyle (flaşa yazma) değişir. Yardımcı ajan ayrı worktree'de yaptı, odak zamanlayıcısına uyarlandı. PR #77.
+  - Gerçek uygulamada (geliştirme sürümü, kullanıcının verisi) bakıldı. Klavyede gerçek yüklemeyle denenmedi: K5'in ayrılan hakkı, K8'in dönüşten sonra yenilenmesi, odak zamanlayıcısının kartları (her yükleme flaşa yazar).
 
 ### Görünüm ve marka
 
@@ -504,6 +508,13 @@ Kullanıcının kararı (2026-11-12): uygulama açılırken bir giriş animasyon
   - Açık ve koyu temada, uygulamanın renkleri ve Bricolage yazı tipiyle.
   - Önce sohbette etkileşimli önizlemeyle iki ya da üç seçenek gösterilir; kullanıcı seçer, sonra kod yazılır (hafıza kuralı).
 - **Bitti sayılır:** kurulu sürümde açılış ölçülmüş, animasyon açılışı uzatmıyor, gizli başlamada ve tepsiden açmada oynamıyor, kullanıcı görüp onaylamış.
+- **Yapılan (2026-11-12, PR #78; kullanıcı A'yı seçti):**
+  - Araştırmanın sonucu: ayrı bir açılış penceresi yerine ana pencerede bir katman. Tauri pencereyi arayüz yüklenmeden gösteriyor (`lib.rs` `setup`), bu yüzden animasyon `app/index.html`'in içinde: pencerenin ilk karesinden oynar, ikinci bir WebView açmaz.
+  - Sıra (yaklaşık 0,95 sn): logo kutusu belirir, K'nin dikey çizgisi, üst çaprazı, turuncu çizgisi sırayla çizilir, turuncu çizgi parlar, "keymotion" harf harf açılır.
+  - Bitiş (`src/lib/intro.ts`): ilk sayfa hazır olunca (en geç 4 sn) animasyonun kendisi bitene kadar beklenir (tıklama ya da tuş hemen bitirir), sonra logo kenar çubuğundaki logoya küçülerek gider ve katman 280 ms'de solar.
+  - Gizli başlamada (`--hidden`) katman hemen kaldırılır; tepsiden açılışta zaten yoktur. Windows'un animasyon efektleri kapalıysa logo ve yazı hareketsiz görünür ve solar.
+  - Tema ilk kareden önce uygulanır (`public/theme-boot.js`; içerik güvenlik kuralı satır içi betiğe izin vermiyor).
+  - Geliştirme sürümünde: normal açılışta katman 2,3 sn'de kalktı (geliştirme sürümü yavaş yükleniyor), gizli başlamada 0,9 sn'de. Kalan: derlenmiş sürümde ölçüm ve kullanıcının görmesi (sondaki kurulum derlemesiyle).
 
 ## Aşama 7: GitHub sayfası ve bütün belgeler
 
@@ -625,8 +636,8 @@ Eskiden "Aşama 1b: erken başvuru" idi. 2026-11-12'de SignPath'in şartları ve
 | 1 | Rust paket ve exe adı `keymotion` olsun mu? | Evet |
 | 9 | SignPath Foundation başvurusu (ilk sürümden sonra) | Kullanıcı başvurur, formu birlikte dolduralım |
 | 5c | K9: arka plan bildirimi ne sıklıkla? | **Karar verildi:** her açılışta bir kez (2026-11-12) |
-| 5c | K2 kurulum görselleri, K7 odak zamanlayıcısı sırası, K11 Genel bakış tasarımı | Önizlemeden seçim |
-| 6b | Uygulama açılış animasyonunun tasarımı | Önizlemeden seçim |
+| 5c | K2 kurulum görselleri, K7 odak zamanlayıcısı sırası, K11 Genel bakış tasarımı | **Karar verildi:** K2 A (sade), K7 önizlemedeki sıra, "25 / 5 klasik" varsayılan, K11 A (kutulu kontrol paneli) (2026-11-12) |
+| 6b | Uygulama açılış animasyonunun tasarımı | **Karar verildi:** A, çizgi çizgi K (2026-11-12) |
 | 7 | GitHub sayfasının yapısı, biçimi (yalnız repo sayfaları mı, ayrıca belge sitesi mi) ve görünümü | Aşamanın başında önizlemeyle |
 | 8 | İlk sürümün nerede duyurulacağı (kullanım kanıtı için) | Kullanıcı seçer |
 | 4 | GitHub'da özel güvenlik bildirimi açılsın mı? | Evet (açıldı, 2026-11-12) |
