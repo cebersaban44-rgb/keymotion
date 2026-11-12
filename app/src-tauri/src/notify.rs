@@ -1,5 +1,5 @@
 //! Windows notifications, and opening the project's own pages in the
-//! browser.
+//! browser (the support list, a new issue with its form).
 //!
 //! Windows shows a notification under its app id, with that id's name and
 //! logo. The app registers its bundle identifier at start
@@ -9,6 +9,7 @@
 //! PowerShell's id, which every Windows knows, so the notification still
 //! shows (under PowerShell's name).
 
+use crate::dto::IssueKind;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -99,14 +100,63 @@ pub fn open_project_page(url: &str) -> Result<(), String> {
     if !project_page(url) {
         return Err("not a project page".into());
     }
-    #[cfg(windows)]
-    {
-        std::process::Command::new("explorer.exe").arg(url).spawn().map(|_| ()).map_err(|e| e.to_string())
+    open(url)
+}
+
+/// Longest issue title passed on (GitHub keeps 256 characters).
+const TITLE_MAX: usize = 120;
+/// Longest keyboard name passed on.
+const MODEL_MAX: usize = 80;
+
+/// The address of a new issue on the project's GitHub page, with the form
+/// for `kind` (`.github/ISSUE_TEMPLATE`), its title and, for a keyboard,
+/// the model field filled in. Everything the caller gives is encoded, so
+/// the address stays the project's.
+pub fn issue_form_url(kind: IssueKind, title: &str, model: Option<&str>) -> String {
+    let template = match kind {
+        IssueKind::Bug => "bug.yml",
+        IssueKind::Keyboard => "keyboard.yml",
+        IssueKind::Idea => "idea.yml",
+    };
+    let mut url = format!("{PROJECT_PAGES}issues/new?template={template}");
+    let title: String = title.trim().chars().take(TITLE_MAX).collect();
+    if !title.is_empty() {
+        url.push_str("&title=");
+        url.push_str(&encode(&title));
     }
-    #[cfg(not(windows))]
-    {
-        Err("opening pages is only available on Windows".into())
+    if let Some(model) = model.map(str::trim).filter(|m| !m.is_empty()) {
+        url.push_str("&model=");
+        url.push_str(&encode(&model.chars().take(MODEL_MAX).collect::<String>()));
     }
+    url
+}
+
+/// Open a new issue with its form in the default browser.
+pub fn open_issue_form(kind: IssueKind, title: &str, model: Option<&str>) -> Result<(), String> {
+    open(&issue_form_url(kind, title, model))
+}
+
+/// Percent-encoding for a query value: only unreserved characters stay.
+fn encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() * 3);
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || b"-._~".contains(&b) {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
+#[cfg(windows)]
+fn open(url: &str) -> Result<(), String> {
+    std::process::Command::new("explorer.exe").arg(url).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[cfg(not(windows))]
+fn open(_url: &str) -> Result<(), String> {
+    Err("opening pages is only available on Windows".into())
 }
 
 #[cfg(test)]
@@ -118,6 +168,27 @@ mod tests {
         let xml = toast_xml("Su <iç> & \"dinlen\"", "");
         assert!(xml.contains("<text>Su &lt;iç&gt; &amp; &quot;dinlen&quot;</text></binding>"));
         assert!(toast_xml("Ara", "Annemi").contains("<text>Ara</text><text>Annemi</text>"));
+    }
+
+    #[test]
+    fn issue_addresses_are_the_projects_and_encoded() {
+        assert_eq!(
+            issue_form_url(IssueKind::Idea, "", None),
+            "https://github.com/cebersaban44-rgb/keymotion/issues/new?template=idea.yml"
+        );
+        let url = issue_form_url(IssueKind::Bug, "[Problem] Couldn't save & \"x\" ğ", None);
+        assert_eq!(
+            url,
+            "https://github.com/cebersaban44-rgb/keymotion/issues/new?template=bug.yml\
+             &title=%5BProblem%5D%20Couldn%27t%20save%20%26%20%22x%22%20%C4%9F"
+        );
+        let url = issue_form_url(IssueKind::Keyboard, "[Keyboard] SONiX AK820 PRO", Some("SONiX AK820 PRO"));
+        assert!(
+            url.contains("template=keyboard.yml&title=%5BKeyboard%5D%20SONiX%20AK820%20PRO&model=SONiX%20AK820%20PRO")
+        );
+        // Long titles are cut; nothing can leave the project's address.
+        let long = issue_form_url(IssueKind::Bug, &"a".repeat(500), Some("&template=x"));
+        assert!(long.len() < 400 && long.ends_with("&model=%26template%3Dx"), "{long}");
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # Keymotion yol haritası: ilk sürüme kadar
 
-Durum: 2026-11-12 (gece sonu: Aşama 0–3 bitti; sıradaki 4 ya da 1b, kullanıcı seçecek). Kaynaklar: kullanıcının kararları, `docs/DURUM.md` madde 38, `docs/urun-eksikleri.md`.
+Durum: 2026-11-12 (sabah: Aşama 0–4 bitti; Aşama 4'ün iki GitHub ayarı kullanıcı onayı bekliyor). Kaynaklar: kullanıcının kararları, `docs/DURUM.md` madde 38, `docs/urun-eksikleri.md`.
 
 Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve kararları da burada. Bir aşama bitince "Durum" sütununu ve DURUM'daki "Kalınan yer" satırını güncelle.
 
@@ -26,7 +26,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 | 1b | Kod imzalama başvurusu (SignPath Foundation) | — | Başvuruyu kullanıcı yapar | Başlatılacak |
 | 2 | Tepsi ve arka plan | 1 | Karar verildi: tepsi | Bitti (PR #61): kullanıcı 1–8, ben 9–13 denedik |
 | 3 | Keymotion açılış animasyonu | — (2 ile paralel olabilir) | Önizlemeye onay | Bitti (PR #62; kullanıcı A'yı, yazılı seçti) |
-| 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bekliyor |
+| 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bitti (PR'da); iki GitHub ayarı onay bekliyor |
 | 5 | Kurulum dosyası (NSIS) ve imza | 1, 2, 1b | Kurulum ayrıntılarına onay | Bekliyor |
 | 6 | Sürüm hattı ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Bekliyor |
 | 7 | GitHub sayfası ve belgeler (EN varsayılan + TR) | 2, 3, 4 (arayüz kesin) | — | Bekliyor |
@@ -293,6 +293,30 @@ Uygulama içi düğme bu formların adresini açacak, o yüzden formlar önce ya
   - "Bu klavye henüz desteklenmiyor — destek iste" düğmesi çıkar.
   - Bildirime VID/PID, ürün adı, arayüzler ve HID tanımlayıcıları eklenir. Yalnızca okunur, klavyeye bir şey yazılmaz.
   - Form: "klavye desteği".
+
+### Yapılan (2026-11-12, sabah)
+
+- **GitHub tarafı:**
+  - formlar `.github/ISSUE_TEMPLATE/`: `bug.yml` (sorun), `keyboard.yml` (klavye desteği), `idea.yml` (öneri). İngilizce, "Türkçe yazabilirsiniz" notuyla. Ayrıntılar kutusunun kimliği `details`; klavye formunda model alanı `model` (uygulama doldurur);
+  - `config.yml`: boş sorun kapalı; sorular Discussions Q&A'ya, güvenlik sorunları özel bildirime yönlendirilir;
+  - `SECURITY.md`: GitHub'ın özel bildirim formu, ilk yanıt bir hafta içinde (tek kişilik proje), kapsam ve kapsam dışı (klavye yazılımı ve AJAZZ'ın programı).
+  - Formlar varsayılan daldan (`develop`) okunur; PR birleşince canlı olur.
+- **Onay bekleyen iki GitHub ayarı** (repo ayarı, kullanıcıya soruldu):
+  - "Private vulnerability reporting" kapalı; açılınca `SECURITY.md`'deki bağlantı çalışır;
+  - "keyboard support" etiketi yok; klavye formu bu etiketi koyar.
+- **Uygulama tarafı:**
+  - **Sorun bildir penceresi** (`components/Reporting.tsx` `ReportDialog`): gönderilecek metni önce gösterir (tanılama bilgisi, en üstte "What happened"). "GitHub'da bildir" metni panoya kopyalar ve formu başlıkla açar (`open_issue`; adres Rust'ta kurulur, başlık ve model kodlanır, başka adres açılamaz). "Kopyala" ayrıca var. Uygulama kendiliğinden hiçbir şey göndermez.
+  - **Ayarlar › Hakkında › Geri bildirim:** "Sorun bildir" ve "Öneri gönder" (öneri formu doğrudan açılır).
+  - **Beklenmeyen hata:** `errors.ts` `EXPECTED` dışındaki bir hata sağ üstte sakin bir bildirim açar ("Beklenmeyen bir sorun oldu", "Sorunu bildir"). Aynı hata (sayılar hariç aynı metin) oturumda bir kez gösterilir; bildirim 20 sn sonra kapanır, fare üstündeyken beklemez. Kaydetme çubuklarını örtmemesi için sağ üstte.
+  - **Çökme:** sonraki açılışta son 7 günün en yeni, daha önce önerilmemiş çökme notu bir kez önerilir ("Keymotion geçen sefer bir sorunla karşılaştı", "Bildir"). İşaret günlük klasöründe `crash.seen`; bu çalışmada yazılan notlar "geçen sefer" sayılmaz.
+  - **Sayfa çizim hatası** (ErrorBoundary): "Tanılama bilgisini kopyala" yerine "Sorunu bildir"; pencerenin tamamı çökse de kendi penceresini açar.
+  - **Desteklenmeyen klavye:** SONiX kimliği (VID 0C45) ya da adında "AJAZZ" olan, standart klavye koleksiyonu bulunan ama hiçbir modelle eşleşmeyen aygıt (`kb_core::unknown_keyboards`; SONiX kameraların düğmeleri sayılmaz). Hoş geldiniz ekranında "Bu klavye henüz desteklenmiyor" kartı ve "Destek iste". Metinde USB kimlikleri, adlar, koleksiyonlar ve her birinin HID tanımı var; tanımlar Windows'tan okunur (`report_descriptor_at`), klavyeye bir şey gönderilmez. Seri numarası ve aygıt yolları eklenmez.
+- **Denemeler:**
+  - gerçek uygulama (CDP): Ayarlar'daki satır ve pencere, kopyalama, Esc ile kapanma; beklenmeyen hata bildirimi bir kez çıkıyor, beklenen hata çıkmıyor; eski tarihli bir deneme çökme notu bir kez önerildi, raporda notun içeriği vardı, sonra önerilmedi (deneme dosyaları silindi); "GitHub'da bildir" tarayıcıda sayfa açtı, hata yok;
+  - AK980 PRO'nun 8 koleksiyonunun hepsinin tanımı okunuyor, klavye koleksiyonu dahil (`kb-transport` donanım testi, `--ignored`);
+  - desteklenmeyen klavye kartı ve "Destek iste" tarayıcı önizlemesinde (`?mock=none&unsupported`); `?crash` sahte çökme notu verir;
+  - Rust testleri: adres kodlama, çökme notu seçimi ve işareti, rapordaki "What happened", klavye ayrıntıları (yollar dışarıda), bilinmeyen klavye tanıma.
+- **Bilinen sınır:** kart yalnızca hoş geldiniz ekranında; desteklenen bir klavye de takılıysa desteklenmeyen için kart çıkmaz.
 
 ## Aşama 5: kurulum dosyası (NSIS) ve imza
 

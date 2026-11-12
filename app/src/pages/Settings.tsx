@@ -1,4 +1,4 @@
-import { Check, Copy } from "lucide-react";
+import { ArrowUpRight, Check, Copy } from "lucide-react";
 import { useState } from "react";
 import type { ThemePreference } from "../bindings/ThemePreference";
 import { BackgroundCard } from "../components/BackgroundCard";
@@ -7,7 +7,8 @@ import { CalibrationCard } from "../components/CalibrationCard";
 import { Segmented } from "../components/controls";
 import { copyDiagnostics } from "../lib/diagnostics";
 import { useT, type Locale, type MessageKey } from "../lib/i18n";
-import { openFolder } from "../lib/ipc";
+import { openFolder, openIssue } from "../lib/ipc";
+import { useReport } from "../lib/report";
 import { useApp } from "../lib/store";
 
 export function Settings() {
@@ -18,6 +19,7 @@ export function Settings() {
   // An import may replace the calibration: its card reads it again.
   const [imports, setImports] = useState(0);
   const [copied, setCopied] = useState<"no" | "busy" | "yes" | "failed">("no");
+  const openReport = useReport((s) => s.openReport);
 
   const copy = () => {
     setCopied("busy");
@@ -78,6 +80,26 @@ export function Settings() {
           <span className="num text-[13px] text-ink-2" title={env && env.osBuild > 0 ? t("settings.build", { build: env.osBuild }) : undefined}>
             {env?.mica ? t("settings.backdrop.mica") : t("settings.backdrop.solid")}
           </span>
+        </Row>
+        <Row label={t("report.feedback")} hint={t("report.feedback.hint")}>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => openReport({ kind: "bug", title: "" })}
+              className={secondaryButton}
+              data-report-open
+            >
+              {t("report.settings.problem")}
+            </button>
+            <button
+              type="button"
+              onClick={() => openIssue("idea", "").catch(console.error)}
+              className={secondaryButton}
+            >
+              {t("report.settings.idea")}
+              <ArrowUpRight size={14} aria-hidden />
+            </button>
+          </div>
         </Row>
         <Row
           label={t("data.diag")}

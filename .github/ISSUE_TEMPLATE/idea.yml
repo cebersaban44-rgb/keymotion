@@ -1,0 +1,24 @@
+name: Idea or improvement
+description: Something Keymotion could do, or do better.
+title: "[Idea] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are welcome. For a looser chat first, there's also [Ideas in Discussions](https://github.com/cebersaban44-rgb/keymotion/discussions/categories/ideas).
+
+        *Türkçe yazabilirsiniz.*
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like Keymotion to do?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What would it help you with?
+      description: The situation where you'd use it.
+    validations:
+      required: false
