@@ -2,7 +2,7 @@
 //!
 //! The workspace denies `unsafe`; Win32 and COM calls need it, so they live
 //! here, behind small safe types, and nowhere else
-//! (docs/research/ekran-ve-veri-kaynaklari.md §5).
+//! (docs site: developers/architecture).
 //!
 //! * Processor: `GetSystemTimes`, the share of time not idle between two
 //!   samples.

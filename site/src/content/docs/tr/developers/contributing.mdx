@@ -1,0 +1,159 @@
+---
+title: Katkıda bulunma
+description: Keymotion'ı derleme, bir PR'ın geçtiği dallar ve denetimler, gerçek bir klavyeyle çalışırken uyulacak kurallar.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Keymotion bir Rust çalışma alanı (workspace), bir Tauri 2 kabuğu ve React/TypeScript ile yazılmış bir arayüzden oluşur. Bu sayfa projeyi nasıl derleyeceğinizi, bir değişikliğin sürüme nasıl ulaştığını ve insanların klavyelerini koruyan kuralları anlatır. Issue, tartışma ve PR'ları Türkçe ya da İngilizce yazabilirsiniz.
+
+## Kurulum
+
+Keymotion bir Windows uygulamasıdır: Windows'un HID, Bluetooth LE ve WebView2 bileşenlerini kullanır; CI da onu Windows'ta derleyip test eder. Gerekenler:
+
+- **Rust.** Sürüm `rust-toolchain.toml`'da sabittir; rustup onu ilk `cargo` komutunda kendiliğinden kurar. Sürümü yalnızca bilerek ve ayrı bir PR'la yükseltin.
+- **Tauri'nin Windows için ön koşulları**: Microsoft C++ derleme araçları ve WebView2. Ayrıntılar [Tauri'nin ön koşullar sayfasında](https://v2.tauri.app/start/prerequisites/).
+- **Node.js 24** ve **pnpm**. pnpm sürümü `app/package.json`'da (`packageManager`) sabittir.
+
+<Steps>
+
+1. Arayüzün bağımlılıklarını kurun:
+
+   ```bash
+   pnpm --dir app install
+   ```
+
+2. Rust testlerini çalıştırın. Bu komut test etmenin yanında TypeScript tiplerini ve tarayıcıdaki sahte arka ucun verilerini `app/src/bindings` klasörüne yazar:
+
+   ```bash
+   cargo test --workspace
+   ```
+
+3. Arayüzün geliştirme sunucusunu başlatın (`http://127.0.0.1:1420`):
+
+   ```bash
+   pnpm --dir app dev
+   ```
+
+4. İkinci bir terminalde uygulamayı derleyip başlatın:
+
+   ```bash
+   cargo build -p keymotion
+   ./target/debug/keymotion.exe
+   ```
+
+   Hata ayıklama derlemesi arayüzünü geliştirme sunucusundan yükler; bu yüzden 3. adım açık kalmalı. Sunucu çalışmıyorsa pencere boş kalır.
+
+</Steps>
+
+Arayüz üzerinde uygulama ya da klavye olmadan çalışmak için 3. adım açıkken tarayıcıda `http://127.0.0.1:1420/?mock=usb` adresini açın. Arka ucun yerine [Mimari](/keymotion/tr/developers/architecture/) sayfasında anlatılan sahte arka uç cevap verir.
+
+### Geliştirici aracı `kb`
+
+`crates/kb-cli`, uygulamayla aynı crate'leri kullanan `kb` adlı komut satırı aracını derler. Çıktısı Türkçedir.
+
+```bash
+cargo run -p kb-cli -- list          # bütün bağlantı modlarındaki klavyeler
+cargo run -p kb-cli -- descriptors   # üreticiye özel koleksiyonların rapor tanımlayıcıları
+cargo run -p kb-cli -- read-colors   # tuşlarda o an görünen renkler (yalnızca okur)
+cargo run -p kb-cli -- --help        # öteki komutlar
+```
+
+Klavyenin kalıcı belleğine yazan komutlar `--yes` olmadan çalışmaz. `kb` klavyeyle doğrudan konuşur: uygulamanın başka programlar, denenmemiş klavye yazılımı ve HID koleksiyonlarının şekli için yaptığı denetimleri yapmaz. Kullanmadan önce Keymotion'ı ve klavyeyle konuşan başka yazılımları kapatın.
+
+## Dallar ve PR'lar
+
+| Dal | İçeriği |
+|---|---|
+| `main` | Yayımlanmış kod. `main`'e yapılan her birleştirme bir sürümdür ve `vX.Y.Z` etiketi alır. |
+| `develop` | İşlerin toplandığı yer; GitHub'daki varsayılan dal. Her zaman derlenir ve testlerini geçer. |
+
+- `develop`'tan kısa ömürlü bir dal açın. Dal adları küçük harfli, İngilizce ve tireyle yazılır: `feature/keymap-editor`, `fix/mirror-gamma`, `docs/…`, `chore/…`.
+- PR'ı **`develop`** dalına açın ve tek bir değişiklikle sınırlı tutun. CI yeşil olunca PR tek commit'e indirilerek (squash) birleştirilir.
+- Açıklamada neyin değiştiğini, nedenini ve nasıl denediğinizi yazın.
+- Değişiklik kullanıcıya görünüyorsa `CHANGELOG.md`'de **Unreleased** başlığının altına bir satır ekleyin ve `site/` altındaki kullanıcı kılavuzunu Türkçe ve İngilizce güncelleyin.
+- Değişiklik davranışı etkiliyorsa onu yalnızca testlerde değil, çalışan uygulamada da deneyin.
+- Commit mesajları İngilizce yazılır. İlk satır emir kipinde ve en çok 72 karakterdir; gövde nedenini anlatır.
+- Kişisel veri commit'lemeyin: Bluetooth adresleri, kullanıcı adınızı içeren yerel yollar, takvim adresleri, anahtarlar.
+
+Sürümleri proje sahibi çıkarır. Sürüm numarası `Cargo.toml`, `app/package.json` ve `app/src-tauri/tauri.conf.json` dosyalarında durur; `tools/check-version.mjs` üçünün aynı olduğunu denetler. Bir sürüm PR'ı `develop`'u `main`'e birleştirir; `main`'e atılan etiket sürüm iş akışını (`.github/workflows/release.yml`) başlatır. İş akışı kurulum dosyasını derler ve proje sahibinin yayımlayacağı taslak bir GitHub sürümü açar. Sürüm dosyaları yalnızca bu iş akışında üretilir.
+
+## Denetimler
+
+CI (`.github/workflows/ci.yml`), `develop` ya da `main`'e açılan her PR'da ve bu dallara yapılan her birleştirmede çalışır. İki işi vardır.
+
+**Build and test** Windows'ta çalışır. Bir PR'ın birleştirilebilmesi için bu işin geçmesi gerekir.
+
+| Denetim | Komut |
+|---|---|
+| Metin temizliği: bayt sırası işareti yok, UTF-8 geçerli, bozuk Türkçe karakter yok | `node tools/check-text.mjs` |
+| Üretici dosyası yok (aşağıda) | `node tools/check-vendor-files.mjs` |
+| Sürüm numarası üç dosyada da aynı | `node tools/check-version.mjs` |
+| Sürüm betiklerinin testleri | `node --test "tools/release/*.test.mjs"` |
+| TypeScript tip denetimi ve arayüzün derlenmesi | `pnpm --dir app build` |
+| Tek bir uyarının bile kırmızı yaptığı ESLint | `pnpm --dir app lint` |
+| rustfmt | `cargo fmt --all -- --check` |
+| Uyarıları hata sayan Clippy | `cargo clippy --workspace --all-targets -- -D warnings` |
+| Rust testleri | `cargo test --workspace` |
+| TypeScript tipleri commit'lenmiş ve güncel | Testlerden sonra `app/src/bindings`'te değişiklik kalmamalı |
+
+**Supply chain**, `deny.toml` ayarıyla `cargo deny --locked check` çalıştırır: lisanslar, güvenlik duyuruları, aynı crate'in birden çok sürümü ve crate kaynakları. Yeni bir güvenlik duyurusu depoda hiçbir şey değişmeden bu işi kırmızı yapabilir; bu yüzden ayrı bir iştir ve birleştirme şartı değildir.
+
+Göndermeden önce aynı denetimleri kendiniz çalıştırın:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+pnpm --dir app build
+pnpm --dir app lint
+node tools/check-text.mjs
+node tools/check-vendor-files.mjs
+node tools/check-version.mjs
+```
+
+`cargo deny` için aracı bir kez `cargo install --locked cargo-deny` ile kurun, sonra `cargo deny check` çalıştırın.
+
+### Bağımlılıklar
+
+Dependabot her hafta `develop`'a güncelleme PR'ları açar. Bir bağımlılığı kendiniz eklediğinizde, çıkardığınızda ya da güncellediğinizde:
+
+- Üçüncü taraf bildirimlerini `node tools/notices.mjs` ile yeniden üretin ve `app/public/third-party-notices.txt` dosyasını commit'leyin. Bunun için bir kez `cargo install --locked --features cli cargo-about` gerekir.
+- Henüz izin verilmemiş bir lisans önce incelenir, sonra bilerek `deny.toml` ve `about.toml` dosyalarına eklenir.
+
+## Klavyeyle çalışırken
+
+<Aside type="caution" title="Bu kurallar insanların klavyelerini korur">
+Işıklar, tuş atamaları, makrolar ve ekran görselleri klavyenin kalıcı belleğine yazılır. Yanlış bir komut klavyeyi geri dönüş yolu bilinmeyen bir duruma sokabilir. Bu kurallardan birini çiğneyen PR birleştirilmez.
+</Aside>
+
+- **Yalnızca ölçülmüş komutlar.** Bir komut, ancak o klavyede ölçüldükten sonra eklenir: dikkatle bir kez gönderilir, cevabı denetlenir ve etkisi görülür. `kb-protocol`'deki izin listesi bunun dışındaki her şeyi reddeder. Listeye ekleme yapan bir PR ölçümü anlatır: tarih, klavye yazılımının sürümü, kullanılan araç, ne gönderildiği, ne geldiği ve klavyenin ne yaptığı. Şimdiye kadar ölçülenler [Protokol ayrıntıları](/keymotion/tr/developers/protocol/) sayfasında.
+- **Klavye yazılımı (firmware), önyükleyici (bootloader) ve kablosuz güncelleme yolları kapalı kalır.** Keymotion klavye yazılımını güncellemez ve hiçbir zaman güncellemeyecek. `kb-protocol`'deki güvenlik denetimi bu dizileri reddeder; Bluetooth modülünde ise yazma işlevi hiç yoktur. Bunlardan birini gevşeten değişiklik kabul edilmez.
+- **Yazmak kullanıcının isteğiyle olur.** Uygulama klavyenin kalıcı belleğine yalnızca kullanıcı istediğinde yazar: **Klavyeye kaydet** ya da **Klavyeye yükle** gibi bir düğme, bir profili yüklemek ya da kullanıcının açtığı ve günlük yükleme sınırıyla çalışan **Canlı ekran** gibi bir özellik. Kaydırıcı sürüklenirken ya da başka bir işin yan etkisi olarak asla yazmaz. Önizlemeler, klavyenin yalnızca RAM'de tuttuğu canlı karelerle yapılır.
+- **Gerçek klavyede dikkatle deneyin.**
+  - Yalnızca okuyan komutlarla başlayın (`kb list`, `kb descriptors`, `kb read-colors`), sonra canlı karelere geçin (`kb live`), kalıcı belleğe en son yazın.
+  - Başlamadan önce klavyenin kendi ayarlarını not edin ve denemeden sonra geri yazın. Klavye tuş atamalarını ve makrolarını geri okuyamaz.
+  - Her ekran yüklemesi kalıcı belleği silip yeniden yazar. Yüklemeleri az tutun ve modelin kare sınırını asla aşmayın.
+  - Kendinize ait bir klavye kullanın ve PR'da hangi klavye yazılımı sürümünde denediğinizi yazın.
+
+Yeni bir modelden önce neyin ölçülmesi gerektiğini [Başka bir klavyeye destek](/keymotion/tr/developers/adding-a-keyboard/) anlatır.
+
+### Üretici dosyaları
+
+Klavyenin fabrika ekran animasyonu, üreticinin sürücüsü ve sürücünün dosyaları depoya, kurulum dosyasına ya da bir sürüme hiçbir zaman girmez. `tools/check-vendor-files.mjs`; programları, sürücüleri ve arşivleri (uzantısına ya da içeriğine bakarak), `docs/media/` dışındaki GIF dosyalarını ve yolunda "factory" geçen görsel ya da ham veri dosyalarını reddeder. Uygulama fabrika animasyonunu kullanıcının kendi bilgisayarındaki resmi sürücüden yedekleyebilir; ama onu hiçbir zaman kendisiyle birlikte dağıtmaz.
+
+## Issue'lar ve tartışmalar
+
+Boş issue açılamaz; her issue bir formla başlar:
+
+- **Problem report** (`bug.yml`): bir şey ters gitti. Uygulamada **Ayarlar › Sorun bildir**, formun istediği bilgileri panoya kopyalar.
+- **Keyboard support request** (`keyboard.yml`): [Başka bir klavyeye destek](/keymotion/tr/developers/adding-a-keyboard/) sayfasına bakın.
+- **Idea or improvement** (`idea.yml`): öneriler.
+
+Sorular ve henüz olgunlaşmamış fikirler [Discussions](https://github.com/cebersaban44-rgb/keymotion/discussions) bölümüne yazılır. Güvenlik sorunları herkese açık bir issue'da değil, gizli yoldan bildirilir: [SECURITY.md](https://github.com/cebersaban44-rgb/keymotion/blob/develop/SECURITY.md). Katılan herkes [davranış kurallarını](https://github.com/cebersaban44-rgb/keymotion/blob/develop/CODE_OF_CONDUCT.md) kabul etmiş sayılır.
+
+## Lisans
+
+Keymotion, tercihinize göre [Apache License, Version 2.0](https://github.com/cebersaban44-rgb/keymotion/blob/develop/LICENSE-APACHE) ya da [MIT lisansı](https://github.com/cebersaban44-rgb/keymotion/blob/develop/LICENSE-MIT) ile lisanslıdır (`MIT OR Apache-2.0`). Aksini belirtmediğiniz sürece projeye eklenmek üzere gönderdiğiniz her katkı da ek bir şart ya da koşul olmadan aynı şekilde lisanslanır.
+
+Keymotion bağımsız bir projedir ve AJAZZ ile bir bağı yoktur; ayrıntı için [NOTICE](https://github.com/cebersaban44-rgb/keymotion/blob/develop/NOTICE) dosyasına bakın.

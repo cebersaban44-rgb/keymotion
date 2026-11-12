@@ -1,0 +1,77 @@
+---
+title: System gauges
+description: Show processor, graphics and memory load as bars on rows of keys, the volume on the F row, and a red key while your microphone is muted.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+The system gauges turn your keys into small meters. Processor, graphics and memory load fill rows of keys like bars, the F row shows the volume when you change it, and a key of your choice turns red while the microphone is muted.
+
+<Screenshot name="system-gauges" alt="The System gauges page with Show on keys turned on, the keyboard drawing with load bars and the current readings" />
+
+## Turn the gauges on
+
+<Steps>
+
+1. Open **System gauges** under **Tools** in the sidebar.
+2. Turn on **Show on keys**.
+
+</Steps>
+
+The line under the switch says what the keys do now, for example **Showing on the keys** or **Preview only**. The keyboard drawing shows what the keys show, and below it you see the current readings: **Processor**, **Graphics**, **Memory**, **Volume** and **Microphone**. The drawing and the readings work even before you turn the gauges on.
+
+While the gauges are on, your saved lighting is hidden. The keys that don't show a gauge follow the **Appearance** settings.
+
+When Keymotion keeps running after you close its window, the menu of its icon next to the clock can also turn **System gauges on the keys** on or off.
+
+<Aside type="note" title="Needs the USB cable">
+To see the gauges on the keys, connect the cable and set the switch on the back of the keyboard to the middle. The drawing on the page works in the meantime.
+</Aside>
+
+## Load bars
+
+Each load shows as a bar that fills a row of keys from left to right. Turn each one on or off:
+
+| Gauge | Keys |
+|---|---|
+| **Processor** | 1 to 0 |
+| **Graphics** | Q to P |
+| **Memory** | A to ; |
+
+Processor and graphics are on at first; memory is off.
+
+With two graphics cards, the busier one is shown. Temperature isn't shown, because Windows doesn't provide it without an extra driver.
+
+## Volume
+
+When the volume changes, for example when you turn the knob, F1 to F12 show the level for 1.5 seconds. When the sound is muted, the F row turns red.
+
+## Muted microphone
+
+When the microphone is muted in Windows, the key you choose turns red. To pick the key, click **Change**, then click a key on the drawing. **Cancel** keeps the current key.
+
+Mute buttons inside call apps aren't detected; only the mute in Windows is.
+
+## Appearance
+
+- **Bar color**: **By load** turns from green to yellow to red as the load rises. **By gauge** gives each gauge its own color: processor blue, graphics violet, memory teal.
+- **Show empty part faintly** shows the full length of each bar.
+- **Brightness** goes from 1 to 5.
+- **Other keys** are **Off**, or a **Faint color** you pick.
+
+## Priority order
+
+Several things can light the keys at the same time. The **Priority order** list shows which one wins. Each item covers the ones below it; when it is idle, the next one shows. **Showing** marks the one on the keys now.
+
+1. **Preview on the Lighting page**, only while you edit there.
+2. **Volume and microphone**, on their own keys only.
+3. **Focus timer**, on the whole keyboard.
+4. **Load bars**, which return when the timer ends.
+5. **Saved lighting**, when nothing above is active.
+
+So while the [focus timer](/keymotion/guide/focus-timer/) runs, the load bars wait, but the volume and the microphone key still show.
+
+<Aside type="tip" title="Nothing is saved to the keyboard">
+Turning off the gauges or quitting Keymotion brings your saved lighting back. The gauges never change what is saved on the keyboard.
+</Aside>

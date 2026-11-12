@@ -1,0 +1,12 @@
+{
+  "name": "keymotion-screenshots",
+  "private": true,
+  "description": "Takes the screenshots and short animations for the README and the documentation site from the app's development build (stand-in keyboard, sample data). Run it with `node tools/screenshots/shoot.mjs` while `pnpm --dir app dev` is running.",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "packageManager": "pnpm@10.14.0",
+  "devDependencies": {
+    "playwright-core": "1.64.1",
+    "sharp": "0.35.5"
+  }
+}

@@ -2,9 +2,9 @@
 //!
 //! The keyboard runs one protocol session at a time: when two programs send
 //! commands at once, packets of one land in the other's session and the
-//! keyboard swallows or misreads them (docs/DURUM.md §6, lesson 5). Live
-//! (RAM-only) frames recover on the next frame, but a broken write to the
-//! keyboard's memory does not, so writes are refused while one of these runs.
+//! keyboard swallows or misreads them. Live (RAM-only) frames recover on
+//! the next frame, but a broken write to the keyboard's memory does not, so
+//! writes are refused while one of these runs.
 
 /// A known program that may talk to the same HID channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

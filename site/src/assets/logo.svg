@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="1024" height="1024">
+  <title>Keymotion</title>
+  <rect width="100" height="100" rx="22" fill="#16181C"/>
+  <path d="M34 25 V75" fill="none" stroke="#ECE9E3" stroke-width="13" stroke-linecap="round"/>
+  <path d="M46 51 L68 27" fill="none" stroke="#ECE9E3" stroke-width="13" stroke-linecap="round"/>
+  <path d="M51 57 L69 75" fill="none" stroke="#FF8A3D" stroke-width="13" stroke-linecap="round"/>
+</svg>

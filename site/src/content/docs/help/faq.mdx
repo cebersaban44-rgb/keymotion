@@ -1,0 +1,84 @@
+---
+title: Frequently asked questions
+description: Short answers about the Windows warning, AJAZZ's own software, Bluetooth and the 2.4 GHz receiver, keyboard safety, your data, other keyboards and reporting a problem.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+Short answers to the questions people ask most. For step-by-step fixes, see [If something goes wrong](/keymotion/help/recovery/).
+
+## Why does Windows warn me when I install Keymotion?
+
+Keymotion 0.1.0 isn't code-signed yet, so Windows may stop the installer with "Windows protected your PC". Download the installer only from the project's [GitHub Releases page](https://github.com/cebersaban44-rgb/keymotion/releases). Then click **More info** and **Run anyway**.
+
+The project is applying for free code signing. See the [code signing policy](/keymotion/about/code-signing/) and [Installing Keymotion](/keymotion/guide/install/).
+
+## Does it work with AJAZZ's official software open?
+
+You can keep AJAZZ's software installed. While its driver is running, though, Keymotion doesn't save anything to the keyboard and says "The AJAZZ driver is running. Close it before saving to the keyboard." The same goes for SignalRGB and OpenRGB.
+
+The keyboard follows one program's commands at a time, and commands from two programs can mix up. Close the other program, then save again.
+
+Having the driver installed is also useful: Keymotion can copy the keyboard's factory screen animation from it. See [If something goes wrong](/keymotion/help/recovery/#put-the-factory-screen-animation-back).
+
+## Why can't I change settings over Bluetooth?
+
+Over Bluetooth, the keyboard offers typing and its battery level, but no way to change its settings. So Keymotion only reads the battery there. To change settings, connect the USB cable and set the switch on the back to the middle.
+
+Over the USB cable it's the other way round: the keyboard doesn't report its battery, so Keymotion shows the last Bluetooth reading and how long ago it was taken.
+
+## What about the 2.4 GHz receiver?
+
+The keyboard works normally with the receiver, and Keymotion recognizes it, but settings can't be changed over the receiver yet. Use the USB cable to change them. [Connection](/keymotion/guide/connection/) shows what works in each mode.
+
+## Can Keymotion break my keyboard?
+
+Keymotion is built to be careful with the keyboard:
+
+- It sends only commands that were tested on this keyboard. Anything else is blocked before it leaves your computer, including the commands that would start a firmware update. Keymotion never updates the keyboard's firmware, and over Bluetooth it writes nothing at all.
+- Your settings go to the keyboard's permanent memory only when you choose to save or upload, for example with **Save to keyboard**. Previews aren't saved.
+- Before saving, it checks. If your keyboard's firmware version hasn't been tested with Keymotion, it asks you first. If it doesn't recognize the firmware, it sends nothing. While another program is using the keyboard, or more than one keyboard is connected by USB, it doesn't save.
+- If you close Keymotion while it's saving, it waits and closes when the save is done. If you shut down Windows, Windows shows that Keymotion is still saving to the keyboard.
+
+The screen's memory wears out slowly with each upload. Its exact lifespan isn't known; by the usual estimate for this kind of memory, a few uploads a day are fine for years. The live screen has a daily upload limit for this reason.
+
+<Aside type="caution" title="At your own risk">
+Writing to a device's permanent memory can always leave it in an unwanted state, and Keymotion comes without any warranty. Most changes can be undone: see [If something goes wrong](/keymotion/help/recovery/).
+</Aside>
+
+## Do I need to keep Keymotion open?
+
+No, not for what you save. Lighting, key assignments, macros and the screen picture are saved on the keyboard itself.
+
+The focus timer, reminders, calendar cards, the live screen and the system gauges need Keymotion running. When you close its window, Keymotion keeps running with an icon next to the clock. You can change this in **Settings**, under **Closing and starting**. See [Settings](/keymotion/guide/settings/).
+
+## Where are my settings stored?
+
+On your computer, in your Windows user folder:
+
+- settings and records in `%APPDATA%\dev.keymotion\`;
+- log files in `%LOCALAPPDATA%\dev.keymotion\logs\`.
+
+In **Settings**, under **About**, **Data folder** and **Log files** open them. Keymotion's records of your key mapping and macros are the only copy, because the keyboard can't report them. To keep a copy, open **Settings** and click **Export** under **Backup**: it saves everything in one file. The full list is in the [privacy policy](/keymotion/about/privacy/#where-your-data-lives).
+
+## Does Keymotion send data anywhere?
+
+No. It collects no usage data, has no account and sends nothing about you or your computer. It goes online only to read the calendars you add and to check GitHub for a new version. Problem reports go to GitHub only when you send them yourself. Details are in the [privacy policy](/keymotion/about/privacy/).
+
+## Does it work with other keyboards?
+
+Not yet. Keymotion supports the AJAZZ AK980 PRO. If you connect a SONiX or AJAZZ keyboard that isn't supported yet, Keymotion says so, sends nothing to it, and offers **Request support** to ask for it on GitHub. See [Supported keyboards](/keymotion/help/keyboards/).
+
+## Is Keymotion made by AJAZZ?
+
+No. Keymotion is an independent project. It isn't affiliated with, endorsed, sponsored or supported by AJAZZ, by the maker of the keyboard's controller chip, or by the authors of the keyboard's official software. The AJAZZ name is used only to say which keyboard Keymotion works with.
+
+## Is it free?
+
+Yes. Keymotion is free and open source, under the MIT or Apache 2.0 license, at your choice. There's no account and nothing to buy. The source code is on [GitHub](https://github.com/cebersaban44-rgb/keymotion).
+
+## How do I report a problem?
+
+Open **Settings**. Under **About**, next to **Feedback**, click **Report a problem**. A window shows the details that will be included. **Report on GitHub** copies them and opens the project's form on GitHub, where you paste them and send it. You need a GitHub account. Nothing is sent until you do.
+
+For questions, use [Questions and help](https://github.com/cebersaban44-rgb/keymotion/discussions/categories/q-a). Please report security problems privately, with [the private report form](https://github.com/cebersaban44-rgb/keymotion/security/advisories/new).

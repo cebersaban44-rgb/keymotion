@@ -111,6 +111,12 @@ export const useApp = create<AppState>((set) => ({
   clearProfileRequest: () => set({ profileRequest: null }),
 }));
 
+// Development only (`pnpm dev` in a browser): tools/screenshots opens pages
+// through the store. Vite drops this from the installed app.
+if (import.meta.env.DEV && typeof window !== "undefined") {
+  (window as unknown as { __keymotionStore?: typeof useApp }).__keymotionStore = useApp;
+}
+
 /** Below this window width the sidebar shrinks to icons. */
 const NARROW = "(max-width: 1199px)";
 

@@ -1,0 +1,246 @@
+---
+title: Protokol ayrıntıları
+description: AJAZZ AK980 PRO'da USB ve Bluetooth üzerinden ölçülenler, komut ve ekran kanallarının işleyişi, hangi komutların kapalı olduğu ve neden.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+Bu sayfa, klavye yazılımı 1.06 olan (USB `bcdDevice` `0x0106`) bir AJAZZ AK980 PRO'da, Kasım 2026'da, `kb` geliştirici aracıyla ve uygulamanın kendisiyle ölçülenleri listeler. Bunları uygulayan kod `crates/kb-protocol` (paketler), `crates/kb-core/src/sonix.rs` (oturumlar ve zamanlama) ve `crates/kb-devices/models/ajazz-ak980-pro.toml` (model) içindedir. AJAZZ bu protokolü yayımlamaz; Keymotion'ın da AJAZZ ile bir bağı yoktur.
+
+<Aside type="caution" title="Başvuru kaynağı, tarif değil">
+Bu komutların birçoğu klavyenin kalıcı belleğine yazar. Onları elle göndermeyin: her değeri doğrulayan ve her paketi güvenlik denetiminden geçiren uygulamayı ya da `kb`'yi kullanın. Yalnızca 1.06 sürümü denendi; başka sürümler farklı davranabilir.
+</Aside>
+
+## Kimlik ve bağlantı modları
+
+Bağlantıyı arkadaki anahtar seçer. Soldan sağa **2.4G · USB · BT** yazar; USB ortadaki konumdur. Ayarlar yalnızca USB kablosundan gider.
+
+| Mod | Windows'un gördüğü | Keymotion'ın yaptığı |
+|---|---|---|
+| USB kablo | VID `0C45`, PID `8009`. Üretici dizgesi `SONiX`, ürün dizgesi `AK980 PRO`. | Her şey. Uygulama VID, PID, USB veri yolu ve ürün adında "AK980" geçmesine bakar. |
+| Bluetooth | Ad `AK980 PRO-1`; son ek Bluetooth kanalıdır. PnP kimliği: VID `0C45`, PID `FEFE`, sürüm `0x0138`. | Pil düzeyini okur. Bluetooth'ta üreticiye özel kanal yoktur. |
+| 2.4 GHz alıcı | USB veri yolunda VID `0C45`, PID `FEFE`, `FF60` usage page'inde üreticiye özel bir koleksiyon. Bu bilgi model dosyasından gelir; burada ölçülmedi. | Alıcıyı tanır; sürücüsü yoktur. |
+
+Alıcı ile Bluetooth aynı `0C45:FEFE` kimliğini taşır; uygulama ikisini veri yoluna bakarak ayırır. Windows klavye yazılımının sürümünü yalnızca kabloda bildirir; alıcıda ya da Bluetooth'ta radyonun kendi sürümünü verir.
+
+## USB arayüzleri
+
+Windows'ta her üst düzey koleksiyon ayrı bir aygıt yoludur.
+
+| Arayüz | Usage page / usage | Görevi |
+|---|---|---|
+| 0 | `0x0001` / `0x06` | Boot klavye |
+| 1 | `0x000C` / `0x01`, `0x0001` / `0x80`, `0x0001` / `0x06`, `0x0001` / `0x02`, `0xFFFF` / `0x01` | Tüketici denetimleri (consumer), sistem denetimleri, NKRO klavye, fare ve üreticiye özel bir koleksiyon (rapor `05`, 3 baytlık giriş) |
+| 2 | `0xFF68` / `0x61` | Ekran kanalı |
+| 3 | `0xFF13` / `0x01` | Komut kanalı |
+
+### Rapor boyutları
+
+Rapor tanımlayıcılarından (`kb descriptors`) okundu ve `crates/kb-core/src/shape.rs` içinde test verisi olarak duruyor:
+
+| Koleksiyon | Tanımlayıcı | Giriş | Çıkış | Feature | Rapor kimliği |
+|---|---|---|---|---|---|
+| Komut, `FF13` | 48 bayt | 64 bayt | 64 bayt | 64 bayt | yok |
+| Ekran, `FF68` | 35 bayt | 64 bayt | 4096 bayt | yok | yok |
+| Üreticiye özel, `FFFF` | 23 bayt | 3 bayt (rapor `05`) | yok | yok | var |
+
+Windows başa `00` değerinde bir rapor kimliği baytı ekler; bu yüzden bir komut 65 bayt, bir ekran sayfası 4.097 bayt olarak gider. `FF13` ve `FFFF` koleksiyonları 20 saniye boyunca yalnızca dinlendiğinde klavye kendiliğinden hiç giriş raporu göndermedi.
+
+Uygulama bir kanalı kullanmadan önce bu şekilleri denetler (`kb_core::shape`). Bazıları AK980 PRO'yla aynı USB kimliğini taşıyan öteki SONiX komut ailesinin klavyeleri 64 baytlık komutları `FF68`'e koyar ve bir de `FF67` koleksiyonu ekler; denetimden geçemezler ve onlara hiçbir şey gönderilmez.
+
+## Komut kanalı
+
+Her komut `FF13` üzerinde 64 baytlık bir **feature raporudur**. Bir oturum başlıkları ve bir başlığın duyurduğu veri paketlerini gönderir; `04 02` ile, bazı oturumlarda ardından `04 F0` ile biter. Klavyenin her başlığa verdiği cevap GET_FEATURE ile okunur.
+
+| Veri baytı | İçerik |
+|---|---|
+| 0 | `04`. Bu bir veri baytıdır, rapor kimliği değil. |
+| 1 | İşlem kodu |
+| 2 | Bağımsız değişken: `04 72` için ekran yuvası, öteki komutlarda 0 |
+| 3–7 | 0 |
+| 8–9 | Ardından gelecek 64 baytlık veri paketlerinin sayısı, küçük uçlu (little-endian) |
+| 10–63 | 0 |
+
+Veri paketleri başlıksız, ham 64 baytlık yüklerdir. Işık, saat, tablo ve makro verileri `AA 55` baytlarını taşır: ışık paketinde 14–15. baytlarda, ötekilerde en sonda.
+
+### Cevaplar
+
+Yankı, başlığı 3. bayttaki bir durumla birlikte tekrarlar. Henüz hiçbir şey gönderilmeden yapılan bir GET_FEATURE 65 sıfır bayt döndürür.
+
+| Yankı | Görülen durum |
+|---|---|
+| `04 18`, `04 13`, `04 28`, `04 72` | `01` |
+| `04 19` | kabul (`FF` değil) |
+| `04 20` | `00` |
+| `04 F5` | önce `00`, renk tablosu hazır olunca `01` |
+| Işık, tuş başına renk, tuş atama ya da makrolardan sonra `04 02` | `01`; 4–5. baytlarda alınan verinin küçük uçlu, 16 bitlik bayt toplamı |
+| Saatten ya da ekran yüklemesinden sonra `04 02` | `01`, toplam 0 |
+| Tuş atamadan sonra `04 F0` | `01` |
+
+Yalnızca `FF` ret demektir; `00` ve `01` kabul sayılır. Bayt toplamı 16 bitte başa döner; `kb-core` onu gönderdiğiyle karşılaştırır ve tutmazsa yazmayı durdurur. Klavye ara sıra bir GET_FEATURE isteğini takar (Windows hatası `0x1F`); 5, 10 ya da 15 ms sonra yapılan yeni deneme başarılı olur.
+
+### İşlem kodları ve oturumlar
+
+Uygulamanın kullandığı ve izin listesinde olan işlem kodları bunlardır. Her biri gösterilen oturumda ölçüldü; ayraç içindeki sayı 8–9. baytlardaki paket sayısıdır.
+
+| Özellik | Oturum | Ölçülen süre |
+|---|---|---|
+| Hazır efekt | `04 18` → `04 13` (1) → 1 veri paketi → `04 02` → `04 F0` | 285 ms (`kb`), 341 ms (uygulama) |
+| Tuş başına renk | `0x80` moduyla bir efekt oturumu, ardından `04 18` → `04 23` (9) → 9 paket → `04 02` → `04 F0` | 8 tuş için 856 ms (`kb`), 97 tuş için 869 ms (uygulama) |
+| Tuş atama | `04 18` → temel katman için `04 11` ya da Fn katmanı için `04 27` (9) → 9 paket → `04 02` → `04 F0` | 608 ms (`kb`), 631 ms (uygulama) |
+| Makrolar | `04 19` → `04 15` (sayfa sayısı) → sayfalar → `04 02` | 9 sayfa için 600 ms |
+| Saat | `04 18` → `04 28` (1) → 1 veri paketi → `04 02` | 251 ms (`kb`), 250 ms (uygulama) |
+| Ekran yüklemesi | `04 18` → `04 72` yuva 1 (sayfa sayısı) → `FF68` üzerinden sayfalar → `04 02` | sayfa başına yaklaşık 143 ms |
+| Canlı kare (yalnızca RAM) | `04 20` (8) → 8 paket → `04 02` | saniyede 29,5 kare |
+| Renk geri okuma | `04 F5` (9) → 9 okuma → `04 02` | uygulama her 250 ms'de bir okur |
+
+`04 17` (uyku ve Windows tuşu kilidi gibi klavye seçenekleri) de izin listesindedir; ama ne uygulama ne de `kb` onu gönderir ve ölçülmemiştir.
+
+`kb-core`, ayar paketlerinin önünde ve arkasında sabit bir bekleme yapar (`crates/kb-core/src/sonix.rs` içindeki `CMD_DELAY`). Ölçüldü: son geri okuma paketinin hemen ardından gönderilen `04 02` işlenmiyor, oturum açık kalıyor ve bir sonraki geri okuma başarısız oluyor.
+
+## Işıklar
+
+### Hazır efektler
+
+Efekt paketi modu, bir rengi, gökkuşağı işaretini, parlaklığı (0–5), hızı (0–5) ve yönü taşır; 14–15. baytlarda `AA 55` ile biter. Modlar 0 (kapalı) ile 19 arasındadır; `0x80` tuş başına renk tablosunu seçer. Örneğin `0B FF 00 00 00 00 00 00 01 05 03 00 00 00 AA 55` paketi 11. modu gökkuşağı renklerinde, parlaklık 5 ve hız 3 ile kaydeder; kaydetme yankısı `04 02 00 01 12 02` geldi, yani bayt toplamı `0x0212` (530), gönderilen baytlarla aynı. Uygulama fabrika ışığı olarak da aynı ayarları kullanır (`EffectSettings::factory`).
+
+Yönlü her efekt yalnızca iki yöne hareket eder. Kod 2, kod 1 gibi; kod 3, kod 0 gibi davranır:
+
+| Mod | Kod 0 | Kod 1 |
+|---|---|---|
+| 10 | aşağı | yukarı |
+| 11 | sağa | sola |
+| 12 | saatin tersine | saat yönünde |
+| 16 | kısa bir ışık katarı LED sırasında ileri gider | geri |
+| 18 | sağa ve yukarı | sola ve aşağı |
+
+`kb direction-probe` ile ölçüldü: araç her efekti her kodla kaydeder, kareleri geri okur ve hareketi hesaplar.
+
+### Tuş başına renk
+
+Tuş başına renk tablosu 9 pakettir (576 bayt): `idx` numaralı girdi `idx × 4` baytında `idx R G B` olarak durur, son iki bayt `AA 55`'tir; bu yüzden kullanılabilecek en büyük numara 142'dir. Aşağıdaki canlı karelerde olduğu gibi `kb-protocol`, 1'den 142'ye kadar her girdiyi kendi numarasıyla yazar; böylece verilmeyen tuşlar siyah olarak kaydedilir.
+
+### Parlaklık ve renk
+
+- `n` parlaklık düzeyinde `v` renk değeri `v × m[n] >> 10` olarak sürülür; `m = [0, 191, 382, 573, 764, 1016]`. 3. düzey %60 değil, yaklaşık %56'dır. Efektler ve tuş başına renk tabloları aynı ölçeği kullanır; 1–5. düzeylerde ölçülen 40 değerin hepsi buna birebir uyar.
+- Renkler kanal başına 8 bitle saklanır ve klavye yazılımı gama uygulamaz. LED'ler doğrusal tepki verir, ekranlar vermez; bu yüzden uygulama renkleri göndermeden önce kullanıcının kalibrasyonuyla (varsayılan gama 2,2) dönüştürür.
+- Num Lock (LED 32, beyaz) ve Fn (LED 96; pil şarj olurken kırmızı, dolunca sönük) ışıklarını klavye yazılımı kendisi yakar. Efektlere, tuş başına renk tablolarına ve canlı karelere uymazlar; parlaklık ölçeği de onlara uygulanmaz.
+
+## Canlı kareler (yalnızca RAM)
+
+`04 20` 8 paket duyurur: `idx × 4` baytlarında 128 adet `idx R G B` girdisi taşıyan 512 bayt. `04 18` ve `04 F0` yoktur. Bir tuşa bağlı en büyük LED numarası 123'tür.
+
+- Kalıcı belleğe hiçbir şey yazılmaz. Kareler kesilince klavye kayıtlı ışığına döner; bu yüzden uygulama o anki kareyi her 50 ms'de bir yeniden gönderir.
+- `kb live` ile ölçüldü: paketler arasında 2 ms ile 6 saniyede 177 kare (saniyede 29,5).
+- Klavye yazılımı girdileri numara baytına göre uygular; tamamı sıfır olan bir yuva hiçbir şeyi değiştirmez. Yalnızca bazı LED'leri içeren bir kare, ötekileri önceki renklerinde bıraktı; bu yüzden artık her yuva kendi numarasını taşır ve verilmeyen LED'ler siyah gönderilir.
+- Başlığı gönderilen bir kare mutlaka tamamlanmalıdır. Veri gelmezse klavye sonraki paketleri karenin verisi sayar; ardından gelen komutlar kaybolur ve bir sonraki geri okuma başarısız olur. Eksiksiz bir kare oturumu toparlar.
+- Yaklaşık her 100 kareden biri `FF` ile reddedilir; bir sonraki kare sorunsuz gider.
+- Canlı kareler kayıtlı ışık kapalıyken de görünür. Parlaklık düzeyi onlara uygulanmaz; bu yüzden uygulama onları yukarıdaki tabloyla ölçekler.
+
+## Geri okuma
+
+`04 F5`, tuşların o an gösterdiği renkleri döndürür; hareketli efektler ve canlı kareler de buna dahildir.
+
+- Başlık 9 paket duyurmalıdır. Sayı 0 iken bir bağlantıda yalnızca ilk okuma çalıştı: oturum hiç kapanmadı, sonraki okumalar yok sayıldı ve onların ardından gelen komutlar yutuldu. Sayı 9 iken 250 ms arayla yapılan art arda sekiz okumanın hepsi başarılı oldu.
+- Yankı tablo hazır olana kadar `00`, sonra `01` okunur. Ardından dokuz GET_FEATURE okuması, yani 576 baytlık `idx R G B` girdisi, en sonda da `04 02` gelir.
+- Yeşil ve mavi olduğu gibi gelir. Kırmızı ise `2 × r mod 256` olarak gelir; en üst biti kaybolur ve her kırmızı bayt iki değere karşılık gelir. `kb-core`, uygulamanın tuşlarda görmeyi beklediği renge uyanı seçer; bir beklenti yoksa (gökkuşağı efektleri) karenin kendisinden tahmin eder.
+- Keymotion'ın kayıtlı efekti, tuş atamasını, makroları ya da ekran görselini geri okumak için ölçülmüş bir yolu yoktur. Uygulama her birinin kaydını kendisi tutar ve bu kaydı yalnızca klavyenin onayladığı bir yazmadan sonra günceller.
+
+## Tuş atama
+
+Bir katman, `idx × 4` baytlarında 144 adet 4 baytlık girdiden oluşur; numara, tuşun LED numarasıdır ve son iki bayt `AA 55`'tir. Bir katmanı yazmak katmanın tamamını değiştirir.
+
+| Girdi | Anlamı |
+|---|---|
+| `00 00 00 00` | Tuşun fabrika ayarı. Tamamı sıfır olan bir katman fabrika düzenidir. |
+| `02 MODS KEY 00` | Değiştirici tuşlarla birlikte bir tuş (HID klavye usage'ı); değiştirici bitleri boot klavye raporundaki gibidir. Shift+A: `02 02 04 00`; Ctrl+Shift+A: `02 03 04 00`. |
+| `03 LO HI 00` | Küçük uçlu bir tüketici (consumer) usage'ı (Sesi aç: `03 E9 00 00`) |
+| `01 01 BTN 00` | Bir fare düğmesi; `08`, Windows'a 4. düğme (geri) olarak ulaşır |
+| `05 03 00 00` | Tuş hiçbir şey yapmaz |
+| `06 SLOT MODE COUNT` | `SLOT` numaralı makroyu oynatır: mod 0 bir kez, mod 1 `COUNT` kez. Mod 2 ve 3 denenmedi. |
+
+Bunların hepsi tuşlara basılarak ve Windows'taki olaylar izlenerek denetlendi. Fn katmanı, kendine ait Fn işlevi olmayan bir tuşta çalışır. Fn tuşunun kendisine (usage `0xAF`) hiçbir zaman başka bir görev atanmaz: o olmadan Fn katmanı ve klavyenin kendi Fn işlevleri kaybolur.
+
+## Makrolar
+
+`04 19` bir makro oturumu açar ve kayıtlı makroları siler; öncesinde `04 18` gerekmez. `04 15` sayfaları duyurur, sayfalar gelir ve `04 02`, görüntünün toplamıyla tutan bir bayt toplamıyla oturumu kapatır.
+
+Görüntü, 100 adet 4 baytlık yuvadan oluşan bir dizin ve ardından her makro için bir kayıttan oluşur. Her adım iki 4 baytlık olaydır: eylem (tuş ya da fare düğmesi, basma ya da bırakma) ve ondan sonraki en az 10 ms'lik bekleme. Üç yuvalı bir deneme görüntüsü (iki harfli bir sözcük; boş bir yuva; sağ tık, 200 ms bekleme ve bir tuş) 9 sayfa tuttu ve tuşlar her adımı beklemesiyle birlikte oynattı.
+
+## Saat
+
+`04 28` bir veri paketi duyurur: `00 01 5A`, ardından yıl eksi 2000, ay, gün, saat, dakika, saniye, `00` ve haftanın günü (0 = Pazar); değerler ikili sayı olarak ve yerel saatle yazılır, son iki bayt `AA 55`'tir. Klavye bu paketi bayt bayt geri yansıtır. Bu oturumda `04 02` toplamı 0 olduğu için teslimin kanıtı bu yankıdır.
+
+Her saat paketi ekranı saat sayfasına da geçirir. Bu yüzden uygulama saati kendiliğinden en çok günde bir kez, klavye bağlandıktan 2 saniye sonra ayarlar; kullanıcı istediğinde de ayarlar.
+
+## Ekran
+
+Panel 240×135 piksel boyutundadır (1,14 inç). Görseller RGB565, küçük uçlu, satırlar yukarıdan aşağıya sıralıdır; köşeleri renkli ve oklu bir test deseni yönü ve renk sırasını doğruladı.
+
+- **Biçim.** 256 baytlık bir başlık (kare sayısı ve her kare için 2 ms birimli bir bekleme baytı), ardından kareler; sonuç tam 4096 baytlık sayfalara tamamlanır. Bir kare 16 sayfa tutar.
+- **Yükleme.** `04 18`, ardından yuva 1 ve sayfa sayısıyla `04 72`. Her sayfa `FF68` koleksiyonuna 4096 baytlık bir output raporu olarak gider; klavye her birine `01 5A 02 00` ile başlayan bir giriş raporuyla cevap verir. Yüklemeyi toplamı 0 olan `04 02` kapatır; bu yüzden teslimin kanıtı sayfa başına gelen cevaplardır.
+- **Nereye gider.** Yükleme, ekranın GIF sayfasındaki (Fn+Home ile açılır) tek animasyonun yerine geçer; fabrika animasyonu da buna dahildir. Tarih ve saatin göründüğü ana sayfa etkilenmez. Görsel, kablo çıkarılıp takıldıktan ve 2.4 GHz'e geçip dönüldükten sonra da yerinde kalır.
+- **Yükleme sürerken.** Ekranda LOADING ve bir yüzde görünür; klavye yazmaya devam eder.
+- **Hız.** İlk sayfa yaklaşık 283 ms, sonrakiler yaklaşık 143 ms sürer (133 ile 283 ms arası); bu süre kalıcı belleğe yazmaya uyar. Tek bir durağan görsel (16 sayfa) yaklaşık 2,7 saniye, 16 kare (254 sayfa) 37 saniye, 135 karelik fabrika animasyonu (2.136 sayfa) 308 saniye sürer.
+
+Bir sayfa başarısız olursa uygulama oturumu `04 02` ile kapatır. GIF sayfası bir sonraki yüklemeye kadar eksik kalır.
+
+## Pil ve şarj
+
+- **USB:** Klavye kabloda pil düzeyi bildirmez. Tanımlayıcılarında pil usage'ı yoktur ve kendiliğinden bir şey göndermez. Klavye yazılımı şarj olurken Fn tuşunu kırmızı yakar, pil dolunca söndürür; uygulama bunu `04 F5` ile okur ve şarj durumunu gösterir.
+- **Bluetooth:** Standart GATT Battery Service okunabilir (ilk denemede %94).
+
+Klavye Bluetooth'ta yalnızca standart HID raporları (sistem denetimleri, LED çıkışıyla birlikte boot klavye, fare, NKRO klavye, tüketici denetimleri, topuz için Windows Dial ve Apple Fn tuşuyla birlikte Eject) ile pil servisini sunar. Üreticiye özel GATT servisi radyo yongasının yazılım güncelleme kanalıdır.
+
+## Süreler bir bakışta
+
+| Ne | Ölçülen |
+|---|---|
+| Efekt kaydı | 285–341 ms |
+| Tuş başına renk kaydı | 856–869 ms |
+| Tuş atama katmanı kaydı | 608–631 ms |
+| Makro kaydı (9 sayfa) | 600 ms |
+| Saat ayarı | yaklaşık 250 ms |
+| Ekran sayfası | ilki yaklaşık 283 ms, sonrakiler yaklaşık 143 ms |
+| Canlı kare akışı | paketler arasında 2 ms ile saniyede 29,5 kare; uygulama saniyede 20 kare gönderir |
+| Reddedilen kareler | yaklaşık 100 canlı kareden biri |
+| Renk geri okuma | 250 ms arayla art arda sekiz okuma, hatasız |
+
+## Neler kapalı ve neden
+
+Bunlar, çağıran ne isterse istesin kodda reddedilir. Bayt dizileri burada bilerek verilmez.
+
+| Kapalı | Neden |
+|---|---|
+| Klavye yazılımı güncelleme ve önyükleyici dizileri, denetleyicinin sistem içi programlama komutları | Klavyenin denetleyicisini güncelleme moduna geçirirler. Keymotion klavye yazılımını hiçbir zaman güncellemez; yanlış bir yazılım yüklemesi klavyeyi kullanılamaz hale getirebilir. `guard` bunları iki kanalda da her paketin başında reddeder; kodlayıcılar da kullanıcı verisinin (bir renk, bir tuş girdisi, bir makro sayfası) bu dizilerden biriyle başlayamamasını sağlar. |
+| İzin listesinde olmayan her işlem kodu | Başka projeler klavye yazılımının kabul ettiği başka işlem kodları da listeliyor; bazıları yıkıcı. Hiçbiri burada ölçülmedi, bu yüzden bu klavyenin belleğine etkileri bilinmiyor. |
+| Bluetooth'taki yazılım güncelleme servisine yazmak | Radyo yongasını yeniden programlar. `kb_transport::ble`'de yazma işlevi yoktur. |
+| Ekran kanalında feature okumak ve ekran sayfalarını SET_REPORT ile göndermek | Benzer klavyelerde bir feature okuması klavye yazılımını güç kesilene kadar kilitledi, SET_REPORT ile gönderilen sayfalar da onu çökertti. Sayfalar her zaman output raporu olarak gider; `kb-transport` de `FF68` üzerinde GET_FEATURE'ı reddeder. |
+| Ekran yüklemesinden sonra `04 F0` | Başka projelere göre animasyonu yeniden başlatıyor ve yükleme kalıcı olmuyor. Yükleme yalnızca `04 02` ile kapatılır. |
+| 140 kareyi ya da 2.215 sayfayı aşan yüklemeler | Bir AULA F108 Pro'da sınırını aşan bir animasyon klavyenin menü görsellerinin üzerine yazdı ve bu kalıcı oldu. Burada ölçülen en büyük yükleme 135 karedir. |
+| 2.4 GHz alıcıya komut göndermek | Alıcı üzerinden burada hiçbir şey ölçülmedi. |
+
+## Teşekkürler
+
+Keymotion'ın protokol kodu kendisine aittir. Aşağıdaki topluluk projeleri bu klavye ailesini ilk belgeleyenlerdi ve nereye bakılacağını gösterdiler; bu sayfadaki bilgiler, yukarıda bir nedenin benzer bir klavyeden geldiği söylenen yerler dışında, sonradan bizim klavyemizde ölçüldü. Hepsine teşekkür ederiz.
+
+- [sonix-keyboard-studio](https://github.com/donglover69/sonix-keyboard-studio): AK980 V2 ve AULA F108 Pro
+- [ajazz-ak980-v2-linux](https://github.com/YellowHearth1/ajazz-ak980-v2-linux): Linux'ta AK980 V2
+- [ajazz-control-center](https://github.com/Aiacos/ajazz-control-center): AK980 PRO dahil AJAZZ aygıtları
+- [ak980_web](https://github.com/SlightlyLookAround/ak980_web): tarayıcıda AK980 V2
+- [ak35i-v3-max-macos-control-center](https://github.com/Ike-li/ak35i-v3-max-macos-control-center): macOS'ta AK35I V3 MAX
+- [TFTTimeSync-node](https://github.com/KyleBoyer/TFTTimeSync-node): AK35I V3 MAX'te saat ve ışık
+- [openajazz](https://github.com/not-nullptr/openajazz): AK35I ve F75 Max
+- [ak820pro-modder](https://github.com/wsclx/ak820pro-modder): AK820 Pro
+- [ak820-mac](https://github.com/gha-projects/ak820-mac): macOS'ta AK820
+- [ak820ctl](https://github.com/DarkTiengo/ak820ctl): AK820 Pro ve alıcısı
+- [ajazz-ak820-pro-mac](https://github.com/gusleig/ajazz-ak820-pro-mac): macOS'ta AK820 Pro
+- [ajazz-ak820-pro (kabelklaus)](https://github.com/kabelklaus/ajazz-ak820-pro): tarayıcıda AK820 Pro
+- [EPOMAKER-Ajazz-AK820-Pro](https://github.com/gohv/EPOMAKER-Ajazz-AK820-Pro): komut satırında AK820 Pro
+- [ajazz-ak820-pro (fpb)](https://github.com/fpb/ajazz-ak820-pro): AK820 Pro donanımı
+- [ak820-screen](https://github.com/fromagge/ak820-screen): yeni klavye yazılımlı AK820 Pro'nun ekranı
+- [freejazz](https://github.com/fraustiz/freejazz): farklı bir komut ailesi konuşan AK980 MAX
+- [f108-pro](https://github.com/parsiya/f108-pro): AULA F108 Pro ve ekranının nasıl zarar gördüğünün anlatımı
+- [AULA F108 Pro destekli OpenRGB](https://github.com/hcode10/OpenRGB-With-AulaF108Pro-support): F108 Pro'da canlı ışık
+- [aks075-linux](https://github.com/aar-rafi/aks075-linux): Linux'ta AKS075
+- [sonix-flasher](https://github.com/SonixQMK/sonix-flasher): hangi dizilerin kapatılacağını gösteren SONiX yazılım yükleme aracı

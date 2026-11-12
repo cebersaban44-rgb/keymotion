@@ -1,0 +1,98 @@
+---
+title: Ayarlar
+description: Tema ve dil, pencere kapanınca arka planda çalışma, renk kalibrasyonu, yedekleme, güncellemeler ve sorun bildirme.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+**Ayarlar**; uygulamanın görünümünü ve dilini, pencere kapanınca ne olacağını, klavye renklerinin ayarını, yedeklemeyi, güncellemeleri ve yardım almanın yollarını bir arada tutar. Kenar çubuğunun en altından açılır.
+
+<Screenshot name="settings" alt="Ayarlar sayfasının üstü: Görünüm ile iki seçenekli Kapatma ve açılış bölümü" />
+
+## Görünüm
+
+- **Tema**: **Açık**, **Koyu** ya da **Sistem**. **Sistem**, Windows'un açık ya da koyu modunu izler; Keymotion ilk açılışta bununla başlar.
+- **Dil**: **Türkçe** ya da **English**. Saatin yanındaki simgenin menüsü de dahil, bütün uygulama hemen değişir. Keymotion, Windows Türkçeyse Türkçe, değilse İngilizce başlar.
+
+## Kapatma ve açılış
+
+Işıklar, tuş atamaları, makrolar ve ekrandaki görsel klavyenin kendisinde kayıtlıdır; Keymotion kapalıyken de çalışırlar. Odak zamanlayıcısı, hatırlatıcılar, takvim kartları, canlı ekran ve tuşlardaki göstergeler ise Keymotion'ın çalışmasını gerektirir.
+
+- **Pencereyi kapatınca çalışmaya devam et** başta açıktır. Pencereyi kapattığınızda Keymotion çalışmayı sürdürür; simgesi ekranın sağ altında, saatin yanında durur. Keymotion açıldıktan sonra pencereyi ilk kapattığınızda bir Windows bildirimi **Arka planda çalışıyor** der.
+  - Pencereyi yeniden açmak için simgeye tıklayın ya da Keymotion'ı Başlat menüsünden yeniden açın.
+  - Tamamen kapatmak için simgeye sağ tıklayıp **Çık**'ı seçin.
+  - Simgeyi göremiyorsanız saatin yanındaki **^** okuna tıklayın.
+  - Bu seçenek kapalıysa pencereyi kapatmak Keymotion'ı da kapatır.
+- **Bilgisayar açılınca Keymotion'ı başlat** başta kapalıdır. Açarsanız Keymotion, Windows'a giriş yaptığınızda penceresini açmadan başlar; yalnızca saatin yanındaki simgesi görünür. Keymotion, Windows'un kendi başlangıç ayarlarından kapatılmışsa bu seçenek kapalı görünür ve bunu söyler; buradan yeniden açabilirsiniz.
+
+Simgenin sağ tık menüsü klavyeyi ve pilini de gösterir, **Odak zamanlayıcısı**'nı yönetir (başlatma, duraklatma, sonraki aşamaya geçme, durdurma), sıradaki hatırlatmayı gösterir, **Hatırlatıcılar**'ı ve **Tuşlarda sistem göstergeleri**'ni açıp kapatır, **Profiller**'i sıralar ve **Keymotion'ı aç** seçeneğini sunar. Oradan bir profil seçerseniz [Profiller](/keymotion/tr/guide/profiles/) sayfasında o profilin yükleme onayı açılır; siz onaylamadan hiçbir şey kaydedilmez.
+
+Klavyeye kaydedilmemiş değişiklikleriniz varken çıkmak isterseniz Keymotion önce sorar.
+
+## Renk kalibrasyonu
+
+**Renk kalibrasyonu**, tuşların renklerini ekranınızda gördüğünüze yaklaştırır. Değişiklikleriniz siz yaptıkça saklanır; **Varsayılanları geri yükle** onları geri alır.
+
+- **Gama**, ara tonların ne kadar koyu olacağını belirler. **Renk başına gama**; kırmızı, yeşil ve mavinin her birine ayrı bir kaydırıcı verir.
+- **Beyaz dengesi**, her rengin en yüksek parlaklığını belirler.
+- **Test deseni**, klavyeyi **Beyaz**, **Gri basamaklar** ya da uygulamanın **Palet** renkleriyle yakar; böylece klavyeyi **Klavyenizle karşılaştırın** başlıklı çizimle karşılaştırabilirsiniz. Test deseni USB kablosu ister; sayfadan çıkınca kayıtlı ışığınız geri gelir.
+
+Kalibrasyon, önizlemelere ve bundan sonra kaydettiğiniz renklere uygulanır. Klavyede zaten olan renkleri güncellemek için onları [Işıklar](/keymotion/tr/guide/lighting/) sayfasında yeniden kaydedin.
+
+## Yedekleme
+
+- **Ayarları dışa aktar** satırındaki **Dışa aktar**; ayarlarınızı, tuş atamalarınızı, makrolarınızı ve kütüphanenizi İndirilenler klasörünüzde tek bir dosyaya kaydeder. **Klasörde göster** klasörü açar. Takvim eklediyseniz **Takvim adreslerini ekle** seçeneği adresleri de dosyaya koyar.
+- **Yedekten geri yükle** satırındaki **Dosya seç**, bir şey değişmeden önce dosyanın her bölümünün neyi değiştireceğini gösterir. Bölümleri seçip **Geri yükle**'ye tıklayın. Klavyeye hiçbir şey yazılmaz: ışık, tuş atama ve makrolar kaydedilmemiş değişiklik olarak açılır, onları kendi sayfalarında kaydedersiniz.
+
+<Aside type="caution" title="Takvim adresleri parola gibidir">
+**Takvim adreslerini ekle** açıkken adresler dosyaya açık metin olarak yazılır. Dosyaya sahip olan herkes o takvimleri okuyabilir; dosyayı kimseyle paylaşmayın.
+</Aside>
+
+## Güncellemeler
+
+**Hakkında** bölümü **Sürüm** satırıyla başlar: kullandığınız sürümü ve Keymotion'ın en son baktığında ne bulduğunu, örneğin güncel olduğunu gösterir. **Güncellemeleri denetle** GitHub'a hemen bakar.
+
+**Güncellemeleri kendiliğinden denetle** açıkken (başta açıktır) Keymotion açıldıktan kısa bir süre sonra günde bir kez bakar. Hiçbir şeyi kendiliğinden kurmaz.
+
+Yeni bir sürüm çıktığında her sayfanın üstünde, yeni sürümün hazır olduğunu söyleyen bir şerit görünür. **Sonra**, şeridi Keymotion yeniden açılana kadar gizler.
+
+<Steps>
+
+1. Şeritte ya da **Sürüm** satırında **Şimdi kur**'a tıklayın.
+2. **Neler yeni** bölümünü okuyun. Notlar Türkçe yoksa **Sürüm notları GitHub'da** onları tarayıcınızda açar.
+3. **Kur ve yeniden başlat**'a tıklayın. Keymotion yeni sürümü indirir; **Vazgeç** indirmeyi durdurur.
+4. Klavyeye bir şey kaydediliyorsa Keymotion önce bitmesini bekler. Sonra kapanır, kurulum küçük bir pencerede ilerler ve Keymotion yeniden açılır.
+
+</Steps>
+
+<Screenshot name="update-dialog" alt="Yeni sürümü kurma penceresi: kullandığınız sürüm, yayımlanma tarihi, yeniliklerin listesi ve Kur ve yeniden başlat düğmesi" />
+
+İndirilen dosya kurulmadan önce doğrulanır. Klavyeye kaydedilmemiş değişiklikleriniz varsa pencere, kurulumda bunların kaybolacağını söyler. Bir sorun çıkarsa Keymotion ne olduğunu söyler, örneğin internete bağlanılamadığını ya da indirilen dosyanın doğrulanamadığını; **Yeniden dene** bir kez daha bakar.
+
+## Sorun bildirme
+
+<Steps>
+
+1. **Hakkında** bölümünde, **Geri bildirim** satırındaki **Sorun bildir**'e tıklayın.
+2. **Sorunu bildir** penceresi **Gönderilecek bilgiler**'i gösterir: uygulamanın ve Windows'un sürümleri, klavye ve bağlantısı, Keymotion'ın günlüğünden son satırlar. Web adresleri ve Windows kullanıcı adınız çıkarılmıştır.
+3. **GitHub'da bildir**'e tıklayın. Bilgiler panoya kopyalanır ve projenin sorun formu tarayıcınızda açılır. Göndermek için bir GitHub hesabı gerekir.
+4. Ne olduğunu anlatın, bilgileri Ctrl+V ile formdaki ayrıntılar kutusuna yapıştırın ve formu gönderin.
+
+</Steps>
+
+<Screenshot name="report-dialog" alt="Gönderilecek bilgileri, Kopyala ve GitHub'da bildir düğmelerini gösteren Sorunu bildir penceresi" />
+
+Bilgileri başka bir yolla göndermek isterseniz **Kopyala**, GitHub'ı açmadan aynı metni panoya koyar. Keymotion kendisi hiçbir şey göndermez.
+
+Keymotion bu pencereyi kendiliğinden de önerir. Beklenmeyen bir hatadan sonra **Beklenmeyen bir sorun oldu** diyen bir uyarı **Sorunu bildir** bağlantısıyla çıkar. Uygulama çöktüyse bir sonraki açılışta bir kez **Keymotion geçen sefer bir sorunla karşılaştı** uyarısı **Bildir** bağlantısıyla çıkar.
+
+## Hakkında bölümündeki diğer satırlar
+
+<Screenshot name="settings-about" alt="Ayarlar'ın Hakkında bölümü: Sürüm, Güncellemeleri kendiliğinden denetle, Pencere görünümü, Geri bildirim, Tanılama bilgisi, Günlük dosyaları, Veri klasörü ve Gizlilik" />
+
+- **Geri bildirim** satırındaki **Öneri gönder**, projenin öneri formunu GitHub'da açar.
+- **Tanılama bilgisi** satırındaki **Kopyala**, aynı türden bir raporu kendi iletinize yapıştırmanız için panoya koyar. Takvim adresleri ve kişisel bilgiler eklenmez.
+- **Günlük dosyaları** ve **Veri klasörü** satırlarındaki **Klasörü aç**; son yedi günün günlüklerini ve varsa çökme notlarını tutan klasörü, ayarlarınızın ve kütüphanenizin durduğu klasörü açar.
+- **Pencere görünümü**, **Yarı saydam (Windows 11)** ya da **Düz** yazar. Keymotion bunu Windows sürümünüze göre kendisi seçer; ayarlanacak bir şey yoktur.
+- **Gizlilik**, uygulamanın kullanım bilgisi toplamadığını ve göndermediğini, internete yalnızca eklediğiniz takvimleri okumak ve GitHub'da yeni sürüm olup olmadığına bakmak için bağlandığını söyler. Ayrıntılar [Gizlilik](/keymotion/tr/about/privacy/) sayfasında.

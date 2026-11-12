@@ -1,5 +1,5 @@
 # Builds the Windows installer and puts it on a DRAFT GitHub release, with the
-# files the app's updater reads (roadmap stage 6, docs/yol-haritasi.md).
+# files the app's updater reads.
 #
 #   - Pushing a `v*` tag builds that version. The tag must be "v" + the
 #     version in the app's files (tools/check-version.mjs), and CHANGELOG.md

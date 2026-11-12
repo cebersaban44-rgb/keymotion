@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 const INDEX_FILE: &str = "library.json";
 const INDEX_VERSION: u32 = 1;
 /// Factory animation backup taken from the official driver
-/// (docs/donanim-dogrulama.md, "Ekran yüklemesi"; `official_driver.rs`).
+/// (`official_driver.rs`).
 const FACTORY_FILE: &str = "factory/ak980-pro-factory.gif";
 /// Name stored for the factory backup. The UI shows its own, translated
 /// label for the factory item (older libraries hold a Turkish name).

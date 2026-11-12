@@ -1,7 +1,7 @@
 //! Keymap tables (`04 11` base layer, `04 27` Fn layer).
 //!
 //! A layer is 144 four-byte entries, entry `idx` at byte `idx * 4`, with
-//! `AA 55` in the last two bytes (docs/research/protokol-ff13.md §6). The
+//! `AA 55` in the last two bytes (docs site: developers/protocol). The
 //! index is the key's LED index. Writing a layer replaces all of it: keys
 //! that are not given go back to the firmware default. The keyboard cannot
 //! report its keymap, so callers keep their own copy.
@@ -334,7 +334,7 @@ mod tests {
 
     #[test]
     fn entries_match_the_documented_encoding() {
-        // docs/research/protokol-ff13.md §6.2
+        // As documented (docs site: developers/protocol).
         let ctrl_shift_a = KeyAction::Key { mods: mods::LEFT_CTRL | mods::LEFT_SHIFT, code: 0x04 };
         assert_eq!(ctrl_shift_a.encode().unwrap(), [0x02, 0x03, 0x04, 0x00]);
         let win_l = KeyAction::Key { mods: mods::LEFT_GUI, code: 0x0F };

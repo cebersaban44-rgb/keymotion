@@ -1,0 +1,72 @@
+---
+title: Profiller
+description: Işık, tuş atama ve makrolarınızı adlandırılmış setler olarak saklayın, birini tek seferde klavyeye yükleyin.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Profil, klavye ayarlarından oluşan adlandırılmış bir settir: ışık, tuş atama, makrolar ve isterseniz bir ekran görseli. Bir profili yüklediğinizde klavye bunların hepsini tek seferde alır; örneğin iş için bir set, oyun için başka bir set tutabilirsiniz.
+
+<Screenshot name="profiles" alt="Biri Klavyede diye işaretli iki kayıtlı profil, Varsayılan profil ve yeni profile neler gireceğinin seçimiyle Profiller sayfası" />
+
+## Sayfada neler var
+
+Her satırda profilin adı ve neleri tuttuğunu söyleyen bir cümle durur; örneğin *Nefes efekti, parlaklık 4, tuş atamada 3 değişiklik ve 2 makro.* **Klavyede** işareti, bütün ayarları klavyedekilerle eşleşen profili gösterir.
+
+Listenin en altında her zaman **Varsayılan** profil durur. Klavyenin fabrika ışığını ve tuş düzenini tutar, makro içermez. Yeniden adlandırılamaz, değiştirilemez ve silinemez; bu yüzden onu yüklemek fabrika ışığına ve tuşlarına dönmenin bir yoludur.
+
+Listenin altındaki **Yeni profile neler girsin** bölümü, yeni bir profilin hangi bölümleri alacağını belirler: **Işık**, **Tuş atama**, **Makrolar** ve **Ekran görseli**. İlk üçü başta işaretlidir. **Ekran görseli** işaretliyse profil yüklenirken görsel de klavyenin ekranına yüklenir; bu birkaç dakika sürebilir.
+
+## Profil oluşturun
+
+Profil, Keymotion'ın klavyeye en son kaydettiği ayarları alır. Henüz kaydetmediğiniz değişiklikler profile girmez.
+
+<Steps>
+
+1. İstediğiniz ışığı, tuşları ve makroları kendi sayfalarında kaydedin.
+2. **Yeni profile neler girsin** bölümünde profilin tutacağı bölümleri işaretleyin.
+3. **Şu anki ayarlardan profil oluştur**'a tıklayın.
+4. **Profil adı** alanına bir ad yazın ya da önerilen adı bırakın. Alanın altındaki satır profile nelerin gireceğini ve bir bölümün neden dışarıda kaldığını söyler; örneğin uygulamadan henüz ışık kaydedilmediyse.
+5. **Oluştur**'a tıklayın. **Vazgeç** hiçbir şey oluşturmadan çıkar.
+
+</Steps>
+
+Her ad bir kez kullanılabilir ve en çok 40 karakter olabilir. En çok 100 profil saklayabilirsiniz.
+
+## Profili klavyeye yükleyin
+
+Yükleme, profili diğer sayfalardaki kaydetme düğmeleri gibi klavyenin belleğine kaydeder. Bunun için USB kablosu takılı, arkadaki anahtar ortada olmalıdır.
+
+<Steps>
+
+1. Profilin satırında **Klavyeye yükle**'ye tıklayın.
+2. Satırın altındaki onay metnini okuyun. Metin neyin kaydedileceğini, ekran görselinin değişip değişmeyeceğini, bu bölümlerdeki kaydedilmemiş değişikliklerin silinip silinmeyeceğini ve ne kadar süreceğini söyler.
+3. Yeniden **Klavyeye yükle**'ye ya da **Vazgeç**'e tıklayın.
+
+</Steps>
+
+<Screenshot name="profile-load" alt="Bir profilin satırının altındaki yükleme onayı: klavyeye neyin kaydedileceği, ne kadar süreceği, Vazgeç ve Klavyeye yükle düğmeleri" />
+
+Yalnızca klavyedekinden farklı olan bölümler, sırayla kaydedilir. Satır her bölümü ilerledikçe gösterir; **Vazgeç** bir sonraki bölümden önce durdurur, o ana kadar yüklenen bölümler klavyede kalır. Yükleme bitince sayfanın üstündeki bir satır profilin yüklendiğini söyler. Ekran görseli de yüklendiyse GIF sayfasını görmek için klavyede Fn+Home'a basmanızı da söyler.
+
+Bir profili, saatin yanındaki Keymotion simgesinin menüsünde **Profiller** altından da seçebilirsiniz. Bu, sayfayı o profilin onayıyla açar; siz onaylamadan hiçbir şey kaydedilmez.
+
+<Aside type="note" title="Klavyeye yükle kullanılamıyorsa">
+Kablo takılı değilse sayfada **Yüklemek için kabloyu takın ve arkadaki anahtarı ortaya alın.** yazar. Ekrana bir görsel yüklenirken **Ekrana bir yükleme sürüyor. Bittikten sonra yükleyin.** yazar. Başka bir klavye modeli için yapılmış bir profil yüklenemez.
+</Aside>
+
+## Profili değiştirin, çoğaltın, dışa aktarın ya da silin
+
+- **Şu anki ayarlarla güncelle**, profilin tuttuğu bölümleri Keymotion'ın klavyeye en son kaydettiği ayarlarla değiştirir. **Güncelle** ile onaylayın.
+- **⋯** düğmesi diğer seçenekleri açar:
+  - **Yeniden adlandır** ile yeni bir ad yazıp **Kaydet**'e tıklarsınız.
+  - **Çoğalt**, adının sonunda "kopyası" olan bir kopya ekler.
+  - **Dışa aktar**, profili İndirilenler klasörünüze bir dosya olarak kaydeder. **Klasörde göster** klasörü açar.
+  - **Sil** önce sorar. Silinen profil geri getirilemez.
+
+## Profil içe aktarın
+
+Sayfanın üstündeki **İçe aktar**, Keymotion'ın dışa aktardığı bir dosyadan profil ekler; örneğin başka bir bilgisayarda hazırladığınız bir profili. Profilde ekran görseli varsa görsel kütüphanenize de eklenir.
+
+Yedek dosyası bir profil değildir: onu [Ayarlar](/keymotion/tr/guide/settings/) sayfasındaki **Yedekten geri yükle** ile açın. Keymotion'ın daha yeni bir sürümüyle kaydedilmiş bir profil için önce uygulamayı güncellemeniz gerekir.

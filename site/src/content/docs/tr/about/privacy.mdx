@@ -1,0 +1,93 @@
+---
+title: Gizlilik politikası
+description: Keymotion'ın bilgisayarınızda neleri okuduğu, internete ne zaman bağlandığı (takvimleriniz ve güncelleme denetimi), verilerinizi nerede tuttuğu ve klavyede nelerin kaldığı.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+Keymotion klavyenizi yöneten (ışıklar, tuş atama, makrolar, ekran ve saat) ve klavyede bilgi gösteren bir masaüstü uygulamasıdır. Yaptığı her şey bilgisayarınızda olur.
+
+## Kullanım bilgisi toplanmaz
+
+- Keymotion kullanım bilgisi, istatistik ya da çökme raporu toplamaz; sizinle ya da bilgisayarınızla ilgili hiçbir şeyi bir yere göndermez.
+- Hesap ve oturum açma yoktur.
+- Günlük dosyaları ve çökme notları bilgisayarınızda kalır (bkz. [Verileriniz nerede durur](#verileriniz-nerede-durur)).
+
+## Keymotion internete ne zaman bağlanır
+
+Keymotion internete yalnızca iki iş için bağlanır: eklediğiniz takvimler ve güncelleme denetimi. Başka bir ağ bağlantısı kurmaz.
+
+### Eklediğiniz takvimler
+
+- Keymotion eklediğiniz her takvim adresini 15 dakikada bir ve siz istediğinizde okur. Çalıştığı sürece, penceresi kapalıyken saatin yanında çalışırken de bunu sürdürür.
+- Takvimi yalnızca okur. Takvim sunucusuna başka bir şey gönderilmez.
+- Bunun için Windows'un kendi internet bağlantısını kullanır; sistemdeki vekil sunucu ve sertifika ayarları geçerlidir.
+- Yalnızca güvenli `https://` adresleri kabul edilir. `webcal://` adresleri `https://` olarak okunur.
+
+### Güncelleme denetimi
+
+- **Ne zaman.** **Ayarlar**'da, **Hakkında** bölümündeki **Güncellemeleri kendiliğinden denetle** açıksa (başlangıçta açıktır), Keymotion günde en çok bir kez bakar: açıldıktan biraz sonra ve çalışmayı sürdürdüğü her gün bir kez. Aynı yerdeki **Güncellemeleri denetle** düğmesi de istediğiniz an aynısını yapar. Anahtar kapalıyken Keymotion yalnızca bu düğmeye bastığınızda bakar.
+- **Neyi okur.** Projenin GitHub'daki sürüm sayfasından küçük bir dosyayı, `latest.json`'u. İstek `github.com`'a gider; dosya GitHub'ın indirme sunucusundan gelir.
+- **Ne gönderir.** Sıradan bir indirme isteği. Güncelleyici bileşeninin adı ve sürümü (`tauri-plugin-updater`) dışında istekte sizinle ilgili hiçbir şey yoktur: hesap, kullanım bilgisi ya da ayar gönderilmez. GitHub, her sunucu gibi, isteğin geldiği IP adresini görür.
+- **Yeni sürüm bulunursa.** Keymotion onu kendiliğinden kurmaz, size sorar. **Kur ve yeniden başlat**'ı seçtiğinizde kurulum dosyası GitHub'dan indirilir ve imzası Keymotion'ın içindeki anahtarla denetlenir. İmza tutmazsa kurulmaz.
+- **Deneme sürümleri.** Sürüm numarasında "-rc" gibi bir ek olan sürümler, ön sürümleri de görmek için GitHub'ın herkese açık sürüm listesini (`api.github.com`) ayrıca okur. Normal sürümler bu listeyi okumaz.
+
+## Keymotion'ın bilgisayarınızda okudukları
+
+Bu bilgiler yalnızca klavyede ve uygulamada göstermek için kullanılır. Belirtilenler dışında saklanmaz ve bilgisayarınızdan çıkmaz.
+
+| Ne | Ne zaman | Neden |
+|---|---|---|
+| Çalan şarkı (ad, sanatçı, kapak, çalan uygulama), Windows'tan | Canlı ekran ve **Çalan şarkı** kaynağı açıkken | Klavye ekranındaki şarkı kartı |
+| İşlemci, ekran kartı ve bellek kullanımı, Windows'un performans sayaçlarından | Sistem göstergeleri açıkken ya da sayfası açıkken | Tuşlardaki gösterge çubukları |
+| Hoparlör ses düzeyi ve sessizliği, mikrofon sessizliği, Windows'un ses sisteminden | Sistem göstergeleri açıkken ya da sayfası açıkken | Ses çubuğu ve sessizlik ışığı |
+| Klavyeye ya da fareye son dokunuşunuzdan bu yana geçen süre | Hatırlatıcılar açıkken | Tekrarlayan hatırlatmalar siz yokken bekler |
+| Windows klavye düzeniniz | Uygulama açılınca ve öne gelince | Tuş adlarının sizin dilinizde yazılması |
+| Bağlı klavyeler (USB aygıtları, Bluetooth pil düzeyi) | Uygulama çalışırken | Klavyeyi bulmak ve yönetmek |
+| Bir klavyenin HID tanımları (Windows'un o klavye hakkında kaydettikleri) | Henüz desteklenmeyen bir klavye için destek istediğinizde | Destek isteği |
+| Windows ve WebView2 sürümleri | Tanılama bilgisini kopyaladığınızda ya da sorun bildirdiğinizde | Tanılama metni |
+
+## Verileriniz nerede durur
+
+Her şey Windows kullanıcı klasörünüzdedir. **Ayarlar**'da, **Hakkında** bölümündeki **Veri klasörü** ve **Günlük dosyaları** bu klasörleri açar.
+
+- **Ayarlar ve kayıtlar**, `%APPDATA%\dev.keymotion\` klasöründe:
+  - `calibration.json`, `clock.json`, `lighting.json`, `pomodoro.json`, `gauges.json`, `reminders.json`, `battery.json`, `profiles.json`, `background.json`, `updates.json`;
+  - `keymap.json` ve `macros.json`: Keymotion'ın klavyeye ne yazdığının tek kaydı (klavye bunları geri okutmaz);
+  - `calendar.json`: takvimleriniz. Takvim adresleri parola gibidir; bu yüzden Windows kullanıcı hesabınıza özel olarak şifrelenir (Windows Veri Koruma). Başka bir kullanıcı ya da başka bir bilgisayar bunları okuyamaz;
+  - `screen\`: görsel kütüphaneniz, aldıysanız fabrika animasyonunun kopyası ve son canlı kart.
+- **Günlük dosyaları**, `%LOCALAPPDATA%\dev.keymotion\logs\` klasöründe: her gün için bir dosya, son 7 gün, her biri en çok 4 MB; ayrıca kısa çökme notları. Yazılmadan önce web adresleri yalnızca sunucu adına indirilir ve Windows kullanıcı adınız klasör yollarından çıkarılır. Hatırlatma başlıkları ve toplantı adları hiç yazılmaz.
+- **Arayüz tercihleri**, `%LOCALAPPDATA%\dev.keymotion\EBWebView\` klasöründe: tema, dil ve henüz kaydetmediğiniz düzenlemeler. Bunları uygulamanın penceresi tutar.
+
+## Tanılama bilgisi
+
+**Ayarlar**'da, **Hakkında** bölümünde **Tanılama bilgisi** satırındaki **Kopyala** panoya bir metin koyar: uygulama, Windows ve WebView2 sürümleri; klavye modeli, klavye yazılımı ve bağlantısı; ayar dosyalarının adları ve boyutları; günlüğün son 150 satırı (yukarıdaki gibi temizlenmiş). Bu metin hiçbir yere gönderilmez. Bir iletiye yapıştırıp yapıştırmamaya siz karar verirsiniz.
+
+## Sorun bildirme ve destek isteme
+
+Sorunları GitHub'da siz bildirirsiniz. Keymotion kendiliğinden hiçbir şey göndermez.
+
+- **Sorun bildir** (**Ayarlar**'da **Hakkında** › **Geri bildirim**; beklenmeyen bir hatadan sonraki bildirim; çökmeden sonraki bildirim) bir pencere açar ve gönderilecek metni önce gösterir: yukarıdaki tanılama bilgisi, en üstte ne olduğu. **GitHub'da bildir** metni panoya koyar ve projenin GitHub'daki formunu tarayıcınızda açar. Metni oraya siz yapıştırır, göndermeye siz karar verirsiniz.
+- **Destek iste**, henüz desteklenmeyen bir SONiX ya da AJAZZ klavye takılınca görünür. Aynı şekilde çalışır; metinde klavyenin bilgileri vardır: USB kimlikleri, adı ve Windows'un tuttuğu HID tanımları. Klavyeye hiçbir şey yazılmaz. Seri numarası ve aygıt yolları eklenmez.
+- **Bir çökmeden sonra** Keymotion bir sonraki açılışta son 7 günün en yeni çökme notunu bir kez önerir.
+
+## Dışa aktarma, içe aktarma ve silme
+
+- **Dışa aktarma.** **Ayarlar**'da **Yedekleme** bölümündeki **Dışa aktar**, İndirilenler klasörünüze tek bir JSON dosyası kaydeder: ayarlarınız, tuş atama ve makro kayıtlarınız, hatırlatıcılarınız, takvim ayarlarınız, ışık tasarımınız ve görsel kütüphaneniz. Takvim adresleri yalnızca **Takvim adreslerini ekle** açıksa eklenir. O zaman dosyada açık yazılırlar; dosyayı kimseyle paylaşmayın.
+- **İçe aktarma.** **Yedekleme** bölümündeki **Dosya seç**, bir şey değişmeden önce dosyada ne olduğunu ve neyin yerini alacağını gösterir. İçe aktarma klavyeye bir şey yazmaz: tuş atama, makrolar ve ışıklar kaydedilmemiş değişiklik olarak açılır, klavyeye kaydetmek size kalır.
+- **Silme.** Keymotion'ı kaldırırken **Ayarlarımı ve kayıtlarımı da sil** kutusunu işaretleyin ya da kaldırdıktan sonra yukarıdaki klasörleri kendiniz silin. Keymotion kapalıyken tek tek dosyaları da silebilirsiniz; Keymotion bir sonraki açılışta varsayılan ayarlarla başlar.
+
+## Klavyede kalanlar
+
+Klavye bazı ayarları kendi belleğinde tutar. Bunlar Keymotion'ı kaldırdığınızda ya da klavyeyi başka bir bilgisayara taktığınızda da kalır:
+
+- tuş atama ve makrolar;
+- ışık efekti ya da tuş başına renk tasarımı;
+- ekrandaki görsel;
+- saat.
+
+Klavyeyi başkasına vermeden önce bunları temizlemek için Keymotion'da tuş atamayı varsayılana döndürüp makroları silerek klavyeye kaydedin ve ekrana yansız bir görsel yükleyin. Bkz. [Bir şey ters giderse](/keymotion/tr/help/recovery/).
+
+<Aside type="note" title="Kod imzalama">
+Keymotion sürümlerinin nasıl derlenip denetlendiği [Kod imzalama politikası](/keymotion/tr/about/code-signing/) sayfasında.
+</Aside>

@@ -18,3 +18,9 @@ app/src-tauri/gen/
 # OS
 Thumbs.db
 .DS_Store
+
+# Claude Code session files (the preview launcher stays local)
+.claude/
+
+# Astro
+.astro/

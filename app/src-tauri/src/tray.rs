@@ -1,4 +1,4 @@
-//! Running in the background (docs/yol-haritasi.md, stage 2).
+//! Running in the background.
 //!
 //! Closing the window hides it, and the app goes on beside the clock: the
 //! focus timer, reminders, calendar cards, the live screen and the key

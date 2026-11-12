@@ -256,7 +256,7 @@ mod tests {
             data_files: vec![("calendar.json".into(), 2048), ("keymap.json".into(), 12)],
             log_lines: vec![
                 "INFO calendar added host=calendar.google.com".into(),
-                r"WARN at https://calendar.google.com/private-abc in C:\Users\saban\AppData".into(),
+                r"WARN at https://calendar.google.com/private-abc in C:\Users\someone\AppData".into(),
             ],
         };
         let r = report(&f);
@@ -267,7 +267,7 @@ mod tests {
             assert!(r.contains(part), "{part} missing:\n{r}");
         }
         assert!(r.contains("Last 2 log lines"));
-        assert!(!r.contains("private-abc") && !r.contains("saban"), "{r}");
+        assert!(!r.contains("private-abc") && !r.contains("someone"), "{r}");
     }
 
     #[test]
@@ -298,7 +298,7 @@ mod tests {
             webview: "v".into(),
             ui_language: "en".into(),
             context: Some(
-                r"action failed: not saved at C:\Users\saban\x
+                r"action failed: not saved at C:\Users\someone\x
 second line"
                     .into(),
             ),
@@ -309,7 +309,7 @@ second line"
         let r = report(&f);
         let what = r.find("What happened:\n  action failed: not saved").expect("context");
         assert!(what < r.find("Keyboards:").unwrap(), "{r}");
-        assert!(r.contains("\n  second line\n") && !r.contains("saban"), "{r}");
+        assert!(r.contains("\n  second line\n") && !r.contains("someone"), "{r}");
     }
 
     #[test]

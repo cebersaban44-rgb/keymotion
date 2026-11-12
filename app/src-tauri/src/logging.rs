@@ -460,10 +460,10 @@ mod tests {
     #[test]
     fn user_names_leave_paths() {
         assert_eq!(
-            redact(r"opened C:\Users\saban\AppData\Roaming\x\calendar.json"),
+            redact(r"opened C:\Users\someone\AppData\Roaming\x\calendar.json"),
             r"opened C:\Users\<user>\AppData\Roaming\x\calendar.json"
         );
-        assert_eq!(redact(r#"path: "C:\\Users\\Şaban Ç\\AppData""#), r#"path: "C:\\Users\\<user>\\AppData""#);
+        assert_eq!(redact(r#"path: "C:\\Users\\Ayşe Yılmaz\\AppData""#), r#"path: "C:\\Users\\<user>\\AppData""#);
         assert_eq!(
             redact("/home/ali/.config and /Users/ayşe/Library"),
             "/home/<user>/.config and /Users/<user>/Library"
@@ -542,13 +542,13 @@ mod tests {
             "0.1.0",
             "2026-11-11T14:03:22+03:00",
             "device-actor",
-            r"C:\Users\saban\.cargo\registry\src\x.rs:1:2",
+            r"C:\Users\someone\.cargo\registry\src\x.rs:1:2",
             "bad https://calendar.google.com/private-abc",
         );
         assert!(note.contains("Version: 0.1.0"));
         assert!(note.contains("Thread: device-actor"));
         assert!(note.contains(r"C:\Users\<user>\.cargo"));
-        assert!(!note.contains("private-abc") && !note.contains("saban"), "{note}");
+        assert!(!note.contains("private-abc") && !note.contains("someone"), "{note}");
         let long = crash_note("1", "t", "main", "", &"x".repeat(10_000));
         assert!(long.len() < 2_200);
     }

@@ -1,0 +1,77 @@
+---
+title: Sistem göstergeleri
+description: İşlemci, ekran kartı ve bellek yükünü tuş sıralarında çubuk olarak, ses düzeyini F sırasında görün; mikrofon sessizken bir tuş kırmızı yansın.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Sistem göstergeleri tuşlarınızı küçük ölçerlere çevirir. İşlemci, ekran kartı ve bellek yükü tuş sıralarını birer çubuk gibi doldurur. Ses düzeyini değiştirdiğinizde F sırası onu gösterir. Mikrofon sessizdeyken seçtiğiniz bir tuş kırmızı yanar.
+
+<Screenshot name="system-gauges" alt="Tuşlarda göster açık Sistem göstergeleri sayfası: yük çubuklu klavye çizimi ve anlık değerler" />
+
+## Göstergeleri açın
+
+<Steps>
+
+1. Kenar çubuğunda **Araçlar** altından **Sistem göstergeleri** sayfasını açın.
+2. **Tuşlarda göster** anahtarını açın.
+
+</Steps>
+
+Anahtarın altındaki satır tuşların şu an ne yaptığını söyler; örneğin **Tuşlarda görünüyor** ya da **Yalnız önizleme**. Klavye çizimi tuşlarda görüneni gösterir. Altında anlık değerler yer alır: **İşlemci**, **Ekran kartı**, **Bellek**, **Ses düzeyi** ve **Mikrofon**. Çizim ve değerler, göstergeleri açmadan önce de çalışır.
+
+Göstergeler açıkken kayıtlı ışığınız görünmez. Gösterge olmayan tuşlar **Görünüm** ayarına göre yanar.
+
+Pencereyi kapattığınızda Keymotion çalışmaya devam ediyorsa saatin yanındaki simgesinin menüsünden de **Tuşlarda sistem göstergeleri** açılıp kapatılabilir.
+
+<Aside type="note" title="USB kablosu gerekir">
+Göstergeleri tuşlarda görmek için kabloyu takın ve klavyenin arkasındaki anahtarı ortaya alın. Sayfadaki çizim bu arada da çalışır.
+</Aside>
+
+## Yük çubukları
+
+Her yük, bir tuş sırasını soldan sağa dolduran bir çubukla gösterilir. Her birini ayrı ayrı açıp kapatabilirsiniz:
+
+| Gösterge | Tuşlar |
+|---|---|
+| **İşlemci** | 1'den 0'a |
+| **Ekran kartı** | Q'dan P'ye |
+| **Bellek** | A'dan ;'ye |
+
+Başta işlemci ve ekran kartı açık, bellek kapalıdır.
+
+İki ekran kartı varsa daha yoğun olanı gösterilir. Sıcaklık gösterilmez, çünkü Windows bunu ek bir sürücü olmadan vermez.
+
+## Ses düzeyi
+
+Ses düzeyi değişince, örneğin topuzu çevirdiğinizde, F1–F12 tuşları düzeyi 1,5 saniye gösterir. Ses kapatılınca F sırası kırmızı yanar.
+
+## Sessiz mikrofon
+
+Mikrofon Windows'ta sessize alınınca seçtiğiniz tuş kırmızı yanar. Tuşu seçmek için **Değiştir** düğmesine, sonra çizimdeki bir tuşa tıklayın. **Vazgeç** mevcut tuşu korur.
+
+Görüşme uygulamalarının kendi sessiz düğmesi algılanmaz; yalnızca Windows'taki sessiz ayarı algılanır.
+
+## Görünüm
+
+- **Çubuk rengi**: **Yüke göre** seçeneğinde yük arttıkça renk yeşilden sarıya, sonra kırmızıya döner. **Göstergeye göre** seçeneğinde her göstergenin kendi rengi vardır: işlemci mavi, ekran kartı mor, bellek turkuaz.
+- **Boş kısmı soluk göster** açıkken çubuğun tam boyu belli olur.
+- **Parlaklık** 1 ile 5 arasındadır.
+- **Diğer tuşlar** için **Kapalı** ya da **Soluk renk** seçin. Soluk rengi kendiniz belirlersiniz.
+
+## Öncelik sırası
+
+Tuşları aynı anda birkaç şey yakmak isteyebilir. **Öncelik sırası** listesi hangisinin öne geçtiğini gösterir. Üstteki, alttakileri örter; o boşalınca bir alttaki görünür. **Görünüyor** işareti şu an tuşlarda olanı gösterir.
+
+1. **Işıklar sayfasındaki önizleme**, yalnız orada düzenleme yaparken.
+2. **Ses düzeyi ve mikrofon**, yalnız kendi tuşlarında.
+3. **Odak zamanlayıcısı**, tüm klavyede.
+4. **Yük çubukları**, zamanlayıcı bitince geri gelir.
+5. **Kayıtlı ışık**, üsttekiler kapalıyken.
+
+Yani [odak zamanlayıcısı](/keymotion/tr/guide/focus-timer/) çalışırken yük çubukları bekler, ama ses düzeyi ve mikrofon tuşu görünmeye devam eder.
+
+<Aside type="tip" title="Klavyeye hiçbir şey kaydedilmez">
+Göstergeleri kapattığınızda ya da Keymotion'dan çıktığınızda kayıtlı ışığınız geri gelir. Göstergeler klavyede kayıtlı olanı hiç değiştirmez.
+</Aside>

@@ -136,11 +136,16 @@ test("latestJson: rejects a bad version, an empty signature and missing notes", 
   assert.throws(() => latestJson({ ...manifestInput, notes: { en: "" } }), /English notes/);
 });
 
-test("releaseBody: notes, then the SHA-256 line", () => {
-  assert.equal(
-    releaseBody({ notes: "- A bug.", fileName: "setup.exe", sha256: SHA }),
-    `- A bug.\n\n---\n\nSHA-256 of \`setup.exe\`: \`${SHA}\`\n`,
-  );
+test("releaseBody: notes, how to install, the SHA-256 line and the policy links", () => {
+  const body = releaseBody({ notes: "- A bug.", fileName: "setup.exe", sha256: SHA, repository: "o/r", version: "0.2.0" });
+  assert.match(body, /^- A bug\.\n\n---\n\n### Install\n\nDownload \*\*`setup\.exe`\*\* below/);
+  assert.match(body, /> \[!NOTE\]\n> This release isn't signed yet/);
+  assert.match(body, new RegExp(`SHA-256 of \`setup\\.exe\`: \`${SHA}\``));
+  assert.match(body, /\[Code signing policy\]\(https:\/\/cebersaban44-rgb\.github\.io\/keymotion\/about\/code-signing\/\)/);
+  assert.match(body, /\[Privacy policy\]\(/);
+  assert.match(body, /\[Türkçe sürüm notları\]\(https:\/\/github\.com\/o\/r\/blob\/v0\.2\.0\/docs\/surum-notlari\.md\)\n$/);
+  // Signed releases (stage 9) drop the Windows warning.
+  assert.doesNotMatch(releaseBody({ notes: "x", fileName: "s.exe", sha256: SHA, signed: true }), /isn't signed/);
   assert.match(releaseBody({ notes: "x", fileName: "s.exe", sha256: SHA, preface: "Test build." }), /^> Test build\.\n\nx\n/);
   assert.throws(() => releaseBody({ notes: "x", fileName: "s.exe", sha256: "ABC" }), /SHA-256/);
 });
@@ -168,7 +173,10 @@ test("CLI: writes latest.json and release-notes.md, fails without a section", (t
     "https://github.com/owner/repo/releases/download/v0.2.0/Keymotion_0.2.0_x64-setup.exe");
   assert.equal(manifest.platforms["windows-x86_64"].signature, "c2lnbmF0dXJl");
   assert.deepEqual(JSON.parse(manifest.notes), { en: "### Fixed\n\n- A bug.\n- Another one.", tr: "- Bir hata." });
-  assert.match(readFileSync(join(dir, "release-notes.md"), "utf8"), new RegExp(`^### Fixed[\\s\\S]*${SHA}\`\\n$`));
+  assert.match(
+    readFileSync(join(dir, "release-notes.md"), "utf8"),
+    new RegExp(`^### Fixed[\\s\\S]*${SHA}\`\\n\\n\\[User guide\\][\\s\\S]*/owner/repo/blob/v0\\.2\\.0/docs/surum-notlari\\.md\\)\\n$`),
+  );
 
   const missing = run("0.3.0");
   assert.equal(missing.status, 1);

@@ -1,0 +1,58 @@
+---
+title: Keymotion
+description: AJAZZ AK980 PRO klavye için ücretsiz, açık kaynak Windows uygulaması. Işıkları tuş tuş ayarlayın, tuşları değiştirin, makro kaydedin, ekranına kendi görsellerinizi koyun.
+template: splash
+hero:
+  title: Her tuş, her ışık, her piksel.
+  tagline: Keymotion, AJAZZ AK980 PRO için ücretsiz bir Windows uygulaması. Işıkları tuş tuş ayarlayın, istediğiniz tuşu değiştirin, makro kaydedin ve küçük ekranına kendi görsellerinizi koyun.
+  image:
+    html: '<img src="/keymotion/images/ajazz-ak980-pro.webp" width="1419" height="521" alt="Gökkuşağı renklerinde yanan AJAZZ AK980 PRO klavye; sağ üstte ekranı ve topuzu.">'
+  actions:
+    - text: Windows için indir
+      link: https://github.com/cebersaban44-rgb/keymotion/releases/latest
+      icon: download
+      variant: primary
+    - text: Kılavuzu okuyun
+      link: /keymotion/tr/guide/install/
+      icon: right-arrow
+      variant: secondary
+---
+
+import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+## Neler yapabilirsiniz
+
+<CardGrid>
+  <Card title="Işıklar" icon="sun">
+    Klavyenin 20 efekti, her tuşa ayrı renk ve tuşlarda görünenin canlı aynası. [Işıklar](/keymotion/tr/guide/lighting/)
+  </Card>
+  <Card title="Tuş atama" icon="puzzle">
+    Temel ve Fn katmanında her tuşu değiştirin: kısayollar, medya tuşları, fare düğmeleri. [Tuş atama](/keymotion/tr/guide/key-mapping/)
+  </Card>
+  <Card title="Makrolar" icon="random">
+    Tuşlara basarak bir dizi kaydedin, sonra her adımı ve süresini düzenleyin. [Makrolar](/keymotion/tr/guide/macros/)
+  </Card>
+  <Card title="Ekran stüdyosu" icon="window">
+    240×135 ekrana görsel, GIF, video ve yazı kartı koyun. [Ekran](/keymotion/tr/guide/screen/)
+  </Card>
+  <Card title="Canlı ekran" icon="analytics">
+    Kendiliğinden güncellenen kartlar: çalan şarkı, sıradaki toplantı, odak zamanlayıcısı. [Ekran](/keymotion/tr/guide/screen/)
+  </Card>
+  <Card title="Odak ve hatırlatıcılar" icon="clock">
+    Tuşlarda yanan odak zamanlayıcısı, hatırlatıcılar ve sistem göstergeleri. [Odak zamanlayıcısı](/keymotion/tr/guide/focus-timer/)
+  </Card>
+</CardGrid>
+
+## Hangi bağlantıda neler çalışır
+
+Bağlantıyı klavyenin arkasındaki anahtar seçer. Ayarlar USB kablosundan gider; klavye böyle yapılmış.
+
+| Bağlantı | AJAZZ AK980 PRO |
+|---|---|
+| USB kablo | Her şey: ışıklar, tuşlar, makrolar, ekran ve canlı kartlar |
+| 2.4 GHz alıcı | Yazma, medya tuşları ve topuz |
+| Bluetooth | Yazma, medya tuşları, topuz ve pil düzeyi |
+
+<LinkCard title="Desteklenen klavyeler" description="Keymotion'ın çalıştığı klavyeler ve sırada olabilecekler." href="/keymotion/tr/help/keyboards/" />
+
+<p class="km-unofficial">Keymotion bağımsız bir projedir. AJAZZ ile bağlantısı yoktur, AJAZZ tarafından onaylanmamış ya da desteklenmemiştir. Ücretsiz ve açık kaynak; MIT ya da Apache-2.0 lisansıyla.</p>

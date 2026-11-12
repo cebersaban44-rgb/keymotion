@@ -1,0 +1,82 @@
+---
+title: Odak zamanlayıcısı
+description: Odak ve mola bloklarını istediğiniz sırayla sayın, kalan süreyi tuş ışıklarında görün, her blok için klavye ekranına bir kart gelsin.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Odak zamanlayıcısı odak ve mola bloklarını geriye doğru sayar. Bütün klavye bloğun rengiyle yanar ve süre azaldıkça ışık çekilir; böylece bilgisayara bakmadan ne kadar kaldığını görürsünüz. İsterseniz klavyenin ekranı da her blok için bir kart gösterir.
+
+Kenar çubuğunda **Araçlar** altından **Odak zamanlayıcısı** sayfasını açın.
+
+<Screenshot name="focus-timer" alt="Bir odak bloğu sürerken Odak zamanlayıcısı sayfası: halkada kalan süre, yanında klavye çizimi" />
+
+<Aside type="note" title="Tuş ışıkları ve kartlar için USB kablosu gerekir">
+Tuş ışıkları ve ekran kartları için kabloyu takın ve klavyenin arkasındaki anahtarı ortaya alın. 2.4 GHz alıcı ya da Bluetooth ile bağlıyken zamanlayıcı sayfada yine çalışır.
+</Aside>
+
+## Başlatma, duraklatma ve bitirme
+
+<Steps>
+
+1. **Odak zamanlayıcısı** sayfasını açın.
+2. **Başlat** düğmesine tıklayın. Halka kalan süreyi, aşamayı (**Odak** ya da **Mola**) ve sıranın kaçıncı bloğunun sürdüğünü gösterir.
+3. Kısa bir ara için **Duraklat**, devam etmek için **Sürdür** düğmesine tıklayın.
+4. Sonraki bloğa geçmek için **Atla**, seriyi bitirmek için **Bitir** düğmesine tıklayın. Tuşlarda kayıtlı ışığınız geri gelir.
+
+</Steps>
+
+Zamanlayıcıyı **Genel bakış** sayfasından da başlatabilirsiniz. Pencereyi kapattığınızda Keymotion çalışmaya devam ediyorsa ([Ayarlar](/keymotion/tr/guide/settings/) sayfasına bakın), saatin yanındaki simgesinin menüsü kalan süreyi gösterir; zamanlayıcıyı oradan başlatabilir, duraklatabilir, atlayabilir ve durdurabilirsiniz.
+
+Bir seri bitince **Son seri** satırı odak bloklarınızı ve dakikalarınızı gösterir.
+
+## Sıra kurma
+
+**Ayarlar** altındaki **Sıra** satırı blokları çalışacakları sırayla listeler.
+
+- **Hazır sıra** bir başlangıç verir:
+  - **25 / 5 klasik** (varsayılan): Aralarında 5 dakikalık molalar olan üç adet 25 dakikalık odak bloğu, ardından 15 dakikalık bir mola.
+  - **50 / 10 derin**: İki adet 50 dakikalık odak bloğu, ardından 10 ve 20 dakikalık molalar.
+  - **Boş başla**: Tek bir 25 dakikalık odak bloğu.
+- Her bloğun süresini 1 ile 180 dakika arasında değiştirebilirsiniz.
+- **Odak ekle** ve **Mola ekle** sona bir blok ekler. Bir sırada en fazla 16 blok olabilir.
+- Bir bloğu taşımak için solundaki tutamaçtan sürükleyin. **Bloğu kaldır** (çarpı simgesi) bloğu çıkarır.
+- **Sıra bitince** son bloktan sonra ne olacağını belirler: **Dur**, **2 kez**, **3 kez** ya da **Durdurana kadar**.
+
+Değişiklikler hemen uygulanır; devam eden bloğa da.
+
+## Tuş ışıkları
+
+**Tuş ışıkları** satırı başta açıktır. Klavye her aşamanın rengiyle yanar ve süre azaldıkça ışık çekilir. Klavyeye hiçbir şey kaydedilmez; bitince kayıtlı ışığınız geri gelir.
+
+- **Hareket**, ışığın nasıl çekileceğini belirler: **Sağdan sola azalır**, **Soldan sağa azalır**, **Yukarıdan aşağı azalır**, **Ortaya doğru azalır** ya da **Yavaşça söner**.
+- **Renkler** altında **Odak** ve **Mola** için birer renk vardır. Değiştirmek için birine tıklayın.
+- **Parlaklık** 1 ile 5 arasındadır.
+- **Aşama başında**, yeni bir blok başlarken **Çift yanıp sönme** ya da **Dalga** gösterir.
+- **Son dakikada nabız** açıkken son dakikada klavye yavaşça nefes alır; böylece süreyi bakmadan fark edersiniz.
+
+Halkanın yanındaki çizim nasıl görüneceğini gösterir. **Klavyede dene**, odak, mola ve bitişi klavyenizde 12 saniyede oynatır.
+
+Zamanlayıcı çalışırken [sistem göstergelerinin](/keymotion/tr/guide/system-gauges/) yük çubukları bekler. Ses düzeyi ve mikrofon kendi tuşlarında görünmeye devam eder.
+
+## Ekrandaki kartlar
+
+**Klavye ekranı** satırı açıkken her blok başladığında klavyenin ekranına bir kart gider. Kartta aşama, aşamanın süresi ve ardından ne geleceği yazar. Kartlar [canlı ekran](/keymotion/tr/guide/screen/) üzerinden gider ve onun günlük yükleme sınırından düşer.
+
+<Screenshot name="focus-timer-cards" alt="Odak zamanlayıcısının Klavye ekranı satırı: sırasıyla kartlar ve seri sonu seçimi" />
+
+- Canlı ekran kapalıysa **Canlı ekranı aç** düğmesine tıklayın. O zamana kadar süre yalnızca tuşlarda görünür.
+- **Ekranda sırayla**, bir serinin ekrana getireceği kartları gösterir.
+- Bir satır, bir serinin kaç yükleme kullandığını ve şu an kaç yükleme hakkınız olduğunu söyler. Haklar bir seriye yetmiyorsa bazı kartlar gecikebilir ya da atlanabilir; ilerleme tuşlarda yine görünür.
+
+**Seri bitince ya da durdurulunca** ekranda ne görüneceğini seçin:
+
+- **Önceki görsel:** Şarkı çalıyorsa şarkının kartı gelir. Çalmıyorsa 15 saniye sonra kendi görseliniz yeniden yüklenir. Bu sürede yeniden başlatırsanız yükleme yapılmaz.
+- **Özet kartı:** Odak bloklarınızı ve odak sürenizi gösteren bir kart. Bir şarkı başlayınca ya da yeni bir kart gelince değişir.
+
+Bir kart günlük sınır ya da kablo yüzünden beklemek zorunda kalırsa sayfa bunu söyler ve **Şimdi gönder** ile **Gönderme** düğmelerini sunar. Toplantı ve hatırlatma kartları zamanlayıcının kartlarından önce gelir.
+
+## Aşama sonu sesi
+
+Bir blok bitince Windows bildirim sesini duymak için **Aşama sonu sesi** satırını açın. Ses yalnızca süre kendiliğinden dolunca çalar; bloğu atladığınızda ya da bitirdiğinizde çalmaz. Başta kapalıdır.

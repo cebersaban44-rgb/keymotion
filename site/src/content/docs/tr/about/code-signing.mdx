@@ -1,0 +1,57 @@
+---
+title: Kod imzalama politikası (Code signing policy)
+description: Keymotion'ın kod imzalama politikası; sürümlerin nasıl derlenip denetlendiği, güncellemelerin nasıl doğrulandığı ve bir sürümü kimin onayladığı.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Kod imzalama, Windows'un bir programı kimin yayımladığını ve programın o günden beri değiştirilmediğini göstermesini sağlar. Bu sayfada Keymotion sürümlerinin nasıl derlendiği, imzalandığı ve denetlendiği anlatılıyor.
+
+## Şu anki durum
+
+Keymotion 0.1.0 henüz kod imzalı değil. Bu yüzden kurulum dosyasını çalıştırırken Windows uyarı verebilir. Nasıl devam edeceğiniz [Keymotion'ı kurma](/keymotion/tr/guide/install/) sayfasında.
+
+Proje, açık kaynak projelere ücretsiz kod imzalama sunan SignPath Foundation'a başvuruyor. Başvuru kabul edilince sürümler imzalı çıkacak ve bu sayfaya imzanın SignPath'ten geldiğini belirten not eklenecek.
+
+## Sürümler nasıl derlenir
+
+- Her sürüm, kendi sürüm etiketindeki kaynak koddan GitHub Actions ile derlenir. Bunu [`.github/workflows/release.yml`](https://github.com/cebersaban44-rgb/keymotion/blob/main/.github/workflows/release.yml) dosyasındaki iş akışı yapar. Sürüm dosyaları hiçbir zaman kişisel bir bilgisayarda derlenmez ya da oradan yüklenmez.
+- İş akışı sürümü GitHub'a taslak olarak koyar. Projenin sorumlusu taslağı inceler ve yayımlar.
+- [Sürüm sayfasında](https://github.com/cebersaban44-rgb/keymotion/releases) kurulum dosyasının SHA-256 özeti yazar. Böylece indirdiğiniz dosyanın yayımlanan dosyayla aynı olduğunu denetleyebilirsiniz.
+
+Özeti karşılaştırmak için:
+
+<Steps>
+
+1. Kurulum dosyasını kaydettiğiniz klasörü açın, örneğin **İndirilenler**.
+2. Klasörde boş bir yere sağ tıklayıp **Terminalde aç**'ı seçin.
+3. `Get-FileHash` yazıp ardından kurulum dosyasının adını ekleyin, örneğin `Get-FileHash .\Keymotion_0.1.0_x64-setup.exe`, ve Enter'a basın.
+4. Görünen uzun kodu sürüm sayfasındaki SHA-256 özetiyle karşılaştırın. İkisi aynı olmalıdır.
+
+</Steps>
+
+## Güncellemeler nasıl denetlenir
+
+Her kurulum dosyası ayrıca Keymotion'ın kendi güncelleme anahtarıyla imzalanır. Anahtarın iki yarısı vardır:
+
+- gizli yarısı projede saklı kalır; sürüm iş akışı her kurulum dosyasını onunla imzalar;
+- ortak yarısı Keymotion'ın içinde bulunur.
+
+Keymotion bir güncellemeyi indirdiğinde onu ortak yarıyla denetler. İmza tutmazsa güncellemeyi kurmaz ve "İndirilen dosya doğrulanamadı, kurulmadı." der. Böylece Keymotion yalnızca projenin anahtarıyla imzalanmış güncellemeleri kurar.
+
+<Aside type="note" title="Windows'un kod imzalamasından ayrıdır">
+Güncelleme anahtarı, Keymotion'ın içinden kurulan güncellemeleri korur. Kendi indirdiğiniz bir kurulum dosyasını çalıştırırken Windows'un verebileceği uyarıyı değiştirmez.
+</Aside>
+
+## Ekipteki görevler
+
+- Kod katkısı yapanlar ve inceleyenler: [@cebersaban44-rgb](https://github.com/cebersaban44-rgb)
+- Onaylayanlar: [@cebersaban44-rgb](https://github.com/cebersaban44-rgb)
+
+## İmzalama istekleri
+
+İmzalama kurulduktan sonra her imzalama isteği, bir şey imzalanmadan önce bir onaylayan tarafından elle onaylanacak.
+
+## Gizlilik
+
+Keymotion kullanım bilgisi toplamaz. İnternete yalnızca eklediğiniz takvimleri okumak ve GitHub'da yeni sürüm olup olmadığına bakmak için bağlanır. Bkz. [Gizlilik politikası](/keymotion/tr/about/privacy/).

@@ -1,0 +1,187 @@
+---
+title: Bir şey ters giderse
+description: Fabrika ekran animasyonunu, tuş düzenini ve ışıkları geri getirme, yarım kalan yüklemeyi tamamlama ve Keymotion klavyeye ulaşamadığında yapılacaklar.
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Keymotion'ın klavyede değiştirdiği hemen her şeyi uygulamanın içinden geri alabilirsiniz. Bu sayfada sık karşılaşılan durumlar sırayla anlatılıyor; sonunda da işe yaramazsa nereye danışabileceğiniz yazıyor.
+
+<Aside type="note" title="USB kablosu gerekir">
+Bu sayfada klavyeyi değiştiren her adım yalnızca USB kablosuyla çalışır. Klavyenin arkasındaki anahtar ortada olmalıdır.
+</Aside>
+
+## Fabrika ekran animasyonunu geri getirme
+
+Klavyenin ekranında iki sayfa vardır. **Saat sayfası** hiç değişmez. **GIF sayfası** ise siz başka bir şey yükleyene kadar klavyeyle gelen animasyonu gösterir; her yükleme onun yerini alır. İki sayfa arasında klavyede Fn+Home ile geçersiniz.
+
+AJAZZ'ın animasyonu Keymotion'la birlikte gelmez, ama Keymotion onun bir kopyasını kütüphanenizde saklayabilir. Bu kopya varsa animasyonu istediğiniz zaman geri yükleyebilirsiniz.
+
+### Kütüphanenizde kopyası varsa
+
+<Steps>
+
+1. Kenar çubuğunda **Ekran**'ı açın ve **Görseller** sekmesinde kalın.
+2. **Kütüphane** bölümünde **AJAZZ fabrika animasyonu**'nu bulun. Yanında **Fabrika** yazar.
+3. **Geri yükle**'ye, açılan pencerede de **Yükle**'ye tıklayın.
+4. İş bitene kadar kabloyu çıkarmayın. Yaklaşık 5 dakika sürer; bu sırada klavye ekranında LOADING % görünür.
+
+</Steps>
+
+### Henüz kopyası yoksa
+
+Kopya yoksa Ekran sayfasında "Fabrika animasyonunun yedeği yok." yazar.
+
+- **AJAZZ'ın resmi sürücüsü bu bilgisayarda kuruluysa** sayfa bunu söyler ve **Resmi sürücüden yedek al** düğmesini gösterir. Düğmeye tıklayın. Keymotion animasyonu sürücünün dosyalarından kütüphanenize **AJAZZ fabrika animasyonu** adıyla kopyalar; klavyeye hiçbir şey gönderilmez. Ardından animasyonu yukarıdaki gibi geri yükleyin.
+- **Sürücü kurulu değilse** sayfada AJAZZ'ın resmi sürücüsünün animasyonu geri yükleyebileceği yazar. Sürücüyü kurup Keymotion'ı yeniden başlatın; yedek alma düğmesi görünür. Animasyonu AJAZZ'ın sürücüsüyle de geri yükleyebilirsiniz.
+
+Keymotion "Resmi sürücünün dosyası bulunamadı." derse sürücüyü kurup Keymotion'ı yeniden başlatın.
+
+<Screenshot name="screen-no-backup" alt="Ekran sayfasında fabrika animasyonunun yedeği olmadığını söyleyen yazı ve Resmi sürücüden yedek al düğmesi" />
+
+<Aside type="caution" title="Kopyayı ilk yüklemeden önce alın">
+GIF sayfasına yaptığınız bir yükleme ya da canlı ekranın gönderdiği bir kart, klavyedeki fabrika animasyonunun yerini alır. Keymotion'da kopya yokken yükleme penceresi sizi uyarır, canlı ekranı açarken de önce size sorulur. Kopya yoksa animasyonu yalnızca AJAZZ'ın resmi sürücüsü geri getirebilir.
+</Aside>
+
+## Onun yerine Keymotion animasyonunu kullanma
+
+Keymotion'ın kendi animasyonu da vardır: logodaki "K" çizgi çizgi çizilir, ardından adı belirir. Kütüphanede her zaman **Keymotion animasyonu** adıyla durur, yanında **Uygulamayla gelir** yazar ve silinemez.
+
+<Steps>
+
+1. **Ekran**'ı açın, **Görseller** sekmesinde kalın.
+2. **Kütüphane** bölümünde **Keymotion animasyonu**'nu bulup **Yükle**'ye tıklayın.
+3. Açılan pencerede yeniden **Yükle**'ye tıklayın. Yükleme bir buçuk dakika kadar sürer.
+
+</Steps>
+
+Fabrika animasyonunun kopyası yoksa Ekran sayfası da bunu önerir: **Kütüphanede göster**'e tıklayarak animasyona gidebilirsiniz.
+
+## Tuş atamalarını fabrika düzenine döndürme
+
+Klavye tuş atamasını geri okutmadığı için **Tuş atama** sayfasında Keymotion'dan son kaydettiğiniz düzen görünür.
+
+<Steps>
+
+1. **Tuş atama**'yı açın.
+2. **Temel katman**'ı ya da **Fn katmanı**'nı seçin.
+3. **Katmanı sıfırla**'ya tıklayın. Düğmeye tıklanamıyorsa o katman, Keymotion'ın bildiği kadarıyla zaten fabrika düzenindedir.
+4. Öbür katmanı da değiştirdiyseniz aynısını orada yapın.
+5. **Klavyeye kaydet**'e tıklayın.
+
+</Steps>
+
+Tek bir tuşu geri almak için tuşu klavye çiziminde seçip **Varsayılana döndür**'e tıklayın. Fn katmanında bu, tuşun hazır kısayolunu da geri getirir.
+
+Makrolar siz silene kadar klavyede kalır: **Makrolar**'ı açın, bir makro seçin, **Makroyu sil**'e, ardından **Klavyeye kaydet**'e tıklayın. Silinen makroya atanmış tuşlar varsayılana döner.
+
+<Aside type="tip" title="Hepsini birden">
+**Profiller** sayfasındaki **Varsayılan** profilde klavyenin fabrika ışığı ve tuş düzeni vardır, makro yoktur. Hepsini tek seferde geri getirmek için **Klavyeye yükle**'ye tıklayın. Bu, makrolarınızı klavyeden siler; ekrandaki görsel değişmez. Ayrıntılar [Profiller](/keymotion/tr/guide/profiles/) sayfasında.
+</Aside>
+
+## Işıkları yeniden bir efekte çevirme
+
+Tuş başına renk tasarımından sonra ya da ışıklar kapalıyken bunu kullanın.
+
+<Steps>
+
+1. **Işıklar**'ı açıp **Efektler** sekmesini seçin.
+2. Bir efekt seçin. Klavyenin fabrikadan gelen efektinde **Varsayılan** yazar; **Varsayılan efekti geri yükle** onu ilk ayarlarıyla seçer.
+3. **Klavyeye kaydet**'e tıklayın.
+
+</Steps>
+
+Bir efekti kaydetmek, klavyedeki tuş başına renk tasarımının yerini alır.
+
+<Aside type="note" title="Işıklar kapalı kalırsa">
+**Kapalı** efekti kaydedildiyse klavyedeki Fn+X ışığı yeniden açmayabilir. Başka bir efekt seçip yukarıdaki gibi kaydedin.
+</Aside>
+
+Tuşlarda ışık tasarımınız yerine çubuklar görünüyorsa sistem göstergeleri açıktır. Işıklar sayfası da bunu söyler. **Göstergelere git**'e tıklayıp **Tuşlarda göster**'i kapatın.
+
+## Yükleme yarıda kaldıysa
+
+Ekrana yükleme sürerken kabloyu çıkarmayın. Kablo çıkarsa ya da Keymotion yükleme bitmeden kapanırsa GIF sayfasında görselin yalnızca bir kısmı kalır ve bozuk görünebilir. Saat sayfası bundan etkilenmez.
+
+Keymotion yüklemenin yarıda kaldığını söyler ve bunu unutmaz:
+
+- **Ekran** sayfasında "Son yükleme yarım kaldı" yazar; kütüphanede o görselin yanında **Yarım kaldı** görünür.
+- Keymotion'ı bir sonraki açışınızda pencerenin sağ altında aynı başlıklı bir bildirim çıkar.
+
+<Steps>
+
+1. Kabloyu yeniden takın ve arkadaki anahtarı ortaya alın.
+2. Ekran sayfasında ya da bildirimde **Yeniden yükle**'ye tıklayın.
+3. Açılan pencerede **Yükle**'ye tıklayın.
+
+</Steps>
+
+Görsel baştan yeniden yüklenir. Görsel artık kütüphanenizde değilse kütüphaneden başka bir görsel yükleyin.
+
+<Screenshot name="screen-incomplete-upload" alt="Ekran sayfasında son yüklemenin yarım kaldığını söyleyen yazı ve Yeniden yükle düğmesi" />
+
+Yükleme sürerken Keymotion'dan çıkarsanız "Klavyeye kaydediliyor" penceresi açılır ve uygulama yükleme bitince kendiliğinden kapanır. **Hemen çık** derseniz GIF sayfası yarım kalır.
+
+## Klavyeyi başka bir program kullanıyorsa
+
+Klavye aynı anda tek bir programın komutlarını izler. İki program birlikte komut gönderirse komutlar karışabilir. Bu yüzden aşağıdakilerden biri açıkken Keymotion klavyeye hiçbir şey kaydetmez:
+
+- AJAZZ'ın resmi sürücüsü: "AJAZZ sürücüsü açık. Klavyeye kaydetmeden önce onu kapatın."
+- SignalRGB ya da OpenRGB: aynı türden bir uyarı çıkar.
+
+O programı tamamen kapatın, sonra yeniden **Klavyeye kaydet**'e tıklayın. Klavyeye hiçbir şey yazılmamıştır; düzenlemeleriniz Keymotion'da durur.
+
+USB'ye birden fazla klavye bağlıyken de Keymotion kaydetmez: "Birden fazla klavye USB'ye bağlı. Kaydetmek için yalnızca birini bağlı bırakın."
+
+## Keymotion klavyeyi bulamıyorsa
+
+Klavye yokken Keymotion **Klavyenizi bağlayın** başlığını ve "Klavye aranıyor…" yazısını gösterir.
+
+<Steps>
+
+1. USB-C kablosunu klavyeye ve bilgisayarınıza takın.
+2. Klavyenin arkasındaki anahtarı ortaya, USB konumuna getirin.
+3. Keymotion birkaç saniye içinde klavyeyi kendiliğinden bulur.
+
+</Steps>
+
+Klavye yine görünmüyorsa:
+
+- Başka bir kablo ya da başka bir USB girişi deneyin.
+- Anahtara bakın. Anahtar 2.4G ya da BT konumundayken klavye kablosuz çalışır ve Keymotion ayarlarını değiştiremez. Kablo gerektiren sayfalarda "Klavyeniz bağlı değil" yazar. Ayrıntılar [Bağlantı](/keymotion/tr/guide/connection/) sayfasında.
+- Keymotion "Bu klavye henüz desteklenmiyor" diyorsa tanımadığı bir klavye bulmuştur ve ona hiçbir şey göndermez. [Desteklenen klavyeler](/keymotion/tr/help/keyboards/) sayfasına bakın.
+- Keymotion "Bu klavyenin yazılımı tanınmadı, bu yüzden ona komut gönderilmedi." diyorsa lütfen sayfanın sonunda anlatıldığı gibi bize bildirin.
+
+İlk bağlantı [Klavyeyi bağlama](/keymotion/tr/guide/connecting/) sayfasında ayrıntılı anlatılıyor.
+
+## Keymotion'ı kaldırma
+
+<Steps>
+
+1. Windows Ayarları'nda **Uygulamalar**'ı, ardından **Yüklü uygulamalar**'ı açın.
+2. **Keymotion**'ı bulun, yanındaki **…** düğmesine tıklayıp **Kaldır**'ı seçin.
+3. Keymotion açıksa kaldırma programı onu kapatmayı önerir. **Tamam**'a tıklayın.
+4. Ayarlarınızı ve kayıtlarınızı da silmek için **Ayarlarımı ve kayıtlarımı da sil** kutusunu işaretleyin. İleride yeniden kurduğunuzda kullanmak için işaretlemeden bırakın.
+
+</Steps>
+
+Kaldırma, Keymotion'ı Windows açılınca başlayan programlardan ve Windows bildirimlerindeki adını da siler.
+
+<Aside type="caution" title="Kayıtlarınızı silmeden önce">
+Kayıtlarınızın içinde görsel kütüphaneniz, fabrika animasyonunun kopyası ve Keymotion'ın tuş atamanızla makrolarınızın tek kaydı vardır. Bunları silerseniz fabrika animasyonunu daha sonra Keymotion'dan geri yükleyemezsiniz.
+</Aside>
+
+Keymotion'ı kaldırdıktan sonra da klavye tuş atamasını ve makrolarını, ışıklarını, ekrandaki görseli ve saatini korur. Klavyeyi başkasına vermeden önce bunları temizlemek için Keymotion kuruluyken yukarıdaki adımları izleyin: tuş atamasını sıfırlayın, makroları silip kaydedin, ardından ekrana Keymotion animasyonu gibi yansız bir görsel yükleyin.
+
+Keymotion'ın neyi nerede sakladığı [Gizlilik politikası](/keymotion/tr/about/privacy/) sayfasında yazıyor.
+
+## Nereye danışabilirsiniz
+
+- **Sorun bildirmek.** **Ayarlar**'ı açın. **Hakkında** bölümünde, **Geri bildirim** satırında **Sorun bildir**'e tıklayın. Açılan pencere gönderilecek bilgileri önce gösterir. **GitHub'da bildir** bu bilgileri panoya kopyalar ve projenin GitHub'daki formunu tarayıcınızda açar. Bilgileri forma yapıştırıp (Ctrl+V) gönderin. Bunun için bir GitHub hesabı gerekir.
+- **Bir hatadan ya da çökmeden sonra.** Beklenmeyen bir sorun olduğunda ya da Keymotion geçen sefer beklenmedik biçimde kapandıysa aynı bildirim penceresini önerir.
+- **Pencerede "Bir sorun oluştu" yazıyorsa.** **Yeniden yükle**'ye tıklayın. Sorun sürerse bize bildirin.
+- **Soru sormak.** GitHub'daki [Sorular ve yardım](https://github.com/cebersaban44-rgb/keymotion/discussions/categories/q-a) bölümünü kullanın.
+- **Bir güvenlik sorunu.** Herkese açık bir bildirim yerine [gizli bildirim formuyla](https://github.com/cebersaban44-rgb/keymotion/security/advisories/new) bildirin.
+
+Keymotion kendiliğinden hiçbir şey göndermez. Metni önce siz görürsünüz, göndermeye siz karar verirsiniz. Başka yanıtlar [Sık sorulanlar](/keymotion/tr/help/faq/) sayfasında.

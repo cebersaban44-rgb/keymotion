@@ -8,7 +8,8 @@ import { CalibrationCard } from "../components/CalibrationCard";
 import { Segmented } from "../components/controls";
 import { copyDiagnostics } from "../lib/diagnostics";
 import { useT, type Locale, type MessageKey } from "../lib/i18n";
-import { openFolder, openIssue } from "../lib/ipc";
+import { openFolder, openIssue, openLink } from "../lib/ipc";
+import { docsPage } from "../lib/offline";
 import { useReport } from "../lib/report";
 import { useApp } from "../lib/store";
 
@@ -79,6 +80,17 @@ export function Settings() {
           <span className="num text-[13px] text-ink-2" title={env && env.osBuild > 0 ? t("settings.build", { build: env.osBuild }) : undefined}>
             {env?.mica ? t("settings.backdrop.mica") : t("settings.backdrop.solid")}
           </span>
+        </Row>
+        <Row label={t("settings.guide")} hint={t("settings.guide.hint")}>
+          <button
+            type="button"
+            onClick={() => openLink(docsPage("", locale)).catch(console.error)}
+            className={secondaryButton}
+            data-guide-open
+          >
+            {t("settings.guide.open")}
+            <ArrowUpRight size={14} aria-hidden />
+          </button>
         </Row>
         <Row label={t("report.feedback")} hint={t("report.feedback.hint")}>
           <div className="flex flex-wrap justify-end gap-2">

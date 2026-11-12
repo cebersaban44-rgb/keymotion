@@ -1,7 +1,7 @@
 //! Driver for the SONiX FF13 command channel (wired AK980 PRO).
 //!
 //! Every packet goes through [`kb_protocol::sonix::guard`] before it is
-//! written. Only flows documented in docs/research/protokol-ff13.md §2.3
+//! written. Only the documented flows (docs site: developers/protocol)
 //! are implemented, and each one follows the official driver's sequence.
 
 use kb_protocol::sonix::keymap::{keymap_table, KeyAction, Layer};
@@ -130,8 +130,8 @@ impl DisplayPort for HidChannel {
     }
 }
 
-/// What a screen upload measured (the first uploads are experiments; see
-/// docs/research/ekran-derin-arastirma.md §8).
+/// What a screen upload measured (the first uploads are experiments;
+/// docs site: developers/protocol).
 #[derive(Debug, Clone)]
 pub struct ScreenUploadReport {
     pub pages: usize,
