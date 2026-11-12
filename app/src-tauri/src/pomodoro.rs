@@ -1,6 +1,10 @@
 //! Odak zamanlayıcısı (the Pomodoro technique; phase C, second source):
 //! a focus/break timer.
 //!
+//! * The user builds the sequence: focus and break blocks of any length in
+//!   any order, run once, a few times or until stopped (owner's design,
+//!   2026-11-12, K7; "25 / 5 klasik" by default). Older settings (focus,
+//!   short and long break, rounds) become the sequence they made.
 //! * The timer runs here, not in the webview, so it keeps time while the
 //!   window is hidden (hidden pages get their timers throttled).
 //! * The whole keyboard shows the phase as a background live layer (`04 20`,
@@ -24,8 +28,8 @@
 
 use crate::device::{DeviceHandle, LightLayer, LiveFrame, Request};
 use crate::dto::{
-    Connection, PomodoroCard, PomodoroCardKind, PomodoroEndScreen, PomodoroMotion, PomodoroPhase, PomodoroSettings,
-    PomodoroState, PomodoroStatus, PomodoroSummary, PomodoroTransition,
+    Connection, PomodoroBlock, PomodoroCard, PomodoroCardKind, PomodoroEndScreen, PomodoroMotion, PomodoroPhase,
+    PomodoroSettings, PomodoroState, PomodoroStatus, PomodoroSummary, PomodoroTransition,
 };
 use crate::live::{now_ms, LiveHandle};
 use crate::settings;
@@ -110,7 +114,10 @@ enum Step {
 struct Timer {
     status: PomodoroStatus,
     phase: PomodoroPhase,
-    round: u8,
+    /// The current block of the sequence (0-based).
+    block: usize,
+    /// The run of the sequence (1-based).
+    cycle: u8,
     phase_ms: f64,
     /// Running: when the phase would have started had it never paused.
     /// Paused: time spent in the phase so far.
@@ -128,7 +135,8 @@ impl Default for Timer {
         Self {
             status: PomodoroStatus::Idle,
             phase: PomodoroPhase::Focus,
-            round: 1,
+            block: 0,
+            cycle: 1,
             phase_ms: 0.0,
             anchor: 0.0,
             focus_done: 0,
@@ -137,6 +145,11 @@ impl Default for Timer {
             last: None,
         }
     }
+}
+
+/// The block at `i`, or the last one if the sequence got shorter.
+fn block_at(s: &PomodoroSettings, i: usize) -> PomodoroBlock {
+    s.blocks.get(i).or(s.blocks.last()).copied().unwrap_or(PomodoroBlock::focus(25))
 }
 
 impl Timer {
@@ -148,9 +161,11 @@ impl Timer {
         }
     }
 
-    fn begin(&mut self, phase: PomodoroPhase, s: &PomodoroSettings, now: f64) -> Step {
-        self.phase = phase;
-        self.phase_ms = f64::from(s.minutes(phase)) * MINUTE_MS;
+    fn begin(&mut self, block: usize, s: &PomodoroSettings, now: f64) -> Step {
+        let b = block_at(s, block);
+        self.block = block.min(s.blocks.len().saturating_sub(1));
+        self.phase = b.phase;
+        self.phase_ms = f64::from(b.minutes) * MINUTE_MS;
         self.anchor = now;
         self.started = now;
         self.status = PomodoroStatus::Running;
@@ -162,7 +177,7 @@ impl Timer {
         match self.status {
             PomodoroStatus::Idle => {
                 *self = Self { last: self.last, ..Self::default() };
-                Some(self.begin(PomodoroPhase::Focus, s, now))
+                Some(self.begin(0, s, now))
             }
             PomodoroStatus::Paused => {
                 self.anchor = now - self.anchor;
@@ -199,29 +214,49 @@ impl Timer {
         Some(Step::Done(summary))
     }
 
-    /// End the current phase (time is up, or skipped) and start the next.
+    /// Whether the sequence runs again after its last block.
+    fn runs_again(&self, s: &PomodoroSettings) -> bool {
+        s.repeat == 0 || self.cycle < s.repeat
+    }
+
+    /// The block after the current one, `None` when the series ends with it.
+    fn next_block(&self, s: &PomodoroSettings) -> Option<PomodoroBlock> {
+        if self.block + 1 < s.blocks.len() {
+            Some(block_at(s, self.block + 1))
+        } else if self.runs_again(s) {
+            Some(block_at(s, 0))
+        } else {
+            None
+        }
+    }
+
+    /// End the current block (time is up, or skipped) and start the next:
+    /// the next in the sequence, its first again for another run, or the
+    /// end of the series.
     fn advance(&mut self, s: &PomodoroSettings, now: f64) -> Option<Step> {
         if self.status == PomodoroStatus::Idle {
             return None;
         }
-        match self.phase {
-            PomodoroPhase::Focus => {
-                self.focus_ms += self.elapsed(now);
-                self.focus_done += 1;
-                let next =
-                    if self.focus_done >= s.rounds { PomodoroPhase::LongBreak } else { PomodoroPhase::ShortBreak };
-                Some(self.begin(next, s, now))
-            }
-            PomodoroPhase::ShortBreak => {
-                self.round = (self.round + 1).min(s.rounds);
-                Some(self.begin(PomodoroPhase::Focus, s, now))
-            }
-            PomodoroPhase::LongBreak => {
-                let summary = self.summary(now, true);
-                *self = Self { last: Some(summary), ..Self::default() };
-                Some(Step::Done(summary))
-            }
+        if self.phase == PomodoroPhase::Focus {
+            self.focus_ms += self.elapsed(now);
+            self.focus_done = self.focus_done.saturating_add(1);
         }
+        if self.block + 1 < s.blocks.len() {
+            return Some(self.begin(self.block + 1, s, now));
+        }
+        if !self.runs_again(s) {
+            // The block just ended is counted above already.
+            let summary = PomodoroSummary {
+                focus_done: self.focus_done,
+                focus_min: (self.focus_ms / MINUTE_MS).round() as u32,
+                complete: true,
+                ended_ms: now,
+            };
+            *self = Self { last: Some(summary), ..Self::default() };
+            return Some(Step::Done(summary));
+        }
+        self.cycle = self.cycle.saturating_add(1);
+        Some(self.begin(0, s, now))
     }
 
     /// Time is up: the next phase starts now. A long sleep of the PC moves
@@ -234,26 +269,40 @@ impl Timer {
         }
     }
 
-    /// New settings: the current phase takes its new length at once.
+    /// New settings: the current block takes its new length (and kind) at
+    /// once; a removed block leaves the timer on the last one.
     fn settings_changed(&mut self, s: &PomodoroSettings) {
         if self.status != PomodoroStatus::Idle {
-            self.phase_ms = f64::from(s.minutes(self.phase)) * MINUTE_MS;
-            self.round = self.round.min(s.rounds);
+            self.block = self.block.min(s.blocks.len().saturating_sub(1));
+            let b = block_at(s, self.block);
+            self.phase = b.phase;
+            self.phase_ms = f64::from(b.minutes) * MINUTE_MS;
+            if s.repeat != 0 {
+                self.cycle = self.cycle.clamp(1, s.repeat);
+            }
         }
+    }
+
+    /// The focus block the current one is or follows (1-based).
+    fn round(&self, s: &PomodoroSettings) -> u8 {
+        let n = s.blocks.iter().take(self.block + 1).filter(|b| b.phase == PomodoroPhase::Focus).count();
+        n.clamp(1, 255) as u8
     }
 
     fn state(&self, settings: PomodoroSettings, now: f64) -> PomodoroState {
         PomodoroState {
-            settings,
             status: self.status,
             phase: self.phase,
-            round: self.round,
+            block: (self.block + 1).min(255) as u8,
+            round: self.round(&settings),
+            cycle: self.cycle,
             phase_ms: self.phase_ms,
             remaining_ms: (self.phase_ms - self.elapsed(now)).max(0.0),
             at_ms: now,
             focus_done: self.focus_done,
             last: self.last,
             trying: false,
+            settings,
         }
     }
 
@@ -261,9 +310,12 @@ impl Timer {
         PomodoroCard {
             kind: PomodoroCardKind::Phase,
             phase: self.phase,
-            round: self.round,
-            rounds: s.rounds,
-            minutes: s.minutes(self.phase),
+            round: self.round(s),
+            rounds: s.focus_blocks(),
+            cycle: self.cycle,
+            cycles: s.repeat,
+            minutes: block_at(s, self.block).minutes,
+            next: self.next_block(s),
             focus_done: self.focus_done,
             focus_min: 0,
             complete: false,
@@ -392,15 +444,14 @@ fn light_frame(map: &KeyMap, t: &Timer, s: &PomodoroSettings, now: f64) -> Vec<(
         .collect()
 }
 
-/// After the series: two blinks in the short break's colour, then the
-/// layer stops.
+/// After the series: two blinks in the break colour, then the layer stops.
 fn done_frame(map: &KeyMap, s: &PomodoroSettings, ended: f64, now: f64) -> Option<Vec<(u8, Rgb)>> {
     let since = now - ended;
     if !(0.0..FLASH_MS).contains(&since) {
         return None;
     }
     let on = since < 220.0 || (420.0..640.0).contains(&since);
-    Some(map.keys.iter().map(|&(l, _, _)| (l, if on { s.short_color } else { [0, 0, 0] })).collect())
+    Some(map.keys.iter().map(|&(l, _, _)| (l, if on { s.break_color } else { [0, 0, 0] })).collect())
 }
 
 /// "Klavyede dene": the same light as a real series, but a focus phase of
@@ -420,7 +471,7 @@ fn try_frame(map: &KeyMap, s: &PomodoroSettings, start: f64, now: f64) -> Option
     } else if t < TRY_FOCUS_MS {
         Some(light_frame(map, &phase(PomodoroPhase::Focus, start, TRY_FOCUS_MS), s, now))
     } else if t < TRY_FOCUS_MS + TRY_BREAK_MS {
-        Some(light_frame(map, &phase(PomodoroPhase::ShortBreak, start + TRY_FOCUS_MS, TRY_BREAK_MS), s, now))
+        Some(light_frame(map, &phase(PomodoroPhase::Break, start + TRY_FOCUS_MS, TRY_BREAK_MS), s, now))
     } else {
         done_frame(map, s, start + TRY_FOCUS_MS + TRY_BREAK_MS, now)
     }
@@ -558,7 +609,7 @@ impl PomodoroHandle {
 
     pub fn state(&self) -> Result<PomodoroState, String> {
         let inner = self.inner.lock().map_err(|_| "pomodoro unavailable")?;
-        let mut state = inner.timer.state(inner.settings, now_ms());
+        let mut state = inner.timer.state(inner.settings.clone(), now_ms());
         state.trying = inner.trying.is_some();
         Ok(state)
     }
@@ -573,7 +624,7 @@ impl PomodoroHandle {
         let now = now_ms();
         let step = {
             let mut inner = self.inner.lock().map_err(|_| "pomodoro unavailable")?;
-            let s = inner.settings;
+            let s = inner.settings.clone();
             if action != PomodoroAction::Try {
                 inner.trying = None;
             }
@@ -612,8 +663,8 @@ impl PomodoroHandle {
         let settings = settings.sanitized();
         {
             let mut inner = self.inner.lock().map_err(|_| "pomodoro unavailable")?;
-            inner.settings = settings;
             inner.timer.settings_changed(&settings);
+            inner.settings = settings.clone();
         }
         if let Some(dir) = &self.config_dir {
             settings::save(dir, FILE, VERSION, settings).map_err(|e| e.to_string())?;
@@ -654,7 +705,10 @@ impl PomodoroHandle {
                         phase: PomodoroPhase::Focus,
                         round: summary.focus_done,
                         rounds: summary.focus_done,
+                        cycle: 0,
+                        cycles: 0,
                         minutes: 0,
+                        next: None,
                         focus_done: summary.focus_done,
                         focus_min: summary.focus_min,
                         complete: summary.complete,
@@ -672,7 +726,7 @@ impl PomodoroHandle {
         let live_on = self.live.enabled();
         let (step, sound) = {
             let Ok(mut inner) = self.inner.lock() else { return IDLE };
-            let s = inner.settings;
+            let s = inner.settings.clone();
             (inner.timer.tick(&s, now), s.sound)
         };
         if let Some(step) = step {
@@ -686,7 +740,7 @@ impl PomodoroHandle {
         }
 
         let Ok(mut inner) = self.inner.lock() else { return IDLE };
-        let s = inner.settings;
+        let s = inner.settings.clone();
         let running = inner.timer.status != PomodoroStatus::Idle;
 
         // A phase card left on the screen from before the app started (it
@@ -827,30 +881,87 @@ impl PomodoroHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use PomodoroBlock as B;
 
+    /// Focus 25, break 5, focus 25, break 15, once.
     fn s() -> PomodoroSettings {
-        PomodoroSettings { rounds: 2, ..PomodoroSettings::default() }
+        PomodoroSettings {
+            blocks: vec![B::focus(25), B::rest(5), B::focus(25), B::rest(15)],
+            repeat: 1,
+            ..PomodoroSettings::default()
+        }
     }
 
     const M: f64 = MINUTE_MS;
 
     #[test]
-    fn a_series_runs_focus_break_focus_long_break() {
+    fn a_sequence_runs_its_blocks_in_order_and_ends() {
         let s = s();
         let mut t = Timer::default();
         assert_eq!(t.start(&s, 0.0), Some(Step::Phase));
-        assert_eq!((t.phase, t.round), (PomodoroPhase::Focus, 1));
+        assert_eq!((t.phase, t.block, t.round(&s)), (PomodoroPhase::Focus, 0, 1));
         assert_eq!(t.tick(&s, 24.0 * M), None);
         assert_eq!(t.tick(&s, 25.0 * M), Some(Step::Phase));
-        assert_eq!((t.phase, t.focus_done), (PomodoroPhase::ShortBreak, 1));
+        assert_eq!((t.phase, t.focus_done, t.round(&s)), (PomodoroPhase::Break, 1, 1));
         assert_eq!(t.tick(&s, 30.0 * M), Some(Step::Phase));
-        assert_eq!((t.phase, t.round), (PomodoroPhase::Focus, 2));
+        assert_eq!((t.phase, t.block, t.round(&s)), (PomodoroPhase::Focus, 2, 2));
         assert_eq!(t.tick(&s, 55.0 * M), Some(Step::Phase));
-        assert_eq!((t.phase, t.focus_done), (PomodoroPhase::LongBreak, 2));
+        assert_eq!((t.phase, t.focus_done), (PomodoroPhase::Break, 2));
+        assert_eq!(t.state(s.clone(), 55.0 * M).remaining_ms, 15.0 * M, "the last break is 15");
+        assert_eq!(t.next_block(&s), None, "the series ends after it");
         let Some(Step::Done(sum)) = t.tick(&s, 70.0 * M) else { panic!("series should end") };
         assert_eq!((sum.focus_done, sum.focus_min, sum.complete), (2, 50, true));
         assert_eq!(t.status, PomodoroStatus::Idle);
         assert_eq!(t.last, Some(sum));
+    }
+
+    #[test]
+    fn breaks_and_focus_blocks_go_in_any_order() {
+        let s = PomodoroSettings { blocks: vec![B::rest(2), B::rest(3), B::focus(10)], ..s() };
+        let mut t = Timer::default();
+        t.start(&s, 0.0);
+        assert_eq!(t.phase, PomodoroPhase::Break);
+        t.tick(&s, 2.0 * M);
+        assert_eq!((t.phase, t.block, t.focus_done), (PomodoroPhase::Break, 1, 0));
+        t.tick(&s, 5.0 * M);
+        assert_eq!((t.phase, t.round(&s)), (PomodoroPhase::Focus, 1));
+        let Some(Step::Done(sum)) = t.tick(&s, 15.0 * M) else { panic!("ends") };
+        assert_eq!((sum.focus_done, sum.focus_min), (1, 10));
+    }
+
+    #[test]
+    fn the_sequence_repeats_as_often_as_asked() {
+        let s = PomodoroSettings { blocks: vec![B::focus(10), B::rest(5)], repeat: 2, ..s() };
+        let mut t = Timer::default();
+        t.start(&s, 0.0);
+        t.tick(&s, 10.0 * M);
+        assert_eq!(t.next_block(&s), Some(B::focus(10)), "a second run follows");
+        t.tick(&s, 15.0 * M);
+        assert_eq!((t.phase, t.block, t.cycle), (PomodoroPhase::Focus, 0, 2));
+        t.tick(&s, 25.0 * M);
+        assert_eq!(t.next_block(&s), None);
+        let Some(Step::Done(sum)) = t.tick(&s, 30.0 * M) else { panic!("two runs, then the end") };
+        assert_eq!((sum.focus_done, sum.complete), (2, true));
+        // Until stopped: it goes on.
+        let forever = PomodoroSettings { blocks: vec![B::focus(5), B::rest(5)], repeat: 0, ..s.clone() };
+        let mut t = Timer::default();
+        t.start(&forever, 0.0);
+        for i in 1..=20 {
+            assert_eq!(t.tick(&forever, f64::from(i) * 5.0 * M), Some(Step::Phase));
+        }
+        assert_eq!((t.status, t.cycle), (PomodoroStatus::Running, 11));
+        let Some(Step::Done(sum)) = t.stop(101.0 * M) else { panic!("stop ends it") };
+        assert!(!sum.complete);
+    }
+
+    #[test]
+    fn the_card_says_where_the_series_is_and_what_comes_next() {
+        let s = s();
+        let mut t = Timer::default();
+        t.start(&s, 0.0);
+        let c = t.card(&s);
+        assert_eq!((c.phase, c.round, c.rounds, c.minutes, c.cycle, c.cycles), (PomodoroPhase::Focus, 1, 2, 25, 1, 1));
+        assert_eq!(c.next, Some(B::rest(5)));
     }
 
     #[test]
@@ -859,10 +970,10 @@ mod tests {
         let mut t = Timer::default();
         t.start(&s, 0.0);
         t.pause(10.0 * M);
-        assert_eq!(t.state(s, 40.0 * M).remaining_ms, 15.0 * M);
+        assert_eq!(t.state(s.clone(), 40.0 * M).remaining_ms, 15.0 * M);
         assert_eq!(t.tick(&s, 40.0 * M), None);
         assert_eq!(t.start(&s, 40.0 * M), None);
-        assert_eq!(t.state(s, 41.0 * M).remaining_ms, 14.0 * M);
+        assert_eq!(t.state(s.clone(), 41.0 * M).remaining_ms, 14.0 * M);
         assert_eq!(t.tick(&s, 55.0 * M), Some(Step::Phase));
     }
 
@@ -884,7 +995,7 @@ mod tests {
         let mut t = Timer::default();
         t.start(&s, 0.0);
         assert_eq!(t.advance(&s, 5.0 * M), Some(Step::Phase));
-        assert_eq!((t.phase, t.focus_done), (PomodoroPhase::ShortBreak, 1));
+        assert_eq!((t.phase, t.focus_done), (PomodoroPhase::Break, 1));
         assert_eq!(t.summary(5.0 * M, false).focus_min, 5);
     }
 
@@ -894,24 +1005,35 @@ mod tests {
         let mut t = Timer::default();
         t.start(&s, 0.0);
         assert_eq!(t.tick(&s, 300.0 * M), Some(Step::Phase));
-        assert_eq!(t.phase, PomodoroPhase::ShortBreak);
-        assert_eq!(t.state(s, 300.0 * M).remaining_ms, 5.0 * M);
+        assert_eq!(t.phase, PomodoroPhase::Break);
+        assert_eq!(t.state(s.clone(), 300.0 * M).remaining_ms, 5.0 * M);
     }
 
     #[test]
-    fn new_lengths_apply_to_the_running_phase() {
+    fn changes_apply_to_the_running_block() {
         let mut s = s();
         let mut t = Timer::default();
         t.start(&s, 0.0);
-        s.focus_min = 1;
+        s.blocks[0].minutes = 1;
         t.settings_changed(&s);
         assert_eq!(t.tick(&s, 1.0 * M), Some(Step::Phase));
+        // The running block was removed: the timer stays on the last one.
+        t.tick(&s, 6.0 * M);
+        assert_eq!(t.block, 2);
+        s.blocks.truncate(1);
+        t.settings_changed(&s);
+        assert_eq!((t.block, t.phase, t.phase_ms), (0, PomodoroPhase::Focus, 1.0 * M));
     }
 
     #[test]
     fn settings_are_kept_in_range() {
-        let s = PomodoroSettings { focus_min: 0, short_min: 500, long_min: 0, rounds: 20, ..s() }.sanitized();
-        assert_eq!((s.focus_min, s.short_min, s.long_min, s.rounds), (1, 60, 1, 8));
+        let many = vec![B::focus(0); 40];
+        let s = PomodoroSettings { blocks: many, repeat: 50, brightness: 9, ..s() }.sanitized();
+        assert_eq!((s.blocks.len(), s.blocks[0].minutes, s.repeat, s.brightness), (crate::dto::BLOCKS_MAX, 1, 9, 5));
+        let long = PomodoroSettings { blocks: vec![B::rest(999)], ..s.clone() }.sanitized();
+        assert_eq!(long.blocks[0].minutes, crate::dto::BLOCK_MAX_MIN);
+        let empty = PomodoroSettings { blocks: Vec::new(), ..s }.sanitized();
+        assert_eq!(empty.blocks, crate::dto::classic_blocks());
     }
 
     fn ak980() -> KeyMap {
@@ -950,16 +1072,16 @@ mod tests {
         assert_eq!(color(&f, ESC), s.focus_color);
         assert_eq!(color(&f, KP_PLUS), scale(s.focus_color, TRACK));
         // Left to right: the other way round.
-        let ltr = PomodoroSettings { motion: PomodoroMotion::LeftToRight, ..s };
+        let ltr = PomodoroSettings { motion: PomodoroMotion::LeftToRight, ..s.clone() };
         let f = light_frame(&map, &t, &ltr, 12.5 * M);
         assert_eq!(color(&f, ESC), scale(s.focus_color, TRACK));
         assert_eq!(color(&f, KP_PLUS), s.focus_color);
         // Fade: every key at the same level.
-        let fade = PomodoroSettings { motion: PomodoroMotion::Fade, ..s };
+        let fade = PomodoroSettings { motion: PomodoroMotion::Fade, ..s.clone() };
         let f = light_frame(&map, &t, &fade, 12.5 * M);
         assert!(f.iter().all(|(_, c)| *c == f[0].1));
         // Nearly over (pulse off): only the dim track is left.
-        let still = PomodoroSettings { pulse: false, ..s };
+        let still = PomodoroSettings { pulse: false, ..s.clone() };
         let f = light_frame(&map, &t, &still, 25.0 * M - 1.0);
         assert!(f.iter().all(|(_, c)| *c == scale(s.focus_color, TRACK)));
     }
@@ -971,12 +1093,12 @@ mod tests {
         let mut t = Timer::default();
         t.start(&s, 0.0);
         let at = 15.0 * M; // 40 % left
-        let ttb = PomodoroSettings { motion: PomodoroMotion::TopToBottom, ..s };
+        let ttb = PomodoroSettings { motion: PomodoroMotion::TopToBottom, ..s.clone() };
         let f = light_frame(&map, &t, &ttb, at);
         let space = map.keys.iter().find(|k| k.2 > 0.99).unwrap().0; // bottom row
         assert_eq!(color(&f, ESC), scale(s.focus_color, TRACK), "top goes dark first");
         assert_eq!(color(&f, space), s.focus_color);
-        let mid = PomodoroSettings { motion: PomodoroMotion::ToCenter, ..s };
+        let mid = PomodoroSettings { motion: PomodoroMotion::ToCenter, ..s.clone() };
         let f = light_frame(&map, &t, &mid, at);
         let centre = map.keys.iter().min_by(|a, b| (a.1 - 0.5).abs().total_cmp(&(b.1 - 0.5).abs())).unwrap().0;
         assert_eq!(color(&f, ESC), scale(s.focus_color, TRACK), "edges go dark first");
@@ -986,7 +1108,7 @@ mod tests {
     #[test]
     fn breaks_use_their_own_colour() {
         let map = ak980();
-        let s = PomodoroSettings { short_color: [10, 20, 200], ..s() };
+        let s = PomodoroSettings { break_color: [10, 20, 200], ..s() };
         let mut t = Timer::default();
         t.start(&s, 0.0);
         t.tick(&s, 25.0 * M);
@@ -1005,7 +1127,7 @@ mod tests {
         let b = light_frame(&map, &t, &s, 24.5 * M + PULSE_PERIOD_MS / 4.0);
         assert_ne!(color(&a, KP_PLUS), color(&b, KP_PLUS));
         // With the pulse off it does not.
-        let still = PomodoroSettings { pulse: false, ..s };
+        let still = PomodoroSettings { pulse: false, ..s.clone() };
         let a = light_frame(&map, &t, &still, 24.5 * M);
         let b = light_frame(&map, &t, &still, 24.5 * M + PULSE_PERIOD_MS / 4.0);
         assert_eq!(color(&a, KP_PLUS), color(&b, KP_PLUS));
@@ -1029,7 +1151,7 @@ mod tests {
         assert!(light_frame(&map, &t, &s, 100.0).iter().all(|(_, c)| *c == s.focus_color));
         assert!(light_frame(&map, &t, &s, 300.0).iter().all(|(_, c)| *c == [0, 0, 0]));
         // Wave (right to left): the left fills first.
-        let wave = PomodoroSettings { transition: PomodoroTransition::Wave, ..s };
+        let wave = PomodoroSettings { transition: PomodoroTransition::Wave, ..s.clone() };
         let f = light_frame(&map, &t, &wave, 400.0);
         assert_eq!(color(&f, ESC), s.focus_color);
         assert_eq!(color(&f, KP_PLUS), scale(s.focus_color, TRACK));
@@ -1040,7 +1162,7 @@ mod tests {
         let map = ak980();
         let s = s();
         assert!(light_frame(&map, &Timer::default(), &s, 0.0).is_empty());
-        assert!(done_frame(&map, &s, 0.0, 100.0).unwrap().iter().all(|(_, c)| *c == s.short_color));
+        assert!(done_frame(&map, &s, 0.0, 100.0).unwrap().iter().all(|(_, c)| *c == s.break_color));
         assert!(done_frame(&map, &s, 0.0, 300.0).unwrap().iter().all(|(_, c)| *c == [0, 0, 0]));
         assert!(done_frame(&map, &s, 0.0, FLASH_MS).is_none());
     }
@@ -1051,19 +1173,33 @@ mod tests {
         let s = s();
         assert!(try_frame(&map, &s, 0.0, 500.0).unwrap().iter().all(|(_, c)| *c == s.focus_color));
         let f = try_frame(&map, &s, 0.0, TRY_FOCUS_MS + 1_500.0).unwrap();
-        assert_eq!(color(&f, ESC), s.short_color);
+        assert_eq!(color(&f, ESC), s.break_color);
         assert!(try_frame(&map, &s, 0.0, TRY_FOCUS_MS + TRY_BREAK_MS + 100.0).is_some(), "end blink");
         assert!(try_frame(&map, &s, 0.0, TRY_FOCUS_MS + TRY_BREAK_MS + FLASH_MS).is_none());
     }
 
     #[test]
-    fn old_settings_files_get_the_new_light_settings() {
-        let old = r#"{"focusMin":30,"shortMin":5,"longMin":15,"rounds":4,"lights":true,"screen":false}"#;
-        let s: PomodoroSettings = serde_json::from_str(old).unwrap();
-        assert_eq!(s.focus_min, 30);
+    fn old_settings_files_become_the_sequence_they_made() {
+        let old = r#"{"focusMin":30,"shortMin":5,"longMin":15,"rounds":3,"lights":true,"screen":false,"shortColor":[1,2,3],"longColor":[4,5,6]}"#;
+        let s: PomodoroSettings = serde_json::from_str::<PomodoroSettings>(old).unwrap().sanitized();
+        use PomodoroBlock as B;
+        assert_eq!(s.blocks, vec![B::focus(30), B::rest(5), B::focus(30), B::rest(5), B::focus(30), B::rest(15)]);
+        assert_eq!(s.repeat, 1);
         assert!(!s.screen);
+        assert_eq!(s.break_color, [1, 2, 3]);
         assert_eq!(s.motion, PomodoroMotion::RightToLeft);
-        assert_eq!(s.focus_color, PomodoroSettings::default().focus_color);
         assert_eq!(s.brightness, 4);
+        // Written back without the old fields, and read the same again.
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(!json.contains("focusMin") && !json.contains("rounds") && json.contains("blocks"), "{json}");
+        let again: PomodoroSettings = serde_json::from_str::<PomodoroSettings>(&json).unwrap().sanitized();
+        assert_eq!(again, s);
+    }
+
+    #[test]
+    fn a_new_file_starts_with_the_classic_sequence() {
+        let s: PomodoroSettings = serde_json::from_str::<PomodoroSettings>("{}").unwrap().sanitized();
+        assert_eq!(s.blocks, crate::dto::classic_blocks());
+        assert_eq!((s.repeat, s.total_minutes(), s.focus_blocks()), (1, 100, 3));
     }
 }
