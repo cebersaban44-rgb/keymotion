@@ -12,9 +12,9 @@ locale: string, open: string, noKeyboard: string,
 /**
  * `{n}`: percent.
  */
-battery: string, connUsb: string, connDongle: string, connBluetooth: string, focus: string, focusStart: string, focusPause: string, focusResume: string, focusSkip: string, focusStop: string, phaseFocus: string, phaseShort: string, phaseLong: string, 
+battery: string, connUsb: string, connDongle: string, connBluetooth: string, focus: string, focusStart: string, focusPause: string, focusResume: string, focusSkip: string, focusStop: string, phaseFocus: string, phaseBreak: string, 
 /**
- * `{n}` of `{total}`.
+ * Block `{n}` of `{total}`.
  */
 round: string, 
 /**
@@ -22,7 +22,7 @@ round: string,
  */
 left: string, paused: string, 
 /**
- * `{rounds}` × `{min}`.
+ * `{blocks}` blocks, `{min}` minutes in all.
  */
 ready: string, reminders: string, remindersOn: string, remindersOff: string, 
 /**

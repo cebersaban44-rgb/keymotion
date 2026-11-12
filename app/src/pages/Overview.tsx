@@ -15,7 +15,7 @@ import { connectionKey, percent, useAgo, useT, type MessageKey } from "../lib/i1
 import { useLighting } from "../lib/lighting";
 import { useLive } from "../lib/live";
 import { useMirror } from "../lib/mirror";
-import { DEFAULT_SETTINGS, fmtClock, phaseColor, remainingNow, usePomodoro } from "../lib/pomodoro";
+import { DEFAULT_SETTINGS, fmtClock, phaseColor, remainingNow, totalMinutes, usePomodoro } from "../lib/pomodoro";
 import { profileName, profileOnKeyboard, useProfiles } from "../lib/profiles";
 import { useScreen } from "../lib/screen";
 import { useApp } from "../lib/store";
@@ -364,9 +364,7 @@ function FocusCard() {
     ? null
     : p.phase === "focus"
       ? t("pomo.phase.focus")
-      : p.phase === "shortBreak"
-        ? t("pomo.phase.shortBreak")
-        : t("pomo.phase.longBreak");
+      : t("pomo.phase.break");
   return (
     <QuickCard title="nav.focus" data="focus" link="overview.focus.go" onLink={() => setPage("focus")}>
       {busy && p ? (
@@ -378,7 +376,7 @@ function FocusCard() {
         </span>
       ) : (
         <>
-          <span className="text-[15px]">{t("overview.focus.plan", { focus: s.focusMin, rest: s.shortMin })}</span>
+          <span className="text-[15px]">{t("overview.focus.plan", { blocks: s.blocks.length, min: totalMinutes(s) })}</span>
           <button
             type="button"
             onClick={() => control("start").catch(console.error)}

@@ -13,6 +13,7 @@ import {
   ArrowRightToLine,
   Clock3,
   FoldHorizontal,
+  GripVertical,
   Lightbulb,
   Loader2,
   Minus,
@@ -24,12 +25,14 @@ import {
   SkipForward,
   Square,
   SunDim,
+  X,
   Volume2,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import type { KeyboardInfo } from "../../bindings/KeyboardInfo";
 import type { LiveRestore } from "../../bindings/LiveRestore";
+import type { PomodoroBlock } from "../../bindings/PomodoroBlock";
 import type { PomodoroEndScreen } from "../../bindings/PomodoroEndScreen";
 import type { PomodoroMotion } from "../../bindings/PomodoroMotion";
 import type { PomodoroPhase } from "../../bindings/PomodoroPhase";
@@ -42,7 +45,19 @@ import { useT, type MessageKey } from "../../lib/i18n";
 import { fmtWait, useLive } from "../../lib/live";
 import { pomodoroCard, pomodoroWords } from "../../lib/liveCards";
 import { useApp } from "../../lib/store";
-import { LIMITS, POMODORO_SOURCE, fmtClock, phaseColor, remainingNow, usePomodoro } from "../../lib/pomodoro";
+import {
+  LIMITS,
+  POMODORO_SOURCE,
+  TEMPLATES,
+  fmtClock,
+  focusBlocks,
+  phaseColor,
+  remainingNow,
+  templateOf,
+  totalMinutes,
+  usePomodoro,
+  type TemplateId,
+} from "../../lib/pomodoro";
 import { TRY_MS, fromHex, keyPositions, lightColors, tryColors, viewOf } from "../../lib/pomodoroLights";
 import { uploadSeconds } from "../../lib/screenImport";
 import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useItemName } from "./common";
@@ -56,16 +71,14 @@ const MOTIONS: { id: PomodoroMotion; label: MessageKey; icon: LucideIcon }[] = [
   { id: "fade", label: "pomo.motion.fade", icon: SunDim },
 ];
 
-const COLOR_KEYS: { phase: PomodoroPhase; field: "focusColor" | "shortColor" | "longColor"; label: MessageKey }[] = [
+const COLOR_KEYS: { phase: PomodoroPhase; field: "focusColor" | "breakColor"; label: MessageKey }[] = [
   { phase: "focus", field: "focusColor", label: "pomo.color.focus" },
-  { phase: "shortBreak", field: "shortColor", label: "pomo.color.shortBreak" },
-  { phase: "longBreak", field: "longColor", label: "pomo.color.longBreak" },
+  { phase: "break", field: "breakColor", label: "pomo.color.break" },
 ];
 
 const PHASE_KEY: Record<PomodoroPhase, MessageKey> = {
   focus: "pomo.phase.focus",
-  shortBreak: "pomo.phase.shortBreak",
-  longBreak: "pomo.phase.longBreak",
+  break: "pomo.phase.break",
 };
 
 /** Re-render this often while the timer runs. */
@@ -179,13 +192,8 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
       <div className="flex flex-col gap-2 border-t border-line pt-4">
         <h3 className="px-5 text-[13px] font-semibold">{t("pomo.settings")}</h3>
         <div className="flex flex-col divide-y divide-line border-t border-line" data-pomo-settings>
-          <SettingRow icon={Clock3} title={t("pomo.lengths")} body={t("pomo.lengths.note")}>
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(196px,1fr))] gap-2">
-              <LengthField label={t("pomo.len.focus")} unit={t("pomo.min")} value={s.settings.focusMin} limits={LIMITS.focusMin} onChange={(focusMin) => set({ focusMin })} />
-              <LengthField label={t("pomo.len.short")} unit={t("pomo.min")} value={s.settings.shortMin} limits={LIMITS.shortMin} onChange={(shortMin) => set({ shortMin })} />
-              <LengthField label={t("pomo.len.long")} unit={t("pomo.min")} value={s.settings.longMin} limits={LIMITS.longMin} onChange={(longMin) => set({ longMin })} />
-              <LengthField label={t("pomo.len.rounds")} value={s.settings.rounds} limits={LIMITS.rounds} onChange={(rounds) => set({ rounds })} />
-            </div>
+          <SettingRow icon={Clock3} title={t("pomo.seq.title")} body={t("pomo.seq.body")}>
+            <SequenceEditor settings={shown} set={set} />
           </SettingRow>
           <SettingRow
             icon={Lightbulb}
@@ -227,10 +235,10 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
 function Dial({ s }: { s: PomodoroState }) {
   const t = useT();
   const idle = s.status === "idle";
-  const left = idle ? s.settings.focusMin * 60_000 : remainingNow(s);
+  const left = idle ? (s.settings.blocks[0]?.minutes ?? 25) * 60_000 : remainingNow(s);
   // The ring is the time left, like the keys: full at the start.
   const share = idle || s.phaseMs <= 0 ? 1 : left / s.phaseMs;
-  const color = phaseColor(s.settings, s.phase);
+  const color = phaseColor(s.settings, idle ? (s.settings.blocks[0]?.phase ?? "focus") : s.phase);
   const r = 78;
   const len = 2 * Math.PI * r;
   return (
@@ -260,7 +268,8 @@ function Dial({ s }: { s: PomodoroState }) {
         <span className="text-[12px] text-ink-3">
           {s.status === "paused"
             ? t("pomo.paused")
-            : `${t("pomo.round")} ${idle ? 1 : s.round}/${s.settings.rounds}`}
+            : `${t("pomo.round")} ${idle ? 1 : s.block}/${s.settings.blocks.length}` +
+              (!idle && s.settings.repeat !== 1 ? ` · ${t("pomo.cycle", { n: s.cycle })}` : "")}
         </span>
       </div>
     </div>
@@ -500,28 +509,37 @@ function CardStrip({ settings, own }: { settings: PomodoroSettings; own: LiveRes
   const name = useItemName();
   const locale = useApp((x) => x.locale);
   const [cards, setCards] = useState<Uint16Array[] | null>(null);
-  const { focusMin, shortMin, longMin, rounds, focusColor, shortColor, longColor, endScreen } = settings;
+  const { blocks, repeat, focusColor, breakColor, endScreen } = settings;
+  // The first focus block and the first break, as the sequence has them.
+  const shownAt = (["focus", "break"] as const).map((p) => blocks.findIndex((b) => b.phase === p)).filter((i) => i >= 0);
   // Draws the cards from the current settings and language. An effect event:
   // the effect below decides when to redraw, this reads the latest values.
   const drawCards = useEffectEvent(() => {
     const w = pomodoroWords(t);
     const s = settings;
-    const breakPhase = rounds > 1 ? "shortBreak" : "longBreak";
-    const base = { kind: "phase" as const, round: 1, rounds, focusMin: 0, complete: false, endedMs: Date.now() };
-    const list = [
-      pomodoroCard({ ...base, phase: "focus", minutes: focusMin, focusDone: 0 }, s, w),
-      pomodoroCard({ ...base, phase: breakPhase, minutes: rounds > 1 ? shortMin : longMin, focusDone: 1 }, s, w),
-    ];
+    const rounds = focusBlocks(s);
+    const list = shownAt.map((i) => {
+      const b = blocks[i]!;
+      const round = Math.max(1, blocks.slice(0, i + 1).filter((x) => x.phase === "focus").length);
+      const next = blocks[i + 1] ?? (repeat === 1 ? null : blocks[0]!);
+      const focusDone = blocks.slice(0, i).filter((x) => x.phase === "focus").length;
+      return pomodoroCard(
+        { kind: "phase", phase: b.phase, round, rounds, cycle: 1, cycles: repeat, minutes: b.minutes, next, focusDone, focusMin: 0, complete: false, endedMs: Date.now() },
+        s,
+        w,
+      );
+    });
     if (endScreen === "summary") {
-      const done = { kind: "done" as const, phase: "focus" as const, round: rounds, rounds, minutes: 0 };
-      list.push(pomodoroCard({ ...done, focusDone: rounds, focusMin: rounds * focusMin, complete: true, endedMs: Date.now() }, s, w));
+      const focusMin = blocks.filter((b) => b.phase === "focus").reduce((a, b) => a + b.minutes, 0);
+      const done = { kind: "done" as const, phase: "focus" as const, round: rounds, rounds, cycle: 0, cycles: 0, minutes: 0, next: null };
+      list.push(pomodoroCard({ ...done, focusDone: rounds, focusMin, complete: true, endedMs: Date.now() }, s, w));
     }
     return Promise.all(list);
   });
-  // The colours are arrays: compare them by value.
+  // Arrays: compare them by value.
   const focusRgb = focusColor.join();
-  const shortRgb = shortColor.join();
-  const longRgb = longColor.join();
+  const breakRgb = breakColor.join();
+  const sequence = JSON.stringify(blocks);
   useEffect(() => {
     let live = true;
     drawCards().then((p) => live && setCards(p.map((c) => c.frames[0]!)), console.error);
@@ -529,7 +547,7 @@ function CardStrip({ settings, own }: { settings: PomodoroSettings; own: LiveRes
       live = false;
     };
     // Redraw only when what the cards show changes.
-  }, [locale, focusMin, shortMin, longMin, rounds, endScreen, focusRgb, shortRgb, longRgb]);
+  }, [locale, sequence, repeat, endScreen, focusRgb, breakRgb]);
   const [ownFrame, setOwnFrame] = useState<Uint16Array | null>(null);
   // By id and length: the `own` object is new whenever the live state is.
   const ownId = own?.id;
@@ -545,7 +563,7 @@ function CardStrip({ settings, own }: { settings: PomodoroSettings; own: LiveRes
   }, [ownId, ownFrames, endScreen]);
 
   const box = "h-[76px] w-[135px] shrink-0 rounded-md bg-black";
-  const labels = [t("pomo.phase.focus"), t(rounds > 1 ? "pomo.phase.shortBreak" : "pomo.phase.longBreak")];
+  const labels = shownAt.map((i) => t(PHASE_KEY[blocks[i]!.phase]));
   const tile = (frame: Uint16Array | null | undefined, label: string, key: string) => (
     <figure key={key} className="flex flex-col gap-1">
       {frame ? <FramePlayer frames={[frame]} delaysMs={[100]} className={box} /> : <div className={box} />}
@@ -555,17 +573,14 @@ function CardStrip({ settings, own }: { settings: PomodoroSettings; own: LiveRes
   const arrow = (key: string) => <ArrowRight key={key} size={14} className="mb-5 shrink-0 text-ink-3" />;
   const end =
     endScreen === "summary"
-      ? cards?.[2]
+      ? cards?.[labels.length]
       : ownFrame;
   const endLabel = `${t("pomo.screen.atEnd")}: ${endScreen === "summary" ? t("pomo.end.summary.short") : (own ? name(own) : t("pomo.end.own"))}`;
   return (
     <div className="flex flex-col gap-1.5" data-pomo-strip>
       <span className="text-[12px] text-ink-3">{t("pomo.screen.example")}</span>
       <div className="flex flex-wrap items-center gap-2">
-        {tile(cards?.[0], labels[0]!, "a")}
-        {arrow("x")}
-        {tile(cards?.[1], labels[1]!, "b")}
-        {arrow("y")}
+        {labels.map((label, i) => [tile(cards?.[i], label, `c${i}`), arrow(`a${i}`)])}
         {endScreen === "back" && !own ? (
           <figure className="flex flex-col gap-1">
             <div className={`${box} flex items-center justify-center border border-dashed border-line bg-transparent text-[11px] text-ink-3`}>
@@ -641,12 +656,12 @@ function CostLine({ s }: { s: PomodoroState }) {
   const t = useT();
   const live = useLive((x) => x.state);
   if (!live) return null;
-  // Every phase is a card: rounds focus phases, rounds − 1 short breaks, one
-  // long break; and one more at the end (the own picture or a summary).
-  const { rounds, focusMin, shortMin, longMin } = s.settings;
-  const need = rounds * 2 + 1;
+  // Every block is a card, once per run (one run when it repeats until
+  // stopped); and one more at the end (the own picture or a summary).
+  const runs = Math.max(1, s.settings.repeat);
+  const need = s.settings.blocks.length * runs + 1;
   const ready = Math.max(0, Math.floor(live.tokens + 1e-6));
-  const seriesMin = rounds * focusMin + (rounds - 1) * shortMin + longMin;
+  const seriesMin = totalMinutes(s.settings) * runs;
   const refill = (live.perDay / 24) * (seriesMin / 60);
   return (
     <div className="flex flex-col gap-1">
@@ -656,6 +671,216 @@ function CostLine({ s }: { s: PomodoroState }) {
       {need > live.tokens + refill && (
         <p className="text-[12px] text-warn">{t("pomo.cost.short")}</p>
       )}
+    </div>
+  );
+}
+
+const REPEATS: { value: string; label: MessageKey }[] = [
+  { value: "1", label: "pomo.seq.repeat.once" },
+  { value: "2", label: "pomo.seq.repeat.two" },
+  { value: "3", label: "pomo.seq.repeat.three" },
+  { value: "0", label: "pomo.seq.repeat.forever" },
+];
+
+const TEMPLATE_LABEL: Record<TemplateId, MessageKey> = {
+  classic: "pomo.seq.classic",
+  deep: "pomo.seq.deep",
+  empty: "pomo.seq.empty",
+};
+
+/** "1 sa 40 dk", "25 dk". */
+function fmtMinutes(min: number, t: (k: MessageKey) => string) {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (!h) return `${m} ${t("pomo.min")}`;
+  return m ? `${h} ${t("sc.live.h")} ${m} ${t("pomo.min")}` : `${h} ${t("sc.live.h")}`;
+}
+
+/** The sequence the user builds (owner's design from the preview,
+ *  2026-11-12, K7): focus and break blocks in any order, dragged by their
+ *  handle (or moved with the arrow keys), a ready-made start, and how many
+ *  times it runs. Changes apply at once, the running block too. */
+function SequenceEditor({ settings, set }: { settings: PomodoroSettings; set: (patch: Partial<PomodoroSettings>) => void }) {
+  const t = useT();
+  const blocks = settings.blocks;
+  const listRef = useRef<HTMLOListElement>(null);
+  // A drag in progress: the block taken, where it would go and how far the
+  // pointer moved. The rows stay where they are in the page (moving the
+  // grabbed row would end the pointer capture); they only shift on screen.
+  const [drag, setDrag] = useState<{ from: number; to: number; dy: number; startY: number } | null>(null);
+  // Row positions when the drag started.
+  const rects = useRef<{ top: number; height: number }[]>([]);
+  const setBlocks = (next: PomodoroBlock[]) => set({ blocks: next });
+  const move = (from: number, to: number) => {
+    if (from === to || to < 0 || to >= blocks.length) return;
+    const next = [...blocks];
+    const [b] = next.splice(from, 1);
+    next.splice(to, 0, b!);
+    setBlocks(next);
+  };
+  /** Where block `from`, its centre moved by `dy`, would go: after every
+   *  other block whose centre it passed. */
+  const targetOf = (from: number, dy: number) => {
+    const r = rects.current[from];
+    if (!r) return from;
+    const y = r.top + r.height / 2 + dy;
+    return rects.current.filter((o, j) => j !== from && o.top + o.height / 2 < y).length;
+  };
+  /** How far row `j` shifts on screen while a drag is in progress. */
+  const shiftOf = (j: number) => {
+    if (!drag) return 0;
+    if (j === drag.from) return drag.dy;
+    const step = (rects.current[drag.from]?.height ?? 0) + 6;
+    if (drag.from < drag.to && j > drag.from && j <= drag.to) return -step;
+    if (drag.to < drag.from && j >= drag.to && j < drag.from) return step;
+    return 0;
+  };
+  const template = templateOf(blocks);
+  const total = totalMinutes(settings);
+  const focusMin = blocks.filter((b) => b.phase === "focus").reduce((a, b) => a + b.minutes, 0);
+  const full = blocks.length >= LIMITS.blocks;
+  const add = (phase: PomodoroPhase) => !full && setBlocks([...blocks, { phase, minutes: phase === "focus" ? 25 : 5 }]);
+
+  return (
+    <div className="flex flex-col gap-3" data-pomo-sequence>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[12px] text-ink-3">{t("pomo.seq.template")}</span>
+        {(Object.keys(TEMPLATES) as TemplateId[]).map((id) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setBlocks(TEMPLATES[id])}
+            aria-pressed={template === id}
+            className={`h-8 rounded-lg border px-3 text-[12px] transition-colors ${
+              template === id ? "border-signal bg-signal/10 text-ink" : "border-line text-ink-2 hover:bg-surface-2 hover:text-ink"
+            }`}
+            data-pomo-template={id}
+          >
+            {t(TEMPLATE_LABEL[id])}
+          </button>
+        ))}
+      </div>
+
+      <ol ref={listRef} className="flex flex-col gap-1.5" data-pomo-blocks>
+        {blocks.map((b, i) => {
+          const dragged = drag?.from === i;
+          const color = phaseColor(settings, b.phase);
+          const label = `${t("pomo.seq.block", { n: i + 1 })} · ${t(PHASE_KEY[b.phase])}`;
+          return (
+            <li
+              key={i}
+              className={`relative flex items-center gap-2 rounded-lg border bg-surface py-1 pr-1 pl-1.5 ${
+                dragged ? "z-10 border-signal shadow-lg" : "border-line"
+              }`}
+              style={{
+                transform: drag ? `translateY(${shiftOf(i)}px)` : undefined,
+                transition: drag && !dragged ? "transform 150ms ease" : undefined,
+              }}
+              data-pomo-block={b.phase}
+            >
+              <button
+                type="button"
+                aria-label={`${label}. ${t("pomo.seq.move")}`}
+                title={t("pomo.seq.move")}
+                className="flex h-8 w-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-ink-3 hover:bg-surface-2 hover:text-ink active:cursor-grabbing"
+                onPointerDown={(e) => {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  const rows = [...(listRef.current?.children ?? [])] as HTMLElement[];
+                  rects.current = rows.map((row) => {
+                    const r = row.getBoundingClientRect();
+                    return { top: r.top, height: r.height };
+                  });
+                  setDrag({ from: i, to: i, dy: 0, startY: e.clientY });
+                }}
+                onPointerMove={(e) => {
+                  if (drag?.from !== i) return;
+                  const dy = e.clientY - drag.startY;
+                  setDrag({ ...drag, dy, to: targetOf(i, dy) });
+                }}
+                onPointerUp={() => {
+                  if (drag?.from === i) move(drag.from, drag.to);
+                  setDrag(null);
+                }}
+                onPointerCancel={() => setDrag(null)}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                    e.preventDefault();
+                    move(i, i + (e.key === "ArrowUp" ? -1 : 1));
+                  }
+                }}
+                data-pomo-handle
+              >
+                <GripVertical size={15} />
+              </button>
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} aria-hidden />
+              <div className="min-w-0 flex-1">
+                <LengthField
+                  label={label}
+                  unit={t("pomo.min")}
+                  value={b.minutes}
+                  limits={LIMITS.minutes}
+                  onChange={(minutes) => setBlocks(blocks.map((x, j) => (j === i ? { ...x, minutes } : x)))}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setBlocks(blocks.filter((_, j) => j !== i))}
+                disabled={blocks.length <= 1}
+                aria-label={`${label}, ${t("pomo.seq.remove")}`}
+                title={t("pomo.seq.remove")}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-3 hover:bg-danger/10 hover:text-danger disabled:opacity-30"
+                data-pomo-remove
+              >
+                <X size={14} />
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {(["focus", "break"] as const).map((phase) => (
+          <button
+            key={phase}
+            type="button"
+            onClick={() => add(phase)}
+            disabled={full}
+            className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-[12px] text-ink-2 hover:bg-surface-2 hover:text-ink disabled:opacity-40"
+            data-pomo-add={phase}
+          >
+            <Plus size={13} />
+            <span className="h-2 w-2 rounded-full" style={{ background: phaseColor(settings, phase) }} aria-hidden />
+            {t(phase === "focus" ? "pomo.seq.addFocus" : "pomo.seq.addBreak")}
+          </button>
+        ))}
+        {full && <span className="text-[12px] text-ink-3">{t("pomo.seq.full", { max: LIMITS.blocks })}</span>}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="text-[12px] text-ink-2">{t("pomo.seq.repeat")}</span>
+        <Segmented<string>
+          label={t("pomo.seq.repeat")}
+          value={String(settings.repeat)}
+          onChange={(v) => set({ repeat: Number(v) })}
+          options={REPEATS.map((r) => ({ value: r.value, label: t(r.label) }))}
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5" data-pomo-total>
+        <div className="flex h-2.5 gap-0.5 overflow-hidden rounded-full" aria-hidden>
+          {blocks.map((b, i) => (
+            <span key={i} style={{ flex: b.minutes, background: phaseColor(settings, b.phase) }} />
+          ))}
+        </div>
+        <span className="num text-[12px] text-ink-3">
+          {t("pomo.seq.total", { time: fmtMinutes(total, t), focus: fmtMinutes(focusMin, t) })}
+          {settings.repeat === 0
+            ? ` · ${t("pomo.seq.untilStopped")}`
+            : settings.repeat > 1
+              ? ` · ${t("pomo.seq.all", { time: fmtMinutes(total * settings.repeat, t) })}`
+              : ""}
+        </span>
+      </div>
     </div>
   );
 }

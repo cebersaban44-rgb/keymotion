@@ -75,7 +75,7 @@ function css(c: Rgb, k: number) {
 }
 
 export function phaseRgb(s: PomodoroSettings, p: PomodoroPhase): Rgb {
-  const c = p === "focus" ? s.focusColor : p === "shortBreak" ? s.shortColor : s.longColor;
+  const c = p === "focus" ? s.focusColor : s.breakColor;
   return [c[0], c[1], c[2]];
 }
 
@@ -126,10 +126,10 @@ export function lightColors(keys: KeyPos[], s: PomodoroSettings, v: LightView, n
   return out;
 }
 
-/** The end of a series (and of a try): two blinks in the short break's colour. */
+/** The end of a series (and of a try): two blinks in the break colour. */
 function doneColors(keys: KeyPos[], s: PomodoroSettings, since: number) {
   const on = since < 220 || (since >= 420 && since < 640);
-  const c = on ? css(phaseRgb(s, "shortBreak"), 1) : "rgb(0,0,0)";
+  const c = on ? css(phaseRgb(s, "break"), 1) : "rgb(0,0,0)";
   return Object.fromEntries(keys.map((k) => [k.led, c]));
 }
 
@@ -139,7 +139,7 @@ export function tryColors(keys: KeyPos[], s: PomodoroSettings, t: number, now: n
     return lightColors(keys, s, { status: "running", phase: "focus", phaseMs: TRY_FOCUS_MS, elapsedMs: t }, now);
   }
   if (t < TRY_FOCUS_MS + TRY_BREAK_MS) {
-    const v: LightView = { status: "running", phase: "shortBreak", phaseMs: TRY_BREAK_MS, elapsedMs: t - TRY_FOCUS_MS };
+    const v: LightView = { status: "running", phase: "break", phaseMs: TRY_BREAK_MS, elapsedMs: t - TRY_FOCUS_MS };
     return lightColors(keys, s, v, now);
   }
   return doneColors(keys, s, t - TRY_FOCUS_MS - TRY_BREAK_MS);
