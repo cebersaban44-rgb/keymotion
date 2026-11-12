@@ -36,11 +36,13 @@ import type { BackupSection } from "../bindings/BackupSection";
 import type { BackupSummary } from "../bindings/BackupSummary";
 import type { PartLoaded } from "../bindings/PartLoaded";
 import type { ProfileInfo } from "../bindings/ProfileInfo";
+import type { BackgroundSettings } from "../bindings/BackgroundSettings";
 import type { ProfilePart } from "../bindings/ProfilePart";
 import type { ProfileParts } from "../bindings/ProfileParts";
 import type { ProfileSaved } from "../bindings/ProfileSaved";
 import type { ProfilesState } from "../bindings/ProfilesState";
 import type { ScreenItem } from "../bindings/ScreenItem";
+import type { TrayTexts } from "../bindings/TrayTexts";
 // Generated from Rust by `cargo test` (dto.rs export_mock_geometry).
 import ak980Geometry from "../bindings/geometry-ajazz-ak980-pro.json";
 import mockKeymapCatalog from "../bindings/keymap-catalog.json";
@@ -124,6 +126,54 @@ export async function onCloseRequested(cb: () => void): Promise<UnlistenFn> {
 export async function closeWindow(): Promise<void> {
   if (import.meta.env.DEV && !inTauri) return;
   await invoke("close_window");
+}
+
+/** The user stayed after "Quit" in the tray asked about unsaved changes:
+ *  closing the window hides it again. */
+export async function cancelQuit(): Promise<void> {
+  if (import.meta.env.DEV && !inTauri) return;
+  await invoke("quit_cancelled");
+}
+
+// ------------------------------------------------------- tray and background
+
+let mockBackground: BackgroundSettings = { closeToTray: true, startWithWindows: false, startTurnedOff: false };
+
+/** Keep running in the tray when closed; start with Windows. */
+export async function getBackground(): Promise<BackgroundSettings> {
+  if (import.meta.env.DEV && !inTauri) return mockBackground;
+  return invoke<BackgroundSettings>("background_state");
+}
+
+export async function setBackground(settings: BackgroundSettings): Promise<BackgroundSettings> {
+  if (import.meta.env.DEV && !inTauri) {
+    mockBackground = { ...settings, startTurnedOff: false };
+    return mockBackground;
+  }
+  return invoke<BackgroundSettings>("background_configure", { settings });
+}
+
+/** The tray menu's words and the background notice, in the UI language. */
+export async function setTrayTexts(texts: TrayTexts): Promise<void> {
+  if (import.meta.env.DEV && !inTauri) return;
+  await invoke("tray_texts", { texts });
+}
+
+/** Whether the window is on screen (hidden: the app runs in the tray). */
+export async function isWindowShown(): Promise<boolean> {
+  if (import.meta.env.DEV && !inTauri) return true;
+  return invoke<boolean>("window_shown");
+}
+
+export async function onWindowShown(cb: (shown: boolean) => void): Promise<UnlistenFn> {
+  if (import.meta.env.DEV && !inTauri) return () => {};
+  return listen<boolean>("window-shown", (e) => cb(e.payload));
+}
+
+/** A profile chosen in the tray menu (its id). */
+export async function onTrayProfile(cb: (id: string) => void): Promise<UnlistenFn> {
+  if (import.meta.env.DEV && !inTauri) return () => {};
+  return listen<string>("tray-profile", (e) => cb(e.payload));
 }
 
 export async function onKeyboardsChanged(cb: (k: KeyboardInfo[]) => void): Promise<UnlistenFn> {

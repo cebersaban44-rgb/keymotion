@@ -1,6 +1,7 @@
 import { Check, Copy } from "lucide-react";
 import { useState } from "react";
 import type { ThemePreference } from "../bindings/ThemePreference";
+import { BackgroundCard } from "../components/BackgroundCard";
 import { BackupCard, Row, secondaryButton } from "../components/BackupCard";
 import { CalibrationCard } from "../components/CalibrationCard";
 import { Segmented } from "../components/controls";
@@ -61,6 +62,8 @@ export function Settings() {
           />
         </Row>
       </section>
+
+      <BackgroundCard />
 
       <CalibrationCard key={imports} />
 

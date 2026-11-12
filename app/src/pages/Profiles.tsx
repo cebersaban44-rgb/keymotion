@@ -5,7 +5,7 @@
 // back as it was with a one-line result at the top.
 
 import { AlertTriangle, Check, Circle, CircleCheck, Copy, Ellipsis, FileDown, FolderOpen, Loader2, Pencil, Trash2 } from "lucide-react";
-import { useEffect, useId, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useId, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { ProfileInfo } from "../bindings/ProfileInfo";
 import type { ProfilePart } from "../bindings/ProfilePart";
@@ -167,6 +167,24 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
 
   const profiles = state?.profiles ?? [];
   const locked = busy || run !== null;
+
+  // A profile chosen in the tray menu: its load confirmation, as its button
+  // would open. When it cannot be loaded now, its row shows why.
+  const profileRequest = useApp((s) => s.profileRequest);
+  const openRequested = useEffectEvent((id: string, s: ProfilesState) => {
+    useApp.getState().clearProfileRequest();
+    const p = [s.factory, ...s.profiles].find((x) => x.id === id);
+    if (!p) return;
+    const loadable = !p.onKeyboard && canWrite && !uploading && !locked && !p.otherModel && p.toWrite.length > 0;
+    if (loadable) start({ kind: "load", id: p.id });
+    const key = p.builtIn ? "default" : p.id;
+    window.setTimeout(() => {
+      document.querySelector(`[data-profile="${CSS.escape(key)}"]`)?.scrollIntoView({ block: "nearest" });
+    }, 50);
+  });
+  useEffect(() => {
+    if (profileRequest && state) openRequested(profileRequest, state);
+  }, [profileRequest, state]);
 
   // ---------------------------------------------------------------- actions
 

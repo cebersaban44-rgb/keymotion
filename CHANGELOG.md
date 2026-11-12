@@ -44,6 +44,13 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
   volume on the function keys, microphone mute on a chosen key.
 - **Focus timer:** the whole keyboard fills with the phase colour and empties
   as time runs out; phase cards on the screen.
+- **Tray:** closing the window keeps Keymotion running next to the clock,
+  so the focus timer, reminders, calendar cards, the live screen and the key
+  gauges go on. The tray menu shows the keyboard and its battery, runs the
+  focus timer (phase and minutes left, pause, skip, stop), shows the next
+  reminder and turns reminders and the key gauges on or off. It also opens a
+  profile's load confirmation and quits the app. Settings › Background can turn
+  this off, and can start Keymotion hidden when Windows starts.
 - Protection for unsaved changes when leaving a page or closing the app.
 - Turkish and English interface, light and dark theme.
 - Project: MIT/Apache-2.0 licence, NOTICE (unofficial project, use at your own
