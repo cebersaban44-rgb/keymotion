@@ -896,6 +896,12 @@ fn http_status(hresult: u32) -> Option<u16> {
     (hresult & 0xFFFF_0000 == 0x8019_0000).then_some((hresult & 0xFFFF) as u16).filter(|s| (100..600).contains(s))
 }
 
+/// GET a text with Windows' own HTTP client (also used to read GitHub's
+/// release list for test versions, updates.rs). Blocking.
+pub(crate) fn http_get(url: &str) -> Result<String, String> {
+    net::fetch(url)
+}
+
 #[cfg(windows)]
 mod net {
     use super::MAX_FEED_BYTES;

@@ -60,6 +60,10 @@ jobs:
       - name: Versions agree
         run: node tools/check-version.mjs
 
+      # The scripts the release workflow (release.yml) uses.
+      - name: Release script tests
+        run: node --test "tools/release/*.test.mjs"
+
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           package_json_file: app/package.json

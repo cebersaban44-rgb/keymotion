@@ -24,6 +24,7 @@ mod reminders;
 mod screen_lib;
 mod settings;
 mod tray;
+mod updates;
 
 use backup::{BackupExported, BackupImported, BackupSection, BackupSummary, PendingImport};
 use calendar::CalendarHandle;
@@ -34,7 +35,7 @@ use dto::{
     EffectInfo, EffectRequest, FlashWrite, GaugesSettings, GaugesState, IssueKind, KeyAssignment, KeyboardInfo,
     KeymapCatalog, KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint,
     PomodoroSettings, PomodoroState, Reminder, ReminderSettings, ReminderState, ScreenItem, ScreenItemKind,
-    ScreenState, SettingsReset, SongStop, ThemePreference, TrayTexts, UiEnvironment, UnsupportedKeyboard,
+    ScreenState, SettingsReset, SongStop, ThemePreference, TrayTexts, UiEnvironment, UnsupportedKeyboard, UpdateState,
 };
 use gauges::GaugesHandle;
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
@@ -67,7 +68,7 @@ struct CloseGuard {
 }
 
 /// A flash write runs (closing asks first, as with unsaved changes).
-fn flash_busy(app: &AppHandle) -> bool {
+pub(crate) fn flash_busy(app: &AppHandle) -> bool {
     app.try_state::<Arc<DeviceHandle>>().is_some_and(|d| d.flash.current().is_some())
 }
 
@@ -751,6 +752,37 @@ fn background_configure(
     background.configure(settings)
 }
 
+/// Updates: what the app knows about a newer version (updates.rs).
+#[tauri::command]
+fn update_state(updates: State<'_, Arc<updates::Updates>>) -> UpdateState {
+    updates.state()
+}
+
+/// Look on GitHub now.
+#[tauri::command]
+async fn update_check(updates: State<'_, Arc<updates::Updates>>) -> Result<UpdateState, String> {
+    Ok(updates.check().await)
+}
+
+/// Look once a day by itself, or not.
+#[tauri::command]
+fn update_auto(updates: State<'_, Arc<updates::Updates>>, enabled: bool) -> UpdateState {
+    updates.set_auto(enabled)
+}
+
+/// Download the update found and install it: the app closes, the installer
+/// runs and opens the new version.
+#[tauri::command]
+fn update_install(updates: State<'_, Arc<updates::Updates>>) -> Result<UpdateState, String> {
+    updates.install()
+}
+
+/// Stop the download.
+#[tauri::command]
+fn update_cancel(updates: State<'_, Arc<updates::Updates>>) -> UpdateState {
+    updates.cancel()
+}
+
 /// The tray menu's words in the UI language.
 #[tauri::command]
 fn tray_texts(app: AppHandle, background: State<'_, Arc<Background>>, texts: TrayTexts) {
@@ -1315,6 +1347,7 @@ pub fn run() {
         // One app at a time: two would send commands to the keyboard at
         // once. A second launch brings the open window forward instead.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| tray::show_main(app)))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(CloseGuard::default())
         .manage(Arc::new(DriverGif::default()))
         .manage(PendingImport::default())
@@ -1386,6 +1419,7 @@ pub fn run() {
             app.manage(PomodoroHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir.clone()));
             app.manage(GaugesHandle::spawn(app.handle().clone(), device.clone(), config_dir.clone()));
             app.manage(CalendarHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir.clone()));
+            app.manage(updates::Updates::spawn(app.handle().clone(), config_dir.clone()));
             app.manage(RemindersHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir));
             app.manage(library);
             app.manage(device);
@@ -1420,6 +1454,11 @@ pub fn run() {
             background_state,
             background_configure,
             tray_texts,
+            update_state,
+            update_check,
+            update_auto,
+            update_install,
+            update_cancel,
             ui_environment,
             open_link,
             open_issue,

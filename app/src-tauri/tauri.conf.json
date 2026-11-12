@@ -30,6 +30,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
     "category": "Utility",
     "publisher": "Keymotion",
     "copyright": "Copyright © 2026 Keymotion contributors",
@@ -59,5 +60,16 @@
       "icons/128x128@2x.png",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI5RUFCNEFDQTkwNDg4NUEKUldSYWlBU3ByTFRxdVRrcDVFeGxpVHlPV1gycUdRMTUrdWNkSmpWcEM2NTdSQkFiN1RVZEE5RmYK",
+      "endpoints": [
+        "https://github.com/cebersaban44-rgb/keymotion/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }
