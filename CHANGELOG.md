@@ -14,8 +14,9 @@ The first release is in preparation. It supports the AJAZZ AK980 PRO on Windows.
   Bluetooth, and notices when it is plugged in or removed. A Connection page
   shows what can be done in each mode; settings need the USB cable. Battery
   level over Bluetooth.
-- **Overview:** the measured 97-key layout beside the picture the keyboard's
-  screen shows now, then one tile for each tool: the light, the focus timer
+- **Overview:** the measured 97-key layout across the page with every key's
+  letters, then the picture the keyboard's screen shows now and one tile for
+  each tool: the light, the focus timer
   (start it from here), the next reminder, the next meeting, the system
   gauges with live bars, and the profile. Also connection mode, battery, and
   the keyboard clock, which is set automatically when the keyboard connects.
