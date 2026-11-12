@@ -279,6 +279,7 @@ Kurulu sürümde bir hata olduğunda ya da bir özellik başka bir klavyede çal
 Ek kararlar (2026-11-12):
 - Pencere kapatılınca uygulama tepside çalışmaya devam eder; Windows'la başlatma isteğe bağlı (varsayılan kapalı). Kalan işlerin sırası: `docs/yol-haritasi.md`.
 - Uygulamanın ve GitHub sayfasının varsayılan dili İngilizce; ikisinde de Türkçe seçilebilir.
+- **Uygulama Windows'un diliyle açılır** (kullanıcının kararı, 2026-11-12): Windows Türkçeyse Türkçe, başka her dilde (örneğin Lehçe) İngilizce. Bildirimler ve tepsi menüsü de aynı dilde. Ayarlar'dan dil seçilirse o kalır. Kurulum programı da Windows'un diline göre açılır.
 - Repo adı `keymotion` (yeniden adlandırıldı).
 - GitHub Discussions açık (soru-cevap).
 - Sorun bildirme yalnızca GitHub üzerinden.
@@ -304,6 +305,6 @@ Ayrıntı ve yardımcıların listesi: `DURUM.md` madde 38.
 | G. Repo ve hukuk | Lisans, NOTICE, üçüncü taraf lisansları, CI denetimleri, ESLint, Dependabot, cargo-deny, CHANGELOG | **Bitti** (PR #54; ESLint uyarıları temizlendi ve CI'ı engelliyor, `?mock` anahtarları kurulu sürümde yok) |
 | H. GitHub sayfası | İki dilli README ve belgeler, ekran görüntüleri, issue formları, topluluk dosyaları | `docs/yol-haritasi.md` Aşama 7 (SignPath şartlarıyla birlikte; issue formları Aşama 4'te yapıldı). Kararlar verildi: varsayılan İngilizce (`README.md`) + Türkçe (`README.tr.md`), repo adı `keymotion` (yapıldı), Discussions açık (yapıldı) |
 | I. Sorun bildirme | Uygulama içinden sorun bildirme, desteklenmeyen klavye bildirimi | **Bitti** (2026-11-12): GitHub formları, `SECURITY.md`, sorun bildir penceresi, beklenmeyen hata ve çökme bildirimi, "Destek iste". Ayrıntı: `docs/yol-haritasi.md` Aşama 4. Özel güvenlik bildirimi açıldı, "keyboard support" etiketi oluşturuldu (kullanıcı onayıyla) |
-| Dil | Uygulamanın varsayılan dili | **İngilizce** (2026-11-12, yapıldı); Türkçe seçilebilir |
+| Dil | Uygulamanın varsayılan dili | **Windows'un dili** (2026-11-12): Türkçe Windows'ta Türkçe, diğerlerinde İngilizce; Ayarlar'dan seçilebilir |
 | Tepsi ve arka plan | Pencere kapanınca uygulamanın tepside çalışmaya devam etmesi | **Bitti** (PR #61, 2026-11-12): kapatınca gizlenir, tepsi menüsü (klavye, odak alt menüsü, hatırlatıcılar, göstergeler, profiller, çık), Ayarlar › Arka plan, Windows'la gizli başlama. Kullanıcı ve ben denedik; bildirimler Keymotion adı ve logosuyla. Ayrıntı: `docs/yol-haritasi.md` Aşama 2 |
 | Keymotion açılış animasyonu | Fabrika yedeği olmayanlar için özgün görsel | **Bitti** (2026-11-12): kullanıcı A'yı (çizerek, yazılı) seçti; kütüphanede yerleşik "Keymotion animasyonu", yedek yok uyarısında öneri. Ayrıntı: `docs/yol-haritasi.md` Aşama 3 |

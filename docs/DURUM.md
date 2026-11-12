@@ -876,6 +876,7 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **Ders 62:** Claude paketli bir uygulama; benim başlattığım programların AppData (ve büyük olasılıkla HKCU) yazmaları Claude'un kutusuna gidiyor. Gerçek kurulum, başlangıç kaydı ve bildirim denemeleri kutunun dışında yapılmalı.
     - Arka plan bildiriminin metni kısaldı (kullanıcı "çok kötü ve saçma görünüyor" dedi): "Arka planda çalışıyor" / "Yeniden açmak için saatin yanındaki Keymotion simgesine tıklayın."
     - Bildirimde logo yoktu (kutunun dışında açılan uygulamadan). Gerçek kurulumla yeniden bakılacak.
+    - **Dil kararı (kullanıcı):** uygulama Windows'un diliyle açılır: Türkçe Windows'ta Türkçe, başka her dilde İngilizce; bildirimler ve tepsi menüsü de. Ayarlar'da seçilen dil (`ks.locale`) kalır. Kodda `store.ts` `windowsLocale()` (`navigator.language`; WebView2 Windows'un görüntüleme diliyle başlar). Madde 38'deki "varsayılan İngilizce" bununla değişti.
 
 ## 4. Sistem nasıl kurulu (as-built)
 
