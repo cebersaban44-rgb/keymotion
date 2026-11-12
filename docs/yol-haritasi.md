@@ -1,14 +1,16 @@
 # Keymotion yol haritası: ilk sürüme kadar
 
-Durum: 2026-11-12 (sabah: Aşama 0–4 bitti; sıradaki 1b ya da 5). Kaynaklar: kullanıcının kararları, `docs/DURUM.md` madde 38, `docs/urun-eksikleri.md`.
+Durum: 2026-11-12 (sabah: Aşama 0–4 bitti; sıradaki Aşama 5). Kaynaklar: kullanıcının kararları, `docs/DURUM.md` madde 38 ve 42, `docs/urun-eksikleri.md`.
+
+**Sıra değişti (kullanıcının kararı, 2026-11-12):** kod imzalama başvurusu (eskiden 1b, şimdi Aşama 9) ilk sürümden sonraya kaydı. SignPath Foundation başvurmadan önce yayınlanmış bir sürüm, belgelenmiş bir indirme sayfası ve projenin kullanıldığına dair kanıt istiyor (Aşama 9). Aşama 7 de genişledi: GitHub sayfası, bizim belge notlarımız ve SignPath'in sayfa şartları tek aşamada, uçtan uca yapılacak.
 
 Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve kararları da burada. Bir aşama bitince "Durum" sütununu ve DURUM'daki "Kalınan yer" satırını güncelle.
 
 ## Sıralama ilkeleri
 
 1. **Önce uygulamanın temel davranışları, sonra paketleme.** Kurulum dosyası, Windows'la başlatma kaydı, kısayollar, imza ve güncelleyici; exe adına ve pencerenin yaşam döngüsüne bağlı. Bunlar sonradan değişirse kullanıcıların bilgisayarında eski kayıtlar kalır.
-2. **Dışarıdan bekleme süresi olan işler erken başlar ve paralel yürür.** Kod imzalama başvurusu onay bekler; başvuru Aşama 1'le birlikte yapılır.
-3. **Ekran görüntüleri ve belgeler en sona.** Arayüz kesinleşmeden çekilen görüntüler eskir.
+2. **Dışarıdan bekleme süresi olan işler, şartları sağlanır sağlanmaz başlar.** Kod imzalama başvurusu yayınlanmış bir sürüm ve kullanım kanıtı ister; bu yüzden ilk sürümden sonra yapılır (Aşama 9). İmza beklenirken hiçbir iş durmaz: kurulum dosyası, sürüm hattı ve belgeler imzadan bağımsızdır.
+3. **Ekran görüntüleri ve belgeler sona yakın.** Arayüz kesinleşmeden çekilen görüntüler eskir. Belgeler (Aşama 7) kurulum dosyası ve sürüm hattı hazır olunca yazılır, çünkü kurulum ve indirme adımlarını anlatırlar.
 4. **Klavyeye yazan her deneme önce kullanıcıya sorulur.** Ne yazılacağı kısaca söylenir.
 5. **Her aşama aynı biçimde biter:**
    - denetimler: cargo fmt/clippy/test, tsc, ESLint, `tools/check-*.mjs`;
@@ -23,14 +25,14 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 |---|---|---|---|---|
 | 0 | Açık işleri kapat (lint/mock yardımcısı, PR #58) | — | — | Bitti (PR #58, #59) |
 | 1 | Rust paket ve exe adı `keymotion` | 0 | Onay (öneri: evet) | Bitti (PR #60) |
-| 1b | Kod imzalama başvurusu (SignPath Foundation) | — | Başvuruyu kullanıcı yapar | Başlatılacak |
 | 2 | Tepsi ve arka plan | 1 | Karar verildi: tepsi | Bitti (PR #61): kullanıcı 1–8, ben 9–13 denedik |
 | 3 | Keymotion açılış animasyonu | — (2 ile paralel olabilir) | Önizlemeye onay | Bitti (PR #62; kullanıcı A'yı, yazılı seçti) |
 | 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bitti (PR #63); GitHub ayarları kullanıcı onayıyla açıldı |
-| 5 | Kurulum dosyası (NSIS) ve imza | 1, 2, 1b | Kurulum ayrıntılarına onay | Bekliyor |
-| 6 | Sürüm hattı ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Bekliyor |
-| 7 | GitHub sayfası ve belgeler (EN varsayılan + TR) | 2, 3, 4 (arayüz kesin) | — | Bekliyor |
-| 8 | Son denemeler ve ilk sürüm 0.1.0 | hepsi | Elle denemeler; `main`'e birleştirme onayı | Bekliyor |
+| 5 | Kurulum dosyası (NSIS), imzasız | 1, 2 | Kurulum ayrıntılarına onay | Sırada |
+| 6 | Sürüm hattı (GitHub Actions) ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Bekliyor |
+| 7 | GitHub sayfası ve bütün belgeler, SignPath'in sayfa şartları dahil | 5, 6 (kurulum ve indirme adımları belli) | Belge yapısına ve görünümüne onay (önce önizleme) | Bekliyor |
+| 8 | Son denemeler ve ilk sürüm 0.1.0 (imzasız) | hepsi | Elle denemeler; `main`'e birleştirme onayı | Bekliyor |
+| 9 | Kod imzalama: SignPath Foundation başvurusu ve imzalı sürüm (eskiden 1b) | 8 ve kullanım kanıtı | Başvuruyu kullanıcı yapar; formu birlikte doldururuz | İlk sürümden sonra |
 
 ## Aşama 0: açık işleri kapat
 
@@ -55,16 +57,6 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
   - `tools/cdp.mjs` notları, yardımcı brifleri.
 - **Değişmeyenler:** veri klasörleri kimliğe bağlı (`dev.keymotion`), taşıma gerekmez. `migrate.rs` dokunulmaz.
 - **Doğrulama:** temiz derleme (`cargo clean -p` ile, ders 50), uygulama açılıyor, ayarlar yerinde.
-
-## Aşama 1b: kod imzalama başvurusu (paralel, erken)
-
-- **Neden:** imzasız bir kurulum dosyasını Windows SmartScreen "tanınmayan uygulama" diye engeller. İndirenler korkar.
-- **Seçenek A (öneri): SignPath Foundation.** Açık kaynak projelere ücretsiz.
-  - Şartlar: herkese açık repo ✓, OSI uyumlu lisans (MIT OR Apache-2.0) ✓, düzenli sürüm.
-  - Başvuruyu kullanıcı yapar; formu birlikte doldururuz.
-  - Onay süreci sürebilir. Bu yüzden başvuru şimdi.
-- **Seçenek B: Azure Artifact Signing.** Ücretli; kişisel kimlik doğrulaması ister.
-- **Onay gelene kadar:** Aşama 5–6 imzasız deneme sürümleriyle ilerler. İmza en son hatta eklenir.
 
 ## Aşama 2: tepsi ve arka plan
 
@@ -318,7 +310,7 @@ Uygulama içi düğme bu formların adresini açacak, o yüzden formlar önce ya
   - Rust testleri: adres kodlama, çökme notu seçimi ve işareti, rapordaki "What happened", klavye ayrıntıları (yollar dışarıda), bilinmeyen klavye tanıma.
 - **Bilinen sınır:** kart yalnızca hoş geldiniz ekranında; desteklenen bir klavye de takılıysa desteklenmeyen için kart çıkmaz.
 
-## Aşama 5: kurulum dosyası (NSIS) ve imza
+## Aşama 5: kurulum dosyası (NSIS), imzasız
 
 - **Kurulum:**
   - kullanıcı başına kurulum, yönetici izni gerekmez;
@@ -331,16 +323,23 @@ Uygulama içi düğme bu formların adresini açacak, o yüzden formlar önce ya
   - bildirim kimliğini siler (`HKCU\Software\Classes\AppUserModelId\dev.keymotion`);
   - çalışan uygulamayı kapatır.
 - **Exe bilgileri:** ürün adı, açıklama, sürüm, simge.
-- **İmza:** onay gelince sürüm hattına eklenir (Aşama 1b).
+  - Ürün adı her dosyada "Keymotion", sürüm numarası uygulamada ve kurulum dosyasında aynı (SignPath şartı: ürün adı proje adı, sürüm her derlemede tutarlı).
+- **SignPath'in kurulumla ilgili şartları** (Aşama 9; şimdiden uyulur):
+  - kaldırma imkânı (Windows'un "Yüklü uygulamalar" listesinden);
+  - sisteme yapılan değişiklikler kullanıcıya söylenir: "Windows açılınca başlat" zaten Ayarlar'da, kullanıcının seçimi;
+  - uygulama veri toplamaz; gizlilik cümlesi belgelerde (Aşama 7).
+- **İmza:** bu aşamada yok. Kurulum dosyası imzasız çıkar; imza Aşama 9'da sürüm hattına eklenir, kurulum dosyasında değişecek bir şey olmaz.
 - **Doğrulama:**
   - temiz bir Windows kullanıcı hesabında ya da sanal makinede kur, aç, kaldır;
-  - SmartScreen davranışı: imzasız ve imzalı;
+  - SmartScreen davranışı (imzasız): "Windows bilgisayarınızı korudu" ekranı ve "Ek bilgi" → "Yine de çalıştır" yolu; sürüm notunda anlatılacak;
   - kurulu sürümde sahte arka uç ve geliştirici anahtarları olmamalı (Aşama 0).
 
 ## Aşama 6: sürüm hattı ve otomatik güncelleyici
 
 - **GitHub Actions:**
-  - `v*` etiketi geldiğinde Windows'ta derler ve imzalar (imza hazırsa);
+  - `v*` etiketi geldiğinde Windows'ta derler. Sürüm dosyası yalnızca burada üretilir, hiçbir zaman bilgisayardan yüklenmez: SignPath "kaynaktan doğrulanabilir, otomatik derleme" şartı koyuyor (Aşama 9);
+  - imza adımı için yer bırakılır; Aşama 9'da SignPath onaylayınca eklenir;
+  - kurulum dosyasının SHA-256 özeti sürüm sayfasına yazılır;
   - kurulum dosyasını ve `latest.json`'u GitHub Releases'e taslak olarak yükler;
   - sürüm notlarını `CHANGELOG.md`'den alır.
 - **Güncelleyici:** `tauri-plugin-updater`.
@@ -351,20 +350,55 @@ Uygulama içi düğme bu formların adresini açacak, o yüzden formlar önce ya
 - **Dallar:** sürüm için `develop` → `main` PR'ı açılır, kullanıcı onayıyla birleşir. Etiket `main`'de atılır.
 - **Deneme:** 0.1.0-rc → 0.1.0-rc.2 güncellemesi gerçekten iniyor ve kuruluyor mu?
 
-## Aşama 7: GitHub sayfası ve belgeler (H)
+## Aşama 7: GitHub sayfası ve bütün belgeler
 
-- **Dil düzeni:** `README.md` İngilizce ve varsayılan; `README.tr.md` Türkçe. İkisinin en üstünde "English | Türkçe" bağlantısı. Diğer belgelerde de aynı düzen.
-- **İçerik:**
-  - ne yapar;
-  - desteklenen klavye ve denenen ortam: Windows 11 (26200), klavye yazılımı 1.06, WebView2 sürümü;
-  - kurulum ve ilk kullanım;
-  - sayfa sayfa kullanım belgeleri;
-  - kurtarma rehberi (B9): fabrika animasyonunu geri yükleme, tuş atamalarını sıfırlama;
-  - AJAZZ'dan bağımsızlık ve lisans notu;
-  - katkı rehberi (`CONTRIBUTING.md`), davranış kuralları;
-  - Discussions ve sorun formlarına bağlantılar.
-- **Ekran görüntüleri:** TR/EN × açık/koyu. Arayüz kesinleştikten sonra, yani Aşama 2–4'ten sonra çekilir. Sahte cihazla çekilebilir.
-- **Destek haritası:** `docs/destek-haritasi.md` İngilizceye çevrilir.
+Kullanıcının kararı (2026-11-12): GitHub sayfası yalnızca imza şartları için yapılmaz. Bizim belgelerle ilgili bütün notlarımız ve isteklerimiz, SignPath'in şartları ve ürünün görünümü bu aşamada bir araya gelir. GitHub sayfası baştan sona, tek bir yapıyla düzenlenir; ürünün GitHub'daki profesyonel görünümü ve içeriği burada tamamlanır.
+
+Bu aşamada birleşen kaynaklar:
+- `docs/urun-eksikleri.md` bölüm H (kullanıcının notu, 2026-11-11): iki dilli sayfalar, ekran görüntüleri, kullanım belgeleri, topluluk dosyaları;
+- `docs/DURUM.md` §7 P3 "İlk sürümde belge ve GitHub gözden geçirmesi";
+- hafızadaki karar: belgeler geliştirme bitince, ürünün son haline göre topluca düzenlenir;
+- SignPath Foundation'ın sayfa şartları (Aşama 9).
+
+### 7.1 Önce yapı ve görünüm (onaydan sonra yazım)
+
+- **Örnekler:** büyük açık kaynak masaüstü uygulamalarının repoları ve belge siteleri incelenir; iyi örnekler kullanıcıya gösterilir. Kopyalanmaz, örnek alınır.
+- **İçindekiler:** GitHub sayfasının bölümleri ve sayfa listesi önce çıkarılır, kullanıcıyla kararlaştırılır.
+- **Biçim:** belgeler GitHub'da Markdown sayfaları olarak mı kalacak, yoksa ayrıca bir belge sitesi mi (GitHub Pages) olacak; aşamanın başında karar verilir. Görünüm önce sohbette etkileşimli önizlemeyle gösterilir (hafıza kuralı).
+- **Dil düzeni:** İngilizce varsayılan, Türkçe tam karşılığı. README için `README.md` ve `README.tr.md`; ikisinin en üstünde "English | Türkçe" bağlantısı. Diğer sayfalarda da aynı düzen.
+
+### 7.2 İçerik (bölümler, taslak)
+
+- **Tanıtım:** ne yapar, ekran görüntüleri, "son sürümü indir" bağlantısı, desteklenen klavye ve denenen ortam (Windows 11 26200, klavye yazılımı 1.06, WebView2 sürümü).
+- **Kurulum ve ilk açılış:** indirme, imzasız sürümde Windows uyarısını geçme ("Ek bilgi" → "Yine de çalıştır"), klavyeyi bağlama, ilk açılış.
+- **Kullanım:** sayfa sayfa anlatım, iki dilde, ekran görüntüleriyle: Genel bakış, Işıklar, Tuş atama, Makrolar, Ekran, Profiller, Bağlantı, Odak zamanlayıcısı, Sistem göstergeleri, Hatırlatıcılar, Takvim, Ayarlar.
+- **Özellikler ve bağlantı modları tablosu:** `docs/destek-haritasi.md`'den; İngilizceye çevrilir.
+- **Kurtarma rehberi (B9):** fabrika animasyonunu geri yükleme, tuş atamalarını sıfırlama, "bir şey ters giderse".
+- **Sık sorulanlar.**
+- **Gizlilik:** `PRIVACY.md` ve `docs/gizlilik.md`; SignPath'in istediği cümle: "This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it." (takvimler ve güncelleme denetimi kullanıcının isteğiyle).
+- **Güvenlik:** `SECURITY.md` (Aşama 4'te yapıldı).
+- **Kod imzalama politikası (Code signing policy):** SignPath şartı. Ana sayfada ve indirme/sürüm sayfalarında bu adla bir bölüm ya da bağlantı. İçinde: "Free code signing provided by SignPath.io, certificate by SignPath Foundation", ekip rolleri (yazarlar, inceleyenler, onaylayanlar) ve kişiler. Sayfa bu aşamada hazırlanır; SignPath cümlesi onay gelince (Aşama 9) eklenir.
+- **Katkı:** `CONTRIBUTING.md` (iki dilde; PR'lar `develop`'a, denetimler, donanım testi kuralları), davranış kuralları, PR şablonu, etiketler (`bug`, `enhancement`, `keyboard support`, `needs-hardware-test`, `model:…`), sürüm kilometre taşları.
+- **Lisans ve haklar:** LICENSE-MIT ve LICENSE-APACHE, NOTICE (AJAZZ'dan bağımsızlık notu), üçüncü taraf lisansları.
+- **Topluluk:** Discussions ve sorun formlarına bağlantılar.
+- **Sürüm sayfası:** sürüm notu (CHANGELOG'dan), kurulum dosyası ve SHA-256, iki dilde kısa özet, "Code signing policy" bağlantısı.
+
+### 7.3 Ekran görüntüleri
+
+- TR/EN × açık/koyu. Arayüz kesinleştikten sonra çekilir. Sahte cihazla çekilebilir.
+
+### 7.4 Bütün `docs/` belgelerinin gözden geçirilmesi
+
+- Geliştirici belgeleri (`DURUM.md`, `gelistirme-akisi.md`, `mimari.md`, `donanim-dogrulama.md`, `teknik-analiz.md`, araştırmalar) güncelliği için okunur. Kullanıcıya yönelik sayfalarla geliştirici belgeleri ayrı yerlerde durur.
+- `gelistirme-akisi.md` işleyişi yeniden değerlendirilir (DURUM P3).
+
+### 7.5 SignPath şartlarının denetim listesi (Aşama 9'dan önce hepsi ✓ olmalı)
+
+- [ ] Proje adı aranınca bulunuyor: GitHub sayfası açıklaması, konular (topics) ve ana sayfa adresi dolu.
+- [ ] İndirme sayfası programın ne yaptığını anlatıyor ("Documented").
+- [ ] Ana sayfada ve sürüm sayfasında "Code signing policy" bölümü ya da bağlantısı.
+- [ ] Gizlilik cümlesi ya da gizlilik politikası bağlantısı.
+- [ ] Ekip rolleri yazılı.
 
 ## Aşama 8: son denemeler ve ilk sürüm (0.1.0)
 
@@ -377,7 +411,39 @@ Uygulama içi düğme bu formların adresini açacak, o yüzden formlar önce ya
   - hatırlatıcı Windows bildiriminin ekranda göründüğü.
 - **Kurulu sürümle uçtan uca deneme:** temiz kurulum, güncelleme akışı, kaldırma.
 - **Yayın:** `CHANGELOG.md` ve sürüm notları. `main`'e birleştirme kullanıcı onayıyla. Sonra etiket ve yayın.
+- **İmzasız ilk sürüm:** sürüm notu Windows uyarısını ve "Ek bilgi" → "Yine de çalıştır" yolunu açıkça anlatır; imzanın ileride geleceği yazılır.
+- **Kullanım kanıtı (Aşama 9 için):** sürümden sonra duyuru. Nerede paylaşılacağına (klavye toplulukları, forumlar) kullanıcı karar verir. İndirme sayısı, yıldızlar ve tartışmalar SignPath formundaki "Reputation" alanını doldurur.
 - **İsteğe bağlı:** sahte cihazla Playwright uçtan uca testlerini CI'a eklemek (DURUM P3).
+
+## Aşama 9: kod imzalama (SignPath Foundation), ilk sürümden sonra
+
+Eskiden "Aşama 1b: erken başvuru" idi. 2026-11-12'de SignPath'in şartları ve başvuru formu okununca ilk sürümden sonraya alındı (kullanıcının kararı).
+
+- **Neden imza:** imzasız bir kurulum dosyasını Windows SmartScreen "Windows bilgisayarınızı korudu", "Yayımcı: Bilinmiyor" ekranıyla durdurur; indirenler korkar. İmza "Bilinmiyor" yazısını kaldırır ve itibar biriktirir; yeni bir yayımcıda ilk zamanlarda uyarı yine çıkabilir, indirme arttıkça kalkar. İmzasız dosyada itibar hiç birikmez.
+- **Seçenek A (öneri): SignPath Foundation.** Açık kaynak projelere ücretsiz.
+  - **Yayımcı:** sertifika SignPath Foundation adına çıkar; Windows yayımcı olarak "SignPath Foundation" gösterir, kullanıcının adını değil.
+  - **Başvuru formunun alanları** (signpath.org/apply, 2026-11-12'de okundu):
+    - zorunlu: proje adı ("Google'da aranınca projeyi açıkça bulmalı"), repo adresi, ana sayfa adresi (repo sayfası olabilir), kısa tanıtım cümlesi, kategori, açıklama, **itibar** (projenin kullanıldığını gösteren bağlantılar: haber, blog, indirme istatistiği, GitHub istatistikleri, topluluk tartışmaları), otomatik derleme sistemi, ad, soyad, e-posta, SignPath'i nereden duyduğu;
+    - isteğe bağlı: indirme sayfası (SignPath kullandığını yazmalı), gizlilik politikası (veri toplayan programlar için zorunlu), Wikipedia sayfası, yöneten kuruluş türü, şirket.
+  - **Şartlar** (signpath.org/terms):
+    - OSI onaylı lisans, "ticari çift lisans olmadan". Bizim "MIT OR Apache-2.0" ticari değil, ikisi de açık kaynak; büyük olasılıkla uygun, başvururken teyit edilecek;
+    - etkin olarak geliştiriliyor; **imzalanacak biçimde zaten yayınlanmış**; indirme sayfasında işlevi anlatılmış;
+    - SignPath başvuruda projenin itibarını ve kontrolünü denetler; programlar için "doğrulanabilir bir itibar" ister. Kabul onların takdirinde;
+    - ekipteki herkes GitHub'da ve SignPath'te iki aşamalı doğrulama kullanır;
+    - sürüm dosyası kaynaktan doğrulanabilir biçimde, otomatik derlenir (Aşama 6); her imza için elle onay;
+    - ana sayfada "Code signing policy" (Aşama 7.2);
+    - kaldırma imkânı, sistem değişikliklerinin duyurulması, ürün adı ve sürüm tutarlılığı (Aşama 5);
+    - SignPath Foundation imzalanan yazılımdan sorumluluk kabul etmez; ücretsiz abonelik bildirimsiz durdurulabilir.
+  - **Onay süresi:** hiçbir yerde yazmıyor.
+- **Başvurudan önce** (hepsi ✓ olmalı):
+  - [ ] Aşama 8: imzasız 0.1.0 GitHub Releases'te;
+  - [ ] Aşama 7.5'teki denetim listesi;
+  - [ ] Aşama 6: sürüm GitHub Actions'ta derleniyor;
+  - [ ] kullanım kanıtı: indirmeler, yıldızlar, bir duyuru ya da tartışma;
+  - [ ] kullanıcının GitHub hesabında iki aşamalı doğrulama açık (kullanıcı bakacak; `gh` bunu gösteremedi).
+- **Başvuru:** kullanıcı yapar, formu birlikte doldururuz.
+- **Onaydan sonra:** sürüm hattına SignPath imza adımı (GitHub Actions entegrasyonu) ve her sürüm için elle onay; "Code signing policy" sayfasına SignPath cümlesi; bir sonraki sürüm imzalı çıkar.
+- **Seçenek B: Microsoft'un imza hizmeti (Azure Artifact Signing).** Ücretli (aylık), kişisel kimlik doğrulaması ister, yayımcı olarak kişinin adını gösterir. Bireysel geliştiricilere yalnızca bazı ülkelerde açık olabilir; Türkiye'nin durumu gerekirse kontrol edilecek. SignPath reddederse ya da çok uzarsa ele alınır.
 
 ## Sonraya bırakılanlar (ilk sürümden sonra)
 
@@ -392,7 +458,9 @@ Uygulama içi düğme bu formların adresini açacak, o yüzden formlar önce ya
 | Aşama | Soru | Öneri |
 |---|---|---|
 | 1 | Rust paket ve exe adı `keymotion` olsun mu? | Evet |
-| 1b | SignPath Foundation başvurusu | Kullanıcı başvurur, formu birlikte dolduralım |
+| 9 | SignPath Foundation başvurusu (ilk sürümden sonra) | Kullanıcı başvurur, formu birlikte dolduralım |
+| 7 | GitHub sayfasının yapısı, biçimi (yalnız repo sayfaları mı, ayrıca belge sitesi mi) ve görünümü | Aşamanın başında önizlemeyle |
+| 8 | İlk sürümün nerede duyurulacağı (kullanım kanıtı için) | Kullanıcı seçer |
 | 4 | GitHub'da özel güvenlik bildirimi açılsın mı? | Evet (açıldı, 2026-11-12) |
 | 5 | Kurulum ayrıntıları (kısayollar, kaldırırken ayarlar) | Yukarıdaki varsayılanlar |
 | 6 | Güncelleme anahtarı GitHub Secrets'a konulsun mu? | Evet |

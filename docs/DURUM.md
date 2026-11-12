@@ -846,6 +846,23 @@ AJAZZ AK980 PRO klavyesinin (sonra benzer modellerin) **her özelliğini** kontr
     - **Kodda:** `components/Reporting.tsx`, `lib/report.ts`; Rust `notify::issue_form_url`, `logging::unseen_crash`, `diagnostics::keyboard_details`, `kb_core::unknown_keyboards`, `Hid::report_descriptor_at`; komutlar `open_issue`, `crash_pending`, `crash_seen`, `unsupported_keyboards`, `unsupported_report`.
     - **GitHub ayarları (kullanıcı onayıyla):** özel güvenlik bildirimi açıldı, "keyboard support" etiketi oluşturuldu.
 
+42. **Yol haritası yeniden sıralandı (2026-11-12, sabah; kullanıcının kararı).** Ayrıntı: `docs/yol-haritasi.md` başı, Aşama 7 ve 9.
+    - **Neden:** SignPath Foundation'ın şartları ve başvuru formu okundu (signpath.org/terms ve /apply). Başvurmadan önce şunlar isteniyor:
+      - imzalanacak biçimde yayınlanmış bir sürüm;
+      - işlevi anlatan bir indirme sayfası;
+      - ana sayfada "Code signing policy";
+      - otomatik ve doğrulanabilir derleme;
+      - ekipteki herkeste iki aşamalı doğrulama;
+      - formda zorunlu "itibar" alanı (indirme istatistiği, tartışmalar, haber).
+      Bugün repo yeni, sürüm ve yıldız yok; erken başvuru büyük olasılıkla reddedilirdi.
+    - **Yeni sıra:** 5 kurulum dosyası (imzasız) → 6 sürüm hattı → 7 GitHub sayfası ve bütün belgeler → 8 ilk sürüm 0.1.0 (imzasız) → 9 SignPath başvurusu ve imzalı sürüm (eskiden 1b).
+    - **Aşama 7 genişledi (kullanıcının isteği):** GitHub sayfası yalnızca imza şartları için yapılmayacak.
+      - Bizim belge notlarımız (`urun-eksikleri.md` bölüm H, bu belgenin §7 P3 "İlk sürümde belge ve GitHub gözden geçirmesi") ve SignPath'in sayfa şartları tek aşamada birleşti.
+      - GitHub sayfası uçtan uca, tek bir yapıyla, profesyonel görünüm ve içerikle düzenlenecek.
+      - Önce yapı ve görünüm önizlemeyle kararlaştırılacak, sonra yazılacak.
+    - **Bilinen:** sertifika SignPath Foundation adına çıkar, Windows yayımcı olarak onları gösterir. "MIT OR Apache-2.0" ticari çift lisans değil; başvururken teyit edilecek. Onay süresi yazılı değil.
+    - **Ders 60:** kullanıcı sesle yazıyor; "GitHub'a" "kitaba" diye çıkmıştı ve ben ayrı bir "kitap" varsaydım. Bağlama uymayan bir kelimenin üstüne plan kurmadan önce sor.
+
 ## 4. Sistem nasıl kurulu (as-built)
 
 ```
@@ -1044,6 +1061,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
 | 56 | Tepsiden sonra `close-keymotion.ps1` uygulamayı kapatmıyor (2026-11-12) | Pencerenin X'i (WM_CLOSE) artık pencereyi gizliyor; uygulama tepside kalıyor | Denemede uygulamayı kapatmak için CDP ile `window.__TAURI_INTERNALS__.invoke('close_window')` (pencereyi yok eder, uygulama çıkar). WM_CLOSE gizlemeyi denemek içindir. Tepsi menüsünü otomatik denemek fareyi oynatıyor: kullanıcı ekrandayken yapma, senaryoyu ona ver. Hata ayıklama portuyla açılan kopyayı işin sonunda kapat, uygulamayı portsuz yeniden aç. |
 | 57 | Kullanıcı "ikinci açılış İngilizce ve tepsi simgesiz" dedi (2026-11-12) | Günlükte o saatte açılış yoktu. Açılan, Claude uygulamasının önizleme panelindeki tarayıcı kopyasıydı: `localStorage` boş olduğu için İngilizce, arka ucu olmadığı için tepsisi yok | Böyle bir gözlemde önce günlükte `app started` satırına ve `Get-Process keymotion`'a bak. Kullanıcıya uygulamayı `target\debug\keymotion.exe` ile açmasını söyle; önizleme paneli yalnızca tasarım içindir. |
 | 58 | Geliştirme sürümünün bildirimleri "Windows PowerShell" adı ve simgesiyle çıktı (2026-11-12) | Bildirim, uygulama kimliğinin adını gösterir. Kısayolu olmayan geliştirme sürümü PowerShell'in kimliğini ödünç alıyordu | Uygulama açılışta kendi kimliğini `HKCU\Software\Classes\AppUserModelId\<kimlik>` altına `DisplayName` ve `IconUri` ile kaydediyor; kısayol gerekmez. Doğrulama: `ToastNotificationManager.History.GetHistory('dev.keymotion')`. Kaldırıcı bu anahtarı silmeli (Aşama 5). |
+| 60 | "Kitap" diye bir belge seti varsaydım (2026-11-12) | Kullanıcı sesle yazıyor; "GitHub'a" ve "GitHub'ı" "kitaba", "kitabı" diye çıktı. Ben bunu ayrı bir "kitap" (belge seti) sanıp belgelere yazdım | Bağlama uymayan, daha önce hiç geçmemiş bir kelime görünce üstüne plan ya da belge kurmadan kısaca sor: "X derken Y'yi mi kastettin?". Ses tanıma hataları: "kitap" → GitHub, "Sign Patch" → SignPath. |
 | 59 | Kütüphaneye eklenen Keymotion animasyonu "yerleşik" yerine sıradan animasyon olarak kaydoldu (2026-11-12) | Kod yazılırken eski sürüm açıktı. Arayüzü Vite'tan anında aldı (ders 25) ve yeni öğe türünü (`x-kind: keymotion`) eski arka uca gönderdi; eski arka uç türü tanımadı | Arka uçla birlikte değişen bir arayüz özelliğini yazarken açık uygulamayı önce kapat, ya da yeni sürümü derleyip yeniden başlatana kadar o sayfaya dokunma. Kalıcı veri bırakan yollarda eski kaydı yeni türe dönüştüren yol düşün (burada `add`, sıradan kopyayı `keymotion` yapıyor). |
 
 ## 7. Kalan işler (öncelik sırasıyla)
@@ -1093,7 +1111,7 @@ Bu yöntemle düğmeleri tıklayıp ayna ve renk değerlerini okuyabilir, Rust l
           - **Destek haritası yapıldı** (madde 37, `docs/destek-haritasi.md`): desteklenen ve eklenebilecek klavyeler, bağlantı modlarına göre özellikler, Bağlantı sayfası, 2.4G'de yanlış açık görünen sayfalar düzeltildi, HID şekil denetimi, arayüz metin borçları kapandı, USB'de pil araştırması (yüzde yok; Fn ışığından "şarj oluyor" / "şarj tamamlandı").
           - **İlk sürüm öncesi eksik listesi** (2026-11-11, `docs/urun-eksikleri.md`): iki bağımsız inceleme (tasarım ve kullanım; ürün hazırlığı) ve bu oturumun gözlemleri, ciddi olanlar kodda doğrulandı. Sıra: kimlik (isim, logo, uygulama kimliği) → güven → görsel ve içerik turu → veri ve tanılama → ürünleştirme ve repo. İsim adayları ve logo konseptleri Claude Design tuvalinde (Keypane önerildi).
           - Kullanıcı isim ve logoyu seçti (Keymotion, E konsepti). Ardından eksik listesinin tamamı başladı (madde 38).
-          - **Kalınan yer (2026-11-12, sabah): Aşama 0–4 bitti** (PR #58–#62 ve Aşama 4 PR'ı; madde 39–41). Sıradaki aday: **Aşama 1b** (SignPath başvurusu; kullanıcı yapar, formu birlikte doldururuz) ya da **Aşama 5** (NSIS kurulum dosyası; 1b onayı gelmeden imzasız ilerleyebilir). Durum: uygulama `target/debug/keymotion.exe` olarak hata ayıklama portu kapalı çalışıyor; arayüz ana klasörden ("ui", 1420) geliyor. Kullanıcının verisinde: kütüphanede yerleşik "Keymotion animasyonu"; `background.json` `noticeShown: true`; Windows'la başlatma kaydı yok; günlükte "cdp test" satırları (deneme), çökme notu yok. Kurallar: arayüz metinleri teknik olmayan dille (hafıza); tasarım önce sohbette önizleme; klavyeye yazan her deneme önce sorulur; kullanıcı ekrandayken tarayıcıda sayfa açma da dahil ekranına dokunmadan önce düşün. Kullanıcıyla klavyede denenecekler: Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri (desteklenmeyen klavye diye görünmemeli).
+          - **Kalınan yer (2026-11-12, sabah, sıra değişti): Aşama 0–4 bitti** (PR #58–#64; madde 39–42). **Yeni sıra (kullanıcının kararı, madde 42):** 5 kurulum dosyası (imzasız) → 6 sürüm hattı ve güncelleyici → 7 GitHub sayfası ve bütün belgeler (SignPath'in sayfa şartları dahil) → 8 ilk sürüm 0.1.0 (imzasız) → 9 SignPath başvurusu ve imzalı sürüm. **Sıradaki: Aşama 5.** Durum: uygulama `target/debug/keymotion.exe` olarak hata ayıklama portu kapalı çalışıyor; arayüz ana klasörden ("ui", 1420) geliyor. Kullanıcının verisinde: kütüphanede yerleşik "Keymotion animasyonu"; `background.json` `noticeShown: true`; Windows'la başlatma kaydı yok; günlükte "cdp test" satırları (deneme), çökme notu yok. Kurallar: arayüz metinleri teknik olmayan dille (hafıza); tasarım önce sohbette önizleme; klavyeye yazan her deneme önce sorulur; kullanıcı ekrandayken tarayıcıda sayfa açma da dahil ekranına dokunmadan önce düşün; kullanıcı sesle yazıyor, uymayan bir kelime görünce üstüne kurmadan sor (hafıza). Kullanıcıyla klavyede denenecekler: Bluetooth kanal kısayolları (Fn+Q/W/E); BT modunda kablo takılıyken USB arayüzleri (desteklenmeyen klavye diye görünmemeli).
           - Sonraya: oyun oturumu (ön plandaki uygulama: açılınca kart, kapanınca özet). Ses spektrumu (WASAPI loopback) ayrı ve daha büyük bir iş. Her yeni kaynakta önce etkileşimli önizleme ve "bitince ne olur" kuralı.
         - E3 (panelin gerçek kare hızı) hâlâ ölçülmedi. Saat paketinin flash'a yazıp yazmadığı da (odak kronometresi için).
         - Uygulama kapanınca ekranda son canlı kart kalıyor. Kapanışta da geri yükleme istenirse ayrıca tasarlanmalı: yükleme sürerken pencere kapanmamalı.
@@ -1329,7 +1347,7 @@ Kullanıcının fikirleri. Şimdi yapılmayacak; uygulamanın bütün özellikle
 - [x] CI (GitHub Actions, Windows): arayüz typecheck ve derleme, fmt, clippy, testler, bindings kontrolü; iki dalda birleştirme şartı. Ayrıntı: `docs/gelistirme-akisi.md`.
 - [ ] Mock modda Playwright e2e testlerini CI'a ekle.
 - [ ] Erişilebilirlik denetimi, TR/EN tamlığı, açık tema ince ayarı, uygulama adı ve logo kararı.
-- [ ] **İlk sürümde belge ve GitHub gözden geçirmesi** (kullanıcıyla kararlaştırıldı: belgeler geliştirme bitince, ürünün son haline göre topluca düzenlenecek):
+- [ ] **İlk sürümde belge ve GitHub gözden geçirmesi** (kullanıcıyla kararlaştırıldı: belgeler geliştirme bitince, ürünün son haline göre topluca düzenlenecek). **2026-11-12:** bu liste `docs/yol-haritasi.md` Aşama 7'ye taşındı ve SignPath şartlarıyla birleşti; yapılacaklar orada izlenir:
   - README: en üstte "Son sürümü indir" (Releases) bağlantısı, ekran görüntüleri, desteklenen modeller.
   - Lisans (LICENSE), `CONTRIBUTING.md` (PR'lar `develop`'a; kontroller), `SECURITY.md` (güvenlik açıkları özel kanaldan), davranış kuralları, kaynak teşekkürleri.
   - Issue şablonları: hata bildiriminde uygulama sürümü, Windows sürümü, klavye modeli ve firmware, bağlantı modu. Ayrıca PR şablonu.
