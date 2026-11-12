@@ -10,7 +10,7 @@
 //              and says what was done.
 // "Vazgeç" leaves the flow at any step before the upload.
 
-import { AlertTriangle, Check, Download, Info, Library, Loader2, Pencil, Play, Upload, Usb, X } from "lucide-react";
+import { AlertTriangle, Check, Download, ImageOff, Info, Library, Loader2, Pencil, Play, Upload, Usb, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -214,6 +214,80 @@ export function Thumb({ item }: { item: ScreenItem }) {
     <FramePlayer frames={[f]} delaysMs={[100]} className="h-[68px] w-[120px] shrink-0 rounded-md bg-black" />
   ) : (
     <div className="h-[68px] w-[120px] shrink-0 rounded-md bg-black" />
+  );
+}
+
+/**
+ * What the keyboard's GIF page shows, as far as the app knows, with the
+ * frames to play: the Screen page and the Overview draw the same picture.
+ * `caption` names it in a few words.
+ */
+export function useGifPage() {
+  const t = useT();
+  const name = useItemName();
+  const state = useScreen((s) => s.state);
+  const shownId = state?.shown ?? null;
+  const factory = state?.items.find((i) => i.kind === "factory") ?? null;
+  const liveLast = useLive((s) => s.state?.last ?? null);
+  // A card waiting for the budget or the cable is not on the keyboard yet:
+  // said apart from what the page shows (K8).
+  const waiting = useLive((s) => (s.state?.enabled ? (s.state.pending ?? null) : null));
+  const incomplete = !!state?.incomplete;
+  const showsLive = shownId === "live";
+  const shown = state?.items.find((i) => i.id === shownId) ?? null;
+  // A page holding part of an upload shows nothing we could draw.
+  const item = incomplete ? null : (shown ?? factory);
+  // Reload by id only: the item object is new whenever the screen state is.
+  const itemId = item?.id;
+  const liveAt = liveLast?.atMs;
+  const [frames, setFrames] = useState<{ frames: Uint16Array[]; delaysMs: number[] } | null>(null);
+
+  useEffect(() => {
+    setFrames(null);
+    let live = true;
+    // A live card changes under the same id: read it fresh each time.
+    const load = showsLive ? itemData("live").then(fromBlob) : itemId !== undefined ? loadFrames(itemId) : null;
+    load?.then((f) => live && setFrames(f), console.error);
+    return () => {
+      live = false;
+    };
+  }, [itemId, showsLive, liveAt]);
+
+  const caption = incomplete
+    ? t("sc.page.gif.incomplete")
+    : showsLive
+      ? `${t("sc.page.gif.live")}: ${liveLast?.name ?? ""}`
+      : shown
+        ? name(shown)
+        : factory
+          ? t("sc.page.gif.maybeFactory")
+          : t("sc.page.gif.unknown");
+  return { frames, item, shown, showsLive, incomplete, waiting, caption };
+}
+
+/** The picture on the keyboard's GIF page (inside a 240×135 frame). */
+export function GifPicture({ gif }: { gif: ReturnType<typeof useGifPage> }) {
+  const t = useT();
+  const { frames, item, shown, showsLive, incomplete } = gif;
+  if (frames)
+    return (
+      <FramePlayer
+        frames={frames.frames}
+        delaysMs={frames.delaysMs}
+        className={`h-full w-full ${shown || showsLive ? "" : "opacity-60"}`}
+      />
+    );
+  if (item || showsLive)
+    return (
+      <div className="flex h-full items-center justify-center text-ink-3">
+        <Loader2 size={16} className="animate-spin" />
+      </div>
+    );
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-[12px] text-ink-3" data-gif-empty>
+      {incomplete ? <AlertTriangle size={18} aria-hidden /> : <ImageOff size={18} aria-hidden />}
+      {t(incomplete ? "sc.page.gif.incomplete" : "sc.page.gif.empty")}
+    </div>
   );
 }
 
