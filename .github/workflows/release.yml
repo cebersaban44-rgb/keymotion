@@ -40,8 +40,36 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
+  # Publishing a draft made from a branch ("Run workflow") creates its tag,
+  # and the tag starts this workflow again. That release is already out, so
+  # there is nothing to build: the run ends here, green (release test,
+  # 2026-11-12: it failed instead, as the tag had no CHANGELOG section).
+  published:
+    name: Is the tag's release already published?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          skip=false
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            draft="$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft 2>/dev/null || true)"
+            if [ "$draft" = false ]; then
+              skip=true
+              echo "Release $GITHUB_REF_NAME is already published (its draft made the tag): nothing to build." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+
   release:
     name: Build and draft the release
+    needs: published
+    if: needs.published.outputs.skip != 'true'
     runs-on: windows-latest
     timeout-minutes: 60
     defaults:
