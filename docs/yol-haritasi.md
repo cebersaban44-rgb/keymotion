@@ -29,7 +29,7 @@ Bu belge kalan işlerin **sırasını** tutar. Her aşamanın ayrıntısı ve ka
 | 3 | Keymotion açılış animasyonu | — (2 ile paralel olabilir) | Önizlemeye onay | Bitti (PR #62; kullanıcı A'yı, yazılı seçti) |
 | 4 | Sorun bildirme ve GitHub sorun formları | 2 | Özel güvenlik bildirimi ayarı için onay | Bitti (PR #63); GitHub ayarları kullanıcı onayıyla açıldı |
 | 5 | Kurulum dosyası (NSIS), imzasız | 1, 2 | Kurulum ayrıntılarına onay | Yapıldı (PR'da); kullanıcının elle denemesi ve kurulum görselleri bekliyor |
-| 5c | Kurulum denemesi bulguları (K1–K11): simge ve görseller, GitHub bağlantıları, hatırlatıcı kartı, ekran durumu, odak zamanlayıcısı, bildirim, Genel bakış | 5 | K2, K7, K11 için önizlemeden seçim (K9 kararı verildi: her açılışta bir kez) | Sırada (sıkıştırmadan sonra) |
+| 5c | Kurulum denemesi bulguları (K1–K11): simge ve görseller, GitHub bağlantıları, hatırlatıcı kartı, ekran durumu, odak zamanlayıcısı, bildirim, Genel bakış | 5 | K2, K7, K11 için önizlemeden seçim (K9 kararı verildi: her açılışta bir kez) | Sürüyor: K1, K3, K4, K5, K8, K9, K10 yapıldı; K2, K7, K11 önizlemede |
 | 6 | Sürüm hattı (GitHub Actions) ve otomatik güncelleyici | 5 | Güncelleme anahtarını GitHub Secrets'a koyma onayı | Bekliyor |
 | 6b | Uygulama penceresinin açılış animasyonu | 5 (kurulu sürümle ölçülür) | Önizlemeden tasarım seçimi | Planlandı (kullanıcının kararı, 2026-11-12) |
 | 7 | GitHub sayfası ve bütün belgeler, SignPath'in sayfa şartları dahil | 5, 6 (kurulum ve indirme adımları belli) | Belge yapısına ve görünümüne onay (önce önizleme) | Bekliyor |
@@ -383,6 +383,13 @@ Kullanıcı kurulum dosyasını Explorer'dan, yani Claude'un kutusunun dışınd
 - hatırlatıcının sesi ve ışık dalgası geliyor;
 - Sorun bildir penceresi çalışıyor, açılan sayfa hariç (K4).
 
+**Durum (2026-11-12, öğlen):**
+- **Yapıldı, PR #72:** K1 (kurulum simgesi), K3 (kendi Türkçe ve İngilizce kurulum metinlerimiz, `windows/lang/*.nsh`), K4 (sayfalar `ShellExecuteW` ile tarayıcıda açılıyor), K9 (bildirim her açılışta bir kez). NSIS betiği `makensis` ile derlenerek denetlendi. Kurulum sayfaları ve tarayıcının açılması sondaki derlemede, kutunun dışında denenecek.
+- **Denetlendi, K10:** Tauri'nin oluşturduğu betikte kutu işaretsiz oluşturuluyor (`BM_SETCHECK` yok). Ekran görüntüsündeki işaret kullanıcının tıklaması; gerçek AppData'daki `dev.keymotion` klasörleri bu yüzden silinmiş (denetlendi). Kutunun metni artık "Ayarlarımı ve kayıtlarımı da sil".
+- **Yapıldı, PR #73:** K5 ve K8 (ayrıntılar maddelerin altında). Tarayıcı önizlemesinde denendi; klavyede gerçek yüklemeyle denenmedi (her yükleme flaşa yazar, kullanıcının denemesine kaldı).
+- **K6:** hata değil; K7 ile ortadan kalkacak.
+- **Önizleme sohbette, seçim bekleniyor:** K2 (üç görsel seçeneği: sade, tuş deseni, ışık dalgası), K7 (blokları sürüklenebilir sıra, hazır sıralar, tekrar), K11 (iki yerleşim: kutulu kontrol paneli, günün akışı).
+
 ### Görünüm ve marka
 
 - **K1. Kurulum dosyasının simgesi NSIS'in hazır simgesi.**
@@ -424,12 +431,21 @@ Kullanıcı kurulum dosyasını Explorer'dan, yani Claude'un kutusunun dışınd
     - atlanan kartın sebebi arayüzde sade dille görünsün (örnek: "Ekran kartı gönderilmedi: kısa sürede çok görsel gönderildi, birazdan yeniden denenecek");
     - "Dene" düğmesinin neyi yapıp yapmadığı açık olsun;
     - sonradan karta çevrilen hatırlatıcı da denensin.
+  - **Bulunan sebep ve yapılan (PR #73):**
+    - Bekleyen odak kartı her yeni yükleme hakkını gelir gelmez (50 ms içinde) alıyordu; beklemeyen hatırlatıcı kartı her seferinde boş bütçe buluyordu. Artık odak zamanlayıcısının ve şarkının kartları son hakkı hatırlatıcıya ve toplantıya bırakıyor (`live.rs` `keep_for`).
+    - Satırdaki "Dene" yalnızca ışığı ve sesi deniyordu; kart, düzenleyicinin 3. adımındaki ayrı düğmedeydi. Artık satırdaki "Dene" hatırlatıcının yaptığını yapıyor: ışık, ses ve kart açıksa kart (elle yükleme gibi sayılır, 1 dakika sonra kendi görsel döner) ve sonucu söylüyor.
+    - Atlanan kartın sebebi satırın altında: kartlar kapalı, canlı ekran kapalı, USB kablosu yok, toplantı kartı var ya da günlük sınır dolmuş. Sınır doluyken sayfa ayrıca uyarıyor. Kablo yokken kart artık denenmiyor (önceden sessizce düşüyordu).
+    - Sonradan karta çevrilen hatırlatıcı: kayıt doğru (günlükte `card=true`); sorun bütçeydi.
 - **K8. Ekran sayfası, klavyede olmayan kartı klavyedeymiş gibi gösteriyor.**
   - Görülen: odak zamanlayıcısında aşamalar art arda değişti, yükleme hakkı doldu. Uygulama "şimdi gönder?" diye sordu; kullanıcı klavyeyi yıpratmamak için göndermedi. Klavyede eski animasyon kaldı, ama Ekran sayfasında uzun molanın kartı güncel görünüyor.
   - Yapılacak:
     - Ekran sayfası ve Genel bakış'taki Ekran kartı klavyede gerçekten olanı göstersin;
     - bekleyen (gönderilmemiş) kart ayrıca "bekliyor" diye görünsün (`live.rs` `pending`);
     - "Gönderme" denince bekleyen kart düşsün ve sayfalar eski görseli göstersin.
+  - **Bulunan sebep ve yapılan (PR #73):**
+    - Kendi görsele dönüş `last.atMs`'yi değiştirmiyor; arayüz Ekran verisini yalnızca o değişince yeniden okuyordu, bu yüzden son canlı kartı göstermeye devam ediyordu. Artık her yükleme bitince yeniden okuyor.
+    - Bekleyen kart Ekran sayfasında ve Genel bakış'ta ayrı bir satırda ("Sırada bekleyen kart: …, henüz klavyeye gönderilmedi").
+    - "Şimdi gönder"in yanında "Gönderme" düğmesi: bekleyen kart düşer, klavyede şu anki görsel kalır (`live_drop_waiting`). Odak zamanlayıcısının uyarısındaki "önceki kart ekranda kalır" düzeltildi.
 - **K10. Kaldırma penceresinde "Uygulama verilerini sil" kutusu işaretli görünüyor.**
   - Varsayılanı işaretsiz olmalı (Tauri şablonu). Kullanıcı işaretlediyse gerçek AppData'daki deneme verisi silindi; asıl veri Claude'un kutusunda, etkilenmedi.
   - Yapılacak: kutunun dışında varsayılan durumu doğrulamak.
