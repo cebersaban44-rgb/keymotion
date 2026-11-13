@@ -65,18 +65,18 @@ Klavyenin kalıcı belleğine yazan komutlar `--yes` olmadan çalışmaz. `kb` k
 
 | Dal | İçeriği |
 |---|---|
-| `main` | Yayımlanmış kod. `main`'e yapılan her birleştirme bir sürümdür ve `vX.Y.Z` etiketi alır. |
-| `develop` | İşlerin toplandığı yer; GitHub'daki varsayılan dal. Her zaman derlenir ve testlerini geçer. |
+| `main` | Yayımlanmış kod; GitHub'daki varsayılan dal. `main`'e yapılan her birleştirme bir sürümdür ve `vX.Y.Z` etiketi alır. |
+| `develop` | İşlerin toplandığı yer. Her zaman derlenir ve testlerini geçer. |
 
 - `develop`'tan kısa ömürlü bir dal açın. Dal adları küçük harfli, İngilizce ve tireyle yazılır: `feature/keymap-editor`, `fix/mirror-gamma`, `docs/…`, `chore/…`.
-- PR'ı **`develop`** dalına açın ve tek bir değişiklikle sınırlı tutun. CI yeşil olunca PR tek commit'e indirilerek (squash) birleştirilir.
+- PR'ı **`develop`** dalına açın: GitHub varsayılan dal olan `main`'i önerir, hedef dalı değiştirin. PR'ı tek bir değişiklikle sınırlı tutun. CI yeşil olunca PR tek commit'e indirilerek (squash) birleştirilir.
 - Açıklamada neyin değiştiğini, nedenini ve nasıl denediğinizi yazın.
 - Değişiklik kullanıcıya görünüyorsa `CHANGELOG.md`'de **Unreleased** başlığının altına bir satır ekleyin ve `site/` altındaki kullanıcı kılavuzunu Türkçe ve İngilizce güncelleyin.
 - Değişiklik davranışı etkiliyorsa onu yalnızca testlerde değil, çalışan uygulamada da deneyin.
 - Commit mesajları İngilizce yazılır. İlk satır emir kipinde ve en çok 72 karakterdir; gövde nedenini anlatır.
 - Kişisel veri commit'lemeyin: Bluetooth adresleri, kullanıcı adınızı içeren yerel yollar, takvim adresleri, anahtarlar.
 
-Sürümleri proje sahibi çıkarır. Sürüm numarası `Cargo.toml`, `app/package.json` ve `app/src-tauri/tauri.conf.json` dosyalarında durur; `tools/check-version.mjs` üçünün aynı olduğunu denetler. Bir sürüm PR'ı `develop`'u `main`'e birleştirir; `main`'e atılan etiket sürüm iş akışını (`.github/workflows/release.yml`) başlatır. İş akışı kurulum dosyasını derler ve proje sahibinin yayımlayacağı taslak bir GitHub sürümü açar. Sürüm dosyaları yalnızca bu iş akışında üretilir.
+Sürümleri proje sahibi çıkarır. Sürüm numarası `Cargo.toml`, `app/package.json` ve `app/src-tauri/tauri.conf.json` dosyalarında durur; `tools/check-version.mjs` üçünün aynı olduğunu denetler. Bir sürüm PR'ı `develop`'u `main`'e birleştirir; `main`'e atılan etiket sürüm iş akışını (`.github/workflows/release.yml`) başlatır. İş akışı kurulum dosyasını derler ve proje sahibinin yayımlayacağı taslak bir GitHub sürümü açar. Sürüm dosyaları yalnızca bu iş akışında, `main`'deki bir etiketten ve derleme önbelleği kullanılmadan üretilir. Sürümden sonra `main`, bir birleştirme commit'iyle `develop`'a geri birleştirilir; böylece `develop` hiçbir zaman `main`'in gerisinde kalmaz.
 
 ## Denetimler
 

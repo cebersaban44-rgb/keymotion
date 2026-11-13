@@ -20,7 +20,7 @@ Keymotion'daki önemli değişiklikler burada listelenir. İngilizcesi: [CHANGEL
   başlatılabilir), sıradaki hatırlatma, sıradaki toplantı, canlı çubuklarıyla
   sistem göstergeleri ve profil. Ayrıca bağlantı modu, pil ve klavye saati;
   saat, klavye bağlanınca kendiliğinden ayarlanır.
-- **Işıklar:** Renk, parlaklık, hız ve yön ayarıyla 20 hazır efekt; klavyenin
+- **Işıklar:** Renk, parlaklık, hız ve yön ayarıyla 19 hazır efekt; klavyenin
   renklerinin canlı yansıması; fırça ve seçim araçlarıyla tuş başına renk,
   hazır desenler, canlı önizleme ve klavyeye kaydetme.
 - **Renk kalibrasyonu:** Klavyede gösterilen test desenleriyle gama ve beyaz

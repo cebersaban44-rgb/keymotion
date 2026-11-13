@@ -1,4 +1,4 @@
-<!-- Pull requests go to `develop`. Türkçe yazabilirsiniz. -->
+<!-- Pull requests go to `develop` (GitHub offers `main`, the default branch: change the base). Türkçe yazabilirsiniz. -->
 
 ## What changes
 

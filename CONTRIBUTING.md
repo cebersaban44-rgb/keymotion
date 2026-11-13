@@ -13,7 +13,7 @@ The full guide, with setup steps and how the code is organised, is on the site: 
 
 ## Pull requests
 
-- Open pull requests against **`develop`**. `main` holds the released code and only changes when a version is released.
+- Open pull requests against **`develop`**. GitHub offers `main`, the default branch, so change the base. `main` holds the released code and only changes when a version is released.
 - Keep a pull request to one change, and say how you tested it.
 - The checks must pass: `cargo fmt`, `cargo clippy -D warnings`, `cargo test --workspace`, the TypeScript build, ESLint, the `tools/check-*.mjs` scripts and `cargo deny`. CI runs all of them.
 - If you change something people see, update the user guide in `site/` in both English and Turkish.

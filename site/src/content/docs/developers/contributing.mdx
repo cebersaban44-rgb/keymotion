@@ -65,18 +65,18 @@ Commands that write the keyboard's permanent memory refuse to run without `--yes
 
 | Branch | What it holds |
 |---|---|
-| `main` | The released code. Every merge into `main` is a release, tagged `vX.Y.Z`. |
-| `develop` | Where work lands; the default branch on GitHub. It always builds and passes its tests. |
+| `main` | The released code; the default branch on GitHub. Every merge into `main` is a release, tagged `vX.Y.Z`. |
+| `develop` | Where work lands. It always builds and passes its tests. |
 
 - Work on a short-lived branch from `develop`, named in lowercase English with hyphens: `feature/keymap-editor`, `fix/mirror-gamma`, `docs/…`, `chore/…`.
-- Open the pull request against **`develop`**. Keep it to one change. It is squash-merged once CI is green.
+- Open the pull request against **`develop`**: GitHub offers `main`, the default branch, so change the base. Keep it to one change. It is squash-merged once CI is green.
 - In the description, say what changed, why, and how you tested it.
 - If people will see the change, add a line under **Unreleased** in `CHANGELOG.md`, and update the user guide in `site/` in English and Turkish.
 - If the change alters behavior, try it in the running app, not only in tests.
 - Commit messages are in English. The first line is in the imperative and at most 72 characters; the body says why.
 - Never commit personal data: Bluetooth addresses, local paths with your user name, calendar addresses, keys.
 
-Releases are made by the maintainer. The version number lives in `Cargo.toml`, `app/package.json` and `app/src-tauri/tauri.conf.json`, and `tools/check-version.mjs` checks that they agree. A release pull request merges `develop` into `main`; a tag on `main` starts the release workflow (`.github/workflows/release.yml`), which builds the installer and drafts a GitHub release for the maintainer to publish. Release files are only ever built by that workflow.
+Releases are made by the maintainer. The version number lives in `Cargo.toml`, `app/package.json` and `app/src-tauri/tauri.conf.json`, and `tools/check-version.mjs` checks that they agree. A release pull request merges `develop` into `main`; a tag on `main` starts the release workflow (`.github/workflows/release.yml`), which builds the installer and drafts a GitHub release for the maintainer to publish. Release files are only ever built by that workflow, from a tag on `main` and without build caches. After a release, `main` is merged back into `develop` with a merge commit, so `develop` is never behind `main`.
 
 ## The checks
 

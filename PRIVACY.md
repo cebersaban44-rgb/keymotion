@@ -29,6 +29,14 @@ Keymotion connects to the internet for two things only: the calendars you add, a
 - **When a new version is found.** Keymotion doesn't install it by itself; it asks you. When you choose **Install and restart**, the installer is downloaded from GitHub and its signature is checked with the key built into Keymotion. If it doesn't match, it isn't installed.
 - **Test versions.** Versions with a suffix in their number, such as "-rc", also read GitHub's public list of releases (`api.github.com`), to see test releases too. Normal versions don't read that list.
 
+## Other companies' privacy policies
+
+Keymotion itself sends nothing about you. When you use the services below, they see an ordinary request, and their own privacy policies apply:
+
+- **GitHub**: the update check, downloads, and reporting a problem or asking for support. See the [GitHub General Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
+- **Microsoft**: on a computer without WebView2, the part of Windows that draws the app's window, the installer downloads it from Microsoft and installs it. Windows 11 already has it. See the [Microsoft Privacy Statement](https://www.microsoft.com/privacy/privacystatement).
+- **The service of each calendar you add**, for example [Google](https://policies.google.com/privacy), [Microsoft Outlook](https://www.microsoft.com/privacy/privacystatement) or [Apple iCloud](https://www.apple.com/legal/privacy/).
+
 ## What Keymotion reads on your computer
 
 These readings are used only to show things on the keyboard and in the app. They aren't stored, except where noted, and never leave your computer.

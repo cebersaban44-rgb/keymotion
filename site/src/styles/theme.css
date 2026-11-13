@@ -64,10 +64,11 @@ h1#_top { font-weight: 750; }
   font-weight: 600;
 }
 
-/* Home page hero: the keyboard photo, a big title, two actions. */
+/* Home page hero: the keyboard photo, the title (what Keymotion is, with the
+   keyboard's name, so it reads as a sentence rather than a slogan), two actions. */
 .hero { padding-block: clamp(2rem, 5vw, 4rem) clamp(1.5rem, 4vw, 3rem); gap: 2rem; }
 .hero h1 {
-  font-size: clamp(2.4rem, 5.2vw, 4rem);
+  font-size: clamp(2rem, 3.6vw, 3rem);
   font-weight: 760;
   line-height: 1.02;
   letter-spacing: -0.028em;

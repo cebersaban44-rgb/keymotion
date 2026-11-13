@@ -1,6 +1,6 @@
 ---
 title: Keymotion
-description: A free, open-source Windows app for the AJAZZ AK980 PRO keyboard. Set its lighting key by key, remap keys, record macros and put your own pictures on its screen.
+description: Keymotion is free, open-source software for the AJAZZ AK980 PRO keyboard on Windows, with no AJAZZ software needed. Per-key lighting, key mapping, macros, and your own GIFs and pictures on its screen.
 template: splash
 head:
   - tag: title
@@ -16,10 +16,10 @@ head:
   - tag: script
     attrs:
       type: application/ld+json
-    content: '{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Keymotion","url":"https://cebersaban44-rgb.github.io/keymotion/","inLanguage":"en","description":"A free, open-source Windows app for the AJAZZ AK980 PRO keyboard. Set its lighting key by key, remap keys, record macros and put your own pictures, GIFs and videos on its screen.","applicationCategory":"UtilitiesApplication","operatingSystem":"Windows 10, Windows 11 (64-bit)","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"isAccessibleForFree":true,"downloadUrl":"https://github.com/cebersaban44-rgb/keymotion/releases/latest","image":"https://cebersaban44-rgb.github.io/keymotion/images/social-preview.png","license":["https://spdx.org/licenses/MIT.html","https://spdx.org/licenses/Apache-2.0.html"],"author":{"@type":"Person","name":"cebersaban44-rgb","url":"https://github.com/cebersaban44-rgb"},"sameAs":["https://github.com/cebersaban44-rgb/keymotion"],"keywords":"AJAZZ AK980 PRO, AK980 PRO software, AK980 PRO screen, RGB keyboard, key remapping, macros","featureList":["Per-key RGB lighting and 20 built-in effects","Key remapping on the base and Fn layers","Macros recorded by pressing keys and edited step by step","Pictures, GIFs, videos, text cards and slideshows on the 240×135 screen","Live screen cards for music, the focus timer, reminders and meetings","Profiles, a focus timer, system gauges, reminders and calendars"]}'
+    content: '{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Keymotion","url":"https://cebersaban44-rgb.github.io/keymotion/","inLanguage":"en","description":"Keymotion is free, open-source software for the AJAZZ AK980 PRO keyboard (also sold as AK980 V2) on Windows, with no AJAZZ software needed. Per-key lighting, key mapping, macros, and your own pictures, GIFs and videos on its screen.","applicationCategory":"UtilitiesApplication","operatingSystem":"Windows 10, Windows 11 (64-bit)","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"isAccessibleForFree":true,"downloadUrl":"https://github.com/cebersaban44-rgb/keymotion/releases/latest","image":"https://cebersaban44-rgb.github.io/keymotion/images/social-preview.png","license":["https://spdx.org/licenses/MIT.html","https://spdx.org/licenses/Apache-2.0.html"],"author":{"@type":"Person","name":"cebersaban44-rgb","url":"https://github.com/cebersaban44-rgb"},"sameAs":["https://github.com/cebersaban44-rgb/keymotion"],"keywords":"AJAZZ AK980 PRO, AK980 PRO software, AK980 PRO screen, RGB keyboard, key remapping, macros","featureList":["Per-key RGB lighting and 19 built-in effects","Key remapping on the base and Fn layers","Macros recorded by pressing keys and edited step by step","Pictures, GIFs, videos, text cards and slideshows on the 240×135 screen","Live screen cards for music, the focus timer, reminders and meetings","Profiles, a focus timer, system gauges, reminders and calendars"]}'
 hero:
-  title: Every key, every light, every pixel.
-  tagline: Keymotion is a free Windows app for the AJAZZ AK980 PRO. Set the lighting key by key, remap any key, record macros and put your own pictures on its little screen.
+  title: The free Windows app for the AJAZZ AK980 PRO
+  tagline: Every key, every light, every pixel. Set the lighting key by key, remap any key, record macros and put your own GIFs and pictures on its little screen.
   image:
     html: '<img src="/keymotion/images/ajazz-ak980-pro.webp" width="1419" height="521" alt="The AJAZZ AK980 PRO keyboard, lit in rainbow colors, with its screen and knob at the top right.">'
   actions:
@@ -34,12 +34,29 @@ hero:
 ---
 
 import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
+import Screenshot from "~/components/Screenshot.astro";
+
+## What is Keymotion?
+
+Keymotion is a free, open-source Windows app for the AJAZZ AK980 PRO keyboard. You don't need AJAZZ's own software, often called the AK980 PRO driver: Keymotion sets the lighting, key mapping, macros and the screen by itself, over the USB cable. Some shops sell the same keyboard as the AJAZZ AK980 V2.
+
+<Screenshot name="overview" alt="Keymotion's Overview page with the AJAZZ AK980 PRO connected by USB cable" />
+
+| At a glance | |
+|---|---|
+| Price | Free, no account |
+| License | MIT or Apache-2.0, source code on GitHub |
+| Windows | Windows 10 and 11, 64-bit |
+| Languages | English and Turkish |
+| Keyboard | AJAZZ AK980 PRO, also sold as AK980 V2 |
+| Settings | Over the USB cable |
+| Code signing | Not signed yet, see the [code signing policy](/keymotion/about/code-signing/) |
 
 ## What you can do
 
 <CardGrid>
   <Card title="Lighting" icon="sun">
-    The keyboard's 20 effects, a color for every key, and a live mirror of what the keys show. [Lighting](/keymotion/guide/lighting/)
+    The keyboard's 19 effects, a color for every key, and a live mirror of what the keys show. [Lighting](/keymotion/guide/lighting/)
   </Card>
   <Card title="Key mapping" icon="puzzle">
     Change any key on the base and Fn layers: shortcuts, media keys, mouse buttons. [Key mapping](/keymotion/guide/key-mapping/)
@@ -67,6 +84,10 @@ The switch on the back of the keyboard picks the connection. Settings travel ove
 | USB cable | Everything: lighting, keys, macros, the screen and live cards |
 | 2.4 GHz receiver | Typing, media keys and the knob |
 | Bluetooth | Typing, media keys, the knob and the battery level |
+
+<LinkCard title="Put a GIF on the AK980 PRO screen" description="The steps, the file types and how long an upload takes." href="/keymotion/guide/screen/" />
+
+<LinkCard title="Frequently asked questions" description="Drivers and AJAZZ's software, the Windows warning, Bluetooth, keyboard safety and more." href="/keymotion/help/faq/" />
 
 <LinkCard title="Supported keyboards" description="The keyboards Keymotion works with, and the ones that could come next." href="/keymotion/help/keyboards/" />
 

@@ -5,8 +5,8 @@
 <h1 align="center">Keymotion</h1>
 
 <p align="center">
-  A free, open-source Windows app for the AJAZZ AK980 PRO keyboard:<br>
-  lighting, key mapping, macros and the little screen.
+  A free, open-source Windows app for the AJAZZ AK980 PRO keyboard (also sold as AK980 V2):<br>
+  lighting, key mapping, macros and your own GIFs on its little screen. No AJAZZ software needed.
 </p>
 
 <p align="center">
@@ -23,6 +23,10 @@
 </p>
 
 <p align="center">
+  <sub>Unofficial, not affiliated with AJAZZ · The installer isn't code-signed yet, so Windows may warn before it runs: <a href="#download-and-install">what to do</a></sub>
+</p>
+
+<p align="center">
   <a href="https://github.com/cebersaban44-rgb/keymotion/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/cebersaban44-rgb/keymotion?label=release&color=d65f12"></a>
   <a href="https://github.com/cebersaban44-rgb/keymotion/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/cebersaban44-rgb/keymotion/total?color=4c1"></a>
   <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-555b6e">
@@ -30,14 +34,28 @@
 </p>
 
 <p align="center">
+  <img src="docs/images/keymotion-loop.webp" width="800" alt="Keymotion's logo turns into the same animation on the keyboard's screen, the keys light up under a typing hand, and the screen shows a Now playing card">
+  <br>
+  <sub>Keyboard scenes rendered with AI; the app's pages and what the keyboard's screen shows are real.</sub>
+  <br>
+  <b>The 36-second video with sound: <a href="#video">here</a> · <a href="https://youtu.be/LvGvyJFhPIE">on YouTube</a></b>
+</p>
+
+<p align="center">
   <img src="docs/images/hero-dark.webp" width="900" alt="The AJAZZ AK980 PRO keyboard next to Keymotion's Overview page">
 </p>
+
+## Video
+
+https://github.com/user-attachments/assets/472b24b7-42b7-4836-bc97-6d8ba15a63c7
+
+Keyboard scenes rendered with AI; the app's pages and what the keyboard's screen shows are real. Also on [YouTube](https://youtu.be/LvGvyJFhPIE).
 
 ## What it does
 
 | | |
 |---|---|
-| <img src="docs/images/features/lighting.webp" width="240" alt="Changing the lighting effect"> | **Lighting**<br>The keyboard's 20 effects, a color for every key, and a live mirror of what the keys show. |
+| <img src="docs/images/features/lighting.webp" width="240" alt="Changing the lighting effect"> | **Lighting**<br>The keyboard's 19 effects, a color for every key, and a live mirror of what the keys show. |
 | <img src="docs/images/features/key-mapping.webp" width="240" alt="Assigning a key"> | **Key mapping**<br>Change any key on the base and Fn layers: shortcuts, media keys, mouse buttons. |
 | <img src="docs/images/features/macros.webp" width="240" alt="Editing a macro"> | **Macros**<br>Record a sequence by pressing keys, then edit each step and its timing. |
 | <img src="docs/images/features/screen.webp" width="240" alt="Preparing a picture for the keyboard's screen"> | **Screen studio**<br>Put images, GIFs, videos and text cards on the 240×135 screen. |
@@ -61,7 +79,13 @@ Settings travel over the USB cable: that is how the keyboard is built. Several o
 3. Connect the keyboard with the USB cable and set the switch on its back to the middle (USB).
 
 > [!NOTE]
-> This first release isn't signed yet, so Windows may say "Windows protected your PC". Select **More info**, then **Run anyway**. Signed releases will follow; see the [code signing policy](#code-signing-policy).
+> This first release isn't signed yet, so Windows may say "Windows protected your PC". Select **More info**, then **Run anyway**. If Smart App Control is on, Windows may block it outright; signed releases will fix that. See the [code signing policy](#code-signing-policy).
+
+Good to know before you install:
+
+- Keymotion is unofficial. It isn't made, endorsed or supported by AJAZZ.
+- The installer is built by GitHub Actions from the code in this repository, and the release page lists its SHA-256.
+- It collects no usage data, and it never updates the keyboard's firmware.
 
 Updates: Keymotion checks GitHub for a new version once a day and asks before installing it. You can turn the check off in Settings.
 
@@ -72,6 +96,10 @@ Keymotion only sends commands that were measured on a real keyboard, and firmwar
 ## Privacy
 
 Keymotion collects nothing about you. It goes online for two things only: your calendar, if you add one, and a daily update check on GitHub, which you can turn off. Read the [privacy policy](PRIVACY.md).
+
+## How Keymotion is made
+
+Keymotion is written by one developer with the help of an AI coding assistant (Claude). Every change goes through a pull request and the automatic checks. Everything that talks to the keyboard was measured and tested on a real AK980 PRO first, and commands that could harm it are blocked in the code.
 
 ## Code signing policy
 

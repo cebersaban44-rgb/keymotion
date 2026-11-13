@@ -5,8 +5,8 @@
 <h1 align="center">Keymotion</h1>
 
 <p align="center">
-  AJAZZ AK980 PRO klavye için ücretsiz, açık kaynak Windows uygulaması:<br>
-  ışıklar, tuş atama, makrolar ve küçük ekran.
+  AJAZZ AK980 PRO klavye (AK980 V2 adıyla da satılıyor) için ücretsiz, açık kaynak Windows uygulaması:<br>
+  ışıklar, tuş atama, makrolar ve küçük ekranına kendi GIF'leriniz. AJAZZ'ın yazılımı gerekmez.
 </p>
 
 <p align="center">
@@ -23,6 +23,10 @@
 </p>
 
 <p align="center">
+  <sub>Resmî değildir, AJAZZ ile bağı yoktur · Kurulum dosyası henüz imzalı değil; Windows çalıştırmadan önce uyarabilir: <a href="#indirme-ve-kurulum">ne yapmalı</a></sub>
+</p>
+
+<p align="center">
   <a href="https://github.com/cebersaban44-rgb/keymotion/releases/latest"><img alt="Son sürüm" src="https://img.shields.io/github/v/release/cebersaban44-rgb/keymotion?label=s%C3%BCr%C3%BCm&color=d65f12"></a>
   <a href="https://github.com/cebersaban44-rgb/keymotion/releases"><img alt="İndirme sayısı" src="https://img.shields.io/github/downloads/cebersaban44-rgb/keymotion/total?label=indirme&color=4c1"></a>
   <img alt="Windows 10 ve 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-555b6e">
@@ -30,14 +34,28 @@
 </p>
 
 <p align="center">
+  <img src="docs/images/keymotion-loop.webp" width="800" alt="Keymotion'ın logosu klavyenin ekranındaki aynı animasyona dönüşüyor, yazan bir elin altında tuşlar yanıyor ve ekranda çalan şarkı kartı görünüyor">
+  <br>
+  <sub>Klavye sahneleri yapay zekâyla üretildi; uygulamanın sayfaları ve klavyenin ekranında görünenler gerçektir.</sub>
+  <br>
+  <b>36 saniyelik sesli video: <a href="#video">burada</a> · <a href="https://youtu.be/LvGvyJFhPIE">YouTube'da</a></b>
+</p>
+
+<p align="center">
   <img src="docs/images/hero-dark.webp" width="900" alt="AJAZZ AK980 PRO klavye ve yanında Keymotion'ın Genel bakış sayfası">
 </p>
+
+## Video
+
+https://github.com/user-attachments/assets/472b24b7-42b7-4836-bc97-6d8ba15a63c7
+
+Klavye sahneleri yapay zekâyla üretildi; uygulamanın sayfaları ve klavyenin ekranında görünenler gerçektir. Video İngilizcedir; [YouTube'da](https://youtu.be/LvGvyJFhPIE) da var.
 
 ## Neler yapar
 
 | | |
 |---|---|
-| <img src="docs/images/features/lighting.webp" width="240" alt="Işık efektini değiştirme"> | **Işıklar**<br>Klavyenin 20 efekti, her tuşa ayrı renk ve tuşlarda görünenin canlı aynası. |
+| <img src="docs/images/features/lighting.webp" width="240" alt="Işık efektini değiştirme"> | **Işıklar**<br>Klavyenin 19 efekti, her tuşa ayrı renk ve tuşlarda görünenin canlı aynası. |
 | <img src="docs/images/features/key-mapping.webp" width="240" alt="Bir tuşa görev atama"> | **Tuş atama**<br>Temel ve Fn katmanında her tuşu değiştirin: kısayollar, medya tuşları, fare düğmeleri. |
 | <img src="docs/images/features/macros.webp" width="240" alt="Bir makroyu düzenleme"> | **Makrolar**<br>Tuşlara basarak bir dizi kaydedin, sonra her adımı ve süresini düzenleyin. |
 | <img src="docs/images/features/screen.webp" width="240" alt="Klavyenin ekranı için görsel hazırlama"> | **Ekran stüdyosu**<br>240×135 ekrana görsel, GIF, video ve yazı kartı koyun. |
@@ -54,6 +72,8 @@
 
 Ayarlar USB kablosundan gider; klavye böyle yapılmış. Başka birkaç klavye de aynı altyapıyla yapılmış görünüyor; biri denediğinde eklenebilirler. [Listeye bakın](https://cebersaban44-rgb.github.io/keymotion/tr/help/keyboards/), sizde varsa bize haber verin.
 
+<a name="indirme-ve-kurulum"></a>
+
 ## İndirme ve kurulum
 
 1. Kurulum dosyasını, `Keymotion_<sürüm>_x64-setup.exe`, [son sürümün sayfasından](https://github.com/cebersaban44-rgb/keymotion/releases/latest) indirin. Windows 10 ve 11'de (64 bit) çalışır. Dosyanın SHA-256 değeri aynı sayfada yazar.
@@ -61,7 +81,13 @@ Ayarlar USB kablosundan gider; klavye böyle yapılmış. Başka birkaç klavye 
 3. Klavyeyi USB kablosuyla bağlayın ve arkasındaki anahtarı ortaya (USB) getirin.
 
 > [!NOTE]
-> İlk sürüm henüz imzalı değil; Windows "Windows bilgisayarınızı korudu" diyebilir. **Ek bilgi**'yi, sonra **Yine de çalıştır**'ı seçin. İmzalı sürümler gelecek; [kod imzalama politikasına](#kod-imzalama-politikası-code-signing-policy) bakın.
+> İlk sürüm henüz imzalı değil; Windows "Windows bilgisayarınızı korudu" diyebilir. **Ek bilgi**'yi, sonra **Yine de çalıştır**'ı seçin. Akıllı Uygulama Denetimi açıksa Windows kurulumu tamamen engelleyebilir; imzalı sürümler bunu çözecek. Ayrıntı için [kod imzalama politikasına](#kod-imzalama-politikası-code-signing-policy) bakın.
+
+Kurmadan önce bilmeniz iyi olur:
+
+- Keymotion resmî değildir. AJAZZ tarafından yapılmamış, onaylanmamış ve desteklenmez.
+- Kurulum dosyası bu depodaki koddan GitHub Actions ile derlenir; sürüm sayfasında SHA-256 özeti yazar.
+- Kullanım bilgisi toplamaz ve klavyenin yazılımını asla güncellemez.
 
 Güncellemeler: Keymotion günde bir kez GitHub'da yeni sürüm olup olmadığına bakar ve kurmadan önce size sorar. Bu denetimi Ayarlar'dan kapatabilirsiniz.
 
@@ -72,6 +98,10 @@ Keymotion yalnızca gerçek bir klavyede ölçülmüş komutları gönderir; ür
 ## Gizlilik
 
 Keymotion hakkınızda hiçbir bilgi toplamaz. Yalnızca iki iş için internete çıkar: eklerseniz takviminiz ve GitHub'da günde bir kez güncelleme denetimi (kapatılabilir). [Gizlilik politikasını](https://cebersaban44-rgb.github.io/keymotion/tr/about/privacy/) okuyun.
+
+## Keymotion nasıl yapılıyor
+
+Keymotion'ı tek bir geliştirici, bir yapay zekâ kodlama yardımcısının (Claude) desteğiyle yazıyor. Her değişiklik bir PR'dan ve otomatik denetimlerden geçer. Klavyeyle konuşan her şey önce gerçek bir AK980 PRO'da ölçülüp denendi; klavyeye zarar verebilecek komutlar kodda engelli.
 
 ## Kod imzalama politikası (Code signing policy)
 
