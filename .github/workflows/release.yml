@@ -26,8 +26,11 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# actions: read lets a job read its own run's artifacts and details, which
+# SignPath's action needs when signing is turned on (stage 9).
 permissions:
   contents: write
+  actions: read
 
 # One release build per tag or branch at a time. A second one waits rather than
 # cancelling a build that may be uploading.
@@ -79,13 +82,26 @@ jobs:
       - name: Keep LF line endings
         run: git config --global core.autocrlf false
 
+      # The whole history, so the release check below can see main.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
+
+      # A release is built only from code that is on main: a tag on any other
+      # commit stops here. Test builds from a branch ("Run workflow") skip this.
+      - name: The tag is on main
+        if: github.ref_type == 'tag'
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME points to $GITHUB_SHA, which is not on main. Tag the release merge on main."
+            exit 1
+          fi
+          echo "Tag $GITHUB_REF_NAME ($GITHUB_SHA) is on main."
 
       # The cheap checks run first, so a wrong tag or a missing secret fails
       # in seconds instead of after the build.
@@ -125,7 +141,9 @@ jobs:
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           package_json_file: app/package.json
-          cache: true
+          # A release (tag) builds from scratch, without caches, so nothing in
+          # it comes from an earlier run. Test builds from a branch may cache.
+          cache: ${{ github.ref_type != 'tag' }}
           cache_dependency_path: app/pnpm-lock.yaml
 
       - name: Install UI dependencies
@@ -138,11 +156,11 @@ jobs:
           rustup toolchain install "$channel" --profile minimal -c rustfmt -c clippy --no-self-update
           rustc --version
 
-      # A tag can read the caches of the default branch but its own are of no
-      # use to anyone else, so only branch runs save one.
+      # Only test builds from a branch use the Rust cache. A release (tag)
+      # compiles everything from source, so nothing in it comes from an
+      # earlier run (SignPath checks how a signed file was built).
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          save-if: ${{ github.ref_type != 'tag' }}
+        if: github.ref_type != 'tag'
 
       # With bundle.createUpdaterArtifacts, tauri build also signs the setup
       # .exe for the updater (<setup>.exe.sig) with the key below. Old bundles
@@ -178,45 +196,33 @@ jobs:
           echo "Installer: $setup"
 
       # --- Code signing (stage 9, SignPath Foundation): not active yet --------
-      # Authenticode signing goes HERE: after the build, before anything below
-      # reads the installer. Signing changes the file's bytes, so the updater
-      # signature tauri build wrote (<setup>.exe.sig, made from the unsigned
-      # file) no longer matches and the app would refuse the update. After
-      # signing, make the .sig again from the signed file with
-      # `tauri signer sign`; the SHA-256 and latest.json below then also come
-      # from the signed file. Rough shape (check SignPath's current action and
-      # inputs, and pin it by SHA):
+      # Turned on once SignPath accepts the project and gives its ids. Plan
+      # (keymotion-notes: signpath-denetim.md has the details):
       #
-      # - name: Upload the unsigned installer for SignPath
-      #   id: unsigned
-      #   uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      #   with:
-      #     name: unsigned-setup
-      #     path: release-out/${{ steps.setup.outputs.name }}
-      #
-      # - name: Sign the installer (SignPath asks for approval of each release)
-      #   uses: signpath/github-action-submit-signing-request@<sha> # v<release>
-      #   with:
-      #     api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-      #     organization-id: <SignPath organization id>
-      #     project-slug: keymotion
-      #     signing-policy-slug: release-signing
-      #     github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
-      #     wait-for-completion: true
-      #     output-artifact-directory: release-out
-      #
-      # - name: Updater signature of the signed installer
-      #   env:
-      #     SETUP: ${{ steps.setup.outputs.name }}
-      #     TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      #     TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-      #   run: |
-      #     rm "release-out/$SETUP.sig"
-      #     pnpm --dir app tauri signer sign "../release-out/$SETUP"
-      #     test -s "release-out/$SETUP.sig"
-      #
-      # This signs the installer only. Signing the app inside it (keymotion.exe)
-      # as well needs a signing step before NSIS packs it.
+      # - Only tag builds sign (`if: github.ref_type == 'tag'`). Test builds
+      #   from a branch stay unsigned, so the release certificate never signs
+      #   a test version.
+      # - SignPath can't open NSIS installers, so there are two requests, each
+      #   approved by the owner in SignPath:
+      #     1. `tauri build --no-bundle`, upload `keymotion.exe`, sign it
+      #        (signpath/github-action-submit-signing-request, pinned by SHA,
+      #        with wait-for-completion-timeout-in-seconds: 3600), and put the
+      #        signed file back in target/release;
+      #     2. `tauri bundle --bundles nsis`, upload the installer, sign it.
+      # - Then the updater signature, made over the SIGNED installer, because
+      #   signing changes the file's bytes and the .sig tauri wrote earlier
+      #   no longer matches:
+      #       rm "release-out/$SETUP.sig"
+      #       pnpm --dir app tauri signer sign --app-version "$VERSION" "../release-out/$SETUP"
+      #       test -s "release-out/$SETUP.sig"
+      #   Nothing may change the installer after this.
+      # - Check both signatures (Get-AuthenticodeSignature: Valid, signer
+      #   "SignPath Foundation"; the exe is taken out of the installer with 7z).
+      # - The steps below then read the signed file: SHA-256, latest.json and
+      #   the notes, with `--signed` so the release text drops the "not signed
+      #   yet" note.
+      # - The job's timeout-minutes goes up (about 180) so waiting for the two
+      #   approvals doesn't end the job.
       # ---------------------------------------------------------------------------
 
       - name: SHA-256 of the installer

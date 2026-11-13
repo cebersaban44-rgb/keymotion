@@ -76,7 +76,7 @@ Klavyenin kalıcı belleğine yazan komutlar `--yes` olmadan çalışmaz. `kb` k
 - Commit mesajları İngilizce yazılır. İlk satır emir kipinde ve en çok 72 karakterdir; gövde nedenini anlatır.
 - Kişisel veri commit'lemeyin: Bluetooth adresleri, kullanıcı adınızı içeren yerel yollar, takvim adresleri, anahtarlar.
 
-Sürümleri proje sahibi çıkarır. Sürüm numarası `Cargo.toml`, `app/package.json` ve `app/src-tauri/tauri.conf.json` dosyalarında durur; `tools/check-version.mjs` üçünün aynı olduğunu denetler. Bir sürüm PR'ı `develop`'u `main`'e birleştirir; `main`'e atılan etiket sürüm iş akışını (`.github/workflows/release.yml`) başlatır. İş akışı kurulum dosyasını derler ve proje sahibinin yayımlayacağı taslak bir GitHub sürümü açar. Sürüm dosyaları yalnızca bu iş akışında üretilir.
+Sürümleri proje sahibi çıkarır. Sürüm numarası `Cargo.toml`, `app/package.json` ve `app/src-tauri/tauri.conf.json` dosyalarında durur; `tools/check-version.mjs` üçünün aynı olduğunu denetler. Bir sürüm PR'ı `develop`'u `main`'e birleştirir; `main`'e atılan etiket sürüm iş akışını (`.github/workflows/release.yml`) başlatır. İş akışı kurulum dosyasını derler ve proje sahibinin yayımlayacağı taslak bir GitHub sürümü açar. Sürüm dosyaları yalnızca bu iş akışında, `main`'deki bir etiketten ve derleme önbelleği kullanılmadan üretilir. Sürümden sonra `main`, bir birleştirme commit'iyle `develop`'a geri birleştirilir; böylece `develop` hiçbir zaman `main`'in gerisinde kalmaz.
 
 ## Denetimler
 
