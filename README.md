@@ -37,11 +37,19 @@
   <img src="docs/images/keymotion-loop.webp" width="800" alt="Keymotion's logo turns into the same animation on the keyboard's screen, the keys light up under a typing hand, and the screen shows a Now playing card">
   <br>
   <sub>Keyboard scenes rendered with AI; the app's pages and what the keyboard's screen shows are real.</sub>
+  <br>
+  <b>The 36-second video with sound: <a href="#video">here</a> · <a href="https://youtu.be/LvGvyJFhPIE">on YouTube</a></b>
 </p>
 
 <p align="center">
   <img src="docs/images/hero-dark.webp" width="900" alt="The AJAZZ AK980 PRO keyboard next to Keymotion's Overview page">
 </p>
+
+## Video
+
+https://github.com/user-attachments/assets/472b24b7-42b7-4836-bc97-6d8ba15a63c7
+
+Keyboard scenes rendered with AI; the app's pages and what the keyboard's screen shows are real. Also on [YouTube](https://youtu.be/LvGvyJFhPIE).
 
 ## What it does
 
