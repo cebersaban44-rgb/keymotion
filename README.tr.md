@@ -37,7 +37,7 @@
 
 | | |
 |---|---|
-| <img src="docs/images/features/lighting.webp" width="240" alt="Işık efektini değiştirme"> | **Işıklar**<br>Klavyenin 20 efekti, her tuşa ayrı renk ve tuşlarda görünenin canlı aynası. |
+| <img src="docs/images/features/lighting.webp" width="240" alt="Işık efektini değiştirme"> | **Işıklar**<br>Klavyenin 19 efekti, her tuşa ayrı renk ve tuşlarda görünenin canlı aynası. |
 | <img src="docs/images/features/key-mapping.webp" width="240" alt="Bir tuşa görev atama"> | **Tuş atama**<br>Temel ve Fn katmanında her tuşu değiştirin: kısayollar, medya tuşları, fare düğmeleri. |
 | <img src="docs/images/features/macros.webp" width="240" alt="Bir makroyu düzenleme"> | **Makrolar**<br>Tuşlara basarak bir dizi kaydedin, sonra her adımı ve süresini düzenleyin. |
 | <img src="docs/images/features/screen.webp" width="240" alt="Klavyenin ekranı için görsel hazırlama"> | **Ekran stüdyosu**<br>240×135 ekrana görsel, GIF, video ve yazı kartı koyun. |
