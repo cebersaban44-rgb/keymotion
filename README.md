@@ -23,10 +23,20 @@
 </p>
 
 <p align="center">
+  <sub>Unofficial, not affiliated with AJAZZ · The installer isn't code-signed yet, so Windows may warn before it runs: <a href="#download-and-install">what to do</a></sub>
+</p>
+
+<p align="center">
   <a href="https://github.com/cebersaban44-rgb/keymotion/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/cebersaban44-rgb/keymotion?label=release&color=d65f12"></a>
   <a href="https://github.com/cebersaban44-rgb/keymotion/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/cebersaban44-rgb/keymotion/total?color=4c1"></a>
   <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-555b6e">
   <a href="#license"><img alt="License: MIT or Apache-2.0" src="https://img.shields.io/badge/license-MIT%20or%20Apache--2.0-007ec6"></a>
+</p>
+
+<p align="center">
+  <img src="docs/images/keymotion-loop.webp" width="800" alt="Keymotion's logo turns into the same animation on the keyboard's screen, the keys light up under a typing hand, and the screen shows a Now playing card">
+  <br>
+  <sub>Keyboard scenes rendered with AI; the app's pages and what the keyboard's screen shows are real.</sub>
 </p>
 
 <p align="center">
