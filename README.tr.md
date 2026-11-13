@@ -23,10 +23,20 @@
 </p>
 
 <p align="center">
+  <sub>Resmî değildir, AJAZZ ile bağı yoktur · Kurulum dosyası henüz imzalı değil; Windows çalıştırmadan önce uyarabilir: <a href="#indirme-ve-kurulum">ne yapmalı</a></sub>
+</p>
+
+<p align="center">
   <a href="https://github.com/cebersaban44-rgb/keymotion/releases/latest"><img alt="Son sürüm" src="https://img.shields.io/github/v/release/cebersaban44-rgb/keymotion?label=s%C3%BCr%C3%BCm&color=d65f12"></a>
   <a href="https://github.com/cebersaban44-rgb/keymotion/releases"><img alt="İndirme sayısı" src="https://img.shields.io/github/downloads/cebersaban44-rgb/keymotion/total?label=indirme&color=4c1"></a>
   <img alt="Windows 10 ve 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-555b6e">
   <a href="#lisans"><img alt="Lisans: MIT ya da Apache-2.0" src="https://img.shields.io/badge/lisans-MIT%20ya%20da%20Apache--2.0-007ec6"></a>
+</p>
+
+<p align="center">
+  <img src="docs/images/keymotion-loop.webp" width="800" alt="Keymotion'ın logosu klavyenin ekranındaki aynı animasyona dönüşüyor, yazan bir elin altında tuşlar yanıyor ve ekranda çalan şarkı kartı görünüyor">
+  <br>
+  <sub>Klavye sahneleri yapay zekâyla üretildi; uygulamanın sayfaları ve klavyenin ekranında görünenler gerçektir.</sub>
 </p>
 
 <p align="center">
@@ -53,6 +63,8 @@
 | <img src="docs/images/ajazz-ak980-pro.webp" width="170" alt="AJAZZ AK980 PRO"> | **AJAZZ AK980 PRO**<br>AK980 V2 adıyla da satılıyor | Her şey | Yazma, medya tuşları ve topuz | Yazma, medya tuşları, topuz ve pil düzeyi |
 
 Ayarlar USB kablosundan gider; klavye böyle yapılmış. Başka birkaç klavye de aynı altyapıyla yapılmış görünüyor; biri denediğinde eklenebilirler. [Listeye bakın](https://cebersaban44-rgb.github.io/keymotion/tr/help/keyboards/), sizde varsa bize haber verin.
+
+<a name="indirme-ve-kurulum"></a>
 
 ## İndirme ve kurulum
 
