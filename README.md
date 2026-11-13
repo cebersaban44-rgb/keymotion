@@ -37,7 +37,7 @@
 
 | | |
 |---|---|
-| <img src="docs/images/features/lighting.webp" width="240" alt="Changing the lighting effect"> | **Lighting**<br>The keyboard's 20 effects, a color for every key, and a live mirror of what the keys show. |
+| <img src="docs/images/features/lighting.webp" width="240" alt="Changing the lighting effect"> | **Lighting**<br>The keyboard's 19 effects, a color for every key, and a live mirror of what the keys show. |
 | <img src="docs/images/features/key-mapping.webp" width="240" alt="Assigning a key"> | **Key mapping**<br>Change any key on the base and Fn layers: shortcuts, media keys, mouse buttons. |
 | <img src="docs/images/features/macros.webp" width="240" alt="Editing a macro"> | **Macros**<br>Record a sequence by pressing keys, then edit each step and its timing. |
 | <img src="docs/images/features/screen.webp" width="240" alt="Preparing a picture for the keyboard's screen"> | **Screen studio**<br>Put images, GIFs, videos and text cards on the 240×135 screen. |

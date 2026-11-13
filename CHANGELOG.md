@@ -23,7 +23,7 @@ The first release. It supports the AJAZZ AK980 PRO on Windows.
   (start it from here), the next reminder, the next meeting, the system
   gauges with live bars, and the profile. Also connection mode, battery, and
   the keyboard clock, which is set automatically when the keyboard connects.
-- **Lighting:** the 20 built-in effects with color, brightness, speed and
+- **Lighting:** the 19 built-in effects with color, brightness, speed and
   direction; a live mirror of the keyboard's colors; per-key color with brush
   and selection tools, ready-made patterns, live preview and saving to the
   keyboard.

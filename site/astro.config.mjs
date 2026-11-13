@@ -105,7 +105,7 @@ export default defineConfig({
         starlightLlmsTxt({
           projectName: "Keymotion",
           description:
-            "Keymotion is a free, open-source Windows app (Windows 10 and 11, 64-bit) for the AJAZZ AK980 PRO mechanical keyboard. It sets per-key RGB lighting and the 20 built-in effects, remaps keys on the base and Fn layers, records macros, and puts pictures, GIFs, videos and live cards on the keyboard's 240×135 screen. It is an independent project, not made by AJAZZ.",
+            "Keymotion is a free, open-source Windows app (Windows 10 and 11, 64-bit) for the AJAZZ AK980 PRO mechanical keyboard. It sets per-key RGB lighting and the 19 built-in effects, remaps keys on the base and Fn layers, records macros, and puts pictures, GIFs, videos and live cards on the keyboard's 240×135 screen. It is an independent project, not made by AJAZZ.",
           details: [
             "- Settings are changed over the USB cable, with the switch on the back of the keyboard in the middle. Over Bluetooth Keymotion only reads the battery level; over the 2.4 GHz receiver it recognizes the keyboard but can't change settings yet.",
             "- Keymotion sends only commands that were measured on this keyboard and never updates its firmware.",
