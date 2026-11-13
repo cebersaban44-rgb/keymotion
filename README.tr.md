@@ -38,18 +38,12 @@
   <br>
   <sub>Klavye sahneleri yapay zekâyla üretildi; uygulamanın sayfaları ve klavyenin ekranında görünenler gerçektir.</sub>
   <br>
-  <b>36 saniyelik sesli video: <a href="#video">burada</a> · <a href="https://youtu.be/LvGvyJFhPIE">YouTube'da</a></b>
+  <b>36 saniyelik sesli video (İngilizce): <a href="https://youtu.be/LvGvyJFhPIE">YouTube'da</a></b>
 </p>
 
 <p align="center">
   <img src="docs/images/hero-dark.webp" width="900" alt="AJAZZ AK980 PRO klavye ve yanında Keymotion'ın Genel bakış sayfası">
 </p>
-
-## Video
-
-https://github.com/user-attachments/assets/472b24b7-42b7-4836-bc97-6d8ba15a63c7
-
-Klavye sahneleri yapay zekâyla üretildi; uygulamanın sayfaları ve klavyenin ekranında görünenler gerçektir. Video İngilizcedir; [YouTube'da](https://youtu.be/LvGvyJFhPIE) da var.
 
 ## Neler yapar
 
