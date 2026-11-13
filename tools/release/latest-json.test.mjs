@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { changelogSection, latestJson, releaseAssetUrl, releaseBody } from "./latest-json.mjs";
+import { changelogSection, foldNotes, formatSize, latestJson, releaseAssetUrl, releaseBody } from "./latest-json.mjs";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const script = join(root, "tools", "release", "latest-json.mjs");
@@ -136,18 +136,52 @@ test("latestJson: rejects a bad version, an empty signature and missing notes", 
   assert.throws(() => latestJson({ ...manifestInput, notes: { en: "" } }), /English notes/);
 });
 
-test("releaseBody: notes, how to install, the SHA-256 line and the policy links", () => {
-  const body = releaseBody({ notes: "- A bug.", fileName: "setup.exe", sha256: SHA, repository: "o/r", version: "0.2.0" });
-  assert.match(body, /^- A bug\.\n\n---\n\n### Install\n\nDownload \*\*`setup\.exe`\*\* below/);
-  assert.match(body, /> \[!NOTE\]\n> This release isn't signed yet/);
+test("releaseBody: download button, notes, how to install, the SHA-256 line and the policy links", () => {
+  const body = releaseBody({
+    notes: "- A bug.", fileName: "setup.exe", sha256: SHA, size: 5357915, repository: "o/r", version: "0.2.0-beta.1",
+  });
+  // The button links the setup file itself; "-" in the badge text is doubled.
+  assert.match(body, new RegExp(
+    '^<p align="center"><a href="https://github\\.com/o/r/releases/download/v0\\.2\\.0-beta\\.1/setup\\.exe">' +
+      '<img alt="Download Keymotion 0\\.2\\.0-beta\\.1 for Windows" ' +
+      'src="https://img\\.shields\\.io/badge/Download_for_Windows-Keymotion_0\\.2\\.0--beta\\.1-d65f12\\?style=for-the-badge"></a></p>\n' +
+      '<p align="center"><sub>Windows 10 and 11, 64-bit · 5\\.1 MB · no administrator rights</sub></p>\n\n' +
+      "> \\[!NOTE\\]\n> This release isn't signed yet",
+  ));
+  assert.match(body, /\n\n- A bug\.\n\n---\n\n### Install\n\nDownload \*\*`setup\.exe`\*\* with the button above/);
+  assert.match(body, /only the `\.exe` is needed/);
   assert.match(body, new RegExp(`SHA-256 of \`setup\\.exe\`: \`${SHA}\``));
   assert.match(body, /\[Code signing policy\]\(https:\/\/cebersaban44-rgb\.github\.io\/keymotion\/about\/code-signing\/\)/);
   assert.match(body, /\[Privacy policy\]\(/);
-  assert.match(body, /\[Türkçe sürüm notları\]\(https:\/\/github\.com\/o\/r\/blob\/v0\.2\.0\/CHANGELOG\.tr\.md\)\n$/);
+  assert.match(body, /\[Türkçe sürüm notları\]\(https:\/\/github\.com\/o\/r\/blob\/v0\.2\.0-beta\.1\/CHANGELOG\.tr\.md\)\n$/);
   // Signed releases (stage 9) drop the Windows warning.
   assert.doesNotMatch(releaseBody({ notes: "x", fileName: "s.exe", sha256: SHA, signed: true }), /isn't signed/);
-  assert.match(releaseBody({ notes: "x", fileName: "s.exe", sha256: SHA, preface: "Test build." }), /^> Test build\.\n\nx\n/);
+  assert.match(releaseBody({ notes: "x", fileName: "s.exe", sha256: SHA, preface: "Test build.", signed: true }), /^> Test build\.\n\nx\n/);
+  // No button without the repository and version, and no size when it isn't known.
+  assert.doesNotMatch(releaseBody({ notes: "x", fileName: "s.exe", sha256: SHA }), /<p align/);
+  assert.match(releaseBody({ notes: "x", fileName: "s.exe", sha256: SHA, repository: "o/r", version: "1.0.0" }),
+    /<sub>Windows 10 and 11, 64-bit · no administrator rights<\/sub>/);
   assert.throws(() => releaseBody({ notes: "x", fileName: "s.exe", sha256: "ABC" }), /SHA-256/);
+});
+
+test("foldNotes: a long list goes under <details>, the intro stays visible", () => {
+  const items = (n) => Array.from({ length: n }, (_, i) => `- **Item ${i}:** text`).join("\n");
+  const short = `The first release.\n\n### Added\n\n${items(8)}`;
+  assert.equal(foldNotes(short), short);
+  const long = `The first release.\n\n### Added\n\n${items(6)}\n  - nested, not counted\n\n### Fixed\n\n${items(3)}`;
+  assert.equal(
+    foldNotes(long),
+    `The first release.\n\n<details>\n<summary><b>Everything in this release</b> (9 items)</summary>\n\n` +
+      `### Added\n\n${items(6)}\n  - nested, not counted\n\n### Fixed\n\n${items(3)}\n\n</details>`,
+  );
+  // Without an intro the whole list is folded; without a list nothing is.
+  assert.match(foldNotes(items(9)), /^<details>\n<summary>/);
+  assert.equal(foldNotes("Just a sentence."), "Just a sentence.");
+});
+
+test("formatSize: megabytes with one decimal", () => {
+  assert.equal(formatSize(5357915), "5.1 MB");
+  assert.equal(formatSize(1048576), "1.0 MB");
 });
 
 test("CLI: writes latest.json and release-notes.md, fails without a section", (t) => {
@@ -175,7 +209,10 @@ test("CLI: writes latest.json and release-notes.md, fails without a section", (t
   assert.deepEqual(JSON.parse(manifest.notes), { en: "### Fixed\n\n- A bug.\n- Another one.", tr: "- Bir hata." });
   assert.match(
     readFileSync(join(dir, "release-notes.md"), "utf8"),
-    new RegExp(`^### Fixed[\\s\\S]*${SHA}\`\\n\\n\\[User guide\\][\\s\\S]*/owner/repo/blob/v0\\.2\\.0/CHANGELOG\\.tr\\.md\\)\\n$`),
+    new RegExp(
+      '^<p align="center"><a href="https://github\\.com/owner/repo/releases/download/v0\\.2\\.0/Keymotion_0\\.2\\.0_x64-setup\\.exe">' +
+        `[\\s\\S]*· 0\\.0 MB ·[\\s\\S]*\\n\\n### Fixed[\\s\\S]*${SHA}\`\\n\\n\\[User guide\\][\\s\\S]*/owner/repo/blob/v0\\.2\\.0/CHANGELOG\\.tr\\.md\\)\\n$`,
+    ),
   );
 
   const missing = run("0.3.0");
@@ -195,7 +232,7 @@ test("CLI: writes latest.json and release-notes.md, fails without a section", (t
 
   const fallback = run("0.3.0", "--allow-unreleased");
   assert.equal(fallback.status, 0, fallback.stdout + fallback.stderr);
-  assert.match(readFileSync(join(dir, "release-notes.md"), "utf8"), /^> Test build: 0\.3\.0 .*\n\n### Added/);
+  assert.match(readFileSync(join(dir, "release-notes.md"), "utf8"), /^> Test build: 0\.3\.0 .*\n\n<p align="center">[\s\S]*\n\n### Added/);
   assert.deepEqual(JSON.parse(JSON.parse(readFileSync(join(dir, "latest.json"), "utf8")).notes), {
     en: "### Added\n\n- Something new.",
   });
