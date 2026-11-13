@@ -5,8 +5,8 @@
 <h1 align="center">Keymotion</h1>
 
 <p align="center">
-  A free, open-source Windows app for the AJAZZ AK980 PRO keyboard:<br>
-  lighting, key mapping, macros and the little screen.
+  A free, open-source Windows app for the AJAZZ AK980 PRO keyboard (also sold as AK980 V2):<br>
+  lighting, key mapping, macros and your own GIFs on its little screen. No AJAZZ software needed.
 </p>
 
 <p align="center">
@@ -61,7 +61,13 @@ Settings travel over the USB cable: that is how the keyboard is built. Several o
 3. Connect the keyboard with the USB cable and set the switch on its back to the middle (USB).
 
 > [!NOTE]
-> This first release isn't signed yet, so Windows may say "Windows protected your PC". Select **More info**, then **Run anyway**. Signed releases will follow; see the [code signing policy](#code-signing-policy).
+> This first release isn't signed yet, so Windows may say "Windows protected your PC". Select **More info**, then **Run anyway**. If Smart App Control is on, Windows may block it outright; signed releases will fix that. See the [code signing policy](#code-signing-policy).
+
+Good to know before you install:
+
+- Keymotion is unofficial. It isn't made, endorsed or supported by AJAZZ.
+- The installer is built by GitHub Actions from the code in this repository, and the release page lists its SHA-256.
+- It collects no usage data, and it never updates the keyboard's firmware.
 
 Updates: Keymotion checks GitHub for a new version once a day and asks before installing it. You can turn the check off in Settings.
 
@@ -72,6 +78,10 @@ Keymotion only sends commands that were measured on a real keyboard, and firmwar
 ## Privacy
 
 Keymotion collects nothing about you. It goes online for two things only: your calendar, if you add one, and a daily update check on GitHub, which you can turn off. Read the [privacy policy](PRIVACY.md).
+
+## How Keymotion is made
+
+Keymotion is written by one developer with the help of an AI coding assistant (Claude). Every change goes through a pull request and the automatic checks. Everything that talks to the keyboard was measured and tested on a real AK980 PRO first, and commands that could harm it are blocked in the code.
 
 ## Code signing policy
 
