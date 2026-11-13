@@ -1,6 +1,8 @@
 ---
-title: Frequently asked questions
-description: Short answers about the Windows warning, AJAZZ's own software, putting a GIF on the screen, Bluetooth and the 2.4 GHz receiver, keyboard safety, your data, the AK980 V2, other keyboards and reporting a problem.
+title: Frequently asked questions about Keymotion and the AK980 PRO
+sidebar:
+  label: Frequently asked questions
+description: "Short answers about Keymotion and the AJAZZ AK980 PRO: the Windows warning, drivers and AJAZZ's software, putting a GIF on the screen, Bluetooth and the 2.4 GHz receiver, Windows only, keyboard safety, your data and the AK980 V2."
 ---
 
 import { Aside } from "@astrojs/starlight/components";
@@ -12,6 +14,8 @@ Short answers to the questions people ask most. For step-by-step fixes, see [If 
 Keymotion 0.1.0 isn't code-signed yet, so Windows may stop the installer with "Windows protected your PC". Download the installer only from the project's [GitHub Releases page](https://github.com/cebersaban44-rgb/keymotion/releases). Then click **More info** and **Run anyway**.
 
 The project is applying for free code signing. See the [code signing policy](/keymotion/about/code-signing/) and [Installing Keymotion](/keymotion/guide/install/).
+
+If **Smart App Control** is on (Windows Security, **App & browser control**), Windows may block the installer outright, with no **Run anyway** button, because it isn't signed. We don't ask you to turn Smart App Control off for Keymotion; signed releases will fix this.
 
 ## Does it work with AJAZZ's official software open?
 
@@ -27,6 +31,10 @@ No. Keymotion talks to the keyboard by itself over the USB cable and does all of
 
 Keeping it installed has one use: if you ever want the keyboard's factory screen animation back, Keymotion can copy it from there. See [If something goes wrong](/keymotion/help/recovery/#put-the-factory-screen-animation-back).
 
+## Do I need a driver for the AK980 PRO?
+
+No. Windows recognizes the keyboard by itself, so typing, the media keys and the knob work without installing anything. What AJAZZ calls the keyboard's driver is a settings program. Keymotion does that job instead, and it installs no driver of its own. It also needs no administrator rights to install.
+
 ## How do I put a GIF or my own picture on the AK980 PRO screen?
 
 1. Connect the USB cable and set the switch on the back of the keyboard to the middle.
@@ -35,6 +43,10 @@ Keeping it installed has one use: if you ever want the keyboard's factory screen
 4. Click **Preview**, then **Upload to keyboard**.
 
 A still picture uploads in a few seconds. The screen holds up to 140 frames, and a full 140-frame animation takes about five and a half minutes. On the keyboard, **Fn+Home** switches between the clock and your picture. You can also make text cards and slideshows: see [Screen](/keymotion/guide/screen/).
+
+## Does Keymotion work on macOS or Linux?
+
+No. Keymotion runs on Windows 10 and 11, 64-bit.
 
 ## Why can't I change settings over Bluetooth?
 
@@ -86,11 +98,15 @@ Not yet. Keymotion supports the AJAZZ AK980 PRO. If you connect a SONiX or AJAZZ
 
 ## Does it work with the AJAZZ AK980 V2?
 
-Some shops sell the same keyboard as the **AJAZZ AK980 V2**. It reports the same USB identity as the AK980 PRO, so Keymotion treats it as one. We haven't tried one separately: if you have one, please [tell us how it went](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK980+V2&model=AJAZZ+AK980+V2). See [Supported keyboards](/keymotion/help/keyboards/).
+Yes. The keyboard Keymotion is tested with was sold as the AK980 V2: AJAZZ's store listed it as "AK980MAX … V2" and the box says "AK980 V2". Over USB it calls itself "SONiX AK980 PRO", and that's how Keymotion recognizes it. What matters is the hardware: the 98-key model with the 240×135 screen and the knob. See [Supported keyboards](/keymotion/help/keyboards/).
 
 ## Is Keymotion made by AJAZZ?
 
 No. Keymotion is an independent project. It isn't affiliated with, endorsed, sponsored or supported by AJAZZ, by the maker of the keyboard's controller chip, or by the authors of the keyboard's official software. The AJAZZ name is used only to say which keyboard Keymotion works with.
+
+## How is Keymotion made?
+
+Keymotion is written by one developer with the help of an AI coding assistant (Claude). Every change goes through a pull request and automatic checks. Everything that talks to the keyboard was measured and tested on a real AK980 PRO first, and commands that could harm it, such as firmware updates, are blocked in the code. The source code is public, so you can read exactly what Keymotion does.
 
 ## Is it free?
 

@@ -5,8 +5,8 @@
 <h1 align="center">Keymotion</h1>
 
 <p align="center">
-  AJAZZ AK980 PRO klavye için ücretsiz, açık kaynak Windows uygulaması:<br>
-  ışıklar, tuş atama, makrolar ve küçük ekran.
+  AJAZZ AK980 PRO klavye (AK980 V2 adıyla da satılıyor) için ücretsiz, açık kaynak Windows uygulaması:<br>
+  ışıklar, tuş atama, makrolar ve küçük ekranına kendi GIF'leriniz. AJAZZ'ın yazılımı gerekmez.
 </p>
 
 <p align="center">
@@ -61,7 +61,13 @@ Ayarlar USB kablosundan gider; klavye böyle yapılmış. Başka birkaç klavye 
 3. Klavyeyi USB kablosuyla bağlayın ve arkasındaki anahtarı ortaya (USB) getirin.
 
 > [!NOTE]
-> İlk sürüm henüz imzalı değil; Windows "Windows bilgisayarınızı korudu" diyebilir. **Ek bilgi**'yi, sonra **Yine de çalıştır**'ı seçin. İmzalı sürümler gelecek; [kod imzalama politikasına](#kod-imzalama-politikası-code-signing-policy) bakın.
+> İlk sürüm henüz imzalı değil; Windows "Windows bilgisayarınızı korudu" diyebilir. **Ek bilgi**'yi, sonra **Yine de çalıştır**'ı seçin. Akıllı Uygulama Denetimi açıksa Windows kurulumu tamamen engelleyebilir; imzalı sürümler bunu çözecek. Ayrıntı için [kod imzalama politikasına](#kod-imzalama-politikası-code-signing-policy) bakın.
+
+Kurmadan önce bilmeniz iyi olur:
+
+- Keymotion resmî değildir. AJAZZ tarafından yapılmamış, onaylanmamış ve desteklenmez.
+- Kurulum dosyası bu depodaki koddan GitHub Actions ile derlenir; sürüm sayfasında SHA-256 özeti yazar.
+- Kullanım bilgisi toplamaz ve klavyenin yazılımını asla güncellemez.
 
 Güncellemeler: Keymotion günde bir kez GitHub'da yeni sürüm olup olmadığına bakar ve kurmadan önce size sorar. Bu denetimi Ayarlar'dan kapatabilirsiniz.
 
@@ -72,6 +78,10 @@ Keymotion yalnızca gerçek bir klavyede ölçülmüş komutları gönderir; ür
 ## Gizlilik
 
 Keymotion hakkınızda hiçbir bilgi toplamaz. Yalnızca iki iş için internete çıkar: eklerseniz takviminiz ve GitHub'da günde bir kez güncelleme denetimi (kapatılabilir). [Gizlilik politikasını](https://cebersaban44-rgb.github.io/keymotion/tr/about/privacy/) okuyun.
+
+## Keymotion nasıl yapılıyor
+
+Keymotion'ı tek bir geliştirici, bir yapay zekâ kodlama yardımcısının (Claude) desteğiyle yazıyor. Her değişiklik bir PR'dan ve otomatik denetimlerden geçer. Klavyeyle konuşan her şey önce gerçek bir AK980 PRO'da ölçülüp denendi; klavyeye zarar verebilecek komutlar kodda engelli.
 
 ## Kod imzalama politikası (Code signing policy)
 
