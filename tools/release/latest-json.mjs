@@ -7,8 +7,9 @@
 //     is a JSON string, {"en": "...", "tr": "..."}; the app parses it and
 //     shows the notes in the interface language ("tr" only when there are
 //     Turkish notes).
-//   - release-notes.md: the body of the draft release: the CHANGELOG.md
-//     section for the version and the SHA-256 of the setup file.
+//   - release-notes.md: the body of the draft release: a download button for
+//     the setup file, the CHANGELOG.md section for the version (folded when
+//     long) and the SHA-256 of the setup file.
 //
 // Release notes:
 //   - English: the CHANGELOG.md section whose heading is the version, in Keep
@@ -32,7 +33,7 @@
 // bundle.createUpdaterArtifacts is true). --repository defaults to
 // GITHUB_REPOSITORY, --out-dir to the setup file's folder.
 
-import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
@@ -110,27 +111,66 @@ export function latestJson({ version, notes, pubDate, url, signature }) {
 
 const SITE = "https://cebersaban44-rgb.github.io/keymotion";
 
+// Notes with more items than this are folded under "Everything in this
+// release", so the download button stays near the top of the page.
+const FOLD_AFTER_ITEMS = 8;
+
+/** Text for a shields.io static badge: "-" and "_" doubled, spaces as "_". */
+const badgeText = (text) => encodeURIComponent(text.replace(/-/g, "--").replace(/_/g, "__").replace(/ /g, "_"));
+
+/** 5357915 → "5.1 MB" (MiB, as GitHub and Windows show it). */
+export const formatSize = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
 /**
- * The draft release's body: the notes, how to install, the setup file's
- * SHA-256 and the links SignPath asks a download page to carry (code signing
- * policy, privacy policy). `signed` drops the Windows warning once releases
- * are signed (roadmap stage 9).
+ * The notes with a long list folded: the lines before the first heading or
+ * list item stay visible, the rest goes into a <details> block when it has
+ * more than FOLD_AFTER_ITEMS top-level items.
  */
-export function releaseBody({ notes, fileName, sha256, preface, repository, version, signed = false }) {
+export function foldNotes(notes) {
+  const lines = notes.split("\n");
+  const start = lines.findIndex((l) => /^(#{3,6}\s|[-*+]\s)/.test(l));
+  if (start < 0) return notes;
+  const items = lines.slice(start).filter((l) => /^[-*+]\s/.test(l)).length;
+  if (items <= FOLD_AFTER_ITEMS) return notes;
+  const intro = lines.slice(0, start).join("\n").trim();
+  const list = lines.slice(start).join("\n").trim();
+  const folded = `<details>\n<summary><b>Everything in this release</b> (${items} items)</summary>\n\n${list}\n\n</details>`;
+  return intro ? `${intro}\n\n${folded}` : folded;
+}
+
+/**
+ * The draft release's body. GitHub always lists the release files at the
+ * bottom, so the page starts with a download button for the setup file (with
+ * its size and what it needs) and, while releases are unsigned, the Windows
+ * warning; then the notes, folded when long; then how to install, the setup
+ * file's SHA-256 and the links SignPath asks a download page to carry (code
+ * signing policy, privacy policy). `signed` drops the Windows warning once
+ * releases are signed (roadmap stage 9). The button needs `repository` and
+ * `version`.
+ */
+export function releaseBody({ notes, fileName, sha256, size, preface, repository, version, signed = false }) {
   if (!/^[0-9a-f]{64}$/.test(sha256 ?? "")) throw new Error(`not a SHA-256: ${JSON.stringify(sha256)}`);
   const parts = [];
   if (preface) parts.push(`> ${preface}`);
-  const install = [
-    `Download **\`${fileName}\`** below and run it. It works on Windows 10 and 11, 64-bit, and installs for your user account without administrator rights. Connect the keyboard with the USB cable, with the switch on its back in the middle.`,
-  ];
+  if (repository && version) {
+    const url = releaseAssetUrl({ repository, version, fileName });
+    const badge = `https://img.shields.io/badge/${badgeText("Download for Windows")}-${badgeText(`Keymotion ${version}`)}-d65f12?style=for-the-badge`;
+    const facts = ["Windows 10 and 11, 64-bit", size ? formatSize(size) : null, "no administrator rights"];
+    parts.push(
+      `<p align="center"><a href="${url}"><img alt="Download Keymotion ${version} for Windows" src="${badge}"></a></p>\n` +
+        `<p align="center"><sub>${facts.filter(Boolean).join(" · ")}</sub></p>`,
+    );
+  }
   if (!signed) {
-    install.push(
+    parts.push(
       `> [!NOTE]\n> This release isn't signed yet, so Windows may say "Windows protected your PC". Select **More info**, then **Run anyway**.`,
     );
   }
-  install.push(
+  const install = [
+    `Download **\`${fileName}\`** with the button above or from the files below, and run it. It works on Windows 10 and 11, 64-bit, and installs for your user account without administrator rights. Connect the keyboard with the USB cable, with the switch on its back in the middle.`,
+    `Of the files below, only the \`.exe\` is needed: the \`.sig\` file and \`latest.json\` are for the app's own updates.`,
     "Already using Keymotion? It finds the new version by itself, or open **Settings › About** and select **Check for updates**.",
-  );
+  ];
   const links = [
     `[User guide](${SITE}/guide/install/)`,
     `[Code signing policy](${SITE}/about/code-signing/)`,
@@ -139,7 +179,7 @@ export function releaseBody({ notes, fileName, sha256, preface, repository, vers
   if (repository && version) {
     links.push(`[Türkçe sürüm notları](https://github.com/${repository}/blob/v${version}/CHANGELOG.tr.md)`);
   }
-  parts.push(notes, "---", "### Install", ...install, `SHA-256 of \`${fileName}\`: \`${sha256}\``, links.join(" · "));
+  parts.push(foldNotes(notes), "---", "### Install", ...install, `SHA-256 of \`${fileName}\`: \`${sha256}\``, links.join(" · "));
   return `${parts.join("\n\n")}\n`;
 }
 
@@ -203,6 +243,7 @@ function main() {
     notes: en.body,
     fileName,
     sha256: opt.sha256,
+    size: statSync(setup).size,
     preface,
     repository: opt.repository,
     version,

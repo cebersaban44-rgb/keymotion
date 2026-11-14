@@ -15,11 +15,14 @@
 
 <p align="center">
   <b>
-    <a href="https://github.com/cebersaban44-rgb/keymotion/releases/latest">Download</a> ·
     <a href="https://cebersaban44-rgb.github.io/keymotion/">User guide</a> ·
     <a href="https://github.com/cebersaban44-rgb/keymotion/releases">Release notes</a> ·
     <a href="https://github.com/cebersaban44-rgb/keymotion/discussions/categories/q-a">Questions</a>
   </b>
+</p>
+
+<p align="center">
+  <a href="https://github.com/cebersaban44-rgb/keymotion/releases/latest"><img src="docs/images/download-windows.png" width="320" alt="Download for Windows: free, Windows 10 and 11, 64-bit"></a>
 </p>
 
 <p align="center">
@@ -93,7 +96,7 @@ Keymotion collects nothing about you. It goes online for two things only: your c
 
 ## How Keymotion is made
 
-Keymotion is written by one developer with the help of an AI coding assistant (Claude). Every change goes through a pull request and the automatic checks. Everything that talks to the keyboard was measured and tested on a real AK980 PRO first, and commands that could harm it are blocked in the code.
+I made Keymotion with Claude, an AI coding assistant. Claude wrote most of the code; I decided what it should do and tried every feature on my own AK980 PRO before it went in. Every change goes through a pull request and the automatic checks. Everything that talks to the keyboard was measured on the real keyboard first, and commands that could harm it are blocked in the code.
 
 ## Code signing policy
 
