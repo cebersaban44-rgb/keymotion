@@ -15,11 +15,14 @@
 
 <p align="center">
   <b>
-    <a href="https://github.com/cebersaban44-rgb/keymotion/releases/latest">İndir</a> ·
     <a href="https://cebersaban44-rgb.github.io/keymotion/tr/">Kullanım kılavuzu</a> ·
     <a href="https://github.com/cebersaban44-rgb/keymotion/releases">Sürüm notları</a> ·
     <a href="https://github.com/cebersaban44-rgb/keymotion/discussions/categories/q-a">Sorular</a>
   </b>
+</p>
+
+<p align="center">
+  <a href="https://github.com/cebersaban44-rgb/keymotion/releases/latest"><img src="docs/images/download-windows-tr.png" width="320" alt="Windows için indir: ücretsiz, Windows 10 ve 11, 64 bit"></a>
 </p>
 
 <p align="center">
@@ -95,7 +98,7 @@ Keymotion hakkınızda hiçbir bilgi toplamaz. Yalnızca iki iş için internete
 
 ## Keymotion nasıl yapılıyor
 
-Keymotion'ı tek bir geliştirici, bir yapay zekâ kodlama yardımcısının (Claude) desteğiyle yazıyor. Her değişiklik bir PR'dan ve otomatik denetimlerden geçer. Klavyeyle konuşan her şey önce gerçek bir AK980 PRO'da ölçülüp denendi; klavyeye zarar verebilecek komutlar kodda engelli.
+Keymotion'ı bir yapay zekâ kodlama yardımcısı olan Claude ile yaptım. Kodun çoğunu Claude yazdı; ne yapacağına ben karar verdim ve her özelliği eklenmeden önce kendi AK980 PRO'mda denedim. Her değişiklik bir PR'dan ve otomatik denetimlerden geçer. Klavyeyle konuşan her şey önce gerçek klavyede ölçüldü; klavyeye zarar verebilecek komutlar kodda engelli.
 
 ## Kod imzalama politikası (Code signing policy)
 
