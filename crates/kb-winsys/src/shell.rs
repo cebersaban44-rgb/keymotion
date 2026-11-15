@@ -14,6 +14,30 @@ pub fn open_url(url: &str) -> Result<(), String> {
     sys::open(url)
 }
 
+/// Windows' own pages the app opens: fixed addresses, nothing else.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowsPage {
+    /// Settings › Apps › Startup: where a startup task turned off by the
+    /// user is turned on again (the Store build).
+    StartupApps,
+    /// Microsoft Store › Downloads and updates (the Store build's updates).
+    StoreUpdates,
+}
+
+impl WindowsPage {
+    pub fn address(self) -> &'static str {
+        match self {
+            Self::StartupApps => "ms-settings:startupapps",
+            Self::StoreUpdates => "ms-windows-store://downloadsandupdates",
+        }
+    }
+}
+
+/// Open one of Windows' own pages.
+pub fn open_windows_page(page: WindowsPage) -> Result<(), String> {
+    sys::open(page.address())
+}
+
 fn web_address(url: &str) -> bool {
     (url.starts_with("https://") || url.starts_with("http://")) && !url.chars().any(char::is_whitespace)
 }

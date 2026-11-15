@@ -37,6 +37,7 @@ import type { BackupSummary } from "../bindings/BackupSummary";
 import type { PartLoaded } from "../bindings/PartLoaded";
 import type { ProfileInfo } from "../bindings/ProfileInfo";
 import type { BackgroundSettings } from "../bindings/BackgroundSettings";
+import type { WindowsPage } from "../bindings/WindowsPage";
 import type { ProfilePart } from "../bindings/ProfilePart";
 import type { ProfileParts } from "../bindings/ProfileParts";
 import type { ProfileSaved } from "../bindings/ProfileSaved";
@@ -94,6 +95,18 @@ export async function openLink(url: string): Promise<void> {
   await invoke("open_link", { url });
 }
 
+/** Browser preview of the Microsoft Store build: `?channel=store`. */
+export const mockStore = () => new URLSearchParams(location.search).get("channel") === "store";
+
+/** Windows' startup settings or the Store's updates page (the Store build). */
+export async function openWindowsPage(page: WindowsPage): Promise<void> {
+  if (import.meta.env.DEV && !inTauri) {
+    console.info("would open", page);
+    return;
+  }
+  await invoke("open_windows_page", { page });
+}
+
 export async function setWindowTheme(theme: ThemePreference): Promise<void> {
   if (import.meta.env.DEV && !inTauri) return;
   await invoke("set_window_theme", { theme });
@@ -140,7 +153,13 @@ export async function cancelQuit(): Promise<void> {
 
 // ------------------------------------------------------- tray and background
 
-let mockBackground: BackgroundSettings = { closeToTray: true, startWithWindows: false, startTurnedOff: false };
+/** Browser preview: `?startup=locked` shows a startup turned off in Windows' settings. */
+let mockBackground: BackgroundSettings = {
+  closeToTray: true,
+  startWithWindows: false,
+  startTurnedOff: false,
+  startLocked: new URLSearchParams(location.search).get("startup") === "locked",
+};
 
 /** Keep running in the tray when closed; start with Windows. */
 export async function getBackground(): Promise<BackgroundSettings> {
@@ -150,7 +169,7 @@ export async function getBackground(): Promise<BackgroundSettings> {
 
 export async function setBackground(settings: BackgroundSettings): Promise<BackgroundSettings> {
   if (import.meta.env.DEV && !inTauri) {
-    mockBackground = { ...settings, startTurnedOff: false };
+    mockBackground = { ...settings, startTurnedOff: false, startLocked: mockBackground.startLocked };
     return mockBackground;
   }
   return invoke<BackgroundSettings>("background_configure", { settings });

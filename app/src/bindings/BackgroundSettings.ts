@@ -16,4 +16,10 @@ startWithWindows: boolean,
  * The startup entry is there but Task Manager or Settings turned it
  * off (read only: setting `start_with_windows` turns it on again).
  */
-startTurnedOff: boolean, };
+startTurnedOff: boolean, 
+/**
+ * Only Windows' startup settings can change it now (read only; the
+ * Store build, whose startup task the user turned off there, or a
+ * policy set).
+ */
+startLocked: boolean, };

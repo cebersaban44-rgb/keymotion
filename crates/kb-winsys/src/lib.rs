@@ -29,6 +29,7 @@
 
 pub mod appid;
 pub mod os;
+pub mod package;
 pub mod secret;
 pub mod shell;
 pub mod startup;

@@ -16,4 +16,9 @@ autoCheck: boolean,
 /**
  * When GitHub was last asked (ms since the epoch).
  */
-lastCheckMs: number | null, status: UpdateStatus, };
+lastCheckMs: number | null, status: UpdateStatus, 
+/**
+ * Installed from the Microsoft Store, which updates it: the app's
+ * own updater stays off.
+ */
+store: boolean, };
