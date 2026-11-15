@@ -2,7 +2,7 @@
 title: Keymotion ve AK980 PRO hakkında sık sorulanlar
 sidebar:
   label: Sık sorulanlar
-description: "Keymotion ve AJAZZ AK980 PRO üzerine kısa yanıtlar: Windows uyarısı, sürücü ve AJAZZ'ın yazılımı, ekrana GIF koyma, Bluetooth ve 2.4 GHz alıcı, yalnızca Windows, klavyenin güvenliği, verileriniz ve AK980 V2."
+description: "Keymotion ve AJAZZ AK980 PRO üzerine kısa yanıtlar: Windows uyarısı, virüs taramaları, sürücü ve AJAZZ'ın yazılımı, ekrana GIF koyma, Bluetooth ve 2.4 GHz alıcı, yalnızca Windows, klavyenin güvenliği, verileriniz ve AK980 V2."
 ---
 
 import { Aside } from "@astrojs/starlight/components";
@@ -13,9 +13,15 @@ En çok sorulan soruların kısa yanıtları. Adım adım çözümler [Bir şey 
 
 Keymotion 0.1.0 henüz kod imzalı değil. Bu yüzden Windows kurulum dosyasını "Windows bilgisayarınızı korudu" uyarısıyla durdurabilir. Kurulum dosyasını yalnızca projenin [GitHub'daki sürüm sayfasından](https://github.com/cebersaban44-rgb/keymotion/releases) indirin. Ardından **Ek bilgi**'ye, sonra **Yine de çalıştır**'a tıklayın.
 
-Proje ücretsiz kod imzalama için başvuruyor. Ayrıntılar [Kod imzalama politikası](/keymotion/tr/about/code-signing/) ve [Keymotion'ı kurma](/keymotion/tr/guide/install/) sayfalarında.
+Proje ücretsiz kod imzalama için başvurdu ve yanıt bekliyor. Ayrıntılar [Kod imzalama politikası](/keymotion/tr/about/code-signing/) ve [Keymotion'ı kurma](/keymotion/tr/guide/install/) sayfalarında.
 
 **Akıllı Uygulama Denetimi** açıksa (Windows Güvenliği, **Uygulama ve tarayıcı denetimi**), Windows imzasız olduğu için kurulumu **Yine de çalıştır** düğmesi göstermeden tamamen engelleyebilir. Keymotion için Akıllı Uygulama Denetimi'ni kapatmanızı istemiyoruz; imzalı sürümler bunu çözecek.
+
+## Virüs programım ya da VirusTotal Keymotion'ı işaretliyor. Güvenli mi?
+
+Keymotion 0.1.0 için VirusTotal'daki 71 virüs tarama programından 70'i, Microsoft Defender dahil, bir şey bulmuyor. İşaretleyen tek program Trapmine; yeni ve imzasız dosyalara makine öğrenmesiyle bir puan veriyor. Bu, bilinen bir zararlı yazılımla eşleşme değildir; yanlış alarm olarak bildirdik.
+
+Keymotion'ı yalnızca GitHub'daki sürüm sayfasından indirin ve SHA-256 özetini karşılaştırın. VirusTotal raporu [Kod imzalama politikası](/keymotion/tr/about/code-signing/#virüs-taramaları) sayfasında.
 
 ## AJAZZ'ın resmi yazılımı açıkken çalışır mı?
 

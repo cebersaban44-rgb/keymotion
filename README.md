@@ -82,6 +82,7 @@ Good to know before you install:
 
 - Keymotion is unofficial. It isn't made, endorsed or supported by AJAZZ.
 - The installer is built by GitHub Actions from the code in this repository, and the release page lists its SHA-256.
+- On VirusTotal, 70 of 71 antivirus engines find nothing in the 0.1.0 installer. One machine-learning engine flags it as a new, unsigned file; we've reported it as a false positive. [Details](https://cebersaban44-rgb.github.io/keymotion/about/code-signing/#antivirus-scans).
 - It collects no usage data, and it never updates the keyboard's firmware.
 
 Updates: Keymotion checks GitHub for a new version once a day and asks before installing it. You can turn the check off in Settings.
@@ -100,7 +101,7 @@ I made Keymotion with Claude, an AI coding assistant. Claude wrote most of the c
 
 ## Code signing policy
 
-Keymotion 0.1.0 isn't signed yet. We're applying to SignPath Foundation for free code signing; once it's approved, this section will say so.
+Keymotion 0.1.0 isn't signed yet. We applied to SignPath Foundation for free code signing on 15 November 2026 and are waiting for their reply; once it's approved, this section will say so.
 
 - Releases are built from this repository by GitHub Actions ([release workflow](.github/workflows/release.yml)).
 - Committers and reviewers: [@cebersaban44-rgb](https://github.com/cebersaban44-rgb)

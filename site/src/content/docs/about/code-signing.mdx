@@ -11,7 +11,7 @@ Code signing lets Windows show who published a program and that nobody has chang
 
 Keymotion 0.1.0 is not code-signed yet, so Windows may warn you when you run the installer. [Installing Keymotion](/keymotion/guide/install/) shows how to continue.
 
-The project is applying to SignPath Foundation for free code signing for open-source projects. When the project is accepted, its releases will be signed, and this page will carry SignPath's attribution.
+On 15 November 2026 the project applied to SignPath Foundation, which offers free code signing to open-source projects, and is waiting for their reply. If the project is accepted, its releases will be signed, and this page will carry SignPath's attribution.
 
 ## How releases are built
 
@@ -29,6 +29,14 @@ To compare the checksum:
 4. Compare the long code it shows with the SHA-256 on the release page. They must be the same.
 
 </Steps>
+
+## Antivirus scans
+
+The Keymotion 0.1.0 installer was scanned on VirusTotal on 15 November 2026. 70 of the 71 antivirus engines found nothing, Microsoft Defender included.
+
+One engine, Trapmine, flags it with a machine-learning score ("Malicious.high.ml.score"), and gives the app inside the installer a low score from the same model. This is a guess the engine makes about new, unsigned files, not a match with known malware. We reported it to Trapmine as a false positive on 15 November 2026. Signed releases should make guesses like this rarer.
+
+- [VirusTotal report for the installer](https://www.virustotal.com/gui/file/f2a1208007ba947c5ec082835328b8dbb0240baa22839d8ea439d1423f897531)
 
 ## How updates are checked
 
