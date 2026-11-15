@@ -7,7 +7,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef } from "react";
 import type { UpdateState } from "../bindings/UpdateState";
 import { useAgo, useT, type MessageKey, type Translate } from "../lib/i18n";
-import { openLink } from "../lib/ipc";
+import { openLink, openWindowsPage } from "../lib/ipc";
 import { useApp } from "../lib/store";
 import { useUnsaved } from "../lib/unsaved";
 import { megabytes, notesFor, releasePage, useUpdates } from "../lib/updates";
@@ -70,6 +70,17 @@ export function UpdateRows() {
   const locale = useApp((s) => s.locale);
   const { state, check, setAuto, openDialog, error } = useUpdates();
   if (!state) return null;
+  // The Microsoft Store build: the Store updates it.
+  if (state.store) {
+    return (
+      <Row label={t("settings.version")} hint={t("update.store.hint", { current: state.current })}>
+        <button type="button" className={secondaryButton} onClick={() => void openWindowsPage("store-updates")}>
+          {t("update.store.open")}
+          <ArrowUpRight size={14} aria-hidden />
+        </button>
+      </Row>
+    );
+  }
   const st = state.status;
   return (
     <>

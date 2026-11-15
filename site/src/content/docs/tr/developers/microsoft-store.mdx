@@ -1,0 +1,94 @@
+---
+title: Microsoft Store paketi
+description: Keymotion'ın Microsoft Store için nasıl MSIX olarak paketlendiği, Store sürümünün neyi farklı yaptığı ve paketi kendi bilgisayarınızda nasıl deneyeceğiniz.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+<Aside>
+Keymotion henüz Microsoft Store'da değil. Bu sayfa, proje için hazırlanan paketi anlatır.
+</Aside>
+
+Microsoft Store, GitHub'daki kurulum dosyasının yanında Keymotion'ı kurmanın ikinci yoludur. Microsoft yayımladığı her paketi imzalar, bu yüzden Windows Store'dan gelen kopyaya uyarı göstermeden güvenir. İki yolda da program aynıdır: Store paketi, `tauri build` komutunun yaptığı `keymotion.exe`'yi taşır. GitHub sürümünde hiçbir şey değişmez.
+
+## Store sürümü neyi farklı yapar
+
+Uygulama hangi yoldan kurulduğunu çalışırken anlar. Windows, MSIX'ten kurulan bir programa paket kimliği verir; uygulama buna bakar (`crates/kb-winsys/src/package.rs`, `app/src-tauri/src/channel.rs`). Yalnızca çalışan `keymotion.exe`'yi içeren paket sayılır. Böylece başka bir paketli uygulamanın başlattığı geliştirme sürümü o uygulamanın paketini kendi paketi sanmaz.
+
+| | GitHub (kurulum dosyası, geliştirme sürümü) | Microsoft Store |
+|---|---|---|
+| Güncellemeler | Uygulamanın kendi güncelleyicisi, GitHub sürümlerinden | Store. Güncelleyici kapalı kalır; Ayarlar › Hakkında, Store'un güncellemeler sayfasını açar. |
+| Windows açılınca başlatma | Kullanıcının `Run` anahtarında bir değer, `--hidden` ile | Paketin başlangıç görevi (`KeymotionStartup`), yine `--hidden` ile. Kullanıcı bunu Windows ayarlarından kapatırsa yalnızca kendisi oradan yeniden açabilir; Ayarlar › Kapatma ve açılış o sayfaya bağlantı verir. |
+| Bildirimlerdeki ad ve logo | Açılışta `dev.keymotion` uygulama kimliğiyle kaydedilir | Paketin kendisinden gelir |
+| Veri klasörleri | `%APPDATA%\dev.keymotion`, `%LOCALAPPDATA%\dev.keymotion` | Uygulamanın gördüğü yollar aynıdır. Klasörler önceden yoksa Windows onları paketin kendi klasöründe tutar (`%LOCALAPPDATA%\Packages\<paket ailesi>\LocalCache\…`) ve uygulamayla birlikte siler; "Klasörü aç" o klasörü açar. |
+| Ayarlar'daki gizlilik metni | GitHub'daki güncelleme denetiminden söz eder | Güncellemeleri Store'un getirdiğini söyler |
+
+İki sürümün ortak bir kuralı var: nasıl kurulmuş olursa olsun aynı anda yalnızca bir Keymotion çalışır. İkisi birden çalışsa klavyeye aynı anda komut gönderirlerdi.
+
+Daha önce GitHub'daki Keymotion kurulduysa klasörleri zaten vardır; Store sürümü onları olduğu gibi okur ve yazar. Ayarlar aynen devam eder ve iki sürüm aynı klasörleri kullanır. Windows yalnızca bir paketin sıfırdan oluşturduğu klasörleri paketin kendi yerine taşır.
+
+## Paket
+
+| Dosya | Ne işe yarar |
+|---|---|
+| `app/src-tauri/store/AppxManifest.xml` | Paket bildirimi; kimlik ve sürüm için boş yerler içerir. Tam güven (`runFullTrust`): program, kurulum dosyasından kurulduğundaki gibi kullanıcının olağan yetkileriyle çalışır. HID, göstergeler ve saatin yanındaki simge bunu gerektirir. |
+| `app/src-tauri/store/Assets/` | Windows'un istediği her boyutta logolar. `tools/store/make-assets.py`, `app/src-tauri/icons/icon.png` dosyasından çizer. Simge değişince yeniden çalıştırın. |
+| `tools/store/msix.mjs` | Bildirimi doldurur, logoları dizinler (`makepri`) ve MSIX'i paketler (`makeappx`). Windows SDK gerekir. Testler: `node --test "tools/store/*.test.mjs"`. |
+| `.github/workflows/store.yml` | Yayımlanmış bir sürümün paketini oluşturur. |
+
+Paket imzalanmaz: Store, sertifikasyondan geçen paketi kendisi imzalar. CI her değişiklikte bir deneme paketi oluşturur. Böylece Windows araçlarının reddedeceği bir bildirim ya da logo sürümden önce fark edilir.
+
+### Sürüm numaraları
+
+İki kanal için tek bir sürüm numarası ve tek bir değişiklik listesi vardır. Store paketinin sürüm numarası dört parçalıdır: dördüncü parça Store'a aittir ve her zaman 0'dır; ilk parça 0'dan büyük olmalıdır. Keymotion `1.2.3`, `1.2.3.0` paketi olur. Kullanıcının gördüğü tek fark budur (Windows'un yüklü uygulamalar listesinde).
+
+- `msix.mjs` sürümü `tauri.conf.json` dosyasından alır. `--version` yalnızca deneme paketlerinde çalışır; bu yüzden bir Store paketi, aynı kodun GitHub sürümünden başka bir numara taşıyamaz.
+- `store.yml` yalnızca `main` üzerindeki bir sürüm etiketini paketler; bu yüzden Store, GitHub'da olmayan bir sürüm alamaz.
+- Store deneme sürümlerini (`1.3.0-rc.1`) almaz; onlar GitHub'da kalır.
+- Bir sürüm Store'a sertifikasyondan sonra, genellikle GitHub'dan birkaç gün sonra ulaşır. Sürüm notları ikisini birden anlatır; yalnızca bir kanalı ilgilendiren değişiklik bunu belirtir.
+- Tanılama bilgisi ve destek istekleri kopyanın nereden geldiğini gösterir: `App version: 1.0.0 (Microsoft Store)`, `(GitHub)` ya da `(development build)`.
+
+## Paketi kendi bilgisayarınızda deneyin
+
+Windows'un geliştirici modu açıksa (Ayarlar › Sistem › Geliştiriciler için), uydurma kimlikli bir paket ("Keymotion (test)") sertifika olmadan kurulur. Store'un paketine hiç karışmaz.
+
+<Steps>
+
+1. Programı derleyin ve paketleyin:
+
+   ```bash
+   pnpm --dir app tauri build --no-bundle
+   node tools/store/msix.mjs --exe target/release/keymotion.exe --out target/store-test --test
+   ```
+
+2. Keymotion açıksa kapatın (saatin yanındaki simge › Çık). Sonra paketi PowerShell'de kendi klasöründen kurun:
+
+   ```powershell
+   Add-AppxPackage -Register target\store-test\layout\AppxManifest.xml
+   ```
+
+3. Başlat menüsünden **Keymotion (test)** uygulamasını açın.
+
+4. İşiniz bitince kaldırın. Bu, paketin oluşturduğu dosyaları da siler:
+
+   ```powershell
+   Get-AppxPackage Keymotion.StoreTest | Remove-AppxPackage
+   ```
+
+</Steps>
+
+## Store'a sürüm gönderme
+
+<Steps>
+
+1. Sürümü her zamanki gibi GitHub'da yayımlayın (`release.yml`).
+
+2. GitHub › Actions › **Microsoft Store package** iş akışını sürüm etiketiyle (`v1.2.3`) çalıştırın. Program o etiketten derlenir ve paketlenir; `.msix` dosyası çalıştırmanın çıktısı olarak saklanır.
+
+3. Partner Center'da Keymotion için yeni bir gönderim başlatın ve `.msix` dosyasını Paketler bölümüne yükleyin. Microsoft paketi denetler (genellikle üç iş günü içinde), imzalar ve yayımlar.
+
+</Steps>
+
+İş akışı, Partner Center › Keymotion › Ürün kimliği sayfasından aynen kopyalanan üç depo değişkeni ister: `STORE_IDENTITY_NAME`, `STORE_PUBLISHER` ve `STORE_PUBLISHER_DISPLAY_NAME`. Bunlar gizli değildir; her pakette görünürler.
+
+Uygulama yayına girdikten sonra gönderim iş akışından da yapılabilir (Microsoft'un `msstore` aracıyla). Ancak bunun için Partner Center hesabına erişimi olan bir Azure uygulama kaydı gerekir. Şimdilik yükleme elle yapılır.

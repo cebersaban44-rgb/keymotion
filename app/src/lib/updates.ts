@@ -7,7 +7,7 @@ import { create } from "zustand";
 import type { UpdateState } from "../bindings/UpdateState";
 import type { UpdateStatus } from "../bindings/UpdateStatus";
 import type { Locale } from "./i18n";
-import { inTauri, invoke, listen } from "./ipc";
+import { inTauri, invoke, listen, mockStore } from "./ipc";
 
 const EVENT_UPDATE = "update-state";
 
@@ -25,7 +25,7 @@ const MOCK_NOTES = JSON.stringify({
 });
 
 const mock = {
-  state: { current: "0.1.0", autoCheck: true, lastCheckMs: null, status: { kind: "idle" } } as UpdateState,
+  state: { current: "0.1.0", autoCheck: true, lastCheckMs: null, status: { kind: "idle" }, store: mockStore() } as UpdateState,
   timer: 0,
   emit: null as ((s: UpdateState) => void) | null,
 };

@@ -31,6 +31,7 @@ Keymotion connects to the internet for two things only: the calendars you add, a
 - **What it sends.** An ordinary download request. Apart from the updater component's name and version (`tauri-plugin-updater`), it holds nothing about you: no account, no usage data, no settings. Like any server, GitHub sees the IP address the request comes from.
 - **When a new version is found.** Keymotion doesn't install it by itself; it asks you. When you choose **Install and restart**, the installer is downloaded from GitHub and its signature is checked with the key built into Keymotion. If it doesn't match, it isn't installed.
 - **Test versions.** Versions with a suffix in their number, such as "-rc", also read GitHub's public list of releases (`api.github.com`), to see test releases too. Normal versions don't read that list.
+- **Microsoft Store version.** Keymotion installed from the Microsoft Store never makes this check: the Store updates it.
 
 ## Other companies' privacy policies
 
@@ -66,6 +67,8 @@ Everything is in your Windows user folder. In **Settings**, under **About**, **D
   - `screen\`: your picture library, the copy of the factory animation if you made one, and the last live card.
 - **Log files**, in `%LOCALAPPDATA%\dev.keymotion\logs\`: one file per day for the last 7 days, at most 4 MB each, and short crash notes. Before anything is written, web addresses are cut to their server name and your Windows user name is removed from folder paths. Reminder titles and meeting names are never written.
 - **Interface preferences**, in `%LOCALAPPDATA%\dev.keymotion\EBWebView\`: theme, language and edits you haven't saved yet, kept by the app's window.
+
+Keymotion installed from the Microsoft Store uses the same folders. If they weren't there before (Keymotion from GitHub was never installed), Windows keeps them in the app's own folder, `%LOCALAPPDATA%\Packages\<the app's package name>\LocalCache\`, and deletes them when you uninstall the app; the buttons in **Settings** then open that folder.
 
 ## Diagnostics
 

@@ -328,6 +328,22 @@ pub struct BackgroundSettings {
     /// off (read only: setting `start_with_windows` turns it on again).
     #[serde(default)]
     pub start_turned_off: bool,
+    /// Only Windows' startup settings can change it now (read only; the
+    /// Store build, whose startup task the user turned off there, or a
+    /// policy set).
+    #[serde(default)]
+    pub start_locked: bool,
+}
+
+/// Windows' own pages the app opens (the Store build).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum WindowsPage {
+    /// Settings › Apps › Startup.
+    StartupApps,
+    /// Microsoft Store › Downloads and updates.
+    StoreUpdates,
 }
 
 /// The tray menu's words and the background notice, in the UI language.
@@ -2021,6 +2037,9 @@ pub struct UpdateState {
     /// When GitHub was last asked (ms since the epoch).
     pub last_check_ms: Option<f64>,
     pub status: UpdateStatus,
+    /// Installed from the Microsoft Store, which updates it: the app's
+    /// own updater stays off.
+    pub store: bool,
 }
 
 /// Where an update stands.

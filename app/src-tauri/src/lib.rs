@@ -6,6 +6,7 @@
 
 mod backup;
 mod calendar;
+mod channel;
 mod device;
 mod diagnostics;
 mod dto;
@@ -36,6 +37,7 @@ use dto::{
     KeymapCatalog, KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint,
     PomodoroSettings, PomodoroState, Reminder, ReminderSettings, ReminderState, ScreenItem, ScreenItemKind,
     ScreenState, SettingsReset, SongStop, ThemePreference, TrayTexts, UiEnvironment, UnsupportedKeyboard, UpdateState,
+    WindowsPage,
 };
 use gauges::GaugesHandle;
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
@@ -499,7 +501,7 @@ async fn unsupported_report(app: AppHandle, id: String) -> Result<String, String
             .map_or_else(|| format!("unknown (build {})", os_build()), |r| r.describe());
         Ok(diagnostics::support_request(
             &app.package_info().name,
-            &app.package_info().version.to_string(),
+            &channel::version_line(&app.package_info().version.to_string()),
             &windows,
             &details,
         ))
@@ -739,17 +741,31 @@ fn window_shown(window: WebviewWindow) -> bool {
     window.is_visible().unwrap_or(true)
 }
 
+// Off the main thread: the Store build asks Windows for its startup task
+// and waits for the answer.
 #[tauri::command]
-fn background_state(background: State<'_, Arc<Background>>) -> BackgroundSettings {
-    background.settings()
+async fn background_state(background: State<'_, Arc<Background>>) -> Result<BackgroundSettings, String> {
+    let background = background.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || background.settings()).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn background_configure(
+async fn background_configure(
     background: State<'_, Arc<Background>>,
     settings: BackgroundSettings,
 ) -> Result<BackgroundSettings, String> {
-    background.configure(settings)
+    let background = background.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || background.configure(settings)).await.map_err(|e| e.to_string())?
+}
+
+/// Open Windows' startup settings or the Store's updates page (the Store
+/// build; fixed addresses only).
+#[tauri::command]
+fn open_windows_page(page: WindowsPage) -> Result<(), String> {
+    kb_winsys::shell::open_windows_page(match page {
+        WindowsPage::StartupApps => kb_winsys::shell::WindowsPage::StartupApps,
+        WindowsPage::StoreUpdates => kb_winsys::shell::WindowsPage::StoreUpdates,
+    })
 }
 
 /// Updates: what the app knows about a newer version (updates.rs).
@@ -878,7 +894,7 @@ async fn diagnostics_report(app: AppHandle, language: String, context: Option<St
             .unwrap_or_default();
         let facts = diagnostics::Facts {
             app_name: app.package_info().name.clone(),
-            app_version: app.package_info().version.to_string(),
+            app_version: channel::version_line(&app.package_info().version.to_string()),
             time: chrono::Local::now().to_rfc3339(),
             windows: kb_winsys::os::windows_release()
                 .map_or_else(|| format!("unknown (build {})", os_build()), |r| r.describe()),
@@ -908,7 +924,7 @@ fn open_folder(app: AppHandle, folder: AppFolder) -> Result<(), String> {
     }
     .map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("folder not opened: {e}"))?;
-    diagnostics::reveal(&dir, false)
+    diagnostics::reveal(&channel::shown_folder(&dir), false)
 }
 
 /// Write a backup file into the Downloads folder (`backup.rs` has the
@@ -1425,8 +1441,12 @@ pub fn run() {
             app.manage(device);
             app.manage(live);
             tray::start(app.handle())?;
-            // Started with Windows: only the tray icon shows.
-            if std::env::args().any(|a| a == tray::ARG_HIDDEN) {
+            // Started with Windows: only the tray icon shows. The GitHub
+            // build's `Run` value passes `--hidden`; the Store build's
+            // startup task passes nothing, Windows tells how it started.
+            let at_sign_in = std::env::args().any(|a| a == tray::ARG_HIDDEN)
+                || (channel::store() && kb_winsys::package::started_at_sign_in());
+            if at_sign_in {
                 tracing::info!("started hidden, in the tray");
             } else {
                 window.show()?;
@@ -1459,6 +1479,7 @@ pub fn run() {
             update_auto,
             update_install,
             update_cancel,
+            open_windows_page,
             ui_environment,
             open_link,
             open_issue,

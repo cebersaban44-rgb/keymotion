@@ -5,7 +5,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/) (0.x until 1.0).
 Türkçe: [CHANGELOG.tr.md](CHANGELOG.tr.md).
 
+From 1.0.0 on, each version is the same on GitHub and in the Microsoft Store,
+with one list of changes for both. Windows shows the Store's copy with a
+fourth number, always 0 (1.0.0 is 1.0.0.0). The Store gets a version after
+Microsoft has reviewed it, usually a few days after GitHub. Test versions
+("-rc") are only on GitHub. A change that concerns only one of them says so.
+
 ## [Unreleased]
+
+## [1.0.0] - 2026-11-15
+
+Keymotion 1.0. The app is the same as 0.1.0, ready for the Microsoft Store.
+The Microsoft Store takes no version number that starts with 0, so this
+release is 1.0.0.
+
+### Added
+
+- **Microsoft Store edition:** the same app, packaged for the Microsoft
+  Store, where Microsoft signs it, so Windows installs it without a warning.
+  Installed from the Store, Keymotion is updated by the Store (its own update
+  check stays off), starts with Windows through Windows' startup settings,
+  and its notifications carry the Store app's name and logo. The version on
+  GitHub works as before.
 
 ## [0.1.0] - 2026-11-12
 

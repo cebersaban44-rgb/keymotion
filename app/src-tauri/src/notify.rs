@@ -24,8 +24,12 @@ const ICON_FILE: &str = "notification-icon.png";
 static REGISTERED: AtomicBool = AtomicBool::new(false);
 
 /// Register `identifier` as "Keymotion" with its logo (written into
-/// `dir`). Call once at start, before anything is shown.
+/// `dir`). Call once at start, before anything is shown. The Store build
+/// needs none: its package gives notifications its name and logo.
 pub fn register(identifier: &str, dir: &Path) {
+    if crate::channel::store() {
+        return;
+    }
     let icon = dir.join(ICON_FILE);
     let result = (|| {
         if std::fs::read(&icon).ok().as_deref() != Some(ICON) {
@@ -79,9 +83,13 @@ pub fn show(app_id: &str, title: &str, body: &str) -> Result<(), String> {
     let doc = XmlDocument::new().map_err(|e| e.to_string())?;
     doc.LoadXml(&HSTRING::from(toast_xml(title, body))).map_err(|e| e.to_string())?;
     let toast = ToastNotification::CreateToastNotification(&doc).map_err(|e| e.to_string())?;
-    ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(app_id))
-        .and_then(|n| n.Show(&toast))
-        .map_err(|e| e.to_string())
+    // The Store build shows under its package's own app id.
+    let notifier = if crate::channel::store() {
+        ToastNotificationManager::CreateToastNotifier()
+    } else {
+        ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(app_id))
+    };
+    notifier.and_then(|n| n.Show(&toast)).map_err(|e| e.to_string())
 }
 
 #[cfg(not(windows))]

@@ -11,11 +11,15 @@ Short answers to the questions people ask most. For step-by-step fixes, see [If 
 
 ## Why does Windows warn me when I install Keymotion?
 
-Keymotion 0.1.0 isn't code-signed yet, so Windows may stop the installer with "Windows protected your PC". Download the installer only from the project's [GitHub Releases page](https://github.com/cebersaban44-rgb/keymotion/releases). Then click **More info** and **Run anyway**.
+Keymotion's installer on GitHub isn't code-signed yet, so Windows may stop it with "Windows protected your PC". Download the installer only from the project's [GitHub Releases page](https://github.com/cebersaban44-rgb/keymotion/releases). Then click **More info** and **Run anyway**.
 
-The project has applied for free code signing and is waiting for a reply. See the [code signing policy](/keymotion/about/code-signing/) and [Installing Keymotion](/keymotion/guide/install/).
+SignPath Foundation, which signs open-source projects for free, declined for now because the project is still new; it will apply again. Keymotion is also on its way to the Microsoft Store, whose copy Microsoft signs. See the [code signing policy](/keymotion/about/code-signing/) and [Installing Keymotion](/keymotion/guide/install/).
 
 If **Smart App Control** is on (Windows Security, **App & browser control**), Windows may block the installer outright, with no **Run anyway** button, because it isn't signed. We don't ask you to turn Smart App Control off for Keymotion; signed releases will fix this.
+
+## Is the Microsoft Store version different from the one on GitHub?
+
+No. It is the same app with the same version numbers and the same release notes. What differs: the Store updates its copy (the app's own update check stays off), Windows shows its version with a fourth number, always 0 (1.0.0.0), and a new version reaches the Store a few days after GitHub, once Microsoft has reviewed it. Test versions are only on GitHub. Install only one of them; see [GitHub and the Microsoft Store](/keymotion/about/release-notes/#github-and-the-microsoft-store).
 
 ## My antivirus or VirusTotal flags Keymotion. Is it safe?
 

@@ -1,0 +1,153 @@
+# Builds the Microsoft Store package (MSIX) of a released version. It runs
+# beside release.yml and changes nothing there: the GitHub release, its
+# installer and its updater stay as they are.
+#
+#   "Run workflow" with a release tag ("v1.0.0"): builds keymotion.exe from
+#   that tag as the release did, packs it with tools/store/msix.mjs and keeps
+#   the .msix as this run's artifact. The owner uploads it in Partner Center
+#   (Microsoft signs it when it passes certification); nothing is submitted
+#   from here yet. Docs site: developers/microsoft-store.
+#
+#   "Test package" makes the same package with a made-up identity, for
+#   trying on a computer with Windows' developer mode; the Store would
+#   refuse it.
+#
+# Repository variables (Settings › Secrets and variables › Actions ›
+# Variables), copied from Partner Center › the app › Product identity:
+# STORE_IDENTITY_NAME, STORE_PUBLISHER, STORE_PUBLISHER_DISPLAY_NAME. They
+# are not secrets: the Store shows them in every package.
+#
+# Actions are pinned to commit SHAs (the release is in the comment next to
+# each), as in ci.yml; Dependabot proposes updates.
+name: Microsoft Store package
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to package, such as v1.0.0
+        required: true
+        type: string
+      test:
+        description: Test package (made-up identity, for developer mode only)
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: store-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  package:
+    name: Build the Store package
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Keep LF line endings
+        run: git config --global core.autocrlf false
+
+      # The whole history, so the check below can see main.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      # Only released code goes to the Store: the tag is on main and names
+      # the version in the app's files.
+      - name: The tag is a release on main
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::Tag $TAG is not on main."
+            exit 1
+          fi
+          node tools/check-version.mjs --tag "$TAG"
+
+      - name: Store script tests
+        run: node --test "tools/store/*.test.mjs"
+
+      # The cheap check first: a missing identity or a version the Store
+      # cannot take fails in seconds, not after the build.
+      - name: Check the identity and the version
+        env:
+          STORE_IDENTITY_NAME: ${{ vars.STORE_IDENTITY_NAME }}
+          STORE_PUBLISHER: ${{ vars.STORE_PUBLISHER }}
+          STORE_PUBLISHER_DISPLAY_NAME: ${{ vars.STORE_PUBLISHER_DISPLAY_NAME }}
+          TEST: ${{ inputs.test }}
+        run: |
+          extra=()
+          if [ "$TEST" = true ]; then extra=(--test); fi
+          node tools/store/msix.mjs --check "${extra[@]}"
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: app/package.json
+          cache: false
+
+      - name: Install UI dependencies
+        run: pnpm --dir app install --frozen-lockfile
+
+      # The release is pinned in rust-toolchain.toml.
+      - name: Rust toolchain
+        run: |
+          channel="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal --no-self-update
+          rustc --version
+
+      # The program only: the package is made below, and the updater's
+      # files belong to the GitHub release.
+      - name: Build keymotion.exe
+        run: pnpm --dir app tauri build --no-bundle
+
+      - name: Pack the MSIX
+        id: pack
+        env:
+          STORE_IDENTITY_NAME: ${{ vars.STORE_IDENTITY_NAME }}
+          STORE_PUBLISHER: ${{ vars.STORE_PUBLISHER }}
+          STORE_PUBLISHER_DISPLAY_NAME: ${{ vars.STORE_PUBLISHER_DISPLAY_NAME }}
+          TEST: ${{ inputs.test }}
+        run: |
+          extra=()
+          if [ "$TEST" = true ]; then extra=(--test); fi
+          node tools/store/msix.mjs --exe target/release/keymotion.exe --out target/store "${extra[@]}"
+
+      - name: SHA-256 of the package
+        env:
+          MSIX: ${{ steps.pack.outputs.msix }}
+        run: |
+          sha256sum "$MSIX" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: keymotion-${{ inputs.tag }}-msix${{ inputs.test && '-test' || '' }}
+          path: ${{ steps.pack.outputs.msix }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: What next
+        if: ${{ !inputs.test }}
+        env:
+          VERSION: ${{ steps.pack.outputs.package_version }}
+        run: |
+          {
+            echo "### Package $VERSION is ready"
+            echo
+            echo "Download the artifact, then in Partner Center › Keymotion › the new submission › Packages, upload the .msix."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -28,6 +28,7 @@ Keymotion connects to the internet for two things only: the calendars you add, a
 - **What it sends.** An ordinary download request. Apart from the updater component's name and version (`tauri-plugin-updater`), it holds nothing about you: no account, no usage data, no settings. Like any server, GitHub sees the IP address the request comes from.
 - **When a new version is found.** Keymotion doesn't install it by itself; it asks you. When you choose **Install and restart**, the installer is downloaded from GitHub and its signature is checked with the key built into Keymotion. If it doesn't match, it isn't installed.
 - **Test versions.** Versions with a suffix in their number, such as "-rc", also read GitHub's public list of releases (`api.github.com`), to see test releases too. Normal versions don't read that list.
+- **Microsoft Store version.** Keymotion installed from the Microsoft Store never makes this check: the Store updates it.
 
 ## Other companies' privacy policies
 
