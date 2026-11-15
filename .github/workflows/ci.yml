@@ -60,9 +60,10 @@ jobs:
       - name: Versions agree
         run: node tools/check-version.mjs
 
-      # The scripts the release (release.yml) and site (pages.yml) workflows use.
-      - name: Release and site script tests
-        run: node --test "tools/release/*.test.mjs" "tools/site/*.test.mjs"
+      # The scripts the release (release.yml), site (pages.yml) and Store
+      # (store.yml) workflows use.
+      - name: Release, site and Store script tests
+        run: node --test "tools/release/*.test.mjs" "tools/site/*.test.mjs" "tools/store/*.test.mjs"
 
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
@@ -111,6 +112,14 @@ jobs:
             [ -n "$new" ] && printf 'Not committed:\n%s\n' "$new"
             exit 1
           fi
+
+      # The Microsoft Store package (store.yml) is made only for a release;
+      # packing a test one here catches a manifest or logo Windows' tools
+      # would refuse, on every change.
+      - name: Microsoft Store package packs
+        run: |
+          cargo build -p keymotion
+          node tools/store/msix.mjs --exe target/debug/keymotion.exe --out target/store-check --test
 
   # Licences, security advisories, duplicate crates and crate sources
   # (deny.toml). A separate job, because a new advisory can turn it red

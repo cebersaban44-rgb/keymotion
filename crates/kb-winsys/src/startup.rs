@@ -34,6 +34,44 @@ pub fn remove(name: &str) -> Result<(), String> {
     sys::remove(RUN, APPROVED, name)
 }
 
+/// The Store build's "start with Windows": the startup task its package
+/// declares (`desktop:StartupTask`; store/AppxManifest.xml), since a
+/// packaged app's `Run` value would not be read. The user can turn it off in
+/// Task Manager or Settings; then only they can turn it on again there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskState {
+    On,
+    Off,
+    /// Turned off in Task Manager or Settings: the app cannot turn it on.
+    OffByUser,
+    /// An administrator's policy decides.
+    OffByPolicy,
+    OnByPolicy,
+}
+
+impl TaskState {
+    /// Windows starts the app at sign-in.
+    pub fn starts(self) -> bool {
+        matches!(self, Self::On | Self::OnByPolicy)
+    }
+}
+
+/// The state of the package's startup task `id`.
+pub fn task_state(id: &str) -> Result<TaskState, String> {
+    sys::task_state(id)
+}
+
+/// Turn the startup task on; the state after (still off when the user or a
+/// policy turned it off).
+pub fn task_enable(id: &str) -> Result<TaskState, String> {
+    sys::task_enable(id)
+}
+
+/// Turn the startup task off.
+pub fn task_disable(id: &str) -> Result<(), String> {
+    sys::task_disable(id)
+}
+
 /// The command line for `exe` with its arguments, quoted for the `Run` key.
 pub fn command_line(exe: &std::path::Path, args: &[&str]) -> String {
     let mut line = format!("\"{}\"", exe.display());
@@ -150,6 +188,40 @@ mod sys {
         delete(approved, name)
     }
 
+    fn task(id: &str) -> Result<windows::ApplicationModel::StartupTask, String> {
+        windows::ApplicationModel::StartupTask::GetAsync(&HSTRING::from(id))
+            .and_then(|op| op.join())
+            .map_err(|e| format!("startup task not found: {}", e.message()))
+    }
+
+    fn state(s: windows::ApplicationModel::StartupTaskState) -> super::TaskState {
+        use super::TaskState;
+        use windows::ApplicationModel::StartupTaskState as S;
+        match s {
+            S::Enabled => TaskState::On,
+            S::DisabledByUser => TaskState::OffByUser,
+            S::DisabledByPolicy => TaskState::OffByPolicy,
+            S::EnabledByPolicy => TaskState::OnByPolicy,
+            _ => TaskState::Off,
+        }
+    }
+
+    pub fn task_state(id: &str) -> Result<super::TaskState, String> {
+        task(id)?.State().map(state).map_err(|e| e.message())
+    }
+
+    pub fn task_enable(id: &str) -> Result<super::TaskState, String> {
+        task(id)?
+            .RequestEnableAsync()
+            .and_then(|op| op.join())
+            .map(state)
+            .map_err(|e| format!("startup task not turned on: {}", e.message()))
+    }
+
+    pub fn task_disable(id: &str) -> Result<(), String> {
+        task(id)?.Disable().map_err(|e| format!("startup task not turned off: {}", e.message()))
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -222,12 +294,31 @@ mod sys {
     pub fn remove(_run: &str, _approved: &str, _name: &str) -> Result<(), String> {
         Ok(())
     }
+
+    pub fn task_state(_id: &str) -> Result<super::TaskState, String> {
+        Err("startup tasks are only available on Windows".into())
+    }
+
+    pub fn task_enable(_id: &str) -> Result<super::TaskState, String> {
+        Err("startup tasks are only available on Windows".into())
+    }
+
+    pub fn task_disable(_id: &str) -> Result<(), String> {
+        Err("startup tasks are only available on Windows".into())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::command_line;
     use std::path::Path;
+
+    /// Outside a package Windows has no startup task to give: an error,
+    /// never a panic.
+    #[test]
+    fn no_startup_task_outside_a_package() {
+        assert!(super::task_state("KeymotionStartup").is_err());
+    }
 
     #[test]
     fn quotes_the_program_path() {

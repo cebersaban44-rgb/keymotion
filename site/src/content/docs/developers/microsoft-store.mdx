@@ -1,0 +1,88 @@
+---
+title: Microsoft Store package
+description: How Keymotion is packed as an MSIX for the Microsoft Store, what the Store build does differently, and how to try the package on your own computer.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+<Aside>
+Keymotion is not in the Microsoft Store yet. This page describes the package the project prepares for it.
+</Aside>
+
+The Microsoft Store is a second way to install Keymotion, beside the installer on GitHub. Microsoft signs every package it publishes, so Windows trusts the Store copy without a warning. The program is the same in both: the Store package holds the `keymotion.exe` that `tauri build` makes, and nothing in the GitHub release changes.
+
+## What the Store build does differently
+
+The app tells the two apart while it runs, by the package identity Windows gives a program installed from an MSIX (`crates/kb-winsys/src/package.rs`, `app/src-tauri/src/channel.rs`). Only a package that holds the running `keymotion.exe` counts, so a development build started from another packaged app never takes that app's package for its own.
+
+| | GitHub (installer, development build) | Microsoft Store |
+|---|---|---|
+| Updates | The app's updater, from GitHub releases | The Store. The updater stays off; Settings › About opens the Store's updates page. |
+| Start with Windows | A value in the per-user `Run` key, with `--hidden` | The package's startup task (`KeymotionStartup`), also with `--hidden`. If the user turns it off in Windows' settings, only they can turn it on again there; Settings › Background then links to that page. |
+| Notification name and logo | Registered at start under the app id `dev.keymotion` | The package's own |
+| Data folders | `%APPDATA%\dev.keymotion`, `%LOCALAPPDATA%\dev.keymotion` | The same paths, as the app sees them. Where the folders were not there before, Windows keeps them in the package's own folder (`%LOCALAPPDATA%\Packages\<package family>\LocalCache\…`) and removes them with the app; "Open folder" opens that folder. |
+| Privacy text in Settings | Mentions the update check on GitHub | Says the Store brings updates |
+
+Both builds share one rule: only one Keymotion runs at a time, whichever way it was installed, since two would talk to the keyboard at once.
+
+If Keymotion from GitHub was installed before, its folders are already there, and the Store build reads and writes them as they are: the settings carry over, and both builds share them. Windows moves only folders a package makes from nothing into the package's own place.
+
+## The package
+
+| File | What it is |
+|---|---|
+| `app/src-tauri/store/AppxManifest.xml` | The package manifest, with places for the identity and the version. Full trust (`runFullTrust`): the program runs with the user's normal rights, as it does from the installer, which HID, the gauges and the tray need. |
+| `app/src-tauri/store/Assets/` | The logos in every size Windows asks for, drawn from `app/src-tauri/icons/icon.png` by `tools/store/make-assets.py`. Run it again when the icon changes. |
+| `tools/store/msix.mjs` | Fills the manifest, indexes the logos (`makepri`) and packs the MSIX (`makeappx`). Needs the Windows SDK. Tests: `node --test "tools/store/*.test.mjs"`. |
+| `.github/workflows/store.yml` | Builds the package of a released version. |
+
+The package is not signed: the Store signs what passes certification. CI packs a test package on every change, so a manifest or logo Windows' tools would refuse shows up before a release.
+
+### Version numbers
+
+A Store package has four version parts. The fourth belongs to the Store and is always 0, and the first must be above 0. Keymotion `1.2.3` becomes package `1.2.3.0`. The Store has no room for test versions (`1.3.0-rc.1`), so it only gets released versions.
+
+## Try the package on your computer
+
+A package with a made-up identity ("Keymotion (test)") installs without a certificate when Windows' developer mode is on (Settings › System › For developers). It never mixes with the Store's package.
+
+<Steps>
+
+1. Build the program and pack it:
+
+   ```bash
+   pnpm --dir app tauri build --no-bundle
+   node tools/store/msix.mjs --exe target/release/keymotion.exe --out target/store-test --test
+   ```
+
+2. Quit Keymotion if it is running (tray icon › Quit), then install the package from its folder, in PowerShell:
+
+   ```powershell
+   Add-AppxPackage -Register target\store-test\layout\AppxManifest.xml
+   ```
+
+3. Open **Keymotion (test)** from the Start menu.
+
+4. Remove it when you are done. This also removes the files it created:
+
+   ```powershell
+   Get-AppxPackage Keymotion.StoreTest | Remove-AppxPackage
+   ```
+
+</Steps>
+
+## Making a Store release
+
+<Steps>
+
+1. Release the version on GitHub as usual (`release.yml`).
+
+2. In GitHub › Actions › **Microsoft Store package**, run the workflow with the release tag (`v1.2.3`). It builds the program from that tag, packs it and keeps the `.msix` as the run's artifact.
+
+3. In Partner Center, start a new submission for Keymotion and upload the `.msix` under Packages. Microsoft certifies it, usually within three working days, signs it and publishes it.
+
+</Steps>
+
+The workflow needs three repository variables, copied exactly from Partner Center › Keymotion › Product identity: `STORE_IDENTITY_NAME`, `STORE_PUBLISHER` and `STORE_PUBLISHER_DISPLAY_NAME`. They are not secrets; every package shows them.
+
+Submitting from the workflow (Microsoft's `msstore` tool) is possible once the app is live, but it needs an Azure app registration with access to the Partner Center account. The upload is done by hand for now.

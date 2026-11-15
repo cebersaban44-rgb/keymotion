@@ -12,6 +12,9 @@
 //! A test version ("0.1.0-rc.1") also looks at GitHub's pre-releases, so
 //! an update from one test version to the next can be tried for real; a
 //! normal version only ever sees normal releases.
+//!
+//! The Microsoft Store build never looks: the Store updates it (its rules
+//! allow no other way), and the settings say so (channel.rs).
 
 use crate::dto::{UpdateFailure, UpdateState, UpdateStatus};
 use crate::settings;
@@ -125,6 +128,10 @@ impl Updates {
             found: Mutex::new(None),
             task: Mutex::new(None),
         });
+        if crate::channel::store() {
+            tracing::info!("updates come from the Microsoft Store");
+            return me;
+        }
         let worker = me.clone();
         let spawned = std::thread::Builder::new().name("updates".into()).spawn(move || {
             std::thread::sleep(FIRST_LOOK_AFTER);
@@ -163,6 +170,7 @@ impl Updates {
             auto_check: stored.auto_check,
             last_check_ms: stored.last_check_ms,
             status: self.status.lock().map(|s| s.clone()).unwrap_or(UpdateStatus::Idle),
+            store: crate::channel::store(),
         }
     }
 
@@ -188,6 +196,9 @@ impl Updates {
     }
 
     pub fn set_auto(&self, on: bool) -> UpdateState {
+        if crate::channel::store() {
+            return self.state();
+        }
         let mut next = self.stored();
         if next.auto_check != on {
             next.auto_check = on;
@@ -226,7 +237,7 @@ impl Updates {
     }
 
     async fn look(&self) {
-        if self.busy() {
+        if self.busy() || crate::channel::store() {
             return;
         }
         self.set(UpdateStatus::Checking);
@@ -266,7 +277,7 @@ impl Updates {
 
     /// Download the update found and install it (the app closes).
     pub fn install(self: &Arc<Self>) -> Result<UpdateState, String> {
-        if self.busy() {
+        if self.busy() || crate::channel::store() {
             return Ok(self.state());
         }
         let update = self.found.lock().ok().and_then(|f| f.clone()).ok_or("no update to install")?;

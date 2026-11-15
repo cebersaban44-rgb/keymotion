@@ -12,9 +12,12 @@ import { openFolder, openIssue, openLink } from "../lib/ipc";
 import { docsPage } from "../lib/offline";
 import { useReport } from "../lib/report";
 import { useApp } from "../lib/store";
+import { useUpdates } from "../lib/updates";
 
 export function Settings() {
   const t = useT();
+  // The Microsoft Store build never asks GitHub for a new version.
+  const store = useUpdates((s) => !!s.state?.store);
   const { theme, setTheme, locale, setLocale, env } = useApp();
   // The order Windows uses.
   const themes: ThemePreference[] = ["light", "dark", "system"];
@@ -133,7 +136,7 @@ export function Settings() {
         </Row>
         <div className="flex flex-col gap-0.5 border-t border-line py-4">
           <span className="text-[13.5px]">{t("data.privacy")}</span>
-          <p className="text-[12.5px] text-ink-2">{t("data.privacy.body")}</p>
+          <p className="text-[12.5px] text-ink-2">{t(store ? "data.privacy.body.store" : "data.privacy.body")}</p>
         </div>
       </section>
     </div>

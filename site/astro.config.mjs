@@ -95,6 +95,7 @@ export default defineConfig({
             "developers/architecture",
             "developers/protocol",
             "developers/adding-a-keyboard",
+            "developers/microsoft-store",
           ],
         },
       ],

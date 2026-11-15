@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Keymotion's Microsoft Store package (MSIX). tools/store/msix.mjs fills the
+  {{…}} places and packs it with the same keymotion.exe the GitHub release
+  has; docs site: developers/microsoft-store.
+
+  {{IdentityName}}, {{Publisher}}, {{PublisherDisplayName}}: Partner Center
+    › the app › Product identity, copied exactly (case counts); a local
+    test package uses its own made-up values.
+  {{Version}}: the app's version and a fourth part 0 (the Store keeps that
+    part); the Store wants the first part above 0.
+
+  Full trust (runFullTrust): the program runs as it does from the NSIS
+  installer, at the user's normal rights, outside the app sandbox. The app
+  needs it to talk to the keyboard over HID with the Win32 calls, to read
+  the system gauges and the running programs, and to show its tray icon.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap10 desktop rescap">
+
+  <Identity
+    Name="{{IdentityName}}"
+    Publisher="{{Publisher}}"
+    Version="{{Version}}"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>{{DisplayName}}</DisplayName>
+    <PublisherDisplayName>{{PublisherDisplayName}}</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>Lighting, keys and screen for your keyboard</Description>
+  </Properties>
+
+  <!-- Windows 10 2004 or later: uap10 below needs it. WebView2 is not
+       declared: Windows 11 and updated Windows 10 already have it, and a
+       Store install would ignore the declaration. -->
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26200.0" />
+  </Dependencies>
+
+  <!-- The Store lists the app in these languages (the app's own). -->
+  <Resources>
+    <Resource Language="en-us" />
+    <Resource Language="tr-tr" />
+  </Resources>
+
+  <Applications>
+    <Application Id="Keymotion" Executable="keymotion.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="{{DisplayName}}"
+        Description="Lighting, keys and screen for your keyboard"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <!-- "Start with Windows" (channel.rs STARTUP_TASK): off until the
+             user turns it on in Settings › Background; it starts the app in
+             the tray, as the GitHub build's Run value does with hidden. -->
+        <desktop:Extension
+          Category="windows.startupTask"
+          Executable="keymotion.exe"
+          EntryPoint="Windows.FullTrustApplication"
+          uap10:Parameters="--hidden">
+          <desktop:StartupTask TaskId="KeymotionStartup" Enabled="false" DisplayName="Keymotion" />
+        </desktop:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

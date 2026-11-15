@@ -123,21 +123,58 @@ impl Background {
     }
 
     pub fn settings(&self) -> BackgroundSettings {
+        let close_to_tray = self.stored().close_to_tray;
+        if crate::channel::store() {
+            use kb_winsys::startup::TaskState;
+            let state = kb_winsys::startup::task_state(crate::channel::STARTUP_TASK)
+                .map_err(|e| tracing::warn!("startup task not read: {e}"))
+                .ok();
+            return BackgroundSettings {
+                close_to_tray,
+                start_with_windows: state.is_some_and(TaskState::starts),
+                start_turned_off: false,
+                start_locked: matches!(
+                    state,
+                    Some(TaskState::OffByUser | TaskState::OffByPolicy | TaskState::OnByPolicy)
+                ),
+            };
+        }
         let entry = kb_winsys::startup::entry(RUN_NAME);
         BackgroundSettings {
-            close_to_tray: self.stored().close_to_tray,
+            close_to_tray,
             start_with_windows: entry.is_some(),
             start_turned_off: entry.is_some_and(|e| e.disabled),
+            start_locked: false,
         }
     }
 
+    /// The Store build's "start with Windows": its package's startup task.
+    fn configure_task(&self, now: BackgroundSettings, wanted: bool) -> Result<(), String> {
+        if wanted == now.start_with_windows || now.start_locked {
+            return Ok(());
+        }
+        if wanted {
+            let state = kb_winsys::startup::task_enable(crate::channel::STARTUP_TASK)?;
+            tracing::info!(?state, "startup task");
+        } else {
+            kb_winsys::startup::task_disable(crate::channel::STARTUP_TASK)?;
+            tracing::info!("startup task turned off");
+        }
+        Ok(())
+    }
+
     /// Store the choices; starting with Windows writes or removes the `Run`
-    /// entry (for this exe, started hidden).
+    /// entry (for this exe, started hidden), or in the Store build turns
+    /// the package's startup task on or off.
     pub fn configure(&self, wanted: BackgroundSettings) -> Result<BackgroundSettings, String> {
         let now = self.settings();
         if wanted.close_to_tray != now.close_to_tray {
             self.save(Stored { close_to_tray: wanted.close_to_tray })?;
             tracing::info!(close_to_tray = wanted.close_to_tray, "background setting");
+        }
+        if crate::channel::store() {
+            self.configure_task(now, wanted.start_with_windows)?;
+            return Ok(self.settings());
         }
         let fix = wanted.start_with_windows && now.start_turned_off;
         if wanted.start_with_windows != now.start_with_windows || fix {
