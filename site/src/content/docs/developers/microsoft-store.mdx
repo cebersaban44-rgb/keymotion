@@ -20,12 +20,12 @@ The app tells the two apart while it runs, by the package identity Windows gives
 | Updates | The app's updater, from GitHub releases | The Store. The updater stays off; Settings › About opens the Store's updates page. |
 | Start with Windows | A value in the per-user `Run` key, with `--hidden` | The package's startup task (`KeymotionStartup`), also with `--hidden`. If the user turns it off in Windows' settings, only they can turn it on again there; Settings › Background then links to that page. |
 | Notification name and logo | Registered at start under the app id `dev.keymotion` | The package's own |
-| Data folders | `%APPDATA%\dev.keymotion`, `%LOCALAPPDATA%\dev.keymotion` | The same paths, as the app sees them. Windows keeps the files the app creates in the package's own folder (`%LOCALAPPDATA%\Packages\<package family>\LocalCache\…`) and removes them with the app. "Open folder" opens that folder. |
+| Data folders | `%APPDATA%\dev.keymotion`, `%LOCALAPPDATA%\dev.keymotion` | The same paths, as the app sees them. Where the folders were not there before, Windows keeps them in the package's own folder (`%LOCALAPPDATA%\Packages\<package family>\LocalCache\…`) and removes them with the app; "Open folder" opens that folder. |
 | Privacy text in Settings | Mentions the update check on GitHub | Says the Store brings updates |
 
 Both builds share one rule: only one Keymotion runs at a time, whichever way it was installed, since two would talk to the keyboard at once.
 
-A Store install sees the settings a GitHub install left in `%APPDATA%\dev.keymotion`: Windows reads the real folder where the package has no copy of a file. Files the Store build creates stay in its own folder.
+If Keymotion from GitHub was installed before, its folders are already there, and the Store build reads and writes them as they are: the settings carry over, and both builds share them. Windows moves only folders a package makes from nothing into the package's own place.
 
 ## The package
 

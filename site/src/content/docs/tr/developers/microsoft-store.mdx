@@ -20,12 +20,12 @@ Uygulama hangi yoldan kurulduğunu çalışırken anlar. Windows, MSIX'ten kurul
 | Güncellemeler | Uygulamanın kendi güncelleyicisi, GitHub sürümlerinden | Store. Güncelleyici kapalı kalır; Ayarlar › Hakkında, Store'un güncellemeler sayfasını açar. |
 | Windows açılınca başlatma | Kullanıcının `Run` anahtarında bir değer, `--hidden` ile | Paketin başlangıç görevi (`KeymotionStartup`), yine `--hidden` ile. Kullanıcı bunu Windows ayarlarından kapatırsa yalnızca kendisi oradan yeniden açabilir; Ayarlar › Kapatma ve açılış o sayfaya bağlantı verir. |
 | Bildirimlerdeki ad ve logo | Açılışta `dev.keymotion` uygulama kimliğiyle kaydedilir | Paketin kendisinden gelir |
-| Veri klasörleri | `%APPDATA%\dev.keymotion`, `%LOCALAPPDATA%\dev.keymotion` | Uygulamanın gördüğü yollar aynıdır. Uygulamanın oluşturduğu dosyaları Windows paketin kendi klasöründe tutar (`%LOCALAPPDATA%\Packages\<paket ailesi>\LocalCache\…`) ve uygulamayla birlikte siler. "Klasörü aç" o klasörü açar. |
+| Veri klasörleri | `%APPDATA%\dev.keymotion`, `%LOCALAPPDATA%\dev.keymotion` | Uygulamanın gördüğü yollar aynıdır. Klasörler önceden yoksa Windows onları paketin kendi klasöründe tutar (`%LOCALAPPDATA%\Packages\<paket ailesi>\LocalCache\…`) ve uygulamayla birlikte siler; "Klasörü aç" o klasörü açar. |
 | Ayarlar'daki gizlilik metni | GitHub'daki güncelleme denetiminden söz eder | Güncellemeleri Store'un getirdiğini söyler |
 
 İki sürümün ortak bir kuralı var: nasıl kurulmuş olursa olsun aynı anda yalnızca bir Keymotion çalışır. İkisi birden çalışsa klavyeye aynı anda komut gönderirlerdi.
 
-Store'dan kurulan kopya, GitHub sürümünün `%APPDATA%\dev.keymotion` içinde bıraktığı ayarları görür: paketin bir dosyanın kendi kopyası yoksa Windows gerçek klasördeki dosyayı okur. Store sürümünün oluşturduğu dosyalar kendi klasöründe kalır.
+Daha önce GitHub'daki Keymotion kurulduysa klasörleri zaten vardır; Store sürümü onları olduğu gibi okur ve yazar. Ayarlar aynen devam eder ve iki sürüm aynı klasörleri kullanır. Windows yalnızca bir paketin sıfırdan oluşturduğu klasörleri paketin kendi yerine taşır.
 
 ## Paket
 

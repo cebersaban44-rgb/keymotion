@@ -5,10 +5,12 @@
 //! * the Store updates it, so the app's own updater stays off;
 //! * "start with Windows" is the package's startup task, not a `Run` value;
 //! * notifications carry the package's name and logo by themselves;
-//! * new files under `%APPDATA%` and `%LOCALAPPDATA%` land in the package's
-//!   own folder (`%LOCALAPPDATA%\Packages\<family>\LocalCache\…`), which
-//!   Windows shows the app merged with the real folder, and removes when
-//!   the app is uninstalled.
+//! * a folder it makes directly under `%APPDATA%` or `%LOCALAPPDATA%` lands
+//!   in the package's own folder (`%LOCALAPPDATA%\Packages\<family>\
+//!   LocalCache\…`), which Windows shows the app at the usual path and
+//!   removes when the app is uninstalled. A folder that was there before (a
+//!   GitHub install's `dev.keymotion`) stays where it is and is shared
+//!   (tried on Windows 11, 2026-11-15).
 //!
 //! A program started by another packaged app (the development build run
 //! from a packaged editor or assistant) inherits that app's identity. Only

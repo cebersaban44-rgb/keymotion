@@ -68,7 +68,7 @@ Everything is in your Windows user folder. In **Settings**, under **About**, **D
 - **Log files**, in `%LOCALAPPDATA%\dev.keymotion\logs\`: one file per day for the last 7 days, at most 4 MB each, and short crash notes. Before anything is written, web addresses are cut to their server name and your Windows user name is removed from folder paths. Reminder titles and meeting names are never written.
 - **Interface preferences**, in `%LOCALAPPDATA%\dev.keymotion\EBWebView\`: theme, language and edits you haven't saved yet, kept by the app's window.
 
-Keymotion installed from the Microsoft Store uses the same names, but Windows keeps the files it creates in the app's own folder, `%LOCALAPPDATA%\Packages\<the app's package name>\LocalCache\`, and deletes them when you uninstall the app. The buttons in **Settings** open that folder.
+Keymotion installed from the Microsoft Store uses the same folders. If they weren't there before (Keymotion from GitHub was never installed), Windows keeps them in the app's own folder, `%LOCALAPPDATA%\Packages\<the app's package name>\LocalCache\`, and deletes them when you uninstall the app; the buttons in **Settings** then open that folder.
 
 ## Diagnostics
 
