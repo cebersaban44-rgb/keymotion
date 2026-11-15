@@ -103,7 +103,7 @@ Keymotion'ı bir yapay zekâ kodlama yardımcısı olan Claude ile yaptım. Kodu
 
 ## Kod imzalama politikası (Code signing policy)
 
-Keymotion 0.1.0 henüz imzalı değil. Ücretsiz kod imzalama için SignPath Foundation'a başvuruyoruz; onaylanınca bu bölümde yazacak.
+Keymotion 0.1.0 henüz imzalı değil. Ücretsiz kod imzalama için 15 Kasım 2026'da SignPath Foundation'a başvurduk ve yanıtlarını bekliyoruz; onaylanınca bu bölümde yazacak.
 
 - Sürümler bu depodan GitHub Actions ile derlenir ([sürüm iş akışı](.github/workflows/release.yml)).
 - Yazan ve inceleyen: [@cebersaban44-rgb](https://github.com/cebersaban44-rgb)
