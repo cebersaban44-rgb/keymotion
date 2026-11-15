@@ -30,6 +30,14 @@ To compare the checksum:
 
 </Steps>
 
+## Antivirus scans
+
+The Keymotion 0.1.0 installer was scanned on VirusTotal on 15 November 2026. 70 of the 71 antivirus engines found nothing, Microsoft Defender included.
+
+One engine, Trapmine, flags it with a machine-learning score ("Malicious.high.ml.score"), and gives the app inside the installer a low score from the same model. This is a guess the engine makes about new, unsigned files, not a match with known malware. We reported it to Trapmine as a false positive on 15 November 2026. Signed releases should make guesses like this rarer.
+
+- [VirusTotal report for the installer](https://www.virustotal.com/gui/file/f2a1208007ba947c5ec082835328b8dbb0240baa22839d8ea439d1423f897531)
+
 ## How updates are checked
 
 Each installer is also signed with Keymotion's own update key. The key has two halves:
