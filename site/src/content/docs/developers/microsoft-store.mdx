@@ -40,7 +40,13 @@ The package is not signed: the Store signs what passes certification. CI packs a
 
 ### Version numbers
 
-A Store package has four version parts. The fourth belongs to the Store and is always 0, and the first must be above 0. Keymotion `1.2.3` becomes package `1.2.3.0`. The Store has no room for test versions (`1.3.0-rc.1`), so it only gets released versions.
+There is one version number and one changelog for both channels. A Store package has four version parts: the fourth belongs to the Store and is always 0, and the first must be above 0. Keymotion `1.2.3` becomes package `1.2.3.0`, and that is the only difference users see (in Windows' list of installed apps).
+
+- `msix.mjs` takes the version from `tauri.conf.json`. `--version` works only for test packages, so a Store package can never carry another number than the GitHub release of the same code.
+- `store.yml` packs only a release tag that is on `main`, so the Store never gets a version that isn't on GitHub.
+- The Store has no room for test versions (`1.3.0-rc.1`): they stay on GitHub.
+- A version reaches the Store after certification, usually a few days after GitHub. The release notes describe both; a change that concerns only one channel says so.
+- Diagnostics and support requests show where the copy came from: `App version: 1.0.0 (Microsoft Store)`, `(GitHub)` or `(development build)`.
 
 ## Try the package on your computer
 

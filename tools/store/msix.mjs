@@ -11,7 +11,10 @@
 //   node tools/store/msix.mjs --exe … --out … --test
 //       A package for trying on this computer, with its own made-up
 //       identity ("Keymotion (test)"), so it never mixes with the Store's.
-//   --version 1.2.3.0   another package version than the app's.
+//   --version 1.2.3.0   another package version than the app's: test
+//                       packages only. A Store package always carries the
+//                       app's own version, so GitHub and the Store never
+//                       show different numbers for the same release.
 //   --check             only check the identity and the version (CI runs
 //                       it before the build), make nothing.
 //
@@ -118,6 +121,9 @@ function args(argv) {
     else if (a === "--check") out.check = true;
     else if (["--exe", "--out", "--version"].includes(a)) out[a.slice(2)] = argv[++i];
     else throw new Error(`unknown argument ${a}`);
+  }
+  if (out.version && !out.test) {
+    throw new Error("--version is for test packages only: a Store package carries the app's own version");
   }
   if (!out.check && (!out.exe || !out.out)) throw new Error("usage: msix.mjs --exe <keymotion.exe> --out <folder> [--test] [--version 1.2.3.0] | --check [--test]");
   return out;

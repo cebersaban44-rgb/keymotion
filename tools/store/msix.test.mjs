@@ -2,6 +2,7 @@
 // Run: node --test "tools/store/*.test.mjs"
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -73,6 +74,16 @@ test("every logo the manifest names has its images", () => {
   for (const size of [16, 24, 32, 48, 256]) {
     assert.ok(existsSync(join(store, "Assets", `Square44x44Logo.targetsize-${size}_altform-unplated.png`)));
   }
+});
+
+test("a Store package never takes another version than the app's", () => {
+  const env = { ...process.env, GITHUB_ACTIONS: "", STORE_IDENTITY_NAME: "a.Keymotion", STORE_PUBLISHER: "CN=X", STORE_PUBLISHER_DISPLAY_NAME: "x" };
+  const script = join(root, "tools", "store", "msix.mjs");
+  const refused = spawnSync(process.execPath, [script, "--check", "--version", "9.9.9.0"], { env, encoding: "utf8" });
+  assert.equal(refused.status, 1);
+  assert.match(refused.stderr, /test packages only/);
+  const test = spawnSync(process.execPath, [script, "--check", "--test", "--version", "9.9.9.0"], { env, encoding: "utf8" });
+  assert.equal(test.status, 0, test.stderr);
 });
 
 test("the package keeps one resources.pri", () => {
