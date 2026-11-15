@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <b>Başka bir klavyeniz mi var?</b> AULA, AJAZZ ve LangTu'nun birkaç klavyesi daha aynı altyapıyla yapılmış; sırada onlar olabilir.<br>
+  <b>Başka bir klavyeniz mi var?</b> AULA, AJAZZ ve LangTu'dan birkaç model de sırada olabilir.<br>
   <a href="#desteklenen-klavyeler">Sizinki listede mi?</a> Keymotion açıkken takın ve ne bulduğunu bize bildirin.
 </p>
 

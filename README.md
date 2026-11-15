@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <b>Have another keyboard?</b> Several from AULA, AJAZZ and LangTu are built on the same platform and could come next.<br>
+  <b>Have another keyboard?</b> Several from AULA, AJAZZ and LangTu could come next.<br>
   <a href="#supported-keyboards">Is yours on the list?</a> Plug it in with Keymotion open and tell us what it finds.
 </p>
 
