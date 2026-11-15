@@ -101,7 +101,7 @@ I made Keymotion with Claude, an AI coding assistant. Claude wrote most of the c
 
 ## Code signing policy
 
-Keymotion 0.1.0 isn't signed yet. We're applying to SignPath Foundation for free code signing; once it's approved, this section will say so.
+Keymotion 0.1.0 isn't signed yet. We applied to SignPath Foundation for free code signing on 15 November 2026 and are waiting for their reply; once it's approved, this section will say so.
 
 - Releases are built from this repository by GitHub Actions ([release workflow](.github/workflows/release.yml)).
 - Committers and reviewers: [@cebersaban44-rgb](https://github.com/cebersaban44-rgb)
