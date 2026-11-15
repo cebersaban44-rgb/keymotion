@@ -131,7 +131,7 @@ Klavyeniz listede yok mu? Yine de takın ve [bize bildirin](https://github.com/c
 3. Klavyeyi USB kablosuyla bağlayın ve arkasındaki anahtarı ortaya (USB) getirin.
 
 > [!NOTE]
-> İlk sürüm henüz imzalı değil; Windows "Windows bilgisayarınızı korudu" diyebilir. **Ek bilgi**'yi, sonra **Yine de çalıştır**'ı seçin. Akıllı Uygulama Denetimi açıksa Windows kurulumu tamamen engelleyebilir; imzalı sürümler bunu çözecek. Ayrıntı için [kod imzalama politikasına](#kod-imzalama-politikası-code-signing-policy) bakın.
+> Kurulum dosyası henüz imzalı değil; Windows "Windows bilgisayarınızı korudu" diyebilir. **Ek bilgi**'yi, sonra **Yine de çalıştır**'ı seçin. Akıllı Uygulama Denetimi açıksa Windows kurulumu tamamen engelleyebilir; imzalı sürümler bunu çözecek. Ayrıntı için [kod imzalama politikasına](#kod-imzalama-politikası-code-signing-policy) bakın.
 
 Kurmadan önce bilmeniz iyi olur:
 
@@ -156,7 +156,7 @@ Keymotion'ı bir yapay zekâ kodlama yardımcısı olan Claude ile yaptım. Kodu
 
 ## Kod imzalama politikası (Code signing policy)
 
-Keymotion 0.1.0 henüz imzalı değil. Ücretsiz kod imzalama için 15 Kasım 2026'da SignPath Foundation'a başvurduk ve yanıtlarını bekliyoruz; onaylanınca bu bölümde yazacak.
+GitHub'daki kurulum dosyası henüz imzalı değil. Açık kaynak projeleri ücretsiz imzalayan SignPath Foundation, 15 Kasım 2026'daki başvurumuzu proje henüz yeni olduğu için şimdilik kabul etmedi; yeniden başvuracağız. Keymotion ayrıca Microsoft Store'a geliyor; oradaki kopyayı Microsoft imzalar.
 
 - Sürümler bu depodan GitHub Actions ile derlenir ([sürüm iş akışı](.github/workflows/release.yml)).
 - Yazan ve inceleyen: [@cebersaban44-rgb](https://github.com/cebersaban44-rgb)

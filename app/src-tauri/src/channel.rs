@@ -37,6 +37,23 @@ pub fn store() -> bool {
     package().is_some()
 }
 
+/// Where this copy came from, for diagnostics and support requests: the
+/// version number is the same in both channels, so a report needs both.
+pub fn source() -> &'static str {
+    if store() {
+        "Microsoft Store"
+    } else if tauri::is_dev() {
+        "development build"
+    } else {
+        "GitHub"
+    }
+}
+
+/// The version as reports show it: `1.0.0 (Microsoft Store)`.
+pub fn version_line(version: &str) -> String {
+    format!("{version} ({})", source())
+}
+
 /// The folder to show for `dir`: in the Store build, the package's own copy
 /// of a folder under AppData when it has one (Explorer sees only the real
 /// folder); otherwise `dir`.

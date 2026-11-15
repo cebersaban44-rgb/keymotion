@@ -501,7 +501,7 @@ async fn unsupported_report(app: AppHandle, id: String) -> Result<String, String
             .map_or_else(|| format!("unknown (build {})", os_build()), |r| r.describe());
         Ok(diagnostics::support_request(
             &app.package_info().name,
-            &app.package_info().version.to_string(),
+            &channel::version_line(&app.package_info().version.to_string()),
             &windows,
             &details,
         ))
@@ -894,7 +894,7 @@ async fn diagnostics_report(app: AppHandle, language: String, context: Option<St
             .unwrap_or_default();
         let facts = diagnostics::Facts {
             app_name: app.package_info().name.clone(),
-            app_version: app.package_info().version.to_string(),
+            app_version: channel::version_line(&app.package_info().version.to_string()),
             time: chrono::Local::now().to_rfc3339(),
             windows: kb_winsys::os::windows_release()
                 .map_or_else(|| format!("unknown (build {})", os_build()), |r| r.describe()),

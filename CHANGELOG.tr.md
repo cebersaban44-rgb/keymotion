@@ -2,7 +2,28 @@
 
 Keymotion'daki önemli değişiklikler burada listelenir. İngilizcesi: [CHANGELOG.md](CHANGELOG.md).
 
+1.0.0'dan itibaren her sürüm GitHub'da ve Microsoft Store'da aynıdır; ikisi
+için tek bir değişiklik listesi vardır. Windows, Store'dan kurulan kopyanın
+sürümünü sonuna her zaman 0 olan dördüncü bir sayıyla gösterir (1.0.0, 1.0.0.0
+olur). Store bir sürümü Microsoft denetledikten sonra alır; bu genellikle
+GitHub'dan birkaç gün sonradır. Deneme sürümleri ("-rc") yalnızca GitHub'dadır.
+Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
+
 ## [Yayımlanmamış]
+
+## [1.0.0] - 2026-11-15
+
+Keymotion 1.0. Uygulama 0.1.0 ile aynı, Microsoft Store'a hazır. Microsoft
+Store 0 ile başlayan sürüm numarası kabul etmediği için bu sürüm 1.0.0.
+
+### Eklenenler
+
+- **Microsoft Store sürümü:** Aynı uygulama, Microsoft Store için
+  paketlendi. Store'daki sürümü Microsoft imzalar; Windows onu uyarı
+  göstermeden kurar. Store'dan kurulan Keymotion'ı Store günceller (kendi
+  güncelleme denetimi kapalı kalır), bilgisayar açılınca Windows'un başlangıç
+  ayarlarıyla başlar ve bildirimlerinde Store uygulamasının adı ve logosu
+  görünür. GitHub'daki sürüm eskisi gibi çalışır.
 
 ## [0.1.0] - 2026-11-12
 

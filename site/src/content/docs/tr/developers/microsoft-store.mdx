@@ -40,7 +40,13 @@ Paket imzalanmaz: Store, sertifikasyondan geçen paketi kendisi imzalar. CI her 
 
 ### Sürüm numaraları
 
-Store paketinin sürüm numarası dört parçalıdır. Dördüncü parça Store'a aittir ve her zaman 0'dır; ilk parça 0'dan büyük olmalıdır. Keymotion `1.2.3`, `1.2.3.0` paketi olur. Store deneme sürümlerini (`1.3.0-rc.1`) almaz, yalnızca yayımlanmış sürümleri alır.
+İki kanal için tek bir sürüm numarası ve tek bir değişiklik listesi vardır. Store paketinin sürüm numarası dört parçalıdır: dördüncü parça Store'a aittir ve her zaman 0'dır; ilk parça 0'dan büyük olmalıdır. Keymotion `1.2.3`, `1.2.3.0` paketi olur. Kullanıcının gördüğü tek fark budur (Windows'un yüklü uygulamalar listesinde).
+
+- `msix.mjs` sürümü `tauri.conf.json` dosyasından alır. `--version` yalnızca deneme paketlerinde çalışır; bu yüzden bir Store paketi, aynı kodun GitHub sürümünden başka bir numara taşıyamaz.
+- `store.yml` yalnızca `main` üzerindeki bir sürüm etiketini paketler; bu yüzden Store, GitHub'da olmayan bir sürüm alamaz.
+- Store deneme sürümlerini (`1.3.0-rc.1`) almaz; onlar GitHub'da kalır.
+- Bir sürüm Store'a sertifikasyondan sonra, genellikle GitHub'dan birkaç gün sonra ulaşır. Sürüm notları ikisini birden anlatır; yalnızca bir kanalı ilgilendiren değişiklik bunu belirtir.
+- Tanılama bilgisi ve destek istekleri kopyanın nereden geldiğini gösterir: `App version: 1.0.0 (Microsoft Store)`, `(GitHub)` ya da `(development build)`.
 
 ## Paketi kendi bilgisayarınızda deneyin
 

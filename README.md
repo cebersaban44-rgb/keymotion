@@ -129,7 +129,7 @@ The [user guide](https://cebersaban44-rgb.github.io/keymotion/) goes through eve
 3. Connect the keyboard with the USB cable and set the switch on its back to the middle (USB).
 
 > [!NOTE]
-> This first release isn't signed yet, so Windows may say "Windows protected your PC". Select **More info**, then **Run anyway**. If Smart App Control is on, Windows may block it outright; signed releases will fix that. See the [code signing policy](#code-signing-policy).
+> The installer isn't signed yet, so Windows may say "Windows protected your PC". Select **More info**, then **Run anyway**. If Smart App Control is on, Windows may block it outright; signed releases will fix that. See the [code signing policy](#code-signing-policy).
 
 Good to know before you install:
 
@@ -154,7 +154,7 @@ I made Keymotion with Claude, an AI coding assistant. Claude wrote most of the c
 
 ## Code signing policy
 
-Keymotion 0.1.0 isn't signed yet. We applied to SignPath Foundation for free code signing on 15 November 2026 and are waiting for their reply; once it's approved, this section will say so.
+The installer on GitHub isn't signed yet. SignPath Foundation, which signs open-source projects for free, declined our application of 15 November 2026 for now because the project is still new; we'll apply again. Keymotion is also on its way to the Microsoft Store, where Microsoft signs it.
 
 - Releases are built from this repository by GitHub Actions ([release workflow](.github/workflows/release.yml)).
 - Committers and reviewers: [@cebersaban44-rgb](https://github.com/cebersaban44-rgb)
