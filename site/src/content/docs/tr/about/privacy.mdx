@@ -31,6 +31,7 @@ Keymotion internete yalnızca iki iş için bağlanır: eklediğiniz takvimler v
 - **Ne gönderir.** Sıradan bir indirme isteği. Güncelleyici bileşeninin adı ve sürümü (`tauri-plugin-updater`) dışında istekte sizinle ilgili hiçbir şey yoktur: hesap, kullanım bilgisi ya da ayar gönderilmez. GitHub, her sunucu gibi, isteğin geldiği IP adresini görür.
 - **Yeni sürüm bulunursa.** Keymotion onu kendiliğinden kurmaz, size sorar. **Kur ve yeniden başlat**'ı seçtiğinizde kurulum dosyası GitHub'dan indirilir ve imzası Keymotion'ın içindeki anahtarla denetlenir. İmza tutmazsa kurulmaz.
 - **Deneme sürümleri.** Sürüm numarasında "-rc" gibi bir ek olan sürümler, ön sürümleri de görmek için GitHub'ın herkese açık sürüm listesini (`api.github.com`) ayrıca okur. Normal sürümler bu listeyi okumaz.
+- **Microsoft Store sürümü.** Microsoft Store'dan kurulan Keymotion bu denetimi hiç yapmaz; onu Store günceller.
 
 ## Diğer şirketlerin gizlilik politikaları
 
@@ -66,6 +67,8 @@ Her şey Windows kullanıcı klasörünüzdedir. **Ayarlar**'da, **Hakkında** b
   - `screen\`: görsel kütüphaneniz, aldıysanız fabrika animasyonunun kopyası ve son canlı kart.
 - **Günlük dosyaları**, `%LOCALAPPDATA%\dev.keymotion\logs\` klasöründe: her gün için bir dosya, son 7 gün, her biri en çok 4 MB; ayrıca kısa çökme notları. Yazılmadan önce web adresleri yalnızca sunucu adına indirilir ve Windows kullanıcı adınız klasör yollarından çıkarılır. Hatırlatma başlıkları ve toplantı adları hiç yazılmaz.
 - **Arayüz tercihleri**, `%LOCALAPPDATA%\dev.keymotion\EBWebView\` klasöründe: tema, dil ve henüz kaydetmediğiniz düzenlemeler. Bunları uygulamanın penceresi tutar.
+
+Microsoft Store'dan kurulan Keymotion aynı adları kullanır; ancak Windows, uygulamanın oluşturduğu dosyaları uygulamanın kendi klasöründe tutar (`%LOCALAPPDATA%\Packages\<uygulamanın paket adı>\LocalCache\`) ve uygulamayı kaldırdığınızda siler. **Ayarlar**'daki düğmeler bu klasörü açar.
 
 ## Tanılama bilgisi
 
