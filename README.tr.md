@@ -84,6 +84,7 @@ Kurmadan önce bilmeniz iyi olur:
 
 - Keymotion resmî değildir. AJAZZ tarafından yapılmamış, onaylanmamış ve desteklenmez.
 - Kurulum dosyası bu depodaki koddan GitHub Actions ile derlenir; sürüm sayfasında SHA-256 özeti yazar.
+- VirusTotal'da 71 virüs tarama programından 70'i 0.1.0 kurulum dosyasında bir şey bulmuyor. Makine öğrenmesi kullanan tek bir program, yeni ve imzasız bir dosya olduğu için işaretliyor; yanlış alarm olarak bildirdik. [Ayrıntılar](https://cebersaban44-rgb.github.io/keymotion/tr/about/code-signing/#virüs-taramaları).
 - Kullanım bilgisi toplamaz ve klavyenin yazılımını asla güncellemez.
 
 Güncellemeler: Keymotion günde bir kez GitHub'da yeni sürüm olup olmadığına bakar ve kurmadan önce size sorar. Bu denetimi Ayarlar'dan kapatabilirsiniz.

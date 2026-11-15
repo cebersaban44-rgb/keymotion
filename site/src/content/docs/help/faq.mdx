@@ -2,7 +2,7 @@
 title: Frequently asked questions about Keymotion and the AK980 PRO
 sidebar:
   label: Frequently asked questions
-description: "Short answers about Keymotion and the AJAZZ AK980 PRO: the Windows warning, drivers and AJAZZ's software, putting a GIF on the screen, Bluetooth and the 2.4 GHz receiver, Windows only, keyboard safety, your data and the AK980 V2."
+description: "Short answers about Keymotion and the AJAZZ AK980 PRO: the Windows warning, antivirus scans, drivers and AJAZZ's software, putting a GIF on the screen, Bluetooth and the 2.4 GHz receiver, Windows only, keyboard safety, your data and the AK980 V2."
 ---
 
 import { Aside } from "@astrojs/starlight/components";
@@ -16,6 +16,12 @@ Keymotion 0.1.0 isn't code-signed yet, so Windows may stop the installer with "W
 The project is applying for free code signing. See the [code signing policy](/keymotion/about/code-signing/) and [Installing Keymotion](/keymotion/guide/install/).
 
 If **Smart App Control** is on (Windows Security, **App & browser control**), Windows may block the installer outright, with no **Run anyway** button, because it isn't signed. We don't ask you to turn Smart App Control off for Keymotion; signed releases will fix this.
+
+## My antivirus or VirusTotal flags Keymotion. Is it safe?
+
+For Keymotion 0.1.0, 70 of the 71 antivirus engines on VirusTotal find nothing, Microsoft Defender included. The one that flags it, Trapmine, gives new, unsigned files a machine-learning score; it isn't a match with known malware, and we've reported it as a false positive.
+
+Download Keymotion only from the GitHub Releases page and compare the SHA-256. The VirusTotal report is in the [code signing policy](/keymotion/about/code-signing/#antivirus-scans).
 
 ## Does it work with AJAZZ's official software open?
 
