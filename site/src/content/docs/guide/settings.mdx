@@ -53,16 +53,25 @@ With **Include calendar addresses** on, the addresses are saved in the file in p
 
 The **About** section starts with the **Version** row: the version you have and what Keymotion found the last time it looked, for example that it is up to date. **Check for updates** looks on GitHub right away.
 
-With **Check for updates automatically** on, which it is at first, Keymotion looks once a day, a short while after it opens. It never installs anything by itself.
+Under **Updates** you choose what Keymotion does by itself:
 
-When a new version is out, a strip above every page says it is ready. **Later** hides the strip until Keymotion starts again.
+- **Update automatically:** Keymotion looks once a day, downloads a new version and installs it while you're not using the computer (after 10 minutes without the mouse or the keyboard). It waits while something is being written to the keyboard, while the focus timer runs and while changes aren't saved to the keyboard. When it's done, a Windows notification says so, with **What's new**.
+- **Let me know** (recommended, and how Keymotion starts): Keymotion looks once a day and tells you when a new version is out. You choose when to install it.
+- **Off:** Keymotion never looks by itself. **Check for updates** still looks when you click it.
+
+When a new version is out, Keymotion tells you in several places, so you see it even while it runs next to the clock with its window closed:
+
+- A Windows notification, once for each version, with **Update now** and **Later**. **Update now** installs it straight away. The notification doesn't come while Keymotion's window is in front, where the strip says it.
+- The first line of the menu of the Keymotion icon next to the clock, **Update available**, and a small dot on the icon.
+- A card at the bottom left of the window, and a dot next to **Settings**.
+- A strip above every page. **Later** hides the strip until Keymotion starts again.
 
 <Steps>
 
 1. Click **Install now**, on the strip or in the **Version** row.
 2. Read **What's new**. If the notes aren't available in your language, **Release notes on GitHub** opens them in your browser.
 3. Click **Install and restart**. Keymotion downloads the new version; **Cancel** stops the download.
-4. If something is being saved to the keyboard, Keymotion waits for it to finish. Then it closes, the installer shows its progress in a small window, and Keymotion opens again.
+4. If something is being saved to the keyboard, Keymotion waits for it to finish. Then it closes, the installer shows its progress in a small window, and Keymotion opens again: with its window if the window was open, next to the clock if it wasn't. A Windows notification says which version is now installed.
 
 </Steps>
 
@@ -89,7 +98,7 @@ Keymotion also offers this window on its own. After an unexpected error, a notic
 
 ## The rest of About
 
-<Screenshot name="settings-about" alt="The About section of Settings: Version, Check for updates automatically, Window look, Feedback, Diagnostics, Log files, Data folder and Privacy" />
+<Screenshot name="settings-about" alt="The About section of Settings: Version with Check for updates, Updates with its three choices (Let me know chosen), Window look, User guide, Feedback and Diagnostics" />
 
 - **Suggest an idea**, next to **Feedback**, opens the project's idea form on GitHub.
 - **Diagnostics**, then **Copy**, puts the same kind of report on the clipboard, for a message of your own. Calendar addresses and personal details are left out.

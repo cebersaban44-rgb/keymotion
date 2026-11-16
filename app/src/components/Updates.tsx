@@ -1,10 +1,13 @@
-// Updates (roadmap stage 6), as the owner approved them in the preview on
-// 2026-11-12: the rows under Settings › About, the strip above the page when
-// a new version is found, and the install dialog.
+// Updates (roadmap stage 6), as the owner approved them in the previews of
+// 2026-11-12 and 2026-11-16: the rows under Settings › About with the choice
+// of what the app does by itself, the strip above the page when a new
+// version is found, the card at the bottom of the sidebar, and the install
+// dialog.
 
 import { ArrowUpRight, Download, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type SyntheticEvent } from "react";
+import type { UpdateMode } from "../bindings/UpdateMode";
 import type { UpdateState } from "../bindings/UpdateState";
 import { useAgo, useT, type MessageKey, type Translate } from "../lib/i18n";
 import { openLink, openWindowsPage } from "../lib/ipc";
@@ -12,7 +15,6 @@ import { useApp } from "../lib/store";
 import { useUnsaved } from "../lib/unsaved";
 import { megabytes, notesFor, releasePage, useUpdates } from "../lib/updates";
 import { Row, secondaryButton } from "./BackupCard";
-import { Toggle } from "./controls";
 
 const primaryButton =
   "flex h-9 shrink-0 items-center gap-2 rounded-lg bg-signal px-3.5 text-[13px] font-semibold text-signal-ink transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40";
@@ -49,6 +51,8 @@ function statusLine(s: UpdateState, t: Translate, since: (ms: number) => string,
       return t("update.state.upToDate", { current, ago: ago(s.lastCheckMs ?? Date.now()) });
     case "available":
       return t("update.state.available", { current, version: st.version });
+    case "ready":
+      return t("update.state.ready", { current, version: st.version });
     case "downloading":
       if (st.total != null && st.done >= st.total) return t("update.state.downloaded", { version: st.version });
       return t("update.state.downloading", {
@@ -63,12 +67,68 @@ function statusLine(s: UpdateState, t: Translate, since: (ms: number) => string,
   }
 }
 
-/** Settings › About: the version with the update's state, and the daily look. */
+const MODES: UpdateMode[] = ["auto", "notify", "off"];
+
+/** What the app does about new versions by itself: three choices, one line each. */
+function ModeChoice({ mode, onChange }: { mode: UpdateMode; onChange: (m: UpdateMode) => void }) {
+  const t = useT();
+  return (
+    <div className="border-t border-line py-4" data-update-mode={mode}>
+      <div className="text-[13.5px]" id="update-mode-label">
+        {t("update.mode")}
+      </div>
+      <div role="radiogroup" aria-labelledby="update-mode-label" className="mt-2.5 flex flex-col gap-2">
+        {MODES.map((m) => {
+          const on = m === mode;
+          return (
+            <label
+              key={m}
+              className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3.5 py-2.5 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-signal/60 ${
+                on ? "border-signal bg-surface" : "border-line hover:bg-surface/60"
+              }`}
+              data-update-mode-option={m}
+            >
+              <input
+                type="radio"
+                name="update-mode"
+                value={m}
+                checked={on}
+                onChange={() => onChange(m)}
+                className="sr-only"
+              />
+              <span
+                aria-hidden
+                className={`mt-[3px] flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border-2 ${
+                  on ? "border-signal" : "border-ink-3"
+                }`}
+              >
+                {on && <span className="h-1.5 w-1.5 rounded-full bg-signal" />}
+              </span>
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="text-[13.5px]">
+                  {t(`update.mode.${m}` as MessageKey)}
+                  {m === "notify" && (
+                    <span className="ml-2 rounded-md bg-signal/15 px-1.5 py-px text-[11px] text-signal">
+                      {t("update.mode.recommended")}
+                    </span>
+                  )}
+                </span>
+                <span className="text-[12.5px] text-ink-2">{t(`update.mode.${m}.hint` as MessageKey)}</span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Settings › About: the version with the update's state, and what the app does by itself. */
 export function UpdateRows() {
   const t = useT();
   const ago = useAgo();
   const locale = useApp((s) => s.locale);
-  const { state, check, setAuto, openDialog, error } = useUpdates();
+  const { state, check, setMode, openDialog, error } = useUpdates();
   if (!state) return null;
   // The Microsoft Store build: the Store updates it. The GitHub copy, when
   // it is installed too, now starts this one instead and can go.
@@ -102,7 +162,7 @@ export function UpdateRows() {
     <>
       <Row label={t("settings.version")} hint={statusLine(state, t, ago, locale)}>
         <div className="flex shrink-0 items-center gap-2" data-update-row={st.kind}>
-          {st.kind === "available" ? (
+          {st.kind === "available" || st.kind === "ready" ? (
             <>
               <button type="button" className={secondaryButton} onClick={() => openDialog(true)}>
                 {t("update.whatsNew")}
@@ -127,9 +187,7 @@ export function UpdateRows() {
         </div>
       </Row>
       {error && <p className="-mt-2 pb-3 text-[12.5px] text-danger">{t("update.fail.other")}</p>}
-      <Row label={t("update.auto")} hint={t("update.auto.hint")}>
-        <Toggle checked={state.autoCheck} onChange={(v) => void setAuto(v)} label={t("update.auto")} />
-      </Row>
+      <ModeChoice mode={state.mode} onChange={(m) => void setMode(m)} />
     </>
   );
 }
@@ -141,7 +199,9 @@ export function UpdateStrip() {
   const { state, laterFor, later, openDialog } = useUpdates();
   const st = state?.status;
   const show =
-    (st?.kind === "available" && laterFor !== st.version) || st?.kind === "downloading" || st?.kind === "installing";
+    ((st?.kind === "available" || st?.kind === "ready") && laterFor !== st.version) ||
+    st?.kind === "downloading" ||
+    st?.kind === "installing";
   return (
     <AnimatePresence initial={false}>
       {show && st && (
@@ -155,11 +215,12 @@ export function UpdateStrip() {
           data-update-strip={st.kind}
         >
           <div className="card mb-5 flex flex-wrap items-center gap-x-3 gap-y-2 border-signal/35 px-4 py-2.5">
-            {st.kind === "available" ? (
+            {st.kind === "available" || st.kind === "ready" ? (
               <>
                 <span className="h-2 w-2 shrink-0 rounded-full bg-signal" aria-hidden />
                 <p className="min-w-0 flex-1 text-[13px]">
-                  {t("update.strip", { version: st.version })} <span className="text-ink-2">{t("update.strip.hint")}</span>
+                  {t(st.kind === "ready" ? "update.strip.ready" : "update.strip", { version: st.version })}{" "}
+                  <span className="text-ink-2">{t(st.kind === "ready" ? "update.strip.ready.hint" : "update.strip.hint")}</span>
                 </p>
                 <button type="button" className={secondaryButton} onClick={later}>
                   {t("update.later")}
@@ -195,6 +256,46 @@ export function UpdateStrip() {
   );
 }
 
+/**
+ * The bottom of the sidebar: a new version waits (owner's wish: "sol alt
+ * menüde bir bildirim"). Opens the install dialog. Collapsed, only the icon.
+ */
+export function UpdateCard({ collapsed, onTip, onTipEnd }: {
+  collapsed: boolean;
+  onTip: (text: string) => (e: SyntheticEvent<HTMLElement>) => void;
+  onTipEnd: () => void;
+}) {
+  const t = useT();
+  const { state, openDialog } = useUpdates();
+  const st = state?.status;
+  if (!st || (st.kind !== "available" && st.kind !== "ready")) return null;
+  const title = t(st.kind === "ready" ? "update.card.ready" : "update.card", { version: st.version });
+  const sub = t(st.kind === "ready" ? "update.card.ready.sub" : "update.card.sub", { version: st.version });
+  return (
+    <button
+      type="button"
+      onClick={() => openDialog(true)}
+      aria-label={collapsed ? `${title}. ${sub}` : undefined}
+      onMouseEnter={onTip(title)}
+      onFocus={onTip(title)}
+      onMouseLeave={onTipEnd}
+      onBlur={onTipEnd}
+      className={`flex items-center rounded-lg border border-signal/40 text-left hover:bg-surface/60 ${
+        collapsed ? "h-10 justify-center" : "gap-3 px-3.5 py-2.5"
+      }`}
+      data-update-card={st.kind}
+    >
+      <Download size={16} className="shrink-0 text-signal" aria-hidden />
+      {!collapsed && (
+        <span className="min-w-0 flex-1 leading-tight">
+          <span className="block truncate text-[13px] font-medium">{title}</span>
+          <span className="block text-[12px] leading-snug text-ink-3">{sub}</span>
+        </span>
+      )}
+    </button>
+  );
+}
+
 /** "Install now": what is new, then download and install. */
 export function UpdateDialog() {
   const t = useT();
@@ -207,7 +308,7 @@ export function UpdateDialog() {
   const version = st && "version" in st ? st.version : null;
   // The notes come with the version found; keep them while it downloads.
   const found = useRef<{ version: string; notes: string | null; dateMs: number | null } | null>(null);
-  if (st?.kind === "available") found.current = { version: st.version, notes: st.notes, dateMs: st.dateMs };
+  if (st?.kind === "available" || st?.kind === "ready") found.current = { version: st.version, notes: st.notes, dateMs: st.dateMs };
   const notes = found.current && found.current.version === version ? notesFor(found.current.notes, locale) : null;
   const dateMs = found.current?.version === version ? found.current?.dateMs : null;
 
@@ -293,7 +394,7 @@ export function UpdateDialog() {
             <p className="text-[12.5px] leading-relaxed text-ink-2">
               {t("update.dialog.restart")} {t("update.dialog.keyboard")}
             </p>
-            {unsaved.length > 0 && st.kind === "available" && (
+            {unsaved.length > 0 && (st.kind === "available" || st.kind === "ready") && (
               <p className="flex items-start gap-2 text-[12.5px] text-warn" data-update-unsaved>
                 <TriangleAlert size={14} className="mt-0.5 shrink-0" aria-hidden />
                 {t("update.dialog.unsaved")}

@@ -63,26 +63,70 @@ fn escape(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&apos;")
 }
 
-/// The notification's XML: the title, an optional line under it, and no
-/// sound of its own (the reminder plays the Windows sound when asked to).
-fn toast_xml(title: &str, body: &str) -> String {
-    let body = if body.is_empty() { String::new() } else { format!("<text>{}</text>", escape(body)) };
+/// A notification: a title, an optional line under it, and what clicking
+/// it or its buttons does.
+#[derive(Debug, Default)]
+pub struct Notice<'a> {
+    pub title: &'a str,
+    pub body: &'a str,
+    /// The address opened when the notification itself is clicked: a page
+    /// of the project's, or the app's own `keymotion:` address (`links`).
+    /// Without one, Windows does its default (it starts the app).
+    pub open: Option<&'a str>,
+    /// Buttons: the label, and the address the button opens (`None`: the
+    /// button only closes the notification).
+    pub buttons: Vec<(&'a str, Option<&'a str>)>,
+    /// A later notification with the same tag replaces this one.
+    pub tag: Option<&'a str>,
+}
+
+/// The notification's XML, with no sound of its own (the reminder plays
+/// the Windows sound when asked to). Clicks open addresses ("protocol"
+/// activation): they work after the notification has gone to the
+/// notification centre too, where the click event of a program without a
+/// package does not (kb_winsys::protocol).
+fn notice_xml(n: &Notice) -> String {
+    let body = if n.body.is_empty() { String::new() } else { format!("<text>{}</text>", escape(n.body)) };
+    let open = n.open.map(|a| format!(" launch=\"{}\" activationType=\"protocol\"", escape(a))).unwrap_or_default();
+    let buttons: String = n
+        .buttons
+        .iter()
+        .map(|(label, address)| match address {
+            Some(a) => {
+                format!(
+                    "<action content=\"{}\" activationType=\"protocol\" arguments=\"{}\"/>",
+                    escape(label),
+                    escape(a)
+                )
+            }
+            None => format!("<action content=\"{}\" activationType=\"system\" arguments=\"dismiss\"/>", escape(label)),
+        })
+        .collect();
+    let actions = if buttons.is_empty() { String::new() } else { format!("<actions>{buttons}</actions>") };
     format!(
-        "<toast><visual><binding template=\"ToastGeneric\"><text>{}</text>{body}</binding></visual><audio silent=\"true\"/></toast>",
-        escape(title)
+        "<toast{open}><visual><binding template=\"ToastGeneric\"><text>{}</text>{body}</binding></visual>{actions}<audio silent=\"true\"/></toast>",
+        escape(n.title)
     )
 }
 
-/// Show a notification now.
-#[cfg(windows)]
+/// Show a notification now: a title and an optional line.
 pub fn show(app_id: &str, title: &str, body: &str) -> Result<(), String> {
+    show_notice(app_id, &Notice { title, body, ..Notice::default() })
+}
+
+/// Show a notification with buttons now.
+#[cfg(windows)]
+pub fn show_notice(app_id: &str, n: &Notice) -> Result<(), String> {
     use windows::core::HSTRING;
     use windows::Data::Xml::Dom::XmlDocument;
     use windows::UI::Notifications::{ToastNotification, ToastNotificationManager};
 
     let doc = XmlDocument::new().map_err(|e| e.to_string())?;
-    doc.LoadXml(&HSTRING::from(toast_xml(title, body))).map_err(|e| e.to_string())?;
+    doc.LoadXml(&HSTRING::from(notice_xml(n))).map_err(|e| e.to_string())?;
     let toast = ToastNotification::CreateToastNotification(&doc).map_err(|e| e.to_string())?;
+    if let Some(tag) = n.tag {
+        toast.SetTag(&HSTRING::from(tag)).map_err(|e| e.to_string())?;
+    }
     // The Store build shows under its package's own app id.
     let notifier = if crate::channel::store() {
         ToastNotificationManager::CreateToastNotifier()
@@ -93,7 +137,7 @@ pub fn show(app_id: &str, title: &str, body: &str) -> Result<(), String> {
 }
 
 #[cfg(not(windows))]
-pub fn show(_app_id: &str, _title: &str, _body: &str) -> Result<(), String> {
+pub fn show_notice(_app_id: &str, _n: &Notice) -> Result<(), String> {
     Err("notifications are only available on Windows".into())
 }
 
@@ -169,11 +213,34 @@ fn open(url: &str) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    fn toast_xml(title: &str, body: &str) -> String {
+        notice_xml(&Notice { title, body, ..Notice::default() })
+    }
+
     #[test]
     fn notification_text_is_escaped() {
         let xml = toast_xml("Su <iç> & \"dinlen\"", "");
         assert!(xml.contains("<text>Su &lt;iç&gt; &amp; &quot;dinlen&quot;</text></binding>"));
         assert!(toast_xml("Ara", "Annemi").contains("<text>Ara</text><text>Annemi</text>"));
+        // A plain notification has no click of its own and no buttons.
+        assert!(toast_xml("Ara", "").starts_with("<toast><visual>"));
+        assert!(!toast_xml("Ara", "").contains("<actions>"));
+    }
+
+    #[test]
+    fn clicks_and_buttons_open_addresses() {
+        let xml = notice_xml(&Notice {
+            title: "Keymotion 1.1.0 hazır",
+            body: "",
+            open: Some("keymotion://update"),
+            buttons: vec![("Şimdi güncelle", Some("keymotion://update/install?t=ab&c")), ("Sonra", None)],
+            tag: Some("update"),
+        });
+        assert!(xml.starts_with("<toast launch=\"keymotion://update\" activationType=\"protocol\"><visual>"), "{xml}");
+        assert!(xml.contains(
+            "<actions><action content=\"Şimdi güncelle\" activationType=\"protocol\" arguments=\"keymotion://update/install?t=ab&amp;c\"/>\
+             <action content=\"Sonra\" activationType=\"system\" arguments=\"dismiss\"/></actions><audio silent=\"true\"/></toast>"
+        ), "{xml}");
     }
 
     #[test]

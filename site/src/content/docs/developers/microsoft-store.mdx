@@ -17,7 +17,8 @@ The app tells the two apart while it runs, by the package identity Windows gives
 
 | | GitHub (installer, development build) | Microsoft Store |
 |---|---|---|
-| Updates | The app's updater, from GitHub releases | The Store. The updater stays off; Settings › About opens the Store's updates page. |
+| Updates | The app's updater, from GitHub releases: Settings › About › Updates chooses update automatically, let me know or off | The Store. The updater stays off; Settings › About opens the Store's updates page. The app registers with `RegisterApplicationRestart`, so it opens again, hidden, after Windows closes it to install a Store update. |
+| Notification buttons | Open the app's own `keymotion:` addresses (`crates/kb-winsys/src/protocol.rs`), registered per user at start and removed by the uninstaller | No `keymotion:` address; a click starts the app the package's way |
 | Start with Windows | A value in the per-user `Run` key, with `--hidden` | The package's startup task (`KeymotionStartup`), also with `--hidden`. If the user turns it off in Windows' settings, only they can turn it on again there; Settings › Background then links to that page. |
 | Notification name and logo | Registered at start under the app id `dev.keymotion` | The package's own |
 | Data folders | `%APPDATA%\dev.keymotion`, `%LOCALAPPDATA%\dev.keymotion` | The same paths, as the app sees them. Where the folders were not there before, Windows keeps them in the package's own folder (`%LOCALAPPDATA%\Packages\<package family>\LocalCache\…`) and removes them with the app; "Open folder" opens that folder. |

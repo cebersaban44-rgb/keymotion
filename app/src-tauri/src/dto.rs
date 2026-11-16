@@ -391,6 +391,22 @@ pub struct TrayTexts {
     pub quit: String,
     pub hidden_title: String,
     pub hidden_body: String,
+    /// The menu's first line while a new version waits. `{version}`.
+    pub update_available: String,
+    /// The same once it is downloaded, to install it now. `{version}`.
+    pub update_ready: String,
+    /// Added to the icon's tooltip while a new version waits.
+    pub update_tooltip: String,
+    /// The notification that a new version is ready. `{version}`.
+    pub notice_ready_title: String,
+    pub notice_ready_body: String,
+    pub notice_install: String,
+    pub notice_later: String,
+    /// The notification after an update. `{version}`.
+    pub notice_installed_title: String,
+    /// Its line when the app installed the update by itself.
+    pub notice_installed_auto: String,
+    pub notice_whats_new: String,
 }
 
 /// Until the UI has sent its words (a start with Windows, before the page
@@ -430,6 +446,16 @@ impl Default for TrayTexts {
             quit: s("Quit"),
             hidden_title: s("Still running"),
             hidden_body: s("To open it again, click the Keymotion icon next to the clock."),
+            update_available: s("Update available: Keymotion {version}"),
+            update_ready: s("Install now: Keymotion {version}"),
+            update_tooltip: s("update available"),
+            notice_ready_title: s("Keymotion {version} is ready"),
+            notice_ready_body: s("Installing it closes the app and opens it again in a few seconds."),
+            notice_install: s("Update now"),
+            notice_later: s("Later"),
+            notice_installed_title: s("Keymotion {version} installed"),
+            notice_installed_auto: s("It updated by itself while the computer wasn't in use."),
+            notice_whats_new: s("What's new"),
         }
     }
 }
@@ -2034,8 +2060,8 @@ pub struct ReminderCard {
 pub struct UpdateState {
     /// The version running now ("0.1.0").
     pub current: String,
-    /// Look on GitHub once a day when the app starts.
-    pub auto_check: bool,
+    /// What the app does about new versions by itself.
+    pub mode: UpdateMode,
     /// When GitHub was last asked (ms since the epoch).
     pub last_check_ms: Option<f64>,
     pub status: UpdateStatus,
@@ -2045,6 +2071,22 @@ pub struct UpdateState {
     /// The Store build, with the GitHub copy installed beside it: it no
     /// longer opens (it starts this one instead) and can be removed.
     pub github_copy: bool,
+}
+
+/// What the app does about new versions by itself (Settings › About).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum UpdateMode {
+    /// Look once a day, download a new version and install it while the
+    /// computer is not in use.
+    Auto,
+    /// Look once a day and say so: a Windows notification, the tray menu,
+    /// the card at the bottom of the sidebar. The user installs it.
+    #[default]
+    Notify,
+    /// Never look by itself; the "Check for updates" button still does.
+    Off,
 }
 
 /// Where an update stands.
@@ -2060,6 +2102,14 @@ pub enum UpdateStatus {
     /// release pipeline wrote them (a JSON object with "en" and maybe "tr").
     #[serde(rename_all = "camelCase")]
     Available {
+        version: String,
+        notes: Option<String>,
+        date_ms: Option<f64>,
+    },
+    /// Downloaded and checked in the background ("update by itself"): it
+    /// installs once the computer is not in use, or now on request.
+    #[serde(rename_all = "camelCase")]
+    Ready {
         version: String,
         notes: Option<String>,
         date_ms: Option<f64>,

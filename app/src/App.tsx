@@ -180,6 +180,16 @@ function useTray() {
       quit: tNow("tray.quit"),
       hiddenTitle: tNow("tray.hidden.title"),
       hiddenBody: tNow("tray.hidden.body"),
+      updateAvailable: tNow("tray.update.available"),
+      updateReady: tNow("tray.update.ready"),
+      updateTooltip: tNow("tray.update.tooltip"),
+      noticeReadyTitle: tNow("notice.update.ready.title"),
+      noticeReadyBody: tNow("notice.update.ready.body"),
+      noticeInstall: tNow("notice.update.install"),
+      noticeLater: tNow("update.later"),
+      noticeInstalledTitle: tNow("notice.update.installed.title"),
+      noticeInstalledAuto: tNow("notice.update.installed.auto"),
+      noticeWhatsNew: tNow("update.whatsNew"),
     }).catch(console.error);
   }, [locale]);
   useEffect(() => {

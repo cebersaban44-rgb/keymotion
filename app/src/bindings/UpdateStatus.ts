@@ -4,4 +4,4 @@ import type { UpdateFailure } from "./UpdateFailure";
 /**
  * Where an update stands.
  */
-export type UpdateStatus = { "kind": "idle" } | { "kind": "checking" } | { "kind": "upToDate" } | { "kind": "available", version: string, notes: string | null, dateMs: number | null, } | { "kind": "downloading", version: string, done: number, total: number | null, } | { "kind": "installing", version: string, } | { "kind": "failed", reason: UpdateFailure, };
+export type UpdateStatus = { "kind": "idle" } | { "kind": "checking" } | { "kind": "upToDate" } | { "kind": "available", version: string, notes: string | null, dateMs: number | null, } | { "kind": "ready", version: string, notes: string | null, dateMs: number | null, } | { "kind": "downloading", version: string, done: number, total: number | null, } | { "kind": "installing", version: string, } | { "kind": "failed", reason: UpdateFailure, };

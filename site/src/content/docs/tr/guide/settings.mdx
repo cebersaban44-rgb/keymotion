@@ -53,16 +53,25 @@ Kalibrasyon, önizlemelere ve bundan sonra kaydettiğiniz renklere uygulanır. K
 
 **Hakkında** bölümü **Sürüm** satırıyla başlar: kullandığınız sürümü ve Keymotion'ın en son baktığında ne bulduğunu, örneğin güncel olduğunu gösterir. **Güncellemeleri denetle** GitHub'a hemen bakar.
 
-**Güncellemeleri kendiliğinden denetle** açıkken (başta açıktır) Keymotion açıldıktan kısa bir süre sonra günde bir kez bakar. Hiçbir şeyi kendiliğinden kurmaz.
+**Güncellemeler** bölümünde Keymotion'ın kendiliğinden ne yapacağını seçersiniz:
 
-Yeni bir sürüm çıktığında her sayfanın üstünde, yeni sürümün hazır olduğunu söyleyen bir şerit görünür. **Sonra**, şeridi Keymotion yeniden açılana kadar gizler.
+- **Kendiliğinden güncelle:** Keymotion günde bir kez bakar; yeni sürümü indirir ve bilgisayarı kullanmadığınız bir anda kurar (10 dakika fare ya da klavye kullanılmadığında). Klavyeye bir şey yazılırken, odak zamanlayıcısı çalışırken ya da klavyeye kaydedilmemiş değişiklik varken bekler. Bitince bir Windows bildirimi, **Neler yeni** düğmesiyle bunu söyler.
+- **Haber ver** (önerilen; Keymotion böyle başlar): Keymotion günde bir kez bakar, yeni sürüm çıkınca size haber verir. Ne zaman kuracağınızı siz seçersiniz.
+- **Kapalı:** Keymotion kendiliğinden hiç bakmaz. **Güncellemeleri denetle** düğmesi, tıkladığınızda yine bakar.
+
+Yeni bir sürüm çıktığında Keymotion bunu birkaç yerde söyler; böylece penceresi kapalı, saatin yanında çalışırken de görürsünüz:
+
+- Her sürüm için bir kez, **Şimdi güncelle** ve **Sonra** düğmeli bir Windows bildirimi. **Şimdi güncelle** hemen kurar. Keymotion'ın penceresi öndeyken bildirim gelmez; orada şerit söyler.
+- Saatin yanındaki Keymotion simgesinin menüsünün ilk satırı, **Güncelleme var**, ve simgede küçük bir nokta.
+- Pencerenin sol altında bir kart ve **Ayarlar**'ın yanında bir nokta.
+- Her sayfanın üstünde bir şerit. **Sonra**, şeridi Keymotion yeniden açılana kadar gizler.
 
 <Steps>
 
 1. Şeritte ya da **Sürüm** satırında **Şimdi kur**'a tıklayın.
 2. **Neler yeni** bölümünü okuyun. Notlar Türkçe yoksa **Sürüm notları GitHub'da** onları tarayıcınızda açar.
 3. **Kur ve yeniden başlat**'a tıklayın. Keymotion yeni sürümü indirir; **Vazgeç** indirmeyi durdurur.
-4. Klavyeye bir şey kaydediliyorsa Keymotion önce bitmesini bekler. Sonra kapanır, kurulum küçük bir pencerede ilerler ve Keymotion yeniden açılır.
+4. Klavyeye bir şey kaydediliyorsa Keymotion önce bitmesini bekler. Sonra kapanır, kurulum küçük bir pencerede ilerler ve Keymotion yeniden açılır: penceresi açıksa penceresiyle, değilse saatin yanında. Bir Windows bildirimi hangi sürümün kurulduğunu söyler.
 
 </Steps>
 
@@ -89,7 +98,7 @@ Keymotion bu pencereyi kendiliğinden de önerir. Beklenmeyen bir hatadan sonra 
 
 ## Hakkında bölümündeki diğer satırlar
 
-<Screenshot name="settings-about" alt="Ayarlar'ın Hakkında bölümü: Sürüm, Güncellemeleri kendiliğinden denetle, Pencere görünümü, Geri bildirim, Tanılama bilgisi, Günlük dosyaları, Veri klasörü ve Gizlilik" />
+<Screenshot name="settings-about" alt="Ayarlar'ın Hakkında bölümü: Güncellemeleri denetle düğmeli Sürüm, üç seçenekli Güncellemeler (Haber ver seçili), Pencere görünümü, Kullanım kılavuzu, Geri bildirim ve Tanılama bilgisi" />
 
 - **Geri bildirim** satırındaki **Öneri gönder**, projenin öneri formunu GitHub'da açar.
 - **Tanılama bilgisi** satırındaki **Kopyala**, aynı türden bir raporu kendi iletinize yapıştırmanız için panoya koyar. Takvim adresleri ve kişisel bilgiler eklenmez.

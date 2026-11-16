@@ -162,8 +162,9 @@ export const SHOTS = [
     steps: async (page) => {
       await click(page, "update.check", { wait: 1200 });
       await waitText(page, "update.justNow");
+      // From the Version row down: Updates has three choices now, so the
+      // section no longer fits to its end.
       await scrollTo(page, await find(page, "button", "update.check"), 120);
-      await scrollToBottom(page);
     },
   },
   {

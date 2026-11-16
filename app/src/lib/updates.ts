@@ -4,19 +4,22 @@
 // dialog, and the user's "Later" for this run.
 
 import { create } from "zustand";
+import type { UpdateMode } from "../bindings/UpdateMode";
 import type { UpdateState } from "../bindings/UpdateState";
 import type { UpdateStatus } from "../bindings/UpdateStatus";
 import type { Locale } from "./i18n";
 import { inTauri, invoke, listen, mockGithubCopy, mockStore } from "./ipc";
 
 const EVENT_UPDATE = "update-state";
+/** A notification or the tray menu asks for the install dialog. */
+const EVENT_UPDATE_OPEN = "update-open";
 
 /** The release's page on GitHub (its notes, in English). */
 export const releasePage = (version: string) => `https://github.com/cebersaban44-rgb/keymotion/releases/tag/v${version}`;
 
 // ----------------------------------------------------------- browser mock
 
-/** Browser preview: `?update=available|none|offline|norelease` (default: none). */
+/** Browser preview: `?update=available|ready|none|offline|norelease` (default: none). */
 const mockMode = () => new URLSearchParams(location.search).get("update") ?? "none";
 
 const MOCK_NOTES = JSON.stringify({
@@ -27,7 +30,7 @@ const MOCK_NOTES = JSON.stringify({
 const mock = {
   state: {
     current: "0.1.0",
-    autoCheck: true,
+    mode: "notify",
     lastCheckMs: null,
     status: { kind: "idle" },
     store: mockStore(),
@@ -45,8 +48,8 @@ function mockSet(status: UpdateStatus, patch: Partial<UpdateState> = {}) {
 function mockLook(): UpdateState {
   const now = Date.now();
   const mode = mockMode();
-  if (mode === "available") {
-    mockSet({ kind: "available", version: "0.1.1", notes: MOCK_NOTES, dateMs: now - 86_400_000 }, { lastCheckMs: now });
+  if (mode === "available" || mode === "ready") {
+    mockSet({ kind: mode, version: "0.1.1", notes: MOCK_NOTES, dateMs: now - 86_400_000 }, { lastCheckMs: now });
   } else if (mode === "offline" || mode === "norelease") {
     mockSet({ kind: "failed", reason: mode === "offline" ? "offline" : "noRelease" }, { lastCheckMs: now });
   } else {
@@ -57,7 +60,7 @@ function mockLook(): UpdateState {
 
 function mockInstall() {
   const s = mock.state.status;
-  if (s.kind !== "available") return;
+  if (s.kind !== "available" && s.kind !== "ready") return;
   const total = 9.8e6;
   let done = 0;
   window.clearInterval(mock.timer);
@@ -90,7 +93,7 @@ interface UpdatesStore {
   /** The last button press failed (shown under the row). */
   error: string | null;
   check: () => Promise<void>;
-  setAuto: (on: boolean) => Promise<void>;
+  setMode: (mode: UpdateMode) => Promise<void>;
   install: () => Promise<void>;
   cancel: () => Promise<void>;
   later: () => void;
@@ -116,13 +119,13 @@ export const useUpdates = create<UpdatesStore>((set, get) => ({
       set({ error: String(e) });
     }
   },
-  setAuto: async (on) => {
+  setMode: async (mode) => {
     if (devMock) {
-      mockSet(mock.state.status, { autoCheck: on });
+      mockSet(mock.state.status, { mode });
       set({ state: mock.state });
       return;
     }
-    set({ state: await invoke<UpdateState>("update_auto", { enabled: on }) });
+    set({ state: await invoke<UpdateState>("update_mode", { mode }) });
   },
   install: async () => {
     set({ error: null });
@@ -147,7 +150,7 @@ export const useUpdates = create<UpdatesStore>((set, get) => ({
   },
   later: () => {
     const s = get().state?.status;
-    if (s?.kind === "available") set({ laterFor: s.version });
+    if (s?.kind === "available" || s?.kind === "ready") set({ laterFor: s.version });
   },
   openDialog: (open) => set({ dialog: open }),
 }));
@@ -163,7 +166,7 @@ export function startUpdates(): () => void {
     mock.emit = onState;
     // The daily look a moment after starting, as the app does.
     const t = window.setTimeout(() => {
-      if (mock.state.autoCheck && mockMode() !== "none") mockLook();
+      if (mock.state.mode !== "off" && mockMode() !== "none") mockLook();
     }, 1500);
     return () => {
       stopped = true;
@@ -172,9 +175,13 @@ export function startUpdates(): () => void {
     };
   }
   const unlisten = listen<UpdateState>(EVENT_UPDATE, (e) => onState(e.payload));
+  const unlistenOpen = listen(EVENT_UPDATE_OPEN, () => {
+    if (!stopped) useUpdates.setState({ dialog: true, laterFor: null });
+  });
   return () => {
     stopped = true;
     void unlisten.then((f) => f());
+    void unlistenOpen.then((f) => f());
   };
 }
 

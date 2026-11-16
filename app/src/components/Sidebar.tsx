@@ -20,6 +20,8 @@ import { connectionKey, percent, useT, type MessageKey } from "../lib/i18n";
 import { fmtClock, phaseColor, remainingNow, usePomodoro } from "../lib/pomodoro";
 import { useActiveKeyboard, useApp, useNarrowWindow, type PageId } from "../lib/store";
 import { useUnsaved } from "../lib/unsaved";
+import { useUpdates } from "../lib/updates";
+import { UpdateCard } from "./Updates";
 
 /** The Profiles page's entry (it works without the keyboard; loading needs the cable). */
 export const PROFILES_ENABLED = true;
@@ -73,6 +75,9 @@ export function Sidebar() {
   const setPage = useApp((s) => s.setPage);
   const kb = useActiveKeyboard();
   const unsavedPages = new Set(useUnsaved().filter((i) => !i.background).map((i) => i.page));
+  // A new version waits: a dot on Settings, where the update is.
+  const updateKind = useUpdates((s) => s.state?.status.kind);
+  const updateWaits = updateKind === "available" || updateKind === "ready";
   const collapsed = useNarrowWindow();
   // Collapsed, the names show as tooltips beside the icons. They are drawn
   // fixed, so the scrolling list does not clip them.
@@ -119,6 +124,15 @@ export function Sidebar() {
               className={`h-2 w-2 shrink-0 rounded-full bg-warn ${collapsed ? "absolute top-1.5 right-2.5" : ""}`}
             />
           )}
+          {it.id === "settings" && updateWaits && !unsaved && (
+            <span
+              role="img"
+              aria-label={t("update.dot")}
+              title={t("update.dot")}
+              className={`h-2 w-2 shrink-0 rounded-full bg-signal ${collapsed ? "absolute top-1.5 right-2.5" : ""}`}
+              data-update-dot
+            />
+          )}
           {locked && !collapsed && <Lock size={12} className="shrink-0 text-ink-3" aria-label={t("soon.needsUsb")} />}
         </button>
       </li>
@@ -153,6 +167,8 @@ export function Sidebar() {
           </div>
         ))}
       </nav>
+
+      <UpdateCard collapsed={collapsed} onTip={showTip} onTipEnd={hideTip} />
 
       <PomodoroChip collapsed={collapsed} showTip={showTip} hideTip={hideTip} />
 

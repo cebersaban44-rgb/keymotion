@@ -31,6 +31,7 @@ pub mod appid;
 pub mod copies;
 pub mod os;
 pub mod package;
+pub mod protocol;
 pub mod secret;
 pub mod shell;
 pub mod startup;
