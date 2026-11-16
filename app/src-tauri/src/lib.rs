@@ -4,6 +4,7 @@
 //! the `kb-*` crates. All keyboard logic lives in those crates, and all
 //! hardware access goes through the single device actor.
 
+mod autoprofile;
 mod backup;
 mod calendar;
 mod channel;
@@ -35,12 +36,12 @@ use calendar::CalendarHandle;
 use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request, ScreenWriteStep};
 use diagnostics::{AppFolder, LastExport};
 use dto::{
-    BackgroundSettings, CalendarSettings, CalendarState, Calibration, CalibrationInfo, ClockStatus, CrashNote,
-    EffectInfo, EffectRequest, FlashWrite, GamesSettings, GamesState, GaugesSettings, GaugesState, IssueKind,
-    KeyAssignment, KeyboardInfo, KeymapCatalog, KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo,
-    MacrosState, MirrorHint, PomodoroSettings, PomodoroState, Reminder, ReminderSettings, ReminderState, ScreenItem,
-    ScreenItemKind, ScreenState, SettingsReset, SongStop, ThemePreference, TrayTexts, UiEnvironment,
-    UnsupportedKeyboard, UpdateMode, UpdateState, WindowsPage,
+    AutoProfileSettings, AutoProfileState, BackgroundSettings, CalendarSettings, CalendarState, Calibration,
+    CalibrationInfo, ClockStatus, CrashNote, EffectInfo, EffectRequest, FlashWrite, GamesSettings, GamesState,
+    GaugesSettings, GaugesState, IssueKind, KeyAssignment, KeyboardInfo, KeymapCatalog, KeymapLayer, KeymapState,
+    LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, PomodoroSettings, PomodoroState, Reminder,
+    ReminderSettings, ReminderState, ScreenItem, ScreenItemKind, ScreenState, SettingsReset, SongStop, ThemePreference,
+    TrayTexts, UiEnvironment, UnsupportedKeyboard, UpdateMode, UpdateState, WindowsPage,
 };
 use games::GamesHandle;
 use gauges::GaugesHandle;
@@ -495,6 +496,90 @@ fn gauges_watch(gauges: Gauges<'_>, on: bool) {
 }
 
 type Games<'a> = State<'a, Arc<GamesHandle>>;
+
+/// The keyboard on the USB cable (the only connection that takes settings
+/// and live frames).
+fn usb_model(app: &AppHandle) -> Option<String> {
+    let device = app.try_state::<Arc<DeviceHandle>>()?;
+    let snap = device.snapshot.lock().ok()?;
+    snap.keyboards
+        .iter()
+        .find(|k| k.connection == dto::Connection::Usb && k.has_command_channel)
+        .map(|k| k.model_id.clone())
+}
+
+/// What the per-app profiles need from the rest of the app.
+struct AutoHost {
+    app: AppHandle,
+}
+
+impl AutoHost {
+    fn profile(&self, id: &str) -> Option<profiles::Profile> {
+        let store = self.app.try_state::<Arc<Mutex<ProfileStore>>>()?;
+        let profile = lock_profiles(&store).ok()?.get(id)?;
+        Some(profile)
+    }
+}
+
+impl autoprofile::Host for AutoHost {
+    fn per_key(&self, id: &str) -> Option<(Vec<profiles::LitKey>, u8)> {
+        let model = usb_model(&self.app)?;
+        let profile = self.profile(id)?;
+        profile.fits(&model).then(|| profile.lighting.as_ref()?.per_key()).flatten()
+    }
+
+    fn leds(&self) -> Option<Vec<u8>> {
+        let model = usb_model(&self.app)?;
+        let m = kb_devices::catalogue().ok()?.iter().find(|m| m.id == model)?;
+        Some(m.geometry.as_ref()?.keys.iter().map(|k| k.led).collect())
+    }
+
+    fn may_write(&self) -> bool {
+        usb_model(&self.app).is_some() && !close_needs_asking(&self.app)
+    }
+
+    fn write(&self, id: &str) -> Result<u32, String> {
+        let model = usb_model(&self.app).ok_or("no keyboard on the USB cable")?;
+        let profile = self.profile(id).ok_or(profiles::ERR_UNKNOWN)?;
+        let device = self.app.state::<Arc<DeviceHandle>>().inner().clone();
+        let mut writer = DeviceWriter { device: &device, config_dir: self.app.path().app_config_dir().ok() };
+        let mut written = 0;
+        // Never the screen: that is a library upload, on the live budget.
+        for part in [ProfilePart::Lighting, ProfilePart::Keymap, ProfilePart::Macros] {
+            if !profile.has(part) {
+                continue;
+            }
+            let current = profile_current(&self.app, &model)?;
+            if profiles::load_part(&profile, part, &current, &mut writer)? == PartLoaded::Written {
+                written += 1;
+            }
+        }
+        tray::refresh(&self.app);
+        Ok(written)
+    }
+
+    fn game(&self, front: &kb_winsys::foreground::Front) -> Option<String> {
+        self.app.try_state::<Arc<GamesHandle>>()?.game_of(front)
+    }
+
+    fn session(&self) -> Option<String> {
+        self.app.try_state::<Arc<GamesHandle>>()?.session_key()
+    }
+}
+
+type Auto<'a> = State<'a, Arc<autoprofile::AutoProfiles>>;
+
+/// Per-app profiles: the rules and what is in force.
+#[tauri::command]
+fn autoprofile_state(auto: Auto<'_>) -> Result<AutoProfileState, String> {
+    auto.state()
+}
+
+#[tauri::command]
+fn autoprofile_configure(auto: Auto<'_>, settings: AutoProfileSettings) -> Result<AutoProfileState, String> {
+    tracing::debug!("ipc: autoprofile_configure");
+    auto.configure(settings)
+}
 
 /// The game session: settings, the session that runs, games, history.
 #[tauri::command]
@@ -1548,6 +1633,14 @@ pub fn run() {
                 live.clone(),
                 device.clone(),
                 front.clone(),
+                config_dir.clone(),
+            ));
+            let host: Arc<dyn autoprofile::Host> = Arc::new(AutoHost { app: app.handle().clone() });
+            app.manage(autoprofile::AutoProfiles::spawn(
+                app.handle().clone(),
+                device.clone(),
+                front.clone(),
+                host,
                 config_dir,
             ));
             app.manage(front);
@@ -1644,6 +1737,8 @@ pub fn run() {
             games_try_lights,
             games_rescan,
             games_cover,
+            autoprofile_state,
+            autoprofile_configure,
             calendar_state,
             calendar_configure,
             calendar_add,

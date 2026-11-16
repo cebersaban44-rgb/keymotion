@@ -338,6 +338,8 @@ struct Facts {
     update: Option<(String, bool)>,
     /// A game session runs: the game and when it started.
     game: Option<(String, f64)>,
+    /// Per-app profiles run (on and not paused).
+    auto: bool,
 }
 
 /// Everything the menu shows, as text: what changed is set on its item.
@@ -364,6 +366,8 @@ struct View {
     gauges_on: bool,
     profiles_label: String,
     profiles: Vec<(String, String, bool)>,
+    auto_label: String,
+    auto_on: bool,
     quit: String,
     tooltip: String,
 }
@@ -497,6 +501,8 @@ where
                 (id.clone(), if name.is_empty() { t.default_profile.clone() } else { name.clone() }, *on)
             })
             .collect(),
+        auto_label: t.auto_profile.clone(),
+        auto_on: f.auto,
         quit: t.quit.clone(),
         tooltip,
     }
@@ -541,6 +547,7 @@ fn facts(app: &AppHandle) -> Facts {
     Facts {
         update: update_line(app),
         game: app.try_state::<Arc<GamesHandle>>().and_then(|g| g.session()),
+        auto: app.try_state::<Arc<crate::autoprofile::AutoProfiles>>().and_then(|a| a.running()).unwrap_or(false),
         keyboard: keyboard_line(app),
         pomodoro: app.try_state::<Arc<PomodoroHandle>>().and_then(|p| p.state().ok()),
         reminders: app
@@ -587,6 +594,8 @@ struct Items {
     reminders_on: CheckMenuItem<Wry>,
     gauges: CheckMenuItem<Wry>,
     profiles: Submenu<Wry>,
+    /// First in Profiles: the per-app profiles' switch.
+    auto: CheckMenuItem<Wry>,
     profile_items: Vec<CheckMenuItem<Wry>>,
     quit: MenuItem<Wry>,
 }
@@ -632,7 +641,10 @@ fn build(app: &AppHandle, v: &View) -> tauri::Result<(Menu<Wry>, Items)> {
     )?;
     let gauges = CheckMenuItem::with_id(app, "gauges", menu_text(&v.gauges_label), true, v.gauges_on, None::<&str>)?;
     let items = profile_items(app, v)?;
-    let refs: Vec<&dyn IsMenuItem<Wry>> = items.iter().map(|i| i as &dyn IsMenuItem<Wry>).collect();
+    let auto = CheckMenuItem::with_id(app, "auto", menu_text(&v.auto_label), true, v.auto_on, None::<&str>)?;
+    let auto_sep = PredefinedMenuItem::separator(app)?;
+    let mut refs: Vec<&dyn IsMenuItem<Wry>> = vec![&auto, &auto_sep];
+    refs.extend(items.iter().map(|i| i as &dyn IsMenuItem<Wry>));
     let profiles = Submenu::with_items(app, menu_text(&v.profiles_label), true, &refs)?;
     let keyboard = item(app, "keyboard", &v.keyboard, false)?;
     let open = item(app, "open", &v.open, true)?;
@@ -680,6 +692,7 @@ fn build(app: &AppHandle, v: &View) -> tauri::Result<(Menu<Wry>, Items)> {
             reminders_on,
             gauges,
             profiles,
+            auto,
             profile_items: items,
             quit,
         },
@@ -731,6 +744,7 @@ fn apply(app: &AppHandle, items: &mut Items, old: &View, new: &View) -> tauri::R
     text!(items.reminders_on, reminders_on_label);
     text!(items.gauges, gauges_label);
     text!(items.profiles, profiles_label);
+    text!(items.auto, auto_label);
     text!(items.quit, quit);
     if old.focus_active != new.focus_active {
         items.focus_skip.set_enabled(new.focus_active)?;
@@ -738,6 +752,7 @@ fn apply(app: &AppHandle, items: &mut Items, old: &View, new: &View) -> tauri::R
     }
     items.reminders_on.set_checked(new.reminders_on)?;
     items.gauges.set_checked(new.gauges_on)?;
+    items.auto.set_checked(new.auto_on)?;
     let same_list = old.profiles.len() == new.profiles.len()
         && old.profiles.iter().zip(&new.profiles).all(|(a, b)| a.0 == b.0 && a.1 == b.1);
     if same_list {
@@ -787,6 +802,13 @@ fn on_menu(app: &AppHandle, id: &str) {
             });
             if let Err(e) = result {
                 tracing::warn!("reminders from the tray: {e}");
+            }
+        }
+        "auto" => {
+            if let Some(auto) = app.try_state::<Arc<crate::autoprofile::AutoProfiles>>() {
+                let on = !auto.running().unwrap_or(false);
+                tracing::info!(on, "per-app profiles from the tray");
+                auto.set_running(on);
             }
         }
         "gauges" => {
@@ -933,7 +955,14 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
     if let Ok(mut r) = bg.refresh.lock() {
         *r = Some(tx);
     }
-    for event in [EVENT_POMODORO, EVENT_KEYBOARDS_CHANGED, EVENT_REMINDERS, EVENT_UPDATE, EVENT_GAMES] {
+    for event in [
+        EVENT_POMODORO,
+        EVENT_KEYBOARDS_CHANGED,
+        EVENT_REMINDERS,
+        EVENT_UPDATE,
+        EVENT_GAMES,
+        crate::autoprofile::EVENT_AUTO_PROFILE,
+    ] {
         let app = app.clone();
         app.clone().listen_any(event, move |_| refresh(&app));
     }
@@ -1017,6 +1046,7 @@ mod tests {
             profiles: vec![("default".into(), String::new(), false), ("p1".into(), "Oyun & iş".into(), true)],
             update: None,
             game: None,
+            auto: false,
         };
         let v = view_of(&t, &f, now, &tz);
         assert_eq!(v.keyboard, "AJAZZ AK980 PRO · Bluetooth · battery 80%");

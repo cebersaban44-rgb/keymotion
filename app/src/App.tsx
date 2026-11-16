@@ -206,6 +206,7 @@ function useTray() {
       updateReady: tNow("tray.update.ready"),
       updateTooltip: tNow("tray.update.tooltip"),
       game: tNow("tray.game"),
+      autoProfile: tNow("tray.autoProfile"),
       noticeReadyTitle: tNow("notice.update.ready.title"),
       noticeReadyBody: tNow("notice.update.ready.body"),
       noticeInstall: tNow("notice.update.install"),

@@ -515,6 +515,19 @@ impl GamesHandle {
         self.inner.lock().is_ok_and(|i| i.tracker.session.is_some())
     }
 
+    /// The game a program is, as the session would see it (per-app
+    /// profiles' "every game" rule): its key.
+    pub fn game_of(&self, front: &Front) -> Option<String> {
+        let i = self.inner.lock().ok()?;
+        classify(front, &i.settings.marks, &i.known, i.settings.launchers).map(|d| d.key)
+    }
+
+    /// The key of the game whose session runs.
+    pub fn session_key(&self) -> Option<String> {
+        let i = self.inner.lock().ok()?;
+        i.tracker.session.as_ref().map(|s| s.game.key.clone())
+    }
+
     /// The game of the running session and when it started (tray menu).
     pub fn session(&self) -> Option<(String, f64)> {
         let i = self.inner.lock().ok()?;
@@ -1001,7 +1014,8 @@ mod tests {
         };
         let dota = front(10, r"C:\Steam\steamapps\common\dota 2 beta\game\bin\win64\dota2.exe");
         assert!(classify(&dota, &[], std::slice::from_ref(&steam), true).is_some());
-        let no = [GameMark { path: r"c:\steam\steamapps\common\dota 2 beta".into(), name: "Dota 2".into(), game: false }];
+        let no =
+            [GameMark { path: r"c:\steam\steamapps\common\dota 2 beta".into(), name: "Dota 2".into(), game: false }];
         assert_eq!(classify(&dota, &no, &[steam], true), None);
         // The shell is never a game.
         let mut shell = front(9, r"C:\Windows\explorer.exe");

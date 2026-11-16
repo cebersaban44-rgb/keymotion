@@ -46,6 +46,10 @@ updateTooltip: string,
  */
 game: string, 
 /**
+ * Profiles ▸ the per-app profiles' switch.
+ */
+autoProfile: string, 
+/**
  * The notification that a new version is ready. `{version}`.
  */
 noticeReadyTitle: string, noticeReadyBody: string, noticeInstall: string, noticeLater: string, 

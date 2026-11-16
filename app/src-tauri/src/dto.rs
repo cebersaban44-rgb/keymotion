@@ -399,6 +399,8 @@ pub struct TrayTexts {
     pub update_tooltip: String,
     /// The line while a game session runs. `{name}`, `{min}`.
     pub game: String,
+    /// Profiles ▸ the per-app profiles' switch.
+    pub auto_profile: String,
     /// The notification that a new version is ready. `{version}`.
     pub notice_ready_title: String,
     pub notice_ready_body: String,
@@ -452,6 +454,7 @@ impl Default for TrayTexts {
             update_ready: s("Install now: Keymotion {version}"),
             update_tooltip: s("update available"),
             game: s("Playing {name} · {min} min"),
+            auto_profile: s("Switch by app"),
             notice_ready_title: s("Keymotion {version} is ready"),
             notice_ready_body: s("Installing it closes the app and opens it again in a few seconds."),
             notice_install: s("Update now"),
@@ -2378,4 +2381,83 @@ pub struct GameCard {
     pub temp_peak: Option<f32>,
     /// Played today, this session included.
     pub today_ms: f64,
+}
+
+// ------------------------------------------------------- per-app profiles
+
+/// The rule that stands for every game (game session's list).
+pub const AUTO_RULE_GAMES: &str = "games";
+
+/// A program (or every game) and the profile it gets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AutoRule {
+    /// Full path of the program, or `games` for every game.
+    pub path: String,
+    pub name: String,
+    /// Profile id.
+    pub profile: String,
+    /// Also the key mapping and macros, and an effect's lighting: written
+    /// to the keyboard (flash), after the program has been in front 10 s,
+    /// a limited number of times a day. Off: only a per-key design's
+    /// lighting changes, in RAM.
+    pub writes: bool,
+}
+
+/// Per-app profiles settings (persisted in `auto-profiles.json`).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AutoProfileSettings {
+    pub enabled: bool,
+    /// Turned off for now from the tray menu; the rules stay.
+    pub paused: bool,
+    pub rules: Vec<AutoRule>,
+    /// Profile written back when a program without a rule comes in front
+    /// after a written profile; `None`: written parts stay.
+    pub base: Option<String>,
+}
+
+impl AutoProfileSettings {
+    pub const MAX_RULES: usize = 100;
+
+    pub fn sanitized(mut self) -> Self {
+        self.rules.retain(|r| !r.path.trim().is_empty() && r.path.len() <= 1024 && !r.profile.is_empty());
+        for r in &mut self.rules {
+            r.name = r.name.trim().chars().take(GamesSettings::NAME_MAX).collect();
+        }
+        let mut seen = std::collections::HashSet::new();
+        self.rules.retain(|r| seen.insert(r.path.to_lowercase()));
+        self.rules.truncate(Self::MAX_RULES);
+        self
+    }
+}
+
+/// The program in front, offered on the page to add a rule.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AutoProgram {
+    pub path: String,
+    pub name: String,
+}
+
+/// What the per-app profiles do now (`auto-profile` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AutoProfileState {
+    pub settings: AutoProfileSettings,
+    /// The rule in force: its path (or `games`) and profile.
+    pub active: Option<AutoRule>,
+    /// The program that brought it in front (its name).
+    pub because: Option<String>,
+    /// Profile switches written to the keyboard today, and the limit.
+    pub writes_today: u32,
+    pub writes_max: u32,
+    /// The last error of a written switch, in the backend's words.
+    pub last_error: Option<String>,
+    /// Programs used lately (newest first), to add a rule for.
+    pub recent: Vec<AutoProgram>,
 }
