@@ -19,7 +19,9 @@
 //!   dark or dim. The gauges wait while it shows; the alerts stay on top.
 //!   They follow the window: Alt+Tab to other work and they wait (the
 //!   session goes on) until the game is in front again.
-//! * "Quiet": while a game runs nothing goes to the keyboard at all.
+//! * "Quiet": while a game runs nothing goes to the keyboard, but what the
+//!   user asks for ("Try on the keyboard") and, when the user lets them,
+//!   the meetings' and reminders' lights and cards.
 //! * A program that covers the screen for 2 min with the graphics card
 //!   busy, and is neither a game nor a known non-game, is offered as
 //!   "Is this a game?". It never becomes one by itself.
@@ -492,6 +494,8 @@ struct Inner {
     next_emit: f64,
     /// The last game layer handed to the device.
     sent: Frame,
+    /// The device was told the game layer is the user's own try.
+    tried_sent: bool,
     trying_until: Option<f64>,
     /// "Try on the keyboard" in the League of Legends section: the scene
     /// and when it began.
@@ -573,6 +577,7 @@ impl GamesHandle {
             next_alive: 0.0,
             next_emit: 0.0,
             sent: None,
+            tried_sent: false,
             trying_until: None,
             trying_lol: None,
             model: None,
@@ -647,6 +652,12 @@ impl GamesHandle {
         self.inner.lock().is_ok_and(|i| {
             i.settings.enabled && i.tracker.session.as_ref().is_some_and(|r| quiet_for(&i.settings, &r.game.key))
         })
+    }
+
+    /// Game `key` gets quiet mode when it plays (the per-app profiles leave
+    /// it alone from the moment it comes in front).
+    pub fn quiet_game(&self, key: &str) -> bool {
+        self.inner.lock().is_ok_and(|i| i.settings.enabled && quiet_for(&i.settings, key))
     }
 
     /// The game of the running session and when it started (tray menu).
@@ -1041,8 +1052,9 @@ impl GamesHandle {
         if before > 0.0 && now - before > SLEPT_MS {
             tracing::info!(minutes = ((now - before) / 60_000.0).round(), "the computer slept");
             if let Some(record) = inner.tracker.stop(before) {
+                let start = record.start_ms;
                 self.keep_record(inner, record);
-                self.let_go();
+                self.let_go(start);
             }
             inner.suggest = None;
             if inner.front.is_none() {
@@ -1107,11 +1119,11 @@ impl GamesHandle {
         }
 
         // The session's game isn't one any more: it ends without a record.
-        if inner.tracker.session.as_ref().is_some_and(|r| !still_a_game(&r.game, &s)) {
+        if let Some(start) = inner.tracker.session.as_ref().filter(|r| !still_a_game(&r.game, &s)).map(|r| r.started) {
             inner.tracker.stop(now);
             tracing::info!("game session dropped: not a game any more");
             inner.dirty = true;
-            self.let_go();
+            self.let_go(start);
         }
 
         let change = inner.tracker.tick(now, procs.as_deref());
@@ -1135,9 +1147,12 @@ impl GamesHandle {
                 if s.summary_card && long && live_on && !quiet_for(&s, &record.key) && !self.higher_holds() {
                     let today = played_between(&inner.history, None, day_start(now), now);
                     let _ = self.app.emit(EVENT_GAME_CARD, Self::summary_card(record, today));
+                    // The summary replaces the start card, but may wait for
+                    // the budget: a meeting's card left meanwhile goes.
+                    self.live.back_when_free(STALE_CARD_BACK, record.start_ms, SOURCE);
                 } else {
                     // The start card is old news now.
-                    self.let_go();
+                    self.let_go(record.start_ms);
                 }
             }
             None => {}
@@ -1183,20 +1198,16 @@ impl GamesHandle {
         let design = design.filter(|(m, _, _)| playing && (m.is_empty() || Some(m.as_str()) == model));
         let tried = Self::trying_lol(inner, keys.as_deref(), now);
         let trying_lol = tried.is_some();
+        // The match's lights, when they can show.
+        let lol_shows = !trying_lol && !trying && here && keys.is_some() && lol.is_some();
         let frame: Frame = match (&keys, &lol, show, &design) {
             _ if trying_lol => tried.map(|f| (f, s.brightness)),
-            (Some(k), Some(l), _, _) if !trying && here => Some((crate::lol::frame(l, k, &s, now), s.brightness)),
+            (Some(k), Some(l), _, _) if lol_shows => Some((crate::lol::frame(l, k, &s, now), s.brightness)),
             (Some(k), _, true, _) => Some((keys_frame(k, &s), s.brightness)),
             (Some(k), _, false, Some((_, d, b))) if !trying => Some((profile_frame(k, d), *b)),
             _ => None,
         };
-        if frame != inner.sent {
-            let _ = device.send(Request::SetLayer(
-                LightLayer::Game,
-                frame.clone().map(|(colors, b)| LiveFrame { colors, level: level_factor(b) }),
-            ));
-            inner.sent = frame;
-        }
+        Self::send_layer(inner, device, frame, trying || trying_lol);
 
         if in_session && now >= inner.next_emit {
             inner.dirty = true;
@@ -1208,8 +1219,10 @@ impl GamesHandle {
             drop(guard);
             let _ = self.app.emit(EVENT_GAMES, state);
         }
-        // The match's lights move (bars, flashes): 20 frames a second.
-        if (lol_on && here) || trying_lol {
+        // The match's lights move (bars, flashes): 20 frames a second, but
+        // not while nothing can show (no keyboard on the cable, Teamfight
+        // Tactics, the loading screen).
+        if lol_shows || trying_lol {
             LOL_TICK
         } else {
             TICK
@@ -1232,14 +1245,31 @@ impl GamesHandle {
         record
     }
 
-    /// The session lets go of the screen: its start card goes back to the
-    /// user's own picture, and so does a card another source left there
-    /// during the game (a meeting's, a reminder's).
-    fn let_go(&self) {
+    /// The session that started at `start` lets go of the screen: its
+    /// start card goes back to the user's own picture, and so does a card
+    /// another source left there during the game (a meeting's, a
+    /// reminder's). A card from before the game stays.
+    fn let_go(&self, start: f64) {
         self.live.set_hold(SOURCE, false);
         self.live.drop_pending(SOURCE);
         self.live.return_after(SOURCE, STALE_CARD_BACK);
-        self.live.back_when_free(STALE_CARD_BACK);
+        self.live.back_when_free(STALE_CARD_BACK, start, SOURCE);
+    }
+
+    /// Hand the game layer to the device when it changed. `tried`: it is the
+    /// user's own try, which shows even while a game wants quiet.
+    fn send_layer(inner: &mut Inner, device: &DeviceHandle, frame: Frame, tried: bool) {
+        if inner.tried_sent != tried {
+            inner.tried_sent = tried;
+            let _ = device.send(Request::SetGameTried(tried));
+        }
+        if frame != inner.sent {
+            let _ = device.send(Request::SetLayer(
+                LightLayer::Game,
+                frame.clone().map(|(colors, b)| LiveFrame { colors, level: level_factor(b) }),
+            ));
+            inner.sent = frame;
+        }
     }
 
     /// Tell the device and the live screen to leave the keyboard alone (or not).
@@ -1261,9 +1291,10 @@ impl GamesHandle {
         self.set_quiet(inner, device, Quiet::Off);
         if let Some(record) = inner.tracker.stop(now) {
             tracing::info!("game session ended (turned off)");
+            let start = record.start_ms;
             self.keep_record(inner, record);
             // Its start card is old news.
-            self.let_go();
+            self.let_go(start);
         }
         inner.suggest = None;
         inner.front = None;
@@ -1279,13 +1310,7 @@ impl GamesHandle {
             inner.trying_until = None;
             None
         };
-        if frame != inner.sent {
-            let _ = device.send(Request::SetLayer(
-                LightLayer::Game,
-                frame.clone().map(|(colors, b)| LiveFrame { colors, level: level_factor(b) }),
-            ));
-            inner.sent = frame;
-        }
+        Self::send_layer(inner, device, frame, trying || trying_lol);
         let dirty = std::mem::take(&mut inner.dirty);
         drop(guard);
         self.live.set_hold(SOURCE, false);

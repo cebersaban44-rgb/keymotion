@@ -1,58 +1,90 @@
 // Program icons, read by the backend from the program's file (the program
 // is never opened: kb-winsys `icon::exe_icon`). Each is asked for once per
-// size and kept for the session.
+// size and kept for the session; a program without one is asked again a
+// minute later (its file may not have been there yet, or its drive asleep).
 
 import { useEffect, useState } from "react";
 import { inTauri, invoke } from "./ipc";
+
+/** A program without an icon is asked again after this long. */
+const RETRY_MS = 60_000;
+/** Icons read at once: a long list ("show all") waits its turn. */
+const AT_ONCE = 4;
+
+let running = 0;
+const waiting: (() => void)[] = [];
+
+function turn(): Promise<void> {
+  if (running < AT_ONCE) {
+    running += 1;
+    return Promise.resolve();
+  }
+  return new Promise((go) => waiting.push(go));
+}
+
+/** The turn goes straight to the next one waiting. */
+function done() {
+  const next = waiting.shift();
+  if (next) next();
+  else running -= 1;
+}
+
+const keyOf = (path: string, size: number) => `${size}:${path.toLowerCase()}`;
 
 const cache = new Map<string, Promise<ImageData | null>>();
 
 /** The icon of the program at `path`, `size`×`size` pixels; `null` when it has none. */
 export function programIconData(path: string, size = 32): Promise<ImageData | null> {
   if (import.meta.env.DEV && !inTauri) return Promise.resolve(null);
-  const key = `${size}:${path.toLowerCase()}`;
+  const key = keyOf(path, size);
   let icon = cache.get(key);
   if (!icon) {
-    icon = invoke<ArrayBuffer>("program_icon", { path, size })
+    icon = turn()
+      .then(() => invoke<ArrayBuffer>("program_icon", { path, size }).finally(done))
       .then((buf) => (buf.byteLength === size * size * 4 ? new ImageData(new Uint8ClampedArray(buf), size, size) : null))
-      .catch(() => null);
+      .catch(() => null)
+      .then((data) => {
+        if (!data) window.setTimeout(() => cache.delete(key), RETRY_MS);
+        return data;
+      });
     cache.set(key, icon);
   }
   return icon;
 }
 
-const urls = new Map<string, string | null>();
+/** Image addresses of the icons read so far (only those that have one). */
+const urls = new Map<string, string>();
 
 /** The icon as an image address for `<img>`, or `null`. */
 export async function programIcon(path: string, size = 32): Promise<string | null> {
-  const key = `${size}:${path.toLowerCase()}`;
+  const key = keyOf(path, size);
   const known = urls.get(key);
   if (known !== undefined) return known;
   const data = await programIconData(path, size);
-  let url: string | null = null;
-  if (data) {
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    canvas.getContext("2d")?.putImageData(data, 0, 0);
-    url = canvas.toDataURL("image/png");
-  }
+  if (!data) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  canvas.getContext("2d")?.putImageData(data, 0, 0);
+  const url = canvas.toDataURL("image/png");
   urls.set(key, url);
   return url;
 }
 
-/** `programIcon` for a component; `null` until it is read, or without one. */
+/** `programIcon` for a component; `null` until it is read, or without one.
+ *  One read before shows at once (no stand-in flashing on every visit). */
 export function useProgramIcon(path: string | null | undefined, size = 32): string | null {
   const [url, setUrl] = useState<{ path: string; url: string | null } | null>(null);
   useEffect(() => {
-    if (!path) return;
+    if (!path || urls.has(keyOf(path, size))) return;
     let live = true;
     programIcon(path, size).then((u) => live && setUrl({ path, url: u }), console.error);
     return () => {
       live = false;
     };
   }, [path, size]);
-  return path && url?.path === path ? url.url : null;
+  if (!path) return null;
+  return urls.get(keyOf(path, size)) ?? (url?.path === path ? url.url : null);
 }
 
 /** Its main colour: the average of its opaque, colourful pixels (a start

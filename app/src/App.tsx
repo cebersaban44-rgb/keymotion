@@ -47,6 +47,7 @@ import { startReminders } from "./lib/reminders";
 import { startUpdates, useUpdates } from "./lib/updates";
 import { UpdateDialog, UpdateStrip } from "./components/Updates";
 import { useMacros } from "./lib/macros";
+import { followAutoWrites } from "./lib/profiles";
 import { useScreen } from "./lib/screen";
 import { OFFLINE_KEYBOARD } from "./lib/offline";
 import { useActiveKeyboard, useApp, type PageId } from "./lib/store";
@@ -120,6 +121,8 @@ function useKeyboardRecords() {
     useMacros.getState().load(modelId).catch(console.error);
     useScreen.getState().load(modelId).catch(console.error);
   }, [modelId]);
+  // A profile written by the per-app profiles: those records are read again.
+  useEffect(() => (modelId ? followAutoWrites(modelId) : undefined), [modelId]);
 }
 
 /** Words of the Pomodoro cards in the current language. */
@@ -148,9 +151,9 @@ function useLiveScreen() {
       startGames(async (card) => {
         if (card.kind !== "start") return gameSummaryCard(card, gameWords(tNow));
         const cover = card.steamApp != null ? await gameCover(card.steamApp) : null;
-        // No cover: the program's own icon.
-        const icon = !cover && card.exe ? await programIconData(card.exe, 48) : null;
-        return gameStartCard(card, cover, gameWords(tNow), icon);
+        // No cover (or one that can't be read): the program's own icon.
+        const exe = card.exe;
+        return gameStartCard(card, cover, gameWords(tNow), () => (exe ? programIconData(exe, 48) : Promise.resolve(null)));
       }),
     [],
   );

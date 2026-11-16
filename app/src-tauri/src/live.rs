@@ -194,6 +194,29 @@ fn quieted(rt: &Runtime) -> bool {
     }
 }
 
+/// The source of the card on the screen (`showing`, put there at
+/// `shown_ms`) when it was left there while `except` held the screen, from
+/// `since_ms` on, and the screen is free to go back: nobody holds it, no
+/// return is planned, nothing waits or goes but `except`'s own card (a game's
+/// summary replacing its start card). A card from before (a focus session's
+/// "Done") stays, so does `except`'s own (it goes back by itself) and the
+/// song's ("Çalan şarkı"'s own business).
+fn left_on_screen(
+    showing: Option<String>,
+    shown_ms: Option<f64>,
+    since_ms: f64,
+    except: &str,
+    rt: &Runtime,
+) -> Option<String> {
+    let source = showing.filter(|s| s != except && s != crate::now_playing::SOURCE)?;
+    if shown_ms.is_none_or(|t| t < since_ms) {
+        return None;
+    }
+    let waiting = rt.pending.as_ref().is_some_and(|p| p.item.source != except);
+    let busy = !rt.holders.is_empty() || waiting || rt.uploading.is_some() || rt.back.is_some();
+    (!busy).then_some(source)
+}
+
 /// Turning the live mode on must ask first (see `LiveState::factory_ack_needed`).
 fn factory_ack_needed(lib: &ScreenLibrary) -> bool {
     !lib.live().factory_ack && lib.factory_at_risk()
@@ -556,26 +579,23 @@ impl LiveHandle {
         self.emit();
     }
 
-    /// A source let go of the screen (a game ended): a card another source
-    /// left there while the screen was held (a meeting's card during a
-    /// game) goes after `delay`, back to the user's own picture. Not while a
-    /// source holds the screen or a card waits; the song's card is
-    /// "Çalan şarkı"'s own business.
-    pub fn back_when_free(&self, delay: Duration) {
+    /// Source `except` let go of the screen it held since `since_ms` (a game
+    /// ended): a card another source left there meanwhile (a meeting's card
+    /// during the game) goes after `delay`, back to the user's own picture.
+    /// See [`left_on_screen`].
+    pub fn back_when_free(&self, delay: Duration, since_ms: f64, except: &str) {
         if !self.enabled() {
             return;
         }
-        let Some(source) = self.library.lock().ok().and_then(|l| l.live_showing()) else { return };
-        if source == crate::now_playing::SOURCE {
+        let Some((showing, shown_ms)) = self.library.lock().ok().map(|l| (l.live_showing(), l.live().last_ms)) else {
             return;
-        }
-        {
+        };
+        let source = {
             let Ok(mut rt) = self.rt.lock() else { return };
-            if !rt.holders.is_empty() || rt.pending.is_some() || rt.uploading.is_some() || rt.back.is_some() {
-                return;
-            }
+            let Some(source) = left_on_screen(showing, shown_ms, since_ms, except, &rt) else { return };
             rt.back = Some(LiveBack { source: source.clone(), at_ms: now_ms() + delay.as_millis() as f64 });
-        }
+            source
+        };
         tracing::info!(%source, secs = delay.as_secs(), "a card left from a held screen: going back soon");
         self.wake();
         self.emit();
@@ -983,6 +1003,39 @@ mod tests {
         assert!((b.ms_until_token(t).unwrap() - 3.0 * H).abs() < 1.0);
         b.set_plan(LivePlan::Heavy, t);
         assert!((b.ms_until_token(t).unwrap() - 0.5 * H).abs() < 1.0);
+    }
+
+    #[test]
+    fn only_a_card_left_during_the_game_goes_back() {
+        let free = Runtime::default();
+        let game = crate::games::SOURCE;
+        let calendar = || Some(crate::calendar::SOURCE.to_string());
+        let start = 10_000.0;
+        // A meeting's card that came during the game.
+        assert_eq!(left_on_screen(calendar(), Some(start + 5.0), start, game, &free), calendar());
+        // One from before the game (a focus session's "Done") stays.
+        let done = Some(crate::pomodoro::SOURCE.to_string());
+        assert_eq!(left_on_screen(done, Some(start - 5.0), start, game, &free), None);
+        assert_eq!(left_on_screen(calendar(), None, start, game, &free), None);
+        // The game's own card goes back by itself; the song's is its own.
+        assert_eq!(left_on_screen(Some(game.into()), Some(start + 5.0), start, game, &free), None);
+        let song = Some(crate::now_playing::SOURCE.to_string());
+        assert_eq!(left_on_screen(song, Some(start + 5.0), start, game, &free), None);
+        // Someone holds the screen.
+        let held = Runtime { holders: vec![crate::pomodoro::SOURCE.into()], ..Runtime::default() };
+        assert_eq!(left_on_screen(calendar(), Some(start + 5.0), start, game, &held), None);
+        // The game's summary waiting doesn't stop it; another card does.
+        let waiting = |source: &str| Runtime {
+            pending: Some(Pending {
+                anim: ScreenAnimation::still(kb_protocol::sonix::screen::Frame::filled(0)),
+                content: String::new(),
+                item: LiveItem { source: source.into(), name: String::new() },
+            }),
+            ..Runtime::default()
+        };
+        assert_eq!(left_on_screen(calendar(), Some(start + 5.0), start, game, &waiting(game)), calendar());
+        let reminder = waiting(crate::reminders::SOURCE);
+        assert_eq!(left_on_screen(calendar(), Some(start + 5.0), start, game, &reminder), None);
     }
 
     #[test]

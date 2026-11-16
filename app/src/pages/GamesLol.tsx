@@ -17,7 +17,7 @@ import type { LolSettings } from "../bindings/LolSettings";
 import type { PomodoroMotion } from "../bindings/PomodoroMotion";
 import { ColorPicker, Segmented, Toggle } from "../components/controls";
 import { KeyboardView } from "../components/KeyboardView";
-import { LOL_STEP_MS, lolPreview, tryLol, type LolFrame } from "../lib/games";
+import { LOL_STEP_MS, lolPreview, tryLol, useGames, type LolFrame } from "../lib/games";
 import { useT, type MessageKey } from "../lib/i18n";
 import { gameSummaryCard, gameWords } from "../lib/liveCards";
 import { fromHex, toHex } from "../lib/pomodoroLights";
@@ -59,10 +59,40 @@ export function LolLights({
   set: (patch: Partial<GamesSettings>) => void;
 }) {
   const t = useT();
-  const l = s.lol;
-  const setLol = (patch: Partial<LolSettings>) => set({ lol: { ...l, ...patch } });
-  const setLight = (e: LolEvent, patch: Partial<LolEventLight>) =>
-    setLol({ lights: { ...l.lights, [e]: { ...l.lights[e], ...patch } } });
+  // A colour follows the pointer here and goes to the backend 150 ms after
+  // the last move (a colour well sends a change on every move).
+  const [draft, setDraft] = useState<LolSettings | null>(null);
+  const pending = useRef<LolSettings | null>(null);
+  const l = draft ?? s.lol;
+  const flush = useEffectEvent((lol: LolSettings) => {
+    pending.current = null;
+    set({ lol });
+    setDraft(null);
+  });
+  useEffect(() => {
+    if (!draft) return;
+    const id = window.setTimeout(() => flush(draft), 150);
+    return () => window.clearTimeout(id);
+  }, [draft]);
+  // Closed before the last colour went: it goes now.
+  useEffect(
+    () => () => {
+      if (pending.current) useGames.getState().configure({ lol: pending.current }).catch(console.error);
+    },
+    [],
+  );
+  const setLol = (patch: Partial<LolSettings>) => {
+    pending.current = null;
+    setDraft(null);
+    set({ lol: { ...l, ...patch } });
+  };
+  const setLolSoon = (patch: Partial<LolSettings>) => {
+    const next = { ...l, ...patch };
+    pending.current = next;
+    setDraft(next);
+  };
+  const lightOf = (e: LolEvent, patch: Partial<LolEventLight>) => ({ lights: { ...l.lights, [e]: { ...l.lights[e], ...patch } } });
+  const shown = useMemo(() => ({ ...s, lol: l }), [s, l]);
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2/40 p-4" data-lol>
       <div className="flex items-start justify-between gap-3">
@@ -74,11 +104,10 @@ export function LolLights({
       </div>
       {l.enabled && (
         <>
-          {!usb && <p className="text-[12px] text-ink-3">{t("games.noUsb")}</p>}
-          <Preview kb={kb} usb={usb} settings={s} />
-          <Switch label={t("games.lol.bars")} body={t("games.lol.bars.body")} on={l.bars} onChange={(bars) => setLol({ bars })} />
-          {l.bars && (
-            <div className="flex flex-col gap-3" data-lol-bars>
+          <Preview kb={kb} usb={usb} settings={shown} />
+          {/* Where health shows also decides how death looks. */}
+          {(l.bars || l.death) && (
+            <div className="flex flex-col gap-3" data-lol-layout>
               <Field label={t("games.lol.layout")}>
                 <Segmented<LolLayout>
                   label={t("games.lol.layout")}
@@ -101,6 +130,11 @@ export function LolLights({
                   </select>
                 </Field>
               )}
+            </div>
+          )}
+          <Switch label={t("games.lol.bars")} body={t("games.lol.bars.body")} on={l.bars} onChange={(bars) => setLol({ bars })} />
+          {l.bars && (
+            <div className="flex flex-col gap-3" data-lol-bars>
               <Field label={t("games.lol.healthColor")}>
                 <select
                   className={select}
@@ -113,14 +147,14 @@ export function LolLights({
                 </select>
               </Field>
               {l.healthColor && (
-                <ColorPicker inline label={t("games.lol.healthColor")} value={toHex(l.healthColor)} onChange={(hex) => setLol({ healthColor: fromHex(hex) })} />
+                <ColorPicker inline label={t("games.lol.healthColor")} value={toHex(l.healthColor)} onChange={(hex) => setLolSoon({ healthColor: fromHex(hex) })} />
               )}
               <div className="flex flex-wrap items-center gap-3">
                 <label className="flex items-center gap-2 text-[13px]">
                   <input type="checkbox" checked={l.mana} onChange={(e) => setLol({ mana: e.target.checked })} />
                   {t("games.lol.mana")}
                 </label>
-                {l.mana && <Swatch label={t("games.lol.manaColor")} value={l.manaColor} onChange={(manaColor) => setLol({ manaColor })} />}
+                {l.mana && <Swatch label={t("games.lol.manaColor")} value={l.manaColor} onChange={(manaColor) => setLolSoon({ manaColor })} />}
                 <span className="text-[12px] text-ink-3">{t("games.lol.mana.body")}</span>
               </div>
             </div>
@@ -146,14 +180,14 @@ export function LolLights({
                 const name = t(`games.lol.event.${e}`);
                 return (
                   <li key={e} className="flex flex-wrap items-center gap-3 px-3 py-2 text-[13px]" data-lol-event={e}>
-                    <input type="checkbox" checked={light.on} aria-label={name} onChange={(x) => setLight(e, { on: x.target.checked })} />
+                    <input type="checkbox" checked={light.on} aria-label={name} onChange={(x) => setLol(lightOf(e, { on: x.target.checked }))} />
                     <span className={`min-w-[120px] flex-1 ${light.on ? "" : "text-ink-3"}`}>{name}</span>
                     <select
                       className={select}
                       value={light.anim}
                       aria-label={`${t("games.lol.anim")}, ${name}`}
                       onChange={(x) => {
-                        setLight(e, { anim: x.target.value as LolAnim });
+                        setLol(lightOf(e, { anim: x.target.value as LolAnim }));
                         playEvent(e);
                       }}
                     >
@@ -170,7 +204,7 @@ export function LolLights({
                       </label>
                     )}
                     {(e !== "dragon" || !l.dragonKindColor) && (
-                      <Swatch label={`${t("games.lol.color")}, ${name}`} value={light.color} onChange={(color) => setLight(e, { color })} />
+                      <Swatch label={`${t("games.lol.color")}, ${name}`} value={light.color} onChange={(color) => setLolSoon(lightOf(e, { color }))} />
                     )}
                     <button
                       type="button"
@@ -244,6 +278,9 @@ function Preview({ kb, usb, settings }: { kb: KeyboardInfo; usb: boolean; settin
   const timer = useRef<number | null>(null);
   const bars: LolScene = useMemo(() => ({ kind: "bars", health: health / 100, mana: mana / 100 }), [health, mana]);
   const scene = playing ?? bars;
+  // What the drawing depends on: `settings` is a new object on every
+  // change of the page.
+  const looks = JSON.stringify([settings.lol, settings.lights, settings.keys, settings.color, settings.rest]);
 
   // The frames of the scene; a moving one is played, then health returns.
   const show = useEffectEvent(async (sc: LolScene) => {
@@ -252,6 +289,8 @@ function Preview({ kb, usb, settings }: { kb: KeyboardInfo; usb: boolean; settin
     timer.current = null;
     if (frames.length <= 1) {
       setFrame(frames[0] ?? null);
+      // Nothing to play: back to health.
+      setPlaying(null);
       return;
     }
     let i = 0;
@@ -268,9 +307,16 @@ function Preview({ kb, usb, settings }: { kb: KeyboardInfo; usb: boolean; settin
     }, LOL_STEP_MS);
   });
   useEffect(() => {
-    const id = window.setTimeout(() => void show(scene).catch(console.error), playing ? 0 : 120);
+    const id = window.setTimeout(
+      () =>
+        void show(scene).catch((e: unknown) => {
+          console.error(e);
+          setPlaying(null);
+        }),
+      playing ? 0 : 120,
+    );
     return () => window.clearTimeout(id);
-  }, [scene, playing, settings, kb.modelId]);
+  }, [scene, playing, looks, kb.modelId]);
   useEffect(() => () => {
     if (timer.current) window.clearInterval(timer.current);
   }, []);
@@ -309,6 +355,7 @@ function Preview({ kb, usb, settings }: { kb: KeyboardInfo; usb: boolean; settin
         <button type="button" className="btn-secondary" disabled={!usb} onClick={() => tryLol(scene).catch(console.error)} data-lol-try>
           {t("games.try")}
         </button>
+        {/* Said once, here: the lights need the cable too. */}
         {!usb && (
           <span className="flex items-center gap-1.5 text-ink-3">
             <Usb size={13} />

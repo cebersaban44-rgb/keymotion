@@ -34,20 +34,21 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 - **League of Legends ışıkları:** maç sırasında, oyunun bilgisayarınızda
   sunduğu veriden: canınız bütün klavyede, azaldıkça seçtiğiniz yönde
   çekilerek (odak zamanlayıcısındaki gibi), ya da 1–0'da; mana F1–F12'de;
-  ölünce koyu kırmızı, yeniden doğmaya yaklaştıkça geri gelen ışık; zafer,
-  yenilgi, seviye atlama, öldürme, as, ejder, Baron ve Herald için seçtiğiniz
-  renkte seçtiğiniz animasyon (dalga, parlama, nabız, kıvılcım, halka,
-  yukarıdan sönme). Sayfadaki çizim bunları maçın kendi koduyla önizler,
-  "Klavyede dene" klavyede gösterir. Oyun listesinde League of Legends'ın
-  altında (Özel ışıklar), maçtaki sırasıyla gruplanmış olarak ayarlanır;
-  kapatmadıkça ejder, Herald ve Baron yalnız takımınız aldığında yanar. Özet
-  kartı sonucu, K/D/A'yı ve minyon sayısını gösterir. Rakip ya da hedef
-  sayaçları yok.
+  ölünce koyu kırmızı, yeniden doğmaya yaklaştıkça geri gelen ışık (1–0'da
+  geri sayılan kalan süre); zafer, yenilgi, seviye atlama, öldürme, as,
+  ejderha, Baron ve Vadi'nin Alameti için seçtiğiniz renkte seçtiğiniz animasyon
+  (dalga, parlama, nabız, kıvılcım, halka, yukarıdan sönme). Sayfadaki çizim
+  bunları maçın kendi koduyla önizler, "Klavyede dene" klavyede gösterir.
+  Oyun listesinde League of Legends'ın altında (Özel ışıklar), maçtaki
+  sırasıyla gruplanmış olarak ayarlanır; kapatmadıkça ejderha, Vadi'nin Alameti
+  ve Baron yalnız takımınız aldığında yanar. Özet kartı sonucu, K/D/A'yı ve
+  minyon sayısını gösterir. Rakip ya da hedef sayaçları yok.
 - **Uygulamaya göre profil:** Profiller › **Uygulamaya göre** bir programı
   ya da bütün oyunları bir profile bağlar. Varsayılan olarak yalnız tuş
   başına renk tasarımının ışığı değişir, klavyeye bir şey kaydedilmez; bir
-  kural tuş atamasını ve makroları da kaydedebilir, günde en çok 20 kez.
-  Oyunun tuş ataması ve makroları oyun boyunca kalır; oyun bitince klavye
+  kural tuş atamasını ve makroları da kaydedebilir, günde en çok 20 kez
+  (sonuncusu geri dönüşe ayrılır; başka bir klavye modeli için yapılmış
+  profil atlanır ve sayılmaz). Oyunun tuş ataması ve makroları oyun boyunca kalır; oyun bitince klavye
   önceki haline döner (ya da seçtiğiniz profile geçer ya da olduğu gibi
   kalır), bu arada elle değiştirmediyseniz. Kurallar program güncellendikten
   sonra da tutar (Microsoft Store uygulamaları, Discord, Roblox). Simge

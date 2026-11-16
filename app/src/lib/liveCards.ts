@@ -703,14 +703,21 @@ export function playTime(ms: number, w: Pick<GameWords, "hours" | "minutes" | "l
 
 /** The game starts: its Steam picture (or its name on a dark tone), when
  *  it started, and today's play time. A still picture: it stays true for
- *  the whole session, nothing moves while the game runs. */
-export async function gameStartCard(c: GameCard, cover: Blob | null, w: GameWords, icon: ImageData | null = null): Promise<Prepared> {
+ *  the whole session, nothing moves while the game runs. `programIcon` is
+ *  asked only when there is no cover, or one that can't be read. */
+export async function gameStartCard(
+  c: GameCard,
+  cover: Blob | null,
+  w: GameWords,
+  programIcon: () => Promise<ImageData | null> = () => Promise.resolve(null),
+): Promise<Prepared> {
   const label = `${w.started} · ${hhmm(c.startedMs)}`;
   const today = w.today.replace("{time}", playTime(c.todayMs, w));
   await fonts(`${label} ${c.name} ${today}`);
   const bmp = cover ? await createImageBitmap(cover).catch(() => null) : null;
   // No cover: the program's icon, on its own colour.
-  const mark = !bmp && icon ? await createImageBitmap(icon).catch(() => null) : null;
+  const icon = bmp ? null : await programIcon().catch(() => null);
+  const mark = icon ? await createImageBitmap(icon).catch(() => null) : null;
   const tone: [number, number, number] = bmp ? coverTone(bmp) : ((icon && iconTone(icon)) ?? [92, 52, 150]);
   const max = Math.max(...tone, 1);
   const accent = rgb(tone.map((v) => 120 + (v / max) * 135) as [number, number, number]);

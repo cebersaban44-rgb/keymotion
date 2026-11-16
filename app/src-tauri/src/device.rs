@@ -203,6 +203,9 @@ pub enum Request {
     SetLayer(LightLayer, Option<LiveFrame>),
     /// A game wants the keyboard left alone (see `Actor::quiet`).
     SetQuiet(Quiet),
+    /// The game layer is what the user asked to try ("Try on the keyboard"
+    /// on the Games page): it shows even while a game wants quiet.
+    SetGameTried(bool),
     /// Start (`Some`, with what the keys should show) or stop the mirror.
     SetMirror(Option<MirrorExpect>),
     /// New colour calibration; re-sends the live frame at once so sliders
@@ -306,6 +309,28 @@ pub enum Quiet {
     ButReminders,
     /// Nothing at all.
     All,
+}
+
+/// The layers that still show while a game wants the keyboard left alone:
+/// the meetings' and reminders' when the user lets them through, and the
+/// game layer when it is the user's own try.
+fn quiet_layers(l: &Layers, quiet: Quiet, game_tried: bool) -> Layers {
+    let reminders = quiet == Quiet::ButReminders;
+    Layers {
+        game: l.game.clone().filter(|_| game_tried),
+        reminders: l.reminders.clone().filter(|_| reminders),
+        nudges: l.nudges.clone().filter(|_| reminders),
+        ..Layers::default()
+    }
+}
+
+/// When the run loop wakes next: the next look for keyboards, the next
+/// frame or mirror read (`frames`), or the clock sync. A sync waits while a
+/// game wants the keyboard left alone (`SetQuiet` wakes the loop when that
+/// ends), so a due one must not wake it then: it would never sleep.
+fn wake_at(enumerate: Instant, frames: Option<Instant>, clock_due: Option<Instant>, quiet: Quiet) -> Instant {
+    let due = clock_due.filter(|_| quiet == Quiet::Off);
+    [frames, due].into_iter().flatten().fold(enumerate, Instant::min)
 }
 
 /// One LED of a composed frame: UI colour and linear brightness (0–1).
@@ -625,6 +650,8 @@ struct Actor {
     /// meetings' and reminders'), no automatic clock sync (a preview the
     /// user runs still shows).
     quiet: Quiet,
+    /// The game layer is the user's own try: it shows even while quiet.
+    game_tried: bool,
     next_enumerate: Instant,
     next_live: Instant,
     next_mirror: Instant,
@@ -675,6 +702,7 @@ impl Actor {
             config_dir,
             clock_due: None,
             quiet: Quiet::Off,
+            game_tried: false,
             next_enumerate: now,
             next_live: now,
             next_mirror: now,
@@ -708,15 +736,9 @@ impl Actor {
                 }
             }
 
-            let mut wake = self.next_enumerate;
-            if self.streaming() {
-                wake = wake.min(self.next_live);
-            } else if self.mirror.is_some() {
-                wake = wake.min(self.next_mirror);
-            }
-            if let Some((due, _)) = self.clock_due {
-                wake = wake.min(due);
-            }
+            let frames =
+                if self.streaming() { Some(self.next_live) } else { self.mirror.as_ref().map(|_| self.next_mirror) };
+            let wake = wake_at(self.next_enumerate, frames, self.clock_due.map(|(due, _)| due), self.quiet);
             let timeout = wake.saturating_duration_since(Instant::now());
             match rx.recv_timeout(timeout) {
                 Ok(req) => self.handle(req),
@@ -790,6 +812,10 @@ impl Actor {
                     self.quiet = quiet;
                     self.next_live = Instant::now();
                 }
+            }
+            Request::SetGameTried(on) => {
+                self.game_tried = on;
+                self.next_live = Instant::now();
             }
             Request::SetMirror(expect) => {
                 self.mirror = expect;
@@ -1043,10 +1069,11 @@ impl Actor {
     }
 
     fn has_layer(&self) -> bool {
+        let tried = self.game_tried && self.layers.game.is_some();
         match self.quiet {
             Quiet::Off => self.layers.any(),
-            Quiet::ButReminders => self.layers.reminders.is_some() || self.layers.nudges.is_some(),
-            Quiet::All => false,
+            Quiet::ButReminders => self.layers.reminders.is_some() || self.layers.nudges.is_some() || tried,
+            Quiet::All => tried,
         }
     }
 
@@ -1054,16 +1081,12 @@ impl Actor {
         if self.command_path.is_none() {
             return;
         }
-        let reminders_only;
-        let layers = if self.quiet == Quiet::ButReminders {
-            reminders_only = Layers {
-                reminders: self.layers.reminders.clone(),
-                nudges: self.layers.nudges.clone(),
-                ..Layers::default()
-            };
-            &reminders_only
-        } else {
+        let heard;
+        let layers = if self.quiet == Quiet::Off {
             &self.layers
+        } else {
+            heard = quiet_layers(&self.layers, self.quiet, self.game_tried);
+            &heard
         };
         let Some(keys) = compose(self.live.as_ref(), layers) else {
             return;
@@ -1377,6 +1400,43 @@ mod tests {
         assert_eq!(
             write_block(1, check(false, false), || Some(Conflict::OpenRgb)),
             Some(WriteBlock::Program(Conflict::OpenRgb))
+        );
+    }
+
+    #[test]
+    fn a_clock_sync_due_while_quiet_lets_the_loop_sleep() {
+        let now = Instant::now();
+        let enumerate = now + Duration::from_secs(5);
+        // Overdue by the time the loop looks.
+        let due = Some(now);
+        assert_eq!(wake_at(enumerate, None, due, Quiet::Off), now);
+        assert_eq!(wake_at(enumerate, None, due, Quiet::All), enumerate, "no busy loop while quiet");
+        assert_eq!(wake_at(enumerate, None, due, Quiet::ButReminders), enumerate);
+        // Frames still go on time.
+        let frame = now + Duration::from_millis(50);
+        assert_eq!(wake_at(enumerate, Some(frame), due, Quiet::ButReminders), frame);
+        assert_eq!(wake_at(enumerate, None, None, Quiet::Off), enumerate);
+    }
+
+    #[test]
+    fn the_users_try_shows_while_a_game_wants_quiet() {
+        let layers = Layers {
+            gauges: Some(frame(&[(1, 10)], 1.0)),
+            game: Some(frame(&[(1, 30), (2, 30)], 1.0)),
+            reminders: Some(frame(&[(2, 7)], 1.0)),
+            ..Layers::default()
+        };
+        // The game's own lights wait; the meeting's key goes through.
+        assert_eq!(compose(None, &quiet_layers(&layers, Quiet::ButReminders, false)), Some(vec![(2, [7; 3], 1.0)]));
+        assert_eq!(compose(None, &quiet_layers(&layers, Quiet::All, false)), None);
+        // "Try on the keyboard" shows, under the meeting's key.
+        assert_eq!(
+            compose(None, &quiet_layers(&layers, Quiet::ButReminders, true)),
+            Some(vec![(1, [30; 3], 1.0), (2, [7; 3], 1.0)])
+        );
+        assert_eq!(
+            compose(None, &quiet_layers(&layers, Quiet::All, true)),
+            Some(vec![(1, [30; 3], 1.0), (2, [30; 3], 1.0)])
         );
     }
 

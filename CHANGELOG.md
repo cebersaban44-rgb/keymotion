@@ -38,10 +38,10 @@ says so.
 - **League of Legends lights:** during a match, from the data the game
   offers on your computer: your health on the whole keyboard, receding the
   way you choose as it drops (as with the focus timer), or on 1–0; mana on
-  F1–F12; dark red when you die, the light coming back as respawn nears; and
-  an animation of your choice (wave, flash, pulse, sparkle, ring, fade from
-  the top) in your color for victory, defeat, level ups, kills, an ace,
-  dragons, Baron and Herald. A drawing on the page previews them with the
+  F1–F12; dark red when you die, the light coming back as respawn nears (on
+  1–0, the time left counting down); and an animation of your choice (wave,
+  flash, pulse, sparkle, ring, fade from the top) in your color for victory,
+  defeat, level ups, kills, an ace, dragons, Baron and Herald. A drawing on the page previews them with the
   match's own code, and "Try on the keyboard" plays them. They're set up
   under League of Legends in the games list (Special lights), grouped as a
   match brings them; dragons, Herald and Baron light up only when your team
@@ -50,7 +50,9 @@ says so.
 - **Profiles by app:** Profiles › **By app** links a program, or every game,
   to a profile. By default only a per-key design's lighting changes, without
   saving anything to the keyboard; a rule can also save the key mapping and
-  macros, at most 20 times a day. A game's key mapping and macros stay for the
+  macros, at most 20 times a day (the last one is kept for going back; a
+  profile for another keyboard model is skipped and not counted). A game's
+  key mapping and macros stay for the
   whole game; when it ends, the keyboard goes back to what it had before (or
   to a profile you choose, or stays), unless you changed it by hand meanwhile.
   Rules still hold after a program updates (Microsoft Store apps, Discord,

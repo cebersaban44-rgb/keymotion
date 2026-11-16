@@ -282,8 +282,11 @@ impl Live {
             let killer = e["KillerName"].as_str().unwrap_or_default();
             match e["EventName"].as_str().unwrap_or_default() {
                 "ChampionKill" if self.is_me(killer) => self.push(Effect::Kill(1), now),
+                // The game sends it right after the kill that made the
+                // streak: one animation for the streak, not one on another.
                 "Multikill" if self.is_me(killer) => {
                     let n = e["KillStreak"].as_u64().unwrap_or(2).min(5) as u8;
+                    self.effects.retain(|(e, _)| !matches!(e, Effect::Kill(_)));
                     self.push(Effect::Kill(n), now);
                 }
                 "Ace" => {
@@ -858,6 +861,42 @@ mod tests {
         let kinds: Vec<Effect> = live.effects.iter().map(|e| e.0).collect();
         assert_eq!(kinds, vec![Effect::Kill(3), Effect::Dragon(dragon_color("water"), true), Effect::Ace, Effect::Win]);
         assert_eq!(live.result().unwrap().win, Some(true));
+    }
+
+    #[test]
+    fn a_double_kill_plays_one_animation() {
+        let mut live = Live { connected: true, last_event: -1, ..Live::default() };
+        live.read_active(&active(500.0, 1000.0, 1), 0.0);
+        live.read_events(&json!({ "Events": [{ "EventID": 0, "EventName": "GameStart" }] }), 0.0);
+        // As the game sends them: each kill, then the streak with the second.
+        live.read_events(
+            &json!({ "Events": [
+                { "EventID": 1, "EventName": "ChampionKill", "KillerName": "Oyuncu", "VictimName": "A" }
+            ]}),
+            1_000.0,
+        );
+        live.read_events(
+            &json!({ "Events": [
+                { "EventID": 1, "EventName": "ChampionKill", "KillerName": "Oyuncu", "VictimName": "A" },
+                { "EventID": 2, "EventName": "ChampionKill", "KillerName": "Oyuncu", "VictimName": "B" },
+                { "EventID": 3, "EventName": "Multikill", "KillerName": "Oyuncu", "KillStreak": 2 }
+            ]}),
+            1_500.0,
+        );
+        assert_eq!(live.effects, vec![(Effect::Kill(2), 1_500.0)]);
+        // Between the streak's flashes the keys are calm: no single kill's
+        // flash mixed in.
+        let mut s = GamesSettings::default();
+        s.lol.lights.kill = crate::dto::LolEventLight { on: true, anim: LolAnim::Flash, color: [200, 100, 0] };
+        let calm = Live { effects: Vec::new(), ..live.clone() };
+        assert_eq!(frame(&live, &ids(), &s, 1_950.0), frame(&calm, &ids(), &s, 1_950.0));
+        assert_ne!(frame(&live, &ids(), &s, 1_500.0), frame(&calm, &ids(), &s, 1_500.0), "it plays");
+        // A kill the streak doesn't follow plays on its own.
+        live.read_events(
+            &json!({ "Events": [{ "EventID": 4, "EventName": "ChampionKill", "KillerName": "Oyuncu" }] }),
+            20_000.0,
+        );
+        assert_eq!(live.effects.last(), Some(&(Effect::Kill(1), 20_000.0)));
     }
 
     #[test]

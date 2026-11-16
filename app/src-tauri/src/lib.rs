@@ -583,6 +583,10 @@ impl autoprofile::Host for AutoHost {
     fn quiet(&self) -> bool {
         self.app.try_state::<Arc<GamesHandle>>().is_some_and(|g| g.quiet_now())
     }
+
+    fn quiet_game(&self, game: &str) -> bool {
+        self.app.try_state::<Arc<GamesHandle>>().is_some_and(|g| g.quiet_game(game))
+    }
 }
 
 type Auto<'a> = State<'a, Arc<autoprofile::AutoProfiles>>;
@@ -659,10 +663,16 @@ fn games_try_lol(games: Games<'_>, scene: dto::LolScene) -> Result<(), String> {
 
 /// A program's icon, `size`×`size` RGBA, read from its file (the program
 /// isn't opened): lists of games and programs, a start card without a cover.
+/// Only a program (`.exe`) on this computer: a shortcut's or a link's icon
+/// could be fetched from elsewhere, and a network share can keep the call
+/// waiting (`exe_icon` turns those away too).
 #[tauri::command]
 async fn program_icon(path: String, size: u32) -> Result<tauri::ipc::Response, String> {
     if !(16..=64).contains(&size) {
         return Err("icon size out of range".into());
+    }
+    if !kb_winsys::icon::is_local_program(&path) {
+        return Err("not a program on this computer".into());
     }
     tauri::async_runtime::spawn_blocking(move || kb_winsys::icon::exe_icon(&path, size))
         .await

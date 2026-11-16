@@ -3,10 +3,15 @@
 //!
 //! Only the program's file is read: the first icon in it, the one Explorer
 //! shows (`SHDefExtractIconW`), or Windows' default program icon when the
-//! file has none (`SHGetFileInfoW`). No program is opened, nothing is loaded
-//! into one and nothing is hooked: games run under anti-cheat software
-//! (keymotion-notes: oyun-oturumu-ve-otomatik-profil.md §5.2). A running
-//! game's file is read like any other file.
+//! file has none (`SHGetFileInfoW`, by the file's type alone). No program
+//! is opened, nothing is loaded into one and nothing is hooked: games run
+//! under anti-cheat software (keymotion-notes:
+//! oyun-oturumu-ve-otomatik-profil.md §5.2). A running game's file is read
+//! like any other file.
+//!
+//! Only programs (`.exe`) on this computer's own drives: a shortcut's icon
+//! can come from anywhere, and a network share can keep the shell waiting
+//! for many seconds.
 //!
 //! The icon is drawn into a bitmap of the size asked for (`DrawIconEx`).
 //! Windows draws an icon with an alpha channel premultiplied; an old icon
@@ -19,11 +24,16 @@ const MAX_SIZE: u32 = 256;
 
 /// The icon of a program file, `size`×`size` pixels, as RGBA (straight
 /// alpha, rows top to bottom). A file without an icon of its own gets
-/// Windows' default program icon. `None` when `path` is empty or not a
-/// file, when `size` is 0 or above 256, or when Windows gives no icon.
-/// Reads the file: call it off the UI thread.
+/// Windows' default program icon. `None` when `path` is not a program on a
+/// drive of this computer ([`is_local_program`]; a mapped network drive
+/// neither) or not a file, when `size` is 0 or above 256, or when Windows
+/// gives no icon. Reads the file: call it off the UI thread.
 pub fn exe_icon(path: &str, size: u32) -> Option<Vec<u8>> {
-    if path.is_empty() || size == 0 || size > MAX_SIZE {
+    if size == 0 || size > MAX_SIZE || !is_local_program(path) {
+        return None;
+    }
+    // Asked before the file is touched: that could wait on the network.
+    if drive_of(path).is_some_and(sys::network_drive) {
         return None;
     }
     // The shell answers a path that is not there with a generic icon.
@@ -31,6 +41,21 @@ pub fn exe_icon(path: &str, size: u32) -> Option<Vec<u8>> {
         return None;
     }
     sys::exe_icon(path, size)
+}
+
+/// `path` names a program (`.exe`) by a drive letter (`C:\…` or
+/// `\\?\C:\…`): not a network share (`\\server\…`), not a shortcut or
+/// another kind of file. Whether the drive is a mapped network one is
+/// known only on Windows ([`exe_icon`] asks).
+pub fn is_local_program(path: &str) -> bool {
+    drive_of(path).is_some() && Path::new(path).extension().is_some_and(|e| e.eq_ignore_ascii_case("exe"))
+}
+
+/// The drive letter of a whole path on a lettered drive.
+fn drive_of(path: &str) -> Option<char> {
+    let mut chars = path.strip_prefix(r"\\?\").unwrap_or(path).chars();
+    let (letter, colon, slash) = (chars.next()?, chars.next()?, chars.next()?);
+    (letter.is_ascii_alphabetic() && colon == ':' && matches!(slash, '\\' | '/')).then_some(letter)
 }
 
 /// What Windows drew (blue, green, red, alpha; premultiplied) as RGBA with
@@ -70,9 +95,11 @@ mod sys {
         CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GdiFlush, SelectObject, BITMAPINFO,
         BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP, HDC, HGDIOBJ,
     };
-    use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
+    use windows::Win32::Storage::FileSystem::{GetDriveTypeW, FILE_ATTRIBUTE_NORMAL};
     use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
-    use windows::Win32::UI::Shell::{SHDefExtractIconW, SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
+    use windows::Win32::UI::Shell::{
+        SHDefExtractIconW, SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES,
+    };
     use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, DrawIconEx, DI_FLAGS, DI_MASK, DI_NORMAL, HICON};
 
     /// An icon, destroyed when dropped.
@@ -124,6 +151,17 @@ mod sys {
         }
     }
 
+    /// Drive `letter` is a network one (a mapped share). Windows knows it
+    /// without asking the network.
+    pub fn network_drive(letter: char) -> bool {
+        // `DRIVE_REMOTE`, from a part of the Windows API not taken in for
+        // one number.
+        const DRIVE_REMOTE: u32 = 4;
+        let root = HSTRING::from(format!("{letter}:\\"));
+        // SAFETY: a NUL-terminated root path that outlives the call.
+        unsafe { GetDriveTypeW(&root) == DRIVE_REMOTE }
+    }
+
     pub fn exe_icon(path: &str, size: u32) -> Option<Vec<u8>> {
         let path = HSTRING::from(path);
         let icon = from_file(&path, size).or_else(|| shell_default(&path))?;
@@ -144,8 +182,8 @@ mod sys {
         (result == S_OK && !icon.0.is_invalid()).then_some(icon)
     }
 
-    /// The shell's icon for the file: Windows' default program icon when the
-    /// file has none of its own.
+    /// Windows' default program icon, for a file without one of its own: by
+    /// the file's type alone, the file isn't opened.
     pub fn shell_default(path: &HSTRING) -> Option<Icon> {
         // Two first calls at once can both fail (the shell sets up its icon
         // list on the first one): one at a time. A poisoned lock guards no
@@ -163,10 +201,10 @@ mod sys {
         let found = unsafe {
             SHGetFileInfoW(
                 path,
-                FILE_FLAGS_AND_ATTRIBUTES(0),
+                FILE_ATTRIBUTE_NORMAL,
                 Some(&mut info),
                 size_of::<SHFILEINFOW>() as u32,
-                SHGFI_ICON | SHGFI_LARGEICON,
+                SHGFI_ICON | SHGFI_LARGEICON | SHGFI_USEFILEATTRIBUTES,
             )
         };
         if init.is_ok() {
@@ -238,6 +276,10 @@ mod sys {
 
 #[cfg(not(windows))]
 mod sys {
+    pub fn network_drive(_letter: char) -> bool {
+        false
+    }
+
     pub fn exe_icon(_path: &str, _size: u32) -> Option<Vec<u8>> {
         None
     }
@@ -269,6 +311,26 @@ mod tests {
     fn nothing_for_a_missing_file_or_an_empty_path() {
         assert_eq!(exe_icon("", 32), None);
         assert_eq!(exe_icon(r"C:\definitely\not\here.exe", 32), None);
+    }
+
+    #[test]
+    fn only_programs_on_this_computers_drives() {
+        assert!(is_local_program(r"C:\Games\Racer\racer.exe"));
+        assert!(is_local_program(r"d:\oyunlar\OYUN.EXE"));
+        assert!(is_local_program(r"\\?\C:\Games\racer.exe"));
+        assert!(!is_local_program(r"\\server\share\racer.exe"), "a network share");
+        assert!(!is_local_program(r"\\?\UNC\server\share\racer.exe"));
+        assert!(!is_local_program("//server/share/racer.exe"));
+        assert!(!is_local_program(r"C:\Users\a\Desktop\Racer.lnk"), "a shortcut");
+        assert!(!is_local_program(r"C:\Users\a\Desktop\Racer.url"));
+        assert!(!is_local_program(r"C:\Games\Racer"), "a folder");
+        assert!(!is_local_program("racer.exe"), "not a whole path");
+        assert!(!is_local_program(r"C:racer.exe"));
+        assert!(!is_local_program(""));
+        // Turned away at once, without asking the network.
+        let started = std::time::Instant::now();
+        assert_eq!(exe_icon(r"\\192.0.2.1\share\racer.exe", 32), None);
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
     }
 
     #[cfg(windows)]
@@ -351,6 +413,35 @@ mod tests {
             assert_eq!(px(3, 20), [0, 0, 0, 255]);
             assert_eq!(px(20, 3), [0, 0, 0, 0]);
             assert_eq!(px(31, 31), [0, 0, 0, 0]);
+        }
+
+        #[test]
+        fn several_at_once_get_the_default_icon() {
+            let me = std::env::current_exe().unwrap().display().to_string();
+            let threads: Vec<_> = (0..4)
+                .map(|_| {
+                    let me = me.clone();
+                    std::thread::spawn(move || exe_icon(&me, 32).is_some())
+                })
+                .collect();
+            assert!(threads.into_iter().all(|t| t.join().unwrap()));
+        }
+
+        #[test]
+        fn a_thread_with_com_in_the_other_mode_still_gets_icons() {
+            use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
+            let me = std::env::current_exe().unwrap().display().to_string();
+            let got = std::thread::spawn(move || {
+                // SAFETY: plain COM start-up for this new thread, undone below.
+                let init = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+                let got = exe_icon(&me, 32).is_some() && exe_icon(NOTEPAD, 32).is_some();
+                if init.is_ok() {
+                    // SAFETY: balances the CoInitializeEx above.
+                    unsafe { CoUninitialize() };
+                }
+                got
+            });
+            assert!(got.join().unwrap());
         }
 
         #[test]

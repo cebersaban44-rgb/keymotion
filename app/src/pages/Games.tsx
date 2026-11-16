@@ -90,6 +90,12 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
     : session
       ? "games.status.playing"
       : "games.status.waiting";
+  // Quiet mode lets meeting and reminder alerts through unless told not to.
+  const cardStatus: MessageKey | null = !session
+    ? null
+    : session.card === "quiet" && !s.settings.quietReminders
+      ? "games.cardStatus.quietAll"
+      : `games.cardStatus.${session.card}`;
 
   return (
     <div className="flex flex-col gap-6" data-games>
@@ -121,7 +127,7 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
           {session && (
             <p className="text-[12px] text-ink-3" data-games-card-status={session.card}>
               {[
-                t(`games.cardStatus.${session.card}`),
+                cardStatus && t(cardStatus),
                 session.gpuAvg != null ? `${t("games.card.gpu")} ${t("games.card.avg")} ${percent(Math.round(session.gpuAvg))}` : null,
                 session.cpuPeak != null ? `${t("games.card.cpu")} ${t("games.card.peak")} ${percent(Math.round(session.cpuPeak))}` : null,
               ]
@@ -208,7 +214,8 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
 
 
           <Row icon={ShieldCheck} title={t("games.quiet")} body={t("games.quiet.body")} checked={s.settings.quiet} onChange={(quiet) => set({ quiet })}>
-            {s.settings.quiet && (
+            {/* It applies to quiet mode for every game and for one game. */}
+            {(s.settings.quiet || s.settings.quietGames.length > 0) && (
               <Switch
                 label={t("games.quiet.reminders")}
                 body={t("games.quiet.reminders.body")}
@@ -222,6 +229,13 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
         </div>
       </section>
       <p className="text-[12px] text-ink-3">{t("games.privacy")}</p>
+      {/* Riot's notice stays in sight while League of Legends is listed
+          (also inside its lights). */}
+      {s.games.some((g) => hasSpecialLights(g.key)) && (
+        <p className="text-[11px] text-ink-3" data-games-riot-notice="page">
+          {t("games.lol.legal")}
+        </p>
+      )}
     </div>
   );
 }
