@@ -27,11 +27,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/cebersaban44-rgb/keymotion/releases/latest"><img src="docs/images/download-windows-tr.png" width="320" alt="Windows için indir: ücretsiz, Windows 10 ve 11, 64 bit"></a>
+  <a href="https://github.com/cebersaban44-rgb/keymotion/releases/latest"><img src="docs/images/download-windows-tr.png" height="56" alt="GitHub'dan indir: kurulum dosyası, Windows 10 ve 11, 64 bit"></a>
+  &nbsp;
+  <a href="https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&amp;mode=full"><picture><source media="(prefers-color-scheme: dark)" srcset="https://get.microsoft.com/images/tr%20light.svg"><img src="https://get.microsoft.com/images/tr%20dark.svg" height="56" alt="Microsoft'tan alın"></picture></a>
 </p>
 
 <p align="center">
-  <sub>Resmî değildir, AJAZZ ile bağı yoktur · Kurulum dosyası henüz imzalı değil; Windows çalıştırmadan önce uyarabilir: <a href="#indirme-ve-kurulum">ne yapmalı</a></sub>
+  <sub>Ücretsiz · Resmî değildir, AJAZZ ile bağı yoktur · İki yolda da aynı uygulama: Store kopyasını Microsoft imzalar; GitHub'daki kurulum dosyası henüz imzalı değil, Windows çalıştırmadan önce uyarabilir: <a href="#indirme-ve-kurulum">hangisini seçmeli</a></sub>
 </p>
 
 <p align="center">
@@ -126,21 +128,39 @@ Klavyeniz listede yok mu? Yine de takın ve [bize bildirin](https://github.com/c
 
 ## İndirme ve kurulum
 
-1. Kurulum dosyasını, `Keymotion_<sürüm>_x64-setup.exe`, [son sürümün sayfasından](https://github.com/cebersaban44-rgb/keymotion/releases/latest) indirin. Windows 10 ve 11'de (64 bit) çalışır. Dosyanın SHA-256 değeri aynı sayfada yazar.
+Keymotion'ı iki yoldan kurabilirsiniz. İkisi de aynı uygulama; sürüm numarası ve sürüm notları da aynı. Windows 10 ve 11'de (64 bit) çalışır. Birini kurun.
+
+| | Microsoft Store | GitHub |
+|---|---|---|
+| Nereden | [Microsoft Store'da Keymotion](https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full) | [Son sürümün sayfasından](https://github.com/cebersaban44-rgb/keymotion/releases/latest) `Keymotion_<sürüm>_x64-setup.exe` |
+| İmza | Var, Microsoft imzalar: Windows uyarı göstermeden kurar | Henüz yok: Windows çalıştırmadan önce uyarabilir |
+| Güncellemeler | Microsoft Store | Keymotion GitHub'a bakar, kurmadan önce sorar |
+| Deneme sürümleri | Yok | Var |
+
+Önerimiz Microsoft Store. Bilgisayarınızda Microsoft Store yoksa (Windows LTSC ya da Store'u kapalı bir iş bilgisayarı) veya deneme sürümlerini denemek istiyorsanız GitHub'ı seçin.
+
+**Microsoft Store'dan**
+
+1. [Microsoft Store'da Keymotion](https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full) sayfasını açıp **Al**'ı seçin.
+2. Klavyeyi USB kablosuyla bağlayın ve arkasındaki anahtarı ortaya (USB) getirin.
+
+**GitHub'dan**
+
+1. Kurulum dosyasını, `Keymotion_<sürüm>_x64-setup.exe`, [son sürümün sayfasından](https://github.com/cebersaban44-rgb/keymotion/releases/latest) indirin. Dosyanın SHA-256 değeri aynı sayfada yazar.
 2. Çalıştırıp adımları izleyin.
 3. Klavyeyi USB kablosuyla bağlayın ve arkasındaki anahtarı ortaya (USB) getirin.
 
 > [!NOTE]
-> Kurulum dosyası henüz imzalı değil; Windows "Windows bilgisayarınızı korudu" diyebilir. **Ek bilgi**'yi, sonra **Yine de çalıştır**'ı seçin. Akıllı Uygulama Denetimi açıksa Windows kurulumu tamamen engelleyebilir; imzalı sürümler bunu çözecek. Ayrıntı için [kod imzalama politikasına](#kod-imzalama-politikası-code-signing-policy) bakın.
+> GitHub'daki kurulum dosyası henüz imzalı değil; Windows "Windows bilgisayarınızı korudu" diyebilir. **Ek bilgi**'yi, sonra **Yine de çalıştır**'ı seçin. Akıllı Uygulama Denetimi açıksa Windows kurulumu tamamen engelleyebilir; Microsoft Store kopyası ikisine de takılmadan kurulur. Ayrıntı için [kod imzalama politikasına](#kod-imzalama-politikası-code-signing-policy) bakın.
 
 Kurmadan önce bilmeniz iyi olur:
 
 - Keymotion resmî değildir. AJAZZ tarafından yapılmamış, onaylanmamış ve desteklenmez.
-- Kurulum dosyası bu depodaki koddan GitHub Actions ile derlenir; sürüm sayfasında SHA-256 özeti yazar.
+- İkisi de bu depodaki koddan GitHub Actions ile derlenir: SHA-256 özeti sürüm sayfasında yazan kurulum dosyası da, Microsoft'un denetleyip imzaladığı Store paketi de.
 - VirusTotal'da 71 virüs tarama programından 70'i 0.1.0 kurulum dosyasında bir şey bulmuyor. Makine öğrenmesi kullanan tek bir program, yeni ve imzasız bir dosya olduğu için işaretliyor; yanlış alarm olarak bildirdik. [Ayrıntılar](https://cebersaban44-rgb.github.io/keymotion/tr/about/code-signing/#virüs-taramaları).
 - Kullanım bilgisi toplamaz ve klavyenin yazılımını asla güncellemez.
 
-Güncellemeler: Keymotion günde bir kez GitHub'da yeni sürüm olup olmadığına bakar ve kurmadan önce size sorar. Bu denetimi Ayarlar'dan kapatabilirsiniz.
+Güncellemeler: Store'dan kurulan kopyayı Microsoft Store günceller. GitHub'dan kurulan kopya günde bir kez GitHub'da yeni sürüm olup olmadığına bakar ve kurmadan önce size sorar; bu denetimi Ayarlar'dan kapatabilirsiniz.
 
 ## Güvenlik
 
@@ -156,7 +176,7 @@ Keymotion'ı bir yapay zekâ kodlama yardımcısı olan Claude ile yaptım. Kodu
 
 ## Kod imzalama politikası (Code signing policy)
 
-GitHub'daki kurulum dosyası henüz imzalı değil. Açık kaynak projeleri ücretsiz imzalayan SignPath Foundation, 15 Kasım 2026'daki başvurumuzu proje henüz yeni olduğu için şimdilik kabul etmedi; yeniden başvuracağız. Keymotion ayrıca Microsoft Store'a geliyor; oradaki kopyayı Microsoft imzalar.
+GitHub'daki kurulum dosyası henüz imzalı değil. Açık kaynak projeleri ücretsiz imzalayan SignPath Foundation, 15 Kasım 2026'daki başvurumuzu proje henüz yeni olduğu için şimdilik kabul etmedi; yeniden başvuracağız. Keymotion ayrıca [Microsoft Store'da](https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full); oradaki kopyayı Microsoft imzalar.
 
 - Sürümler bu depodan GitHub Actions ile derlenir ([sürüm iş akışı](.github/workflows/release.yml)).
 - Yazan ve inceleyen: [@cebersaban44-rgb](https://github.com/cebersaban44-rgb)
