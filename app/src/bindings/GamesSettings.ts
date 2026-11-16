@@ -26,6 +26,10 @@ startCard: boolean,
  */
 summaryCard: boolean, lights: GameLights, 
 /**
+ * The profile whose per-key design shows with `GameLights::Profile`.
+ */
+lightsProfile: string | null, 
+/**
  * Keys lit with `GameLights::Keys` (ids of the model's geometry).
  */
 keys: Array<string>, 
@@ -46,6 +50,10 @@ quiet: boolean,
  * … but the meetings' and reminders' lights and cards still come.
  */
 quietReminders: boolean, 
+/**
+ * Games (their keys) that always get the quiet mode.
+ */
+quietGames: Array<string>, 
 /**
  * The user's own word on programs.
  */

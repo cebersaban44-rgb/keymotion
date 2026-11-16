@@ -17,6 +17,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useEffectEvent, useMemo, useState, type ReactNode } from "react";
+import type { AutoRule } from "../bindings/AutoRule";
 import type { GameCard } from "../bindings/GameCard";
 import type { GameEntry } from "../bindings/GameEntry";
 import type { GameLights } from "../bindings/GameLights";
@@ -25,13 +26,16 @@ import type { GamesSettings } from "../bindings/GamesSettings";
 import type { GamesState } from "../bindings/GamesState";
 import type { GameSource } from "../bindings/GameSource";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
+import type { ProfileInfo } from "../bindings/ProfileInfo";
 import { ColorPicker, Segmented, Slider, Toggle } from "../components/controls";
 import { KeyboardView } from "../components/KeyboardView";
+import { RULE_GAMES, followAuto, useAuto } from "../lib/autoprofile";
 import { GAME_KEY_SETS, SUMMARY_MIN_MS, playTime, rescanGames, tryGameLights, useGames } from "../lib/games";
 import { percent, useT, type MessageKey } from "../lib/i18n";
 import { useLive } from "../lib/live";
 import { gameStartCard, gameSummaryCard, gameWords } from "../lib/liveCards";
 import { fromHex, toHex } from "../lib/pomodoroLights";
+import { profileName, useProfiles } from "../lib/profiles";
 import { useApp } from "../lib/store";
 import { FramePlayer } from "./screen/common";
 
@@ -59,6 +63,18 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
     const id = window.setInterval(() => setNow(Date.now()), 15_000);
     return () => window.clearInterval(id);
   }, []);
+  // The per-app rules (a game's profile) and the profiles (their names, and
+  // "A profile's lighting").
+  useEffect(() => followAuto(), []);
+  useEffect(() => {
+    useProfiles.getState().load(kb.modelId).catch(console.error);
+  }, [kb.modelId]);
+  const auto = useAuto((x) => x.state);
+  const profilesState = useProfiles((x) => (x.modelId === kb.modelId ? x.state : null));
+  const profiles: ProfileInfo[] = useMemo(
+    () => (profilesState ? [...profilesState.profiles, profilesState.factory] : []),
+    [profilesState],
+  );
   if (!s) return null;
 
   const set = (patch: Partial<GamesSettings>) => configure(patch).catch(console.error);
@@ -99,6 +115,17 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
             <Number label={t("games.today")} value={time(s.todayMs)} />
             <Number label={t("games.week")} value={time(s.weekMs)} />
           </div>
+          {session && (
+            <p className="text-[12px] text-ink-3" data-games-card-status={session.card}>
+              {[
+                t(`games.cardStatus.${session.card}`),
+                session.gpuAvg != null ? `${t("games.card.gpu")} ${t("games.card.avg")} ${percent(Math.round(session.gpuAvg))}` : null,
+                session.cpuPeak != null ? `${t("games.card.cpu")} ${t("games.card.peak")} ${percent(Math.round(session.cpuPeak))}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          )}
           {s.suggestions.map((g) => (
             <div
               key={g.path}
@@ -122,7 +149,19 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
         </div>
 
         <div className="flex flex-col divide-y divide-line border-t border-line">
-          <GameList games={s.games} time={time} onMark={(g, game) => mark(g.key, g.name, game).catch(console.error)} launchers={s.settings.launchers} />
+          <GameList
+            games={s.games}
+            time={time}
+            onMark={(g, game) => mark(g.key, g.name, game).catch(console.error)}
+            launchers={s.settings.launchers}
+            rules={auto?.settings.enabled ? auto.settings.rules : []}
+            profiles={profiles}
+            quietAll={s.settings.quiet}
+            quietGames={s.settings.quietGames}
+            onQuiet={(g, on) =>
+              set({ quietGames: on ? [...s.settings.quietGames, g.key] : s.settings.quietGames.filter((k) => k.toLowerCase() !== g.key.toLowerCase()) })
+            }
+          />
           <AddGame state={s} mark={(path, name, game) => mark(path, name, game).catch(console.error)} />
           <Row icon={RefreshCw} title={t("games.launchers")} body={t("games.launchers.body")} checked={s.settings.launchers} onChange={(launchers) => set({ launchers })}>
             {s.settings.launchers && (
@@ -161,7 +200,7 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
             {drawError && <p className="text-[12px] text-danger">{t("games.drawError")}</p>}
           </Row>
 
-          <Lights kb={kb} usb={usb} settings={s.settings} set={set} />
+          <Lights kb={kb} usb={usb} settings={s.settings} set={set} profiles={profiles} />
 
           <Row
             icon={Swords}
@@ -213,41 +252,123 @@ function Number({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** The per-app rule a game gets: one on its file or folder (or on a program
+ *  in its folder), else the "every game" rule (autoprofile.rs `rule_for`). */
+function ruleFor(rules: AutoRule[], key: string): AutoRule | undefined {
+  const k = key.toLowerCase();
+  const inside = (a: string, b: string) => a === b || a.startsWith(`${b.replace(/\\+$/, "")}\\`);
+  const own = rules
+    .filter((r) => r.path !== RULE_GAMES)
+    .filter((r) => inside(k, r.path.toLowerCase()) || inside(r.path.toLowerCase(), k))
+    .sort((a, b) => b.path.length - a.path.length)[0];
+  return own ?? rules.find((r) => r.path === RULE_GAMES);
+}
+
+type SortBy = "last" | "most";
+const SORT_KEY = "keymotion.games.sort";
+
+function savedSort(): SortBy {
+  try {
+    return localStorage.getItem(SORT_KEY) === "most" ? "most" : "last";
+  } catch {
+    return "last";
+  }
+}
+
 /** The games found or played; launchers' games never played fold away. */
 function GameList({
   games,
   time,
   onMark,
   launchers,
+  rules,
+  profiles,
+  quietAll,
+  quietGames,
+  onQuiet,
 }: {
   games: GameEntry[];
   time: (ms: number) => string;
   onMark: (g: GameEntry, game: boolean | null) => void;
   launchers: boolean;
+  rules: AutoRule[];
+  profiles: ProfileInfo[];
+  quietAll: boolean;
+  quietGames: string[];
+  onQuiet: (g: GameEntry, on: boolean) => void;
 }) {
   const t = useT();
   const [all, setAll] = useState(false);
+  const [sort, setSort] = useState<SortBy>(savedSort);
   const played = games.filter((g) => g.played || g.source === "mine");
   const rest = games.length - played.length;
-  const shown = all ? games : played;
+  // The backend lists them by last played.
+  const listed = all ? games : played;
+  const shown = sort === "most" ? [...listed].sort((a, b) => b.totalMs - a.totalMs) : listed;
+  const profileOf = (g: GameEntry) => {
+    const r = ruleFor(rules, g.key);
+    if (!r) return null;
+    const p = profiles.find((x) => x.id === r.profile);
+    return p ? profileName(p, t) : t("auto.profile.gone");
+  };
+  const quietOf = (g: GameEntry) => quietGames.some((k) => k.toLowerCase() === g.key.toLowerCase());
   return (
     <div className="flex flex-col gap-3 px-5 py-4" data-games-list>
-      <span className="flex items-start gap-2.5">
-        <Gamepad2 size={16} className="mt-0.5 shrink-0 text-signal" />
-        <span className="flex flex-col">
-          <span className="text-[13px] font-semibold">{t("games.list")}</span>
-          <span className="text-[12px] text-ink-3">{t(launchers ? "games.list.body" : "games.list.bodyOwn")}</span>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <span className="flex items-start gap-2.5">
+          <Gamepad2 size={16} className="mt-0.5 shrink-0 text-signal" />
+          <span className="flex flex-col">
+            <span className="text-[13px] font-semibold">{t("games.list")}</span>
+            <span className="text-[12px] text-ink-3">{t(launchers ? "games.list.body" : "games.list.bodyOwn")}</span>
+          </span>
         </span>
-      </span>
+        <select
+          className="h-8 rounded-lg border border-line bg-bg-raise px-2 text-[12px] outline-none focus:border-signal"
+          value={sort}
+          aria-label={t("games.list.sort")}
+          data-games-sort
+          onChange={(e) => {
+            const v = e.target.value as SortBy;
+            setSort(v);
+            try {
+              localStorage.setItem(SORT_KEY, v);
+            } catch {
+              // Only a convenience: the list still sorts.
+            }
+          }}
+        >
+          <option value="last">{t("games.list.sort.last")}</option>
+          <option value="most">{t("games.list.sort.most")}</option>
+        </select>
+      </div>
       {shown.length === 0 ? (
         <p className="text-[12px] text-ink-3">{t("games.list.empty")}</p>
       ) : (
         <ul className="flex flex-col divide-y divide-line rounded-lg border border-line">
           {shown.map((g) => (
             <li key={g.key} className="flex flex-wrap items-center gap-3 px-3 py-2 text-[13px]" data-game={g.name}>
-              <span className="min-w-0 flex-1 truncate font-medium">{g.name}</span>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate font-medium">{g.name}</span>
+                {profileOf(g) && (
+                  <span className="truncate text-[11px] text-ink-3" data-game-profile>
+                    {t("games.list.profile", { name: profileOf(g)! })}
+                  </span>
+                )}
+              </span>
               <span className="rounded-md bg-surface-2 px-2 py-0.5 text-[11px] text-ink-2">{t(SOURCE_KEY[g.source])}</span>
               <span className="num w-24 text-right text-[12px] text-ink-3">{g.totalMs > 0 ? time(g.totalMs) : "—"}</span>
+              <button
+                type="button"
+                className={`rounded-md p-1.5 hover:bg-surface-2 disabled:opacity-60 ${quietAll || quietOf(g) ? "text-signal" : "text-ink-3 hover:text-ink"}`}
+                aria-label={`${t("games.list.quiet")}, ${g.name}`}
+                aria-pressed={quietAll || quietOf(g)}
+                title={quietAll ? t("games.list.quiet.all") : t("games.list.quiet")}
+                disabled={quietAll}
+                data-game-quiet={quietOf(g)}
+                onClick={() => onQuiet(g, !quietOf(g))}
+              >
+                <ShieldCheck size={14} />
+              </button>
               <button
                 type="button"
                 className="rounded-md px-2 py-1 text-[12px] text-ink-3 hover:bg-surface-2 hover:text-ink"
@@ -350,6 +471,7 @@ function CardStrip({ temperature }: { temperature: boolean }) {
       gpuAvg: null,
       gpuPeak: null,
       cpuAvg: null,
+      cpuPeak: null,
       tempPeak: null,
       todayMs: 80 * 60_000,
       lol: null,
@@ -357,7 +479,7 @@ function CardStrip({ temperature }: { temperature: boolean }) {
     return Promise.all([
       gameStartCard(base, null, w),
       gameSummaryCard(
-        { ...base, kind: "summary", endedMs: Date.now(), gpuAvg: 78, gpuPeak: 97, cpuAvg: 34, tempPeak: temperature ? 71 : null, todayMs: 214 * 60_000 },
+        { ...base, kind: "summary", endedMs: Date.now(), gpuAvg: 78, gpuPeak: 97, cpuAvg: 34, cpuPeak: 81, tempPeak: temperature ? 71 : null, todayMs: 214 * 60_000 },
         w,
       ),
     ]);
@@ -401,6 +523,7 @@ function LolCard() {
         gpuAvg: 61,
         gpuPeak: 88,
         cpuAvg: 27,
+        cpuPeak: 64,
         tempPeak: 66,
         todayMs: 125 * 60_000,
         lol: { win: true, kills: 8, deaths: 3, assists: 12, cs: 214, champion: "Ahri", mode: "CLASSIC" },
@@ -429,13 +552,18 @@ function Lights({
   usb,
   settings: s,
   set,
+  profiles,
 }: {
   kb: KeyboardInfo;
   usb: boolean;
   settings: GamesSettings;
   set: (patch: Partial<GamesSettings>) => void;
+  profiles: ProfileInfo[];
 }) {
   const t = useT();
+  // Only a key-by-key design can show from RAM.
+  const designs = profiles.filter((p) => p.lighting?.kind === "per-key");
+  const chosen = profiles.find((p) => p.id === s.lightsProfile);
   const g = kb.geometry;
   const [draft, setDraft] = useState<Partial<GamesSettings>>({});
   useEffect(() => {
@@ -469,12 +597,48 @@ function Lights({
       <Segmented<GameLights>
         label={t("games.lights")}
         value={shown.lights}
-        onChange={(lights) => set({ lights })}
+        onChange={(lights) =>
+          set(lights === "profile" && !designs.some((p) => p.id === s.lightsProfile) ? { lights, lightsProfile: designs[0]?.id ?? null } : { lights })
+        }
         options={[
           { value: "own", label: t("games.lights.own") },
           { value: "keys", label: t("games.lights.keys") },
+          { value: "profile", label: t("games.lights.profile") },
         ]}
       />
+      {shown.lights === "profile" && (
+        <div className="flex flex-col gap-2" data-games-lights-profile>
+          {designs.length === 0 ? (
+            <p className="text-[12px] text-ink-3">{t("games.lights.profile.none")}</p>
+          ) : (
+            <select
+              className="h-8 max-w-[260px] rounded-lg border border-line bg-bg-raise px-2 text-[13px] outline-none focus:border-signal"
+              value={s.lightsProfile ?? ""}
+              aria-label={t("games.lights.profile.pick")}
+              onChange={(e) => set({ lightsProfile: e.target.value })}
+            >
+              {!designs.some((p) => p.id === s.lightsProfile) && (
+                <option value={s.lightsProfile ?? ""} disabled>
+                  {s.lightsProfile ? t("auto.profile.gone") : t("games.lights.profile.pick")}
+                </option>
+              )}
+              {designs.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {profileName(p, t)}
+                </option>
+              ))}
+            </select>
+          )}
+          {chosen?.otherModel && <p className="text-[12px] text-signal">{t("games.lights.profile.otherModel")}</p>}
+          <p className="text-[12px] text-ink-3">{t("games.lights.profile.body")}</p>
+          {!usb && (
+            <span className="flex items-center gap-1.5 text-[12px] text-ink-3">
+              <Usb size={13} />
+              {t("games.noUsb")}
+            </span>
+          )}
+        </div>
+      )}
       {shown.lights === "keys" && (
         <>
           <div className="flex flex-wrap items-center gap-2 text-[13px]">
@@ -562,8 +726,12 @@ function HistoryRow({ time }: { time: (ms: number) => string }) {
               <span className="min-w-0 flex-1 truncate font-medium">{r.name}</span>
               <span className="text-[12px] text-ink-3">{when(r.startMs)}</span>
               <span className="num w-24 text-right">{time(r.endMs - r.startMs)}</span>
-              <span className="num w-44 text-right text-[12px] text-ink-3">
-                {[r.gpuAvg != null ? `${t("games.card.gpu")} ${percent(Math.round(r.gpuAvg))}` : null, r.tempPeak != null ? `${Math.round(r.tempPeak)} °C` : null]
+              <span className="num text-right text-[12px] text-ink-3 sm:w-72">
+                {[
+                  r.gpuAvg != null ? `${t("games.card.gpu")} ${percent(Math.round(r.gpuAvg))}` : null,
+                  r.cpuPeak != null ? `${t("games.card.cpu")} ${t("games.card.peak")} ${percent(Math.round(r.cpuPeak))}` : null,
+                  r.tempPeak != null ? `${Math.round(r.tempPeak)} °C` : null,
+                ]
                   .filter(Boolean)
                   .join(" · ") || "—"}
               </span>

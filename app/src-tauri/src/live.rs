@@ -513,16 +513,23 @@ impl LiveHandle {
 
     /// A card from `source` is on the GIF page, going there, or waiting.
     pub fn has_card_from(&self, source: &str) -> bool {
-        let showing = self.library.lock().map(|l| l.live_source_showing(source)).unwrap_or(false);
-        let queued = self
-            .rt
+        self.card_shown(source) || self.card_waiting(source)
+    }
+
+    /// A card from `source` is on the GIF page.
+    pub fn card_shown(&self, source: &str) -> bool {
+        self.library.lock().map(|l| l.live_source_showing(source)).unwrap_or(false)
+    }
+
+    /// A card from `source` waits or is going to the keyboard.
+    pub fn card_waiting(&self, source: &str) -> bool {
+        self.rt
             .lock()
             .map(|rt| {
                 rt.pending.as_ref().is_some_and(|p| p.item.source == source)
                     || rt.uploading.as_ref().is_some_and(|u| u.source == source)
             })
-            .unwrap_or(false);
-        showing || queued
+            .unwrap_or(false)
     }
 
     /// A song plays now (as the "Çalan şarkı" source last saw it).

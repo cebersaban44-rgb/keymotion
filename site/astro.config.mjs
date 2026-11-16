@@ -87,7 +87,7 @@ export default defineConfig({
         {
           label: "About",
           translations: { tr: "Hakkında" },
-          items: ["about/privacy", "about/code-signing", "about/release-notes"],
+          items: ["about/privacy", "about/terms", "about/code-signing", "about/release-notes"],
         },
         {
           label: "Developers",

@@ -2170,6 +2170,8 @@ pub enum GameLights {
     Own,
     /// The chosen keys in one colour, the others dark or dim (RAM only).
     Keys,
+    /// A profile's per-key design (RAM only).
+    Profile,
 }
 
 /// The keys not chosen, with `GameLights::Keys`.
@@ -2208,6 +2210,8 @@ pub struct GamesSettings {
     /// A summary card when a session of 5 minutes or more ends.
     pub summary_card: bool,
     pub lights: GameLights,
+    /// The profile whose per-key design shows with `GameLights::Profile`.
+    pub lights_profile: Option<String>,
     /// Keys lit with `GameLights::Keys` (ids of the model's geometry).
     pub keys: Vec<String>,
     /// Their colour (UI colour, sRGB).
@@ -2220,6 +2224,8 @@ pub struct GamesSettings {
     pub quiet: bool,
     /// … but the meetings' and reminders' lights and cards still come.
     pub quiet_reminders: bool,
+    /// Games (their keys) that always get the quiet mode.
+    pub quiet_games: Vec<String>,
     /// The user's own word on programs.
     pub marks: Vec<GameMark>,
     /// League of Legends: lights from the game's own data.
@@ -2275,12 +2281,14 @@ impl Default for GamesSettings {
             start_card: true,
             summary_card: true,
             lights: GameLights::default(),
+            lights_profile: None,
             keys: GAME_KEYS_DEFAULT.iter().map(|k| (*k).to_string()).collect(),
             color: [255, 138, 61],
             rest: GameRest::default(),
             brightness: 4,
             quiet: false,
             quiet_reminders: true,
+            quiet_games: Vec::new(),
             marks: Vec::new(),
             lol: LolSettings::default(),
         }
@@ -2308,6 +2316,10 @@ impl GamesSettings {
             let drop = self.marks.len() - Self::MAX_MARKS;
             self.marks.drain(..drop);
         }
+        self.quiet_games.retain(|k| !k.trim().is_empty() && k.len() <= 1024);
+        let mut seen = std::collections::HashSet::new();
+        self.quiet_games.retain(|k| seen.insert(k.to_lowercase()));
+        self.quiet_games.truncate(Self::MAX_MARKS);
         self
     }
 }
@@ -2365,7 +2377,31 @@ pub struct GameSessionInfo {
     pub source: GameSource,
     pub started_ms: f64,
     pub gpu_avg: Option<f32>,
+    pub gpu_peak: Option<f32>,
+    pub cpu_avg: Option<f32>,
+    pub cpu_peak: Option<f32>,
     pub temp_peak: Option<f32>,
+    /// Quiet mode is on for this session (for every game, or this one).
+    pub quiet: bool,
+    /// Its start card on the keyboard's screen.
+    pub card: GameCardStatus,
+}
+
+/// Where the running session's start card is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum GameCardStatus {
+    /// No start card: turned off, or the live screen is off.
+    Off,
+    /// Quiet mode: nothing goes to the keyboard.
+    Quiet,
+    /// Waiting for the screen (its upload allowance, or another upload).
+    Waiting,
+    /// On the keyboard's screen.
+    Shown,
+    /// Something else is on the screen now (a meeting's card, the song).
+    Other,
 }
 
 /// A finished session (history, `game-history.json`).
@@ -2384,6 +2420,8 @@ pub struct GameRecord {
     pub gpu_peak: Option<f32>,
     #[serde(default)]
     pub cpu_avg: Option<f32>,
+    #[serde(default)]
+    pub cpu_peak: Option<f32>,
     #[serde(default)]
     pub temp_peak: Option<f32>,
     /// A League of Legends match: how it went.
@@ -2435,6 +2473,7 @@ pub struct GameCard {
     pub gpu_avg: Option<f32>,
     pub gpu_peak: Option<f32>,
     pub cpu_avg: Option<f32>,
+    pub cpu_peak: Option<f32>,
     pub temp_peak: Option<f32>,
     /// Played today, this session included.
     pub today_ms: f64,

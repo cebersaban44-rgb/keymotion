@@ -795,7 +795,10 @@ export async function gameSummaryCard(c: GameCard, w: GameWords): Promise<Prepar
     cells.push([w.gpu, `${w.avg} ${pct(c.gpuAvg)}${peak ? ` · ${w.peak} ${peak}` : ""}`]);
   }
   if (c.tempPeak != null) cells.push([w.temp, `${w.peak} ${Math.round(c.tempPeak)} °C`]);
-  if (c.cpuAvg != null) cells.push([w.cpu, `${w.avg} ${pct(c.cpuAvg)}`]);
+  if (c.cpuAvg != null) {
+    const peak = pct(c.cpuPeak);
+    cells.push([w.cpu, `${w.avg} ${pct(c.cpuAvg)}${peak ? ` · ${w.peak} ${peak}` : ""}`]);
+  }
   cells.push([w.todayTotal, playTime(c.todayMs, w)]);
   await fonts(`${label} ${time} ${cells.flat().join(" ")}`);
 

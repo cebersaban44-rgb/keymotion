@@ -31,12 +31,14 @@ export const DEFAULT_GAMES: GamesSettings = {
   startCard: true,
   summaryCard: true,
   lights: "own",
+  lightsProfile: null,
   keys: GAME_KEYS_DEFAULT,
   color: [255, 138, 61],
   rest: "dim",
   brightness: 4,
   quiet: false,
   quietReminders: true,
+  quietGames: [],
   marks: [],
   lol: { enabled: true, bars: true, death: true, events: true },
 };
@@ -70,6 +72,7 @@ const mock = {
         gpuAvg: 78,
         gpuPeak: 97,
         cpuAvg: 34,
+        cpuPeak: 81,
         tempPeak: 71,
         lol: null,
       },
@@ -92,11 +95,23 @@ if (import.meta.env.DEV && !inTauri && typeof window !== "undefined") {
   w.__ksMockGame = (on: boolean) => {
     const s = mock.state;
     if (on) {
-      s.session = { key: s.games[0]!.key, name: s.games[0]!.name, source: "steam", startedMs: Date.now() - 42 * 60_000, gpuAvg: 74, tempPeak: 69 };
-      mock.onCard?.({ kind: "start", name: s.session.name, steamApp: null, startedMs: s.session.startedMs, endedMs: null, gpuAvg: null, gpuPeak: null, cpuAvg: null, tempPeak: null, todayMs: s.todayMs, lol: null });
+      s.session = {
+        key: s.games[0]!.key,
+        name: s.games[0]!.name,
+        source: "steam",
+        startedMs: Date.now() - 42 * 60_000,
+        gpuAvg: 74,
+        gpuPeak: 96,
+        cpuAvg: 31,
+        cpuPeak: 77,
+        tempPeak: 69,
+        quiet: s.settings.quiet || s.settings.quietGames.includes(s.games[0]!.key),
+        card: "shown",
+      };
+      mock.onCard?.({ kind: "start", name: s.session.name, steamApp: null, startedMs: s.session.startedMs, endedMs: null, gpuAvg: null, gpuPeak: null, cpuAvg: null, cpuPeak: null, tempPeak: null, todayMs: s.todayMs, lol: null });
     } else if (s.session) {
       const ended = Date.now();
-      mock.onCard?.({ kind: "summary", name: s.session.name, steamApp: null, startedMs: s.session.startedMs, endedMs: ended, gpuAvg: 78, gpuPeak: 97, cpuAvg: 34, tempPeak: 71, todayMs: s.todayMs, lol: null });
+      mock.onCard?.({ kind: "summary", name: s.session.name, steamApp: null, startedMs: s.session.startedMs, endedMs: ended, gpuAvg: 78, gpuPeak: 97, cpuAvg: 34, cpuPeak: 81, tempPeak: 71, todayMs: s.todayMs, lol: null });
       s.session = null;
     }
     mock.emit?.(mockCopy());

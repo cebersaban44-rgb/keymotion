@@ -26,8 +26,8 @@
 
 use crate::device::{DeviceHandle, LightLayer, LiveFrame, Quiet, Request};
 use crate::dto::{
-    Connection, GameCard, GameCardKind, GameEntry, GameLights, GameMark, GameRecord, GameRest, GameSessionInfo,
-    GameSource, GameSuggestion, GamesSettings, GamesState,
+    Connection, GameCard, GameCardKind, GameCardStatus, GameEntry, GameLights, GameMark, GameRecord, GameRest,
+    GameSessionInfo, GameSource, GameSuggestion, GamesSettings, GamesState,
 };
 use crate::front::FrontHub;
 use crate::live::{now_ms, LiveHandle};
@@ -43,7 +43,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 /// Live screen source id.
 pub const SOURCE: &str = "game";
@@ -292,6 +292,7 @@ impl Running {
             gpu_avg: self.stats.gpu_avg(),
             gpu_peak: self.stats.gpu_peak,
             cpu_avg: self.stats.cpu_avg(),
+            cpu_peak: self.stats.cpu_peak,
             temp_peak: self.stats.temp_peak,
             lol: None,
         }
@@ -442,6 +443,17 @@ pub(crate) fn keys_frame(ids: &KeyIds, s: &GamesSettings) -> Vec<(u8, Rgb)> {
     ids.all.iter().map(|&led| (led, if lit.contains(&led) { s.color } else { rest })).collect()
 }
 
+/// Quiet mode for the game with this key: for every game, or for this one.
+fn quiet_for(s: &GamesSettings, key: &str) -> bool {
+    s.quiet || s.quiet_games.iter().any(|k| same_path(k, key))
+}
+
+/// A profile's per-key design on every key of the model: its keys lit,
+/// the rest off.
+fn profile_frame(ids: &KeyIds, design: &[(u8, Rgb)]) -> Vec<(u8, Rgb)> {
+    ids.all.iter().map(|&led| (led, design.iter().find(|k| k.0 == led).map_or([0, 0, 0], |k| k.1))).collect()
+}
+
 /// The program in front is the session's game (its process, or a program
 /// of its folder: a launcher game's other windows).
 fn plays(front: &Front, game: &Detected) -> bool {
@@ -451,6 +463,8 @@ fn plays(front: &Front, game: &Detected) -> bool {
 // ------------------------------------------------------------- worker
 
 type Frame = Option<(Vec<(u8, Rgb)>, u8)>;
+/// A profile's per-key design: its model, the lit keys, their brightness.
+type Design = (String, Vec<(u8, Rgb)>, u8);
 
 struct Inner {
     settings: GamesSettings,
@@ -611,9 +625,12 @@ impl GamesHandle {
         i.tracker.session.as_ref().map(|s| s.game.key.clone())
     }
 
-    /// A session runs with "leave the keyboard alone while playing" on.
+    /// A session runs with "leave the keyboard alone while playing" on (for
+    /// every game, or for its game).
     pub fn quiet_now(&self) -> bool {
-        self.inner.lock().is_ok_and(|i| i.settings.enabled && i.settings.quiet && i.tracker.session.is_some())
+        self.inner.lock().is_ok_and(|i| {
+            i.settings.enabled && i.tracker.session.as_ref().is_some_and(|r| quiet_for(&i.settings, &r.game.key))
+        })
     }
 
     /// The game of the running session and when it started (tray menu).
@@ -624,10 +641,10 @@ impl GamesHandle {
 
     pub fn state(&self) -> Result<GamesState, String> {
         let inner = self.inner.lock().map_err(|_| "games unavailable")?;
-        Ok(Self::state_of(&inner, now_ms()))
+        Ok(self.state_of(&inner, now_ms()))
     }
 
-    fn state_of(inner: &Inner, now: f64) -> GamesState {
+    fn state_of(&self, inner: &Inner, now: f64) -> GamesState {
         let running = inner.tracker.session.as_ref();
         let started = running.map(|s| s.started);
         let mut totals: BTreeMap<&str, (f64, f64)> = BTreeMap::new();
@@ -679,13 +696,21 @@ impl GamesHandle {
         recent.sort_by(|a, b| b.end_ms.total_cmp(&a.end_ms));
         GamesState {
             settings: inner.settings.clone(),
-            session: running.map(|s| GameSessionInfo {
-                key: s.game.key.clone(),
-                name: s.game.name.clone(),
-                source: s.game.source,
-                started_ms: s.started,
-                gpu_avg: s.stats.gpu_avg(),
-                temp_peak: s.stats.temp_peak,
+            session: running.map(|s| {
+                let quiet = quiet_for(&inner.settings, &s.game.key);
+                GameSessionInfo {
+                    key: s.game.key.clone(),
+                    name: s.game.name.clone(),
+                    source: s.game.source,
+                    started_ms: s.started,
+                    gpu_avg: s.stats.gpu_avg(),
+                    gpu_peak: s.stats.gpu_peak,
+                    cpu_avg: s.stats.cpu_avg(),
+                    cpu_peak: s.stats.cpu_peak,
+                    temp_peak: s.stats.temp_peak,
+                    quiet,
+                    card: self.card_status(&inner.settings, quiet),
+                }
             }),
             games,
             suggestions: inner.suggestions.clone(),
@@ -807,6 +832,30 @@ impl GamesHandle {
     }
 
     /// Sources ranked above the game hold the screen.
+    /// Where the running session's start card is.
+    fn card_status(&self, s: &GamesSettings, quiet: bool) -> GameCardStatus {
+        if quiet {
+            GameCardStatus::Quiet
+        } else if !s.start_card || !self.live.enabled() {
+            GameCardStatus::Off
+        } else if self.live.card_shown(SOURCE) {
+            GameCardStatus::Shown
+        } else if self.live.card_waiting(SOURCE) {
+            GameCardStatus::Waiting
+        } else {
+            GameCardStatus::Other
+        }
+    }
+
+    /// The design of profile `id` for `GameLights::Profile`: its model, the
+    /// lit keys and their brightness. Read outside the worker's lock.
+    fn profile_design(&self, id: &str) -> Option<Design> {
+        let store = self.app.try_state::<Arc<Mutex<crate::profiles::ProfileStore>>>()?;
+        let profile = store.lock().ok()?.get(id)?;
+        let (keys, brightness) = profile.lighting.as_ref()?.per_key()?;
+        Some((profile.model_id, keys, brightness))
+    }
+
     fn higher_holds(&self) -> bool {
         self.live.held_by(crate::calendar::SOURCE)
             || self.live.held_by(crate::reminders::SOURCE)
@@ -823,6 +872,7 @@ impl GamesHandle {
             gpu_avg: None,
             gpu_peak: None,
             cpu_avg: None,
+            cpu_peak: None,
             temp_peak: None,
             today_ms: today,
             lol: None,
@@ -839,6 +889,7 @@ impl GamesHandle {
             gpu_avg: r.gpu_avg,
             gpu_peak: r.gpu_peak,
             cpu_avg: r.cpu_avg,
+            cpu_peak: r.cpu_peak,
             temp_peak: r.temp_peak,
             today_ms: today,
             lol: r.lol.clone(),
@@ -848,8 +899,13 @@ impl GamesHandle {
     /// One pass of the worker; returns how long to sleep.
     fn tick(&self, device: &DeviceHandle, meters: &mut Meters) -> Duration {
         let now = now_ms();
-        let (enabled, launchers, scan_due) = match self.inner.lock() {
-            Ok(i) => (i.settings.enabled, i.settings.launchers, now >= i.next_scan),
+        let (enabled, launchers, scan_due, lights_profile) = match self.inner.lock() {
+            Ok(i) => (
+                i.settings.enabled,
+                i.settings.launchers,
+                now >= i.next_scan,
+                i.settings.lights_profile.clone().filter(|_| i.settings.lights == GameLights::Profile),
+            ),
             Err(_) => return IDLE,
         };
         self.hub.want(WATCHER, enabled);
@@ -857,6 +913,8 @@ impl GamesHandle {
             return self.idle(device, now);
         }
         let in_front = self.hub.last();
+        // The profile store's lock is not taken under this worker's.
+        let design = lights_profile.and_then(|id| self.profile_design(&id));
         // The launchers' lists: read without holding the lock (it takes a moment).
         if scan_due {
             let known = if launchers { library::installed() } else { Vec::new() };
@@ -1000,7 +1058,7 @@ impl GamesHandle {
                 let r = inner.tracker.session.clone().expect("a session just started");
                 tracing::info!(source = ?r.game.source, "game session started");
                 let today = played_between(&inner.history, Some(r.started), day_start(now), now);
-                if s.start_card && live_on && !s.quiet && !self.higher_holds() {
+                if s.start_card && live_on && !quiet_for(&s, &r.game.key) && !self.higher_holds() {
                     let _ = self.app.emit(EVENT_GAME_CARD, Self::start_card(&r, today));
                 }
             }
@@ -1010,7 +1068,7 @@ impl GamesHandle {
                 tracing::info!(minutes, "game session ended");
                 let long = record.end_ms - record.start_ms >= SUMMARY_MIN_MS;
                 self.live.set_hold(SOURCE, false);
-                if s.summary_card && long && live_on && !s.quiet && !self.higher_holds() {
+                if s.summary_card && long && live_on && !quiet_for(&s, &record.key) && !self.higher_holds() {
                     let today = played_between(&inner.history, None, day_start(now), now);
                     let _ = self.app.emit(EVENT_GAME_CARD, Self::summary_card(record, today));
                 } else {
@@ -1029,10 +1087,11 @@ impl GamesHandle {
             _ => {}
         }
         let here = !inner.away;
-        self.live.set_hold(SOURCE, in_session && live_on && !s.quiet && (s.start_card || s.summary_card));
+        let quiet_game = inner.tracker.session.as_ref().is_some_and(|r| quiet_for(&s, &r.game.key));
+        self.live.set_hold(SOURCE, in_session && live_on && !quiet_game && (s.start_card || s.summary_card));
         // "Leave the keyboard alone while playing": every light layer and
         // card waits, not only the game's.
-        let quiet = match (in_session && s.quiet, s.quiet_reminders) {
+        let quiet = match (quiet_game, s.quiet_reminders) {
             (false, _) => Quiet::Off,
             (true, true) => Quiet::ButReminders,
             (true, false) => Quiet::All,
@@ -1047,16 +1106,21 @@ impl GamesHandle {
         let keys = self.usb_keys(inner, device);
         // League of Legends: the match's own lights, while its data answers.
         let lol_on = in_session
-            && !s.quiet
+            && !quiet_game
             && s.lol.enabled
             && inner.tracker.session.as_ref().is_some_and(|r| is_lol(&r.game.key));
         self.lol.want(lol_on);
         inner.lol_seen |= lol_on;
         let lol = lol_on.then(|| self.lol.snapshot()).flatten().filter(|l| l.lights());
-        let show = trying || (in_session && here && !s.quiet && s.lights == GameLights::Keys);
-        let frame: Frame = match (&keys, &lol, show) {
-            (Some(k), Some(l), _) if !trying && here => Some((crate::lol::frame(l, k, &s, now), s.brightness)),
-            (Some(k), _, true) => Some((keys_frame(k, &s), s.brightness)),
+        let playing = in_session && here && !quiet_game;
+        let show = trying || (playing && s.lights == GameLights::Keys);
+        // The profile's design, when it was made for this keyboard.
+        let model = inner.model.as_ref().map(|(id, _)| id.as_str());
+        let design = design.filter(|(m, _, _)| playing && (m.is_empty() || Some(m.as_str()) == model));
+        let frame: Frame = match (&keys, &lol, show, &design) {
+            (Some(k), Some(l), _, _) if !trying && here => Some((crate::lol::frame(l, k, &s, now), s.brightness)),
+            (Some(k), _, true, _) => Some((keys_frame(k, &s), s.brightness)),
+            (Some(k), _, false, Some((_, d, b))) if !trying => Some((profile_frame(k, d), *b)),
             _ => None,
         };
         if frame != inner.sent {
@@ -1073,7 +1137,7 @@ impl GamesHandle {
         if inner.dirty {
             inner.dirty = false;
             inner.next_emit = now + EMIT_MS;
-            let state = Self::state_of(inner, now);
+            let state = self.state_of(inner, now);
             drop(guard);
             let _ = self.app.emit(EVENT_GAMES, state);
         }
@@ -1276,6 +1340,7 @@ mod tests {
             gpu_avg: None,
             gpu_peak: None,
             cpu_avg: None,
+            cpu_peak: None,
             temp_peak: None,
             lol: None,
         };
@@ -1290,6 +1355,23 @@ mod tests {
             [GameMark { path: r"C:\Windows\System32\charmap.exe".into(), name: "Character Map".into(), game: true }];
         assert!(still_listed(&yes, &mine));
         assert!(!still_listed(&[], &mine));
+    }
+
+    #[test]
+    fn quiet_for_every_game_or_for_one() {
+        let mut s = GamesSettings::default();
+        assert!(!quiet_for(&s, r"D:\Games\Racer"));
+        s.quiet_games = vec![r"d:\games\racer".into()];
+        assert!(quiet_for(&s, r"D:\Games\Racer"));
+        assert!(!quiet_for(&s, r"D:\Games\Other"));
+        s.quiet = true;
+        assert!(quiet_for(&s, r"D:\Games\Other"));
+    }
+
+    #[test]
+    fn a_profiles_design_on_every_key() {
+        let ids = KeyIds { all: vec![1, 2, 3], ..KeyIds::default() };
+        assert_eq!(profile_frame(&ids, &[(2, [9, 9, 9])]), vec![(1, [0, 0, 0]), (2, [9, 9, 9]), (3, [0, 0, 0])]);
     }
 
     fn game(key: &str, pid: u32) -> Detected {
@@ -1400,6 +1482,7 @@ mod tests {
             gpu_avg: None,
             gpu_peak: None,
             cpu_avg: None,
+            cpu_peak: None,
             temp_peak: None,
             lol: None,
         };

@@ -9,7 +9,7 @@ export type GameCard = { kind: GameCardKind, name: string,
 /**
  * Steam's id: its cover can be asked for (`games_cover`).
  */
-steamApp: number | null, startedMs: number, endedMs: number | null, gpuAvg: number | null, gpuPeak: number | null, cpuAvg: number | null, tempPeak: number | null, 
+steamApp: number | null, startedMs: number, endedMs: number | null, gpuAvg: number | null, gpuPeak: number | null, cpuAvg: number | null, cpuPeak: number | null, tempPeak: number | null, 
 /**
  * Played today, this session included.
  */

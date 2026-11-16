@@ -5,7 +5,7 @@ import type { LolResult } from "./LolResult";
 /**
  * A finished session (history, `game-history.json`).
  */
-export type GameRecord = { key: string, name: string, source: GameSource, startMs: number, endMs: number, gpuAvg: number | null, gpuPeak: number | null, cpuAvg: number | null, tempPeak: number | null, 
+export type GameRecord = { key: string, name: string, source: GameSource, startMs: number, endMs: number, gpuAvg: number | null, gpuPeak: number | null, cpuAvg: number | null, cpuPeak: number | null, tempPeak: number | null, 
 /**
  * A League of Legends match: how it went.
  */

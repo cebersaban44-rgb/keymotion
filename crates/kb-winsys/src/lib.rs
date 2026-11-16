@@ -20,6 +20,8 @@
 //!   another program talks to it. No program is opened for it.
 //! * The program in front, for the game session and the per-app profiles
 //!   ([`foreground`]), without opening any program.
+//! * Program icons for the lists and a card's colour, read from the
+//!   program's file ([`icon`]), without opening any program.
 //! * Shutdown: while the app writes the keyboard's flash, Windows is told
 //!   why shutting down now is a bad idea (`ShutdownBlockReasonCreate`).
 //! * Web pages: opened in the default browser (`ShellExecuteW`, [`shell`]).
@@ -33,6 +35,7 @@ pub mod appid;
 pub mod copies;
 pub mod foreground;
 pub mod games;
+pub mod icon;
 pub mod os;
 pub mod package;
 pub mod protocol;

@@ -3,4 +3,4 @@
 /**
  * How the keys look while a game session runs.
  */
-export type GameLights = "own" | "keys";
+export type GameLights = "own" | "keys" | "profile";
