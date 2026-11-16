@@ -15,6 +15,13 @@ says so.
 
 ## [Unreleased]
 
+### Added
+
+- **Microsoft Store:** Keymotion is in the Microsoft Store since
+  16 November 2026, signed by Microsoft, so Windows installs it without a
+  warning. The release page, the README and the site show Microsoft's
+  "Get it from Microsoft" badge beside the GitHub download.
+
 ### Changed
 
 - **Both copies installed:** when Keymotion from GitHub and from the

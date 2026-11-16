@@ -138,37 +138,54 @@ export function foldNotes(notes) {
   return intro ? `${intro}\n\n${folded}` : folded;
 }
 
+/** Keymotion in the Microsoft Store: the Store app opens on its page. */
+export const STORE_URL = "https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full";
+/** Microsoft's own badge, unchanged: dark on light pages, light on dark. */
+const STORE_BADGE = (theme) => `https://get.microsoft.com/images/en-us%20${theme}.svg`;
+
 /**
  * The draft release's body. GitHub always lists the release files at the
  * bottom, so the page starts with a download button for the setup file (with
- * its size and what it needs) and, while releases are unsigned, the Windows
- * warning; then the notes, folded when long; then how to install, the setup
- * file's SHA-256 and the links SignPath asks a download page to carry (code
- * signing policy, privacy policy). `signed` drops the Windows warning once
- * releases are signed (roadmap stage 9). The button needs `repository` and
- * `version`.
+ * its size and what it needs) and, beside it, Microsoft's "Get it from
+ * Microsoft" badge: the same version comes out in the Microsoft Store the
+ * same day (pre-releases don't). While releases are unsigned, the Windows
+ * warning follows; then the notes, folded when long; then how to install,
+ * the setup file's SHA-256 and the links SignPath asks a download page to
+ * carry (code signing policy, privacy policy). `signed` drops the Windows
+ * warning once releases are signed (roadmap stage 9). The buttons need
+ * `repository` and `version`.
  */
 export function releaseBody({ notes, fileName, sha256, size, preface, repository, version, signed = false }) {
   if (!/^[0-9a-f]{64}$/.test(sha256 ?? "")) throw new Error(`not a SHA-256: ${JSON.stringify(sha256)}`);
   const parts = [];
   if (preface) parts.push(`> ${preface}`);
+  const store = Boolean(version) && !version.includes("-");
   if (repository && version) {
     const url = releaseAssetUrl({ repository, version, fileName });
     const badge = `https://img.shields.io/badge/${badgeText("Download for Windows")}-${badgeText(`Keymotion ${version}`)}-d65f12?style=for-the-badge`;
     const facts = ["Windows 10 and 11, 64-bit", size ? formatSize(size) : null, "no administrator rights"];
+    const storeBadge = store
+      ? ` &nbsp; <a href="${STORE_URL.replace("&", "&amp;")}"><picture>` +
+        `<source media="(prefers-color-scheme: dark)" srcset="${STORE_BADGE("light")}">` +
+        `<img alt="Get it from Microsoft" src="${STORE_BADGE("dark")}" height="40"></picture></a>`
+      : "";
     parts.push(
-      `<p align="center"><a href="${url}"><img alt="Download Keymotion ${version} for Windows" src="${badge}"></a></p>\n` +
+      `<p align="center"><a href="${url}"><img alt="Download Keymotion ${version} for Windows" src="${badge}" height="40"></a>${storeBadge}</p>\n` +
         `<p align="center"><sub>${facts.filter(Boolean).join(" · ")}</sub></p>`,
     );
   }
   if (!signed) {
+    const storeLine = store ? " The Microsoft Store copy of this version is signed by Microsoft and installs without it." : "";
     parts.push(
-      `> [!NOTE]\n> This release isn't signed yet, so Windows may say "Windows protected your PC". Select **More info**, then **Run anyway**.`,
+      `> [!NOTE]\n> This release isn't signed yet, so Windows may say "Windows protected your PC". Select **More info**, then **Run anyway**.${storeLine}`,
     );
   }
   const install = [
     `Download **\`${fileName}\`** with the button above or from the files below, and run it. It works on Windows 10 and 11, 64-bit, and installs for your user account without administrator rights. Connect the keyboard with the USB cable, with the switch on its back in the middle.`,
     `Of the files below, only the \`.exe\` is needed: the \`.sig\` file and \`latest.json\` are for the app's own updates.`,
+    ...(store
+      ? [`Prefer the Microsoft Store? The same version is there, signed by Microsoft: [Keymotion in the Microsoft Store](${STORE_URL}).`]
+      : []),
     "Already using Keymotion? It finds the new version by itself, or open **Settings › About** and select **Check for updates**.",
   ];
   const links = [
