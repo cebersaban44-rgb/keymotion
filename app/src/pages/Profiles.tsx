@@ -490,7 +490,7 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
 
       <PartsChoice t={t} parts={parts} onChange={setParts} />
 
-      <AutoProfiles profiles={state} />
+      <AutoProfiles profiles={state} usb={canWrite} />
     </div>
   );
 }

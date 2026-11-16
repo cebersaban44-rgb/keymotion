@@ -201,6 +201,8 @@ pub enum Request {
     /// One background light layer (see [`LightLayer`]): streamed while no
     /// UI preview (`SetLive`) is set. `None` takes the layer away.
     SetLayer(LightLayer, Option<LiveFrame>),
+    /// A game wants the keyboard left alone (see `Actor::quiet`).
+    SetQuiet(bool),
     /// Start (`Some`, with what the keys should show) or stop the mirror.
     SetMirror(Option<MirrorExpect>),
     /// New colour calibration; re-sends the live frame at once so sliders
@@ -608,6 +610,9 @@ struct Actor {
     config_dir: Option<PathBuf>,
     /// When the next automatic clock sync is due, and attempts left.
     clock_due: Option<(Instant, u8)>,
+    /// A game wants the keyboard left alone: no light layer, no automatic
+    /// clock sync (a preview the user runs still shows).
+    quiet: bool,
     next_enumerate: Instant,
     next_live: Instant,
     next_mirror: Instant,
@@ -657,6 +662,7 @@ impl Actor {
             macros,
             config_dir,
             clock_due: None,
+            quiet: false,
             next_enumerate: now,
             next_live: now,
             next_mirror: now,
@@ -678,7 +684,8 @@ impl Actor {
                 self.next_mirror = Instant::now() + MIRROR_EVERY;
             }
             if let Some((due, attempts)) = self.clock_due {
-                if now >= due {
+                // Not during a game that wants the keyboard left alone.
+                if now >= due && !self.quiet {
                     self.clock_due = None;
                     if let Err(e) = self.sync_clock() {
                         tracing::warn!(attempts_left = attempts - 1, "automatic clock sync failed: {e}");
@@ -762,6 +769,13 @@ impl Actor {
                     tracing::debug!("no light layer left; keyboard reverts to its saved effect");
                 }
                 if self.live.is_none() {
+                    self.next_live = Instant::now();
+                }
+            }
+            Request::SetQuiet(on) => {
+                if self.quiet != on {
+                    tracing::info!(on, "keyboard left alone for a game");
+                    self.quiet = on;
                     self.next_live = Instant::now();
                 }
             }
@@ -1017,7 +1031,7 @@ impl Actor {
     }
 
     fn has_layer(&self) -> bool {
-        self.layers.any()
+        !self.quiet && self.layers.any()
     }
 
     fn send_live(&mut self) {

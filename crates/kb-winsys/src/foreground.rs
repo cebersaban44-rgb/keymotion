@@ -7,7 +7,9 @@
 //! * The window in front comes from an out-of-context WinEvent hook
 //!   (`EVENT_SYSTEM_FOREGROUND`), on a thread of its own with a message
 //!   loop. Nothing is loaded into other programs. A timer looks again every
-//!   few seconds, as some windows never send the event.
+//!   few seconds, as some windows never send the event, and a window that
+//!   stays in front can go full screen or (a UWP app) show its own program
+//!   late.
 //! * Its process id comes from `GetWindowThreadProcessId`, and the
 //!   program's path from `NtQuerySystemInformation`
 //!   (`SystemProcessIdInformation`), which reads it from the system
@@ -80,12 +82,31 @@ pub fn file_name(path: &str) -> &str {
 
 /// A device path (`\Device\HarddiskVolume3\Games\x.exe`) as a path with a
 /// drive letter, given the devices behind the drives (`("C:",
-/// "\Device\HarddiskVolume3")`). `None` when no drive matches.
+/// "\Device\HarddiskVolume3")`), or a network path
+/// (`\Device\Mup\server\share\x.exe`) as `\\server\share\x.exe`. `None`
+/// when nothing matches.
 pub fn dos_path(device_path: &str, drives: &[(String, String)]) -> Option<String> {
-    drives.iter().find_map(|(letter, device)| {
-        let rest = device_path.strip_prefix(device.as_str())?;
-        rest.starts_with('\\').then(|| format!("{letter}{rest}"))
-    })
+    drives
+        .iter()
+        .find_map(|(letter, device)| {
+            let rest = device_path.strip_prefix(device.as_str())?;
+            rest.starts_with('\\').then(|| format!("{letter}{rest}"))
+        })
+        .or_else(|| unc_path(device_path))
+}
+
+/// `\Device\Mup\server\share\…` as `\\server\share\…`. A path that names
+/// a redirector of its own (`\Device\Mup\;LanmanRedirector\…`) is left
+/// alone.
+fn unc_path(device_path: &str) -> Option<String> {
+    const MUP: &str = r"\Device\Mup\";
+    if !device_path.get(..MUP.len())?.eq_ignore_ascii_case(MUP) {
+        return None;
+    }
+    let rest = &device_path[MUP.len()..];
+    let mut parts = rest.split('\\');
+    let (server, share) = (parts.next()?, parts.next()?);
+    (!server.is_empty() && !server.starts_with(';') && !share.is_empty()).then(|| format!(r"\\{rest}"))
 }
 
 /// Watches the window in front and sends each change to `tx`. Dropping it
@@ -105,8 +126,12 @@ impl Watcher {
 
 impl Drop for Watcher {
     fn drop(&mut self) {
-        sys::stop(self.thread);
         if let Some(join) = self.join.take() {
+            // A thread that has already ended (a panic) may have left its
+            // id to another thread, which must not get the WM_QUIT.
+            if !join.is_finished() {
+                sys::stop(self.thread);
+            }
             let _ = join.join();
         }
     }
@@ -155,15 +180,17 @@ mod sys {
     use windows::Win32::System::Threading::GetCurrentThreadId;
     use windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
     use windows::Win32::UI::WindowsAndMessaging::{
-        DispatchMessageW, EnumChildWindows, GetClassNameW, GetForegroundWindow, GetMessageW, GetWindowRect,
-        GetWindowThreadProcessId, IsIconic, KillTimer, PostThreadMessageW, SetTimer, TranslateMessage,
-        EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZESTART, MSG, WINEVENT_OUTOFCONTEXT,
-        WINEVENT_SKIPOWNPROCESS, WM_QUIT, WM_TIMER,
+        DispatchMessageW, EnumChildWindows, GetClassNameW, GetForegroundWindow, GetMessageW, GetWindowLongW,
+        GetWindowRect, GetWindowThreadProcessId, IsIconic, IsZoomed, KillTimer, PostThreadMessageW, SetTimer,
+        TranslateMessage, EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZESTART, GWL_STYLE,
+        MSG, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WM_QUIT, WM_TIMER, WS_CAPTION,
     };
 
     /// The timer's look at the window in front, for windows that send no
-    /// event.
+    /// event, and at what can change while it stays in front.
     const POLL_MS: u32 = 5_000;
+    /// The window of every UWP app, owned by ApplicationFrameHost.
+    const FRAME_CLASS: &str = "ApplicationFrameWindow";
     /// `OBJID_WINDOW`: the event is about the window itself.
     const OBJID_WINDOW: i32 = 0;
     /// `SystemProcessIdInformation`.
@@ -195,9 +222,13 @@ mod sys {
 
     struct State {
         tx: Sender<Front>,
-        /// The window last sent and whether it was minimized.
-        last: Option<(isize, bool)>,
+        /// The window last sent and what was sent for it.
+        last: Option<(Key, Front)>,
     }
+
+    /// A window in front: its handle, whether it is minimized, and the
+    /// process that owns it (a handle can be reused by a later window).
+    type Key = (isize, bool, u32);
 
     thread_local! {
         static STATE: RefCell<Option<State>> = const { RefCell::new(None) };
@@ -208,7 +239,8 @@ mod sys {
         String::from_utf16_lossy(&wide[..end])
     }
 
-    /// Send the window in front when it changed.
+    /// Send the window in front when it changed: another window, minimized
+    /// or restored, or the same window looked at again ([`refresh`]).
     fn report() {
         // SAFETY: no arguments.
         let hwnd = unsafe { GetForegroundWindow() };
@@ -217,24 +249,43 @@ mod sys {
         }
         // SAFETY: any window handle; a gone window only answers false.
         let minimized = unsafe { IsIconic(hwnd) }.as_bool();
-        let key = (hwnd.0 as isize, minimized);
-        let changed = STATE.with_borrow_mut(|s| match s {
-            Some(s) if s.last != Some(key) => {
-                s.last = Some(key);
-                true
-            }
-            _ => false,
-        });
-        if !changed {
+        let owner = pid_of(hwnd);
+        if owner == 0 {
             return;
         }
-        if let Some(front) = describe(hwnd) {
-            STATE.with_borrow(|s| {
-                if let Some(s) = s {
-                    let _ = s.tx.send(front);
-                }
-            });
+        let key: Key = (hwnd.0 as isize, minimized, owner);
+        let last = STATE.with_borrow(|s| s.as_ref().and_then(|s| s.last.clone()));
+        let front = match last {
+            Some((k, sent)) if k == key => refresh(hwnd, owner, &sent),
+            _ => describe(hwnd),
+        };
+        let Some(front) = front else { return };
+        STATE.with_borrow_mut(|s| {
+            if let Some(s) = s {
+                s.last = Some((key, front.clone()));
+                let _ = s.tx.send(front);
+            }
+        });
+    }
+
+    /// The window `sent` describes, still in front, looked at again: it may
+    /// cover its monitor now (a game that goes full screen after a windowed
+    /// start), and a UWP app's own window may have joined its frame since.
+    /// `None` when nothing changed. Cheap enough for every tick: a few
+    /// window calls, no list of processes while nothing changes.
+    fn refresh(hwnd: HWND, owner: u32, sent: &Front) -> Option<Front> {
+        let mut front = sent.clone();
+        front.covers_monitor = covers_monitor(hwnd);
+        // A UWP frame still resolved to the frame host itself.
+        if front.class == FRAME_CLASS && front.pid == owner {
+            if let Some(app) = uwp_app(hwnd, owner) {
+                let (name, path) = program(app);
+                front.pid = app;
+                front.name = name;
+                front.path = path;
+            }
         }
+        (front != *sent).then_some(front)
     }
 
     unsafe extern "system" fn on_event(
@@ -368,6 +419,16 @@ mod sys {
     }
 
     fn covers_monitor(hwnd: HWND) -> bool {
+        // A maximized window with a title bar is not full screen, though its
+        // rectangle, with the borders past the screen's edges, covers the
+        // monitor when the taskbar hides itself. Borderless games have no
+        // title bar.
+        // SAFETY: any window handle; a gone window only answers 0 or false.
+        let style = unsafe { GetWindowLongW(hwnd, GWL_STYLE) } as u32;
+        // SAFETY: as above.
+        if style & WS_CAPTION.0 == WS_CAPTION.0 && unsafe { IsZoomed(hwnd) }.as_bool() {
+            return false;
+        }
         let mut rect = RECT::default();
         // SAFETY: a valid out pointer.
         if unsafe { GetWindowRect(hwnd, &mut rect) }.is_err() {
@@ -390,14 +451,10 @@ mod sys {
             return None;
         }
         let class = class_of(hwnd);
-        if class == "ApplicationFrameWindow" {
+        if class == FRAME_CLASS {
             pid = uwp_app(hwnd, pid).unwrap_or(pid);
         }
-        let path = image_path(pid);
-        let name = match &path {
-            Some(p) => file_name(p).to_string(),
-            None => process_names().into_iter().find(|(p, _)| *p == pid).map(|(_, n)| n).unwrap_or_default(),
-        };
+        let (name, path) = program(pid);
         Some(Front {
             pid,
             name,
@@ -407,6 +464,17 @@ mod sys {
             // SAFETY: any window handle.
             minimized: unsafe { IsIconic(hwnd) }.as_bool(),
         })
+    }
+
+    /// The executable file name and full path of `pid`. The name comes
+    /// from a process snapshot only when Windows gives no path.
+    fn program(pid: u32) -> (String, Option<String>) {
+        let path = image_path(pid);
+        let name = match &path {
+            Some(p) => file_name(p).to_string(),
+            None => process_names().into_iter().find(|(p, _)| *p == pid).map(|(_, n)| n).unwrap_or_default(),
+        };
+        (name, path)
     }
 
     /// The device behind each drive letter, as `("C:", "\Device\…")`.
@@ -555,7 +623,25 @@ mod tests {
         assert_eq!(dos_path(r"\Device\HarddiskVolume3\Games\x.exe", &drives).as_deref(), Some(r"C:\Games\x.exe"));
         // Volume30 is not Volume3 followed by more text.
         assert_eq!(dos_path(r"\Device\HarddiskVolume30\y.exe", &drives).as_deref(), Some(r"D:\y.exe"));
-        assert_eq!(dos_path(r"\Device\Mup\server\share\z.exe", &drives), None);
+        assert_eq!(dos_path(r"\Device\HarddiskVolume4\y.exe", &drives), None);
+    }
+
+    #[test]
+    fn network_paths_become_unc_paths() {
+        let drives = vec![("C:".to_string(), r"\Device\HarddiskVolume3".to_string())];
+        assert_eq!(
+            dos_path(r"\Device\Mup\server\share\Games\z.exe", &drives).as_deref(),
+            Some(r"\\server\share\Games\z.exe")
+        );
+        assert_eq!(dos_path(r"\Device\MUP\nas\games\z.exe", &drives).as_deref(), Some(r"\\nas\games\z.exe"));
+        // A server without a share, or no server, is no path.
+        assert_eq!(dos_path(r"\Device\Mup\server", &drives), None);
+        assert_eq!(dos_path(r"\Device\Mup\server\", &drives), None);
+        assert_eq!(dos_path(r"\Device\Mup\\share\z.exe", &drives), None);
+        assert_eq!(dos_path(r"\Device\Mup\;LanmanRedirector\;Z:0000\server\share\z.exe", &drives), None);
+        // Another device whose name only starts the same.
+        assert_eq!(dos_path(r"\Device\Mupx\server\share\z.exe", &drives), None);
+        assert_eq!(dos_path(r"\Device\Mu", &drives), None);
     }
 
     #[test]

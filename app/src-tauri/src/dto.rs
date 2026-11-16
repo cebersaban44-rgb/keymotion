@@ -397,8 +397,12 @@ pub struct TrayTexts {
     pub update_ready: String,
     /// Added to the icon's tooltip while a new version waits.
     pub update_tooltip: String,
-    /// The line while a game session runs. `{name}`, `{min}`.
+    /// The line while a game session runs. `{name}`, `{time}`.
     pub game: String,
+    /// The play time in it: `{h}` and `{min}`, `{min}`, under a minute.
+    pub game_hours: String,
+    pub game_minutes: String,
+    pub game_less: String,
     /// Profiles ▸ the per-app profiles' switch.
     pub auto_profile: String,
     /// The notification that a new version is ready. `{version}`.
@@ -453,7 +457,10 @@ impl Default for TrayTexts {
             update_available: s("Update available: Keymotion {version}"),
             update_ready: s("Install now: Keymotion {version}"),
             update_tooltip: s("update available"),
-            game: s("Playing {name} · {min} min"),
+            game: s("Playing {name} · {time}"),
+            game_hours: s("{h} h {min} min"),
+            game_minutes: s("{min} min"),
+            game_less: s("under 1 min"),
             auto_profile: s("Switch by app"),
             notice_ready_title: s("Keymotion {version} is ready"),
             notice_ready_body: s("Installing it closes the app and opens it again in a few seconds."),
@@ -2397,6 +2404,9 @@ pub struct GamesState {
     pub recent: Vec<GameRecord>,
     /// The graphics card reports its temperature on this computer.
     pub temperature: bool,
+    /// Programs lately in front that aren't games: one can be added as a
+    /// game by hand. Newest first.
+    pub programs: Vec<GameSuggestion>,
 }
 
 /// What a game card is for.

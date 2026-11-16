@@ -5,12 +5,17 @@
 use kb_winsys::foreground::{Front, Watcher};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-type Listener = Box<dyn Fn(&Front) + Send>;
+type Listener = Arc<dyn Fn(&Front) + Send + Sync>;
+
+/// After the watcher failed to start, the next try waits this long.
+const RETRY_AFTER: Duration = Duration::from_secs(60);
 
 #[derive(Default)]
 struct Inner {
     watcher: Option<Watcher>,
+    failed_at: Option<Instant>,
     wanted: Vec<&'static str>,
     listeners: Vec<Listener>,
     last: Option<Front>,
@@ -27,10 +32,12 @@ impl FrontHub {
         Arc::new(Self::default())
     }
 
-    /// `f` gets every change while the watcher runs.
-    pub fn listen(&self, f: impl Fn(&Front) + Send + 'static) {
+    /// `f` gets every change while the watcher runs. It is called without
+    /// any lock of the hub held, so it may call back into the hub; it should
+    /// return quickly (hand the change to its own thread).
+    pub fn listen(&self, f: impl Fn(&Front) + Send + Sync + 'static) {
         if let Ok(mut inner) = self.inner.lock() {
-            inner.listeners.push(Box::new(f));
+            inner.listeners.push(Arc::new(f));
         }
     }
 
@@ -49,25 +56,36 @@ impl FrontHub {
             inner.wanted.retain(|w| *w != who);
         }
         let run = !inner.wanted.is_empty();
-        if run && inner.watcher.is_none() {
+        let retry_ok = inner.failed_at.is_none_or(|t| t.elapsed() >= RETRY_AFTER);
+        if run && inner.watcher.is_none() && retry_ok {
             let (tx, rx) = mpsc::channel::<Front>();
             match Watcher::start(tx) {
                 Some(w) => {
                     tracing::info!("watching the program in front");
+                    inner.failed_at = None;
                     inner.watcher = Some(w);
                     let shared = self.inner.clone();
                     // Ends when the watcher is dropped (its sender goes).
                     let _ = std::thread::Builder::new().name("front".into()).spawn(move || {
                         while let Ok(front) = rx.recv() {
-                            let Ok(mut inner) = shared.lock() else { break };
-                            for f in &inner.listeners {
+                            // Not under the lock: a listener may take its own
+                            // lock while its owner holds that one and calls
+                            // `want` (lock order).
+                            let listeners = {
+                                let Ok(mut inner) = shared.lock() else { break };
+                                inner.last = Some(front.clone());
+                                inner.listeners.clone()
+                            };
+                            for f in &listeners {
                                 f(&front);
                             }
-                            inner.last = Some(front);
                         }
                     });
                 }
-                None => tracing::warn!("the program in front cannot be watched"),
+                None => {
+                    tracing::warn!("the program in front cannot be watched; trying again in a minute");
+                    inner.failed_at = Some(Instant::now());
+                }
             }
         } else if !run && inner.watcher.is_some() {
             tracing::info!("no longer watching the program in front");

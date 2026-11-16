@@ -75,12 +75,18 @@ const TICK: Duration = Duration::from_secs(1);
 /// While League of Legends' lights show.
 const LOL_TICK: Duration = Duration::from_millis(50);
 const IDLE: Duration = Duration::from_secs(30);
+/// A pass this much later than due: the computer slept, and a session
+/// ends where it stopped.
+const SLEPT_MS: f64 = 60_000.0;
+/// Programs kept for "Add a game".
+const PROGRAMS_MAX: usize = 12;
 /// The dim keys of `GameRest::Dim`: a faint share of the colour.
 const DIM: f32 = 0.12;
 
 /// Programs that cover the screen without being games: browsers and video
 /// players (full-screen video), calls, streaming, remote desktops.
-const NOT_GAMES: [&str; 24] = [
+const NOT_GAMES: [&str; 25] = [
+    "explorer.exe",
     "chrome.exe",
     "msedge.exe",
     "firefox.exe",
@@ -128,9 +134,20 @@ fn source_of(s: Source) -> GameSource {
     }
 }
 
+/// A path as compared: any case (Ş and ş too), either slash, and without
+/// the version an update changes (Store apps, `app-1.0.9165`, Roblox), so a
+/// rule or a mark still holds after the program updates.
+fn norm(path: &str) -> String {
+    kb_winsys::games::stable_key(path)
+}
+
+/// The same program or folder.
+pub(crate) fn same_path(a: &str, b: &str) -> bool {
+    norm(a) == norm(b)
+}
+
 /// `path` is `mark` (a program) or lies in it (a game's folder).
-fn covered(path: &str, mark: &str) -> bool {
-    let norm = |s: &str| s.replace('/', "\\").trim_end_matches('\\').to_lowercase();
+pub(crate) fn covered(path: &str, mark: &str) -> bool {
     let (path, mark) = (norm(path), norm(mark));
     path == mark || (path.starts_with(&mark) && path.as_bytes().get(mark.len()) == Some(&b'\\'))
 }
@@ -322,8 +339,9 @@ impl Tracker {
         if let Some((g, since)) = &self.candidate {
             if now - since >= START_AFTER_MS {
                 if let Some(s) = self.session.take() {
-                    // Another game took over: this one ends now.
-                    return Some(Change::Ended(s.record(now)));
+                    // Another game took over: this one ended when that one
+                    // came to the front (no time counted twice).
+                    return Some(Change::Ended(s.record(since.max(s.started))));
                 }
                 self.session =
                     Some(Running { game: g.clone(), started: *since, missing_since: None, stats: Stats::default() });
@@ -448,6 +466,15 @@ struct Inner {
     /// A temperature was read on this computer.
     temperature: bool,
     last_gpu: Option<f32>,
+    /// League of Legends' data was read during this session (else its
+    /// result is an older match's).
+    lol_seen: bool,
+    /// Programs lately in front that aren't games (for adding one by hand).
+    programs: Vec<GameSuggestion>,
+    /// When the last pass ran: a long gap means the computer slept.
+    last_tick: f64,
+    /// The device and the live screen were told to leave the keyboard alone.
+    quiet_sent: bool,
     dirty: bool,
 }
 
@@ -511,6 +538,10 @@ impl GamesHandle {
             model: None,
             temperature: false,
             last_gpu: None,
+            lol_seen: false,
+            programs: Vec::new(),
+            last_tick: 0.0,
+            quiet_sent: false,
             dirty: true,
         }));
         let (tx, rx) = mpsc::channel();
@@ -566,6 +597,11 @@ impl GamesHandle {
     pub fn session_key(&self) -> Option<String> {
         let i = self.inner.lock().ok()?;
         i.tracker.session.as_ref().map(|s| s.game.key.clone())
+    }
+
+    /// A session runs with "leave the keyboard alone while playing" on.
+    pub fn quiet_now(&self) -> bool {
+        self.inner.lock().is_ok_and(|i| i.settings.enabled && i.settings.quiet && i.tracker.session.is_some())
     }
 
     /// The game of the running session and when it started (tray menu).
@@ -645,6 +681,12 @@ impl GamesHandle {
             week_ms: played_between(&inner.history, started, now - 7.0 * DAY_MS, now),
             recent,
             temperature: inner.temperature,
+            programs: inner
+                .programs
+                .iter()
+                .filter(|p| mark_for(&inner.settings.marks, &p.path).is_none())
+                .cloned()
+                .collect(),
         }
     }
 
@@ -693,13 +735,13 @@ impl GamesHandle {
     pub fn mark(&self, path: String, name: String, game: Option<bool>) -> Result<GamesState, String> {
         let settings = {
             let mut inner = self.inner.lock().map_err(|_| "games unavailable")?;
-            inner.settings.marks.retain(|m| !m.path.eq_ignore_ascii_case(&path));
+            inner.settings.marks.retain(|m| !same_path(&m.path, &path));
             if let Some(game) = game {
                 let name =
                     if name.trim().is_empty() { kb_winsys::foreground::file_name(&path).to_string() } else { name };
                 inner.settings.marks.push(GameMark { path: path.clone(), name, game });
             }
-            inner.suggestions.retain(|s| !s.path.eq_ignore_ascii_case(&path));
+            inner.suggestions.retain(|s| !same_path(&s.path, &path));
             inner.settings = inner.settings.clone().sanitized();
             inner.dirty = true;
             inner.settings.clone()
@@ -796,9 +838,9 @@ impl GamesHandle {
         };
         self.hub.want(WATCHER, enabled);
         if !enabled {
-            self.idle(device, now);
-            return IDLE;
+            return self.idle(device, now);
         }
+        let in_front = self.hub.last();
         // The launchers' lists: read without holding the lock (it takes a moment).
         if scan_due {
             let known = if launchers { library::installed() } else { Vec::new() };
@@ -807,10 +849,20 @@ impl GamesHandle {
                 i.known = Arc::new(known);
                 i.next_scan = now + RESCAN_MS;
                 i.dirty = true;
+                // A game just installed may be in front already.
+                if i.front.is_none() {
+                    i.front = in_front.clone();
+                }
             }
         }
-        let (in_session, suggesting, sample_due, alive_due) = match self.inner.lock() {
-            Ok(i) => (i.tracker.session.is_some(), i.suggest.is_some(), now >= i.next_sample, now >= i.next_alive),
+        let (in_session, suggesting, sample_due, alive_due, ids) = match self.inner.lock() {
+            Ok(i) => (
+                i.tracker.session.is_some(),
+                i.suggest.is_some(),
+                now >= i.next_sample,
+                now >= i.next_alive,
+                i.tracker.session.as_ref().map(|s| (s.game.pid, s.game.exe.clone(), s.game.key.clone())),
+            ),
             Err(_) => return IDLE,
         };
         // Readings, outside the lock too.
@@ -825,15 +877,55 @@ impl GamesHandle {
             let temp = in_session.then(kb_winsys::thermal::gpu_temperature).flatten();
             reading = Some((gpu, cpu, temp));
         }
-        let procs = (in_session && alive_due).then(process_names);
+        let procs = (in_session && alive_due).then(|| {
+            let mut procs = process_names();
+            if let Some((pid, exe, key)) = &ids {
+                // Another program with the same file name (python.exe,
+                // Game.exe) is not this game started again.
+                procs.retain(|(p, n)| {
+                    *p == *pid
+                        || !n.eq_ignore_ascii_case(exe)
+                        || kb_winsys::foreground::image_path(*p).is_some_and(|path| covered(&path, key))
+                });
+            }
+            procs
+        });
 
         let Ok(mut guard) = self.inner.lock() else { return IDLE };
         let inner = &mut *guard;
         let s = inner.settings.clone();
         let own_pid = std::process::id();
+        let live_on = self.live.enabled();
+
+        // The computer slept: a session ends where it stopped, and what is in
+        // front is looked at again.
+        let before = std::mem::replace(&mut inner.last_tick, now);
+        if before > 0.0 && now - before > SLEPT_MS {
+            tracing::info!(minutes = ((now - before) / 60_000.0).round(), "the computer slept");
+            if let Some(record) = inner.tracker.stop(before) {
+                self.keep_record(inner, record);
+                self.live.set_hold(SOURCE, false);
+                self.live.drop_pending(SOURCE);
+                self.live.return_after(SOURCE, STALE_CARD_BACK);
+            }
+            inner.suggest = None;
+            if inner.front.is_none() {
+                inner.front = in_front.clone();
+            }
+        }
 
         if let Some(front) = inner.front.take() {
             let game = if front.pid == own_pid { None } else { classify(&front, &s.marks, &inner.known, s.launchers) };
+            // Kept for "Add a game": programs with a path that aren't games.
+            if let (None, Some(path)) = (&game, &front.path) {
+                if !front.is_shell() && front.pid != own_pid && !not_a_game(&front.name) {
+                    inner.programs.retain(|p| !same_path(&p.path, path));
+                    let name = front.name.rsplit_once('.').map_or(front.name.as_str(), |(stem, _)| stem).to_string();
+                    inner.programs.insert(0, GameSuggestion { path: path.clone(), name });
+                    inner.programs.truncate(PROGRAMS_MAX);
+                    inner.dirty = true;
+                }
+            }
             // A full-screen program that is not known: maybe a game.
             inner.suggest = match (&game, &front.path) {
                 (None, Some(path))
@@ -841,11 +933,11 @@ impl GamesHandle {
                         && !front.is_shell()
                         && front.pid != own_pid
                         && !not_a_game(&front.name)
-                        && !s.marks.iter().any(|m| m.path.eq_ignore_ascii_case(path))
-                        && !inner.suggestions.iter().any(|x| x.path.eq_ignore_ascii_case(path)) =>
+                        && mark_for(&s.marks, path).is_none()
+                        && !inner.suggestions.iter().any(|x| same_path(&x.path, path)) =>
                 {
                     match &inner.suggest {
-                        Some((p, n, since)) if p.eq_ignore_ascii_case(path) => Some((p.clone(), n.clone(), *since)),
+                        Some((p, n, since)) if same_path(p, path) => Some((p.clone(), n.clone(), *since)),
                         _ => Some((path.clone(), front.name.clone(), now)),
                     }
                 }
@@ -889,10 +981,10 @@ impl GamesHandle {
         }
 
         let change = inner.tracker.tick(now, procs.as_deref());
-        let live_on = self.live.enabled();
         match &change {
             Some(Change::Started) => {
                 inner.dirty = true;
+                inner.lol_seen = false;
                 let r = inner.tracker.session.clone().expect("a session just started");
                 tracing::info!(source = ?r.game.source, "game session started");
                 let today = played_between(&inner.history, Some(r.started), day_start(now), now);
@@ -901,20 +993,9 @@ impl GamesHandle {
                 }
             }
             Some(Change::Ended(record)) => {
-                inner.dirty = true;
-                let mut record = record.clone();
-                if is_lol(&record.key) {
-                    record.lol = self.lol.snapshot().and_then(|l| l.result());
-                }
-                let record = &record;
+                let record = &self.keep_record(inner, record.clone());
                 let minutes = ((record.end_ms - record.start_ms) / 60_000.0).round();
                 tracing::info!(minutes, "game session ended");
-                inner.history.push(record.clone());
-                if inner.history.len() > HISTORY_MAX {
-                    let drop = inner.history.len() - HISTORY_MAX;
-                    inner.history.drain(..drop);
-                }
-                self.save_history(&inner.history);
                 let long = record.end_ms - record.start_ms >= SUMMARY_MIN_MS;
                 self.live.set_hold(SOURCE, false);
                 if s.summary_card && long && live_on && !s.quiet && !self.higher_holds() {
@@ -930,6 +1011,9 @@ impl GamesHandle {
         }
         let in_session = inner.tracker.session.is_some();
         self.live.set_hold(SOURCE, in_session && live_on && !s.quiet && (s.start_card || s.summary_card));
+        // "Leave the keyboard alone while playing": every light layer and
+        // card waits, not only the game's.
+        self.set_quiet(inner, device, in_session && s.quiet);
 
         // Lights.
         let trying = inner.trying_until.is_some_and(|t| now < t);
@@ -943,6 +1027,7 @@ impl GamesHandle {
             && s.lol.enabled
             && inner.tracker.session.as_ref().is_some_and(|r| is_lol(&r.game.key));
         self.lol.want(lol_on);
+        inner.lol_seen |= lol_on;
         let lol = lol_on.then(|| self.lol.snapshot()).flatten().filter(|l| l.lights());
         let show = trying || (in_session && !s.quiet && s.lights == GameLights::Keys);
         let frame: Frame = match (&keys, &lol, show) {
@@ -976,21 +1061,51 @@ impl GamesHandle {
         }
     }
 
+    /// A session that ended goes into the history (with its League of
+    /// Legends result when the match's data was read in it).
+    fn keep_record(&self, inner: &mut Inner, mut record: GameRecord) -> GameRecord {
+        if is_lol(&record.key) && std::mem::take(&mut inner.lol_seen) {
+            record.lol = self.lol.snapshot().and_then(|l| l.result());
+        }
+        inner.history.push(record.clone());
+        if inner.history.len() > HISTORY_MAX {
+            let drop = inner.history.len() - HISTORY_MAX;
+            inner.history.drain(..drop);
+        }
+        self.save_history(&inner.history);
+        inner.dirty = true;
+        record
+    }
+
+    /// Tell the device and the live screen to leave the keyboard alone (or not).
+    fn set_quiet(&self, inner: &mut Inner, device: &DeviceHandle, on: bool) {
+        if inner.quiet_sent != on {
+            inner.quiet_sent = on;
+            let _ = device.send(Request::SetQuiet(on));
+            self.live.set_quiet(on);
+        }
+    }
+
     /// Turned off: end the session, let go of the screen and the keys.
-    fn idle(&self, device: &DeviceHandle, now: f64) {
+    /// Returns how long to sleep.
+    fn idle(&self, device: &DeviceHandle, now: f64) -> Duration {
         self.lol.want(false);
-        let Ok(mut inner) = self.inner.lock() else { return };
+        let Ok(mut guard) = self.inner.lock() else { return IDLE };
+        let inner = &mut *guard;
+        inner.last_tick = 0.0;
+        self.set_quiet(inner, device, false);
         if let Some(record) = inner.tracker.stop(now) {
             tracing::info!("game session ended (turned off)");
-            inner.history.push(record);
-            self.save_history(&inner.history);
-            inner.dirty = true;
+            self.keep_record(inner, record);
+            // Its start card is old news.
+            self.live.drop_pending(SOURCE);
+            self.live.return_after(SOURCE, STALE_CARD_BACK);
         }
         inner.suggest = None;
         inner.front = None;
         let trying = inner.trying_until.is_some_and(|t| now < t);
         let frame: Frame = if trying {
-            self.usb_keys(&mut inner, device).map(|k| (keys_frame(&k, &inner.settings), inner.settings.brightness))
+            self.usb_keys(inner, device).map(|k| (keys_frame(&k, &inner.settings), inner.settings.brightness))
         } else {
             inner.trying_until = None;
             None
@@ -1003,10 +1118,16 @@ impl GamesHandle {
             inner.sent = frame;
         }
         let dirty = std::mem::take(&mut inner.dirty);
-        drop(inner);
+        drop(guard);
         self.live.set_hold(SOURCE, false);
         if dirty {
             self.emit();
+        }
+        // "Try on the keyboard" ends on time, not 30 s later.
+        if trying {
+            TICK
+        } else {
+            IDLE
         }
     }
 
@@ -1207,7 +1328,8 @@ mod tests {
         t.front(0.0, Some(game("a", 1)));
         t.tick(15_000.0, None);
         t.front(100_000.0, Some(game("b", 2)));
-        assert!(matches!(t.tick(115_000.0, None), Some(Change::Ended(r)) if r.key == "a"));
+        // "a" ended when "b" came to the front: no 15 s counted twice.
+        assert!(matches!(t.tick(115_000.0, None), Some(Change::Ended(r)) if r.key == "a" && r.end_ms == 100_000.0));
         assert_eq!(t.tick(116_000.0, None), Some(Change::Started));
         assert_eq!(t.session.as_ref().unwrap().game.key, "b");
     }

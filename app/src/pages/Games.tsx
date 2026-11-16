@@ -22,6 +22,7 @@ import type { GameEntry } from "../bindings/GameEntry";
 import type { GameLights } from "../bindings/GameLights";
 import type { GameRest } from "../bindings/GameRest";
 import type { GamesSettings } from "../bindings/GamesSettings";
+import type { GamesState } from "../bindings/GamesState";
 import type { GameSource } from "../bindings/GameSource";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import { ColorPicker, Segmented, Slider, Toggle } from "../components/controls";
@@ -90,7 +91,7 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
           <div className="flex items-center gap-2 text-[12px]" data-games-status={status}>
             <span className={`h-2 w-2 shrink-0 rounded-full ${session ? "bg-ok" : s.settings.enabled ? "bg-signal" : "bg-ink-3"}`} aria-hidden />
             <span className={s.settings.enabled ? "text-ink-2" : "text-ink-3"}>
-              {session ? t(status).replace("{name}", session.name) : t(status)}
+              {session ? t(status, { name: session.name }) : t(status)}
             </span>
           </div>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3" data-games-numbers>
@@ -106,7 +107,7 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
             >
               <span className="flex items-center gap-2">
                 <Gamepad2 size={16} className="shrink-0 text-signal" />
-                {t("games.suggest").replace("{name}", g.name)}
+                {t("games.suggest", { name: g.name })}
               </span>
               <span className="flex gap-2">
                 <button type="button" className="btn-secondary" onClick={() => mark(g.path, g.name, true).catch(console.error)}>
@@ -122,6 +123,7 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
 
         <div className="flex flex-col divide-y divide-line border-t border-line">
           <GameList games={s.games} time={time} onMark={(g, game) => mark(g.key, g.name, game).catch(console.error)} launchers={s.settings.launchers} />
+          <AddGame state={s} mark={(path, name, game) => mark(path, name, game).catch(console.error)} />
           <Row icon={RefreshCw} title={t("games.launchers")} body={t("games.launchers.body")} checked={s.settings.launchers} onChange={(launchers) => set({ launchers })}>
             {s.settings.launchers && (
               <div>
@@ -151,7 +153,7 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
             <Switch label={t("games.startCard")} body={t("games.startCard.body")} on={s.settings.startCard} onChange={(startCard) => set({ startCard })} />
             <Switch
               label={t("games.summaryCard")}
-              body={t("games.summaryCard.body").replace("{min}", String(SUMMARY_MIN_MS / 60_000))}
+              body={t("games.summaryCard.body", { min: SUMMARY_MIN_MS / 60_000 })}
               on={s.settings.summaryCard}
               onChange={(summaryCard) => set({ summaryCard })}
             />
@@ -170,6 +172,7 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
           >
             {s.settings.lol.enabled && (
               <>
+                {!usb && <p className="text-[12px] text-ink-3">{t("games.noUsb")}</p>}
                 <Switch label={t("games.lol.bars")} body={t("games.lol.bars.body")} on={s.settings.lol.bars} onChange={(bars) => set({ lol: { ...s.settings.lol, bars } })} />
                 <Switch label={t("games.lol.death")} body={t("games.lol.death.body")} on={s.settings.lol.death} onChange={(death) => set({ lol: { ...s.settings.lol, death } })} />
                 <Switch label={t("games.lol.events")} body={t("games.lol.events.body")} on={s.settings.lol.events} onChange={(events) => set({ lol: { ...s.settings.lol, events } })} />
@@ -239,6 +242,7 @@ function GameList({
               <button
                 type="button"
                 className="rounded-md px-2 py-1 text-[12px] text-ink-3 hover:bg-surface-2 hover:text-ink"
+                aria-label={`${t(g.source === "mine" ? "games.forget" : "games.notGame")}, ${g.name}`}
                 onClick={() => onMark(g, g.source === "mine" ? null : false)}
               >
                 {t(g.source === "mine" ? "games.forget" : "games.notGame")}
@@ -251,6 +255,70 @@ function GameList({
         <button type="button" className="self-start text-[12px] text-signal hover:underline" onClick={() => setAll((a) => !a)}>
           {all ? t("games.list.less") : t("games.list.all").replace("{n}", String(rest))}
         </button>
+      )}
+    </div>
+  );
+}
+
+/** A game by hand, from the programs lately in front, and the programs
+ *  said not to be games, which can be taken back. */
+function AddGame({ state, mark }: { state: GamesState; mark: (path: string, name: string, game: boolean | null) => void }) {
+  const t = useT();
+  const [pick, setPick] = useState("");
+  const notGames = state.settings.marks.filter((m) => !m.game);
+  const chosen = state.programs.find((p) => p.path === pick);
+  return (
+    <div className="flex flex-col gap-3 px-5 py-4" data-games-add>
+      <span className="flex flex-col">
+        <span className="text-[13px] font-semibold">{t("games.add")}</span>
+        <span className="text-[12px] text-ink-3">{t("games.add.body")}</span>
+      </span>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          className="h-8 min-w-[220px] max-w-full rounded-lg border border-line bg-bg-raise px-2 text-[13px] outline-none focus:border-signal"
+          value={pick}
+          aria-label={t("games.add")}
+          onChange={(e) => setPick(e.target.value)}
+        >
+          <option value="">{t("games.add.pick")}</option>
+          {state.programs.map((p) => (
+            <option key={p.path} value={p.path}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={!chosen}
+          onClick={() => {
+            if (!chosen) return;
+            mark(chosen.path, chosen.name, true);
+            setPick("");
+          }}
+        >
+          {t("games.add.go")}
+        </button>
+      </div>
+      {notGames.length > 0 && (
+        <div className="flex flex-col gap-1.5" data-games-not>
+          <span className="text-[12px] text-ink-3">{t("games.notGames")}</span>
+          <ul className="flex flex-col divide-y divide-line rounded-lg border border-line">
+            {notGames.map((m) => (
+              <li key={m.path} className="flex items-center gap-3 px-3 py-1.5 text-[13px]">
+                <span className="min-w-0 flex-1 truncate">{m.name}</span>
+                <button
+                  type="button"
+                  className="rounded-md px-2 py-1 text-[12px] text-ink-3 hover:bg-surface-2 hover:text-ink"
+                  aria-label={`${t("games.undo")}, ${m.name}`}
+                  onClick={() => mark(m.path, m.name, null)}
+                >
+                  {t("games.undo")}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );
@@ -381,6 +449,8 @@ function Lights({
     return out;
   }, [g, shown.keys, shown.color, shown.rest]);
   const byLed = useMemo(() => new Map(g?.keys.map((k) => [k.led, k.id]) ?? []), [g]);
+  // The chosen keys, for the drawing's ring and for screen readers.
+  const selected = useMemo(() => new Set(g?.keys.filter((k) => shown.keys.includes(k.id)).map((k) => k.led) ?? []), [g, shown.keys]);
   const toggleKey = (id: string) => {
     const keys = shown.keys.includes(id) ? shown.keys.filter((k) => k !== id) : [...shown.keys, id];
     set({ keys });
@@ -417,6 +487,7 @@ function Lights({
                   compact
                   label={t("games.lights")}
                   tool="select"
+                  selected={selected}
                   onKeyAction={(led, action) => {
                     const id = byLed.get(led);
                     if (action === "press" && id) toggleKey(id);

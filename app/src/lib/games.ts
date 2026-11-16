@@ -74,6 +74,10 @@ const mock = {
       },
     ],
     temperature: true,
+    programs: [
+      { path: "C:\\Program Files\\Paint.NET\\paintdotnet.exe", name: "paintdotnet" },
+      { path: "D:\\Games\\Retro\\retro.exe", name: "retro" },
+    ],
   } as GamesState,
   emit: null as ((s: GamesState) => void) | null,
   onCard: null as ((c: GameCard) => void) | null,

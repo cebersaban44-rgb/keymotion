@@ -42,9 +42,13 @@ updateReady: string,
  */
 updateTooltip: string, 
 /**
- * The line while a game session runs. `{name}`, `{min}`.
+ * The line while a game session runs. `{name}`, `{time}`.
  */
 game: string, 
+/**
+ * The play time in it: `{h}` and `{min}`, `{min}`, under a minute.
+ */
+gameHours: string, gameMinutes: string, gameLess: string, 
 /**
  * Profiles ▸ the per-app profiles' switch.
  */

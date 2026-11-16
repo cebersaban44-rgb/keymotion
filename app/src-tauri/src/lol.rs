@@ -457,6 +457,8 @@ mod net {
     fn client() -> windows::core::Result<HttpClient> {
         let filter = HttpBaseProtocolFilter::new()?;
         filter.SetAllowUI(false)?;
+        // Never leave 127.0.0.1:2999, not even when told to go elsewhere.
+        filter.SetAllowAutoRedirect(false)?;
         filter.CacheControl()?.SetReadBehavior(HttpCacheReadBehavior::NoCache)?;
         let ignore = filter.IgnorableServerCertificateErrors()?;
         ignore.Append(ChainValidationResult::Untrusted)?;

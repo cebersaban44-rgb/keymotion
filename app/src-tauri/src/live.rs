@@ -160,9 +160,9 @@ impl Default for LiveStored {
 }
 
 /// Uploads a source's card leaves for the sources above it: the focus
-/// timer and the song keep one for a reminder or a meeting.
+/// timer, a game and the song keep one for a reminder or a meeting.
 fn keep_for(source: &str) -> f64 {
-    if source == crate::pomodoro::SOURCE || source == crate::now_playing::SOURCE {
+    if source == crate::pomodoro::SOURCE || source == crate::games::SOURCE || source == crate::now_playing::SOURCE {
         1.0
     } else {
         0.0
@@ -172,6 +172,12 @@ fn keep_for(source: &str) -> f64 {
 /// Time until the waiting card may go on the budget, `None` if it may now.
 fn pending_wait(lib: &mut ScreenLibrary, pending: &Pending, now: f64) -> Option<f64> {
     lib.live_mut().budget.ms_until(now, 1.0 + keep_for(&pending.item.source))
+}
+
+/// The user asked for this now: a card sent with "Send now" or their own
+/// picture put back. It goes even while a game wants quiet.
+fn user_asked(rt: &Runtime) -> bool {
+    rt.send_now || (rt.restore.is_some() && rt.restore_auto.is_none())
 }
 
 /// Turning the live mode on must ask first (see `LiveState::factory_ack_needed`).
@@ -208,6 +214,9 @@ struct Runtime {
     /// calendar (around a meeting) over a reminder's card, both over the
     /// focus timer, all over "Çalan şarkı", which waits while anyone holds.
     holders: Vec<String>,
+    /// A game wants the keyboard left alone: no card goes and the screen
+    /// doesn't go back by itself; what the user asks for still does.
+    quiet: bool,
 }
 
 /// What to do about a scheduled return to the user's own picture.
@@ -558,6 +567,15 @@ impl LiveHandle {
     }
 
     /// `source` has something to show again: forget its return.
+    /// A game wants the keyboard left alone (`on`), or not any more.
+    pub fn set_quiet(&self, on: bool) {
+        let changed = self.rt.lock().is_ok_and(|mut rt| std::mem::replace(&mut rt.quiet, on) != on);
+        if changed {
+            tracing::info!(on, "live screen quiet for a game");
+            self.wake();
+        }
+    }
+
     pub fn cancel_return(&self, source: &str) {
         let cancelled = self
             .rt
@@ -580,6 +598,10 @@ impl LiveHandle {
         let Ok(mut lib) = self.library.lock() else { return IDLE };
         let Ok(rt) = self.rt.lock() else { return IDLE };
         let now = now_ms();
+        if rt.quiet && !user_asked(&rt) {
+            // `set_quiet(false)` wakes the worker.
+            return IDLE;
+        }
         if rt.restore.is_some() {
             return Duration::from_millis(rt.retry_at.map_or(0.0, |t| (t - now).max(0.0)) as u64);
         }
@@ -679,6 +701,9 @@ impl LiveHandle {
     }
 
     fn try_upload(&self, device: &DeviceHandle) {
+        if self.rt.lock().is_ok_and(|rt| rt.quiet && !user_asked(&rt)) {
+            return;
+        }
         if self.restore(device) {
             self.wake();
             return;

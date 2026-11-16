@@ -21,6 +21,7 @@
 use crate::device::{DeviceHandle, LightLayer, LiveFrame, Request};
 use crate::dto::{AutoProfileSettings, AutoProfileState, AutoProgram, AutoRule, AUTO_RULE_GAMES};
 use crate::front::FrontHub;
+use crate::games::covered;
 use crate::live::now_ms;
 use crate::profiles::LitKey;
 use crate::settings;
@@ -44,6 +45,8 @@ const RAM_AFTER_MS: f64 = 1_000.0;
 const WRITE_AFTER_MS: f64 = 10_000.0;
 /// Written switches a day.
 pub const WRITES_MAX: u32 = 20;
+/// `last_error` when the day's written switches are used up (the UI knows it).
+const LIMIT_REACHED: &str = "daily limit reached";
 const RECENT_MAX: usize = 12;
 const TICK: Duration = Duration::from_millis(500);
 const IDLE: Duration = Duration::from_secs(30);
@@ -65,13 +68,8 @@ pub trait Host: Send + Sync {
     fn game(&self, front: &Front) -> Option<String>;
     /// The game whose session runs now.
     fn session(&self) -> Option<String>;
-}
-
-/// `path` is `rule` (a program) or lies in it (a folder).
-fn covered(path: &str, rule: &str) -> bool {
-    let norm = |s: &str| s.replace('/', "\\").trim_end_matches('\\').to_lowercase();
-    let (path, rule) = (norm(path), norm(rule));
-    path == rule || (path.starts_with(&rule) && path.as_bytes().get(rule.len()) == Some(&b'\\'))
+    /// A game runs with "leave the keyboard alone while playing" on.
+    fn quiet(&self) -> bool;
 }
 
 /// The rule for the program in front: its own (the closest folder), else
@@ -103,12 +101,21 @@ struct Target {
     because: Option<String>,
     game: Option<String>,
     since: f64,
+    /// It may end in a written switch (not when only the rules changed).
+    may_write: bool,
 }
 
 struct Inner {
     stored: Stored,
     /// The latest program in front, not looked at yet.
     front: Option<Front>,
+    /// The last program in front that a rule could be for (not the
+    /// desktop, not Keymotion).
+    last_program: Option<Front>,
+    /// `front` is `last_program` again because the rules changed.
+    recheck: bool,
+    /// A game ran in quiet mode: nothing went to the keyboard.
+    quiet: bool,
     target: Option<Target>,
     /// The rule whose lighting shows (RAM) or was written.
     active: Option<Target>,
@@ -124,6 +131,8 @@ struct Inner {
 
 enum Msg {
     Wake,
+    /// The program in front changed.
+    Front(Box<Front>),
 }
 
 /// Handle to the per-app profiles worker (managed Tauri state).
@@ -149,6 +158,9 @@ impl AutoProfiles {
         let inner = Arc::new(Mutex::new(Inner {
             stored,
             front: None,
+            last_program: None,
+            recheck: false,
+            quiet: false,
             target: None,
             active: None,
             written: None,
@@ -159,12 +171,12 @@ impl AutoProfiles {
             dirty: true,
         }));
         let (tx, rx) = mpsc::channel();
-        let handle = Arc::new(Self { tx: tx.clone(), inner: inner.clone(), app, config_dir, hub: hub.clone() });
+        let handle = Arc::new(Self { tx: tx.clone(), inner, app, config_dir, hub: hub.clone() });
+        // Handed to the worker: a written switch holds the worker's lock for
+        // a while, and the hub must not wait for it.
+        let to_worker = tx.clone();
         hub.listen(move |front| {
-            if let Ok(mut i) = inner.lock() {
-                i.front = Some(front.clone());
-            }
-            let _ = tx.send(Msg::Wake);
+            let _ = to_worker.send(Msg::Front(Box::new(front.clone())));
         });
         let worker = handle.clone();
         std::thread::Builder::new()
@@ -172,6 +184,11 @@ impl AutoProfiles {
             .spawn(move || loop {
                 let wait = worker.tick(&device, host.as_ref());
                 match rx.recv_timeout(wait) {
+                    Ok(Msg::Front(front)) => {
+                        if let Ok(mut i) = worker.inner.lock() {
+                            i.front = Some(*front);
+                        }
+                    }
                     Ok(Msg::Wake) | Err(RecvTimeoutError::Timeout) => {}
                     Err(RecvTimeoutError::Disconnected) => break,
                 }
@@ -197,7 +214,11 @@ impl AutoProfiles {
             because: inner.active.as_ref().and_then(|a| a.because.clone()),
             writes_today: writes,
             writes_max: WRITES_MAX,
-            last_error: inner.last_error.clone(),
+            // Yesterday's limit is over.
+            last_error: inner
+                .last_error
+                .clone()
+                .filter(|e| !(e == LIMIT_REACHED && inner.stored.writes_day != today())),
             recent: inner.recent.clone(),
         }
     }
@@ -217,10 +238,12 @@ impl AutoProfiles {
                 tracing::info!(on = settings.enabled, paused = settings.paused, "per-app profiles");
             }
             inner.stored.settings = settings;
-            // Look at the program in front again with the new rules.
-            if let Some(a) = inner.active.take() {
-                inner.target = Some(Target { since: 0.0, ..a });
-            }
+            // The last program again with the new rules: its lighting now, a
+            // written switch only once it comes to the front again.
+            inner.active = None;
+            inner.target = None;
+            inner.front = inner.last_program.clone();
+            inner.recheck = true;
             inner.dirty = true;
             inner.stored.clone()
         };
@@ -252,54 +275,81 @@ impl AutoProfiles {
     /// One pass of the worker; returns how long to sleep.
     fn tick(&self, device: &DeviceHandle, host: &dyn Host) -> Duration {
         let now = now_ms();
+        let on = match self.inner.lock() {
+            Ok(i) => i.stored.settings.enabled && !i.stored.settings.paused,
+            Err(_) => return IDLE,
+        };
+        // Other modules' locks first, never under this one's.
+        self.hub.want(WATCHER, on);
+        let in_front = self.hub.last();
+        let session = host.session();
+        let quiet = on && host.quiet();
+
         let Ok(mut guard) = self.inner.lock() else { return IDLE };
         let inner = &mut *guard;
         let s = inner.stored.settings.clone();
-        let on = s.enabled && !s.paused;
-        self.hub.want(WATCHER, on);
-        if !on {
-            inner.front = None;
+        if !on || quiet {
+            // Off, or a game wants the keyboard left alone: no light, no write.
+            if let Some(front) = inner.front.take() {
+                if !front.is_shell() && front.pid != std::process::id() {
+                    inner.last_program = Some(front);
+                }
+            }
+            if !on {
+                inner.front = None;
+                inner.last_program = None;
+            }
+            inner.quiet = quiet;
             inner.target = None;
             if inner.active.take().is_some() {
                 inner.dirty = true;
             }
             self.send(inner, device, None);
-            return self.finish(guard, IDLE);
+            return self.finish(guard, if on { TICK } else { IDLE });
         }
 
-        let session = host.session();
         let active_game = inner.active.as_ref().and_then(|a| a.game.clone());
         if active_game.is_some() && active_game == session {
             inner.session_seen = true;
         }
         let mut look = inner.front.take();
-        // The game's session ended: what is in front now counts again.
+        // The game's session ended, or quiet mode did: what is in front now
+        // counts again.
+        if std::mem::take(&mut inner.quiet) {
+            look = look.or_else(|| in_front.clone());
+        }
         if inner.session_seen && active_game.is_some() && active_game != session {
             inner.session_seen = false;
-            look = look.or_else(|| self.hub.last());
+            look = look.or_else(|| in_front.clone());
             inner.active = None;
         }
+        let recheck = std::mem::take(&mut inner.recheck);
         if let Some(front) = look {
-            if !front.is_shell() && front.pid != std::process::id() {
+            if front.is_shell() || front.pid == std::process::id() {
+                // The desktop or Keymotion: a switch that hasn't happened yet
+                // waits for the program to come back (its 10 s start over).
+                inner.target = None;
+            } else {
                 if let Some(path) = &front.path {
-                    inner.recent.retain(|p| !p.path.eq_ignore_ascii_case(path));
-                    let name = front.name.rsplit_once('.').map_or(front.name.as_str(), |(stem, _)| stem).to_string();
-                    inner.recent.insert(0, AutoProgram { path: path.clone(), name });
+                    inner.recent.retain(|p| !crate::games::same_path(&p.path, path));
+                    inner.recent.insert(0, AutoProgram { path: path.clone(), name: stem(&front.name) });
                     inner.recent.truncate(RECENT_MAX);
                 }
                 let game = host.game(&front);
                 let rule = rule_for(&s.rules, front.path.as_deref(), game.is_some()).cloned();
                 // A game's profile stays for its session (Alt+Tab).
                 let keep = inner.session_seen && active_game.is_some() && active_game == session && game.is_none();
-                let want = Target { rule, because: Some(front.name.clone()), game, since: now };
+                let want = Target { rule, because: Some(stem(&front.name)), game, since: now, may_write: !recheck };
                 let same = inner.target.as_ref().map(|t| (&t.rule, &t.game)) == Some((&want.rule, &want.game));
                 if !keep && !same {
                     inner.target = Some(want);
                 }
+                inner.last_program = Some(front);
             }
         }
 
         // Lighting (RAM) once the target has held a moment.
+        let mut pending = None;
         if let Some(t) = inner.target.clone() {
             if now - t.since >= RAM_AFTER_MS {
                 let frame = t.rule.as_ref().and_then(|r| ram_frame(host, &r.profile));
@@ -310,7 +360,9 @@ impl AutoProfiles {
                     inner.dirty = true;
                 }
                 self.send(inner, device, frame);
-                // Written switches wait longer.
+                // Written switches wait longer. The keyboard may hold another
+                // profile by now (loaded by hand), so no "already written"
+                // shortcut: `load_part` skips the parts the keyboard has.
                 let write = match &t.rule {
                     Some(r) if r.writes => Some(r.profile.clone()),
                     Some(_) => None,
@@ -318,51 +370,71 @@ impl AutoProfiles {
                 };
                 if now - t.since >= WRITE_AFTER_MS {
                     inner.target = None;
-                    if let Some(id) = write.filter(|id| inner.written.as_ref() != Some(id)) {
-                        self.write(inner, host, &id);
-                    }
+                    pending = write.filter(|_| t.may_write).map(|id| (id, t));
                 }
             }
         }
-        self.finish(guard, TICK)
+        let wait = self.finish(guard, TICK);
+        // The write takes a few seconds: not under the lock (the page and
+        // the tray menu read the state meanwhile).
+        if let Some((id, t)) = pending {
+            self.write(host, &id, t);
+        }
+        wait
     }
 
-    /// A written switch to profile `id`, within the day's limit.
-    fn write(&self, inner: &mut Inner, host: &dyn Host, id: &str) {
-        if inner.stored.writes_day != today() {
-            inner.stored.writes_day = today();
-            inner.stored.writes = 0;
+    /// A written switch to profile `id`, within the day's limit. When it
+    /// can't go now (unsaved changes, another write), `target` waits for
+    /// the next pass.
+    fn write(&self, host: &dyn Host, id: &str, target: Target) {
+        {
+            let Ok(mut inner) = self.inner.lock() else { return };
+            if inner.stored.writes_day != today() {
+                inner.stored.writes_day = today();
+                inner.stored.writes = 0;
+            }
+            if inner.stored.writes >= WRITES_MAX {
+                if inner.last_error.as_deref() != Some(LIMIT_REACHED) {
+                    tracing::info!("per-app profiles: daily write limit reached");
+                    inner.last_error = Some(LIMIT_REACHED.into());
+                    inner.dirty = true;
+                }
+                self.finish(inner, TICK);
+                return;
+            }
         }
-        if inner.stored.writes >= WRITES_MAX {
-            if inner.last_error.as_deref() != Some("daily limit reached") {
-                tracing::info!("per-app profiles: daily write limit reached");
-                inner.last_error = Some("daily limit reached".into());
-                inner.dirty = true;
+        if !host.may_write() {
+            if let Ok(mut inner) = self.inner.lock() {
+                if inner.target.is_none() {
+                    inner.target = Some(target);
+                }
             }
             return;
         }
-        if !host.may_write() {
-            // Unsaved changes or another write: try again with the next change.
-            return;
-        }
-        match host.write(id) {
+        let result = host.write(id);
+        let Ok(mut inner) = self.inner.lock() else { return };
+        let counted = match result {
             Ok(parts) => {
                 tracing::info!(parts, "per-app profile written");
                 inner.written = Some(id.to_string());
                 inner.last_error = None;
-                if parts > 0 {
-                    inner.stored.writes += 1;
-                    if let Err(e) = self.save(&inner.stored) {
-                        tracing::warn!("per-app profiles not saved: {e}");
-                    }
-                }
+                parts > 0
             }
             Err(e) => {
+                // Some parts may have gone before the failure: it counts.
                 tracing::warn!("per-app profile not written: {e}");
                 inner.last_error = Some(e);
+                true
+            }
+        };
+        if counted {
+            inner.stored.writes += 1;
+            if let Err(e) = self.save(&inner.stored) {
+                tracing::warn!("per-app profiles not saved: {e}");
             }
         }
         inner.dirty = true;
+        self.finish(inner, TICK);
     }
 
     fn send(&self, inner: &mut Inner, device: &DeviceHandle, frame: Option<LiveFrame>) {
@@ -380,6 +452,11 @@ impl AutoProfiles {
         }
         wait
     }
+}
+
+/// A program's file name without its extension.
+fn stem(name: &str) -> String {
+    name.rsplit_once('.').map_or(name, |(stem, _)| stem).to_string()
 }
 
 /// A per-key design as a RAM frame: its keys lit, the rest off.
@@ -415,5 +492,28 @@ mod tests {
         // A folder name that only starts the same.
         assert_eq!(pick(r"D:\Games\Racer2\racer.exe", false), None);
         assert_eq!(rule_for(&rules, None, false), None);
+    }
+
+    #[test]
+    fn a_rule_still_holds_after_the_program_updates() {
+        let rules = vec![
+            rule(r"C:\Users\a\AppData\Local\Discord\app-1.0.9165\Discord.exe", "chat"),
+            rule(
+                r"C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2410.21.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe",
+                "notes",
+            ),
+            rule(r"D:\Oyunlar\Şehir", "city"),
+        ];
+        let pick = |p: &str| rule_for(&rules, Some(p), false).map(|r| r.profile.as_str());
+        assert_eq!(pick(r"C:\Users\a\AppData\Local\Discord\app-1.0.9172\Discord.exe"), Some("chat"));
+        assert_eq!(
+            pick(
+                r"C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2507.26.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe"
+            ),
+            Some("notes")
+        );
+        // Turkish letters in any case.
+        assert_eq!(pick(r"d:\oyunlar\şehir\bin\city.exe"), Some("city"));
+        assert_eq!(pick(r"D:\OYUNLAR\ŞEHIR\BIN\CITY.EXE"), Some("city"));
     }
 }

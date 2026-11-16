@@ -9,7 +9,8 @@
 //!   Covers are in `appcache\librarycache`.
 //! * Epic Games: the `.item` manifests (JSON) in its data folder.
 //! * GOG: `HKLM\SOFTWARE\WOW6432Node\GOG.com\Games\<id>`.
-//! * Xbox / Game Pass: the `XboxGames` folder at the root of a drive.
+//! * Xbox / Game Pass: the `XboxGames` folder at the root of a disk inside
+//!   the computer that has a `.GamingRoot` file.
 //! * Riot Games: `Metadata\<product>\<product>.product_settings.yaml`.
 //!   Only the match program counts (League of Legends' client is a
 //!   launcher).
@@ -47,7 +48,7 @@ pub struct KnownGame {
 
 /// Launchers, stores, anti-cheat starters, crash reporters and installers:
 /// they run next to games, often from the same folder, but are not the game.
-const HELPERS: [&str; 34] = [
+const HELPERS: [&str; 36] = [
     "steam.exe",
     "steamwebhelper.exe",
     "steamservice.exe",
@@ -61,7 +62,9 @@ const HELPERS: [&str; 34] = [
     "uplaywebcore.exe",
     "galaxyclient.exe",
     "galaxyclient helper.exe",
+    "riot client.exe",
     "riotclientservices.exe",
+    "riotclientcrashhandler.exe",
     "riotclientux.exe",
     "riotclientuxrender.exe",
     "leagueclient.exe",
@@ -94,16 +97,68 @@ pub fn is_helper(exe_name: &str) -> bool {
         || lower.ends_with("_setup.exe")
 }
 
+/// A path as Windows compares it: `/` as `\`, no `\` at the end, every
+/// letter in lowercase (`Ü` and `ü` alike, not only A–Z).
+fn norm(path: &str) -> String {
+    path.replace('/', "\\").trim_end_matches('\\').to_lowercase()
+}
+
 fn same_path(a: &str, b: &str) -> bool {
-    let norm = |s: &str| s.replace('/', "\\").trim_end_matches('\\').to_ascii_lowercase();
     norm(a) == norm(b)
 }
 
 /// `path` lies inside the folder `dir` (any depth).
 fn inside(path: &str, dir: &str) -> bool {
-    let norm = |s: &str| s.replace('/', "\\").trim_end_matches('\\').to_ascii_lowercase();
     let (path, dir) = (norm(path), norm(dir));
     !dir.is_empty() && path.len() > dir.len() && path.starts_with(&dir) && path.as_bytes()[dir.len()] == b'\\'
+}
+
+/// A key to compare a program's path or a folder with, which stays the same
+/// when the program updates itself: the path as Windows compares it (`/` as
+/// `\`, no `\` at the end, lowercase letters), with the folders that carry
+/// a version made alike:
+///
+/// * a Microsoft Store package folder,
+///   `Microsoft.WindowsNotepad_11.2409.9.0_x64__8wekyb3d8bbwe`, keeps only
+///   its name and publisher: `microsoft.windowsnotepad__8wekyb3d8bbwe`;
+/// * Squirrel's `app-1.0.9165` (Discord, Slack…) becomes `app-*`;
+/// * Roblox's `version-<hex>` becomes `version-*`.
+pub fn stable_key(path: &str) -> String {
+    norm(path).split('\\').map(stable_part).collect::<Vec<_>>().join("\\")
+}
+
+/// One folder or file name of [`stable_key`], already in lowercase.
+fn stable_part(part: &str) -> String {
+    if let Some(family) = package_family(part) {
+        return family;
+    }
+    if part.strip_prefix("app-").is_some_and(is_squirrel_version) {
+        return "app-*".into();
+    }
+    if part.strip_prefix("version-").is_some_and(|h| !h.is_empty() && h.bytes().all(|b| b.is_ascii_hexdigit())) {
+        return "version-*".into();
+    }
+    part.into()
+}
+
+/// A package's full name, `name_1.2.3.0_x64__publisher` (name, dotted
+/// version, processor or none, an empty resource id, publisher id), as
+/// `name__publisher`.
+fn package_family(part: &str) -> Option<String> {
+    let [name, version, arch, resource, publisher] = part.split('_').collect::<Vec<_>>()[..] else { return None };
+    let word = |s: &str| s.bytes().all(|b| b.is_ascii_alphanumeric());
+    let named = !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-');
+    let dotted =
+        version.contains('.') && version.split('.').all(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+    let ok = named && dotted && word(arch) && resource.is_empty() && !publisher.is_empty() && word(publisher);
+    ok.then(|| format!("{name}__{publisher}"))
+}
+
+/// Squirrel's version after `app-`: `1.0.9165`, `2.1.0-beta3`.
+fn is_squirrel_version(v: &str) -> bool {
+    v.starts_with(|c: char| c.is_ascii_digit())
+        && v.contains('.')
+        && v.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
 }
 
 /// The game a program belongs to, if any: an exact program first, then an
@@ -155,8 +210,13 @@ impl Kv {
     }
 }
 
+/// Blocks nested deeper than this are refused, so a broken or hostile file
+/// cannot exhaust the stack. Steam's own files nest a few levels.
+const KV_MAX_DEPTH: usize = 64;
+
 /// Parse Valve's KeyValues text: quoted keys and values, `{ }` blocks,
 /// `//` comments, `\\` and `\"` escapes. The whole file is one block.
+/// `None` for broken text or blocks nested deeper than [`KV_MAX_DEPTH`].
 pub fn parse_kv(text: &str) -> Option<Kv> {
     #[derive(Debug)]
     enum Tok {
@@ -207,7 +267,10 @@ pub fn parse_kv(text: &str) -> Option<Kv> {
             }
         }
     }
-    fn block(toks: &[Tok], i: &mut usize, nested: bool) -> Option<Kv> {
+    /// The items up to the `}` closing a block `depth` levels deep (0: the
+    /// whole file, up to its end).
+    fn block(toks: &[Tok], i: &mut usize, depth: usize) -> Option<Kv> {
+        let nested = depth > 0;
         let mut items = Vec::new();
         loop {
             match toks.get(*i) {
@@ -225,8 +288,11 @@ pub fn parse_kv(text: &str) -> Option<Kv> {
                             *i += 1;
                         }
                         Tok::Open => {
+                            if depth >= KV_MAX_DEPTH {
+                                return None;
+                            }
                             *i += 1;
-                            let b = block(toks, i, true)?;
+                            let b = block(toks, i, depth + 1)?;
                             items.push((k.clone(), b));
                         }
                         Tok::Close => return None,
@@ -236,18 +302,40 @@ pub fn parse_kv(text: &str) -> Option<Kv> {
         }
     }
     let mut i = 0;
-    block(&toks, &mut i, false)
+    block(&toks, &mut i, 0)
 }
 
-/// Library folders from `libraryfolders.vdf`.
+/// Library folders from `libraryfolders.vdf`: numbered blocks with a
+/// `"path"` (since 2021) or, in older files, numbered values
+/// (`"1" "D:\\SteamLibrary"`, beside other values such as
+/// `"ContentStatsID"`). Older files leave out Steam's own folder.
 pub fn steam_libraries(vdf: &str) -> Vec<String> {
     let Some(root) = parse_kv(vdf) else { return Vec::new() };
     let Some(folders) = root.get("libraryfolders") else { return Vec::new() };
-    folders.items().iter().filter_map(|(_, f)| f.text("path").map(str::to_string)).collect()
+    let numbered = |k: &str| !k.is_empty() && k.bytes().all(|b| b.is_ascii_digit());
+    folders
+        .items()
+        .iter()
+        .filter_map(|(key, f)| match f {
+            Kv::Block(_) => f.text("path").map(str::to_string),
+            Kv::Text(path) => (numbered(key) && !path.trim().is_empty()).then(|| path.clone()),
+        })
+        .collect()
 }
 
-/// Steam's tools that are not games (redistributables, Proton, SteamVR…).
-const STEAM_TOOLS: [u32; 4] = [228_980, 250_820, 1_070_560, 1_391_110];
+/// Steam apps that are tools, not games: they run full screen or in front
+/// for hours, and the game session must not start for them.
+const STEAM_TOOLS: [u32; 9] = [
+    228_980,   // Steamworks Common Redistributables
+    250_820,   // SteamVR
+    1_070_560, // Steam Linux Runtime
+    1_391_110, // Steam Linux Runtime - Soldier
+    431_960,   // Wallpaper Engine
+    993_090,   // Lossless Scaling
+    1_905_180, // OBS Studio
+    365_670,   // Blender
+    629_520,   // Soundpad
+];
 
 /// A game from an `appmanifest_<id>.acf`, in `library`.
 pub fn steam_game(acf: &str, library: &str) -> Option<KnownGame> {
@@ -283,8 +371,10 @@ fn steam_games() -> Vec<KnownGame> {
     let mut libraries = std::fs::read_to_string(root.join(r"steamapps\libraryfolders.vdf"))
         .map(|t| steam_libraries(&t))
         .unwrap_or_default();
-    if libraries.is_empty() {
-        libraries.push(root.to_string_lossy().into_owned());
+    // Steam's own folder is a library, also where an older file leaves it out.
+    let own = root.to_string_lossy().into_owned();
+    if !libraries.iter().any(|l| same_path(l, &own)) {
+        libraries.insert(0, own);
     }
     let mut out = Vec::new();
     for lib in libraries {
@@ -303,10 +393,45 @@ fn steam_games() -> Vec<KnownGame> {
 
 /// Steam's own picture of a game (`header.jpg`), when it has one.
 pub fn steam_cover(app: u32) -> Option<PathBuf> {
-    let cache = steam_root()?.join(r"appcache\librarycache");
-    [cache.join(app.to_string()).join("header.jpg"), cache.join(format!("{app}_header.jpg"))]
-        .into_iter()
-        .find(|p| p.is_file())
+    steam_cover_in(&steam_root()?.join(r"appcache\librarycache"), app)
+}
+
+/// The cover of `app` in Steam's picture cache `cache`, in this order:
+/// `<app>\header.jpg`; `<app>\<hash>\header.jpg` (Steam's newer layout);
+/// a cover kept only in a language, `<app>\header_<language>.jpg` or
+/// `<app>\<hash>\header_<language>.jpg`; the older flat `<app>_header.jpg`.
+/// Of several in one step, the newest file.
+fn steam_cover_in(cache: &Path, app: u32) -> Option<PathBuf> {
+    let dir = cache.join(app.to_string());
+    let own = dir.join("header.jpg");
+    if own.is_file() {
+        return Some(own);
+    }
+    let subdirs: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .map(|entries| entries.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect())
+        .unwrap_or_default();
+    let in_language = |n: &str| n.starts_with("header_") && n.ends_with(".jpg");
+    let mut all = vec![dir];
+    all.extend(subdirs.iter().cloned());
+    newest_file(&subdirs, |n| n == "header.jpg").or_else(|| newest_file(&all, in_language)).or_else(|| {
+        let flat = cache.join(format!("{app}_header.jpg"));
+        flat.is_file().then_some(flat)
+    })
+}
+
+/// The file written last, among those in `dirs` (not below) whose
+/// lowercase name `wanted` accepts.
+fn newest_file(dirs: &[PathBuf], wanted: impl Fn(&str) -> bool) -> Option<PathBuf> {
+    dirs.iter()
+        .filter_map(|d| std::fs::read_dir(d).ok())
+        .flat_map(|entries| entries.flatten())
+        .filter(|e| wanted(&e.file_name().to_string_lossy().to_lowercase()))
+        .filter_map(|e| {
+            let meta = e.metadata().ok().filter(std::fs::Metadata::is_file)?;
+            Some((meta.modified().ok(), e.path()))
+        })
+        .max()
+        .map(|(_, path)| path)
 }
 
 // ---------------------------------------------------------------- Epic
@@ -372,7 +497,11 @@ fn xbox_games() -> Vec<KnownGame> {
     let mut out = Vec::new();
     for letter in b'C'..=b'Z' {
         let root = format!("{}:\\", char::from(letter));
-        if !Path::new(&root).join(".GamingRoot").is_file() {
+        // Only disks inside the computer: a network drive that is gone can
+        // hang, and an empty card reader can ask for a disk. The Xbox app's
+        // own folder name in `.GamingRoot` is not read: its format is not
+        // documented, and `XboxGames` is what the app makes.
+        if !sys::fixed_drive(&root) || !Path::new(&root).join(".GamingRoot").is_file() {
             continue;
         }
         let Ok(entries) = std::fs::read_dir(Path::new(&root).join("XboxGames")) else { continue };
@@ -393,6 +522,30 @@ fn xbox_games() -> Vec<KnownGame> {
         }
     }
     out
+}
+
+#[cfg(windows)]
+mod sys {
+    use windows::core::HSTRING;
+    use windows::Win32::Storage::FileSystem::GetDriveTypeW;
+
+    /// `DRIVE_FIXED` (its feature, `Win32_System_WindowsProgramming`, is
+    /// not otherwise needed).
+    const DRIVE_FIXED: u32 = 3;
+
+    /// `root` (`D:\`) is a disk inside the computer. Windows answers from
+    /// its list of drives; the drive itself is not touched.
+    pub fn fixed_drive(root: &str) -> bool {
+        // SAFETY: a NUL-terminated path that outlives the call.
+        unsafe { GetDriveTypeW(&HSTRING::from(root)) == DRIVE_FIXED }
+    }
+}
+
+#[cfg(not(windows))]
+mod sys {
+    pub fn fixed_drive(_root: &str) -> bool {
+        false
+    }
 }
 
 // ---------------------------------------------------------------- Riot
@@ -525,10 +678,138 @@ mod tests {
     }
 
     #[test]
+    fn reads_the_older_libraries_file() {
+        // Before 2021: numbered values, Steam's own folder left out.
+        let old = r#"
+"LibraryFolders"
+{
+	"TimeNextStatsReport"		"1612345678"
+	"ContentStatsID"		"-4567890123456789"
+	"1"		"D:\\SteamLibrary"
+	"2"		"E:\\Oyunlar\\Steam"
+}
+"#;
+        assert_eq!(steam_libraries(old), vec![r"D:\SteamLibrary", r"E:\Oyunlar\Steam"]);
+        assert_eq!(steam_libraries("\"libraryfolders\" { \"1\" \"\" }"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn steam_tools_are_not_games() {
+        for tool in ["431960", "993090", "1905180", "365670", "629520", "250820"] {
+            let acf = MANIFEST.replace("\"570\"", &format!("\"{tool}\""));
+            assert_eq!(steam_game(&acf, r"C:\Steam"), None, "{tool}");
+        }
+    }
+
+    #[test]
     fn broken_keyvalues_are_refused() {
         assert_eq!(parse_kv("\"a\" { \"b\" \"c\""), None);
         assert_eq!(parse_kv("\"a\" }"), None);
         assert!(parse_kv("").is_some());
+    }
+
+    #[test]
+    fn deep_keyvalues_stop_at_the_limit() {
+        let nested = |n: usize| format!("{}\"k\" \"v\"{}", "\"a\" { ".repeat(n), " }".repeat(n));
+        let deepest = parse_kv(&nested(KV_MAX_DEPTH)).unwrap();
+        let mut node = &deepest;
+        for _ in 0..KV_MAX_DEPTH {
+            node = node.get("a").unwrap();
+        }
+        assert_eq!(node.text("k"), Some("v"));
+        assert_eq!(parse_kv(&nested(KV_MAX_DEPTH + 1)), None);
+        // Far too deep for the stack if nothing stopped it.
+        assert_eq!(parse_kv(&nested(200_000)), None);
+        assert_eq!(parse_kv(&"\"a\" {".repeat(200_000)), None);
+    }
+
+    #[test]
+    fn stable_keys_survive_updates() {
+        // A Microsoft Store app: version and processor dropped.
+        let notepad =
+            r"C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2409.9.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe";
+        let key = r"c:\program files\windowsapps\microsoft.windowsnotepad__8wekyb3d8bbwe\notepad\notepad.exe";
+        assert_eq!(stable_key(notepad), key);
+        assert_eq!(stable_key(&notepad.replace("11.2409.9.0_x64", "11.2609.11.0_arm64")), key);
+        assert_eq!(stable_key(&notepad.replace("11.2409.9.0_x64", "11.2609.11.0_")), key);
+        assert_eq!(
+            stable_key(r"C:\Program Files\WindowsApps\Microsoft.WindowsCalculator_11.2607.0.0_x64__8wekyb3d8bbwe"),
+            r"c:\program files\windowsapps\microsoft.windowscalculator__8wekyb3d8bbwe"
+        );
+        // Not a package's full name: kept.
+        for kept in [
+            "microsoft.windowsnotepad_8wekyb3d8bbwe",
+            "name_1.2.3.0_x64_~_8wekyb3d8bbwe",
+            "name_1.2.x.0_x64__8wekyb3d8bbwe",
+            "name_1_x64__8wekyb3d8bbwe",
+            "name_1.2.3.0_x64__",
+            "_1.2.3.0_x64__8wekyb3d8bbwe",
+            "my_game_v1.2_final_build",
+        ] {
+            assert_eq!(stable_key(kept), kept);
+        }
+
+        // Squirrel (Discord).
+        let discord = r"%LOCALAPPDATA%\Discord\app-1.0.9165\Discord.exe";
+        assert_eq!(stable_key(discord), r"%localappdata%\discord\app-*\discord.exe");
+        assert_eq!(stable_key(&discord.replace("1.0.9165", "1.0.9212")), stable_key(discord));
+        assert_eq!(stable_key(r"C:\x\app-2.1.0-beta3\x.exe"), r"c:\x\app-*\x.exe");
+        for kept in ["app-store", "app-", "app-1", "app-1.0 (old)", "myapp-1.0.9165"] {
+            assert_eq!(stable_key(kept), kept);
+        }
+
+        // Roblox.
+        let roblox = r"C:\Users\Ali\AppData\Local\Roblox\Versions\version-1a2b3c4d5e6f7890\RobloxPlayerBeta.exe";
+        assert_eq!(stable_key(roblox), r"c:\users\ali\appdata\local\roblox\versions\version-*\robloxplayerbeta.exe");
+        assert_eq!(stable_key(&roblox.replace("1a2b3c4d5e6f7890", "ffee0011aabb2233")), stable_key(roblox));
+        for kept in ["version-", "version-2g", "version-1.2"] {
+            assert_eq!(stable_key(kept), kept);
+        }
+
+        // Anything else: only letters and slashes, as Windows compares them.
+        assert_eq!(stable_key("D:/Oyunlar/ŞEHİR Ü/Game.exe/"), stable_key(r"d:\oyunlar\şehİr ü\game.exe"),);
+        assert_eq!(stable_key(r"C:\Games\Dota 2\\"), r"c:\games\dota 2");
+        assert_eq!(stable_key(r"\\NAS\Games\x.exe"), r"\\nas\games\x.exe");
+        assert_eq!(stable_key(""), "");
+    }
+
+    #[test]
+    fn finds_steam_covers_in_every_layout() {
+        let cache = std::env::temp_dir().join(format!("kb-winsys-covers-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&cache);
+        let put = |rel: &str| {
+            let p = cache.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, b"jpg").unwrap();
+            p
+        };
+        // Newer layout, in a folder named after a hash.
+        let hashed = put(r"730\162664aa5da85f418105350c5d67ca565f6c3713\header.jpg");
+        put(r"730\162664aa5da85f418105350c5d67ca565f6c3713\library_capsule.jpg");
+        assert_eq!(steam_cover_in(&cache, 730), Some(hashed));
+        // Right in the app's folder: first.
+        let own = put(r"730\header.jpg");
+        assert_eq!(steam_cover_in(&cache, 730), Some(own));
+        // Only in a language, in the app's folder or below it.
+        let turkish = put(r"1070910\header_turkish.jpg");
+        put(r"1070910\library_600x900.jpg");
+        assert_eq!(steam_cover_in(&cache, 1_070_910), Some(turkish));
+        let below = put(r"42\0123abcd\header_english.jpg");
+        assert_eq!(steam_cover_in(&cache, 42), Some(below));
+        // The older flat layout.
+        let flat = put("570_header.jpg");
+        assert_eq!(steam_cover_in(&cache, 570), Some(flat));
+        put(r"10\library_hero.jpg");
+        assert_eq!(steam_cover_in(&cache, 10), None);
+        assert_eq!(steam_cover_in(&cache, 99), None);
+        let _ = std::fs::remove_dir_all(&cache);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_system_drive_is_fixed() {
+        let system = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".into());
+        assert!(sys::fixed_drive(&format!("{system}\\")));
     }
 
     #[test]
@@ -584,10 +865,27 @@ mod tests {
     }
 
     #[test]
+    fn folder_names_match_in_any_case_beyond_a_to_z() {
+        let games = vec![KnownGame {
+            name: "Şehir".into(),
+            source: Source::Gog,
+            dir: Some(r"D:\Oyunlar\ŞEHİR ÜSTÜ".into()),
+            exes: vec![r"D:\Oyunlar\ŞEHİR ÜSTÜ\ÇÖĞÜŞ.exe".into()],
+            steam_app: None,
+        }];
+        assert_eq!(find(&games, r"d:\oyunlar\şehİr üstü\bin\x.exe").map(|g| g.name.as_str()), Some("Şehir"));
+        assert_eq!(find(&games, r"d:\oyunlar\şehİr üstü\çöğüş.exe").map(|g| g.name.as_str()), Some("Şehir"));
+        assert!(same_path(r"D:\Oyunlar\ÖĞÜ\", r"d:/oyunlar/öğü"));
+    }
+
+    #[test]
     fn helpers() {
         assert!(is_helper("Steam.exe"));
         assert!(is_helper("unins000.exe"));
         assert!(is_helper("LeagueClientUx.exe"));
+        assert!(is_helper("Riot Client.exe"));
+        assert!(is_helper("RiotClientServices.exe"));
+        assert!(is_helper("RiotClientCrashHandler.exe"));
         assert!(!is_helper("League of Legends.exe"));
         assert!(!is_helper("VALORANT-Win64-Shipping.exe"));
     }

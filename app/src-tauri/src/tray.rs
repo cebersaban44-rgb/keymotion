@@ -461,8 +461,18 @@ where
         fill(if *ready { &t.update_ready } else { &t.update_available }, &[("version", version)])
     });
     let game = f.game.as_ref().map(|(name, started)| {
-        let min = ((now_ms - started).max(0.0) / 60_000.0).floor().to_string();
-        fill(&t.game, &[("name", name), ("min", &min)])
+        // As on the page: "1 h 5 min", "42 min", "under 1 min".
+        let ms = (now_ms - started).max(0.0);
+        let total = (ms / 60_000.0).floor() as u64;
+        let (h, min) = ((total / 60).to_string(), (total % 60).to_string());
+        let time = if ms < 60_000.0 {
+            t.game_less.clone()
+        } else if total >= 60 {
+            fill(&t.game_hours, &[("h", &h), ("min", &min)])
+        } else {
+            fill(&t.game_minutes, &[("min", &min)])
+        };
+        fill(&t.game, &[("name", name), ("time", &time)])
     });
     let mut tooltip =
         if status == PomodoroStatus::Idle { "Keymotion".to_string() } else { format!("Keymotion — {focus_line}") };
@@ -1089,6 +1099,11 @@ mod tests {
         let v = view_of(&t, &f, now, &tz);
         assert_eq!(v.game.as_deref(), Some("Playing League of Legends · 42 min"));
         assert_eq!(v.tooltip, "Keymotion · Playing League of Legends · 42 min");
+        // Hours, and under a minute, as on the page.
+        f.game = Some(("League of Legends".into(), now - 135.0 * 60_000.0));
+        assert_eq!(view_of(&t, &f, now, &tz).game.as_deref(), Some("Playing League of Legends · 2 h 15 min"));
+        f.game = Some(("League of Legends".into(), now - 20_000.0));
+        assert_eq!(view_of(&t, &f, now, &tz).game.as_deref(), Some("Playing League of Legends · under 1 min"));
     }
 
     #[test]

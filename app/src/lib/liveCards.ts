@@ -9,7 +9,7 @@ import type { PomodoroSettings } from "../bindings/PomodoroSettings";
 import type { ReminderCard } from "../bindings/ReminderCard";
 import type { ReminderIcon } from "../bindings/ReminderIcon";
 import type { TrackInfo } from "../bindings/TrackInfo";
-import type { MessageKey, Translate } from "./i18n";
+import { percent, type MessageKey, type Translate } from "./i18n";
 import { phaseColor } from "./pomodoro";
 import { H, STILL_DELAY_MS, W, type Prepared } from "./screenImport";
 import { compose565, makeLayers } from "./screenText";
@@ -644,7 +644,8 @@ export interface GameWords {
   /** Name of the feature, for the card's name in the app. */
   name: string;
   started: string;
-  ended: string;
+  /** "Ended {time}". */
+  endedAt: string;
   today: string;
   /** "{h} h {min} min", "{min} min" and "under 1 min". */
   hours: string;
@@ -659,13 +660,14 @@ export interface GameWords {
   win: string;
   lose: string;
   cs: string;
+  kda: string;
 }
 
 export function gameWords(tNow: (key: MessageKey) => string): GameWords {
   return {
     name: tNow("games.card.name"),
     started: tNow("games.card.started"),
-    ended: tNow("games.card.ended"),
+    endedAt: tNow("games.card.endedAt"),
     today: tNow("games.card.today"),
     hours: tNow("games.time.hours"),
     minutes: tNow("games.time.minutes"),
@@ -679,6 +681,7 @@ export function gameWords(tNow: (key: MessageKey) => string): GameWords {
     win: tNow("games.card.win"),
     lose: tNow("games.card.lose"),
     cs: tNow("games.card.cs"),
+    kda: tNow("games.card.kda"),
   };
 }
 
@@ -776,15 +779,15 @@ export async function gameSummaryCard(c: GameCard, w: GameWords): Promise<Prepar
   const end = c.endedMs ?? Date.now();
   const lol = c.lol;
   const who = lol?.champion ? `${c.name} · ${lol.champion}` : c.name;
-  const label = `${who} · ${w.ended} ${hhmm(end)}`;
+  const label = `${who} · ${w.endedAt.replace("{time}", hhmm(end))}`;
   const length = playTime(end - c.startedMs, w);
   // A League of Legends match: the result first, then K/D/A.
   const result = lol?.win == null ? null : lol.win ? w.win : w.lose;
   const time = result ?? length;
-  const pct = (v: number | null) => (v == null ? null : `%${Math.round(v)}`);
+  const pct = (v: number | null) => (v == null ? null : percent(Math.round(v)));
   const cells: [string, string][] = [];
   if (lol) {
-    cells.push(["K / D / A", `${lol.kills} / ${lol.deaths} / ${lol.assists}`]);
+    cells.push([w.kda, `${lol.kills} / ${lol.deaths} / ${lol.assists}`]);
     cells.push([w.cs, `${lol.cs}${result ? ` · ${length}` : ""}`]);
   }
   if (c.gpuAvg != null) {

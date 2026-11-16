@@ -20,4 +20,9 @@ recent: Array<GameRecord>,
 /**
  * The graphics card reports its temperature on this computer.
  */
-temperature: boolean, };
+temperature: boolean, 
+/**
+ * Programs lately in front that aren't games: one can be added as a
+ * game by hand. Newest first.
+ */
+programs: Array<GameSuggestion>, };

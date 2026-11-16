@@ -15,7 +15,7 @@ import { useGames } from "../lib/games";
 import { useT } from "../lib/i18n";
 import { profileName } from "../lib/profiles";
 
-export function AutoProfiles({ profiles }: { profiles: ProfilesState | null }) {
+export function AutoProfiles({ profiles, usb }: { profiles: ProfilesState | null; usb: boolean }) {
   const t = useT();
   const s = useAuto((x) => x.state);
   const configure = useAuto((x) => x.configure);
@@ -76,6 +76,7 @@ export function AutoProfiles({ profiles }: { profiles: ProfilesState | null }) {
           />
           <span className="text-ink-2">{status}</span>
         </div>
+        {s.settings.enabled && !usb && <p className="text-[12px] text-ink-3">{t("games.noUsb")}</p>}
       </div>
 
       <div className="flex flex-col gap-3 border-t border-line px-5 py-4">
@@ -94,6 +95,11 @@ export function AutoProfiles({ profiles }: { profiles: ProfilesState | null }) {
                     aria-label={t("auto.profile")}
                     onChange={(e) => setRule(r.path, { profile: e.target.value })}
                   >
+                    {!all.some((p) => p.id === r.profile) && (
+                      <option value={r.profile} disabled>
+                        {t("auto.profile.gone")}
+                      </option>
+                    )}
                     {all.map((p) => (
                       <option key={p.id} value={p.id}>
                         {profileName(p, t)}
@@ -114,10 +120,12 @@ export function AutoProfiles({ profiles }: { profiles: ProfilesState | null }) {
                   <input type="checkbox" className="mt-0.5" checked={r.writes} onChange={(e) => setRule(r.path, { writes: e.target.checked })} />
                   <span className="flex flex-col">
                     <span>{t("auto.writes")}</span>
-                    <span className="text-ink-3">{t("auto.writes.body")}</span>
+                    <span className="text-ink-3">{t("auto.writes.body", { max: s.writesMax })}</span>
                   </span>
                 </label>
-                {r.writes && (games?.games.some((g) => g.key === r.path.toLowerCase()) || r.path === RULE_GAMES) && (
+                {r.path === RULE_GAMES && !games?.settings.enabled && <p className="text-[12px] text-ink-3">{t("auto.needsGames")}</p>}
+                {/* Any program can be a game the lists don't know: warn on every written rule. */}
+                {r.writes && (
                   <p className="flex items-start gap-1.5 text-[12px] text-signal">
                     <Info size={13} className="mt-0.5 shrink-0" />
                     {t("auto.macroWarning")}
@@ -174,7 +182,7 @@ export function AutoProfiles({ profiles }: { profiles: ProfilesState | null }) {
         </label>
         <p className="text-[12px] text-ink-3">{t("auto.base.body")}</p>
         <p className="text-[12px] text-ink-3" data-auto-writes>
-          {t("auto.count", { n: String(s.writesToday), max: String(s.writesMax) })}
+          {t("auto.count", { n: s.writesToday, max: s.writesMax })}
         </p>
         {s.lastError && <p className="text-[12px] text-danger">{s.lastError === "daily limit reached" ? t("auto.limit") : t("auto.error")}</p>}
       </div>

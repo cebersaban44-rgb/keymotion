@@ -566,6 +566,10 @@ impl autoprofile::Host for AutoHost {
     fn session(&self) -> Option<String> {
         self.app.try_state::<Arc<GamesHandle>>()?.session_key()
     }
+
+    fn quiet(&self) -> bool {
+        self.app.try_state::<Arc<GamesHandle>>().is_some_and(|g| g.quiet_now())
+    }
 }
 
 type Auto<'a> = State<'a, Arc<autoprofile::AutoProfiles>>;
