@@ -13,6 +13,11 @@
 # SignPath (stage 9) asks for automated builds that can be traced to the
 # source. Nothing is published: the owner reviews the draft and publishes it.
 #
+# A release tag (not a pre-release) also builds the Microsoft Store package
+# (store.yml): the draft waits until the Store submission passes
+# certification, then both are published the same day (owner's decision,
+# 2026-11-16; docs site: developers/microsoft-store).
+#
 # Secrets: TAURI_SIGNING_PRIVATE_KEY (required, the updater key from
 # `pnpm --dir app tauri signer generate`) and TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 # (that key's password; leave it unset or empty when it has none).
@@ -302,3 +307,16 @@ jobs:
             echo "- SHA-256: \`$SHA256\`"
             echo "- Pre-release: $prerelease"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # The Microsoft Store package of the same tag, after the installer built:
+  # one version, published in both channels the same day. Pre-releases
+  # ("v1.1.0-rc.1") stay on GitHub: the Store's version has no place for them.
+  store:
+    name: Microsoft Store package
+    needs: release
+    if: github.ref_type == 'tag' && !contains(github.ref_name, '-')
+    permissions:
+      contents: read
+    uses: ./.github/workflows/store.yml
+    with:
+      tag: ${{ github.ref_name }}

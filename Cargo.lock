@@ -2088,7 +2088,7 @@ dependencies = [
 
 [[package]]
 name = "kb-cli"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2103,7 +2103,7 @@ dependencies = [
 
 [[package]]
 name = "kb-core"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "chrono",
  "gif",
@@ -2117,7 +2117,7 @@ dependencies = [
 
 [[package]]
 name = "kb-devices"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -2126,14 +2126,14 @@ dependencies = [
 
 [[package]]
 name = "kb-protocol"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "kb-transport"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "hidapi",
  "thiserror 2.0.21",
@@ -2143,7 +2143,7 @@ dependencies = [
 
 [[package]]
 name = "kb-winsys"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "tracing",
  "windows",
@@ -2161,7 +2161,7 @@ dependencies = [
 
 [[package]]
 name = "keymotion"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "base64 0.23.1",
  "chrono",

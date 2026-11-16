@@ -5,11 +5,61 @@ Keymotion'daki önemli değişiklikler burada listelenir. İngilizcesi: [CHANGEL
 1.0.0'dan itibaren her sürüm GitHub'da ve Microsoft Store'da aynıdır; ikisi
 için tek bir değişiklik listesi vardır. Windows, Store'dan kurulan kopyanın
 sürümünü sonuna her zaman 0 olan dördüncü bir sayıyla gösterir (1.0.0, 1.0.0.0
-olur). Store bir sürümü Microsoft denetledikten sonra alır; bu genellikle
-GitHub'dan birkaç gün sonradır. Deneme sürümleri ("-rc") yalnızca GitHub'dadır.
+olur). Bir sürüm ikisinde aynı gün çıkar: GitHub sürümü, Microsoft Store
+kopyasını denetleyene kadar bekler. Yalnızca acil bir düzeltme önce GitHub'da
+çıkabilir ve bunu belirtir. Deneme sürümleri ("-rc") yalnızca GitHub'dadır.
 Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 
 ## [Yayımlanmamış]
+
+## [1.1.0] - 2026-11-16
+
+Keymotion artık yeni sürüm çıkınca haber veriyor ve isterseniz kendiliğinden
+kuruyor. Microsoft Store'da da var.
+
+### Eklenenler
+
+- **Microsoft Store:** Keymotion 16 Kasım 2026'dan beri Microsoft Store'da.
+  Oradaki kopyayı Microsoft imzalar; Windows onu uyarı göstermeden kurar.
+  Sürüm sayfası, README ve site, GitHub indirme düğmesinin yanında
+  Microsoft'un "Microsoft'tan alın" rozetini gösterir.
+- **Güncelleme bildirimleri:** Yeni sürüm çıkınca, her sürüm için bir kez,
+  **Şimdi güncelle** ve **Sonra** düğmeli bir Windows bildirimi bunu söyler.
+  Saatin yanındaki Keymotion simgesinin menüsü **Güncelleme var** satırıyla
+  başlar ve simgede küçük bir nokta görünür; pencerenin sol altındaki kart
+  ve **Ayarlar**'ın yanındaki nokta da söyler. Önceden yeni sürüm yalnızca
+  pencerenin içinde görünüyordu; Keymotion saatin yanında çalışırken fark
+  edilmiyordu.
+- **Kendiliğinden güncelleme:** Ayarlar › Hakkında › **Güncellemeler**'de
+  tek anahtarın yerine üç seçenek var. **Kendiliğinden güncelle** yeni
+  sürümü indirir ve bilgisayar kullanılmadığı bir anda kurar; klavyeye
+  yazarken, odak zamanlayıcısı çalışırken ya da klavyeye kaydedilmemiş
+  değişiklik varken asla. **Haber ver** (varsayılan) size söyler, ne zaman
+  kuracağınızı siz seçersiniz; **Kapalı** kendiliğinden hiç bakmaz. Eski
+  anahtar kapalıysa seçim **Kapalı** olur.
+- Güncellemeden sonra bir Windows bildirimi hangi sürümün kurulduğunu
+  **Neler yeni** düğmesiyle söyler; Keymotion da eskisi gibi açılır:
+  penceresiyle ya da saatin yanında.
+
+### Değişenler
+
+- **İki kopya birden kuruluysa:** Bir bilgisayarda hem GitHub'dan hem
+  Microsoft Store'dan kurulan Keymotion varsa GitHub kopyası artık açılınca
+  Store kopyasını açar; bilgisayar açılınca başlama da Store kopyasına geçer.
+  Önceden ikisi de bilgisayar açılınca başlamaya çalışır, önce davranan
+  çalışırdı. Store kopyası Ayarlar › Hakkında bölümünde bir "GitHub kopyası"
+  satırı gösterir; satırdaki düğme Windows'un Yüklü uygulamalar sayfasını
+  açar ve GitHub kopyası oradan kaldırılabilir. İki kopya ayarları paylaştığı
+  için ayarlar kalır.
+- Keymotion açıkken bilgisayar açılışında ikinci kez başlatılırsa pencereyi
+  artık öne getirmez.
+
+### Düzeltilenler
+
+- **Microsoft Store:** Store yeni sürümü kurarken Windows çalışan
+  Keymotion'ı kapatır. Keymotion artık ardından kendiliğinden, saatin
+  yanında yeniden açılır. Önceden bir sonraki oturum açılışına kadar kapalı
+  kalıyordu.
 
 ## [1.0.0] - 2026-11-15
 
@@ -133,5 +183,7 @@ Store 0 ile başlayan sürüm numarası kabul etmediği için bu sürüm 1.0.0.
   yapılacağı, desteklenen ve sırada olabilecek klavyeler, geliştiriciler için
   sayfalar. Ayarlar › Hakkında'dan açılır.
 
-[Yayımlanmamış]: https://github.com/cebersaban44-rgb/keymotion/compare/v0.1.0...develop
+[Yayımlanmamış]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.1.0...develop
+[1.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.1.0
+[1.0.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.0.0
 [0.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v0.1.0

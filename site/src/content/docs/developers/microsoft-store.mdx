@@ -17,7 +17,8 @@ The app tells the two apart while it runs, by the package identity Windows gives
 
 | | GitHub (installer, development build) | Microsoft Store |
 |---|---|---|
-| Updates | The app's updater, from GitHub releases | The Store. The updater stays off; Settings › About opens the Store's updates page. |
+| Updates | The app's updater, from GitHub releases: Settings › About › Updates chooses update automatically, let me know or off | The Store. The updater stays off; Settings › About opens the Store's updates page. The app registers with `RegisterApplicationRestart`, so it opens again, hidden, after Windows closes it to install a Store update. |
+| Notification buttons | Open the app's own `keymotion:` addresses (`crates/kb-winsys/src/protocol.rs`), registered per user at start and removed by the uninstaller | No `keymotion:` address; a click starts the app the package's way |
 | Start with Windows | A value in the per-user `Run` key, with `--hidden` | The package's startup task (`KeymotionStartup`), also with `--hidden`. If the user turns it off in Windows' settings, only they can turn it on again there; Settings › Background then links to that page. |
 | Notification name and logo | Registered at start under the app id `dev.keymotion` | The package's own |
 | Data folders | `%APPDATA%\dev.keymotion`, `%LOCALAPPDATA%\dev.keymotion` | The same paths, as the app sees them. Where the folders were not there before, Windows keeps them in the package's own folder (`%LOCALAPPDATA%\Packages\<package family>\LocalCache\…`) and removes them with the app; "Open folder" opens that folder. |
@@ -26,6 +27,17 @@ The app tells the two apart while it runs, by the package identity Windows gives
 Both builds share one rule: only one Keymotion runs at a time, whichever way it was installed, since two would talk to the keyboard at once.
 
 If Keymotion from GitHub was installed before, its folders are already there, and the Store build reads and writes them as they are: the settings carry over, and both builds share them. Windows moves only folders a package makes from nothing into the package's own place.
+
+### Both installed
+
+Left alone, both copies would start with Windows and whichever came first would run: one day the GitHub copy its updater raised, the next day the Store's. So the GitHub copy steps aside once the Store copy is installed (`app/src-tauri/src/handoff.rs`), as Microsoft advises for moving users to a Store-packaged app:
+
+- When the installed GitHub copy starts (the program in the folder its installer recorded, never a development or repository build), it looks for the Store package (`GetPackagesByPackageFamily`). If it is there, it starts the Store copy with `IApplicationActivationManager` and ends.
+- If the GitHub copy was set to start with Windows, it removes its `Run` value and passes `--take-startup`: the Store copy turns its startup task on, unless the user or a policy turned it off.
+- A start with Windows that finds a copy already running ends quietly, and a second launch with `--hidden` does not bring the window forward.
+- The Store copy's **Settings › About** shows a "GitHub copy" row while the GitHub copy is installed, with a button to Windows' Installed apps, where the user can remove it. The settings stay, as both copies share them, unless **Also delete my settings and saved data** is ticked in the uninstaller.
+
+GitHub copies older than this change (1.0.0) do not step aside; their next update brings it.
 
 ## The package
 
@@ -45,7 +57,8 @@ There is one version number and one changelog for both channels. A Store package
 - `msix.mjs` takes the version from `tauri.conf.json`. `--version` works only for test packages, so a Store package can never carry another number than the GitHub release of the same code.
 - `store.yml` packs only a release tag that is on `main`, so the Store never gets a version that isn't on GitHub.
 - The Store has no room for test versions (`1.3.0-rc.1`): they stay on GitHub.
-- A version reaches the Store after certification, usually a few days after GitHub. The release notes describe both; a change that concerns only one channel says so.
+- Both channels publish a version the same day: the GitHub release waits as a draft until the Store's copy passes certification (see [Making a release](#making-a-release)). The release notes describe both; a change that concerns only one channel says so.
+- A number the Store has received is never used again: if the Store turns down a package, the fix comes as the next patch version in both channels.
 - Diagnostics and support requests show where the copy came from: `App version: 1.0.0 (Microsoft Store)`, `(GitHub)` or `(development build)`.
 
 ## Try the package on your computer
@@ -77,18 +90,24 @@ A package with a made-up identity ("Keymotion (test)") installs without a certif
 
 </Steps>
 
-## Making a Store release
+## Making a release
+
+A version comes out on GitHub and in the Microsoft Store the same day, so that a number is either everywhere or nowhere (owner's decision, 2026-11-16).
 
 <Steps>
 
-1. Release the version on GitHub as usual (`release.yml`).
+1. Tag the version on `main` as usual. `release.yml` builds the installer and drafts the GitHub release; its **Microsoft Store package** job (`store.yml`) builds the `.msix` from the same tag and keeps it as the run's artifact. Pre-releases skip that job.
 
-2. In GitHub › Actions › **Microsoft Store package**, run the workflow with the release tag (`v1.2.3`). It builds the program from that tag, packs it and keeps the `.msix` as the run's artifact.
+2. Leave the GitHub draft unpublished. In Partner Center, start a new submission for Keymotion: under Packages, upload the `.msix` and remove the previous one; fill in "What's new" from the changelog; under Submission options, choose "Don't publish this submission until I select Publish now". Submit it.
 
-3. In Partner Center, start a new submission for Keymotion and upload the `.msix` under Packages. Microsoft certifies it, usually within three working days, signs it and publishes it.
+3. When it passes certification (Microsoft allows up to three working days), publish the GitHub draft and select **Publish now** in Partner Center, together.
 
 </Steps>
 
+- **The Store turns down the package.** Fix it in the next patch version and release that in both channels. The turned-down number is published nowhere; its changelog section moves to the new number. A rejection about the listing only (text, screenshots) needs no new package.
+- **An urgent fix** (a crash, a security problem) may be published on GitHub first; its release notes say the Store follows.
+- The Store job can also be run by hand: GitHub › Actions › **Microsoft Store package**, with the release tag (`v1.2.3`).
+
 The workflow needs three repository variables, copied exactly from Partner Center › Keymotion › Product identity: `STORE_IDENTITY_NAME`, `STORE_PUBLISHER` and `STORE_PUBLISHER_DISPLAY_NAME`. They are not secrets; every package shows them.
 
-Submitting from the workflow (Microsoft's `msstore` tool) is possible once the app is live, but it needs an Azure app registration with access to the Partner Center account. The upload is done by hand for now.
+Submitting from the workflow (Microsoft's `msstore` tool) is possible once the app is live, but it needs a Microsoft Entra app registration with access to the Partner Center account. An individual developer account can create or associate a Microsoft Entra tenant for it (Partner Center › Account settings › Tenants). Setting that up is still an open topic, so the upload is done by hand for now.

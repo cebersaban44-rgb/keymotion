@@ -5,6 +5,9 @@
 //! gauges only work while it runs. The tray icon brings the window back
 //! (left click) and has a menu:
 //!
+//! * while a new version waits, "Update available: Keymotion 1.1.0" (or,
+//!   downloaded by "update by itself", "Install now: …"), which opens the
+//!   update dialog; the icon then carries a dot (updates.rs);
 //! * the keyboard and its connection (and battery, without the cable);
 //! * Open Keymotion;
 //! * Focus timer ▸ the phase and the minutes left, start / pause / resume,
@@ -33,6 +36,7 @@ use crate::dto::{
 use crate::gauges::{GaugesHandle, EVENT_GAUGES};
 use crate::pomodoro::{PomodoroAction, PomodoroHandle, EVENT_POMODORO};
 use crate::reminders::{RemindersHandle, EVENT_REMINDERS};
+use crate::updates::{Updates, EVENT_UPDATE};
 use crate::{notify, settings};
 use chrono::{DateTime, Local, TimeZone};
 use serde::{Deserialize, Serialize};
@@ -41,6 +45,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Listener, Manager, Wry};
@@ -50,7 +55,7 @@ const TRAY_ID: &str = "main";
 /// window stays hidden, only the tray icon shows.
 pub const ARG_HIDDEN: &str = "--hidden";
 /// The value's name in the `Run` key.
-const RUN_NAME: &str = "Keymotion";
+pub const RUN_NAME: &str = "Keymotion";
 const FILE: &str = "background.json";
 const VERSION: u32 = 1;
 
@@ -92,6 +97,8 @@ pub struct Background {
     quitting: AtomicBool,
     /// The "still running" notice was shown in this run of the app.
     notice_given: AtomicBool,
+    /// The UI has sent its words (until then they are English).
+    texts_received: AtomicBool,
     refresh: Mutex<Option<Sender<()>>>,
 }
 
@@ -104,6 +111,7 @@ impl Background {
             dir,
             quitting: AtomicBool::new(false),
             notice_given: AtomicBool::new(false),
+            texts_received: AtomicBool::new(false),
             refresh: Mutex::new(None),
         })
     }
@@ -163,6 +171,22 @@ impl Background {
         Ok(())
     }
 
+    /// The GitHub copy handed its start with Windows to this one (the Store
+    /// build; handoff.rs): turn the startup task on, unless the user or a
+    /// policy decides it.
+    pub fn take_startup(&self) {
+        if !crate::channel::store() {
+            return;
+        }
+        match self.configure_task(self.settings(), true) {
+            Ok(()) => tracing::info!(
+                start_with_windows = self.settings().start_with_windows,
+                "start with Windows taken over from the GitHub copy"
+            ),
+            Err(e) => tracing::warn!("start with Windows not taken over: {e}"),
+        }
+    }
+
     /// Store the choices; starting with Windows writes or removes the `Run`
     /// entry (for this exe, started hidden), or in the Store build turns
     /// the package's startup task on or off.
@@ -196,9 +220,14 @@ impl Background {
             }
             *t = texts;
         }
+        self.texts_received.store(true, Ordering::SeqCst);
     }
 
-    fn texts(&self) -> TrayTexts {
+    pub fn texts_received(&self) -> bool {
+        self.texts_received.load(Ordering::SeqCst)
+    }
+
+    pub fn texts(&self) -> TrayTexts {
         self.texts.lock().map(|t| t.clone()).unwrap_or_default()
     }
 
@@ -304,11 +333,15 @@ struct Facts {
     gauges: Option<bool>,
     /// Id, name (empty: the built-in one) and whether the keyboard has it.
     profiles: Vec<(String, String, bool)>,
+    /// A new version waits: its number, and whether it is downloaded.
+    update: Option<(String, bool)>,
 }
 
 /// Everything the menu shows, as text: what changed is set on its item.
 #[derive(Debug, Clone, PartialEq, Default)]
 struct View {
+    /// The first line while a new version waits.
+    update: Option<String>,
     keyboard: String,
     open: String,
     focus: String,
@@ -415,7 +448,16 @@ where
             fill(&t.reminders_next, &[("time", &when(t, at, now_ms, tz)), ("title", &title)])
         }
     };
+    let update = f.update.as_ref().map(|(version, ready)| {
+        fill(if *ready { &t.update_ready } else { &t.update_available }, &[("version", version)])
+    });
+    let mut tooltip =
+        if status == PomodoroStatus::Idle { "Keymotion".to_string() } else { format!("Keymotion — {focus_line}") };
+    if f.update.is_some() {
+        tooltip = format!("{tooltip} · {}", t.update_tooltip);
+    }
     View {
+        update,
         keyboard,
         open: t.open.clone(),
         focus: t.focus.clone(),
@@ -443,11 +485,7 @@ where
             })
             .collect(),
         quit: t.quit.clone(),
-        tooltip: if status == PomodoroStatus::Idle {
-            "Keymotion".into()
-        } else {
-            format!("Keymotion — {focus_line}")
-        },
+        tooltip,
     }
 }
 
@@ -477,8 +515,18 @@ fn next_reminder(s: &ReminderState) -> Option<(f64, String)> {
         .min_by(|a, b| a.0.total_cmp(&b.0))
 }
 
+/// The new version waiting, if any (updates.rs).
+fn update_line(app: &AppHandle) -> Option<(String, bool)> {
+    match app.try_state::<Arc<Updates>>()?.status() {
+        crate::dto::UpdateStatus::Available { version, .. } => Some((version, false)),
+        crate::dto::UpdateStatus::Ready { version, .. } => Some((version, true)),
+        _ => None,
+    }
+}
+
 fn facts(app: &AppHandle) -> Facts {
     Facts {
+        update: update_line(app),
         keyboard: keyboard_line(app),
         pomodoro: app.try_state::<Arc<PomodoroHandle>>().and_then(|p| p.state().ok()),
         reminders: app
@@ -506,6 +554,11 @@ fn menu_text(s: &str) -> String {
 
 /// The menu's items, kept to change them in place.
 struct Items {
+    menu: Menu<Wry>,
+    /// The update line and the line under it: in the menu only while a
+    /// new version waits.
+    update: MenuItem<Wry>,
+    update_sep: PredefinedMenuItem<Wry>,
     keyboard: MenuItem<Wry>,
     open: MenuItem<Wry>,
     focus: Submenu<Wry>,
@@ -568,6 +621,8 @@ fn build(app: &AppHandle, v: &View) -> tauri::Result<(Menu<Wry>, Items)> {
     let keyboard = item(app, "keyboard", &v.keyboard, false)?;
     let open = item(app, "open", &v.open, true)?;
     let quit = item(app, "quit", &v.quit, true)?;
+    let update = item(app, "update", v.update.as_deref().unwrap_or_default(), true)?;
+    let update_sep = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,
         &[
@@ -582,9 +637,16 @@ fn build(app: &AppHandle, v: &View) -> tauri::Result<(Menu<Wry>, Items)> {
             &quit,
         ],
     )?;
+    if v.update.is_some() {
+        menu.insert(&update, 0)?;
+        menu.insert(&update_sep, 1)?;
+    }
     Ok((
-        menu,
+        menu.clone(),
         Items {
+            menu,
+            update,
+            update_sep,
             keyboard,
             open,
             focus,
@@ -612,6 +674,19 @@ fn apply(app: &AppHandle, items: &mut Items, old: &View, new: &View) -> tauri::R
                 $item.set_text(menu_text(&new.$field))?;
             }
         };
+    }
+    match (&old.update, &new.update) {
+        (None, Some(line)) => {
+            items.update.set_text(menu_text(line))?;
+            items.menu.insert(&items.update, 0)?;
+            items.menu.insert(&items.update_sep, 1)?;
+        }
+        (Some(_), None) => {
+            items.menu.remove(&items.update)?;
+            items.menu.remove(&items.update_sep)?;
+        }
+        (Some(a), Some(b)) if a != b => items.update.set_text(menu_text(b))?,
+        _ => {}
     }
     text!(items.keyboard, keyboard);
     text!(items.open, open);
@@ -659,6 +734,11 @@ fn focus_control(app: &AppHandle, action: PomodoroAction) {
 fn on_menu(app: &AppHandle, id: &str) {
     match id {
         "open" => show_main(app),
+        "update" => {
+            if let Some(updates) = app.try_state::<Arc<Updates>>() {
+                updates.open_dialog();
+            }
+        }
         "quit" => quit(app),
         "focus.toggle" => {
             let running = app.state::<Arc<PomodoroHandle>>().state().is_ok_and(|s| s.status == PomodoroStatus::Running);
@@ -706,10 +786,68 @@ fn on_menu(app: &AppHandle, id: &str) {
 
 /// Keep the menu and the tooltip true: on each nudge, and every few
 /// seconds while the focus timer runs.
+/// The tray icon, and the same with a dot while a new version waits.
+struct Icons {
+    plain: Option<Image<'static>>,
+    dotted: Option<Image<'static>>,
+}
+
+impl Icons {
+    fn of(&self, update: bool) -> Option<Image<'static>> {
+        if update {
+            self.dotted.clone().or_else(|| self.plain.clone())
+        } else {
+            self.plain.clone()
+        }
+    }
+}
+
+/// The dot's colour (the app's green, as in the approved preview) and the
+/// ring that sets it off from the icon (the icon's own dark background).
+const DOT: [u8; 3] = [0x5f, 0xd3, 0x9a];
+const DOT_RING: [u8; 3] = [0x16, 0x18, 0x1c];
+
+/// `rgba` (width × height) with a dot in its bottom-right corner, two
+/// fifths of the icon across, in a ring of the icon's background colour.
+fn with_dot(rgba: &[u8], width: u32, height: u32) -> Vec<u8> {
+    let mut out = rgba.to_vec();
+    let size = width.min(height) as f32;
+    let radius = size * 0.2;
+    let ring = radius + (size * 0.07).max(1.0);
+    let (cx, cy) = (width as f32 - ring, height as f32 - ring);
+    for y in 0..height {
+        for x in 0..width {
+            let d = ((x as f32 + 0.5 - cx).powi(2) + (y as f32 + 0.5 - cy).powi(2)).sqrt();
+            let color = if d <= radius {
+                DOT
+            } else if d <= ring {
+                DOT_RING
+            } else {
+                continue;
+            };
+            let i = ((y * width + x) * 4) as usize;
+            if let Some(px) = out.get_mut(i..i + 4) {
+                px.copy_from_slice(&[color[0], color[1], color[2], 0xff]);
+            }
+        }
+    }
+    out
+}
+
+fn icons(app: &AppHandle) -> Icons {
+    let Some(icon) = app.default_window_icon() else { return Icons { plain: None, dotted: None } };
+    let (w, h) = (icon.width(), icon.height());
+    Icons {
+        plain: Some(Image::new_owned(icon.rgba().to_vec(), w, h)),
+        dotted: Some(Image::new_owned(with_dot(icon.rgba(), w, h), w, h)),
+    }
+}
+
 fn keep_up(
     app: AppHandle,
     bg: Arc<Background>,
     tray: TrayIcon<Wry>,
+    icons: Icons,
     mut items: Items,
     mut shown: View,
     rx: mpsc::Receiver<()>,
@@ -730,6 +868,11 @@ fn keep_up(
         if view.tooltip != shown.tooltip {
             let _ = tray.set_tooltip(Some(&view.tooltip));
         }
+        if view.update.is_some() != shown.update.is_some() {
+            if let Err(e) = tray.set_icon(icons.of(view.update.is_some())) {
+                tracing::warn!("tray icon not changed: {e}");
+            }
+        }
         shown = view;
     }
 }
@@ -749,8 +892,9 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
                 show_main(tray.app_handle());
             }
         });
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
+    let icons = icons(app);
+    if let Some(icon) = icons.of(first.update.is_some()) {
+        builder = builder.icon(icon);
     }
     let tray = builder.build(app)?;
 
@@ -758,14 +902,14 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
     if let Ok(mut r) = bg.refresh.lock() {
         *r = Some(tx);
     }
-    for event in [EVENT_POMODORO, EVENT_KEYBOARDS_CHANGED, EVENT_REMINDERS] {
+    for event in [EVENT_POMODORO, EVENT_KEYBOARDS_CHANGED, EVENT_REMINDERS, EVENT_UPDATE] {
         let app = app.clone();
         app.clone().listen_any(event, move |_| refresh(&app));
     }
     let app = app.clone();
     std::thread::Builder::new()
         .name("tray".into())
-        .spawn(move || keep_up(app, bg, tray, items, first, rx))
+        .spawn(move || keep_up(app, bg, tray, icons, items, first, rx))
         .map_err(|e| tauri::Error::Anyhow(e.into()))?;
     Ok(())
 }
@@ -840,6 +984,7 @@ mod tests {
             reminders: Some((true, Some((at(12, 14, 30), "Su iç".into())))),
             gauges: Some(true),
             profiles: vec![("default".into(), String::new(), false), ("p1".into(), "Oyun & iş".into(), true)],
+            update: None,
         };
         let v = view_of(&t, &f, now, &tz);
         assert_eq!(v.keyboard, "AJAZZ AK980 PRO · Bluetooth · battery 80%");
@@ -866,6 +1011,27 @@ mod tests {
         assert_eq!((v.focus_toggle.as_str(), v.focus_active, v.tooltip.as_str()), ("Start", false, "Keymotion"));
         f.keyboard = None;
         assert_eq!(view_of(&t, &f, now, &tz).keyboard, "No keyboard connected");
+        assert_eq!(view_of(&t, &f, now, &tz).update, None);
+
+        // A new version waits: the first line, and a word in the tooltip.
+        f.update = Some(("1.1.0".into(), false));
+        let v = view_of(&t, &f, now, &tz);
+        assert_eq!(v.update.as_deref(), Some("Update available: Keymotion 1.1.0"));
+        assert_eq!(v.tooltip, "Keymotion · update available");
+        f.update = Some(("1.1.0".into(), true));
+        assert_eq!(view_of(&t, &f, now, &tz).update.as_deref(), Some("Install now: Keymotion 1.1.0"));
+    }
+
+    #[test]
+    fn the_update_dot_sits_in_the_bottom_right_corner() {
+        // A 10 × 10 transparent icon.
+        let rgba = vec![0u8; 10 * 10 * 4];
+        let out = with_dot(&rgba, 10, 10);
+        let px = |x: usize, y: usize| &out[(y * 10 + x) * 4..(y * 10 + x) * 4 + 4];
+        assert_eq!(px(7, 7), &[DOT[0], DOT[1], DOT[2], 0xff]);
+        assert_eq!(px(0, 0), &[0, 0, 0, 0]);
+        assert_eq!(px(9, 0), &[0, 0, 0, 0]);
+        assert_eq!(out.len(), rgba.len());
     }
 
     #[test]

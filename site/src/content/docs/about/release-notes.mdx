@@ -1,6 +1,6 @@
 ---
 title: Release notes
-description: Where to read what changed in each Keymotion version, with a short summary of 1.0.0 and of the first release, 0.1.0.
+description: Where to read what changed in each Keymotion version, with a short summary of 1.1.0, 1.0.0 and the first release, 0.1.0.
 ---
 
 import Screenshot from "~/components/Screenshot.astro";
@@ -21,9 +21,18 @@ From 1.0.0 on, Keymotion has the same version number wherever you got it, and on
 
 - **Settings › About** shows the version the same way in both: "Version 1.0.0". In the Microsoft Store's copy, the same line says that the Store keeps it up to date.
 - **Windows' list of installed apps** shows the Store's copy with a fourth number, which is always 0: 1.0.0 appears as 1.0.0.0. It is the same version.
-- **When a version arrives.** A new version comes out on GitHub first. Microsoft reviews it before the Store offers it, which usually takes a few days, so for a short time the Store can be one version behind.
+- **When a version arrives.** A new version comes out on GitHub and in the Microsoft Store the same day: the GitHub release waits until Microsoft has reviewed the Store's copy. Only an urgent fix (a crash, a security problem) may come out on GitHub first; its notes say so.
 - **Test versions** (with "-rc" in their number) are only on GitHub.
-- **Only one Keymotion runs at a time.** If both are installed, they use the same settings, and the one you open second brings the first one's window forward. Keep one of them.
+- **Only one Keymotion runs at a time.** If both are installed, they use the same settings. Opening the GitHub copy opens the Store's copy instead, and starting with Windows moves to the Store's copy too. Its Settings › About then shows a "GitHub copy" row with a button to Windows' Installed apps, where you can remove the GitHub copy; leave **Also delete my settings and saved data** unticked to keep your settings.
+
+## Keymotion 1.1.0
+
+Keymotion now tells you when a new version is out, and can install it by itself. It is in the Microsoft Store too.
+
+- **Update notifications.** A Windows notification says when a new version is out, once for each version, with **Update now** and **Later**. The menu of the Keymotion icon next to the clock and a card at the bottom left of the window say it too, so you see it while Keymotion runs with its window closed.
+- **Update automatically.** In **Settings › About › Updates**, choose **Update automatically**, **Let me know** or **Off**. Updating automatically downloads a new version and installs it while you're not using the computer, never while something is written to the keyboard. See [Updates](/keymotion/guide/settings/#updates).
+- **After an update** a notification says which version is installed, and Keymotion opens the way it was.
+- **Microsoft Store.** Keymotion is in the Microsoft Store, signed by Microsoft. If both copies are installed, the GitHub copy opens the Store's copy instead. When the Store installs a new version, Keymotion opens again by itself.
 
 ## Keymotion 1.0.0
 

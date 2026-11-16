@@ -7,11 +7,60 @@ Türkçe: [CHANGELOG.tr.md](CHANGELOG.tr.md).
 
 From 1.0.0 on, each version is the same on GitHub and in the Microsoft Store,
 with one list of changes for both. Windows shows the Store's copy with a
-fourth number, always 0 (1.0.0 is 1.0.0.0). The Store gets a version after
-Microsoft has reviewed it, usually a few days after GitHub. Test versions
-("-rc") are only on GitHub. A change that concerns only one of them says so.
+fourth number, always 0 (1.0.0 is 1.0.0.0). A version comes out in both the
+same day: the GitHub release waits until Microsoft has reviewed the Store's
+copy. Only an urgent fix may come out on GitHub first, and says so. Test
+versions ("-rc") are only on GitHub. A change that concerns only one of them
+says so.
 
 ## [Unreleased]
+
+## [1.1.0] - 2026-11-16
+
+Keymotion now tells you when a new version is out, and can install it by
+itself. It is in the Microsoft Store too.
+
+### Added
+
+- **Microsoft Store:** Keymotion is in the Microsoft Store since
+  16 November 2026, signed by Microsoft, so Windows installs it without a
+  warning. The release page, the README and the site show Microsoft's
+  "Get it from Microsoft" badge beside the GitHub download.
+- **Update notifications:** when a new version is out, a Windows
+  notification says so, once for each version, with **Update now** and
+  **Later**. The menu of the Keymotion icon next to the clock starts with
+  **Update available** and the icon shows a small dot; a card at the bottom
+  left of the window and a dot next to **Settings** say it too. Before, a
+  new version only showed inside the window, so it went unnoticed while
+  Keymotion ran next to the clock.
+- **Update automatically:** Settings › About › **Updates** now has three
+  choices instead of one switch. **Update automatically** downloads a new
+  version and installs it while the computer isn't in use, never during a
+  write to the keyboard, while the focus timer runs or with changes not
+  saved to the keyboard. **Let me know** (the default) tells you and lets
+  you choose when; **Off** never looks by itself. If the old switch was off,
+  the choice is **Off**.
+- After an update, a Windows notification says which version is installed,
+  with **What's new**, and Keymotion opens the way it was: with its window,
+  or next to the clock.
+
+### Changed
+
+- **Both copies installed:** when Keymotion from GitHub and from the
+  Microsoft Store are both on a computer, the GitHub copy now opens the
+  Store's copy instead, and starting with Windows moves to the Store's copy.
+  Before, both started with Windows and whichever came first ran. The Store's
+  copy shows a "GitHub copy" row in Settings › About with a button to
+  Windows' Installed apps, where the GitHub copy can be removed; the settings
+  stay, as both copies share them.
+- Started with Windows a second time while Keymotion already runs, it no
+  longer brings the window forward.
+
+### Fixed
+
+- **Microsoft Store:** when the Store installs a new version, Windows closes
+  the running Keymotion. It now opens again by itself, next to the clock.
+  Before, it stayed closed until the next sign-in.
 
 ## [1.0.0] - 2026-11-15
 
@@ -122,5 +171,7 @@ The first release. It supports the AJAZZ AK980 PRO on Windows.
   something goes wrong, the supported keyboards and the ones that could come
   next, and pages for developers. Settings › About opens it.
 
-[Unreleased]: https://github.com/cebersaban44-rgb/keymotion/compare/v0.1.0...develop
+[Unreleased]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.1.0...develop
+[1.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.1.0
+[1.0.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.0.0
 [0.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v0.1.0

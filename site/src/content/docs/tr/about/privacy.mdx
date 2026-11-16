@@ -26,10 +26,10 @@ Keymotion internete yalnızca iki iş için bağlanır: eklediğiniz takvimler v
 
 ### Güncelleme denetimi
 
-- **Ne zaman.** **Ayarlar**'da, **Hakkında** bölümündeki **Güncellemeleri kendiliğinden denetle** açıksa (başlangıçta açıktır), Keymotion günde en çok bir kez bakar: açıldıktan biraz sonra ve çalışmayı sürdürdüğü her gün bir kez. Aynı yerdeki **Güncellemeleri denetle** düğmesi de istediğiniz an aynısını yapar. Anahtar kapalıyken Keymotion yalnızca bu düğmeye bastığınızda bakar.
+- **Ne zaman.** **Ayarlar**'da, **Hakkında** bölümündeki **Güncellemeler** **Kapalı** değilse (başlangıçta **Haber ver**'dir), Keymotion günde en çok bir kez bakar: açıldıktan biraz sonra ve çalışmayı sürdürdüğü her gün bir kez. Aynı yerdeki **Güncellemeleri denetle** düğmesi de istediğiniz an aynısını yapar. **Kapalı** seçiliyken Keymotion yalnızca bu düğmeye bastığınızda bakar.
 - **Neyi okur.** Projenin GitHub'daki sürüm sayfasından küçük bir dosyayı, `latest.json`'u. İstek `github.com`'a gider; dosya GitHub'ın indirme sunucusundan gelir.
 - **Ne gönderir.** Sıradan bir indirme isteği. Güncelleyici bileşeninin adı ve sürümü (`tauri-plugin-updater`) dışında istekte sizinle ilgili hiçbir şey yoktur: hesap, kullanım bilgisi ya da ayar gönderilmez. GitHub, her sunucu gibi, isteğin geldiği IP adresini görür.
-- **Yeni sürüm bulunursa.** Keymotion onu kendiliğinden kurmaz, size sorar. **Kur ve yeniden başlat**'ı seçtiğinizde kurulum dosyası GitHub'dan indirilir ve imzası Keymotion'ın içindeki anahtarla denetlenir. İmza tutmazsa kurulmaz.
+- **Yeni sürüm bulunursa.** **Haber ver** seçiliyse Keymotion size sorar; **Kendiliğinden güncelle** seçiliyse yeni sürümü indirir ve bilgisayar kullanılmadığı bir anda kurar. İki durumda da kurulum dosyası GitHub'dan gelir ve imzası Keymotion'ın içindeki anahtarla denetlenir. İmza tutmazsa kurulmaz.
 - **Deneme sürümleri.** Sürüm numarasında "-rc" gibi bir ek olan sürümler, ön sürümleri de görmek için GitHub'ın herkese açık sürüm listesini (`api.github.com`) ayrıca okur. Normal sürümler bu listeyi okumaz.
 - **Microsoft Store sürümü.** Microsoft Store'dan kurulan Keymotion bu denetimi hiç yapmaz; onu Store günceller.
 

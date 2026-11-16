@@ -72,6 +72,12 @@ pub fn task_disable(id: &str) -> Result<(), String> {
     sys::task_disable(id)
 }
 
+/// A text value under `HKEY_CURRENT_USER` (`name` "" for the key's
+/// default value); `None` when there is none.
+pub(crate) fn user_text(key: &str, name: &str) -> Option<String> {
+    sys::text(key, name)
+}
+
 /// The command line for `exe` with its arguments, quoted for the `Run` key.
 pub fn command_line(exe: &std::path::Path, args: &[&str]) -> String {
     let mut line = format!("\"{}\"", exe.display());
@@ -95,7 +101,7 @@ mod sys {
         format!("{what}: {}", windows::core::Error::from(err.to_hresult()).message())
     }
 
-    fn text(key: &str, name: &str) -> Option<String> {
+    pub fn text(key: &str, name: &str) -> Option<String> {
         let (key, name) = (HSTRING::from(key), HSTRING::from(name));
         let mut len = 0u32;
         // SAFETY: no buffer; the API only writes the size needed, in bytes.
@@ -282,6 +288,10 @@ mod sys {
 #[cfg(not(windows))]
 mod sys {
     use super::RunEntry;
+
+    pub fn text(_key: &str, _name: &str) -> Option<String> {
+        None
+    }
 
     pub fn entry(_run: &str, _approved: &str, _name: &str) -> Option<RunEntry> {
         None

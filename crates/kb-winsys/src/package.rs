@@ -83,6 +83,29 @@ pub fn started_at_sign_in() -> bool {
     sys::started_at_sign_in()
 }
 
+/// A package of the family `family_name` is installed for this user. Any
+/// program can ask, packaged or not (the GitHub build looks for the Store
+/// build this way).
+pub fn installed(family_name: &str) -> bool {
+    sys::installed(family_name)
+}
+
+/// Start a packaged app, `<family>!<application id>`, with `arguments` on
+/// its command line; its process id. A link to it (`shell:AppsFolder\…`)
+/// cannot pass arguments.
+pub fn activate(app_user_model_id: &str, arguments: &str) -> Result<u32, String> {
+    sys::activate(app_user_model_id, arguments)
+}
+
+/// Come back after an update. When the Store installs a new version, Windows
+/// closes the running app; a process registered here is started again
+/// afterwards with `arguments`
+/// (learn.microsoft.com: desktop-to-uwp-extensions, "Updates"). Only after
+/// an update: not after a crash, a hang or a restart of the computer.
+pub fn restart_after_update(arguments: &str) -> Result<(), String> {
+    sys::restart_after_update(arguments)
+}
+
 #[cfg(windows)]
 mod sys {
     use super::Package;
@@ -128,6 +151,62 @@ mod sys {
             .and_then(|args| args.Kind())
             .is_ok_and(|kind| kind == ActivationKind::StartupTask)
     }
+
+    // Declared here rather than through the `windows` crate: its
+    // `Win32_System_Recovery` feature for one function. It lives in
+    // kernel32, which every program links anyway.
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn RegisterApplicationRestart(command_line: *const u16, flags: u32) -> windows::core::HRESULT;
+    }
+
+    pub fn restart_after_update(arguments: &str) -> Result<(), String> {
+        // RESTART_NO_CRASH | RESTART_NO_HANG | RESTART_NO_REBOOT: only an
+        // update (Restart Manager's "patch") brings the app back.
+        const ONLY_AFTER_UPDATE: u32 = 1 | 2 | 8;
+        let wide: Vec<u16> = arguments.encode_utf16().chain(std::iter::once(0)).collect();
+        // SAFETY: `wide` is NUL-terminated UTF-16 shorter than the 32,767
+        // characters allowed; Windows copies it during the call.
+        unsafe { RegisterApplicationRestart(wide.as_ptr(), ONLY_AFTER_UPDATE) }
+            .ok()
+            .map_err(|e| format!("restart after an update not registered: {}", e.message()))
+    }
+
+    pub fn installed(family: &str) -> bool {
+        use windows::Win32::Storage::Packaging::Appx::GetPackagesByPackageFamily;
+        let family = windows::core::HSTRING::from(family);
+        let (mut count, mut len) = (0u32, 0u32);
+        // SAFETY: no buffers; the API writes how many packages there are
+        // and the length their names would need.
+        let err = unsafe { GetPackagesByPackageFamily(&family, &mut count, None, &mut len, None) };
+        (err.is_ok() || err == ERROR_INSUFFICIENT_BUFFER) && count > 0
+    }
+
+    pub fn activate(aumid: &str, arguments: &str) -> Result<u32, String> {
+        use windows::core::HSTRING;
+        use windows::Win32::System::Com::{
+            CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED,
+        };
+        use windows::Win32::UI::Shell::{ApplicationActivationManager, IApplicationActivationManager, AO_NONE};
+        // SAFETY: COM for this thread, as the UI thread later wants it
+        // (single-threaded); undone below when this call started it.
+        let init = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+        let started = (|| {
+            // SAFETY: Windows' own class, asked for the interface it has.
+            let manager: IApplicationActivationManager =
+                unsafe { CoCreateInstance(&ApplicationActivationManager, None, CLSCTX_LOCAL_SERVER) }
+                    .map_err(|e| format!("activation manager: {}", e.message()))?;
+            // SAFETY: NUL-terminated strings that outlive the call.
+            unsafe { manager.ActivateApplication(&HSTRING::from(aumid), &HSTRING::from(arguments), AO_NONE) }
+                .map_err(|e| format!("not started: {}", e.message()))
+        })();
+        if init.is_ok() {
+            // SAFETY: balances the successful CoInitializeEx above; the
+            // manager is already released.
+            unsafe { CoUninitialize() };
+        }
+        started
+    }
 }
 
 #[cfg(not(windows))]
@@ -141,11 +220,30 @@ mod sys {
     pub fn started_at_sign_in() -> bool {
         false
     }
+
+    pub fn installed(_family: &str) -> bool {
+        false
+    }
+
+    pub fn activate(_aumid: &str, _arguments: &str) -> Result<u32, String> {
+        Err("packaged apps are only available on Windows".into())
+    }
+
+    pub fn restart_after_update(_arguments: &str) -> Result<(), String> {
+        Err("restart after an update is only available on Windows".into())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn restart_after_an_update_can_be_registered() {
+        // Only this test process is registered, and it ends with the run.
+        restart_after_update("--hidden").unwrap();
+    }
 
     #[test]
     fn only_a_program_inside_the_package_is_the_package_s() {
@@ -194,5 +292,12 @@ mod tests {
         eprintln!("raw package: {:?}", sys::current());
         assert_eq!(current(), None);
         assert!(!started_at_sign_in());
+    }
+
+    /// A family no one has: not installed, never an error or a panic.
+    #[test]
+    fn an_unknown_family_is_not_installed() {
+        assert!(!installed("Keymotion.NoSuchPackage_0000000000000"));
+        assert!(!installed(""));
     }
 }

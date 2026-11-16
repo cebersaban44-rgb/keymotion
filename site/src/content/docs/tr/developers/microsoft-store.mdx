@@ -17,7 +17,8 @@ Uygulama hangi yoldan kurulduğunu çalışırken anlar. Windows, MSIX'ten kurul
 
 | | GitHub (kurulum dosyası, geliştirme sürümü) | Microsoft Store |
 |---|---|---|
-| Güncellemeler | Uygulamanın kendi güncelleyicisi, GitHub sürümlerinden | Store. Güncelleyici kapalı kalır; Ayarlar › Hakkında, Store'un güncellemeler sayfasını açar. |
+| Güncellemeler | Uygulamanın kendi güncelleyicisi, GitHub sürümlerinden: Ayarlar › Hakkında › Güncellemeler'de kendiliğinden güncelle, haber ver ya da kapalı seçilir | Store. Güncelleyici kapalı kalır; Ayarlar › Hakkında, Store'un güncellemeler sayfasını açar. Uygulama kendini `RegisterApplicationRestart` ile kaydeder: Windows onu Store güncellemesini kurmak için kapatınca gizli olarak yeniden açılır. |
+| Bildirim düğmeleri | Uygulamanın kendi `keymotion:` adreslerini açar (`crates/kb-winsys/src/protocol.rs`); adres şeması açılışta kullanıcı başına kaydedilir, kaldırıcı siler | `keymotion:` adresi yok; tıklama uygulamayı paketin yoluyla başlatır |
 | Windows açılınca başlatma | Kullanıcının `Run` anahtarında bir değer, `--hidden` ile | Paketin başlangıç görevi (`KeymotionStartup`), yine `--hidden` ile. Kullanıcı bunu Windows ayarlarından kapatırsa yalnızca kendisi oradan yeniden açabilir; Ayarlar › Kapatma ve açılış o sayfaya bağlantı verir. |
 | Bildirimlerdeki ad ve logo | Açılışta `dev.keymotion` uygulama kimliğiyle kaydedilir | Paketin kendisinden gelir |
 | Veri klasörleri | `%APPDATA%\dev.keymotion`, `%LOCALAPPDATA%\dev.keymotion` | Uygulamanın gördüğü yollar aynıdır. Klasörler önceden yoksa Windows onları paketin kendi klasöründe tutar (`%LOCALAPPDATA%\Packages\<paket ailesi>\LocalCache\…`) ve uygulamayla birlikte siler; "Klasörü aç" o klasörü açar. |
@@ -26,6 +27,17 @@ Uygulama hangi yoldan kurulduğunu çalışırken anlar. Windows, MSIX'ten kurul
 İki sürümün ortak bir kuralı var: nasıl kurulmuş olursa olsun aynı anda yalnızca bir Keymotion çalışır. İkisi birden çalışsa klavyeye aynı anda komut gönderirlerdi.
 
 Daha önce GitHub'daki Keymotion kurulduysa klasörleri zaten vardır; Store sürümü onları olduğu gibi okur ve yazar. Ayarlar aynen devam eder ve iki sürüm aynı klasörleri kullanır. Windows yalnızca bir paketin sıfırdan oluşturduğu klasörleri paketin kendi yerine taşır.
+
+### İkisi birden kuruluysa
+
+Kendi hâline bırakılsa iki kopya da bilgisayar açılınca başlamaya çalışır ve önce davranan çalışırdı: bir gün güncelleyicisinin yükselttiği GitHub kopyası, ertesi gün Store'unki. Bu yüzden Store kopyası kurulunca GitHub kopyası ona yol verir (`app/src-tauri/src/handoff.rs`). Microsoft da kullanıcıları Store paketine geçirirken bunu önerir:
+
+- Kurulu GitHub kopyası başlarken (kurulum dosyasının kaydettiği klasördeki program; geliştirme ya da depodan derlenmiş sürüm asla) Store paketini arar (`GetPackagesByPackageFamily`). Paket varsa Store kopyasını `IApplicationActivationManager` ile başlatır ve kapanır.
+- GitHub kopyası bilgisayar açılınca başlayacak biçimde ayarlıysa `Run` değerini siler ve `--take-startup` verir: Store kopyası kendi başlangıç görevini açar; kullanıcı ya da bir ilke kapattıysa açmaz.
+- Bilgisayar açılınca başlayan ikinci kopya, açık bir kopya bulursa sessizce kapanır; `--hidden` ile gelen ikinci açılış pencereyi öne getirmez.
+- GitHub kopyası kurulu kaldıkça Store kopyasının **Ayarlar › Hakkında** bölümünde "GitHub kopyası" satırı görünür. Satırdaki düğme Windows'un Yüklü uygulamalar sayfasını açar; kullanıcı GitHub kopyasını oradan kaldırabilir. İki kopya ayarları paylaştığı için ayarlar kalır; yeter ki kaldırıcıda **Ayarlarımı ve kayıtlarımı da sil** kutusu işaretlenmesin.
+
+Bu değişiklikten eski GitHub kopyaları (1.0.0) yol vermez; bir sonraki güncellemeleriyle bu davranış gelir.
 
 ## Paket
 
@@ -45,7 +57,8 @@ Paket imzalanmaz: Store, sertifikasyondan geçen paketi kendisi imzalar. CI her 
 - `msix.mjs` sürümü `tauri.conf.json` dosyasından alır. `--version` yalnızca deneme paketlerinde çalışır; bu yüzden bir Store paketi, aynı kodun GitHub sürümünden başka bir numara taşıyamaz.
 - `store.yml` yalnızca `main` üzerindeki bir sürüm etiketini paketler; bu yüzden Store, GitHub'da olmayan bir sürüm alamaz.
 - Store deneme sürümlerini (`1.3.0-rc.1`) almaz; onlar GitHub'da kalır.
-- Bir sürüm Store'a sertifikasyondan sonra, genellikle GitHub'dan birkaç gün sonra ulaşır. Sürüm notları ikisini birden anlatır; yalnızca bir kanalı ilgilendiren değişiklik bunu belirtir.
+- İki kanal bir sürümü aynı gün yayımlar: GitHub sürümü, Store kopyası sertifikasyondan geçene kadar taslak olarak bekler (aşağıda: Sürüm yayımlama). Sürüm notları ikisini birden anlatır; yalnızca bir kanalı ilgilendiren değişiklik bunu belirtir.
+- Store'a bir kez yüklenmiş numara bir daha kullanılmaz: Store bir paketi geri çevirirse düzeltme, iki kanalda birden bir sonraki yama sürümüyle gelir.
 - Tanılama bilgisi ve destek istekleri kopyanın nereden geldiğini gösterir: `App version: 1.0.0 (Microsoft Store)`, `(GitHub)` ya da `(development build)`.
 
 ## Paketi kendi bilgisayarınızda deneyin
@@ -77,18 +90,24 @@ Windows'un geliştirici modu açıksa (Ayarlar › Sistem › Geliştiriciler i�
 
 </Steps>
 
-## Store'a sürüm gönderme
+## Sürüm yayımlama
+
+Bir sürüm GitHub'da ve Microsoft Store'da aynı gün çıkar; böylece bir numara ya her yerde vardır ya hiçbir yerde (proje sahibinin kararı, 2026-11-16).
 
 <Steps>
 
-1. Sürümü her zamanki gibi GitHub'da yayımlayın (`release.yml`).
+1. Sürümü her zamanki gibi `main` üzerinde etiketleyin. `release.yml` kurulum dosyasını derler ve GitHub sürümünü taslak olarak hazırlar; **Microsoft Store package** işi (`store.yml`) aynı etiketten `.msix` dosyasını derler ve çalıştırmanın çıktısı olarak saklar. Deneme sürümlerinde bu iş atlanır.
 
-2. GitHub › Actions › **Microsoft Store package** iş akışını sürüm etiketiyle (`v1.2.3`) çalıştırın. Program o etiketten derlenir ve paketlenir; `.msix` dosyası çalıştırmanın çıktısı olarak saklanır.
+2. GitHub taslağını yayımlamayın. Partner Center'da Keymotion için yeni bir gönderim başlatın: Paketler bölümüne `.msix` dosyasını yükleyin ve öncekini kaldırın; "Yenilikler" alanını değişiklik listesinden doldurun; Gönderim seçenekleri'nde "Don't publish this submission until I select Publish now" seçeneğini seçin. Gönderin.
 
-3. Partner Center'da Keymotion için yeni bir gönderim başlatın ve `.msix` dosyasını Paketler bölümüne yükleyin. Microsoft paketi denetler (genellikle üç iş günü içinde), imzalar ve yayımlar.
+3. Sertifikasyondan geçince (Microsoft en çok üç iş günü öngörür) GitHub taslağını yayımlayın ve Partner Center'da **Publish now** düğmesine basın; ikisini birlikte.
 
 </Steps>
 
+- **Store paketi geri çevirirse:** Düzeltmeyi bir sonraki yama sürümünde yapın ve onu iki kanalda yayımlayın. Geri çevrilen numara hiçbir yerde yayımlanmaz; değişiklik listesindeki bölümü yeni numaraya taşınır. Yalnızca mağaza sayfasıyla (metin, ekran görüntüleri) ilgili bir ret yeni paket gerektirmez.
+- **Acil düzeltme** (çökme, güvenlik sorunu) önce GitHub'da yayımlanabilir; sürüm notları Store'un arkadan geleceğini söyler.
+- Store işi elle de çalıştırılabilir: GitHub › Actions › **Microsoft Store package**, sürüm etiketiyle (`v1.2.3`).
+
 İş akışı, Partner Center › Keymotion › Ürün kimliği sayfasından aynen kopyalanan üç depo değişkeni ister: `STORE_IDENTITY_NAME`, `STORE_PUBLISHER` ve `STORE_PUBLISHER_DISPLAY_NAME`. Bunlar gizli değildir; her pakette görünürler.
 
-Uygulama yayına girdikten sonra gönderim iş akışından da yapılabilir (Microsoft'un `msstore` aracıyla). Ancak bunun için Partner Center hesabına erişimi olan bir Azure uygulama kaydı gerekir. Şimdilik yükleme elle yapılır.
+Uygulama yayına girdikten sonra gönderim iş akışından da yapılabilir (Microsoft'un `msstore` aracıyla). Ancak bunun için Partner Center hesabına erişimi olan bir Microsoft Entra uygulama kaydı gerekir. Bireysel geliştirici hesabı bunun için bir Microsoft Entra kiracısı oluşturabilir ya da bağlayabilir (Partner Center › Account settings › Tenants). Bunun kurulması hâlâ açık bir konu; şimdilik yükleme elle yapılır.
