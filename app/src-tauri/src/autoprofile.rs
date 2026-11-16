@@ -33,6 +33,7 @@ use kb_protocol::sonix::level_factor;
 use kb_winsys::foreground::Front;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -199,6 +200,8 @@ pub struct AutoProfiles {
     app: AppHandle,
     config_dir: Option<PathBuf>,
     hub: Arc<FrontHub>,
+    /// The last state's number (`AutoProfileState::rev`).
+    rev: AtomicU32,
 }
 
 impl AutoProfiles {
@@ -227,7 +230,8 @@ impl AutoProfiles {
             dirty: true,
         }));
         let (tx, rx) = mpsc::channel();
-        let handle = Arc::new(Self { tx: tx.clone(), inner, app, config_dir, hub: hub.clone() });
+        let handle =
+            Arc::new(Self { tx: tx.clone(), inner, app, config_dir, hub: hub.clone(), rev: AtomicU32::new(0) });
         // Handed to the worker: a written switch holds the worker's lock for
         // a while, and the hub must not wait for it.
         let to_worker = tx.clone();
@@ -259,12 +263,14 @@ impl AutoProfiles {
 
     pub fn state(&self) -> Result<AutoProfileState, String> {
         let inner = self.inner.lock().map_err(|_| "per-app profiles unavailable")?;
-        Ok(Self::state_of(&inner))
+        Ok(self.state_of(&inner))
     }
 
-    fn state_of(inner: &Inner) -> AutoProfileState {
+    fn state_of(&self, inner: &Inner) -> AutoProfileState {
         let writes = if inner.stored.writes_day == today() { inner.stored.writes } else { 0 };
         AutoProfileState {
+            // Made under the lock, so the numbers follow the changes.
+            rev: self.rev.fetch_add(1, Ordering::Relaxed).wrapping_add(1),
             settings: inner.stored.settings.clone(),
             active: inner.active.as_ref().and_then(|a| a.rule.clone()),
             because: inner.active.as_ref().and_then(|a| a.because.clone()),
@@ -527,7 +533,7 @@ impl AutoProfiles {
 
     fn finish(&self, mut guard: std::sync::MutexGuard<'_, Inner>, wait: Duration) -> Duration {
         if std::mem::take(&mut guard.dirty) {
-            let state = Self::state_of(&guard);
+            let state = self.state_of(&guard);
             drop(guard);
             let _ = self.app.emit(EVENT_AUTO_PROFILE, state);
         }

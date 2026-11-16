@@ -16,6 +16,7 @@ export const DEFAULT_AUTO: AutoProfileSettings = { enabled: false, paused: false
 
 const mock = {
   state: {
+    rev: 0,
     settings: { ...DEFAULT_AUTO },
     active: null,
     because: null,
@@ -48,14 +49,21 @@ interface AutoStore {
   configure: (patch: Partial<AutoProfileSettings>) => Promise<void>;
 }
 
+/** Take a state from the backend unless a newer one is here already (a
+ *  reply and an event can cross). */
+function accept(next: AutoProfileState) {
+  const cur = useAuto.getState().state;
+  if (!cur || next.rev >= cur.rev || cur.rev - next.rev > 1_000_000) useAuto.setState({ state: next });
+}
+
 export const useAuto = create<AutoStore>((set, get) => ({
   state: null,
-  load: async () => set({ state: await getAuto() }),
+  load: async () => accept(await getAuto()),
   configure: async (patch) => {
     const s = get().state;
     const settings = { ...(s?.settings ?? DEFAULT_AUTO), ...patch };
     if (s) set({ state: { ...s, settings } });
-    set({ state: await configureAuto(settings) });
+    accept(await configureAuto(settings));
   },
 }));
 
@@ -63,7 +71,7 @@ export const useAuto = create<AutoStore>((set, get) => ({
 export function followAuto(): () => void {
   useAuto.getState().load().catch(console.error);
   if (import.meta.env.DEV && !inTauri) return () => {};
-  const off = listen<AutoProfileState>("auto-profile", (e) => useAuto.setState({ state: e.payload }));
+  const off = listen<AutoProfileState>("auto-profile", (e) => accept(e.payload));
   return () => {
     off.then((f) => f()).catch(console.error);
   };

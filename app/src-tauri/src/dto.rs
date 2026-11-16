@@ -2436,6 +2436,9 @@ pub struct GameRecord {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct GamesState {
+    /// Counts up with every state made: the UI drops one older than what it
+    /// has (an event and a reply can cross).
+    pub rev: u32,
     pub settings: GamesSettings,
     pub session: Option<GameSessionInfo>,
     pub games: Vec<GameEntry>,
@@ -2567,6 +2570,9 @@ pub struct AutoProgram {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct AutoProfileState {
+    /// Counts up with every state made: the UI drops one older than what it
+    /// has (an event and a reply can cross).
+    pub rev: u32,
     pub settings: AutoProfileSettings,
     /// The rule in force: its path (or `games`) and profile.
     pub active: Option<AutoRule>,

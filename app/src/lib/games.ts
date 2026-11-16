@@ -51,6 +51,7 @@ export const SUMMARY_MIN_MS = 5 * 60_000;
 const HOUR = 3_600_000;
 const mock = {
   state: {
+    rev: 0,
     settings: { ...DEFAULT_GAMES },
     session: null,
     games: [
@@ -190,18 +191,25 @@ interface GamesStore {
   clearHistory: () => Promise<void>;
 }
 
+/** Take a state from the backend unless a newer one is here already (a
+ *  reply and an event can cross). */
+function accept(next: GamesState) {
+  const cur = useGames.getState().state;
+  if (!cur || next.rev >= cur.rev || cur.rev - next.rev > 1_000_000) useGames.setState({ state: next });
+}
+
 export const useGames = create<GamesStore>((set, get) => ({
   state: null,
   drawError: null,
-  load: async () => set({ state: await getGames() }),
+  load: async () => accept(await getGames()),
   configure: async (patch) => {
     const s = get().state;
     const settings = { ...(s?.settings ?? DEFAULT_GAMES), ...patch };
     if (s) set({ state: { ...s, settings } });
-    set({ state: await configureGames(settings) });
+    accept(await configureGames(settings));
   },
-  mark: async (path, name, game) => set({ state: await markGame(path, name, game) }),
-  clearHistory: async () => set({ state: await clearGameHistory() }),
+  mark: async (path, name, game) => accept(await markGame(path, name, game)),
+  clearHistory: async () => accept(await clearGameHistory()),
 }));
 
 /**
@@ -209,10 +217,19 @@ export const useGames = create<GamesStore>((set, get) => ({
  * cards it asks for, which `draw` draws and the live screen gets.
  */
 export function startGames(draw: (c: GameCard) => Promise<Prepared>): () => void {
-  const onCard = async (c: GameCard) => {
+  // Cards are drawn one after another; one that a newer card overtook
+  // while it was drawn isn't sent.
+  let latest = 0;
+  let queue: Promise<void> = Promise.resolve();
+  const onCard = (c: GameCard) => {
+    const mine = ++latest;
+    queue = queue.then(() => drawAndSend(c, mine));
+  };
+  const drawAndSend = async (c: GameCard, mine: number) => {
     if (!useLive.getState().state?.enabled) return;
     try {
       const card = await draw(c);
+      if (mine !== latest) return;
       useLive.setState({ state: await submitLive(card, GAME_SOURCE) });
       useGames.setState({ drawError: null });
     } catch (e) {
@@ -223,15 +240,15 @@ export function startGames(draw: (c: GameCard) => Promise<Prepared>): () => void
   useGames.getState().load().catch(console.error);
   if (import.meta.env.DEV && !inTauri) {
     mock.emit = (s) => useGames.setState({ state: s });
-    mock.onCard = (c) => void onCard(c);
+    mock.onCard = (c) => onCard(c);
     return () => {
       mock.emit = null;
       mock.onCard = null;
     };
   }
   const offs = [
-    listen<GamesState>("games", (e) => useGames.setState({ state: e.payload })),
-    listen<GameCard>("game-card", (e) => void onCard(e.payload)),
+    listen<GamesState>("games", (e) => accept(e.payload)),
+    listen<GameCard>("game-card", (e) => onCard(e.payload)),
   ];
   return () => offs.forEach((p) => p.then((off) => off()).catch(console.error));
 }

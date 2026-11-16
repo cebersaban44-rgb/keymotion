@@ -40,6 +40,7 @@ use kb_winsys::{CpuMeter, GpuMeter};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -520,6 +521,8 @@ pub struct GamesHandle {
     live: Arc<LiveHandle>,
     hub: Arc<FrontHub>,
     lol: Arc<crate::lol::LolHandle>,
+    /// The last state's number (`GamesState::rev`).
+    rev: AtomicU32,
 }
 
 /// Meters live on the worker thread (their handles stay on one thread).
@@ -583,6 +586,7 @@ impl GamesHandle {
             live,
             hub: hub.clone(),
             lol: crate::lol::LolHandle::new(),
+            rev: AtomicU32::new(0),
         });
         hub.listen(move |front| {
             if let Ok(mut i) = inner.lock() {
@@ -704,6 +708,8 @@ impl GamesHandle {
         let mut recent: Vec<GameRecord> = inner.history.iter().rev().take(RECENT).cloned().collect();
         recent.sort_by(|a, b| b.end_ms.total_cmp(&a.end_ms));
         GamesState {
+            // Made under the lock, so the numbers follow the changes.
+            rev: self.rev.fetch_add(1, Ordering::Relaxed).wrapping_add(1),
             settings: inner.settings.clone(),
             session: running.map(|s| {
                 let quiet = quiet_for(&inner.settings, &s.game.key);

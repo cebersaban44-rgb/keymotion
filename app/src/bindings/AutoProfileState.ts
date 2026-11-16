@@ -6,7 +6,12 @@ import type { AutoRule } from "./AutoRule";
 /**
  * What the per-app profiles do now (`auto-profile` event payload).
  */
-export type AutoProfileState = { settings: AutoProfileSettings, 
+export type AutoProfileState = { 
+/**
+ * Counts up with every state made: the UI drops one older than what it
+ * has (an event and a reply can cross).
+ */
+rev: number, settings: AutoProfileSettings, 
 /**
  * The rule in force: its path (or `games`) and profile.
  */

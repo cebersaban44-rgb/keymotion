@@ -8,7 +8,12 @@ import type { GamesSettings } from "./GamesSettings";
 /**
  * Game session, settings and history (`games` event payload).
  */
-export type GamesState = { settings: GamesSettings, session: GameSessionInfo | null, games: Array<GameEntry>, suggestions: Array<GameSuggestion>, 
+export type GamesState = { 
+/**
+ * Counts up with every state made: the UI drops one older than what it
+ * has (an event and a reply can cross).
+ */
+rev: number, settings: GamesSettings, session: GameSessionInfo | null, games: Array<GameEntry>, suggestions: Array<GameSuggestion>, 
 /**
  * Played today and in the last 7 days (the session that runs included).
  */
