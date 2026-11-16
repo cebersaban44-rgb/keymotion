@@ -52,4 +52,8 @@ lights: LolEventLights,
 /**
  * Dragons in their kind's colour, not `lights.dragon.color`.
  */
-dragonKindColor: boolean, };
+dragonKindColor: boolean, 
+/**
+ * Dragons, Herald and Baron only when the player's team takes them.
+ */
+teamOnly: boolean, };

@@ -42,8 +42,11 @@ says so.
   an animation of your choice (wave, flash, pulse, sparkle, ring, fade from
   the top) in your color for victory, defeat, level ups, kills, an ace,
   dragons, Baron and Herald. A drawing on the page previews them with the
-  match's own code, and "Try on the keyboard" plays them. The summary card
-  shows the result, K/D/A and CS. No enemy timers or objective timers.
+  match's own code, and "Try on the keyboard" plays them. They're set up
+  under League of Legends in the games list (Special lights), grouped as a
+  match brings them; dragons, Herald and Baron light up only when your team
+  takes them, unless you turn that off. The summary card shows the result,
+  K/D/A and CS. No enemy timers or objective timers.
 - **Profiles by app:** Profiles › **By app** links a program, or every game,
   to a profile. By default only a per-key design's lighting changes, without
   saving anything to the keyboard; a rule can also save the key mapping and

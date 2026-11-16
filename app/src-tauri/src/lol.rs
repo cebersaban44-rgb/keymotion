@@ -16,6 +16,9 @@
 //!   trust; Riot's documentation says to accept it. Only this address on
 //!   this computer is asked, and only while a League of Legends session
 //!   runs.
+//! * From the player list: the player's own entry, and which players are on
+//!   the player's team (their names, as the scoreboard shows them), to tell
+//!   whose team took a dragon, Herald or Baron.
 //! * Teamfight Tactics runs in the same program; its matches get no lights.
 
 use crate::dto::{GameRest, GamesSettings, LolAnim, LolEvent, LolLayout, LolResult, LolScene, LolSettings};
@@ -64,23 +67,29 @@ pub enum Effect {
     /// A kill by the player: one flash per kill of the streak.
     Kill(u8),
     Ace,
-    /// A dragon, in its kind's colour.
-    Dragon(Rgb),
-    Baron,
-    Herald,
+    /// A dragon, in its kind's colour; taken by the player's team.
+    Dragon(Rgb, bool),
+    /// Taken by the player's team.
+    Baron(bool),
+    Herald(bool),
     Win,
     Lose,
 }
 
 impl Effect {
+    /// A dragon, Herald or Baron the other team took.
+    fn theirs(self) -> bool {
+        matches!(self, Self::Dragon(_, false) | Self::Baron(false) | Self::Herald(false))
+    }
+
     pub fn event(self) -> LolEvent {
         match self {
             Self::LevelUp => LolEvent::LevelUp,
             Self::Kill(_) => LolEvent::Kill,
             Self::Ace => LolEvent::Ace,
-            Self::Dragon(_) => LolEvent::Dragon,
-            Self::Baron => LolEvent::Baron,
-            Self::Herald => LolEvent::Herald,
+            Self::Dragon(..) => LolEvent::Dragon,
+            Self::Baron(_) => LolEvent::Baron,
+            Self::Herald(_) => LolEvent::Herald,
             Self::Win => LolEvent::Win,
             Self::Lose => LolEvent::Lose,
         }
@@ -136,6 +145,8 @@ pub struct Live {
     pub mode: String,
     me: String,
     team: String,
+    /// The names of the players on the player's team (name#tag and name).
+    allies: Vec<String>,
     pub champion: String,
     pub health: Option<(f32, f32)>,
     /// Kind ("MANA", "ENERGY", …), value, max.
@@ -203,6 +214,12 @@ impl Live {
         }
     }
 
+    /// The player's team took it. When the team or the killer isn't known,
+    /// it counts as the team's, so nothing is hidden by mistake.
+    fn ours(&self, killer: &str) -> bool {
+        killer.is_empty() || self.allies.is_empty() || self.is_me(killer) || self.allies.iter().any(|a| a == killer)
+    }
+
     fn is_me(&self, name: &str) -> bool {
         // Riot ids are "name#tag"; some events give the name alone.
         !self.me.is_empty() && (name == self.me || self.me.split('#').next() == Some(name))
@@ -219,6 +236,15 @@ impl Live {
         };
         self.champion = me["championName"].as_str().unwrap_or_default().to_string();
         self.team = me["team"].as_str().unwrap_or_default().to_string();
+        // The team's names only, to tell whose team took an objective.
+        let team = self.team.clone();
+        self.allies = list
+            .iter()
+            .filter(|p| !team.is_empty() && p["team"].as_str() == Some(team.as_str()))
+            .flat_map(|p| [p["riotId"].as_str(), p["summonerName"].as_str()])
+            .flatten()
+            .flat_map(|id| [id.to_string(), id.split('#').next().unwrap_or(id).to_string()])
+            .collect();
         let dead = me["isDead"].as_bool().unwrap_or(false);
         let respawn = me["respawnTimer"].as_f64().unwrap_or(0.0).max(0.0);
         if dead && !self.dead {
@@ -268,10 +294,11 @@ impl Live {
                     }
                 }
                 "DragonKill" => {
-                    self.push(Effect::Dragon(dragon_color(e["DragonType"].as_str().unwrap_or_default())), now)
+                    let color = dragon_color(e["DragonType"].as_str().unwrap_or_default());
+                    self.push(Effect::Dragon(color, self.ours(killer)), now)
                 }
-                "BaronKill" => self.push(Effect::Baron, now),
-                "HeraldKill" => self.push(Effect::Herald, now),
+                "BaronKill" => self.push(Effect::Baron(self.ours(killer)), now),
+                "HeraldKill" => self.push(Effect::Herald(self.ours(killer)), now),
                 "GameEnd" => {
                     let win = e["Result"].as_str() == Some("Win");
                     self.win = Some(win);
@@ -377,7 +404,7 @@ pub fn frame(live: &Live, ids: &KeyIds, s: &GamesSettings, now: f64) -> Vec<(u8,
     if l.events {
         for (e, at) in &live.effects {
             let light = l.lights.get(e.event());
-            if !light.on {
+            if !light.on || (l.team_only && e.theirs()) {
                 continue;
             }
             let t = ((now - at) / e.length_ms(light.anim)) as f32;
@@ -385,7 +412,7 @@ pub fn frame(live: &Live, ids: &KeyIds, s: &GamesSettings, now: f64) -> Vec<(u8,
                 continue;
             }
             let color = match e {
-                Effect::Dragon(kind) if l.dragon_kind_color => *kind,
+                Effect::Dragon(kind, _) if l.dragon_kind_color => *kind,
                 _ => light.color,
             };
             // A streak plays the animation once per kill.
@@ -450,9 +477,9 @@ fn scene_effect(event: LolEvent) -> Effect {
         LolEvent::LevelUp => Effect::LevelUp,
         LolEvent::Kill => Effect::Kill(1),
         LolEvent::Ace => Effect::Ace,
-        LolEvent::Dragon => Effect::Dragon(dragon_color("fire")),
-        LolEvent::Baron => Effect::Baron,
-        LolEvent::Herald => Effect::Herald,
+        LolEvent::Dragon => Effect::Dragon(dragon_color("fire"), true),
+        LolEvent::Baron => Effect::Baron(true),
+        LolEvent::Herald => Effect::Herald(true),
     }
 }
 
@@ -829,8 +856,43 @@ mod tests {
             100.0,
         );
         let kinds: Vec<Effect> = live.effects.iter().map(|e| e.0).collect();
-        assert_eq!(kinds, vec![Effect::Kill(3), Effect::Dragon(dragon_color("water")), Effect::Ace, Effect::Win]);
+        assert_eq!(kinds, vec![Effect::Kill(3), Effect::Dragon(dragon_color("water"), true), Effect::Ace, Effect::Win]);
         assert_eq!(live.result().unwrap().win, Some(true));
+    }
+
+    #[test]
+    fn objectives_the_other_team_takes_stay_dark_by_default() {
+        let mut live = Live { connected: true, last_event: -1, ..Live::default() };
+        live.read_active(&active(500.0, 1000.0, 1), 0.0);
+        live.read_players(
+            &json!([
+                { "riotId": "Oyuncu#TR1", "team": "ORDER", "isDead": false, "scores": {} },
+                { "riotId": "Dost#TR1", "team": "ORDER", "isDead": false, "scores": {} },
+                { "riotId": "Rakip#EUW", "team": "CHAOS", "isDead": false, "scores": {} }
+            ]),
+            0.0,
+        );
+        live.read_events(&json!({ "Events": [{ "EventID": 0, "EventName": "GameStart" }] }), 0.0);
+        live.read_events(
+            &json!({ "Events": [
+                { "EventID": 1, "EventName": "BaronKill", "KillerName": "Dost" },
+                { "EventID": 2, "EventName": "DragonKill", "DragonType": "Fire", "KillerName": "Rakip" },
+                { "EventID": 3, "EventName": "HeraldKill", "KillerName": "Oyuncu" }
+            ]}),
+            100.0,
+        );
+        let kinds: Vec<Effect> = live.effects.iter().map(|e| e.0).collect();
+        assert_eq!(kinds, vec![Effect::Baron(true), Effect::Dragon(dragon_color("fire"), false), Effect::Herald(true)]);
+        // The other team's dragon plays nothing unless the user wants it.
+        let mut s = GamesSettings::default();
+        assert!(s.lol.team_only);
+        s.lol.lights.dragon.anim = LolAnim::Flash;
+        live.effects = vec![(Effect::Dragon(dragon_color("fire"), false), 0.0)];
+        let dark = frame(&live, &ids(), &s, 0.0);
+        assert!(dark.iter().all(|k| k.1 != dragon_color("fire")));
+        s.lol.team_only = false;
+        let lit = frame(&live, &ids(), &s, 0.0);
+        assert!(lit.iter().any(|k| k.1 == dragon_color("fire")));
     }
 
     #[test]

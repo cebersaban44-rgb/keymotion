@@ -7,6 +7,7 @@
 
 import {
   AppWindow,
+  ChevronDown,
   Gamepad2,
   History,
   Monitor,
@@ -15,7 +16,7 @@ import {
   Sparkles,
   Usb,
 } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState, type ReactNode } from "react";
 import type { AutoRule } from "../bindings/AutoRule";
 import type { GameCard } from "../bindings/GameCard";
 import type { GameEntry } from "../bindings/GameEntry";
@@ -37,7 +38,7 @@ import { gameStartCard, gameSummaryCard, gameWords } from "../lib/liveCards";
 import { fromHex, toHex } from "../lib/pomodoroLights";
 import { profileName, useProfiles } from "../lib/profiles";
 import { useApp } from "../lib/store";
-import { LolLights } from "./GamesLol";
+import { LolLights, hasSpecialLights } from "./GamesLol";
 import { Row, Switch } from "./gamesRows";
 import { FramePlayer } from "./screen/common";
 
@@ -163,6 +164,7 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
             onQuiet={(g, on) =>
               set({ quietGames: on ? [...s.settings.quietGames, g.key] : s.settings.quietGames.filter((k) => k.toLowerCase() !== g.key.toLowerCase()) })
             }
+            special={(g) => (hasSpecialLights(g.key) ? <LolLights kb={kb} usb={usb} settings={s.settings} set={set} /> : null)}
           />
           <AddGame state={s} mark={(path, name, game) => mark(path, name, game).catch(console.error)} />
           <Row icon={RefreshCw} title={t("games.launchers")} body={t("games.launchers.body")} checked={s.settings.launchers} onChange={(launchers) => set({ launchers })}>
@@ -204,7 +206,6 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
 
           <Lights kb={kb} usb={usb} settings={s.settings} set={set} profiles={profiles} />
 
-          <LolLights kb={kb} usb={usb} settings={s.settings} set={set} />
 
           <Row icon={ShieldCheck} title={t("games.quiet")} body={t("games.quiet.body")} checked={s.settings.quiet} onChange={(quiet) => set({ quiet })}>
             {s.settings.quiet && (
@@ -268,6 +269,7 @@ function GameList({
   quietAll,
   quietGames,
   onQuiet,
+  special,
 }: {
   games: GameEntry[];
   time: (ms: number) => string;
@@ -278,11 +280,15 @@ function GameList({
   quietAll: boolean;
   quietGames: string[];
   onQuiet: (g: GameEntry, on: boolean) => void;
+  /** A game's own lights (League of Legends), opened under its row. */
+  special: (g: GameEntry) => ReactNode;
 }) {
   const t = useT();
   const [all, setAll] = useState(false);
+  const [open, setOpen] = useState<string | null>(null);
   const [sort, setSort] = useState<SortBy>(savedSort);
-  const played = games.filter((g) => g.played || g.source === "mine");
+  // A game with lights of its own is listed even before it's played.
+  const played = games.filter((g) => g.played || g.source === "mine" || hasSpecialLights(g.key));
   const rest = games.length - played.length;
   // The backend lists them by last played.
   const listed = all ? games : played;
@@ -327,8 +333,12 @@ function GameList({
         <p className="text-[12px] text-ink-3">{t("games.list.empty")}</p>
       ) : (
         <ul className="flex flex-col divide-y divide-line rounded-lg border border-line">
-          {shown.map((g) => (
-            <li key={g.key} className="flex flex-wrap items-center gap-3 px-3 py-2 text-[13px]" data-game={g.name}>
+          {shown.map((g) => {
+            const own = special(g);
+            const opened = open === g.key && own;
+            return (
+            <li key={g.key} className="flex flex-col gap-3 px-3 py-2 text-[13px]" data-game={g.name}>
+              <div className="flex flex-wrap items-center gap-3">
               <ProgramIcon path={g.exe} fallback={Gamepad2} className="text-ink-3" />
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate font-medium">{g.name}</span>
@@ -340,6 +350,19 @@ function GameList({
               </span>
               <span className="rounded-md bg-surface-2 px-2 py-0.5 text-[11px] text-ink-2">{t(SOURCE_KEY[g.source])}</span>
               <span className="num w-24 text-right text-[12px] text-ink-3">{g.totalMs > 0 ? time(g.totalMs) : "—"}</span>
+              {own && (
+                <button
+                  type="button"
+                  className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[12px] ${opened ? "border-signal/40 bg-signal/10 text-signal" : "border-line text-ink-2 hover:bg-surface-2"}`}
+                  aria-expanded={!!opened}
+                  data-game-special
+                  onClick={() => setOpen(opened ? null : g.key)}
+                >
+                  <Sparkles size={13} />
+                  {t("games.lol.special")}
+                  <ChevronDown size={13} className={opened ? "rotate-180" : ""} />
+                </button>
+              )}
               <button
                 type="button"
                 className={`rounded-md p-1.5 hover:bg-surface-2 disabled:opacity-60 ${quietAll || quietOf(g) ? "text-signal" : "text-ink-3 hover:text-ink"}`}
@@ -360,8 +383,11 @@ function GameList({
               >
                 {t(g.source === "mine" ? "games.forget" : "games.notGame")}
               </button>
+              </div>
+              {opened}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
       {rest > 0 && (

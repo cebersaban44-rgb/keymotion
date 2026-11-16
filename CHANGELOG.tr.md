@@ -38,8 +38,11 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   yenilgi, seviye atlama, öldürme, as, ejder, Baron ve Herald için seçtiğiniz
   renkte seçtiğiniz animasyon (dalga, parlama, nabız, kıvılcım, halka,
   yukarıdan sönme). Sayfadaki çizim bunları maçın kendi koduyla önizler,
-  "Klavyede dene" klavyede gösterir. Özet kartı sonucu, K/D/A'yı ve minyon
-  sayısını gösterir. Rakip ya da hedef sayaçları yok.
+  "Klavyede dene" klavyede gösterir. Oyun listesinde League of Legends'ın
+  altında (Özel ışıklar), maçtaki sırasıyla gruplanmış olarak ayarlanır;
+  kapatmadıkça ejder, Herald ve Baron yalnız takımınız aldığında yanar. Özet
+  kartı sonucu, K/D/A'yı ve minyon sayısını gösterir. Rakip ya da hedef
+  sayaçları yok.
 - **Uygulamaya göre profil:** Profiller › **Uygulamaya göre** bir programı
   ya da bütün oyunları bir profile bağlar. Varsayılan olarak yalnız tuş
   başına renk tasarımının ışığı değişir, klavyeye bir şey kaydedilmez; bir

@@ -51,6 +51,7 @@ export const DEFAULT_LOL: LolSettings = {
     herald: { on: true, anim: "wave", color: [196, 120, 255] },
   },
   dragonKindColor: true,
+  teamOnly: true,
 };
 
 export const DEFAULT_GAMES: GamesSettings = {

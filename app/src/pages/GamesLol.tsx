@@ -1,10 +1,11 @@
-// League of Legends lights on the Game session page: where health shows and
-// how it recedes, the colours, and each event's animation. The drawing plays
+// League of Legends lights, under League of Legends in the Game session
+// page's list ("Special lights"): where health shows and how it recedes,
+// the colours, and each event's animation. The drawing plays
 // frames the backend draws with the same code a match uses (lol.rs), so what
 // the page shows is what the keys will do.
 
-import { Play, Skull, Swords, Usb } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { Play, Skull, Usb } from "lucide-react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import type { GamesSettings } from "../bindings/GamesSettings";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { LolAnim } from "../bindings/LolAnim";
@@ -14,17 +15,27 @@ import type { LolLayout } from "../bindings/LolLayout";
 import type { LolScene } from "../bindings/LolScene";
 import type { LolSettings } from "../bindings/LolSettings";
 import type { PomodoroMotion } from "../bindings/PomodoroMotion";
-import { ColorPicker, Segmented } from "../components/controls";
+import { ColorPicker, Segmented, Toggle } from "../components/controls";
 import { KeyboardView } from "../components/KeyboardView";
 import { LOL_STEP_MS, lolPreview, tryLol, type LolFrame } from "../lib/games";
 import { useT, type MessageKey } from "../lib/i18n";
 import { gameSummaryCard, gameWords } from "../lib/liveCards";
 import { fromHex, toHex } from "../lib/pomodoroLights";
 import { useApp } from "../lib/store";
-import { Row, Switch } from "./gamesRows";
+import { Switch } from "./gamesRows";
 import { FramePlayer } from "./screen/common";
 
-const EVENTS: LolEvent[] = ["win", "lose", "levelUp", "kill", "ace", "dragon", "baron", "herald"];
+/** The events in the order a match brings them, in three groups. */
+const GROUPS: { title: MessageKey; events: LolEvent[] }[] = [
+  { title: "games.lol.group.mine", events: ["levelUp", "kill"] },
+  { title: "games.lol.group.map", events: ["ace", "dragon", "herald", "baron"] },
+  { title: "games.lol.group.end", events: ["win", "lose"] },
+];
+
+/** A game that has lights of its own: League of Legends (games.rs `is_lol`). */
+export function hasSpecialLights(key: string): boolean {
+  return key.toLowerCase().endsWith("league of legends.exe");
+}
 const ANIMS: LolAnim[] = ["wave", "flash", "pulse", "sparkle", "ring", "drain"];
 const MOTIONS: PomodoroMotion[] = ["rightToLeft", "leftToRight", "topToBottom", "toCenter", "fade"];
 const MOTION_KEY: Record<PomodoroMotion, MessageKey> = {
@@ -53,7 +64,14 @@ export function LolLights({
   const setLight = (e: LolEvent, patch: Partial<LolEventLight>) =>
     setLol({ lights: { ...l.lights, [e]: { ...l.lights[e], ...patch } } });
   return (
-    <Row icon={Swords} title={t("games.lol")} body={t("games.lol.body")} checked={l.enabled} onChange={(enabled) => setLol({ enabled })}>
+    <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2/40 p-4" data-lol>
+      <div className="flex items-start justify-between gap-3">
+        <span className="flex max-w-[80ch] flex-col">
+          <span className="text-[13px] font-semibold">{t("games.lol.panel")}</span>
+          <span className="text-[12px] text-ink-3">{t("games.lol.body")}</span>
+        </span>
+        <Toggle checked={l.enabled} onChange={(enabled) => setLol({ enabled })} label={t("games.lol.panel")} />
+      </div>
       {l.enabled && (
         <>
           {!usb && <p className="text-[12px] text-ink-3">{t("games.noUsb")}</p>}
@@ -110,8 +128,20 @@ export function LolLights({
           <Switch label={t("games.lol.death")} body={t("games.lol.death.body")} on={l.death} onChange={(death) => setLol({ death })} />
           <Switch label={t("games.lol.events")} body={t("games.lol.events.body")} on={l.events} onChange={(events) => setLol({ events })} />
           {l.events && (
-            <ul className="flex flex-col divide-y divide-line rounded-lg border border-line" data-lol-events>
-              {EVENTS.map((e) => {
+            <div className="flex flex-col gap-3" data-lol-events>
+              {GROUPS.map((group) => (
+                <div key={group.title} className="flex flex-col gap-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[12px] font-medium text-ink-2">{t(group.title)}</span>
+                    {group.title === "games.lol.group.map" && (
+                      <label className="flex items-center gap-1.5 text-[12px] text-ink-2">
+                        <input type="checkbox" checked={l.teamOnly} onChange={(x) => setLol({ teamOnly: x.target.checked })} data-lol-team-only />
+                        {t("games.lol.teamOnly")}
+                      </label>
+                    )}
+                  </div>
+                  <ul className="flex flex-col divide-y divide-line rounded-lg border border-line">
+              {group.events.map((e) => {
                 const light = l.lights[e];
                 const name = t(`games.lol.event.${e}`);
                 return (
@@ -154,7 +184,10 @@ export function LolLights({
                   </li>
                 );
               })}
-            </ul>
+                  </ul>
+                </div>
+              ))}
+            </div>
           )}
           <LolCard />
           <p className="text-[12px] text-ink-3">{t("games.lol.never")}</p>
@@ -163,7 +196,7 @@ export function LolLights({
       <p className="text-[11px] text-ink-3" data-games-riot-notice>
         {t("games.lol.legal")}
       </p>
-    </Row>
+    </div>
   );
 }
 
@@ -174,7 +207,7 @@ function playEvent(event: LolEvent) {
 }
 
 /** A label and its control on one line. */
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-wrap items-center gap-3">
       <span className="min-w-[110px] text-[13px] text-ink-2">{label}</span>

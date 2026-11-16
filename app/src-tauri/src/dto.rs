@@ -2261,6 +2261,8 @@ pub struct LolSettings {
     pub lights: LolEventLights,
     /// Dragons in their kind's colour, not `lights.dragon.color`.
     pub dragon_kind_color: bool,
+    /// Dragons, Herald and Baron only when the player's team takes them.
+    pub team_only: bool,
 }
 
 impl Default for LolSettings {
@@ -2277,6 +2279,7 @@ impl Default for LolSettings {
             mana_color: [61, 139, 255],
             lights: LolEventLights::default(),
             dragon_kind_color: true,
+            team_only: true,
         }
     }
 }
