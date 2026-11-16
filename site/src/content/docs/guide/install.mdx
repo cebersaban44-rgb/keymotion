@@ -1,18 +1,44 @@
 ---
 title: Install Keymotion
-description: Download the Keymotion installer from GitHub, get past the Windows warning, and later update or uninstall the app.
+description: Install Keymotion from the Microsoft Store or with the installer from GitHub, get past the Windows warning, and later update or uninstall the app.
 ---
 
 import Screenshot from "~/components/Screenshot.astro";
+import DownloadButtons from "~/components/DownloadButtons.astro";
 import { Aside, Steps } from "@astrojs/starlight/components";
 
-Keymotion comes as one installer for Windows. It installs for your Windows account only, needs no administrator rights and takes a few seconds.
+Keymotion comes two ways: from the Microsoft Store, or as an installer from GitHub. It is the same app, with the same version number and the same release notes. Either way it installs for your Windows account only, needs no administrator rights and takes a few seconds.
+
+<DownloadButtons />
+
+## Microsoft Store or GitHub
+
+| | Microsoft Store | GitHub |
+|---|---|---|
+| Signed | Yes, by Microsoft: Windows installs it without a warning | Not yet: Windows may warn before it runs |
+| Updates | The Microsoft Store keeps it up to date | Keymotion checks GitHub once a day and asks before installing |
+| Test versions | No | Yes |
+| Works without the Microsoft Store | No | Yes |
+
+We suggest the Microsoft Store. Choose GitHub if your computer has no Microsoft Store (Windows LTSC, or a work computer where it is turned off), or to try test versions. Install only one of them: they share your settings, and only one Keymotion runs at a time.
 
 ## What you need
 
 - Windows 10 or Windows 11, 64-bit.
-- WebView2, the part of Windows that draws the app's window. Windows 11 already has it. If your computer doesn't, the installer downloads and installs it, so stay online while you install.
+- WebView2, the part of Windows that draws the app's window. Windows 11 and an up-to-date Windows 10 already have it. If your computer doesn't, the GitHub installer downloads and installs it, so stay online while you install.
 - To change the keyboard's settings: an AJAZZ AK980 PRO and its USB-C cable. Keymotion also opens without the keyboard.
+
+## Install from the Microsoft Store
+
+<Steps>
+
+1. Open [Keymotion in the Microsoft Store](https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full). The Microsoft Store app opens on Keymotion's page; if your browser asks whether to open it, allow it.
+2. Select **Get**. The Store downloads and installs Keymotion.
+3. Open **Keymotion** from the Start menu.
+
+</Steps>
+
+The Store copy is signed by Microsoft, so no warning appears. The Store also updates it, and you remove it like any other app, as below. The rest of this page, up to [Start menu and desktop](#start-menu-and-desktop), is about the GitHub installer.
 
 ## Download the installer
 
@@ -28,7 +54,7 @@ The release notes on that page also give the file's SHA-256 checksum, if you wan
 
 ## If Windows says it protected your PC
 
-The installer is not code-signed yet, so Windows can't tell who published it. When you open it, Windows may show a blue window titled **Windows protected your PC**.
+The GitHub installer is not code-signed yet, so Windows can't tell who published it. When you open it, Windows may show a blue window titled **Windows protected your PC**.
 
 <Steps>
 
@@ -39,7 +65,7 @@ The installer is not code-signed yet, so Windows can't tell who published it. Wh
 </Steps>
 
 <Aside type="note" title="Why it isn't signed yet">
-[Code signing](/keymotion/about/code-signing/) explains why, and what changes once Keymotion is signed.
+[Code signing](/keymotion/about/code-signing/) explains why, and what changes once Keymotion is signed. The [Microsoft Store](https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full) copy is signed by Microsoft and installs without this warning.
 </Aside>
 
 ## Run the installer
@@ -64,6 +90,8 @@ The installer always adds **Keymotion** to the Start menu, and to the desktop if
 Only one copy of Keymotion runs at a time. While it runs in the background, with its icon next to the clock, opening it again from the Start menu brings its window back. [First launch](/keymotion/guide/first-launch/) shows what you see when it opens.
 
 ## Update Keymotion
+
+The Microsoft Store updates its copy by itself; Settings › About opens the Store's updates page. The rest of this section is about the copy from GitHub.
 
 A short while after it opens, Keymotion checks GitHub for a newer version, once a day. When it finds one, a strip appears above the page.
 

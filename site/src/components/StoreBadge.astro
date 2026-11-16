@@ -1,0 +1,54 @@
+---
+// Microsoft's own "Get it from Microsoft" badge, linking to Keymotion in the
+// Microsoft Store ("full" mode: the Store app opens on Keymotion's page).
+// The badge files in public/images/store are Microsoft's, unchanged
+// (get.microsoft.com/images, as its badge generator gives them), kept on
+// the site so a visit asks nothing of another server (owner's choice,
+// 2026-11-16). Microsoft's guidelines: never stretch, recolor or change the
+// badge; the dark one goes on light backgrounds and the light one on dark.
+interface Props {
+  /** The link; the Store page in "full" mode by default. */
+  href?: string;
+}
+
+const STORE_URL ="https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full";
+
+const { href = STORE_URL } = Astro.props;
+const tr = Astro.currentLocale === "tr";
+const name = tr ? "tr" : "en";
+const width = tr ? 180 : 161;
+const label = tr ? "Microsoft'tan alın" : "Get it from Microsoft";
+---
+
+<a class="store-badge not-content" {href} aria-label={label}>
+  <img src={`/keymotion/images/store/get-it-from-microsoft-${name}-dark.svg`} {width} height="44" alt="" class="on-light" />
+  <img src={`/keymotion/images/store/get-it-from-microsoft-${name}-light.svg`} {width} height="44" alt="" class="on-dark" />
+</a>
+
+<style>
+  /* As tall as the buttons beside it, never stretched (its own ratio). */
+  .store-badge {
+    display: inline-flex;
+    flex: none;
+    border-radius: 0.5rem;
+    outline-offset: 0.25rem;
+  }
+
+  .store-badge img {
+    height: 2.5rem;
+    width: auto;
+  }
+
+  /* Its own rule: the site's image styles outrank Starlight's
+     light:sl-hidden helpers. */
+  :global([data-theme="dark"]) .on-light,
+  :global([data-theme="light"]) .on-dark {
+    display: none;
+  }
+
+  @media (min-width: 50rem) {
+    .store-badge img {
+      height: 3.5rem;
+    }
+  }
+</style>

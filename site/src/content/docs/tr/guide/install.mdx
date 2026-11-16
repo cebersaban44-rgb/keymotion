@@ -1,18 +1,44 @@
 ---
 title: Keymotion'ı kurma
-description: Kurulum dosyasını GitHub'dan indirme, Windows uyarısını geçme, Keymotion'ı daha sonra güncelleme ve kaldırma.
+description: Keymotion'ı Microsoft Store'dan ya da GitHub'daki kurulum dosyasıyla kurma, Windows uyarısını geçme, daha sonra güncelleme ve kaldırma.
 ---
 
 import Screenshot from "~/components/Screenshot.astro";
+import DownloadButtons from "~/components/DownloadButtons.astro";
 import { Aside, Steps } from "@astrojs/starlight/components";
 
-Keymotion, Windows için tek bir kurulum dosyasıyla gelir. Yalnızca sizin Windows hesabınıza kurulur, yönetici izni istemez ve birkaç saniye sürer.
+Keymotion'ı iki yoldan kurabilirsiniz: Microsoft Store'dan ya da GitHub'daki kurulum dosyasıyla. İkisi de aynı uygulama; sürüm numarası ve sürüm notları da aynı. İki yolda da yalnızca sizin Windows hesabınıza kurulur, yönetici izni istemez ve birkaç saniye sürer.
+
+<DownloadButtons />
+
+## Microsoft Store mu, GitHub mı
+
+| | Microsoft Store | GitHub |
+|---|---|---|
+| İmza | Var, Microsoft imzalar: Windows uyarı göstermeden kurar | Henüz yok: Windows çalıştırmadan önce uyarabilir |
+| Güncellemeler | Microsoft Store günceller | Keymotion günde bir kez GitHub'a bakar, kurmadan önce sorar |
+| Deneme sürümleri | Yok | Var |
+| Microsoft Store olmadan | Kurulmaz | Kurulur |
+
+Önerimiz Microsoft Store. Bilgisayarınızda Microsoft Store yoksa (Windows LTSC ya da Store'u kapalı bir iş bilgisayarı) veya deneme sürümlerini denemek istiyorsanız GitHub'ı seçin. İkisinden yalnızca birini kurun: ayarlarınızı paylaşırlar ve aynı anda tek Keymotion çalışır.
 
 ## Gerekenler
 
 - 64 bit Windows 10 ya da Windows 11.
-- WebView2: uygulamanın penceresini çizen Windows bileşeni. Windows 11'de zaten vardır. Bilgisayarınızda yoksa kurulum onu indirip kurar; bu yüzden kurarken internete bağlı kalın.
+- WebView2: uygulamanın penceresini çizen Windows bileşeni. Windows 11'de ve güncel Windows 10'da zaten vardır. Bilgisayarınızda yoksa GitHub'daki kurulum dosyası onu indirip kurar; bu yüzden kurarken internete bağlı kalın.
 - Klavyenin ayarlarını değiştirmek için bir AJAZZ AK980 PRO ve USB-C kablosu. Keymotion klavye olmadan da açılır.
+
+## Microsoft Store'dan kurun
+
+<Steps>
+
+1. [Microsoft Store'da Keymotion](https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full) sayfasını açın. Microsoft Store uygulaması Keymotion'ın sayfasında açılır; tarayıcınız açılsın mı diye sorarsa izin verin.
+2. **Al**'ı seçin. Store, Keymotion'ı indirip kurar.
+3. Başlat menüsünden **Keymotion**'ı açın.
+
+</Steps>
+
+Store kopyasını Microsoft imzalar; bu yüzden uyarı çıkmaz. Onu Store günceller; kaldırması da aşağıda anlatıldığı gibi her uygulama gibidir. Bu sayfanın [Başlat menüsü ve masaüstü](#başlat-menüsü-ve-masaüstü) bölümüne kadarki kısmı GitHub'daki kurulum dosyasını anlatır.
 
 ## Kurulum dosyasını indirin
 
@@ -28,7 +54,7 @@ O sayfadaki sürüm notlarında dosyanın SHA-256 özeti de yazar. İndirdiğini
 
 ## Windows bilgisayarınızı korudu derse
 
-Kurulum dosyası henüz imzalı değil; bu yüzden Windows onu kimin yayımladığını bilemez. Dosyayı açtığınızda **Windows bilgisayarınızı korudu** başlıklı mavi bir pencere çıkabilir.
+GitHub'daki kurulum dosyası henüz imzalı değil; bu yüzden Windows onu kimin yayımladığını bilemez. Dosyayı açtığınızda **Windows bilgisayarınızı korudu** başlıklı mavi bir pencere çıkabilir.
 
 <Steps>
 
@@ -39,7 +65,7 @@ Kurulum dosyası henüz imzalı değil; bu yüzden Windows onu kimin yayımladı
 </Steps>
 
 <Aside type="note" title="Neden henüz imzalı değil">
-Nedenini ve Keymotion imzalanınca neyin değişeceğini [Kod imzalama](/keymotion/tr/about/code-signing/) sayfası anlatır.
+Nedenini ve Keymotion imzalanınca neyin değişeceğini [Kod imzalama](/keymotion/tr/about/code-signing/) sayfası anlatır. [Microsoft Store](https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full) kopyasını Microsoft imzalar; o, bu uyarı olmadan kurulur.
 </Aside>
 
 ## Kurulumu çalıştırın
@@ -64,6 +90,8 @@ Kurulum, Başlat menüsüne her zaman **Keymotion** kısayolunu ekler; kutuyu i�
 Keymotion aynı anda yalnızca bir kez çalışır. Arka planda çalışırken, yani simgesi saatin yanındayken, Başlat menüsünden yeniden açarsanız penceresi geri gelir. Açıldığında neler gördüğünüzü [İlk açılış](/keymotion/tr/guide/first-launch/) sayfası anlatır.
 
 ## Keymotion'ı güncelleyin
+
+Store'dan kurulan kopyayı Microsoft Store kendisi günceller; Ayarlar › Hakkında, Store'un güncellemeler sayfasını açar. Bu bölümün gerisi GitHub'dan kurulan kopyayı anlatır.
 
 Keymotion açıldıktan kısa bir süre sonra, günde bir kez, GitHub'da daha yeni bir sürüm olup olmadığına bakar. Yeni sürüm bulursa sayfanın üstünde bir şerit çıkar.
 
