@@ -12,6 +12,11 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 
 ## [Yayımlanmamış]
 
+## [1.1.0] - 2026-11-16
+
+Keymotion artık yeni sürüm çıkınca haber veriyor ve isterseniz kendiliğinden
+kuruyor. Microsoft Store'da da var.
+
 ### Eklenenler
 
 - **Microsoft Store:** Keymotion 16 Kasım 2026'dan beri Microsoft Store'da.
@@ -178,5 +183,7 @@ Store 0 ile başlayan sürüm numarası kabul etmediği için bu sürüm 1.0.0.
   yapılacağı, desteklenen ve sırada olabilecek klavyeler, geliştiriciler için
   sayfalar. Ayarlar › Hakkında'dan açılır.
 
-[Yayımlanmamış]: https://github.com/cebersaban44-rgb/keymotion/compare/v0.1.0...develop
+[Yayımlanmamış]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.1.0...develop
+[1.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.1.0
+[1.0.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.0.0
 [0.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v0.1.0

@@ -15,6 +15,11 @@ says so.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-16
+
+Keymotion now tells you when a new version is out, and can install it by
+itself. It is in the Microsoft Store too.
+
 ### Added
 
 - **Microsoft Store:** Keymotion is in the Microsoft Store since
@@ -166,5 +171,7 @@ The first release. It supports the AJAZZ AK980 PRO on Windows.
   something goes wrong, the supported keyboards and the ones that could come
   next, and pages for developers. Settings › About opens it.
 
-[Unreleased]: https://github.com/cebersaban44-rgb/keymotion/compare/v0.1.0...develop
+[Unreleased]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.1.0...develop
+[1.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.1.0
+[1.0.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.0.0
 [0.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v0.1.0
