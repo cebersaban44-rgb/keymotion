@@ -21,4 +21,9 @@ lastCheckMs: number | null, status: UpdateStatus,
  * Installed from the Microsoft Store, which updates it: the app's
  * own updater stays off.
  */
-store: boolean, };
+store: boolean, 
+/**
+ * The Store build, with the GitHub copy installed beside it: it no
+ * longer opens (it starts this one instead) and can be removed.
+ */
+githubCopy: boolean, };

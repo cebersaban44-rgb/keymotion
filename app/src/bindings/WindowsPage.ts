@@ -3,4 +3,4 @@
 /**
  * Windows' own pages the app opens (the Store build).
  */
-export type WindowsPage = "startup-apps" | "store-updates";
+export type WindowsPage = "startup-apps" | "store-updates" | "installed-apps";

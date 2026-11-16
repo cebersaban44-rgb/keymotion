@@ -43,7 +43,7 @@ The Cargo workspace is `crates/*` plus `app/src-tauri`. The workspace denies `un
 - **The tray** (`tray.rs`). Closing the window can hide it, and the app goes on in the notification area, because the focus timer, reminders, calendar cards, live screen and gauges only work while it runs. The menu shows the keyboard and offers the focus timer, reminders, gauges, profiles and Quit. A profile chosen there opens the window to confirm it, since every write to permanent memory needs the user's yes.
 - **The updater** (`updates.rs`, `tauri-plugin-updater`). The release workflow publishes `latest.json` with each GitHub release; the updater checks the download against the public key in `tauri.conf.json`. If the user allows it, the app looks once a day; nothing installs until the user chooses to, and installing waits for a write to the keyboard to finish.
 - **Storage.** Settings are versioned JSON files in `%APPDATA%\dev.keymotion` (`settings.rs`); a damaged file is kept aside and reported once. The screen library (`screen_lib.rs`) is the only copy of uploaded pictures, because the keyboard cannot give them back. Logs go to `%LOCALAPPDATA%\dev.keymotion\logs`, one file a day.
-- **One instance.** `tauri-plugin-single-instance` brings the open window forward instead of starting a second copy, which would send commands at the same time.
+- **One instance.** `tauri-plugin-single-instance` brings the open window forward instead of starting a second copy, which would send commands at the same time. A second start with Windows (`--hidden`) stays quiet, and the GitHub copy hands over to an installed Microsoft Store copy (`handoff.rs`; [Microsoft Store package](/keymotion/developers/microsoft-store/#both-installed)).
 
 ## The interface
 

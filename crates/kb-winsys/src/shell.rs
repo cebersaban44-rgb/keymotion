@@ -22,6 +22,9 @@ pub enum WindowsPage {
     StartupApps,
     /// Microsoft Store › Downloads and updates (the Store build's updates).
     StoreUpdates,
+    /// Settings › Apps › Installed apps: where the user removes a program
+    /// (the GitHub copy, beside the Store copy).
+    InstalledApps,
 }
 
 impl WindowsPage {
@@ -29,6 +32,7 @@ impl WindowsPage {
         match self {
             Self::StartupApps => "ms-settings:startupapps",
             Self::StoreUpdates => "ms-windows-store://downloadsandupdates",
+            Self::InstalledApps => "ms-settings:appsfeatures",
         }
     }
 }

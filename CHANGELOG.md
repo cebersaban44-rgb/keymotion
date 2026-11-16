@@ -7,11 +7,25 @@ Türkçe: [CHANGELOG.tr.md](CHANGELOG.tr.md).
 
 From 1.0.0 on, each version is the same on GitHub and in the Microsoft Store,
 with one list of changes for both. Windows shows the Store's copy with a
-fourth number, always 0 (1.0.0 is 1.0.0.0). The Store gets a version after
-Microsoft has reviewed it, usually a few days after GitHub. Test versions
-("-rc") are only on GitHub. A change that concerns only one of them says so.
+fourth number, always 0 (1.0.0 is 1.0.0.0). A version comes out in both the
+same day: the GitHub release waits until Microsoft has reviewed the Store's
+copy. Only an urgent fix may come out on GitHub first, and says so. Test
+versions ("-rc") are only on GitHub. A change that concerns only one of them
+says so.
 
 ## [Unreleased]
+
+### Changed
+
+- **Both copies installed:** when Keymotion from GitHub and from the
+  Microsoft Store are both on a computer, the GitHub copy now opens the
+  Store's copy instead, and starting with Windows moves to the Store's copy.
+  Before, both started with Windows and whichever came first ran. The Store's
+  copy shows a "GitHub copy" row in Settings › About with a button to
+  Windows' Installed apps, where the GitHub copy can be removed; the settings
+  stay, as both copies share them.
+- Started with Windows a second time while Keymotion already runs, it no
+  longer brings the window forward.
 
 ## [1.0.0] - 2026-11-15
 

@@ -97,6 +97,8 @@ export async function openLink(url: string): Promise<void> {
 
 /** Browser preview of the Microsoft Store build: `?channel=store`. */
 export const mockStore = () => new URLSearchParams(location.search).get("channel") === "store";
+/** …with the GitHub copy installed beside it: `?channel=store&githubCopy=1`. */
+export const mockGithubCopy = () => mockStore() && new URLSearchParams(location.search).get("githubCopy") === "1";
 
 /** Windows' startup settings or the Store's updates page (the Store build). */
 export async function openWindowsPage(page: WindowsPage): Promise<void> {

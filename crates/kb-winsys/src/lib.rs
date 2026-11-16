@@ -28,6 +28,7 @@
 #![allow(unsafe_code)]
 
 pub mod appid;
+pub mod copies;
 pub mod os;
 pub mod package;
 pub mod secret;

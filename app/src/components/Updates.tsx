@@ -70,15 +70,31 @@ export function UpdateRows() {
   const locale = useApp((s) => s.locale);
   const { state, check, setAuto, openDialog, error } = useUpdates();
   if (!state) return null;
-  // The Microsoft Store build: the Store updates it.
+  // The Microsoft Store build: the Store updates it. The GitHub copy, when
+  // it is installed too, now starts this one instead and can go.
   if (state.store) {
     return (
-      <Row label={t("settings.version")} hint={t("update.store.hint", { current: state.current })}>
-        <button type="button" className={secondaryButton} onClick={() => void openWindowsPage("store-updates")}>
-          {t("update.store.open")}
-          <ArrowUpRight size={14} aria-hidden />
-        </button>
-      </Row>
+      <>
+        <Row label={t("settings.version")} hint={t("update.store.hint", { current: state.current })}>
+          <button type="button" className={secondaryButton} onClick={() => void openWindowsPage("store-updates")}>
+            {t("update.store.open")}
+            <ArrowUpRight size={14} aria-hidden />
+          </button>
+        </Row>
+        {state.githubCopy && (
+          <Row label={t("update.githubCopy.label")} hint={t("update.githubCopy.hint")}>
+            <button
+              type="button"
+              className={secondaryButton}
+              onClick={() => void openWindowsPage("installed-apps")}
+              data-github-copy
+            >
+              {t("update.githubCopy.open")}
+              <ArrowUpRight size={14} aria-hidden />
+            </button>
+          </Row>
+        )}
+      </>
     );
   }
   const st = state.status;
