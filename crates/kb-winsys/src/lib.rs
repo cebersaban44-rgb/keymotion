@@ -32,12 +32,15 @@
 pub mod appid;
 pub mod copies;
 pub mod foreground;
+pub mod games;
 pub mod os;
 pub mod package;
 pub mod protocol;
+pub mod registry;
 pub mod secret;
 pub mod shell;
 pub mod startup;
+pub mod thermal;
 
 use std::collections::HashMap;
 
