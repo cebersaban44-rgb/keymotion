@@ -1,0 +1,87 @@
+---
+title: Oyun oturumu
+description: Keymotion oynadığınızı fark eder; oyun başlarken klavyenin ekranına bir kart, oyun bitince bir özet gönderir, oyunun tuşlarını yakar ve League of Legends'ta maçın kendi verisinden ışıklar verir.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Bir oyun başlayınca Keymotion bunu fark eder. Klavyenin ekranına bir kart, oyun bitince bir özet gönderebilir, oyunun kullandığı tuşları yakabilir ve oynadığınız süreleri bu bilgisayarda tutar. League of Legends'ta tuşlar ayrıca canınızı, mananızı ve maçın olaylarını gösterebilir.
+
+Keymotion oyunların içine girmez: oyunun belleğini okumaz, ona tuş göndermez, oyunun üstüne bir şey çizmez. Hile önleyicilerle uyumlu olmasının sebebi de budur ([Hile önleyiciler](#hile-önleyiciler)).
+
+## Açın
+
+<Steps>
+
+1. Kenar çubuğunda **Araçlar** altındaki **Oyun oturumu**'nu açın.
+2. **Oyunları fark et**'i açın.
+
+</Steps>
+
+Anahtarın altındaki satır Keymotion'ın şu an ne yaptığını söyler; örneğin **Bir oyun bekleniyor** ya da **League of Legends oynanıyor**. Altında **Şimdi**, **Bugün** ve **Son 7 gün** oynadığınız süreleri gösterir.
+
+Pencereyi kapattıktan sonra Keymotion saatin yanında çalışmaya devam ediyorsa, simgesinin menüsü oyunu ve ne kadar süredir oynadığınızı gösterir.
+
+## Keymotion oyunu nasıl tanır
+
+- **Başlatıcılarınızın listeleri.** Steam, Epic Games, GOG, Xbox, Riot Games ve Xbox Game Bar hangi programların oyun olduğunu bilir; Keymotion bu listeleri bu bilgisayarda okur. Steam ya da League of Legends istemcisi gibi bir başlatıcının kendisi oyun sayılmaz, yalnız oynadığınız oyun sayılır. **Başlatıcıların oyun listeleri**'ni kapatabilirsiniz; o zaman yalnız oyun dediğiniz programlar sayılır.
+- **Sizin sözünüz.** **Oyunlar** listesinde **Oyun değil**, yanlışlıkla oyun sayılan bir programı çıkarır; **Listeden çıkar**, sizin eklediğiniz bir oyunu unutur.
+- **"Bir oyun mu?"** İşaretlemediğiniz bir program birkaç dakika ekranı kaplar ve ekran kartı yoğun çalışırsa sayfa sorar. Keymotion buna kendi başına karar vermez. Tarayıcılar ve video oynatıcılar için hiç sorulmaz.
+
+**Oyunlar** listesi oynadığınız oyunları toplam süreleriyle gösterir. **Bulunan bütün oyunları göster**, başlatıcılarınızın bildiği diğer oyunları da listeler.
+
+## Oturum
+
+- Bir oyun 15 saniye önde kalınca oturum başlar; açılış ekranı ya da hemen kapanan bir oyun sayılmaz.
+- Oyun açık kaldıkça sürer. Alt+Tab ile başka bir pencereye geçmek ya da oyunu simge durumuna küçültmek oturumu bitirmez.
+- Oyun 10 saniye kapalı kalınca biter. Kendini yeniden başlatan bir oyunun oturumu sürer.
+- Oturum sürerken **Kendiliğinden güncelle** yeni sürümü kurmaz ([Güncellemeler](/keymotion/tr/guide/settings/#güncellemeler)).
+
+## Klavyenin ekranı
+
+[Canlı ekran](/keymotion/tr/guide/screen/) açıksa:
+
+- **Başlangıç kartı**: oyunun adı ve Steam'deki resmi (yoksa renkli bir zeminde adı) ve bugün ne kadar oynadığınız. Oturum boyunca aynı kalır; oyun sürerken ekrana yeni bir şey gelmez.
+- **Özet kartı**: 5 dakika ya da daha uzun bir oturumdan sonra ne kadar oynadığınız, ekran kartının ortalama ve en yüksek yükü, en yüksek sıcaklığı, işlemcinin yükü ve bugünün toplamı. Bilgisayarınızın vermediği bir değer kartta yer almaz. Özet bir sonraki karta kadar kalır.
+
+Oturum sürerken çalan şarkının kartları bekler. Toplantı ve hatırlatıcı kartları ile odak zamanlayıcısı yine önce gelir. Her kart canlı ekranın günlük yükleme sınırından sayılır.
+
+## Oyunda ışıklar
+
+**Klavyenin kendi ışığı** hiçbir şeyi değiştirmez. **Oyun tuşlarını yak**, seçtiğiniz tuşları tek renkte yakar, diğerlerini soluk ya da karanlık bırakır. Hazır seçimler **WASD**, **MOBA (QWER DF)** ve **1–6**'dır; tuş eklemek ya da çıkarmak için çizimdeki tuşlara tıklayın. **Klavyede dene** ışıkları birkaç saniye gösterir.
+
+Bu ışıklar klavyeye kaydedilmez; oyun bitince klavye kendi ışığına döner. Oyun tuşları yanarken [sistem göstergeleri](/keymotion/tr/guide/system-gauges/) bekler; mikrofon kapalı uyarısı her zaman görünür. Işıklar için USB kablosu gerekir.
+
+## League of Legends
+
+League of Legends maç sırasında verisini bilgisayarınızdaki araçlara sunar. Keymotion yalnız oyunun size gösterdiklerini okur ve ışığa çevirir:
+
+- **Can ve mana**: canınız 1–0 tuşlarında yeşilden sarıya ve kırmızıya dönen bir çubuk, mana ya da enerji F1–F12'de.
+- **Ölünce**: tuşlar koyu kırmızıya döner, 1–0 tuşları yeniden doğmaya kalan süreyle azalır.
+- **Kısa efektler**: seviye atlayınca bir dalga; öldürmede, asta, ejder (ejderin renginde), Baron ve Herald kesilince kısa bir parlama; maç bitince zafer ya da yenilgi.
+
+Her biri ayrı kapatılabilir. Bu ışıklar oyun tuşlarının yerine geçer. Maçın özet kartı ayrıca zafer ya da yenilgiyi, K/D/A'nızı, minyon sayınızı ve şampiyonunuzu gösterir.
+
+Keymotion rakiplerin bekleme sürelerini, ejder ve Baron'un çıkış sayaçlarını ya da size ne yapacağınızı söyleyen uyarıları hiç göstermez; Riot'un kuralları bunlara izin vermez. Teamfight Tactics maçlarında bu ışıklar yanmaz.
+
+<Aside type="note" title="Riot Games">
+Keymotion isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.
+</Aside>
+
+## Hile önleyiciler
+
+Riot Vanguard, Easy Anti-Cheat ya da BattlEye gibi hile önleyiciler; oyunun belleğini okuyan, oyuna tuş gönderen ya da güvenlik açığı bilinen sürücüler yükleyen programları engeller. Keymotion bunların hiçbirini yapmaz:
+
+- Hangi programın önde olduğunu Windows'un erişilebilirlik araçlarının kullandığı yoldan görür; programın yolunu programı açmadan öğrenir.
+- Sürücü kurmaz; klavyeyle her USB aygıtı gibi Windows üzerinden konuşur.
+- League of Legends'ın verisini yalnız oyunun bilgisayarınızda kendi sunduğu hizmetten okur.
+
+Bir oyunun hile önleyicisiyle yine de sorun yaşarsanız **Oyun sürerken klavyeye yazma**'yı açın: oyun boyunca klavyeye ne ışık ne kart gönderilir. Lütfen bunu [bize de bildirin](/keymotion/tr/help/faq/).
+
+League of Legends, VALORANT ve CS2 gibi rekabetçi oyunlarda, FACEIT'te ve turnuvalarda makrolar, klavyenin kendi makroları bile, oyunun kurallarına aykırı olabilir. Keymotion bir oyun için makroları kendi başına açmaz ([Uygulamaya göre profiller](/keymotion/tr/guide/profiles/#uygulamaya-göre)).
+
+## Geçmiş ve gizlilik
+
+**Geçmiş** son oturumlarınızı listeler. **Geçmişi sil** hepsini siler; geri alınamaz.
+
+Her şey bu bilgisayarda kalır: Keymotion pencere başlıklarını okumaz ve bilgisayarınızdan dışarı hiçbir şey göndermez. FPS ve işlemci sıcaklığı gösterilmez, çünkü Windows bunları yönetici izni ya da ek bir sürücü olmadan vermez. Bkz. [Gizlilik](/keymotion/tr/about/privacy/).

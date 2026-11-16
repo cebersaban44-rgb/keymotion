@@ -51,6 +51,10 @@ These readings are used only to show things on the keyboard and in the app. They
 | Processor, graphics and memory load, from Windows' performance counters | While system gauges are on, or their page is open | The bars on the keys |
 | Speaker volume and mute, microphone mute, from Windows' sound system | While system gauges are on, or their page is open | The volume bar and the mute light |
 | Time since you last used the keyboard or mouse | While reminders are on | Repeating reminders wait while you're away |
+| Which program is in front: its file name and folder, and whether its window fills the screen. Never window titles, and no program is opened | While **Notice games** or profiles **By app** are on | Telling a game from other programs, and the profile for each program |
+| Your launchers' game lists (Steam, Epic Games, GOG, Xbox, Riot Games, Xbox Game Bar) | While **Notice games** is on, every few minutes | Telling which programs are games |
+| Processor and graphics load and the graphics card's temperature | While a game session runs | The summary card and the history |
+| League of Legends' match data (your health, mana, level, score and the match's events), from the service the game runs on your computer | During a League of Legends match, while its lights are on | The lights and the summary card |
 | Your Windows keyboard layout | When the app opens or comes to the front | Key labels in your language |
 | Connected keyboards (USB devices, Bluetooth battery level) | While the app runs | Finding and controlling the keyboard |
 | A keyboard's HID descriptions (what Windows recorded about it) | When you ask for support for a keyboard that isn't supported yet | The support request |
@@ -61,7 +65,8 @@ These readings are used only to show things on the keyboard and in the app. They
 Everything is in your Windows user folder. In **Settings**, under **About**, **Data folder** and **Log files** open these folders.
 
 - **Settings and records**, in `%APPDATA%\dev.keymotion\`:
-  - `calibration.json`, `clock.json`, `lighting.json`, `pomodoro.json`, `gauges.json`, `reminders.json`, `battery.json`, `profiles.json`, `background.json`, `updates.json`;
+  - `calibration.json`, `clock.json`, `lighting.json`, `pomodoro.json`, `gauges.json`, `reminders.json`, `battery.json`, `profiles.json`, `background.json`, `updates.json`, `games.json`, `auto-profiles.json`;
+  - `game-history.json`: your game sessions (game, start and end, the readings, a League of Legends result). **Delete history** on the **Game session** page empties it;
   - `keymap.json` and `macros.json`: Keymotion's only record of what it wrote to the keyboard, because the keyboard can't report them;
   - `calendar.json`: your calendars. Their addresses work like passwords, so they're encrypted for your Windows user account (Windows Data Protection). Another user or another computer can't read them;
   - `screen\`: your picture library, the copy of the factory animation if you made one, and the last live card.

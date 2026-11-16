@@ -15,6 +15,38 @@ says so.
 
 ## [Unreleased]
 
+### Added
+
+- **Game session:** Tools › **Game session** notices when you play. Games
+  come from your launchers' lists (Steam, Epic Games, GOG, Xbox, Riot Games,
+  Xbox Game Bar) and from your own word; a program that fills the screen for
+  a few minutes is offered as "Is it a game?". A session starts once a game
+  has been in front for 15 seconds and lasts while the game runs, Alt+Tab
+  included. With the live screen on, a card goes to the keyboard's screen
+  when it starts and a summary (time played, graphics card load and
+  temperature, processor load, today's total) when a session of 5 minutes or
+  more ends; nothing new comes up while you play. The keys the game uses can
+  light up (WASD, MOBA, 1–6 or your own), without saving anything to the
+  keyboard. The history stays on this computer. "Update automatically" waits
+  for the game to end.
+- **League of Legends lights:** during a match, health on 1–0 and mana on
+  F1–F12, dark red and a respawn countdown when you die, short flashes for
+  level ups, kills, an ace, dragons, Baron and Herald, and victory or defeat
+  at the end, from the data the game offers on your computer. The summary
+  card shows the result, K/D/A and CS. No enemy timers or objective timers.
+- **Profiles by app:** Profiles › **By app** links a program, or every game,
+  to a profile. By default only a per-key design's lighting changes, without
+  saving anything to the keyboard; a rule can also save the key mapping and
+  macros, at most 20 times a day. A game's profile stays for the whole game.
+  The tray menu can pause it.
+- **Leave the keyboard alone while playing:** nothing goes to the keyboard
+  during a game, for anti-cheat software that might mind.
+
+### Changed
+
+- The list of running programs, used to find the official software or
+  SignalRGB before a write, no longer opens any program.
+
 ## [1.1.0] - 2026-11-16
 
 Keymotion now tells you when a new version is out, and can install it by

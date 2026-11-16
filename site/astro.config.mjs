@@ -74,6 +74,7 @@ export default defineConfig({
             "guide/system-gauges",
             "guide/reminders",
             "guide/calendar",
+            "guide/game-session",
             "guide/connection",
             "guide/settings",
           ],

@@ -199,3 +199,5 @@ Before you open a pull request, read [CONTRIBUTING.md](CONTRIBUTING.md).
 Keymotion is licensed under either of the [Apache License, Version 2.0](LICENSE-APACHE) or the [MIT license](LICENSE-MIT), at your option. Third-party software in the app is listed in [app/public/third-party-notices.txt](app/public/third-party-notices.txt).
 
 Keymotion is an independent project. It is not affiliated with, endorsed by or supported by AJAZZ, AULA or any other keyboard brand named here. Product names are used only to say which hardware this software works with. See [NOTICE](NOTICE).
+
+Keymotion isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.

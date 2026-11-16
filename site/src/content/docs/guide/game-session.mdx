@@ -1,0 +1,87 @@
+---
+title: Game session
+description: Keymotion notices when you play, puts a card on the keyboard's screen when a game starts and a summary when it ends, lights the keys the game uses, and gives League of Legends lights from the match's own data.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+When a game starts, Keymotion notices it. It can put a card on the keyboard's screen, a summary when the game ends, light the keys the game uses, and keep your play time on this computer. In League of Legends, the keys can also show your health, mana and the match's events.
+
+Keymotion never reaches into a game: it doesn't read the game's memory, doesn't send it keys, and doesn't draw anything over it. That is also why it gets along with anti-cheat software (see [Anti-cheat software](#anti-cheat-software)).
+
+## Turn it on
+
+<Steps>
+
+1. Open **Game session** under **Tools** in the sidebar.
+2. Turn on **Notice games**.
+
+</Steps>
+
+The line under the switch says what Keymotion does now, for example **Waiting for a game** or **Playing League of Legends**. Under it, **Now**, **Today** and **Last 7 days** show your play time.
+
+When Keymotion keeps running after you close its window, the menu of its icon next to the clock shows the game and how long you've played.
+
+## How Keymotion knows a game
+
+- **Your launchers' lists.** Steam, Epic Games, GOG, Xbox, Riot Games and Xbox Game Bar know which programs are games, and Keymotion reads their lists on this computer. A launcher itself, such as Steam or the League of Legends client, is not a game; only the game you play is. You can turn off **Launchers' game lists**; then only the programs you said are games count.
+- **Your word.** In the **Games** list, **Not a game** removes a program that was taken for a game, and **Remove** forgets one you added.
+- **"Is it a game?"** When a program you haven't marked has filled the screen for a few minutes with the graphics card busy, the page asks. Keymotion never decides that by itself. Browsers and video players are never asked about.
+
+The **Games** list shows the games you've played with their total time. **Show all games found** lists the rest your launchers know.
+
+## A session
+
+- A session starts once a game has been in front for 15 seconds, so a splash screen or a game that closes right away doesn't count.
+- It lasts as long as the game runs. Switching to another window with Alt+Tab or minimizing the game doesn't end it.
+- It ends when the game has been closed for 10 seconds. A game that restarts itself keeps its session.
+- While a session runs, **Update automatically** doesn't install a new version (see [Updates](/keymotion/guide/settings/#updates)).
+
+## The keyboard's screen
+
+With the [live screen](/keymotion/guide/screen/) on:
+
+- **Start card**: the game's name and its picture from Steam (or the name on a colored background), and how long you've played today. It stays the same for the whole session: nothing new comes up while you play.
+- **Summary card**: after a session of 5 minutes or more, how long you played, the graphics card's average and peak load, its highest temperature, the processor's load and today's total. A reading your computer doesn't give is left out. The summary stays until the next card.
+
+While a session runs, song cards wait. Meeting and reminder cards and the focus timer still come first. Each card counts toward the live screen's daily upload limit.
+
+## Lights while playing
+
+**The keyboard's own light** changes nothing. **Light the game's keys** lights the keys you choose in one color and makes the others dim or dark. Ready-made sets are **WASD**, **MOBA (QWER DF)** and **1–6**; click keys on the drawing to add or remove them. **Try on the keyboard** shows the lights for a few seconds.
+
+These lights aren't saved to the keyboard; when the game ends, the keyboard goes back to its own light. While the game keys are lit, [system gauges](/keymotion/guide/system-gauges/) wait, and the muted-microphone warning always shows. The lights need the USB cable.
+
+## League of Legends
+
+During a match, League of Legends offers its data to tools on your computer. Keymotion reads only what the game shows you, and turns it into light:
+
+- **Health and mana**: your health as a bar on 1–0 that goes from green to yellow to red, mana or energy on F1–F12.
+- **When you die**: the keys turn dark red and 1–0 count down to your respawn.
+- **Short effects**: a wave when you level up; a short flash for kills, an ace, dragons (in the dragon's color), Baron and Herald; victory or defeat when the match ends.
+
+Each can be turned off. These lights take the place of the game keys. The summary card of a match also shows victory or defeat, your K/D/A, your CS and your champion.
+
+Keymotion never shows enemy cooldowns, dragon or Baron spawn timers, or anything that tells you what to do: Riot's rules don't allow them. Teamfight Tactics matches get no lights.
+
+<Aside type="note" title="Riot Games">
+Keymotion isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.
+</Aside>
+
+## Anti-cheat software
+
+Anti-cheat software, such as Riot Vanguard, Easy Anti-Cheat or BattlEye, blocks programs that read a game's memory, send it keys or load drivers with known security holes. Keymotion does none of these:
+
+- It sees which program is in front the way Windows' own accessibility tools do, and learns the program's path without opening the program.
+- It installs no driver and talks to the keyboard through Windows, like any USB device.
+- It reads League of Legends' data only from the service the game itself offers on your computer.
+
+If a game's anti-cheat software still gives you trouble, turn on **Leave the keyboard alone while playing**: during a game no lights and no cards go to the keyboard. Please also [report it](/keymotion/help/faq/).
+
+Macros can break a game's rules in competitive games such as League of Legends, VALORANT and CS2, and at FACEIT and tournaments, even the keyboard's own macros. Keymotion never turns macros on for a game by itself (see [Profiles by app](/keymotion/guide/profiles/#by-app)).
+
+## History and privacy
+
+**History** lists your latest sessions. **Delete history** deletes them all; it can't be undone.
+
+Everything stays on this computer: Keymotion doesn't read window titles and sends nothing off your computer. FPS and the processor's temperature aren't shown, because Windows doesn't give them without administrator rights or an extra driver. See [Privacy](/keymotion/about/privacy/).
