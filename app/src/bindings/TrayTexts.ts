@@ -42,6 +42,18 @@ updateReady: string,
  */
 updateTooltip: string, 
 /**
+ * The line while a game session runs. `{name}`, `{time}`.
+ */
+game: string, 
+/**
+ * The play time in it: `{h}` and `{min}`, `{min}`, under a minute.
+ */
+gameHours: string, gameMinutes: string, gameLess: string, 
+/**
+ * Profiles ▸ the per-app profiles' switch.
+ */
+autoProfile: string, 
+/**
  * The notification that a new version is ready. `{version}`.
  */
 noticeReadyTitle: string, noticeReadyBody: string, noticeInstall: string, noticeLater: string, 

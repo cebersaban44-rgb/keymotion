@@ -41,6 +41,7 @@ gif.workspace = true
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, features = [
     "Data_Xml_Dom",
+    "Security_Cryptography_Certificates",
     "UI_Notifications",
     "Web_Http",
     "Web_Http_Filters",
