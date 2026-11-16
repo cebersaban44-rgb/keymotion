@@ -257,7 +257,7 @@ const tr = {
   "update.store.open": "Microsoft Store'u aç",
   "update.githubCopy.label": "GitHub kopyası",
   "update.githubCopy.hint":
-    "GitHub'dan kurulan Keymotion da bu bilgisayarda; artık açılınca bu kopyayı başlatıyor, ikisine birden gerek yok. Yüklü uygulamalar'da yayıncısı “Keymotion” olanı kaldırabilirsiniz. Ayarlar ortak: uygulama verilerini silme kutusunu işaretlemeyin. Keymotion kapanırsa Başlat menüsünden yeniden açın.",
+    "GitHub'dan kurulan Keymotion da bu bilgisayarda; artık açılınca bu kopyayı başlatıyor, ikisine birden gerek yok. Yüklü uygulamalar'da yayıncısı “Keymotion” olanı kaldırabilirsiniz. Ayarlar ortak: kaldırırken “Ayarlarımı ve kayıtlarımı da sil” kutusunu işaretlemeyin. Keymotion kapanırsa Başlat menüsünden yeniden açın.",
   "update.githubCopy.open": "Yüklü uygulamaları aç",
   "update.auto": "Güncellemeleri kendiliğinden denetle",
   "update.auto.hint": "Uygulama açılınca günde bir kez GitHub'daki sürüm sayfasına bakar. Kendiliğinden kurmaz, size sorar.",
@@ -1705,7 +1705,7 @@ const en: Record<MessageKey, string> = {
   "update.store.open": "Open Microsoft Store",
   "update.githubCopy.label": "GitHub copy",
   "update.githubCopy.hint":
-    "Keymotion from GitHub is on this computer too; when opened, it now starts this copy, so one is enough. In Installed apps, remove the one whose publisher is “Keymotion”. Your settings are shared: leave the option to delete app data unticked. If Keymotion closes, open it again from Start.",
+    "Keymotion from GitHub is on this computer too; when opened, it now starts this copy, so one is enough. In Installed apps, remove the one whose publisher is “Keymotion”. Your settings are shared: leave “Also delete my settings and saved data” unticked. If Keymotion closes, open it again from Start.",
   "update.githubCopy.open": "Open Installed apps",
   "update.auto": "Check for updates automatically",
   "update.auto.hint": "Once a day, when the app opens, it looks at the release page on GitHub. It never installs by itself; it asks you.",

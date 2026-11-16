@@ -12,6 +12,13 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 
 ## [Yayımlanmamış]
 
+### Eklenenler
+
+- **Microsoft Store:** Keymotion 16 Kasım 2026'dan beri Microsoft Store'da.
+  Oradaki kopyayı Microsoft imzalar; Windows onu uyarı göstermeden kurar.
+  Sürüm sayfası, README ve site, GitHub indirme düğmesinin yanında
+  Microsoft'un "Microsoft'tan alın" rozetini gösterir.
+
 ### Değişenler
 
 - **İki kopya birden kuruluysa:** Bir bilgisayarda hem GitHub'dan hem

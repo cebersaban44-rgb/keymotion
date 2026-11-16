@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { changelogSection, foldNotes, formatSize, latestJson, releaseAssetUrl, releaseBody } from "./latest-json.mjs";
+import { STORE_URL, changelogSection, foldNotes, formatSize, latestJson, releaseAssetUrl, releaseBody } from "./latest-json.mjs";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const script = join(root, "tools", "release", "latest-json.mjs");
@@ -144,7 +144,7 @@ test("releaseBody: download button, notes, how to install, the SHA-256 line and 
   assert.match(body, new RegExp(
     '^<p align="center"><a href="https://github\\.com/o/r/releases/download/v0\\.2\\.0-beta\\.1/setup\\.exe">' +
       '<img alt="Download Keymotion 0\\.2\\.0-beta\\.1 for Windows" ' +
-      'src="https://img\\.shields\\.io/badge/Download_for_Windows-Keymotion_0\\.2\\.0--beta\\.1-d65f12\\?style=for-the-badge"></a></p>\n' +
+      'src="https://img\\.shields\\.io/badge/Download_for_Windows-Keymotion_0\\.2\\.0--beta\\.1-d65f12\\?style=for-the-badge" height="40"></a></p>\n' +
       '<p align="center"><sub>Windows 10 and 11, 64-bit · 5\\.1 MB · no administrator rights</sub></p>\n\n' +
       "> \\[!NOTE\\]\n> This release isn't signed yet",
   ));
@@ -162,6 +162,21 @@ test("releaseBody: download button, notes, how to install, the SHA-256 line and 
   assert.match(releaseBody({ notes: "x", fileName: "s.exe", sha256: SHA, repository: "o/r", version: "1.0.0" }),
     /<sub>Windows 10 and 11, 64-bit · no administrator rights<\/sub>/);
   assert.throws(() => releaseBody({ notes: "x", fileName: "s.exe", sha256: "ABC" }), /SHA-256/);
+  // A pre-release is only on GitHub: no Store badge, no Store lines.
+  assert.doesNotMatch(body, /microsoft/i);
+});
+
+test("releaseBody: a release also offers the same version in the Microsoft Store", () => {
+  const body = releaseBody({ notes: "x", fileName: "s.exe", sha256: SHA, repository: "o/r", version: "1.1.0" });
+  // Microsoft's badge beside the download button, light on GitHub's dark theme.
+  assert.match(body, new RegExp(
+    'height="40"></a> &nbsp; <a href="https://apps\\.microsoft\\.com/detail/9NL03GDZZ0ZS\\?referrer=appbadge&amp;mode=full"><picture>' +
+      '<source media="\\(prefers-color-scheme: dark\\)" srcset="https://get\\.microsoft\\.com/images/en-us%20light\\.svg">' +
+      '<img alt="Get it from Microsoft" src="https://get\\.microsoft\\.com/images/en-us%20dark\\.svg" height="40"></picture></a></p>',
+  ));
+  assert.match(body, /\*\*Run anyway\*\*\. The Microsoft Store copy of this version is signed by Microsoft/);
+  assert.match(body, /Prefer the Microsoft Store\? .*\(https:\/\/apps\.microsoft\.com\/detail\/9NL03GDZZ0ZS\?referrer=appbadge&mode=full\)\./);
+  assert.match(STORE_URL, /^https:\/\/apps\.microsoft\.com\/detail\/9NL03GDZZ0ZS\?/);
 });
 
 test("foldNotes: a long list goes under <details>, the intro stays visible", () => {

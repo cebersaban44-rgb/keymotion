@@ -34,7 +34,7 @@ Left alone, both copies would start with Windows and whichever came first would 
 - When the installed GitHub copy starts (the program in the folder its installer recorded, never a development or repository build), it looks for the Store package (`GetPackagesByPackageFamily`). If it is there, it starts the Store copy with `IApplicationActivationManager` and ends.
 - If the GitHub copy was set to start with Windows, it removes its `Run` value and passes `--take-startup`: the Store copy turns its startup task on, unless the user or a policy turned it off.
 - A start with Windows that finds a copy already running ends quietly, and a second launch with `--hidden` does not bring the window forward.
-- The Store copy's **Settings › About** shows a "GitHub copy" row while the GitHub copy is installed, with a button to Windows' Installed apps, where the user can remove it. The settings stay, as both copies share them, unless the uninstaller is told to delete the app data.
+- The Store copy's **Settings › About** shows a "GitHub copy" row while the GitHub copy is installed, with a button to Windows' Installed apps, where the user can remove it. The settings stay, as both copies share them, unless **Also delete my settings and saved data** is ticked in the uninstaller.
 
 GitHub copies older than this change (1.0.0) do not step aside; their next update brings it.
 
