@@ -37,8 +37,8 @@ use dto::{
     EffectInfo, EffectRequest, FlashWrite, GaugesSettings, GaugesState, IssueKind, KeyAssignment, KeyboardInfo,
     KeymapCatalog, KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint,
     PomodoroSettings, PomodoroState, Reminder, ReminderSettings, ReminderState, ScreenItem, ScreenItemKind,
-    ScreenState, SettingsReset, SongStop, ThemePreference, TrayTexts, UiEnvironment, UnsupportedKeyboard, UpdateState,
-    WindowsPage,
+    ScreenState, SettingsReset, SongStop, ThemePreference, TrayTexts, UiEnvironment, UnsupportedKeyboard, UpdateMode,
+    UpdateState, WindowsPage,
 };
 use gauges::GaugesHandle;
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
@@ -78,6 +78,16 @@ pub(crate) fn flash_busy(app: &AppHandle) -> bool {
 /// Closing would ask first: changes not on the keyboard, or a flash write.
 fn close_needs_asking(app: &AppHandle) -> bool {
     app.try_state::<CloseGuard>().is_some_and(|g| g.unsaved.load(Ordering::SeqCst)) || flash_busy(app)
+}
+
+/// "Update by itself" waits: closing would ask first, or the focus timer
+/// runs or is paused (its place in the sequence is not kept over a restart).
+pub(crate) fn busy_for_update(app: &AppHandle) -> bool {
+    close_needs_asking(app)
+        || app
+            .try_state::<Arc<PomodoroHandle>>()
+            .and_then(|p| p.state().ok())
+            .is_some_and(|s| s.status != dto::PomodoroStatus::Idle)
 }
 
 /// The official driver's copy of the factory animation: searched once per
@@ -782,10 +792,10 @@ async fn update_check(updates: State<'_, Arc<updates::Updates>>) -> Result<Updat
     Ok(updates.check().await)
 }
 
-/// Look once a day by itself, or not.
+/// What the app does about new versions by itself.
 #[tauri::command]
-fn update_auto(updates: State<'_, Arc<updates::Updates>>, enabled: bool) -> UpdateState {
-    updates.set_auto(enabled)
+fn update_mode(updates: State<'_, Arc<updates::Updates>>, mode: UpdateMode) -> UpdateState {
+    updates.set_mode(mode)
 }
 
 /// Download the update found and install it: the app closes, the installer
@@ -1360,6 +1370,20 @@ fn screen_journal(library: &Arc<Mutex<ScreenLibrary>>) -> device::ScreenWriteHoo
 
 /// The GitHub copy handed its start with Windows over (handoff.rs). Off the
 /// UI thread: turning the startup task on waits for Windows.
+/// A `keymotion:` address from a notification's button or its click
+/// (updates.rs). Every address but a valid "Update now" opens the window.
+fn open_app_link(app: &AppHandle, link: updates::Link) {
+    let Some(updates) = app.try_state::<Arc<updates::Updates>>() else {
+        tray::show_main(app);
+        return;
+    };
+    match link {
+        updates::Link::Open => tray::show_main(app),
+        updates::Link::Update => updates.open_dialog(),
+        updates::Link::Install { token } => updates.install_from_notice(&token),
+    }
+}
+
 fn take_startup(app: &AppHandle) {
     let Some(background) = app.try_state::<Arc<Background>>().map(|b| b.inner().clone()) else {
         tracing::warn!("start with Windows not taken over: the app is not ready");
@@ -1381,6 +1405,12 @@ pub fn run() {
         // once. A second launch brings the open window forward instead,
         // unless Windows started it (it stays in the tray).
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // A notification's button or click: Windows started a second
+            // copy with the app's own address.
+            if let Some(link) = updates::link(&args) {
+                open_app_link(app, link);
+                return;
+            }
             if args.iter().any(|a| a == handoff::ARG_TAKE_STARTUP) {
                 take_startup(app);
             }
@@ -1460,7 +1490,9 @@ pub fn run() {
             app.manage(PomodoroHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir.clone()));
             app.manage(GaugesHandle::spawn(app.handle().clone(), device.clone(), config_dir.clone()));
             app.manage(CalendarHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir.clone()));
-            app.manage(updates::Updates::spawn(app.handle().clone(), config_dir.clone()));
+            let updates = updates::Updates::spawn(app.handle().clone(), config_dir.clone());
+            let after_update = updates.start_hidden();
+            app.manage(updates);
             app.manage(RemindersHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir));
             app.manage(library);
             app.manage(device);
@@ -1474,8 +1506,9 @@ pub fn run() {
             // startup task passes nothing, Windows tells how it started.
             let at_sign_in = std::env::args().any(|a| a == tray::ARG_HIDDEN)
                 || (channel::store() && kb_winsys::package::started_at_sign_in());
-            if at_sign_in {
-                tracing::info!("started hidden, in the tray");
+            // Just updated: the window as the last version left it.
+            if after_update.unwrap_or(at_sign_in) {
+                tracing::info!(after_update = after_update.is_some(), "started hidden, in the tray");
             } else {
                 window.show()?;
             }
@@ -1504,7 +1537,7 @@ pub fn run() {
             tray_texts,
             update_state,
             update_check,
-            update_auto,
+            update_mode,
             update_install,
             update_cancel,
             open_windows_page,

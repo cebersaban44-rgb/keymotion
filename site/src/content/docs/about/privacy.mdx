@@ -26,10 +26,10 @@ Keymotion connects to the internet for two things only: the calendars you add, a
 
 ### The update check
 
-- **When.** If **Check for updates automatically** is on in **Settings**, under **About** (it's on at first), Keymotion looks at most once a day: a little after it starts, and again each day while it keeps running. **Check for updates** in the same place does the same at any time. With the switch off, Keymotion looks only when you click that button.
+- **When.** Unless **Updates** is set to **Off** in **Settings**, under **About** (it starts as **Let me know**), Keymotion looks at most once a day: a little after it starts, and again each day while it keeps running. **Check for updates** in the same place does the same at any time. With **Off**, Keymotion looks only when you click that button.
 - **What it reads.** A small file, `latest.json`, from the project's release page on GitHub. The request goes to `github.com`, and the file comes from GitHub's download server.
 - **What it sends.** An ordinary download request. Apart from the updater component's name and version (`tauri-plugin-updater`), it holds nothing about you: no account, no usage data, no settings. Like any server, GitHub sees the IP address the request comes from.
-- **When a new version is found.** Keymotion doesn't install it by itself; it asks you. When you choose **Install and restart**, the installer is downloaded from GitHub and its signature is checked with the key built into Keymotion. If it doesn't match, it isn't installed.
+- **When a new version is found.** With **Let me know**, Keymotion asks you; with **Update automatically**, it downloads the new version and installs it while the computer isn't in use. Either way the installer comes from GitHub and its signature is checked with the key built into Keymotion. If it doesn't match, it isn't installed.
 - **Test versions.** Versions with a suffix in their number, such as "-rc", also read GitHub's public list of releases (`api.github.com`), to see test releases too. Normal versions don't read that list.
 - **Microsoft Store version.** Keymotion installed from the Microsoft Store never makes this check: the Store updates it.
 

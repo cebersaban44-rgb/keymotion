@@ -97,6 +97,15 @@ pub fn activate(app_user_model_id: &str, arguments: &str) -> Result<u32, String>
     sys::activate(app_user_model_id, arguments)
 }
 
+/// Come back after an update. When the Store installs a new version, Windows
+/// closes the running app; a process registered here is started again
+/// afterwards with `arguments`
+/// (learn.microsoft.com: desktop-to-uwp-extensions, "Updates"). Only after
+/// an update: not after a crash, a hang or a restart of the computer.
+pub fn restart_after_update(arguments: &str) -> Result<(), String> {
+    sys::restart_after_update(arguments)
+}
+
 #[cfg(windows)]
 mod sys {
     use super::Package;
@@ -141,6 +150,26 @@ mod sys {
         AppInstance::GetActivatedEventArgs()
             .and_then(|args| args.Kind())
             .is_ok_and(|kind| kind == ActivationKind::StartupTask)
+    }
+
+    // Declared here rather than through the `windows` crate: its
+    // `Win32_System_Recovery` feature for one function. It lives in
+    // kernel32, which every program links anyway.
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn RegisterApplicationRestart(command_line: *const u16, flags: u32) -> windows::core::HRESULT;
+    }
+
+    pub fn restart_after_update(arguments: &str) -> Result<(), String> {
+        // RESTART_NO_CRASH | RESTART_NO_HANG | RESTART_NO_REBOOT: only an
+        // update (Restart Manager's "patch") brings the app back.
+        const ONLY_AFTER_UPDATE: u32 = 1 | 2 | 8;
+        let wide: Vec<u16> = arguments.encode_utf16().chain(std::iter::once(0)).collect();
+        // SAFETY: `wide` is NUL-terminated UTF-16 shorter than the 32,767
+        // characters allowed; Windows copies it during the call.
+        unsafe { RegisterApplicationRestart(wide.as_ptr(), ONLY_AFTER_UPDATE) }
+            .ok()
+            .map_err(|e| format!("restart after an update not registered: {}", e.message()))
     }
 
     pub fn installed(family: &str) -> bool {
@@ -199,11 +228,22 @@ mod sys {
     pub fn activate(_aumid: &str, _arguments: &str) -> Result<u32, String> {
         Err("packaged apps are only available on Windows".into())
     }
+
+    pub fn restart_after_update(_arguments: &str) -> Result<(), String> {
+        Err("restart after an update is only available on Windows".into())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn restart_after_an_update_can_be_registered() {
+        // Only this test process is registered, and it ends with the run.
+        restart_after_update("--hidden").unwrap();
+    }
 
     #[test]
     fn only_a_program_inside_the_package_is_the_package_s() {

@@ -17,7 +17,8 @@ Uygulama hangi yoldan kurulduğunu çalışırken anlar. Windows, MSIX'ten kurul
 
 | | GitHub (kurulum dosyası, geliştirme sürümü) | Microsoft Store |
 |---|---|---|
-| Güncellemeler | Uygulamanın kendi güncelleyicisi, GitHub sürümlerinden | Store. Güncelleyici kapalı kalır; Ayarlar › Hakkında, Store'un güncellemeler sayfasını açar. |
+| Güncellemeler | Uygulamanın kendi güncelleyicisi, GitHub sürümlerinden: Ayarlar › Hakkında › Güncellemeler'de kendiliğinden güncelle, haber ver ya da kapalı seçilir | Store. Güncelleyici kapalı kalır; Ayarlar › Hakkında, Store'un güncellemeler sayfasını açar. Uygulama kendini `RegisterApplicationRestart` ile kaydeder: Windows onu Store güncellemesini kurmak için kapatınca gizli olarak yeniden açılır. |
+| Bildirim düğmeleri | Uygulamanın kendi `keymotion:` adreslerini açar (`crates/kb-winsys/src/protocol.rs`); adres şeması açılışta kullanıcı başına kaydedilir, kaldırıcı siler | `keymotion:` adresi yok; tıklama uygulamayı paketin yoluyla başlatır |
 | Windows açılınca başlatma | Kullanıcının `Run` anahtarında bir değer, `--hidden` ile | Paketin başlangıç görevi (`KeymotionStartup`), yine `--hidden` ile. Kullanıcı bunu Windows ayarlarından kapatırsa yalnızca kendisi oradan yeniden açabilir; Ayarlar › Kapatma ve açılış o sayfaya bağlantı verir. |
 | Bildirimlerdeki ad ve logo | Açılışta `dev.keymotion` uygulama kimliğiyle kaydedilir | Paketin kendisinden gelir |
 | Veri klasörleri | `%APPDATA%\dev.keymotion`, `%LOCALAPPDATA%\dev.keymotion` | Uygulamanın gördüğü yollar aynıdır. Klasörler önceden yoksa Windows onları paketin kendi klasöründe tutar (`%LOCALAPPDATA%\Packages\<paket ailesi>\LocalCache\…`) ve uygulamayla birlikte siler; "Klasörü aç" o klasörü açar. |

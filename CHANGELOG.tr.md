@@ -18,6 +18,23 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   Oradaki kopyayı Microsoft imzalar; Windows onu uyarı göstermeden kurar.
   Sürüm sayfası, README ve site, GitHub indirme düğmesinin yanında
   Microsoft'un "Microsoft'tan alın" rozetini gösterir.
+- **Güncelleme bildirimleri:** Yeni sürüm çıkınca, her sürüm için bir kez,
+  **Şimdi güncelle** ve **Sonra** düğmeli bir Windows bildirimi bunu söyler.
+  Saatin yanındaki Keymotion simgesinin menüsü **Güncelleme var** satırıyla
+  başlar ve simgede küçük bir nokta görünür; pencerenin sol altındaki kart
+  ve **Ayarlar**'ın yanındaki nokta da söyler. Önceden yeni sürüm yalnızca
+  pencerenin içinde görünüyordu; Keymotion saatin yanında çalışırken fark
+  edilmiyordu.
+- **Kendiliğinden güncelleme:** Ayarlar › Hakkında › **Güncellemeler**'de
+  tek anahtarın yerine üç seçenek var. **Kendiliğinden güncelle** yeni
+  sürümü indirir ve bilgisayar kullanılmadığı bir anda kurar; klavyeye
+  yazarken, odak zamanlayıcısı çalışırken ya da klavyeye kaydedilmemiş
+  değişiklik varken asla. **Haber ver** (varsayılan) size söyler, ne zaman
+  kuracağınızı siz seçersiniz; **Kapalı** kendiliğinden hiç bakmaz. Eski
+  anahtar kapalıysa seçim **Kapalı** olur.
+- Güncellemeden sonra bir Windows bildirimi hangi sürümün kurulduğunu
+  **Neler yeni** düğmesiyle söyler; Keymotion da eskisi gibi açılır:
+  penceresiyle ya da saatin yanında.
 
 ### Değişenler
 
@@ -31,6 +48,13 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   için ayarlar kalır.
 - Keymotion açıkken bilgisayar açılışında ikinci kez başlatılırsa pencereyi
   artık öne getirmez.
+
+### Düzeltilenler
+
+- **Microsoft Store:** Store yeni sürümü kurarken Windows çalışan
+  Keymotion'ı kapatır. Keymotion artık ardından kendiliğinden, saatin
+  yanında yeniden açılır. Önceden bir sonraki oturum açılışına kadar kapalı
+  kalıyordu.
 
 ## [1.0.0] - 2026-11-15
 
