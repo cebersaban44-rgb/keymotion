@@ -744,6 +744,10 @@ impl GamesHandle {
             inner.suggestions.retain(|s| !same_path(&s.path, &path));
             inner.settings = inner.settings.clone().sanitized();
             inner.dirty = true;
+            // The program in front may be the one just marked.
+            if inner.front.is_none() {
+                inner.front = self.hub.last();
+            }
             inner.settings.clone()
         };
         tracing::info!(?game, "program marked");
