@@ -33,6 +33,7 @@ use crate::dto::{
     BackgroundSettings, Connection, KeyboardInfo, PomodoroPhase, PomodoroState, PomodoroStatus, ReminderState,
     TrayTexts,
 };
+use crate::games::{GamesHandle, EVENT_GAMES};
 use crate::gauges::{GaugesHandle, EVENT_GAUGES};
 use crate::pomodoro::{PomodoroAction, PomodoroHandle, EVENT_POMODORO};
 use crate::reminders::{RemindersHandle, EVENT_REMINDERS};
@@ -335,6 +336,8 @@ struct Facts {
     profiles: Vec<(String, String, bool)>,
     /// A new version waits: its number, and whether it is downloaded.
     update: Option<(String, bool)>,
+    /// A game session runs: the game and when it started.
+    game: Option<(String, f64)>,
 }
 
 /// Everything the menu shows, as text: what changed is set on its item.
@@ -343,6 +346,8 @@ struct View {
     /// The first line while a new version waits.
     update: Option<String>,
     keyboard: String,
+    /// The line under the keyboard's while a game session runs.
+    game: Option<String>,
     open: String,
     focus: String,
     focus_status: String,
@@ -451,14 +456,22 @@ where
     let update = f.update.as_ref().map(|(version, ready)| {
         fill(if *ready { &t.update_ready } else { &t.update_available }, &[("version", version)])
     });
+    let game = f.game.as_ref().map(|(name, started)| {
+        let min = ((now_ms - started).max(0.0) / 60_000.0).floor().to_string();
+        fill(&t.game, &[("name", name), ("min", &min)])
+    });
     let mut tooltip =
         if status == PomodoroStatus::Idle { "Keymotion".to_string() } else { format!("Keymotion — {focus_line}") };
+    if let Some(g) = &game {
+        tooltip = format!("{tooltip} · {g}");
+    }
     if f.update.is_some() {
         tooltip = format!("{tooltip} · {}", t.update_tooltip);
     }
     View {
         update,
         keyboard,
+        game,
         open: t.open.clone(),
         focus: t.focus.clone(),
         focus_status: focus_line.clone(),
@@ -527,6 +540,7 @@ fn update_line(app: &AppHandle) -> Option<(String, bool)> {
 fn facts(app: &AppHandle) -> Facts {
     Facts {
         update: update_line(app),
+        game: app.try_state::<Arc<GamesHandle>>().and_then(|g| g.session()),
         keyboard: keyboard_line(app),
         pomodoro: app.try_state::<Arc<PomodoroHandle>>().and_then(|p| p.state().ok()),
         reminders: app
@@ -560,6 +574,8 @@ struct Items {
     update: MenuItem<Wry>,
     update_sep: PredefinedMenuItem<Wry>,
     keyboard: MenuItem<Wry>,
+    /// Under the keyboard's line while a game session runs.
+    game: MenuItem<Wry>,
     open: MenuItem<Wry>,
     focus: Submenu<Wry>,
     focus_status: MenuItem<Wry>,
@@ -623,6 +639,7 @@ fn build(app: &AppHandle, v: &View) -> tauri::Result<(Menu<Wry>, Items)> {
     let quit = item(app, "quit", &v.quit, true)?;
     let update = item(app, "update", v.update.as_deref().unwrap_or_default(), true)?;
     let update_sep = PredefinedMenuItem::separator(app)?;
+    let game = item(app, "game", v.game.as_deref().unwrap_or_default(), false)?;
     let menu = Menu::with_items(
         app,
         &[
@@ -637,6 +654,9 @@ fn build(app: &AppHandle, v: &View) -> tauri::Result<(Menu<Wry>, Items)> {
             &quit,
         ],
     )?;
+    if v.game.is_some() {
+        menu.insert(&game, 1)?;
+    }
     if v.update.is_some() {
         menu.insert(&update, 0)?;
         menu.insert(&update_sep, 1)?;
@@ -648,6 +668,7 @@ fn build(app: &AppHandle, v: &View) -> tauri::Result<(Menu<Wry>, Items)> {
             update,
             update_sep,
             keyboard,
+            game,
             open,
             focus,
             focus_status,
@@ -686,6 +707,16 @@ fn apply(app: &AppHandle, items: &mut Items, old: &View, new: &View) -> tauri::R
             items.menu.remove(&items.update_sep)?;
         }
         (Some(a), Some(b)) if a != b => items.update.set_text(menu_text(b))?,
+        _ => {}
+    }
+    match (&old.game, &new.game) {
+        (None, Some(line)) => {
+            items.game.set_text(menu_text(line))?;
+            // Under the keyboard's line, which follows the update lines.
+            items.menu.insert(&items.game, if new.update.is_some() { 3 } else { 1 })?;
+        }
+        (Some(_), None) => items.menu.remove(&items.game)?,
+        (Some(a), Some(b)) if a != b => items.game.set_text(menu_text(b))?,
         _ => {}
     }
     text!(items.keyboard, keyboard);
@@ -902,7 +933,7 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
     if let Ok(mut r) = bg.refresh.lock() {
         *r = Some(tx);
     }
-    for event in [EVENT_POMODORO, EVENT_KEYBOARDS_CHANGED, EVENT_REMINDERS, EVENT_UPDATE] {
+    for event in [EVENT_POMODORO, EVENT_KEYBOARDS_CHANGED, EVENT_REMINDERS, EVENT_UPDATE, EVENT_GAMES] {
         let app = app.clone();
         app.clone().listen_any(event, move |_| refresh(&app));
     }
@@ -985,6 +1016,7 @@ mod tests {
             gauges: Some(true),
             profiles: vec![("default".into(), String::new(), false), ("p1".into(), "Oyun & iş".into(), true)],
             update: None,
+            game: None,
         };
         let v = view_of(&t, &f, now, &tz);
         assert_eq!(v.keyboard, "AJAZZ AK980 PRO · Bluetooth · battery 80%");
@@ -1020,6 +1052,13 @@ mod tests {
         assert_eq!(v.tooltip, "Keymotion · update available");
         f.update = Some(("1.1.0".into(), true));
         assert_eq!(view_of(&t, &f, now, &tz).update.as_deref(), Some("Install now: Keymotion 1.1.0"));
+
+        // A game session: a line under the keyboard's, and in the tooltip.
+        f.update = None;
+        f.game = Some(("League of Legends".into(), now - 42.5 * 60_000.0));
+        let v = view_of(&t, &f, now, &tz);
+        assert_eq!(v.game.as_deref(), Some("Playing League of Legends · 42 min"));
+        assert_eq!(v.tooltip, "Keymotion · Playing League of Legends · 42 min");
     }
 
     #[test]

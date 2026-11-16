@@ -263,11 +263,17 @@ pub struct LiveFrame {
 }
 
 /// Background light layers, from the bottom up (owner's decision,
-/// 2026-11-10). A live frame covers the whole keyboard, so the keyboard's
-/// own saved light only shows when no layer is set.
+/// 2026-11-10; the game and profile layers 2026-11-16). A live frame covers
+/// the whole keyboard, so the keyboard's own saved light only shows when no
+/// layer is set.
 ///
+/// * `Profile`: the per-key design of the profile linked to the program in
+///   front (per-app profiles), shown without writing the flash.
 /// * `Gauges`: the system gauges (processor, graphics, memory bars) with
 ///   the rest of the keys dark or tinted.
+/// * `Game`: a game's lights while a game session runs (its keys
+///   highlighted, or League of Legends' health and events). The gauges wait
+///   while it shows.
 /// * `Timer`: the focus timer. It uses the whole keyboard ("the light left
 ///   is the time left"), so the gauges wait while it shows.
 /// * `Alerts`: only the keys it names (volume bar for a moment, the
@@ -280,7 +286,9 @@ pub struct LiveFrame {
 /// A preview the user edits on the Lighting page (`SetLive`) goes over all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LightLayer {
+    Profile,
     Gauges,
+    Game,
     Timer,
     Alerts,
     Reminders,
@@ -293,7 +301,9 @@ pub type LitKey = (u8, Rgb, f32);
 /// The background layers, as handed in.
 #[derive(Debug, Clone, Default)]
 pub struct Layers {
+    pub profile: Option<LiveFrame>,
     pub gauges: Option<LiveFrame>,
+    pub game: Option<LiveFrame>,
     pub timer: Option<LiveFrame>,
     pub alerts: Option<LiveFrame>,
     pub reminders: Option<LiveFrame>,
@@ -303,7 +313,9 @@ pub struct Layers {
 impl Layers {
     fn slot(&mut self, layer: LightLayer) -> &mut Option<LiveFrame> {
         match layer {
+            LightLayer::Profile => &mut self.profile,
             LightLayer::Gauges => &mut self.gauges,
+            LightLayer::Game => &mut self.game,
             LightLayer::Timer => &mut self.timer,
             LightLayer::Alerts => &mut self.alerts,
             LightLayer::Reminders => &mut self.reminders,
@@ -312,7 +324,9 @@ impl Layers {
     }
 
     fn any(&self) -> bool {
-        self.gauges.is_some()
+        self.profile.is_some()
+            || self.gauges.is_some()
+            || self.game.is_some()
             || self.timer.is_some()
             || self.alerts.is_some()
             || self.reminders.is_some()
@@ -320,15 +334,15 @@ impl Layers {
     }
 }
 
-/// What the keys show: the preview alone, or the timer (else the gauges)
-/// with the alerts', the reminders' and then the nudges' keys on top.
-/// `None` when nothing is set.
+/// What the keys show: the preview alone, or the timer (else the game,
+/// else the gauges, else the profile) with the alerts', the reminders' and
+/// then the nudges' keys on top. `None` when nothing is set.
 pub fn compose(live: Option<&LiveFrame>, l: &Layers) -> Option<Vec<LitKey>> {
     let keys = |f: &LiveFrame| f.colors.iter().map(|&(l, c)| (l, c, f.level)).collect::<Vec<_>>();
     if let Some(live) = live {
         return Some(keys(live));
     }
-    let mut out = l.timer.as_ref().or(l.gauges.as_ref()).map(keys);
+    let mut out = l.timer.as_ref().or(l.game.as_ref()).or(l.gauges.as_ref()).or(l.profile.as_ref()).map(keys);
     for over in [l.alerts.as_ref(), l.reminders.as_ref(), l.nudges.as_ref()].into_iter().flatten() {
         let base = out.get_or_insert_with(Vec::new);
         for (led, c, level) in keys(over) {
@@ -1245,7 +1259,9 @@ mod tests {
         let only_gauges = Layers { gauges: Some(gauges.clone()), ..Layers::default() };
         assert_eq!(compose(None, &only_gauges), Some(vec![(1, [10; 3], 0.5), (2, [10; 3], 0.5), (3, [10; 3], 0.5)]));
         let all = Layers {
+            profile: None,
             gauges: Some(gauges),
+            game: None,
             timer: Some(timer),
             alerts: Some(alerts.clone()),
             reminders: Some(frame(&[(9, 7)], 1.0)),
@@ -1260,6 +1276,28 @@ mod tests {
         let only_alerts = Layers { alerts: Some(alerts), ..Layers::default() };
         assert_eq!(compose(None, &only_alerts), Some(vec![(2, [99; 3], 1.0), (9, [99; 3], 1.0)]));
         assert_eq!(compose(None, &Layers::default()), None);
+    }
+
+    #[test]
+    fn a_game_hides_the_gauges_and_the_profile_lies_under_everything() {
+        let profile = frame(&[(1, 5), (2, 5)], 1.0);
+        let gauges = frame(&[(1, 10), (2, 10)], 0.5);
+        let game = frame(&[(1, 30), (2, 30)], 1.0);
+        let mic = frame(&[(2, 99)], 1.0);
+        let only_profile = Layers { profile: Some(profile.clone()), ..Layers::default() };
+        assert_eq!(compose(None, &only_profile), Some(vec![(1, [5; 3], 1.0), (2, [5; 3], 1.0)]));
+        let gauges_over_profile =
+            Layers { profile: Some(profile.clone()), gauges: Some(gauges.clone()), ..Layers::default() };
+        assert_eq!(compose(None, &gauges_over_profile), Some(vec![(1, [10; 3], 0.5), (2, [10; 3], 0.5)]));
+        let in_game = Layers {
+            profile: Some(profile),
+            gauges: Some(gauges),
+            game: Some(game),
+            alerts: Some(mic),
+            ..Layers::default()
+        };
+        // The muted microphone stays on top of the game.
+        assert_eq!(compose(None, &in_game), Some(vec![(1, [30; 3], 1.0), (2, [99; 3], 1.0)]));
     }
 
     #[test]

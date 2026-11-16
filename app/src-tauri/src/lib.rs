@@ -10,6 +10,8 @@ mod channel;
 mod device;
 mod diagnostics;
 mod dto;
+mod front;
+mod games;
 mod gauges;
 mod handoff;
 mod ics;
@@ -34,12 +36,13 @@ use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request, ScreenWri
 use diagnostics::{AppFolder, LastExport};
 use dto::{
     BackgroundSettings, CalendarSettings, CalendarState, Calibration, CalibrationInfo, ClockStatus, CrashNote,
-    EffectInfo, EffectRequest, FlashWrite, GaugesSettings, GaugesState, IssueKind, KeyAssignment, KeyboardInfo,
-    KeymapCatalog, KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint,
-    PomodoroSettings, PomodoroState, Reminder, ReminderSettings, ReminderState, ScreenItem, ScreenItemKind,
-    ScreenState, SettingsReset, SongStop, ThemePreference, TrayTexts, UiEnvironment, UnsupportedKeyboard, UpdateMode,
-    UpdateState, WindowsPage,
+    EffectInfo, EffectRequest, FlashWrite, GamesSettings, GamesState, GaugesSettings, GaugesState, IssueKind,
+    KeyAssignment, KeyboardInfo, KeymapCatalog, KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo,
+    MacrosState, MirrorHint, PomodoroSettings, PomodoroState, Reminder, ReminderSettings, ReminderState, ScreenItem,
+    ScreenItemKind, ScreenState, SettingsReset, SongStop, ThemePreference, TrayTexts, UiEnvironment,
+    UnsupportedKeyboard, UpdateMode, UpdateState, WindowsPage,
 };
+use games::GamesHandle;
 use gauges::GaugesHandle;
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
 use live::LiveHandle;
@@ -80,14 +83,16 @@ fn close_needs_asking(app: &AppHandle) -> bool {
     app.try_state::<CloseGuard>().is_some_and(|g| g.unsaved.load(Ordering::SeqCst)) || flash_busy(app)
 }
 
-/// "Update by itself" waits: closing would ask first, or the focus timer
-/// runs or is paused (its place in the sequence is not kept over a restart).
+/// "Update by itself" waits: closing would ask first, the focus timer
+/// runs or is paused (its place in the sequence is not kept over a
+/// restart), or a game session runs.
 pub(crate) fn busy_for_update(app: &AppHandle) -> bool {
     close_needs_asking(app)
         || app
             .try_state::<Arc<PomodoroHandle>>()
             .and_then(|p| p.state().ok())
             .is_some_and(|s| s.status != dto::PomodoroStatus::Idle)
+        || app.try_state::<Arc<GamesHandle>>().is_some_and(|g| g.in_session())
 }
 
 /// The official driver's copy of the factory animation: searched once per
@@ -487,6 +492,49 @@ fn gauges_configure(gauges: Gauges<'_>, settings: GaugesSettings) -> Result<Gaug
 #[tauri::command]
 fn gauges_watch(gauges: Gauges<'_>, on: bool) {
     gauges.watch(on);
+}
+
+type Games<'a> = State<'a, Arc<GamesHandle>>;
+
+/// The game session: settings, the session that runs, games, history.
+#[tauri::command]
+fn games_state(games: Games<'_>) -> Result<GamesState, String> {
+    games.state()
+}
+
+#[tauri::command]
+fn games_configure(games: Games<'_>, settings: GamesSettings) -> Result<GamesState, String> {
+    tracing::debug!("ipc: games_configure");
+    games.configure(settings)
+}
+
+/// The user's word on a program: a game, not a game, or forget it (`null`).
+#[tauri::command]
+fn games_mark(games: Games<'_>, path: String, name: String, game: Option<bool>) -> Result<GamesState, String> {
+    games.mark(path, name, game)
+}
+
+#[tauri::command]
+fn games_clear_history(games: Games<'_>) -> Result<GamesState, String> {
+    games.clear_history()
+}
+
+/// Show the game lights on the keyboard for a moment.
+#[tauri::command]
+fn games_try_lights(games: Games<'_>) -> Result<(), String> {
+    games.try_lights()
+}
+
+/// Read the launchers' lists of games again.
+#[tauri::command]
+fn games_rescan(games: Games<'_>) {
+    games.rescan();
+}
+
+/// Steam's picture of a game (JPEG bytes), for the start card.
+#[tauri::command]
+fn games_cover(app_id: u32) -> Result<tauri::ipc::Response, String> {
+    GamesHandle::cover(app_id).map(tauri::ipc::Response::new).ok_or_else(|| "no cover".to_string())
 }
 
 #[tauri::command]
@@ -1493,7 +1541,16 @@ pub fn run() {
             let updates = updates::Updates::spawn(app.handle().clone(), config_dir.clone());
             let after_update = updates.start_hidden();
             app.manage(updates);
-            app.manage(RemindersHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir));
+            app.manage(RemindersHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir.clone()));
+            let front = front::FrontHub::new();
+            app.manage(GamesHandle::spawn(
+                app.handle().clone(),
+                live.clone(),
+                device.clone(),
+                front.clone(),
+                config_dir,
+            ));
+            app.manage(front);
             app.manage(library);
             app.manage(device);
             app.manage(live);
@@ -1580,6 +1637,13 @@ pub fn run() {
             gauges_state,
             gauges_configure,
             gauges_watch,
+            games_state,
+            games_configure,
+            games_mark,
+            games_clear_history,
+            games_try_lights,
+            games_rescan,
+            games_cover,
             calendar_state,
             calendar_configure,
             calendar_add,

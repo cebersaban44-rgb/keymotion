@@ -42,6 +42,10 @@ updateReady: string,
  */
 updateTooltip: string, 
 /**
+ * The line while a game session runs. `{name}`, `{min}`.
+ */
+game: string, 
+/**
  * The notification that a new version is ready. `{version}`.
  */
 noticeReadyTitle: string, noticeReadyBody: string, noticeInstall: string, noticeLater: string, 

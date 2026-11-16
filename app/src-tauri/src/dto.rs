@@ -397,6 +397,8 @@ pub struct TrayTexts {
     pub update_ready: String,
     /// Added to the icon's tooltip while a new version waits.
     pub update_tooltip: String,
+    /// The line while a game session runs. `{name}`, `{min}`.
+    pub game: String,
     /// The notification that a new version is ready. `{version}`.
     pub notice_ready_title: String,
     pub notice_ready_body: String,
@@ -449,6 +451,7 @@ impl Default for TrayTexts {
             update_available: s("Update available: Keymotion {version}"),
             update_ready: s("Install now: Keymotion {version}"),
             update_tooltip: s("update available"),
+            game: s("Playing {name} · {min} min"),
             notice_ready_title: s("Keymotion {version} is ready"),
             notice_ready_body: s("Installing it closes the app and opens it again in a few seconds."),
             notice_install: s("Update now"),
@@ -2143,4 +2146,236 @@ pub enum UpdateFailure {
     /// A write to the keyboard did not finish in time.
     KeyboardBusy,
     Other,
+}
+
+// ------------------------------------------------------------ game session
+
+/// How the keys look while a game session runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum GameLights {
+    /// The keyboard's own saved light: nothing is sent.
+    #[default]
+    Own,
+    /// The chosen keys in one colour, the others dark or dim (RAM only).
+    Keys,
+}
+
+/// The keys not chosen, with `GameLights::Keys`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum GameRest {
+    Dark,
+    #[default]
+    Dim,
+}
+
+/// A program the user said is a game, or is not.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GameMark {
+    /// Full path of the program.
+    pub path: String,
+    pub name: String,
+    pub game: bool,
+}
+
+/// Game session settings (persisted in `games.json`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct GamesSettings {
+    /// Game sessions are noticed (the program in front is watched).
+    pub enabled: bool,
+    /// The launchers' own lists (Steam, Epic, GOG, Xbox, Riot, Game Bar)
+    /// tell which programs are games.
+    pub launchers: bool,
+    /// A card on the keyboard's screen when a session starts (live screen).
+    pub start_card: bool,
+    /// A summary card when a session of 5 minutes or more ends.
+    pub summary_card: bool,
+    pub lights: GameLights,
+    /// Keys lit with `GameLights::Keys` (ids of the model's geometry).
+    pub keys: Vec<String>,
+    /// Their colour (UI colour, sRGB).
+    pub color: [u8; 3],
+    pub rest: GameRest,
+    /// Light brightness in the keyboard's own steps, 1–5.
+    pub brightness: u8,
+    /// While a game runs, nothing is sent to the keyboard: no lights, no
+    /// cards. For a game whose anti-cheat software might mind.
+    pub quiet: bool,
+    /// The user's own word on programs.
+    pub marks: Vec<GameMark>,
+}
+
+/// Keys lit by default: movement and the keys next to it.
+pub const GAME_KEYS_DEFAULT: [&str; 7] = ["w", "a", "s", "d", "lshift", "lctrl", "space"];
+
+impl Default for GamesSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            launchers: true,
+            start_card: true,
+            summary_card: true,
+            lights: GameLights::default(),
+            keys: GAME_KEYS_DEFAULT.iter().map(|k| (*k).to_string()).collect(),
+            color: [255, 138, 61],
+            rest: GameRest::default(),
+            brightness: 4,
+            quiet: false,
+            marks: Vec::new(),
+        }
+    }
+}
+
+impl GamesSettings {
+    pub const MAX_MARKS: usize = 500;
+    pub const NAME_MAX: usize = 80;
+
+    pub fn sanitized(mut self) -> Self {
+        let key_ok =
+            |k: &String| !k.is_empty() && k.len() <= 32 && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+        self.keys.retain(key_ok);
+        self.keys.dedup();
+        self.keys.truncate(128);
+        self.brightness = self.brightness.clamp(1, 5);
+        self.marks.retain(|m| !m.path.trim().is_empty() && m.path.len() <= 1024);
+        for m in &mut self.marks {
+            m.name = m.name.trim().chars().take(Self::NAME_MAX).collect();
+        }
+        let mut seen = std::collections::HashSet::new();
+        self.marks.retain(|m| seen.insert(m.path.to_lowercase()));
+        if self.marks.len() > Self::MAX_MARKS {
+            let drop = self.marks.len() - Self::MAX_MARKS;
+            self.marks.drain(..drop);
+        }
+        self
+    }
+}
+
+/// Where a game was found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum GameSource {
+    Steam,
+    Epic,
+    Gog,
+    Xbox,
+    Riot,
+    /// Xbox Game Bar remembers it as a game.
+    Windows,
+    /// The user said so.
+    Mine,
+}
+
+/// A game on the Game session page.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GameEntry {
+    /// Stable id: the program's path, or the install folder.
+    pub key: String,
+    pub name: String,
+    pub source: GameSource,
+    /// Played in total (from the history), ms.
+    pub total_ms: f64,
+    /// Last played (end of the last session).
+    pub last_ms: Option<f64>,
+    /// Played at least once: a game from a launcher's list that was never
+    /// played is listed only on request.
+    pub played: bool,
+}
+
+/// A program that looked like a game: "Is this a game?".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GameSuggestion {
+    pub path: String,
+    pub name: String,
+}
+
+/// The session that runs now.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GameSessionInfo {
+    pub key: String,
+    pub name: String,
+    pub source: GameSource,
+    pub started_ms: f64,
+    pub gpu_avg: Option<f32>,
+    pub temp_peak: Option<f32>,
+}
+
+/// A finished session (history, `game-history.json`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GameRecord {
+    pub key: String,
+    pub name: String,
+    pub source: GameSource,
+    pub start_ms: f64,
+    pub end_ms: f64,
+    #[serde(default)]
+    pub gpu_avg: Option<f32>,
+    #[serde(default)]
+    pub gpu_peak: Option<f32>,
+    #[serde(default)]
+    pub cpu_avg: Option<f32>,
+    #[serde(default)]
+    pub temp_peak: Option<f32>,
+}
+
+/// Game session, settings and history (`games` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GamesState {
+    pub settings: GamesSettings,
+    pub session: Option<GameSessionInfo>,
+    pub games: Vec<GameEntry>,
+    pub suggestions: Vec<GameSuggestion>,
+    /// Played today and in the last 7 days (the session that runs included).
+    pub today_ms: f64,
+    pub week_ms: f64,
+    /// The latest sessions, newest first.
+    pub recent: Vec<GameRecord>,
+    /// The graphics card reports its temperature on this computer.
+    pub temperature: bool,
+}
+
+/// What a game card is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum GameCardKind {
+    Start,
+    Summary,
+}
+
+/// A card the UI draws for the live screen (`game-card` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GameCard {
+    pub kind: GameCardKind,
+    pub name: String,
+    /// Steam's id: its cover can be asked for (`games_cover`).
+    pub steam_app: Option<u32>,
+    pub started_ms: f64,
+    pub ended_ms: Option<f64>,
+    pub gpu_avg: Option<f32>,
+    pub gpu_peak: Option<f32>,
+    pub cpu_avg: Option<f32>,
+    pub temp_peak: Option<f32>,
+    /// Played today, this session included.
+    pub today_ms: f64,
 }
