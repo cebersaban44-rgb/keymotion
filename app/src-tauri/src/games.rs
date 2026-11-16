@@ -140,6 +140,25 @@ fn mark_for<'a>(marks: &'a [GameMark], path: &str) -> Option<&'a GameMark> {
     marks.iter().filter(|m| covered(path, &m.path)).max_by_key(|m| m.path.len())
 }
 
+/// Whether the session's game is still a game under `s`: the user may have
+/// just said it isn't, forgotten their own game, or turned the launchers'
+/// lists off.
+fn still_a_game(game: &Detected, s: &GamesSettings) -> bool {
+    match mark_for(&s.marks, &game.key) {
+        Some(m) => m.game,
+        None => game.source != GameSource::Mine && s.launchers,
+    }
+}
+
+/// Whether a game known only from the history stays in the list of games:
+/// not once the user said it isn't one, nor their own game once forgotten.
+fn still_listed(marks: &[GameMark], r: &GameRecord) -> bool {
+    match mark_for(marks, &r.key) {
+        Some(m) => m.game,
+        None => r.source != GameSource::Mine,
+    }
+}
+
 /// The id a launcher's game is kept under: its folder, else its program.
 fn key_of(g: &KnownGame) -> String {
     g.dir.as_ref().or(g.exes.first()).map(|p| p.to_lowercase()).unwrap_or_default()
@@ -599,7 +618,7 @@ impl GamesHandle {
             }
         }
         // Games played before that no list has any more.
-        for r in &inner.history {
+        for r in inner.history.iter().filter(|r| still_listed(&inner.settings.marks, r)) {
             push(r.key.clone(), r.name.clone(), r.source);
         }
         games.sort_by(|a, b| {
@@ -859,6 +878,16 @@ impl GamesHandle {
             }
         }
 
+        // The session's game isn't one any more: it ends without a record.
+        if inner.tracker.session.as_ref().is_some_and(|r| !still_a_game(&r.game, &s)) {
+            inner.tracker.stop(now);
+            tracing::info!("game session dropped: not a game any more");
+            inner.dirty = true;
+            self.live.set_hold(SOURCE, false);
+            self.live.drop_pending(SOURCE);
+            self.live.return_after(SOURCE, STALE_CARD_BACK);
+        }
+
         let change = inner.tracker.tick(now, procs.as_deref());
         let live_on = self.live.enabled();
         match &change {
@@ -1055,6 +1084,58 @@ mod tests {
         let mut shell = front(9, r"C:\Windows\explorer.exe");
         shell.class = "Progman".into();
         assert_eq!(classify(&shell, &mine, &known, true), None);
+    }
+
+    #[test]
+    fn a_session_ends_when_its_game_is_no_longer_one() {
+        let s = GamesSettings::default();
+        let dota = game(r"c:\steam\steamapps\common\dota 2 beta", 3);
+        assert!(still_a_game(&dota, &s));
+        // "Not a game" on it, from the list of games (its key).
+        let mut no = s.clone();
+        no.marks.push(GameMark {
+            path: r"C:\Steam\steamapps\common\dota 2 beta".into(),
+            name: "x".into(),
+            game: false,
+        });
+        assert!(!still_a_game(&dota, &no));
+        // The launchers' lists turned off.
+        let mut off = s.clone();
+        off.launchers = false;
+        assert!(!still_a_game(&dota, &off));
+        // The user's own game: a game while marked, not once forgotten.
+        let mine = Detected { source: GameSource::Mine, ..game(r"d:\emu\emu.exe", 4) };
+        let mut marked = off.clone();
+        marked.marks.push(GameMark { path: r"D:\Emu\emu.exe".into(), name: "Emulator".into(), game: true });
+        assert!(still_a_game(&mine, &marked));
+        assert!(!still_a_game(&mine, &s));
+    }
+
+    #[test]
+    fn the_history_keeps_no_game_the_user_took_back() {
+        let record = |key: &str, source| GameRecord {
+            key: key.into(),
+            name: key.into(),
+            source,
+            start_ms: 0.0,
+            end_ms: 60_000.0,
+            gpu_avg: None,
+            gpu_peak: None,
+            cpu_avg: None,
+            temp_peak: None,
+            lol: None,
+        };
+        // A launcher's game no list has any more still shows its time.
+        let old = record(r"c:\steam\steamapps\common\portal", GameSource::Steam);
+        assert!(still_listed(&[], &old));
+        let no = [GameMark { path: r"C:\Steam\steamapps\common\Portal".into(), name: "Portal".into(), game: false }];
+        assert!(!still_listed(&no, &old));
+        // The user's own game: listed while marked, gone once forgotten.
+        let mine = record(r"c:\windows\system32\charmap.exe", GameSource::Mine);
+        let yes =
+            [GameMark { path: r"C:\Windows\System32\charmap.exe".into(), name: "Character Map".into(), game: true }];
+        assert!(still_listed(&yes, &mine));
+        assert!(!still_listed(&[], &mine));
     }
 
     fn game(key: &str, pid: u32) -> Detected {

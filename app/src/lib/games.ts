@@ -216,10 +216,4 @@ export function startGames(draw: (c: GameCard) => Promise<Prepared>): () => void
   return () => offs.forEach((p) => p.then((off) => off()).catch(console.error));
 }
 
-/** "2 h 14 min", "45 min", "0 min" from words with `{h}` and `{min}`. */
-export function playTime(ms: number, words: { hours: string; minutes: string }): string {
-  const total = Math.max(0, Math.floor(ms / 60_000));
-  const h = Math.floor(total / 60);
-  const min = total % 60;
-  return h > 0 ? words.hours.replace("{h}", String(h)).replace("{min}", String(min)) : words.minutes.replace("{min}", String(min));
-}
+export { playTime } from "./liveCards";

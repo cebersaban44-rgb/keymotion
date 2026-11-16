@@ -646,9 +646,10 @@ export interface GameWords {
   started: string;
   ended: string;
   today: string;
-  /** "{h} h {min} min" and "{min} min". */
+  /** "{h} h {min} min", "{min} min" and "under 1 min". */
   hours: string;
   minutes: string;
+  less: string;
   gpu: string;
   temp: string;
   cpu: string;
@@ -668,6 +669,7 @@ export function gameWords(tNow: (key: MessageKey) => string): GameWords {
     today: tNow("games.card.today"),
     hours: tNow("games.time.hours"),
     minutes: tNow("games.time.minutes"),
+    less: tNow("games.time.less"),
     gpu: tNow("games.card.gpu"),
     temp: tNow("games.card.temp"),
     cpu: tNow("games.card.cpu"),
@@ -685,7 +687,10 @@ function hhmm(ms: number) {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-function played(ms: number, w: GameWords) {
+/** "2 h 14 min", "45 min", "0 min" from words with `{h}` and `{min}`; a
+ *  moment under a minute is "under 1 min", not "0 min". */
+export function playTime(ms: number, w: Pick<GameWords, "hours" | "minutes" | "less">): string {
+  if (ms > 0 && ms < 60_000) return w.less;
   const total = Math.max(0, Math.floor(ms / 60_000));
   const h = Math.floor(total / 60);
   const min = total % 60;
@@ -697,7 +702,7 @@ function played(ms: number, w: GameWords) {
  *  the whole session, nothing moves while the game runs. */
 export async function gameStartCard(c: GameCard, cover: Blob | null, w: GameWords): Promise<Prepared> {
   const label = `${w.started} · ${hhmm(c.startedMs)}`;
-  const today = w.today.replace("{time}", played(c.todayMs, w));
+  const today = w.today.replace("{time}", playTime(c.todayMs, w));
   await fonts(`${label} ${c.name} ${today}`);
   const bmp = cover ? await createImageBitmap(cover).catch(() => null) : null;
   const tone: [number, number, number] = bmp ? coverTone(bmp) : [92, 52, 150];
@@ -772,7 +777,7 @@ export async function gameSummaryCard(c: GameCard, w: GameWords): Promise<Prepar
   const lol = c.lol;
   const who = lol?.champion ? `${c.name} · ${lol.champion}` : c.name;
   const label = `${who} · ${w.ended} ${hhmm(end)}`;
-  const length = played(end - c.startedMs, w);
+  const length = playTime(end - c.startedMs, w);
   // A League of Legends match: the result first, then K/D/A.
   const result = lol?.win == null ? null : lol.win ? w.win : w.lose;
   const time = result ?? length;
@@ -788,7 +793,7 @@ export async function gameSummaryCard(c: GameCard, w: GameWords): Promise<Prepar
   }
   if (c.tempPeak != null) cells.push([w.temp, `${w.peak} ${Math.round(c.tempPeak)} °C`]);
   if (c.cpuAvg != null) cells.push([w.cpu, `${w.avg} ${pct(c.cpuAvg)}`]);
-  cells.push([w.todayTotal, played(c.todayMs, w)]);
+  cells.push([w.todayTotal, playTime(c.todayMs, w)]);
   await fonts(`${label} ${time} ${cells.flat().join(" ")}`);
 
   const { bg, fg } = makeLayers();

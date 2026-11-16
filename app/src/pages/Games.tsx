@@ -61,7 +61,7 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
   if (!s) return null;
 
   const set = (patch: Partial<GamesSettings>) => configure(patch).catch(console.error);
-  const words = { hours: t("games.time.hours"), minutes: t("games.time.minutes") };
+  const words = { hours: t("games.time.hours"), minutes: t("games.time.minutes"), less: t("games.time.less") };
   const time = (ms: number) => playTime(ms, words);
   const usb = kb.connection === "usb" && kb.hasCommandChannel;
   const session = s.session;

@@ -419,8 +419,19 @@ fn riot_games() -> Vec<KnownGame> {
         .filter_map(|(id, name, exes)| {
             let yaml = std::fs::read_to_string(meta.join(id).join(format!("{id}.product_settings.yaml"))).ok()?;
             let dir = riot_install_path(&yaml)?;
-            let exes = exes.iter().map(|e| format!("{}\\{e}", dir.trim_end_matches('\\'))).collect();
-            Some(KnownGame { name: (*name).into(), source: Source::Riot, dir: None, exes, steam_app: None })
+            // The settings file stays for a product removed or never installed.
+            let exes: Vec<String> = exes
+                .iter()
+                .map(|e| format!("{}\\{e}", dir.trim_end_matches('\\')))
+                .filter(|e| Path::new(e).is_file())
+                .collect();
+            (!exes.is_empty()).then(|| KnownGame {
+                name: (*name).into(),
+                source: Source::Riot,
+                dir: None,
+                exes,
+                steam_app: None,
+            })
         })
         .collect()
 }
@@ -434,7 +445,8 @@ fn windows_games() -> Vec<KnownGame> {
         .filter_map(|id| {
             let exe = registry::text(Root::User, &format!(r"{base}\{id}"), "MatchedExeFullPath")?;
             let file = crate::foreground::file_name(&exe);
-            if is_helper(file) {
+            // Game Bar keeps games that were removed since.
+            if is_helper(file) || !Path::new(&exe).is_file() {
                 return None;
             }
             let name = file.rsplit_once('.').map_or(file, |(stem, _)| stem).to_string();
