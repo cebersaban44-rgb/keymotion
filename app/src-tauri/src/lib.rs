@@ -640,6 +640,23 @@ fn games_cover(app_id: u32) -> Result<tauri::ipc::Response, String> {
     GamesHandle::cover(app_id).map(tauri::ipc::Response::new).ok_or_else(|| "no cover".to_string())
 }
 
+/// League of Legends lights for the page's drawing: every frame of a scene
+/// (`lol::PREVIEW_STEP_MS` apart) on keyboard model `model_id`.
+#[tauri::command]
+fn games_lol_preview(
+    model_id: String,
+    settings: GamesSettings,
+    scene: dto::LolScene,
+) -> Result<Vec<lol::Keys>, String> {
+    GamesHandle::lol_preview(&model_id, &settings.sanitized(), scene)
+}
+
+/// Play a League of Legends scene on the keyboard for a moment (RAM only).
+#[tauri::command]
+fn games_try_lol(games: Games<'_>, scene: dto::LolScene) -> Result<(), String> {
+    games.try_lol(scene)
+}
+
 /// A program's icon, `size`×`size` RGBA, read from its file (the program
 /// isn't opened): lists of games and programs, a start card without a cover.
 #[tauri::command]
@@ -1770,6 +1787,8 @@ pub fn run() {
             games_rescan,
             games_cover,
             program_icon,
+            games_lol_preview,
+            games_try_lol,
             autoprofile_state,
             autoprofile_configure,
             calendar_state,

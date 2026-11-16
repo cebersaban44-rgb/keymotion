@@ -32,10 +32,14 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   gelen bir toplantı ya da hatırlatıcı kartı oyundan sonra kalkar. Geçmiş bu
   bilgisayarda kalır. "Kendiliğinden güncelle" oyunun bitmesini bekler.
 - **League of Legends ışıkları:** maç sırasında, oyunun bilgisayarınızda
-  sunduğu veriden: can 1–0'da, mana F1–F12'de; ölünce koyu kırmızı ve
-  yeniden doğma sayacı; seviye atlama, öldürme, as, ejder, Baron ve Herald
-  için kısa parlamalar; sonda zafer ya da yenilgi. Özet kartı sonucu, K/D/A'yı
-  ve minyon sayısını gösterir. Rakip ya da hedef sayaçları yok.
+  sunduğu veriden: canınız bütün klavyede, azaldıkça seçtiğiniz yönde
+  çekilerek (odak zamanlayıcısındaki gibi), ya da 1–0'da; mana F1–F12'de;
+  ölünce koyu kırmızı, yeniden doğmaya yaklaştıkça geri gelen ışık; zafer,
+  yenilgi, seviye atlama, öldürme, as, ejder, Baron ve Herald için seçtiğiniz
+  renkte seçtiğiniz animasyon (dalga, parlama, nabız, kıvılcım, halka,
+  yukarıdan sönme). Sayfadaki çizim bunları maçın kendi koduyla önizler,
+  "Klavyede dene" klavyede gösterir. Özet kartı sonucu, K/D/A'yı ve minyon
+  sayısını gösterir. Rakip ya da hedef sayaçları yok.
 - **Uygulamaya göre profil:** Profiller › **Uygulamaya göre** bir programı
   ya da bütün oyunları bir profile bağlar. Varsayılan olarak yalnız tuş
   başına renk tasarımının ışığı değişir, klavyeye bir şey kaydedilmez; bir

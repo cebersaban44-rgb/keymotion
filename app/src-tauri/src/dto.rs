@@ -2240,18 +2240,170 @@ pub struct GamesSettings {
 pub struct LolSettings {
     /// League of Legends' match lights instead of the plain game lights.
     pub enabled: bool,
-    /// Health on the number row, mana (or energy) on the F row.
+    /// Health, and mana (or energy) on the F row.
     pub bars: bool,
-    /// Dead: the keys go dark red, the number row counts down to respawn.
+    /// Dead: the keys go dark red, the light comes back as respawn nears.
     pub death: bool,
-    /// Short flashes: level up, kills, an ace, dragons and Baron, the end.
+    /// Short animations: level up, kills, an ace, dragons, Baron, Herald,
+    /// the end.
     pub events: bool,
+    /// Where health shows.
+    pub layout: LolLayout,
+    /// How the whole keyboard's light recedes as health drops.
+    pub motion: PomodoroMotion,
+    /// One colour for health; `None`: green, amber, red by how much is left.
+    pub health_color: Option<[u8; 3]>,
+    /// Mana (energy, fury) on the F row.
+    pub mana: bool,
+    /// Mana's colour (energy stays yellow, fury red).
+    pub mana_color: [u8; 3],
+    /// Each event's animation and colour.
+    pub lights: LolEventLights,
+    /// Dragons in their kind's colour, not `lights.dragon.color`.
+    pub dragon_kind_color: bool,
 }
 
 impl Default for LolSettings {
     fn default() -> Self {
-        Self { enabled: true, bars: true, death: true, events: true }
+        Self {
+            enabled: true,
+            bars: true,
+            death: true,
+            events: true,
+            layout: LolLayout::default(),
+            motion: PomodoroMotion::default(),
+            health_color: None,
+            mana: true,
+            mana_color: [61, 139, 255],
+            lights: LolEventLights::default(),
+            dragon_kind_color: true,
+        }
     }
+}
+
+/// Where League of Legends shows health.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum LolLayout {
+    /// The whole keyboard: the light recedes as health drops.
+    #[default]
+    Keyboard,
+    /// A bar on the number row (1 … 0).
+    Row,
+}
+
+/// A short animation for a match event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum LolAnim {
+    /// A band crossing from left to right.
+    #[default]
+    Wave,
+    /// The whole keyboard flashes twice.
+    Flash,
+    /// The whole keyboard breathes twice.
+    Pulse,
+    /// Keys twinkle here and there.
+    Sparkle,
+    /// A ring spreading from the middle.
+    Ring,
+    /// The keyboard lights up, then goes dark from the top row down.
+    Drain,
+}
+
+/// The events that get a light.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum LolEvent {
+    Win,
+    Lose,
+    LevelUp,
+    Kill,
+    Ace,
+    Dragon,
+    Baron,
+    Herald,
+}
+
+/// One event's light.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct LolEventLight {
+    pub on: bool,
+    pub anim: LolAnim,
+    /// UI colour, sRGB.
+    pub color: [u8; 3],
+}
+
+impl Default for LolEventLight {
+    fn default() -> Self {
+        Self { on: true, anim: LolAnim::Wave, color: LOL_GOLD }
+    }
+}
+
+const LOL_GOLD: [u8; 3] = [240, 199, 94];
+
+/// Every event's light.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct LolEventLights {
+    pub win: LolEventLight,
+    pub lose: LolEventLight,
+    pub level_up: LolEventLight,
+    pub kill: LolEventLight,
+    pub ace: LolEventLight,
+    pub dragon: LolEventLight,
+    pub baron: LolEventLight,
+    pub herald: LolEventLight,
+}
+
+impl Default for LolEventLights {
+    fn default() -> Self {
+        let l = |anim, color| LolEventLight { on: true, anim, color };
+        Self {
+            win: l(LolAnim::Sparkle, [52, 199, 89]),
+            lose: l(LolAnim::Drain, [255, 59, 48]),
+            level_up: l(LolAnim::Wave, LOL_GOLD),
+            kill: l(LolAnim::Flash, LOL_GOLD),
+            ace: l(LolAnim::Ring, LOL_GOLD),
+            dragon: l(LolAnim::Flash, [255, 90, 30]),
+            baron: l(LolAnim::Pulse, [155, 93, 229]),
+            herald: l(LolAnim::Wave, [196, 120, 255]),
+        }
+    }
+}
+
+impl LolEventLights {
+    pub fn get(&self, e: LolEvent) -> LolEventLight {
+        match e {
+            LolEvent::Win => self.win,
+            LolEvent::Lose => self.lose,
+            LolEvent::LevelUp => self.level_up,
+            LolEvent::Kill => self.kill,
+            LolEvent::Ace => self.ace,
+            LolEvent::Dragon => self.dragon,
+            LolEvent::Baron => self.baron,
+            LolEvent::Herald => self.herald,
+        }
+    }
+}
+
+/// What the League of Legends preview (and "Try on the keyboard") shows.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(export)]
+pub enum LolScene {
+    /// Health and mana, 0–1.
+    Bars { health: f32, mana: f32 },
+    /// Dead, until respawn.
+    Death,
+    /// An event's animation, over full health.
+    Event { event: LolEvent },
 }
 
 /// How a League of Legends match went (summary card, history).

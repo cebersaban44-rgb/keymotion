@@ -5,8 +5,11 @@
 //! is read from the game's memory and nothing is sent to it.
 //!
 //! * Only the player's own state, as the game shows it, and public events
-//!   become light: health and mana bars, being dead and the time to
-//!   respawn, level ups, kills, an ace, dragons, Baron, Herald, the end.
+//!   become light: health (on the whole keyboard, receding the way the
+//!   focus timer's light does, or on the number row) and mana on the F row,
+//!   being dead and the time to respawn, and a short animation of the
+//!   user's choice for level ups, kills, an ace, dragons, Baron, Herald and
+//!   the end.
 //!   No enemy timers, no objective spawn timers, nothing that tells the
 //!   player what to do (Riot's game integrity rules).
 //! * The service uses Riot's own certificate, which Windows does not
@@ -15,8 +18,9 @@
 //!   runs.
 //! * Teamfight Tactics runs in the same program; its matches get no lights.
 
-use crate::dto::{GameRest, GamesSettings, LolResult, LolSettings};
+use crate::dto::{GameRest, GamesSettings, LolAnim, LolEvent, LolLayout, LolResult, LolScene, LolSettings};
 use crate::games::KeyIds;
+use crate::pomodoro::{drain_order, lit};
 use kb_protocol::sonix::Rgb;
 use serde_json::Value;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -36,15 +40,22 @@ const F_ROW: [&str; 12] = ["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9",
 const HP_GREEN: Rgb = [52, 199, 89];
 const HP_AMBER: Rgb = [255, 176, 32];
 const HP_RED: Rgb = [255, 59, 48];
-const MANA: Rgb = [61, 139, 255];
 const ENERGY: Rgb = [255, 214, 10];
 const FURY: Rgb = [255, 69, 58];
 const DEAD: Rgb = [70, 0, 0];
 const RESPAWN: Rgb = [240, 240, 240];
-const GOLD: Rgb = [240, 199, 94];
-const BARON: Rgb = [155, 93, 229];
-const HERALD: Rgb = [196, 120, 255];
-const LOSE: Rgb = [255, 40, 40];
+/// The faint light of a key the bar doesn't reach, so its length shows.
+const TRACK: f32 = 0.06;
+/// Effects are kept this long at most (the longest animation, a 5-kill
+/// streak).
+const EFFECT_KEEP_MS: f64 = 8_000.0;
+/// The keys of one frame: LED and colour.
+pub type Keys = Vec<(u8, Rgb)>;
+/// Preview frames (`preview`), 25 a second.
+pub const PREVIEW_STEP_MS: f64 = 40.0;
+/// A preview of the bars, or of being dead.
+const STILL_PREVIEW_MS: f64 = 2_000.0;
+const DEATH_PREVIEW_MS: f64 = 4_000.0;
 
 /// A short light effect and when it began.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -62,14 +73,45 @@ pub enum Effect {
 }
 
 impl Effect {
-    fn length_ms(self) -> f64 {
+    pub fn event(self) -> LolEvent {
         match self {
-            Self::LevelUp => 900.0,
-            Self::Kill(n) => 260.0 * f64::from(n.clamp(1, 5)),
-            Self::Ace => 1_400.0,
-            Self::Dragon(_) | Self::Baron | Self::Herald => 900.0,
-            Self::Win | Self::Lose => 2_500.0,
+            Self::LevelUp => LolEvent::LevelUp,
+            Self::Kill(_) => LolEvent::Kill,
+            Self::Ace => LolEvent::Ace,
+            Self::Dragon(_) => LolEvent::Dragon,
+            Self::Baron => LolEvent::Baron,
+            Self::Herald => LolEvent::Herald,
+            Self::Win => LolEvent::Win,
+            Self::Lose => LolEvent::Lose,
         }
+    }
+
+    /// How many times its animation plays: once per kill of a streak.
+    fn times(self) -> u8 {
+        match self {
+            Self::Kill(n) => n.clamp(1, 5),
+            _ => 1,
+        }
+    }
+
+    fn length_ms(self, anim: LolAnim) -> f64 {
+        let one = anim_ms(anim);
+        match self.times() {
+            1 => one,
+            // A streak plays it quicker, each time.
+            n => one * 0.6 * f64::from(n),
+        }
+    }
+}
+
+/// One play of an animation.
+fn anim_ms(anim: LolAnim) -> f64 {
+    match anim {
+        LolAnim::Wave => 1_200.0,
+        LolAnim::Flash => 900.0,
+        LolAnim::Pulse => 1_600.0,
+        LolAnim::Sparkle | LolAnim::Drain => 2_500.0,
+        LolAnim::Ring => 1_300.0,
     }
 }
 
@@ -133,7 +175,7 @@ impl Live {
     }
 
     fn push(&mut self, e: Effect, now: f64) {
-        self.effects.retain(|(x, at)| now - at < x.length_ms());
+        self.effects.retain(|(_, at)| now - at < EFFECT_KEEP_MS);
         self.effects.push((e, now));
     }
 
@@ -267,6 +309,21 @@ fn bar(frame: &mut [(u8, Rgb)], leds: &[u8], share: f32, color: Rgb) {
     }
 }
 
+/// Health's colour: the user's, or green, amber, red by how much is left.
+fn health_color(l: &LolSettings, share: f32) -> Rgb {
+    l.health_color.unwrap_or(if share > 0.6 {
+        HP_GREEN
+    } else if share > 0.3 {
+        HP_AMBER
+    } else {
+        HP_RED
+    })
+}
+
+fn at(ids: &KeyIds, led: u8) -> (f32, f32) {
+    (ids.x.get(&led).copied().unwrap_or(0.5), ids.y.get(&led).copied().unwrap_or(0.5))
+}
+
 /// The keys while a League of Legends match runs.
 pub fn frame(live: &Live, ids: &KeyIds, s: &GamesSettings, now: f64) -> Vec<(u8, Rgb)> {
     let l: LolSettings = s.lol;
@@ -280,28 +337,38 @@ pub fn frame(live: &Live, ids: &KeyIds, s: &GamesSettings, now: f64) -> Vec<(u8,
         };
         ids.all.iter().map(|&led| (led, rest)).collect()
     };
+    let whole = l.layout == LolLayout::Keyboard;
     if l.death && live.dead {
-        for k in &mut out {
-            k.1 = DEAD;
-        }
         let left = ((live.respawn_at - now) / live.respawn_total.max(1.0) / 1_000.0).clamp(0.0, 1.0) as f32;
-        bar(&mut out, &row(ids, &NUMBER_ROW), left, RESPAWN);
+        if whole {
+            // Dark red; the light comes back the way health would fill.
+            for k in &mut out {
+                let (x, y) = at(ids, k.0);
+                k.1 = mix(DEAD, RESPAWN, lit(l.motion, drain_order(l.motion, x, y), 1.0 - left));
+            }
+        } else {
+            for k in &mut out {
+                k.1 = DEAD;
+            }
+            bar(&mut out, &row(ids, &NUMBER_ROW), left, RESPAWN);
+        }
     } else if l.bars {
         if let Some((h, max)) = live.health {
-            let share = h / max;
-            let color = if share > 0.6 {
-                HP_GREEN
-            } else if share > 0.3 {
-                HP_AMBER
+            let share = (h / max).clamp(0.0, 1.0);
+            let color = health_color(&l, share);
+            if whole {
+                for k in &mut out {
+                    let (x, y) = at(ids, k.0);
+                    k.1 = mix(scale(color, TRACK), color, lit(l.motion, drain_order(l.motion, x, y), share));
+                }
             } else {
-                HP_RED
-            };
-            bar(&mut out, &row(ids, &NUMBER_ROW), share, color);
+                bar(&mut out, &row(ids, &NUMBER_ROW), share, color);
+            }
         }
-        if let Some((kind, v, max)) = &live.resource {
+        if let (true, Some((kind, v, max))) = (l.mana, &live.resource) {
             let color = match kind.as_str() {
                 "ENERGY" => ENERGY,
-                "MANA" => MANA,
+                "MANA" => l.mana_color,
                 _ => FURY,
             };
             bar(&mut out, &row(ids, &F_ROW), v / max, color);
@@ -309,46 +376,150 @@ pub fn frame(live: &Live, ids: &KeyIds, s: &GamesSettings, now: f64) -> Vec<(u8,
     }
     if l.events {
         for (e, at) in &live.effects {
-            let t = ((now - at) / e.length_ms()) as f32;
+            let light = l.lights.get(e.event());
+            if !light.on {
+                continue;
+            }
+            let t = ((now - at) / e.length_ms(light.anim)) as f32;
             if !(0.0..1.0).contains(&t) {
                 continue;
             }
-            effect(&mut out, ids, *e, t);
+            let color = match e {
+                Effect::Dragon(kind) if l.dragon_kind_color => *kind,
+                _ => light.color,
+            };
+            // A streak plays the animation once per kill.
+            let n = f32::from(e.times());
+            animate(&mut out, ids, light.anim, color, if n > 1.0 { (t * n).fract() } else { t });
         }
     }
     out
 }
 
-/// One effect at `t` (0 → 1) over the frame.
-fn effect(out: &mut [(u8, Rgb)], ids: &KeyIds, e: Effect, t: f32) {
-    let flash = |out: &mut [(u8, Rgb)], color: Rgb, k: f32| {
-        for led in out.iter_mut() {
-            led.1 = mix(led.1, color, k);
-        }
-    };
-    let wave = |out: &mut [(u8, Rgb)], color: Rgb| {
-        // A band moving left to right.
-        let pos = t * 1.3 - 0.15;
-        for led in out.iter_mut() {
-            let x = ids.x.get(&led.0).copied().unwrap_or(0.5);
-            let k = (1.0 - ((x - pos).abs() / 0.15)).clamp(0.0, 1.0);
-            led.1 = mix(led.1, color, k);
-        }
-    };
-    match e {
-        Effect::LevelUp => wave(out, GOLD),
-        Effect::Kill(n) => {
-            // n quick flashes.
-            let phase = (t * f32::from(n.max(1))).fract();
-            flash(out, GOLD, if phase < 0.5 { 1.0 - phase * 2.0 } else { 0.0 });
-        }
-        Effect::Ace => flash(out, GOLD, (1.0 - t).powf(0.7)),
-        Effect::Dragon(c) => flash(out, c, ((t * 2.0).fract() < 0.5) as u8 as f32 * (1.0 - t)),
-        Effect::Baron => flash(out, BARON, ((t * 2.0).fract() < 0.5) as u8 as f32 * (1.0 - t)),
-        Effect::Herald => flash(out, HERALD, (1.0 - t) * 0.8),
-        Effect::Win => wave(out, GOLD),
-        Effect::Lose => flash(out, LOSE, (1.0 - t) * 0.9),
+/// One animation at `t` (0 → 1) over the frame.
+fn animate(out: &mut [(u8, Rgb)], ids: &KeyIds, anim: LolAnim, color: Rgb, t: f32) {
+    for k in out.iter_mut() {
+        let (x, y) = at(ids, k.0);
+        let a = match anim {
+            // A band moving left to right.
+            LolAnim::Wave => 1.0 - ((x - (t * 1.3 - 0.15)).abs() / 0.15),
+            // Two flashes, fading.
+            LolAnim::Flash => f32::from(u8::from((t * 2.0).fract() < 0.5)) * (1.0 - t),
+            // Two breaths.
+            LolAnim::Pulse => (t * std::f32::consts::PI * 2.0).sin().powi(2) * (1.0 - t * 0.3),
+            // A flash, then keys twinkling, each at its own moment.
+            LolAnim::Sparkle => {
+                let seed = ((f32::from(k.0) * 12.989).sin() * 43_758.547).fract().abs();
+                let phase = (t * 4.0 + seed).fract();
+                let twinkle = if phase < 0.25 { 1.0 - phase * 4.0 } else { 0.0 } * (1.0 - t * 0.5);
+                twinkle.max(1.0 - t / 0.12)
+            }
+            // A ring from the middle outwards.
+            LolAnim::Ring => {
+                let d = (x - 0.5).hypot((y - 0.5) * 0.6);
+                1.0 - (d - t * 0.75).abs() / 0.1
+            }
+            // Lit, then dark from the top row down.
+            LolAnim::Drain => {
+                if t < 0.2 {
+                    t / 0.2
+                } else {
+                    let edge = (t - 0.2) / 0.8 * 1.2;
+                    ((y - edge) / 0.08 + 0.5).clamp(0.0, 1.0) * (1.0 - t * 0.2)
+                }
+            }
+        };
+        k.1 = mix(k.1, color, a.clamp(0.0, 1.0));
     }
+}
+
+/// How long a preview scene runs.
+pub fn scene_ms(s: &GamesSettings, scene: LolScene) -> f64 {
+    match scene {
+        LolScene::Bars { .. } => STILL_PREVIEW_MS,
+        LolScene::Death => DEATH_PREVIEW_MS,
+        LolScene::Event { event } => scene_effect(event).length_ms(s.lol.lights.get(event).anim),
+    }
+}
+
+/// The effect a preview of `event` plays (a dragon of fire, a single kill).
+fn scene_effect(event: LolEvent) -> Effect {
+    match event {
+        LolEvent::Win => Effect::Win,
+        LolEvent::Lose => Effect::Lose,
+        LolEvent::LevelUp => Effect::LevelUp,
+        LolEvent::Kill => Effect::Kill(1),
+        LolEvent::Ace => Effect::Ace,
+        LolEvent::Dragon => Effect::Dragon(dragon_color("fire")),
+        LolEvent::Baron => Effect::Baron,
+        LolEvent::Herald => Effect::Herald,
+    }
+}
+
+/// The keys `ms` into a preview scene (the page's drawing, "Try on the
+/// keyboard"); `None` once it is over.
+pub fn scene_frame(ids: &KeyIds, s: &GamesSettings, scene: LolScene, ms: f64) -> Option<Vec<(u8, Rgb)>> {
+    if ms >= scene_ms(s, scene) {
+        return None;
+    }
+    let (health, mana) = match scene {
+        LolScene::Bars { health, mana } => (health.clamp(0.0, 1.0), mana.clamp(0.0, 1.0)),
+        _ => (1.0, 0.6),
+    };
+    let mut live = Live {
+        connected: true,
+        health: Some((health * 100.0, 100.0)),
+        resource: Some(("MANA".into(), mana * 100.0, 100.0)),
+        ..Live::default()
+    };
+    // The scene shows what it is about, whatever else is turned off.
+    let mut s = s.clone();
+    match scene {
+        LolScene::Bars { .. } => s.lol.bars = true,
+        LolScene::Death => {
+            s.lol.death = true;
+            live.dead = true;
+            live.respawn_total = DEATH_PREVIEW_MS / 1_000.0;
+            live.respawn_at = DEATH_PREVIEW_MS;
+        }
+        LolScene::Event { event } => {
+            s.lol.events = true;
+            let light = s.lol.lights.get(event);
+            let on = crate::dto::LolEventLight { on: true, ..light };
+            set_light(&mut s.lol, event, on);
+            live.effects.push((scene_effect(event), 0.0));
+        }
+    }
+    Some(frame(&live, ids, &s, ms))
+}
+
+fn set_light(l: &mut LolSettings, e: LolEvent, light: crate::dto::LolEventLight) {
+    let slot = match e {
+        LolEvent::Win => &mut l.lights.win,
+        LolEvent::Lose => &mut l.lights.lose,
+        LolEvent::LevelUp => &mut l.lights.level_up,
+        LolEvent::Kill => &mut l.lights.kill,
+        LolEvent::Ace => &mut l.lights.ace,
+        LolEvent::Dragon => &mut l.lights.dragon,
+        LolEvent::Baron => &mut l.lights.baron,
+        LolEvent::Herald => &mut l.lights.herald,
+    };
+    *slot = light;
+}
+
+/// Every frame of a preview scene, `PREVIEW_STEP_MS` apart.
+pub fn preview(ids: &KeyIds, s: &GamesSettings, scene: LolScene) -> Vec<Keys> {
+    let mut frames = Vec::new();
+    let mut ms = 0.0;
+    while let Some(f) = scene_frame(ids, s, scene, ms) {
+        frames.push(f);
+        // The bars don't move: one frame is enough.
+        if matches!(scene, LolScene::Bars { .. }) {
+            break;
+        }
+        ms += PREVIEW_STEP_MS;
+    }
+    frames
 }
 
 fn mix(a: Rgb, b: Rgb, k: f32) -> Rgb {
@@ -512,12 +683,30 @@ mod tests {
         let mut by_id = HashMap::new();
         let mut all = Vec::new();
         let mut x = HashMap::new();
+        let mut y = HashMap::new();
         for (i, k) in NUMBER_ROW.iter().chain(F_ROW.iter()).chain(["q", "w"].iter()).enumerate() {
             by_id.insert((*k).to_string(), i as u8);
             all.push(i as u8);
             x.insert(i as u8, i as f32 / 23.0);
+            y.insert(
+                i as u8,
+                if i < 10 {
+                    0.4
+                } else if i < 22 {
+                    0.0
+                } else {
+                    0.8
+                },
+            );
         }
-        KeyIds { all, by_id, x }
+        KeyIds { all, by_id, x, y }
+    }
+
+    /// Health on the number row, as before the whole keyboard.
+    fn on_the_row() -> GamesSettings {
+        let mut s = GamesSettings::default();
+        s.lol.layout = LolLayout::Row;
+        s
     }
 
     fn active(hp: f64, max: f64, level: u64) -> Value {
@@ -532,7 +721,8 @@ mod tests {
     fn health_and_mana_become_bars() {
         let mut live = Live { connected: true, last_event: -1, ..Live::default() };
         live.read_active(&active(450.0, 1000.0, 3), 0.0);
-        let s = GamesSettings::default();
+        let s = on_the_row();
+        let mana = s.lol.mana_color;
         let f = frame(&live, &ids(), &s, 0.0);
         let at = |led: u8| f.iter().find(|k| k.0 == led).unwrap().1;
         // 45 % health: four keys and half of the fifth, amber.
@@ -541,8 +731,57 @@ mod tests {
         assert_eq!(at(4), scale(HP_AMBER, 0.5));
         assert_eq!(at(9), scale(HP_AMBER, 0.06));
         // Mana at half of the F row (leds 10–21).
-        assert_eq!(at(10), MANA);
-        assert_eq!(at(21), scale(MANA, 0.06));
+        assert_eq!(at(10), mana);
+        assert_eq!(at(21), scale(mana, 0.06));
+    }
+
+    #[test]
+    fn health_on_the_whole_keyboard_recedes_the_chosen_way() {
+        let mut live = Live { connected: true, last_event: -1, ..Live::default() };
+        live.read_active(&active(500.0, 1000.0, 3), 0.0);
+        let mut s = GamesSettings::default();
+        assert_eq!(s.lol.layout, LolLayout::Keyboard, "the whole keyboard is the default");
+        s.lol.mana = false;
+        s.lol.health_color = Some([10, 200, 10]);
+        let f = frame(&live, &ids(), &s, 0.0);
+        let at = |led: u8| f.iter().find(|k| k.0 == led).unwrap().1;
+        // Right to left: the left half lit, the right half faint (q and w
+        // are on the far right of this little keyboard).
+        assert_eq!(at(0), [10, 200, 10]);
+        assert_eq!(at(23), scale([10, 200, 10], TRACK));
+        // Left to right: the other way round.
+        s.lol.motion = crate::dto::PomodoroMotion::LeftToRight;
+        let f = frame(&live, &ids(), &s, 0.0);
+        let at = |led: u8| f.iter().find(|k| k.0 == led).unwrap().1;
+        assert_eq!(at(0), scale([10, 200, 10], TRACK));
+        assert_eq!(at(23), [10, 200, 10]);
+    }
+
+    #[test]
+    fn an_event_plays_the_users_animation_in_the_users_colour() {
+        let mut s = GamesSettings::default();
+        s.lol.lights.win = crate::dto::LolEventLight { on: true, anim: LolAnim::Flash, color: [1, 2, 3] };
+        // Flash: the whole keyboard at the start.
+        let f = scene_frame(&ids(), &s, LolScene::Event { event: LolEvent::Win }, 0.0).unwrap();
+        assert!(f.iter().all(|k| k.1 == [1, 2, 3]));
+        // Over after one play.
+        assert_eq!(scene_ms(&s, LolScene::Event { event: LolEvent::Win }), 900.0);
+        assert!(scene_frame(&ids(), &s, LolScene::Event { event: LolEvent::Win }, 900.0).is_none());
+        // Turned off in a match: nothing; the preview still shows it.
+        s.lol.lights.win.on = false;
+        let mut live = Live { connected: true, ..Live::default() };
+        live.effects.push((Effect::Win, 0.0));
+        assert!(frame(&live, &ids(), &s, 10.0).iter().all(|k| k.1 != [1, 2, 3]));
+        assert_eq!(preview(&ids(), &s, LolScene::Event { event: LolEvent::Win }).len(), 23);
+        // A dragon in its kind's colour, unless the user picked one.
+        s.lol.lights.dragon = crate::dto::LolEventLight { on: true, anim: LolAnim::Flash, color: [9, 9, 9] };
+        let f = scene_frame(&ids(), &s, LolScene::Event { event: LolEvent::Dragon }, 0.0).unwrap();
+        assert_eq!(f[0].1, dragon_color("fire"));
+        s.lol.dragon_kind_color = false;
+        let f = scene_frame(&ids(), &s, LolScene::Event { event: LolEvent::Dragon }, 0.0).unwrap();
+        assert_eq!(f[0].1, [9, 9, 9]);
+        // A streak plays it once per kill, quicker.
+        assert_eq!(Effect::Kill(3).length_ms(LolAnim::Flash), 900.0 * 0.6 * 3.0);
     }
 
     #[test]
@@ -551,7 +790,7 @@ mod tests {
         live.read_active(&active(0.0, 1000.0, 3), 0.0);
         live.read_players(&json!([{ "riotId": "Oyuncu#TR1", "isDead": true, "respawnTimer": 10.0, "championName": "Ahri", "team": "ORDER", "scores": { "kills": 2, "deaths": 1, "assists": 3, "creepScore": 50 } }]), 0.0);
         assert!(live.dead);
-        let f = frame(&live, &ids(), &GamesSettings::default(), 5_000.0);
+        let f = frame(&live, &ids(), &on_the_row(), 5_000.0);
         let at = |led: u8| f.iter().find(|k| k.0 == led).unwrap().1;
         // Half the wait left: five keys of the number row.
         assert_eq!(at(0), RESPAWN);
@@ -559,6 +798,12 @@ mod tests {
         assert_eq!(at(6), scale(RESPAWN, 0.06));
         assert_eq!(at(22), DEAD);
         assert_eq!(live.result().unwrap().champion, "Ahri");
+        // On the whole keyboard: dark red, the light coming back from the
+        // left (right to left recedes, so it fills from the left).
+        let f = frame(&live, &ids(), &GamesSettings::default(), 5_000.0);
+        let at = |led: u8| f.iter().find(|k| k.0 == led).unwrap().1;
+        assert_eq!(at(0), RESPAWN);
+        assert_eq!(at(23), DEAD);
         // A level up adds an effect.
         live.read_active(&active(500.0, 1000.0, 4), 6_000.0);
         assert!(matches!(live.effects.last(), Some((Effect::LevelUp, _))));

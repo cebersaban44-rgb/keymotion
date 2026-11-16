@@ -35,11 +35,15 @@ says so.
   card. A meeting's or reminder's card that came up during a game goes away
   after the game. The history stays on this computer. "Update automatically"
   waits for the game to end.
-- **League of Legends lights:** during a match, health on 1–0 and mana on
-  F1–F12, dark red and a respawn countdown when you die, short flashes for
-  level ups, kills, an ace, dragons, Baron and Herald, and victory or defeat
-  at the end, from the data the game offers on your computer. The summary
-  card shows the result, K/D/A and CS. No enemy timers or objective timers.
+- **League of Legends lights:** during a match, from the data the game
+  offers on your computer: your health on the whole keyboard, receding the
+  way you choose as it drops (as with the focus timer), or on 1–0; mana on
+  F1–F12; dark red when you die, the light coming back as respawn nears; and
+  an animation of your choice (wave, flash, pulse, sparkle, ring, fade from
+  the top) in your color for victory, defeat, level ups, kills, an ace,
+  dragons, Baron and Herald. A drawing on the page previews them with the
+  match's own code, and "Try on the keyboard" plays them. The summary card
+  shows the result, K/D/A and CS. No enemy timers or objective timers.
 - **Profiles by app:** Profiles › **By app** links a program, or every game,
   to a profile. By default only a per-key design's lighting changes, without
   saving anything to the keyboard; a rule can also save the key mapping and

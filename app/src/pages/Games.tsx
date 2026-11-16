@@ -13,11 +13,9 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
-  Swords,
   Usb,
-  type LucideIcon,
 } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import type { AutoRule } from "../bindings/AutoRule";
 import type { GameCard } from "../bindings/GameCard";
 import type { GameEntry } from "../bindings/GameEntry";
@@ -39,6 +37,8 @@ import { gameStartCard, gameSummaryCard, gameWords } from "../lib/liveCards";
 import { fromHex, toHex } from "../lib/pomodoroLights";
 import { profileName, useProfiles } from "../lib/profiles";
 import { useApp } from "../lib/store";
+import { LolLights } from "./GamesLol";
+import { Row, Switch } from "./gamesRows";
 import { FramePlayer } from "./screen/common";
 
 const SOURCE_KEY: Record<GameSource, MessageKey> = {
@@ -204,27 +204,7 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
 
           <Lights kb={kb} usb={usb} settings={s.settings} set={set} profiles={profiles} />
 
-          <Row
-            icon={Swords}
-            title={t("games.lol")}
-            body={t("games.lol.body")}
-            checked={s.settings.lol.enabled}
-            onChange={(enabled) => set({ lol: { ...s.settings.lol, enabled } })}
-          >
-            {s.settings.lol.enabled && (
-              <>
-                {!usb && <p className="text-[12px] text-ink-3">{t("games.noUsb")}</p>}
-                <Switch label={t("games.lol.bars")} body={t("games.lol.bars.body")} on={s.settings.lol.bars} onChange={(bars) => set({ lol: { ...s.settings.lol, bars } })} />
-                <Switch label={t("games.lol.death")} body={t("games.lol.death.body")} on={s.settings.lol.death} onChange={(death) => set({ lol: { ...s.settings.lol, death } })} />
-                <Switch label={t("games.lol.events")} body={t("games.lol.events.body")} on={s.settings.lol.events} onChange={(events) => set({ lol: { ...s.settings.lol, events } })} />
-                <LolCard />
-                <p className="text-[12px] text-ink-3">{t("games.lol.never")}</p>
-              </>
-            )}
-            <p className="text-[11px] text-ink-3" data-games-riot-notice>
-              {t("games.lol.legal")}
-            </p>
-          </Row>
+          <LolLights kb={kb} usb={usb} settings={s.settings} set={set} />
 
           <Row icon={ShieldCheck} title={t("games.quiet")} body={t("games.quiet.body")} checked={s.settings.quiet} onChange={(quiet) => set({ quiet })}>
             {s.settings.quiet && (
@@ -513,46 +493,6 @@ function CardStrip({ temperature }: { temperature: boolean }) {
   );
 }
 
-/** The summary card of a League of Legends match, drawn by the real code. */
-function LolCard() {
-  const t = useT();
-  const locale = useApp((x) => x.locale);
-  const [frame, setFrame] = useState<Uint16Array | null>(null);
-  const draw = useEffectEvent(() =>
-    gameSummaryCard(
-      {
-        kind: "summary",
-        name: "League of Legends",
-        steamApp: null,
-        exe: null,
-        startedMs: Date.now() - 32 * 60_000,
-        endedMs: Date.now(),
-        gpuAvg: 61,
-        gpuPeak: 88,
-        cpuAvg: 27,
-        cpuPeak: 64,
-        tempPeak: 66,
-        todayMs: 125 * 60_000,
-        lol: { win: true, kills: 8, deaths: 3, assists: 12, cs: 214, champion: "Ahri", mode: "CLASSIC" },
-      },
-      gameWords(t),
-    ),
-  );
-  useEffect(() => {
-    let live = true;
-    draw().then((p) => live && setFrame(p.frames[0]!), console.error);
-    return () => {
-      live = false;
-    };
-  }, [locale]);
-  return (
-    <figure className="flex flex-col gap-1">
-      {frame ? <FramePlayer frames={[frame]} delaysMs={[100]} className="h-[76px] w-[135px] rounded-md bg-black" /> : <div className="h-[76px] w-[135px] rounded-md bg-black" />}
-      <figcaption className="text-[11px] text-ink-3">{t("games.lol.card")}</figcaption>
-    </figure>
-  );
-}
-
 /** How the keys look while a game runs. */
 function Lights({
   kb,
@@ -771,52 +711,5 @@ function HistoryRow({ time }: { time: (ms: number) => string }) {
         )}
       </div>
     </Row>
-  );
-}
-
-function Switch({ label, body, on, onChange }: { label: string; body: string; on: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <span className="flex flex-col">
-        <span className="text-[13px] font-medium">{label}</span>
-        <span className="text-[12px] text-ink-3">{body}</span>
-      </span>
-      <Toggle checked={on} onChange={onChange} label={label} />
-    </div>
-  );
-}
-
-/** One group of settings: a title and what it does, its switch, and what
- *  belongs to it, indented under it (as on the gauges page). */
-function Row({
-  icon: Icon,
-  title,
-  body,
-  checked,
-  onChange,
-  children,
-}: {
-  icon: LucideIcon;
-  title: string;
-  body: string;
-  checked?: boolean;
-  onChange?: (v: boolean) => void;
-  children?: ReactNode;
-}) {
-  const nested = Array.isArray(children) ? children.some(Boolean) : !!children;
-  return (
-    <div className="flex flex-col gap-3 px-5 py-4">
-      <div className="flex items-start justify-between gap-3">
-        <span className="flex items-start gap-2.5">
-          <Icon size={16} className="mt-0.5 shrink-0 text-signal" />
-          <span className="flex max-w-[80ch] flex-col">
-            <span className="text-[13px] font-semibold">{title}</span>
-            <span className="text-[12px] text-ink-3">{body}</span>
-          </span>
-        </span>
-        {onChange && checked !== undefined && <Toggle checked={checked} onChange={onChange} label={title} />}
-      </div>
-      {nested && <div className="ml-[7px] flex flex-col gap-3 border-l-2 border-line pl-5">{children}</div>}
-    </div>
   );
 }

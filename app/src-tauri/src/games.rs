@@ -27,7 +27,7 @@
 use crate::device::{DeviceHandle, LightLayer, LiveFrame, Quiet, Request};
 use crate::dto::{
     Connection, GameCard, GameCardKind, GameCardStatus, GameEntry, GameLights, GameMark, GameRecord, GameRest,
-    GameSessionInfo, GameSource, GameSuggestion, GamesSettings, GamesState,
+    GameSessionInfo, GameSource, GameSuggestion, GamesSettings, GamesState, LolScene,
 };
 use crate::front::FrontHub;
 use crate::live::{now_ms, LiveHandle};
@@ -420,16 +420,20 @@ pub(crate) struct KeyIds {
     pub(crate) by_id: HashMap<String, u8>,
     /// Where each LED sits from left (0) to right (1), for waves.
     pub(crate) x: HashMap<u8, f32>,
+    /// … and from the top (0) to the bottom (1).
+    pub(crate) y: HashMap<u8, f32>,
 }
 
 impl KeyIds {
     pub(crate) fn of(model: &Model) -> Self {
         let Some(g) = &model.geometry else { return Self::default() };
         let width = g.width.max(1.0);
+        let height = g.height.max(1.0);
         Self {
             all: g.keys.iter().map(|k| k.led).collect(),
             by_id: g.keys.iter().map(|k| (k.id.clone(), k.led)).collect(),
             x: g.keys.iter().map(|k| (k.led, ((k.x + k.w / 2.0) / width).clamp(0.0, 1.0))).collect(),
+            y: g.keys.iter().map(|k| (k.led, ((k.y + k.h / 2.0) / height).clamp(0.0, 1.0))).collect(),
         }
     }
 }
@@ -489,6 +493,9 @@ struct Inner {
     /// The last game layer handed to the device.
     sent: Frame,
     trying_until: Option<f64>,
+    /// "Try on the keyboard" in the League of Legends section: the scene
+    /// and when it began.
+    trying_lol: Option<(LolScene, f64)>,
     model: Option<(String, Arc<KeyIds>)>,
     /// A temperature was read on this computer.
     temperature: bool,
@@ -567,6 +574,7 @@ impl GamesHandle {
             next_emit: 0.0,
             sent: None,
             trying_until: None,
+            trying_lol: None,
             model: None,
             temperature: false,
             last_gpu: None,
@@ -828,6 +836,45 @@ impl GamesHandle {
         }
         self.wake();
         Ok(())
+    }
+
+    /// Play a League of Legends scene on the keyboard (RAM only).
+    pub fn try_lol(&self, scene: LolScene) -> Result<(), String> {
+        {
+            let mut inner = self.inner.lock().map_err(|_| "games unavailable")?;
+            inner.trying_lol = Some((scene, now_ms()));
+            inner.trying_until = None;
+        }
+        self.wake();
+        Ok(())
+    }
+
+    /// Every frame of a League of Legends scene for the page's drawing, on
+    /// keyboard model `model_id`.
+    pub fn lol_preview(
+        model_id: &str,
+        settings: &GamesSettings,
+        scene: LolScene,
+    ) -> Result<Vec<crate::lol::Keys>, String> {
+        let model = kb_devices::catalogue()
+            .map_err(|e| e.to_string())?
+            .iter()
+            .find(|m| m.id == model_id)
+            .ok_or("unknown keyboard model")?;
+        Ok(crate::lol::preview(&KeyIds::of(model), settings, scene))
+    }
+
+    /// The League of Legends scene being tried, `now`; `None` when none
+    /// is (or it is over).
+    fn trying_lol(inner: &mut Inner, ids: Option<&KeyIds>, now: f64) -> Option<Vec<(u8, Rgb)>> {
+        let frame = match (inner.trying_lol, ids) {
+            (Some((scene, start)), Some(ids)) => crate::lol::scene_frame(ids, &inner.settings, scene, now - start),
+            _ => None,
+        };
+        if frame.is_none() {
+            inner.trying_lol = None;
+        }
+        frame
     }
 
     /// Read the launchers' lists again now.
@@ -1134,7 +1181,10 @@ impl GamesHandle {
         // The profile's design, when it was made for this keyboard.
         let model = inner.model.as_ref().map(|(id, _)| id.as_str());
         let design = design.filter(|(m, _, _)| playing && (m.is_empty() || Some(m.as_str()) == model));
+        let tried = Self::trying_lol(inner, keys.as_deref(), now);
+        let trying_lol = tried.is_some();
         let frame: Frame = match (&keys, &lol, show, &design) {
+            _ if trying_lol => tried.map(|f| (f, s.brightness)),
             (Some(k), Some(l), _, _) if !trying && here => Some((crate::lol::frame(l, k, &s, now), s.brightness)),
             (Some(k), _, true, _) => Some((keys_frame(k, &s), s.brightness)),
             (Some(k), _, false, Some((_, d, b))) if !trying => Some((profile_frame(k, d), *b)),
@@ -1159,7 +1209,7 @@ impl GamesHandle {
             let _ = self.app.emit(EVENT_GAMES, state);
         }
         // The match's lights move (bars, flashes): 20 frames a second.
-        if lol_on && here {
+        if (lol_on && here) || trying_lol {
             LOL_TICK
         } else {
             TICK
@@ -1218,8 +1268,13 @@ impl GamesHandle {
         inner.suggest = None;
         inner.front = None;
         let trying = inner.trying_until.is_some_and(|t| now < t);
-        let frame: Frame = if trying {
-            self.usb_keys(inner, device).map(|k| (keys_frame(&k, &inner.settings), inner.settings.brightness))
+        let keys = self.usb_keys(inner, device);
+        let tried = Self::trying_lol(inner, keys.as_deref(), now);
+        let trying_lol = tried.is_some();
+        let frame: Frame = if let Some(f) = tried {
+            Some((f, inner.settings.brightness))
+        } else if trying {
+            keys.map(|k| (keys_frame(&k, &inner.settings), inner.settings.brightness))
         } else {
             inner.trying_until = None;
             None
@@ -1238,7 +1293,9 @@ impl GamesHandle {
             self.emit();
         }
         // "Try on the keyboard" ends on time, not 30 s later.
-        if trying {
+        if trying_lol {
+            LOL_TICK
+        } else if trying {
             TICK
         } else {
             IDLE
@@ -1511,8 +1568,12 @@ mod tests {
 
     #[test]
     fn chosen_keys_lit_the_rest_dim_or_dark() {
-        let ids =
-            KeyIds { all: vec![1, 2, 3], by_id: [("w".to_string(), 2u8)].into_iter().collect(), x: HashMap::new() };
+        let ids = KeyIds {
+            all: vec![1, 2, 3],
+            by_id: [("w".to_string(), 2u8)].into_iter().collect(),
+            x: HashMap::new(),
+            y: HashMap::new(),
+        };
         let mut s = GamesSettings { keys: vec!["w".into(), "nope".into()], color: [200, 100, 0], ..Default::default() };
         s.rest = GameRest::Dark;
         assert_eq!(keys_frame(&ids, &s), vec![(1, [0, 0, 0]), (2, [200, 100, 0]), (3, [0, 0, 0])]);

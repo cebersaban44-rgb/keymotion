@@ -8,6 +8,8 @@ import { create } from "zustand";
 import type { GameCard } from "../bindings/GameCard";
 import type { GamesSettings } from "../bindings/GamesSettings";
 import type { GamesState } from "../bindings/GamesState";
+import type { LolScene } from "../bindings/LolScene";
+import type { LolSettings } from "../bindings/LolSettings";
 import { inTauri, invoke, listen } from "./ipc";
 import { submitLive, useLive } from "./live";
 import type { Prepared } from "./screenImport";
@@ -25,6 +27,32 @@ export const GAME_KEY_SETS: Record<"wasd" | "moba" | "numbers", string[]> = {
   numbers: ["1", "2", "3", "4", "5", "6"],
 };
 
+const GOLD: [number, number, number] = [240, 199, 94];
+
+/** League of Legends lights as they come (dto.rs `LolSettings::default`). */
+export const DEFAULT_LOL: LolSettings = {
+  enabled: true,
+  bars: true,
+  death: true,
+  events: true,
+  layout: "keyboard",
+  motion: "rightToLeft",
+  healthColor: null,
+  mana: true,
+  manaColor: [61, 139, 255],
+  lights: {
+    win: { on: true, anim: "sparkle", color: [52, 199, 89] },
+    lose: { on: true, anim: "drain", color: [255, 59, 48] },
+    levelUp: { on: true, anim: "wave", color: GOLD },
+    kill: { on: true, anim: "flash", color: GOLD },
+    ace: { on: true, anim: "ring", color: GOLD },
+    dragon: { on: true, anim: "flash", color: [255, 90, 30] },
+    baron: { on: true, anim: "pulse", color: [155, 93, 229] },
+    herald: { on: true, anim: "wave", color: [196, 120, 255] },
+  },
+  dragonKindColor: true,
+};
+
 export const DEFAULT_GAMES: GamesSettings = {
   enabled: false,
   launchers: true,
@@ -40,7 +68,7 @@ export const DEFAULT_GAMES: GamesSettings = {
   quietReminders: true,
   quietGames: [],
   marks: [],
-  lol: { enabled: true, bars: true, death: true, events: true },
+  lol: DEFAULT_LOL,
 };
 
 /** Sessions shorter than this get no summary card (games.rs). */
@@ -155,6 +183,25 @@ export function clearGameHistory(): Promise<GamesState> {
     return Promise.resolve(mockCopy());
   }
   return invoke<GamesState>("games_clear_history");
+}
+
+/** One frame of the keys: LED and colour. */
+export type LolFrame = [number, [number, number, number]][];
+
+/** Time between the frames of `lolPreview` (lol.rs `PREVIEW_STEP_MS`). */
+export const LOL_STEP_MS = 40;
+
+/** Every frame of a League of Legends scene, drawn by the backend's own
+ *  light code, for the keyboard model `modelId`. */
+export function lolPreview(modelId: string, settings: GamesSettings, scene: LolScene): Promise<LolFrame[]> {
+  if (import.meta.env.DEV && !inTauri) return Promise.resolve([]);
+  return invoke<LolFrame[]>("games_lol_preview", { modelId, settings, scene });
+}
+
+/** Play a League of Legends scene on the keyboard for a moment. */
+export function tryLol(scene: LolScene): Promise<void> {
+  if (import.meta.env.DEV && !inTauri) return Promise.resolve();
+  return invoke("games_try_lol", { scene });
 }
 
 /** Show the game lights on the keyboard for a moment. */
