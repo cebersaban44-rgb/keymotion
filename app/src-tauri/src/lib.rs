@@ -640,6 +640,20 @@ fn games_cover(app_id: u32) -> Result<tauri::ipc::Response, String> {
     GamesHandle::cover(app_id).map(tauri::ipc::Response::new).ok_or_else(|| "no cover".to_string())
 }
 
+/// A program's icon, `size`×`size` RGBA, read from its file (the program
+/// isn't opened): lists of games and programs, a start card without a cover.
+#[tauri::command]
+async fn program_icon(path: String, size: u32) -> Result<tauri::ipc::Response, String> {
+    if !(16..=64).contains(&size) {
+        return Err("icon size out of range".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || kb_winsys::icon::exe_icon(&path, size))
+        .await
+        .map_err(|e| e.to_string())?
+        .map(tauri::ipc::Response::new)
+        .ok_or_else(|| "no icon".to_string())
+}
+
 #[tauri::command]
 fn keyboards(device: Device<'_>) -> Vec<KeyboardInfo> {
     device.snapshot.lock().map(|s| s.keyboards.clone()).unwrap_or_default()
@@ -1755,6 +1769,7 @@ pub fn run() {
             games_try_lights,
             games_rescan,
             games_cover,
+            program_icon,
             autoprofile_state,
             autoprofile_configure,
             calendar_state,

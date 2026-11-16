@@ -21,4 +21,8 @@ lastMs: number | null,
  * Played at least once: a game from a launcher's list that was never
  * played is listed only on request.
  */
-played: boolean, };
+played: boolean, 
+/**
+ * Its program file, for its icon (`program_icon`), when known.
+ */
+exe: string | null, };

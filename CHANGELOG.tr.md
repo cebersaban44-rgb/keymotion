@@ -22,9 +22,14 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   önde kalınca oturum başlar ve oyun açık kaldıkça, Alt+Tab'da da sürer.
   Canlı ekran açıksa başlarken klavyenin ekranına bir kart, 5 dakika ya da
   daha uzun bir oturum bitince bir özet (süre, ekran kartının yükü ve
-  sıcaklığı, işlemcinin yükü, bugünün toplamı) gider; oyun sürerken ekrana
-  yeni bir şey gelmez. Oyunun tuşları (WASD, MOBA, 1–6 ya da sizin
-  seçtikleriniz) klavyeye bir şey kaydedilmeden yanabilir. Geçmiş bu
+  sıcaklığı, işlemcinin ortalama ve en yüksek yükü, bugünün toplamı) gider;
+  oyun sürerken ekrana yeni bir şey gelmez. Oyunun tuşları (WASD, MOBA, 1–6
+  ya da sizin seçtikleriniz) ya da bir profilin tuş tuş ışığı, klavyeye bir
+  şey kaydedilmeden yanabilir; ışıklar öndeki pencereyi izler, Alt+Tab ile
+  başka işe geçince bekler. Oyun listesi her programın simgesini ve aldığı
+  profili gösterir, son oynanana ya da en çok oynanana göre sıralanır; Steam
+  resmi olmayan bir oyunun başlangıç kartında simgesi görünür. Oyun sırasında
+  gelen bir toplantı ya da hatırlatıcı kartı oyundan sonra kalkar. Geçmiş bu
   bilgisayarda kalır. "Kendiliğinden güncelle" oyunun bitmesini bekler.
 - **League of Legends ışıkları:** maç sırasında, oyunun bilgisayarınızda
   sunduğu veriden: can 1–0'da, mana F1–F12'de; ölünce koyu kırmızı ve
@@ -35,12 +40,17 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   ya da bütün oyunları bir profile bağlar. Varsayılan olarak yalnız tuş
   başına renk tasarımının ışığı değişir, klavyeye bir şey kaydedilmez; bir
   kural tuş atamasını ve makroları da kaydedebilir, günde en çok 20 kez.
-  Oyunun profili oyun boyunca kalır. Kurallar program güncellendikten sonra
-  da tutar (Microsoft Store uygulamaları, Discord, Roblox). Simge menüsünden
-  duraklatılabilir.
+  Oyunun tuş ataması ve makroları oyun boyunca kalır; oyun bitince klavye
+  önceki haline döner (ya da seçtiğiniz profile geçer ya da olduğu gibi
+  kalır), bu arada elle değiştirmediyseniz. Kurallar program güncellendikten
+  sonra da tutar (Microsoft Store uygulamaları, Discord, Roblox). Simge
+  menüsünden duraklatılabilir.
 - **Oyun sürerken klavyeye hiçbir şey gönderilmesin:** oyun boyunca Keymotion
   klavyeye ışık, kart ya da profil göndermez, klavye kendi ışığında kalır;
-  hile önleyicisi bundan rahatsız olabilecek oyunlar için.
+  hile önleyicisi bundan rahatsız olabilecek oyunlar için. Kapatmadıkça
+  toplantı ve hatırlatıcı uyarıları yine gelir; sessiz mod tek bir oyun için
+  de açılabilir.
+- **Kullanım koşulları:** sitede bir Kullanım koşulları sayfası var.
 
 ### Değişenler
 

@@ -39,6 +39,7 @@ import {
   reminderWords,
 } from "./lib/liveCards";
 import { gameCover, startGames } from "./lib/games";
+import { programIconData } from "./lib/icons";
 import { startPomodoro, usePomodoro, DEFAULT_SETTINGS } from "./lib/pomodoro";
 import { followGauges, useGauges } from "./lib/gauges";
 import { startCalendar, useCalendar } from "./lib/calendar";
@@ -144,11 +145,13 @@ function useLiveScreen() {
   useEffect(() => startReminders((card) => reminderCard(card, reminderWords(tNow, useApp.getState().locale))), []);
   useEffect(
     () =>
-      startGames(async (card) =>
-        card.kind === "start"
-          ? gameStartCard(card, card.steamApp != null ? await gameCover(card.steamApp) : null, gameWords(tNow))
-          : gameSummaryCard(card, gameWords(tNow)),
-      ),
+      startGames(async (card) => {
+        if (card.kind !== "start") return gameSummaryCard(card, gameWords(tNow));
+        const cover = card.steamApp != null ? await gameCover(card.steamApp) : null;
+        // No cover: the program's own icon.
+        const icon = !cover && card.exe ? await programIconData(card.exe, 48) : null;
+        return gameStartCard(card, cover, gameWords(tNow), icon);
+      }),
     [],
   );
   useEffect(() => startUpdates(), []);

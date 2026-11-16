@@ -2356,6 +2356,8 @@ pub struct GameEntry {
     /// Played at least once: a game from a launcher's list that was never
     /// played is listed only on request.
     pub played: bool,
+    /// Its program file, for its icon (`program_icon`), when known.
+    pub exe: Option<String>,
 }
 
 /// A program that looked like a game: "Is this a game?".
@@ -2468,6 +2470,9 @@ pub struct GameCard {
     pub name: String,
     /// Steam's id: its cover can be asked for (`games_cover`).
     pub steam_app: Option<u32>,
+    /// The game's program file: its icon when there's no cover
+    /// (`program_icon`).
+    pub exe: Option<String>,
     pub started_ms: f64,
     pub ended_ms: Option<f64>,
     pub gpu_avg: Option<f32>,

@@ -52,6 +52,7 @@ These readings are used only to show things on the keyboard and in the app. They
 | Speaker volume and mute, microphone mute, from Windows' sound system | While system gauges are on, or their page is open | The volume bar and the mute light |
 | Time since you last used the keyboard or mouse | While reminders are on | Repeating reminders wait while you're away |
 | Which program is in front: its file name and folder, and whether its window fills the screen. Never window titles, and no program is opened | While **Notice games** or profiles **By app** are on | Telling a game from other programs, and the profile for each program |
+| A program's icon, from its file (the program isn't opened) | When a list of games or programs shows it, and when a game without a Steam picture starts | The icons in the lists and on the start card |
 | Your launchers' game lists (Steam, Epic Games, GOG, Xbox, Riot Games, Xbox Game Bar) | While **Notice games** is on, every few minutes | Telling which programs are games |
 | Processor and graphics load and the graphics card's temperature | While a game session runs | The summary card and the history |
 | League of Legends' match data (your health, mana, level, score and the match's events), from the service the game runs on your computer | During a League of Legends match, while its lights are on | The lights and the summary card |
@@ -65,7 +66,8 @@ These readings are used only to show things on the keyboard and in the app. They
 Everything is in your Windows user folder. In **Settings**, under **About**, **Data folder** and **Log files** open these folders.
 
 - **Settings and records**, in `%APPDATA%\dev.keymotion\`:
-  - `calibration.json`, `clock.json`, `lighting.json`, `pomodoro.json`, `gauges.json`, `reminders.json`, `battery.json`, `profiles.json`, `background.json`, `updates.json`, `games.json`, `auto-profiles.json`;
+  - `calibration.json`, `clock.json`, `lighting.json`, `pomodoro.json`, `gauges.json`, `reminders.json`, `battery.json`, `profiles.json`, `background.json`, `updates.json`, `games.json`;
+  - `auto-profiles.json`: your profiles **By app** and, after a profile was saved to the keyboard for a program, a copy of the keyboard's lighting, key mapping and macros from before, to go back to;
   - `game-history.json`: your game sessions (game, start and end, the readings, a League of Legends result). **Delete history** on the **Game session** page empties it;
   - `keymap.json` and `macros.json`: Keymotion's only record of what it wrote to the keyboard, because the keyboard can't report them;
   - `calendar.json`: your calendars. Their addresses work like passwords, so they're encrypted for your Windows user account (Windows Data Protection). Another user or another computer can't read them;

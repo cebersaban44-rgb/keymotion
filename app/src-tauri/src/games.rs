@@ -194,6 +194,8 @@ pub struct Detected {
     pub pid: u32,
     /// Executable file name.
     pub exe: String,
+    /// The program's full path.
+    pub path: String,
     pub steam_app: Option<u32>,
 }
 
@@ -211,6 +213,7 @@ pub fn classify(front: &Front, marks: &[GameMark], known: &[KnownGame], launcher
             source: GameSource::Mine,
             pid: front.pid,
             exe: front.name.clone(),
+            path: path.to_string(),
             steam_app: None,
         });
     }
@@ -224,6 +227,7 @@ pub fn classify(front: &Front, marks: &[GameMark], known: &[KnownGame], launcher
         source: source_of(g.source),
         pid: front.pid,
         exe: front.name.clone(),
+        path: path.to_string(),
         steam_app: g.steam_app,
     })
 }
@@ -654,10 +658,12 @@ impl GamesHandle {
             t.1 = t.1.max(r.end_ms);
         }
         let mut games: Vec<GameEntry> = Vec::new();
-        let mut push = |key: String, name: String, source: GameSource| {
+        let mut push = |key: String, name: String, source: GameSource, exe: Option<String>| {
             if games.iter().any(|g| g.key == key) {
                 return;
             }
+            // The running game's own file is the surest.
+            let exe = running.filter(|s| s.game.key == key).map(|s| s.game.path.clone()).or(exe);
             let (total, last) = totals.get(key.as_str()).copied().unwrap_or_default();
             let live = running.filter(|s| s.game.key == key).map_or(0.0, |s| (now - s.started).max(0.0));
             games.push(GameEntry {
@@ -667,10 +673,11 @@ impl GamesHandle {
                 key,
                 name,
                 source,
+                exe,
             });
         };
         for m in inner.settings.marks.iter().filter(|m| m.game) {
-            push(m.path.to_lowercase(), m.name.clone(), GameSource::Mine);
+            push(m.path.to_lowercase(), m.name.clone(), GameSource::Mine, Some(m.path.clone()));
         }
         if inner.settings.launchers {
             for g in inner.known.iter() {
@@ -679,12 +686,14 @@ impl GamesHandle {
                 if mark_for(&inner.settings.marks, &key).is_some_and(|m| !m.game) {
                     continue;
                 }
-                push(key, g.name.clone(), source_of(g.source));
+                push(key, g.name.clone(), source_of(g.source), g.exes.first().cloned());
             }
         }
         // Games played before that no list has any more.
         for r in inner.history.iter().filter(|r| still_listed(&inner.settings.marks, r)) {
-            push(r.key.clone(), r.name.clone(), r.source);
+            // A key that names a program (not a folder) is its file.
+            let exe = r.key.to_lowercase().ends_with(".exe").then(|| r.key.clone());
+            push(r.key.clone(), r.name.clone(), r.source, exe);
         }
         games.sort_by(|a, b| {
             b.last_ms
@@ -867,6 +876,7 @@ impl GamesHandle {
             kind: GameCardKind::Start,
             name: r.game.name.clone(),
             steam_app: r.game.steam_app,
+            exe: Some(r.game.path.clone()),
             started_ms: r.started,
             ended_ms: None,
             gpu_avg: None,
@@ -884,6 +894,7 @@ impl GamesHandle {
             kind: GameCardKind::Summary,
             name: r.name.clone(),
             steam_app: None,
+            exe: None,
             started_ms: r.start_ms,
             ended_ms: Some(r.end_ms),
             gpu_avg: r.gpu_avg,
@@ -1381,6 +1392,7 @@ mod tests {
             source: GameSource::Steam,
             pid,
             exe: format!("{key}.exe"),
+            path: format!("{key}.exe"),
             steam_app: None,
         }
     }

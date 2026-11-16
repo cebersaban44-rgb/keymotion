@@ -54,10 +54,10 @@ const mock = {
     settings: { ...DEFAULT_GAMES },
     session: null,
     games: [
-      { key: "c:\\steam\\steamapps\\common\\example", name: "Örnek Oyun", source: "steam", totalMs: 31 * HOUR, lastMs: Date.now() - 2 * HOUR, played: true },
-      { key: "c:\\riot games\\league of legends\\game\\league of legends.exe", name: "League of Legends", source: "riot", totalMs: 12 * HOUR, lastMs: Date.now() - 26 * HOUR, played: true },
-      { key: "d:\\games\\racer\\racer.exe", name: "Yarış Oyunu", source: "mine", totalMs: 4 * HOUR, lastMs: Date.now() - 5 * 24 * HOUR, played: true },
-      { key: "c:\\riot games\\valorant\\live\\shootergame\\binaries\\win64\\valorant-win64-shipping.exe", name: "VALORANT", source: "riot", totalMs: 0, lastMs: null, played: false },
+      { key: "c:\\steam\\steamapps\\common\\example", name: "Örnek Oyun", source: "steam", totalMs: 31 * HOUR, lastMs: Date.now() - 2 * HOUR, played: true, exe: null },
+      { key: "c:\\riot games\\league of legends\\game\\league of legends.exe", name: "League of Legends", source: "riot", totalMs: 12 * HOUR, lastMs: Date.now() - 26 * HOUR, played: true, exe: null },
+      { key: "d:\\games\\racer\\racer.exe", name: "Yarış Oyunu", source: "mine", totalMs: 4 * HOUR, lastMs: Date.now() - 5 * 24 * HOUR, played: true, exe: null },
+      { key: "c:\\riot games\\valorant\\live\\shootergame\\binaries\\win64\\valorant-win64-shipping.exe", name: "VALORANT", source: "riot", totalMs: 0, lastMs: null, played: false, exe: null },
     ],
     suggestions: [{ path: "D:\\Emulators\\emulator.exe", name: "emulator" }],
     todayMs: 2 * HOUR + 2 * 60_000,
@@ -108,10 +108,10 @@ if (import.meta.env.DEV && !inTauri && typeof window !== "undefined") {
         quiet: s.settings.quiet || s.settings.quietGames.includes(s.games[0]!.key),
         card: "shown",
       };
-      mock.onCard?.({ kind: "start", name: s.session.name, steamApp: null, startedMs: s.session.startedMs, endedMs: null, gpuAvg: null, gpuPeak: null, cpuAvg: null, cpuPeak: null, tempPeak: null, todayMs: s.todayMs, lol: null });
+      mock.onCard?.({ kind: "start", name: s.session.name, steamApp: null, exe: null, startedMs: s.session.startedMs, endedMs: null, gpuAvg: null, gpuPeak: null, cpuAvg: null, cpuPeak: null, tempPeak: null, todayMs: s.todayMs, lol: null });
     } else if (s.session) {
       const ended = Date.now();
-      mock.onCard?.({ kind: "summary", name: s.session.name, steamApp: null, startedMs: s.session.startedMs, endedMs: ended, gpuAvg: 78, gpuPeak: 97, cpuAvg: 34, cpuPeak: 81, tempPeak: 71, todayMs: s.todayMs, lol: null });
+      mock.onCard?.({ kind: "summary", name: s.session.name, steamApp: null, exe: null, startedMs: s.session.startedMs, endedMs: ended, gpuAvg: 78, gpuPeak: 97, cpuAvg: 34, cpuPeak: 81, tempPeak: 71, todayMs: s.todayMs, lol: null });
       s.session = null;
     }
     mock.emit?.(mockCopy());
@@ -140,7 +140,7 @@ export function markGame(path: string, name: string, game: boolean | null): Prom
     s.settings.marks = s.settings.marks.filter((m) => m.path.toLowerCase() !== path.toLowerCase());
     if (game !== null) s.settings.marks.push({ path, name, game });
     s.suggestions = s.suggestions.filter((x) => x.path.toLowerCase() !== path.toLowerCase());
-    if (game) s.games.unshift({ key: path.toLowerCase(), name, source: "mine", totalMs: 0, lastMs: null, played: false });
+    if (game) s.games.unshift({ key: path.toLowerCase(), name, source: "mine", totalMs: 0, lastMs: null, played: false, exe: path });
     if (game === false) s.games = s.games.filter((g) => g.key !== path.toLowerCase());
     return Promise.resolve(mockCopy());
   }
@@ -150,7 +150,7 @@ export function markGame(path: string, name: string, game: boolean | null): Prom
 export function clearGameHistory(): Promise<GamesState> {
   if (import.meta.env.DEV && !inTauri) {
     Object.assign(mock.state, { recent: [], todayMs: 0, weekMs: 0 });
-    mock.state.games = mock.state.games.map((g) => ({ ...g, totalMs: 0, lastMs: null, played: false }));
+    mock.state.games = mock.state.games.map((g) => ({ ...g, totalMs: 0, lastMs: null, played: false, exe: null }));
     return Promise.resolve(mockCopy());
   }
   return invoke<GamesState>("games_clear_history");

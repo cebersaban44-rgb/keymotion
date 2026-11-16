@@ -10,6 +10,7 @@ import type { ReminderCard } from "../bindings/ReminderCard";
 import type { ReminderIcon } from "../bindings/ReminderIcon";
 import type { TrackInfo } from "../bindings/TrackInfo";
 import { percent, type MessageKey, type Translate } from "./i18n";
+import { iconTone } from "./icons";
 import { phaseColor } from "./pomodoro";
 import { H, STILL_DELAY_MS, W, type Prepared } from "./screenImport";
 import { compose565, makeLayers } from "./screenText";
@@ -703,12 +704,14 @@ export function playTime(ms: number, w: Pick<GameWords, "hours" | "minutes" | "l
 /** The game starts: its Steam picture (or its name on a dark tone), when
  *  it started, and today's play time. A still picture: it stays true for
  *  the whole session, nothing moves while the game runs. */
-export async function gameStartCard(c: GameCard, cover: Blob | null, w: GameWords): Promise<Prepared> {
+export async function gameStartCard(c: GameCard, cover: Blob | null, w: GameWords, icon: ImageData | null = null): Promise<Prepared> {
   const label = `${w.started} · ${hhmm(c.startedMs)}`;
   const today = w.today.replace("{time}", playTime(c.todayMs, w));
   await fonts(`${label} ${c.name} ${today}`);
   const bmp = cover ? await createImageBitmap(cover).catch(() => null) : null;
-  const tone: [number, number, number] = bmp ? coverTone(bmp) : [92, 52, 150];
+  // No cover: the program's icon, on its own colour.
+  const mark = !bmp && icon ? await createImageBitmap(icon).catch(() => null) : null;
+  const tone: [number, number, number] = bmp ? coverTone(bmp) : ((icon && iconTone(icon)) ?? [92, 52, 150]);
   const max = Math.max(...tone, 1);
   const accent = rgb(tone.map((v) => 120 + (v / max) * 135) as [number, number, number]);
 
@@ -738,19 +741,27 @@ export async function gameStartCard(c: GameCard, cover: Blob | null, w: GameWord
   const left = 12;
   const maxW = W - left * 2;
   if (!bmp) {
-    // No picture: the name, large, in the band.
+    // No picture: the name, large, in the band (after the icon, if any).
+    const iconSize = 44;
+    const nameLeft = mark ? left + iconSize + 10 : left;
+    const nameW = W - nameLeft - left;
+    if (mark) {
+      fg.imageSmoothingQuality = "high";
+      fg.drawImage(mark, left, Math.round((top - iconSize) / 2), iconSize, iconSize);
+      mark.close();
+    }
     let px = 26;
     let tl: string[] = [];
     for (; px >= 14; px--) {
       fg.font = `700 ${px}px ${DISPLAY}`;
-      tl = lines(fg, c.name, maxW, 2);
+      tl = lines(fg, c.name, nameW, 2);
       if (!tl.some((l) => l.endsWith("…")) || px === 14) break;
     }
     fg.fillStyle = "#ffffff";
     const lh = Math.round(px * 1.1);
     let y = Math.round((top - lh * tl.length) / 2 + px * 0.85);
     for (const l of tl) {
-      fg.fillText(l, left, y);
+      fg.fillText(l, nameLeft, y);
       y += lh;
     }
   }

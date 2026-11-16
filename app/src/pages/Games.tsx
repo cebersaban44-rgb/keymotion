@@ -6,6 +6,7 @@
 // oyun-oturumu-ve-otomatik-profil.md.
 
 import {
+  AppWindow,
   Gamepad2,
   History,
   Monitor,
@@ -29,6 +30,7 @@ import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { ProfileInfo } from "../bindings/ProfileInfo";
 import { ColorPicker, Segmented, Slider, Toggle } from "../components/controls";
 import { KeyboardView } from "../components/KeyboardView";
+import { ProgramIcon } from "../components/ProgramIcon";
 import { RULE_GAMES, followAuto, useAuto } from "../lib/autoprofile";
 import { GAME_KEY_SETS, SUMMARY_MIN_MS, playTime, rescanGames, tryGameLights, useGames } from "../lib/games";
 import { percent, useT, type MessageKey } from "../lib/i18n";
@@ -133,7 +135,7 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
               data-games-suggestion
             >
               <span className="flex items-center gap-2">
-                <Gamepad2 size={16} className="shrink-0 text-signal" />
+                <ProgramIcon path={g.path} fallback={Gamepad2} className="text-signal" />
                 {t("games.suggest", { name: g.name })}
               </span>
               <span className="flex gap-2">
@@ -347,6 +349,7 @@ function GameList({
         <ul className="flex flex-col divide-y divide-line rounded-lg border border-line">
           {shown.map((g) => (
             <li key={g.key} className="flex flex-wrap items-center gap-3 px-3 py-2 text-[13px]" data-game={g.name}>
+              <ProgramIcon path={g.exe} fallback={Gamepad2} className="text-ink-3" />
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate font-medium">{g.name}</span>
                 {profileOf(g) && (
@@ -404,6 +407,7 @@ function AddGame({ state, mark }: { state: GamesState; mark: (path: string, name
         <span className="text-[12px] text-ink-3">{t("games.add.body")}</span>
       </span>
       <div className="flex flex-wrap items-center gap-2">
+        {chosen && <ProgramIcon path={chosen.path} fallback={AppWindow} className="text-ink-3" />}
         <select
           className="h-8 min-w-[220px] max-w-full rounded-lg border border-line bg-bg-raise px-2 text-[13px] outline-none focus:border-signal"
           value={pick}
@@ -436,6 +440,7 @@ function AddGame({ state, mark }: { state: GamesState; mark: (path: string, name
           <ul className="flex flex-col divide-y divide-line rounded-lg border border-line">
             {notGames.map((m) => (
               <li key={m.path} className="flex items-center gap-3 px-3 py-1.5 text-[13px]">
+                <ProgramIcon path={m.path} fallback={AppWindow} className="text-ink-3" />
                 <span className="min-w-0 flex-1 truncate">{m.name}</span>
                 <button
                   type="button"
@@ -466,6 +471,7 @@ function CardStrip({ temperature }: { temperature: boolean }) {
       kind: "start",
       name: t("games.example"),
       steamApp: null,
+      exe: null,
       startedMs: started,
       endedMs: null,
       gpuAvg: null,
@@ -518,6 +524,7 @@ function LolCard() {
         kind: "summary",
         name: "League of Legends",
         steamApp: null,
+        exe: null,
         startedMs: Date.now() - 32 * 60_000,
         endedMs: Date.now(),
         gpuAvg: 61,

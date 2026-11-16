@@ -25,11 +25,16 @@ says so.
   has been in front for 15 seconds and lasts while the game runs, Alt+Tab
   included. With the live screen on, a card goes to the keyboard's screen
   when it starts and a summary (time played, graphics card load and
-  temperature, processor load, today's total) when a session of 5 minutes or
-  more ends; nothing new comes up while you play. The keys the game uses can
-  light up (WASD, MOBA, 1–6 or your own), without saving anything to the
-  keyboard. The history stays on this computer. "Update automatically" waits
-  for the game to end.
+  temperature, processor load and peak, today's total) when a session of 5
+  minutes or more ends; nothing new comes up while you play. The keys the
+  game uses can light up (WASD, MOBA, 1–6 or your own), or a profile's
+  key-by-key lighting, without saving anything to the keyboard; the lights
+  follow the window, so they wait while you Alt+Tab to other work. The games
+  list shows each program's icon and the profile it gets, and sorts by last
+  or most played; a game without a Steam picture gets its icon on the start
+  card. A meeting's or reminder's card that came up during a game goes away
+  after the game. The history stays on this computer. "Update automatically"
+  waits for the game to end.
 - **League of Legends lights:** during a match, health on 1–0 and mana on
   F1–F12, dark red and a respawn countdown when you die, short flashes for
   level ups, kills, an ace, dragons, Baron and Herald, and victory or defeat
@@ -38,12 +43,17 @@ says so.
 - **Profiles by app:** Profiles › **By app** links a program, or every game,
   to a profile. By default only a per-key design's lighting changes, without
   saving anything to the keyboard; a rule can also save the key mapping and
-  macros, at most 20 times a day. A game's profile stays for the whole game.
+  macros, at most 20 times a day. A game's key mapping and macros stay for the
+  whole game; when it ends, the keyboard goes back to what it had before (or
+  to a profile you choose, or stays), unless you changed it by hand meanwhile.
   Rules still hold after a program updates (Microsoft Store apps, Discord,
   Roblox). The tray menu can pause it.
 - **Send nothing to the keyboard while playing:** during a game Keymotion
   sends no lights, cards or profiles to the keyboard, for anti-cheat software
-  that might mind; the keyboard keeps its own light.
+  that might mind; the keyboard keeps its own light. Meeting and reminder
+  alerts still come unless you turn that off, and quiet mode can be on for a
+  single game.
+- **Terms of use:** the site has a Terms of use page.
 
 ### Changed
 

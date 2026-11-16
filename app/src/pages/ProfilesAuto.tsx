@@ -11,6 +11,7 @@ import type { AutoRule } from "../bindings/AutoRule";
 import type { ProfileInfo } from "../bindings/ProfileInfo";
 import type { ProfilesState } from "../bindings/ProfilesState";
 import { Toggle } from "../components/controls";
+import { ProgramIcon } from "../components/ProgramIcon";
 import { RULE_GAMES, followAuto, useAuto } from "../lib/autoprofile";
 import { useGames } from "../lib/games";
 import { useT } from "../lib/i18n";
@@ -88,7 +89,7 @@ export function AutoProfiles({ profiles, usb }: { profiles: ProfilesState | null
             {rules.map((r) => (
               <li key={r.path} className="flex flex-col gap-2 px-3 py-2.5">
                 <div className="flex flex-wrap items-center gap-3 text-[13px]">
-                  {r.path === RULE_GAMES ? <Gamepad2 size={15} className="text-signal" /> : <AppWindow size={15} className="text-ink-3" />}
+                  {r.path === RULE_GAMES ? <Gamepad2 size={15} className="text-signal" /> : <ProgramIcon path={r.path} fallback={AppWindow} className="text-ink-3" />}
                   <span className="min-w-0 flex-1 truncate font-medium">{r.path === RULE_GAMES ? t("auto.allGames") : r.name}</span>
                   <select
                     className="h-8 max-w-[220px] rounded-lg border border-line bg-bg-raise px-2 text-[13px] outline-none focus:border-signal"
