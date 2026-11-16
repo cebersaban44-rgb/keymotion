@@ -27,11 +27,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/cebersaban44-rgb/keymotion/releases/latest"><img src="docs/images/download-windows.png" width="320" alt="Download for Windows: free, Windows 10 and 11, 64-bit"></a>
+  <a href="https://github.com/cebersaban44-rgb/keymotion/releases/latest"><img src="docs/images/download-windows.png" height="56" alt="Download from GitHub: the installer, Windows 10 and 11, 64-bit"></a>
+  &nbsp;
+  <a href="https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&amp;mode=full"><picture><source media="(prefers-color-scheme: dark)" srcset="https://get.microsoft.com/images/en-us%20light.svg"><img src="https://get.microsoft.com/images/en-us%20dark.svg" height="56" alt="Get it from Microsoft"></picture></a>
 </p>
 
 <p align="center">
-  <sub>Unofficial, not affiliated with AJAZZ · The installer isn't code-signed yet, so Windows may warn before it runs: <a href="#download-and-install">what to do</a></sub>
+  <sub>Free · Unofficial, not affiliated with AJAZZ · The same app either way: Microsoft signs the Store copy, while the GitHub installer isn't code-signed yet, so Windows may warn before it runs: <a href="#download-and-install">which to choose</a></sub>
 </p>
 
 <p align="center">
@@ -124,21 +126,39 @@ The [user guide](https://cebersaban44-rgb.github.io/keymotion/) goes through eve
 
 ## Download and install
 
-1. Download the installer, `Keymotion_<version>_x64-setup.exe`, from the [latest release](https://github.com/cebersaban44-rgb/keymotion/releases/latest). It runs on Windows 10 and 11, 64-bit. The release page lists its SHA-256.
+Keymotion comes two ways. It is the same app, with the same version and the same release notes, for Windows 10 and 11 (64-bit). Install one of them.
+
+| | Microsoft Store | GitHub |
+|---|---|---|
+| Get it | [Keymotion in the Microsoft Store](https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full) | `Keymotion_<version>_x64-setup.exe` from the [latest release](https://github.com/cebersaban44-rgb/keymotion/releases/latest) |
+| Signed | Yes, by Microsoft: Windows installs it without a warning | Not yet: Windows may warn before it runs |
+| Updates | The Microsoft Store | Keymotion checks GitHub and asks before installing |
+| Test versions | No | Yes |
+
+We suggest the Microsoft Store. Choose GitHub if your computer has no Microsoft Store (Windows LTSC, or a work PC where it is turned off), or to try test versions.
+
+**From the Microsoft Store**
+
+1. Open [Keymotion in the Microsoft Store](https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full) and select **Get**.
+2. Connect the keyboard with the USB cable and set the switch on its back to the middle (USB).
+
+**From GitHub**
+
+1. Download the installer, `Keymotion_<version>_x64-setup.exe`, from the [latest release](https://github.com/cebersaban44-rgb/keymotion/releases/latest). The release page lists its SHA-256.
 2. Run it and follow the steps.
 3. Connect the keyboard with the USB cable and set the switch on its back to the middle (USB).
 
 > [!NOTE]
-> The installer isn't signed yet, so Windows may say "Windows protected your PC". Select **More info**, then **Run anyway**. If Smart App Control is on, Windows may block it outright; signed releases will fix that. See the [code signing policy](#code-signing-policy).
+> The GitHub installer isn't signed yet, so Windows may say "Windows protected your PC". Select **More info**, then **Run anyway**. If Smart App Control is on, Windows may block it outright; the Microsoft Store copy installs without either. See the [code signing policy](#code-signing-policy).
 
 Good to know before you install:
 
 - Keymotion is unofficial. It isn't made, endorsed or supported by AJAZZ.
-- The installer is built by GitHub Actions from the code in this repository, and the release page lists its SHA-256.
+- Both are built by GitHub Actions from the code in this repository: the installer, whose SHA-256 the release page lists, and the Microsoft Store package, which Microsoft checks and signs.
 - On VirusTotal, 70 of 71 antivirus engines find nothing in the 0.1.0 installer. One machine-learning engine flags it as a new, unsigned file; we've reported it as a false positive. [Details](https://cebersaban44-rgb.github.io/keymotion/about/code-signing/#antivirus-scans).
 - It collects no usage data, and it never updates the keyboard's firmware.
 
-Updates: Keymotion checks GitHub for a new version once a day and asks before installing it. You can turn the check off in Settings.
+Updates: the Microsoft Store updates its copy. The copy from GitHub checks GitHub for a new version once a day and asks before installing it; you can turn the check off in Settings.
 
 ## Safety
 
@@ -154,7 +174,7 @@ I made Keymotion with Claude, an AI coding assistant. Claude wrote most of the c
 
 ## Code signing policy
 
-The installer on GitHub isn't signed yet. SignPath Foundation, which signs open-source projects for free, declined our application of 15 November 2026 for now because the project is still new; we'll apply again. Keymotion is also on its way to the Microsoft Store, where Microsoft signs it.
+The installer on GitHub isn't signed yet. SignPath Foundation, which signs open-source projects for free, declined our application of 15 November 2026 for now because the project is still new; we'll apply again. Keymotion is also in the [Microsoft Store](https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full), where Microsoft signs it.
 
 - Releases are built from this repository by GitHub Actions ([release workflow](.github/workflows/release.yml)).
 - Committers and reviewers: [@cebersaban44-rgb](https://github.com/cebersaban44-rgb)

@@ -43,6 +43,8 @@ export default defineConfig({
         tr: { label: "Türkçe", lang: "tr" },
       },
       social: [{ icon: "github", label: "GitHub", href: REPO }],
+      // The home page's download row also shows Microsoft's Store badge.
+      components: { Hero: "./src/components/Hero.astro" },
       editLink: { baseUrl: `${REPO}/edit/develop/site/` },
       customCss: [
         "@fontsource-variable/bricolage-grotesque",

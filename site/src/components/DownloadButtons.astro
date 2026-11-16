@@ -1,0 +1,26 @@
+---
+// The two ways to get Keymotion, side by side: Microsoft's Store badge and
+// the GitHub download (owner's request, 2026-11-16). Used in the guides;
+// the home page has the same pair in its hero (Hero.astro).
+import { LinkButton } from "@astrojs/starlight/components";
+import StoreBadge from "./StoreBadge.astro";
+
+const tr = Astro.currentLocale === "tr";
+---
+
+<div class="download-buttons not-content">
+  <StoreBadge />
+  <LinkButton href="https://github.com/cebersaban44-rgb/keymotion/releases/latest" variant="secondary" icon="download">
+    {tr ? "GitHub'dan indir" : "Download from GitHub"}
+  </LinkButton>
+</div>
+
+<style>
+  .download-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem 1.5rem;
+    margin-block: 1.5rem;
+  }
+</style>
