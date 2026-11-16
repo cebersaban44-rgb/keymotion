@@ -25,7 +25,7 @@ When Keymotion keeps running after you close its window, the menu of its icon ne
 ## How Keymotion knows a game
 
 - **Your launchers' lists.** Steam, Epic Games, GOG, Xbox, Riot Games and Xbox Game Bar know which programs are games, and Keymotion reads their lists on this computer. A launcher itself, such as Steam or the League of Legends client, is not a game; only the game you play is. You can turn off **Launchers' game lists**; then only the programs you said are games count.
-- **Your word.** In the **Games** list, **Not a game** removes a program that was taken for a game, and **Remove** forgets one you added. If it's running at that moment, its session ends and isn't kept in the history.
+- **Your word.** In the **Games** list, **Not a game** removes a program that was taken for a game, and **Remove** forgets one you added. If it's running at that moment, its session ends and isn't kept in the history. **Add a game** adds one of the programs that were in front lately; a program that isn't listed shows up once you bring it to the front. **Undo**, under **Marked as not a game**, takes back a **Not a game**.
 - **"Is it a game?"** When a program you haven't marked has filled the screen for a few minutes with the graphics card busy, the page asks. Keymotion never decides that by itself. Browsers and video players are never asked about.
 
 The **Games** list shows the games you've played with their total time. **Show all games found** lists the rest your launchers know.
@@ -34,7 +34,7 @@ The **Games** list shows the games you've played with their total time. **Show a
 
 - A session starts once a game has been in front for 15 seconds, so a splash screen or a game that closes right away doesn't count.
 - It lasts as long as the game runs. Switching to another window with Alt+Tab or minimizing the game doesn't end it.
-- It ends when the game has been closed for 10 seconds. A game that restarts itself keeps its session.
+- It ends when the game has been closed for 10 seconds. A game that restarts itself keeps its session. When the computer sleeps, the session ends where it stopped.
 - While a session runs, **Update automatically** doesn't install a new version (see [Updates](/keymotion/guide/settings/#updates)).
 
 ## The keyboard's screen
@@ -48,7 +48,7 @@ While a session runs, song cards wait. Meeting and reminder cards and the focus 
 
 ## Lights while playing
 
-**The keyboard's own light** changes nothing. **Light the game's keys** lights the keys you choose in one color and makes the others dim or dark. Ready-made sets are **WASD**, **MOBA (QWER DF)** and **1–6**; click keys on the drawing to add or remove them. **Try on the keyboard** shows the lights for a few seconds.
+**The keyboard's own light** changes nothing (in a League of Legends match its own lights come instead, see below). **Light the game's keys** lights the keys you choose in one color and makes the others dim or dark. Ready-made sets are **WASD**, **MOBA (QWER DF)** and **1–6**; click keys on the drawing to add or remove them. **Try on the keyboard** shows the lights for a few seconds.
 
 These lights aren't saved to the keyboard; when the game ends, the keyboard goes back to its own light. While the game keys are lit, [system gauges](/keymotion/guide/system-gauges/) wait, and the muted-microphone warning always shows. The lights need the USB cable.
 
@@ -60,7 +60,7 @@ During a match, League of Legends offers its data to tools on your computer. Key
 - **When you die**: the keys turn dark red and 1–0 count down to your respawn.
 - **Short effects**: a wave when you level up; a short flash for kills, an ace, dragons (in the dragon's color), Baron and Herald; victory or defeat when the match ends.
 
-Each can be turned off. These lights take the place of the game keys. The summary card of a match also shows victory or defeat, your K/D/A, your CS and your champion.
+Each can be turned off, and so can the whole section. During a match these lights take the place of **Lights while playing**; with **Light the game's keys**, the chosen keys stay lit under them. They need the USB cable. The summary card of a match shows victory or defeat, your K/D/A, your CS and your champion.
 
 Keymotion never shows enemy cooldowns, dragon or Baron spawn timers, or anything that tells you what to do: Riot's rules don't allow them. Teamfight Tactics matches get no lights.
 
@@ -76,7 +76,7 @@ Anti-cheat software, such as Riot Vanguard, Easy Anti-Cheat or BattlEye, blocks 
 - It installs no driver and talks to the keyboard through Windows, like any USB device.
 - It reads League of Legends' data only from the service the game itself offers on your computer.
 
-If a game's anti-cheat software still gives you trouble, turn on **Leave the keyboard alone while playing**: during a game no lights and no cards go to the keyboard. Please also [report it](/keymotion/help/faq/).
+If a game's anti-cheat software still gives you trouble, turn on **Send nothing to the keyboard while playing**. During a game Keymotion then sends no lights, cards or profiles to the keyboard, and the keyboard keeps its own light; what you do yourself in the app, such as saving a profile, still goes. Please also [report it](/keymotion/help/faq/).
 
 Macros can break a game's rules in competitive games such as League of Legends, VALORANT and CS2, and at FACEIT and tournaments, even the keyboard's own macros. Keymotion never turns macros on for a game by itself (see [Profiles by app](/keymotion/guide/profiles/#by-app)).
 

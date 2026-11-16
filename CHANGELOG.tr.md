@@ -16,8 +16,9 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 
 - **Oyun oturumu:** Araçlar › **Oyun oturumu** oynadığınızı fark eder.
   Oyunlar başlatıcılarınızın listelerinden (Steam, Epic Games, GOG, Xbox,
-  Riot Games, Xbox Game Bar) ve sizin sözünüzden gelir; birkaç dakika ekranı
-  kaplayan bir program için "Bir oyun mu?" diye sorulur. Bir oyun 15 saniye
+  Riot Games, Xbox Game Bar) ve sizin sözünüzden gelir (**Oyun ekle**,
+  **Oyun değil**, **Geri al**); birkaç dakika ekranı kaplayan bir program için
+  "Bir oyun mu?" diye sorulur. Bir oyun 15 saniye
   önde kalınca oturum başlar ve oyun açık kaldıkça, Alt+Tab'da da sürer.
   Canlı ekran açıksa başlarken klavyenin ekranına bir kart, 5 dakika ya da
   daha uzun bir oturum bitince bir özet (süre, ekran kartının yükü ve
@@ -34,9 +35,12 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   ya da bütün oyunları bir profile bağlar. Varsayılan olarak yalnız tuş
   başına renk tasarımının ışığı değişir, klavyeye bir şey kaydedilmez; bir
   kural tuş atamasını ve makroları da kaydedebilir, günde en çok 20 kez.
-  Oyunun profili oyun boyunca kalır. Simge menüsünden duraklatılabilir.
-- **Oyun sürerken klavyeye yazma:** oyun boyunca klavyeye hiçbir şey
-  gönderilmez; hile önleyicisi bundan rahatsız olabilecek oyunlar için.
+  Oyunun profili oyun boyunca kalır. Kurallar program güncellendikten sonra
+  da tutar (Microsoft Store uygulamaları, Discord, Roblox). Simge menüsünden
+  duraklatılabilir.
+- **Oyun sürerken klavyeye hiçbir şey gönderilmesin:** oyun boyunca Keymotion
+  klavyeye ışık, kart ya da profil göndermez, klavye kendi ışığında kalır;
+  hile önleyicisi bundan rahatsız olabilecek oyunlar için.
 
 ### Değişenler
 

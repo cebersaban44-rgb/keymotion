@@ -19,8 +19,9 @@ says so.
 
 - **Game session:** Tools › **Game session** notices when you play. Games
   come from your launchers' lists (Steam, Epic Games, GOG, Xbox, Riot Games,
-  Xbox Game Bar) and from your own word; a program that fills the screen for
-  a few minutes is offered as "Is it a game?". A session starts once a game
+  Xbox Game Bar) and from your own word (**Add a game**, **Not a game**,
+  **Undo**); a program that fills the screen for a few minutes is offered as
+  "Is it a game?". A session starts once a game
   has been in front for 15 seconds and lasts while the game runs, Alt+Tab
   included. With the live screen on, a card goes to the keyboard's screen
   when it starts and a summary (time played, graphics card load and
@@ -38,9 +39,11 @@ says so.
   to a profile. By default only a per-key design's lighting changes, without
   saving anything to the keyboard; a rule can also save the key mapping and
   macros, at most 20 times a day. A game's profile stays for the whole game.
-  The tray menu can pause it.
-- **Leave the keyboard alone while playing:** nothing goes to the keyboard
-  during a game, for anti-cheat software that might mind.
+  Rules still hold after a program updates (Microsoft Store apps, Discord,
+  Roblox). The tray menu can pause it.
+- **Send nothing to the keyboard while playing:** during a game Keymotion
+  sends no lights, cards or profiles to the keyboard, for anti-cheat software
+  that might mind; the keyboard keeps its own light.
 
 ### Changed
 
