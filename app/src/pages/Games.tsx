@@ -27,7 +27,7 @@ import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import { ColorPicker, Segmented, Slider, Toggle } from "../components/controls";
 import { KeyboardView } from "../components/KeyboardView";
 import { GAME_KEY_SETS, SUMMARY_MIN_MS, playTime, rescanGames, tryGameLights, useGames } from "../lib/games";
-import { useT, type MessageKey } from "../lib/i18n";
+import { percent, useT, type MessageKey } from "../lib/i18n";
 import { useLive } from "../lib/live";
 import { gameStartCard, gameSummaryCard, gameWords } from "../lib/liveCards";
 import { fromHex, toHex } from "../lib/pomodoroLights";
@@ -482,8 +482,8 @@ function HistoryRow({ time }: { time: (ms: number) => string }) {
               <span className="min-w-0 flex-1 truncate font-medium">{r.name}</span>
               <span className="text-[12px] text-ink-3">{when(r.startMs)}</span>
               <span className="num w-24 text-right">{time(r.endMs - r.startMs)}</span>
-              <span className="num w-32 text-right text-[12px] text-ink-3">
-                {[r.gpuAvg != null ? `GPU %${Math.round(r.gpuAvg)}` : null, r.tempPeak != null ? `${Math.round(r.tempPeak)} °C` : null]
+              <span className="num w-44 text-right text-[12px] text-ink-3">
+                {[r.gpuAvg != null ? `${t("games.card.gpu")} ${percent(Math.round(r.gpuAvg))}` : null, r.tempPeak != null ? `${Math.round(r.tempPeak)} °C` : null]
                   .filter(Boolean)
                   .join(" · ") || "—"}
               </span>
