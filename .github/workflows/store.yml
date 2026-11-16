@@ -1,13 +1,15 @@
-# Builds the Microsoft Store package (MSIX) of a released version. It runs
-# beside release.yml and changes nothing there: the GitHub release, its
-# installer and its updater stay as they are.
+# Builds the Microsoft Store package (MSIX) of a released version. The
+# GitHub release, its installer and its updater stay as release.yml makes
+# them.
 #
-#   "Run workflow" with a release tag ("v1.0.0"): builds keymotion.exe from
-#   that tag as the release did, packs it with tools/store/msix.mjs and keeps
-#   the .msix as this run's artifact. The owner uploads it in Partner Center
-#   (Microsoft signs it when it passes certification); nothing is submitted
-#   from here yet. Docs site: developers/microsoft-store.
+#   release.yml calls this for every release tag (not pre-releases), so the
+#   .msix waits beside the GitHub draft: both channels publish the same day
+#   (owner's decision, 2026-11-16). The owner uploads it in Partner Center
+#   (Microsoft signs it when it passes certification); once it passes, the
+#   GitHub draft and the Store submission are published together. Nothing
+#   is submitted from here yet. Docs site: developers/microsoft-store.
 #
+#   "Run workflow" with a release tag ("v1.0.0") builds it again by hand.
 #   "Test package" makes the same package with a made-up identity, for
 #   trying on a computer with Windows' developer mode; the Store would
 #   refuse it.
@@ -22,6 +24,17 @@
 name: Microsoft Store package
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to package, such as v1.0.0
+        required: true
+        type: string
+      test:
+        description: Test package (made-up identity, for developer mode only)
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       tag:
@@ -149,5 +162,7 @@ jobs:
           {
             echo "### Package $VERSION is ready"
             echo
-            echo "Download the artifact, then in Partner Center › Keymotion › the new submission › Packages, upload the .msix."
+            echo "1. Download the artifact; in Partner Center › Keymotion › a new submission › Packages, upload the .msix (remove the old one) and fill in \"What's new\" from CHANGELOG.md."
+            echo "2. Keep the GitHub draft unpublished until the submission passes certification."
+            echo "3. Then publish both together: the GitHub draft, and \"Publish now\" in Partner Center."
           } >> "$GITHUB_STEP_SUMMARY"

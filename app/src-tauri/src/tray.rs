@@ -50,7 +50,7 @@ const TRAY_ID: &str = "main";
 /// window stays hidden, only the tray icon shows.
 pub const ARG_HIDDEN: &str = "--hidden";
 /// The value's name in the `Run` key.
-const RUN_NAME: &str = "Keymotion";
+pub const RUN_NAME: &str = "Keymotion";
 const FILE: &str = "background.json";
 const VERSION: u32 = 1;
 
@@ -161,6 +161,22 @@ impl Background {
             tracing::info!("startup task turned off");
         }
         Ok(())
+    }
+
+    /// The GitHub copy handed its start with Windows to this one (the Store
+    /// build; handoff.rs): turn the startup task on, unless the user or a
+    /// policy decides it.
+    pub fn take_startup(&self) {
+        if !crate::channel::store() {
+            return;
+        }
+        match self.configure_task(self.settings(), true) {
+            Ok(()) => tracing::info!(
+                start_with_windows = self.settings().start_with_windows,
+                "start with Windows taken over from the GitHub copy"
+            ),
+            Err(e) => tracing::warn!("start with Windows not taken over: {e}"),
+        }
     }
 
     /// Store the choices; starting with Windows writes or removes the `Run`

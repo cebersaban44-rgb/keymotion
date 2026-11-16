@@ -344,6 +344,8 @@ pub enum WindowsPage {
     StartupApps,
     /// Microsoft Store › Downloads and updates.
     StoreUpdates,
+    /// Settings › Apps › Installed apps.
+    InstalledApps,
 }
 
 /// The tray menu's words and the background notice, in the UI language.
@@ -2040,6 +2042,9 @@ pub struct UpdateState {
     /// Installed from the Microsoft Store, which updates it: the app's
     /// own updater stays off.
     pub store: bool,
+    /// The Store build, with the GitHub copy installed beside it: it no
+    /// longer opens (it starts this one instead) and can be removed.
+    pub github_copy: bool,
 }
 
 /// Where an update stands.

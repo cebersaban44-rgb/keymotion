@@ -11,6 +11,7 @@ mod device;
 mod diagnostics;
 mod dto;
 mod gauges;
+mod handoff;
 mod ics;
 mod lighting;
 mod live;
@@ -765,6 +766,7 @@ fn open_windows_page(page: WindowsPage) -> Result<(), String> {
     kb_winsys::shell::open_windows_page(match page {
         WindowsPage::StartupApps => kb_winsys::shell::WindowsPage::StartupApps,
         WindowsPage::StoreUpdates => kb_winsys::shell::WindowsPage::StoreUpdates,
+        WindowsPage::InstalledApps => kb_winsys::shell::WindowsPage::InstalledApps,
     })
 }
 
@@ -1356,13 +1358,36 @@ fn screen_journal(library: &Arc<Mutex<ScreenLibrary>>) -> device::ScreenWriteHoo
     })
 }
 
+/// The GitHub copy handed its start with Windows over (handoff.rs). Off the
+/// UI thread: turning the startup task on waits for Windows.
+fn take_startup(app: &AppHandle) {
+    let Some(background) = app.try_state::<Arc<Background>>().map(|b| b.inner().clone()) else {
+        tracing::warn!("start with Windows not taken over: the app is not ready");
+        return;
+    };
+    std::thread::spawn(move || background.take_startup());
+}
+
 pub fn run() {
     logging::init();
+    // The GitHub copy steps aside for an installed Store copy; a second
+    // start with Windows ends here.
+    if handoff::before_start() {
+        return;
+    }
 
     tauri::Builder::default()
         // One app at a time: two would send commands to the keyboard at
-        // once. A second launch brings the open window forward instead.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| tray::show_main(app)))
+        // once. A second launch brings the open window forward instead,
+        // unless Windows started it (it stays in the tray).
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if args.iter().any(|a| a == handoff::ARG_TAKE_STARTUP) {
+                take_startup(app);
+            }
+            if !args.iter().any(|a| a == tray::ARG_HIDDEN) {
+                tray::show_main(app);
+            }
+        }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(CloseGuard::default())
         .manage(Arc::new(DriverGif::default()))
@@ -1441,6 +1466,9 @@ pub fn run() {
             app.manage(device);
             app.manage(live);
             tray::start(app.handle())?;
+            if std::env::args().any(|a| a == handoff::ARG_TAKE_STARTUP) {
+                take_startup(app.handle());
+            }
             // Started with Windows: only the tray icon shows. The GitHub
             // build's `Run` value passes `--hidden`; the Store build's
             // startup task passes nothing, Windows tells how it started.

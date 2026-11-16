@@ -83,6 +83,20 @@ pub fn started_at_sign_in() -> bool {
     sys::started_at_sign_in()
 }
 
+/// A package of the family `family_name` is installed for this user. Any
+/// program can ask, packaged or not (the GitHub build looks for the Store
+/// build this way).
+pub fn installed(family_name: &str) -> bool {
+    sys::installed(family_name)
+}
+
+/// Start a packaged app, `<family>!<application id>`, with `arguments` on
+/// its command line; its process id. A link to it (`shell:AppsFolder\…`)
+/// cannot pass arguments.
+pub fn activate(app_user_model_id: &str, arguments: &str) -> Result<u32, String> {
+    sys::activate(app_user_model_id, arguments)
+}
+
 #[cfg(windows)]
 mod sys {
     use super::Package;
@@ -128,6 +142,42 @@ mod sys {
             .and_then(|args| args.Kind())
             .is_ok_and(|kind| kind == ActivationKind::StartupTask)
     }
+
+    pub fn installed(family: &str) -> bool {
+        use windows::Win32::Storage::Packaging::Appx::GetPackagesByPackageFamily;
+        let family = windows::core::HSTRING::from(family);
+        let (mut count, mut len) = (0u32, 0u32);
+        // SAFETY: no buffers; the API writes how many packages there are
+        // and the length their names would need.
+        let err = unsafe { GetPackagesByPackageFamily(&family, &mut count, None, &mut len, None) };
+        (err.is_ok() || err == ERROR_INSUFFICIENT_BUFFER) && count > 0
+    }
+
+    pub fn activate(aumid: &str, arguments: &str) -> Result<u32, String> {
+        use windows::core::HSTRING;
+        use windows::Win32::System::Com::{
+            CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED,
+        };
+        use windows::Win32::UI::Shell::{ApplicationActivationManager, IApplicationActivationManager, AO_NONE};
+        // SAFETY: COM for this thread, as the UI thread later wants it
+        // (single-threaded); undone below when this call started it.
+        let init = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+        let started = (|| {
+            // SAFETY: Windows' own class, asked for the interface it has.
+            let manager: IApplicationActivationManager =
+                unsafe { CoCreateInstance(&ApplicationActivationManager, None, CLSCTX_LOCAL_SERVER) }
+                    .map_err(|e| format!("activation manager: {}", e.message()))?;
+            // SAFETY: NUL-terminated strings that outlive the call.
+            unsafe { manager.ActivateApplication(&HSTRING::from(aumid), &HSTRING::from(arguments), AO_NONE) }
+                .map_err(|e| format!("not started: {}", e.message()))
+        })();
+        if init.is_ok() {
+            // SAFETY: balances the successful CoInitializeEx above; the
+            // manager is already released.
+            unsafe { CoUninitialize() };
+        }
+        started
+    }
 }
 
 #[cfg(not(windows))]
@@ -140,6 +190,14 @@ mod sys {
 
     pub fn started_at_sign_in() -> bool {
         false
+    }
+
+    pub fn installed(_family: &str) -> bool {
+        false
+    }
+
+    pub fn activate(_aumid: &str, _arguments: &str) -> Result<u32, String> {
+        Err("packaged apps are only available on Windows".into())
     }
 }
 
@@ -194,5 +252,12 @@ mod tests {
         eprintln!("raw package: {:?}", sys::current());
         assert_eq!(current(), None);
         assert!(!started_at_sign_in());
+    }
+
+    /// A family no one has: not installed, never an error or a panic.
+    #[test]
+    fn an_unknown_family_is_not_installed() {
+        assert!(!installed("Keymotion.NoSuchPackage_0000000000000"));
+        assert!(!installed(""));
     }
 }

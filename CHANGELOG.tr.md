@@ -5,11 +5,25 @@ Keymotion'daki önemli değişiklikler burada listelenir. İngilizcesi: [CHANGEL
 1.0.0'dan itibaren her sürüm GitHub'da ve Microsoft Store'da aynıdır; ikisi
 için tek bir değişiklik listesi vardır. Windows, Store'dan kurulan kopyanın
 sürümünü sonuna her zaman 0 olan dördüncü bir sayıyla gösterir (1.0.0, 1.0.0.0
-olur). Store bir sürümü Microsoft denetledikten sonra alır; bu genellikle
-GitHub'dan birkaç gün sonradır. Deneme sürümleri ("-rc") yalnızca GitHub'dadır.
+olur). Bir sürüm ikisinde aynı gün çıkar: GitHub sürümü, Microsoft Store
+kopyasını denetleyene kadar bekler. Yalnızca acil bir düzeltme önce GitHub'da
+çıkabilir ve bunu belirtir. Deneme sürümleri ("-rc") yalnızca GitHub'dadır.
 Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 
 ## [Yayımlanmamış]
+
+### Değişenler
+
+- **İki kopya birden kuruluysa:** Bir bilgisayarda hem GitHub'dan hem
+  Microsoft Store'dan kurulan Keymotion varsa GitHub kopyası artık açılınca
+  Store kopyasını açar; bilgisayar açılınca başlama da Store kopyasına geçer.
+  Önceden ikisi de bilgisayar açılınca başlamaya çalışır, önce davranan
+  çalışırdı. Store kopyası Ayarlar › Hakkında bölümünde bir "GitHub kopyası"
+  satırı gösterir; satırdaki düğme Windows'un Yüklü uygulamalar sayfasını
+  açar ve GitHub kopyası oradan kaldırılabilir. İki kopya ayarları paylaştığı
+  için ayarlar kalır.
+- Keymotion açıkken bilgisayar açılışında ikinci kez başlatılırsa pencereyi
+  artık öne getirmez.
 
 ## [1.0.0] - 2026-11-15
 

@@ -171,6 +171,7 @@ impl Updates {
             last_check_ms: stored.last_check_ms,
             status: self.status.lock().map(|s| s.clone()).unwrap_or(UpdateStatus::Idle),
             store: crate::channel::store(),
+            github_copy: crate::handoff::github_copy_beside(),
         }
     }
 
