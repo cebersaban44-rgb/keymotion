@@ -37,6 +37,7 @@ export const DEFAULT_GAMES: GamesSettings = {
   brightness: 4,
   quiet: false,
   marks: [],
+  lol: { enabled: true, bars: true, death: true, events: true },
 };
 
 /** Sessions shorter than this get no summary card (games.rs). */
@@ -69,6 +70,7 @@ const mock = {
         gpuPeak: 97,
         cpuAvg: 34,
         tempPeak: 71,
+        lol: null,
       },
     ],
     temperature: true,
@@ -86,10 +88,10 @@ if (import.meta.env.DEV && !inTauri && typeof window !== "undefined") {
     const s = mock.state;
     if (on) {
       s.session = { key: s.games[0]!.key, name: s.games[0]!.name, source: "steam", startedMs: Date.now() - 42 * 60_000, gpuAvg: 74, tempPeak: 69 };
-      mock.onCard?.({ kind: "start", name: s.session.name, steamApp: null, startedMs: s.session.startedMs, endedMs: null, gpuAvg: null, gpuPeak: null, cpuAvg: null, tempPeak: null, todayMs: s.todayMs });
+      mock.onCard?.({ kind: "start", name: s.session.name, steamApp: null, startedMs: s.session.startedMs, endedMs: null, gpuAvg: null, gpuPeak: null, cpuAvg: null, tempPeak: null, todayMs: s.todayMs, lol: null });
     } else if (s.session) {
       const ended = Date.now();
-      mock.onCard?.({ kind: "summary", name: s.session.name, steamApp: null, startedMs: s.session.startedMs, endedMs: ended, gpuAvg: 78, gpuPeak: 97, cpuAvg: 34, tempPeak: 71, todayMs: s.todayMs });
+      mock.onCard?.({ kind: "summary", name: s.session.name, steamApp: null, startedMs: s.session.startedMs, endedMs: ended, gpuAvg: 78, gpuPeak: 97, cpuAvg: 34, tempPeak: 71, todayMs: s.todayMs, lol: null });
       s.session = null;
     }
     mock.emit?.(mockCopy());

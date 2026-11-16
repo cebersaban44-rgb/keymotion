@@ -2,6 +2,7 @@
 import type { GameLights } from "./GameLights";
 import type { GameMark } from "./GameMark";
 import type { GameRest } from "./GameRest";
+import type { LolSettings } from "./LolSettings";
 
 /**
  * Game session settings (persisted in `games.json`).
@@ -44,4 +45,8 @@ quiet: boolean,
 /**
  * The user's own word on programs.
  */
-marks: Array<GameMark>, };
+marks: Array<GameMark>, 
+/**
+ * League of Legends: lights from the game's own data.
+ */
+lol: LolSettings, };

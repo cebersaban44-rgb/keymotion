@@ -12,6 +12,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
+  Swords,
   Usb,
   type LucideIcon,
 } from "lucide-react";
@@ -160,6 +161,27 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
 
           <Lights kb={kb} usb={usb} settings={s.settings} set={set} />
 
+          <Row
+            icon={Swords}
+            title={t("games.lol")}
+            body={t("games.lol.body")}
+            checked={s.settings.lol.enabled}
+            onChange={(enabled) => set({ lol: { ...s.settings.lol, enabled } })}
+          >
+            {s.settings.lol.enabled && (
+              <>
+                <Switch label={t("games.lol.bars")} body={t("games.lol.bars.body")} on={s.settings.lol.bars} onChange={(bars) => set({ lol: { ...s.settings.lol, bars } })} />
+                <Switch label={t("games.lol.death")} body={t("games.lol.death.body")} on={s.settings.lol.death} onChange={(death) => set({ lol: { ...s.settings.lol, death } })} />
+                <Switch label={t("games.lol.events")} body={t("games.lol.events.body")} on={s.settings.lol.events} onChange={(events) => set({ lol: { ...s.settings.lol, events } })} />
+                <LolCard />
+                <p className="text-[12px] text-ink-3">{t("games.lol.never")}</p>
+              </>
+            )}
+            <p className="text-[11px] text-ink-3" data-games-riot-notice>
+              {t("games.lol.legal")}
+            </p>
+          </Row>
+
           <Row icon={ShieldCheck} title={t("games.quiet")} body={t("games.quiet.body")} checked={s.settings.quiet} onChange={(quiet) => set({ quiet })} />
 
           <HistoryRow time={time} />
@@ -253,6 +275,7 @@ function CardStrip({ temperature }: { temperature: boolean }) {
       cpuAvg: null,
       tempPeak: null,
       todayMs: 80 * 60_000,
+      lol: null,
     };
     return Promise.all([
       gameStartCard(base, null, w),
@@ -282,6 +305,44 @@ function CardStrip({ temperature }: { temperature: boolean }) {
         ))}
       </div>
     </div>
+  );
+}
+
+/** The summary card of a League of Legends match, drawn by the real code. */
+function LolCard() {
+  const t = useT();
+  const locale = useApp((x) => x.locale);
+  const [frame, setFrame] = useState<Uint16Array | null>(null);
+  const draw = useEffectEvent(() =>
+    gameSummaryCard(
+      {
+        kind: "summary",
+        name: "League of Legends",
+        steamApp: null,
+        startedMs: Date.now() - 32 * 60_000,
+        endedMs: Date.now(),
+        gpuAvg: 61,
+        gpuPeak: 88,
+        cpuAvg: 27,
+        tempPeak: 66,
+        todayMs: 125 * 60_000,
+        lol: { win: true, kills: 8, deaths: 3, assists: 12, cs: 214, champion: "Ahri", mode: "CLASSIC" },
+      },
+      gameWords(t),
+    ),
+  );
+  useEffect(() => {
+    let live = true;
+    draw().then((p) => live && setFrame(p.frames[0]!), console.error);
+    return () => {
+      live = false;
+    };
+  }, [locale]);
+  return (
+    <figure className="flex flex-col gap-1">
+      {frame ? <FramePlayer frames={[frame]} delaysMs={[100]} className="h-[76px] w-[135px] rounded-md bg-black" /> : <div className="h-[76px] w-[135px] rounded-md bg-black" />}
+      <figcaption className="text-[11px] text-ink-3">{t("games.lol.card")}</figcaption>
+    </figure>
   );
 }
 

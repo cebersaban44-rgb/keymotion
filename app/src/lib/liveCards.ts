@@ -655,6 +655,9 @@ export interface GameWords {
   avg: string;
   peak: string;
   todayTotal: string;
+  win: string;
+  lose: string;
+  cs: string;
 }
 
 export function gameWords(tNow: (key: MessageKey) => string): GameWords {
@@ -671,6 +674,9 @@ export function gameWords(tNow: (key: MessageKey) => string): GameWords {
     avg: tNow("games.card.avg"),
     peak: tNow("games.card.peak"),
     todayTotal: tNow("games.card.todayTotal"),
+    win: tNow("games.card.win"),
+    lose: tNow("games.card.lose"),
+    cs: tNow("games.card.cs"),
   };
 }
 
@@ -763,10 +769,19 @@ export async function gameStartCard(c: GameCard, cover: Blob | null, w: GameWord
  *  not give are left out. */
 export async function gameSummaryCard(c: GameCard, w: GameWords): Promise<Prepared> {
   const end = c.endedMs ?? Date.now();
-  const label = `${c.name} · ${w.ended} ${hhmm(end)}`;
-  const time = played(end - c.startedMs, w);
+  const lol = c.lol;
+  const who = lol?.champion ? `${c.name} · ${lol.champion}` : c.name;
+  const label = `${who} · ${w.ended} ${hhmm(end)}`;
+  const length = played(end - c.startedMs, w);
+  // A League of Legends match: the result first, then K/D/A.
+  const result = lol?.win == null ? null : lol.win ? w.win : w.lose;
+  const time = result ?? length;
   const pct = (v: number | null) => (v == null ? null : `%${Math.round(v)}`);
   const cells: [string, string][] = [];
+  if (lol) {
+    cells.push(["K / D / A", `${lol.kills} / ${lol.deaths} / ${lol.assists}`]);
+    cells.push([w.cs, `${lol.cs}${result ? ` · ${length}` : ""}`]);
+  }
   if (c.gpuAvg != null) {
     const peak = pct(c.gpuPeak);
     cells.push([w.gpu, `${w.avg} ${pct(c.gpuAvg)}${peak ? ` · ${w.peak} ${peak}` : ""}`]);
@@ -791,7 +806,7 @@ export async function gameSummaryCard(c: GameCard, w: GameWords): Promise<Prepar
   fg.fillStyle = "rgba(255,255,255,0.6)";
   fitFont(fg, label, (px) => `600 ${px}px ${SANS}`, maxW, 10, 7);
   fg.fillText(lines(fg, label, maxW, 1)[0] ?? "", left, 20);
-  fg.fillStyle = "#ffffff";
+  fg.fillStyle = lol?.win === true ? "#f0c75e" : lol?.win === false ? "#ff6b5e" : "#ffffff";
   fitFont(fg, time, (px) => `700 ${px}px ${DISPLAY}`, maxW, 32, 18);
   fg.fillText(time, left, 54);
 

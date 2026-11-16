@@ -2213,6 +2213,46 @@ pub struct GamesSettings {
     pub quiet: bool,
     /// The user's own word on programs.
     pub marks: Vec<GameMark>,
+    /// League of Legends: lights from the game's own data.
+    pub lol: LolSettings,
+}
+
+/// League of Legends lights (Riot's Live Client Data API, read on this
+/// computer while a match runs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct LolSettings {
+    /// League of Legends' match lights instead of the plain game lights.
+    pub enabled: bool,
+    /// Health on the number row, mana (or energy) on the F row.
+    pub bars: bool,
+    /// Dead: the keys go dark red, the number row counts down to respawn.
+    pub death: bool,
+    /// Short flashes: level up, kills, an ace, dragons and Baron, the end.
+    pub events: bool,
+}
+
+impl Default for LolSettings {
+    fn default() -> Self {
+        Self { enabled: true, bars: true, death: true, events: true }
+    }
+}
+
+/// How a League of Legends match went (summary card, history).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LolResult {
+    /// `None` when the end was not seen (left early, the client closed).
+    pub win: Option<bool>,
+    pub kills: u32,
+    pub deaths: u32,
+    pub assists: u32,
+    pub cs: u32,
+    pub champion: String,
+    /// The game's own name of the mode (CLASSIC, ARAM, …).
+    pub mode: String,
 }
 
 /// Keys lit by default: movement and the keys next to it.
@@ -2232,6 +2272,7 @@ impl Default for GamesSettings {
             brightness: 4,
             quiet: false,
             marks: Vec::new(),
+            lol: LolSettings::default(),
         }
     }
 }
@@ -2335,6 +2376,9 @@ pub struct GameRecord {
     pub cpu_avg: Option<f32>,
     #[serde(default)]
     pub temp_peak: Option<f32>,
+    /// A League of Legends match: how it went.
+    #[serde(default)]
+    pub lol: Option<LolResult>,
 }
 
 /// Game session, settings and history (`games` event payload).
@@ -2381,6 +2425,8 @@ pub struct GameCard {
     pub temp_peak: Option<f32>,
     /// Played today, this session included.
     pub today_ms: f64,
+    /// A League of Legends match: how it went (summary card).
+    pub lol: Option<LolResult>,
 }
 
 // ------------------------------------------------------- per-app profiles

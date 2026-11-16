@@ -72,6 +72,8 @@ const STALE_CARD_BACK: Duration = Duration::from_secs(60);
 const RECENT: usize = 10;
 const DAY_MS: f64 = 86_400_000.0;
 const TICK: Duration = Duration::from_secs(1);
+/// While League of Legends' lights show.
+const LOL_TICK: Duration = Duration::from_millis(50);
 const IDLE: Duration = Duration::from_secs(30);
 /// The dim keys of `GameRest::Dim`: a faint share of the colour.
 const DIM: f32 = 0.12;
@@ -104,6 +106,11 @@ const NOT_GAMES: [&str; 24] = [
     "keymotion.exe",
     "netflix.exe",
 ];
+
+/// League of Legends' match program (Riot's list names it alone).
+pub fn is_lol(key: &str) -> bool {
+    key.ends_with("league of legends.exe")
+}
 
 fn not_a_game(exe: &str) -> bool {
     let lower = exe.to_ascii_lowercase();
@@ -248,6 +255,7 @@ impl Running {
             gpu_peak: self.stats.gpu_peak,
             cpu_avg: self.stats.cpu_avg(),
             temp_peak: self.stats.temp_peak,
+            lol: None,
         }
     }
 }
@@ -365,14 +373,18 @@ pub fn played_between(records: &[GameRecord], running: Option<f64>, from: f64, t
 pub(crate) struct KeyIds {
     pub(crate) all: Vec<u8>,
     pub(crate) by_id: HashMap<String, u8>,
+    /// Where each LED sits from left (0) to right (1), for waves.
+    pub(crate) x: HashMap<u8, f32>,
 }
 
 impl KeyIds {
     pub(crate) fn of(model: &Model) -> Self {
         let Some(g) = &model.geometry else { return Self::default() };
+        let width = g.width.max(1.0);
         Self {
             all: g.keys.iter().map(|k| k.led).collect(),
             by_id: g.keys.iter().map(|k| (k.id.clone(), k.led)).collect(),
+            x: g.keys.iter().map(|k| (k.led, ((k.x + k.w / 2.0) / width).clamp(0.0, 1.0))).collect(),
         }
     }
 }
@@ -432,6 +444,7 @@ pub struct GamesHandle {
     config_dir: Option<PathBuf>,
     live: Arc<LiveHandle>,
     hub: Arc<FrontHub>,
+    lol: Arc<crate::lol::LolHandle>,
 }
 
 /// Meters live on the worker thread (their handles stay on one thread).
@@ -482,7 +495,15 @@ impl GamesHandle {
             dirty: true,
         }));
         let (tx, rx) = mpsc::channel();
-        let handle = Arc::new(Self { tx: tx.clone(), inner: inner.clone(), app, config_dir, live, hub: hub.clone() });
+        let handle = Arc::new(Self {
+            tx: tx.clone(),
+            inner: inner.clone(),
+            app,
+            config_dir,
+            live,
+            hub: hub.clone(),
+            lol: crate::lol::LolHandle::new(),
+        });
         hub.listen(move |front| {
             if let Ok(mut i) = inner.lock() {
                 i.front = Some(front.clone());
@@ -715,18 +736,35 @@ impl GamesHandle {
             || self.live.held_by(crate::pomodoro::SOURCE)
     }
 
-    fn card(&self, kind: GameCardKind, r: &Running, end: Option<f64>, today: f64) -> GameCard {
+    fn start_card(r: &Running, today: f64) -> GameCard {
         GameCard {
-            kind,
+            kind: GameCardKind::Start,
             name: r.game.name.clone(),
             steam_app: r.game.steam_app,
             started_ms: r.started,
-            ended_ms: end,
-            gpu_avg: r.stats.gpu_avg(),
-            gpu_peak: r.stats.gpu_peak,
-            cpu_avg: r.stats.cpu_avg(),
-            temp_peak: r.stats.temp_peak,
+            ended_ms: None,
+            gpu_avg: None,
+            gpu_peak: None,
+            cpu_avg: None,
+            temp_peak: None,
             today_ms: today,
+            lol: None,
+        }
+    }
+
+    fn summary_card(r: &GameRecord, today: f64) -> GameCard {
+        GameCard {
+            kind: GameCardKind::Summary,
+            name: r.name.clone(),
+            steam_app: None,
+            started_ms: r.start_ms,
+            ended_ms: Some(r.end_ms),
+            gpu_avg: r.gpu_avg,
+            gpu_peak: r.gpu_peak,
+            cpu_avg: r.cpu_avg,
+            temp_peak: r.temp_peak,
+            today_ms: today,
+            lol: r.lol.clone(),
         }
     }
 
@@ -830,11 +868,16 @@ impl GamesHandle {
                 tracing::info!(source = ?r.game.source, "game session started");
                 let today = played_between(&inner.history, Some(r.started), day_start(now), now);
                 if s.start_card && live_on && !s.quiet && !self.higher_holds() {
-                    let _ = self.app.emit(EVENT_GAME_CARD, self.card(GameCardKind::Start, &r, None, today));
+                    let _ = self.app.emit(EVENT_GAME_CARD, Self::start_card(&r, today));
                 }
             }
             Some(Change::Ended(record)) => {
                 inner.dirty = true;
+                let mut record = record.clone();
+                if is_lol(&record.key) {
+                    record.lol = self.lol.snapshot().and_then(|l| l.result());
+                }
+                let record = &record;
                 let minutes = ((record.end_ms - record.start_ms) / 60_000.0).round();
                 tracing::info!(minutes, "game session ended");
                 inner.history.push(record.clone());
@@ -847,30 +890,7 @@ impl GamesHandle {
                 self.live.set_hold(SOURCE, false);
                 if s.summary_card && long && live_on && !s.quiet && !self.higher_holds() {
                     let today = played_between(&inner.history, None, day_start(now), now);
-                    let r = Running {
-                        game: Detected {
-                            key: record.key.clone(),
-                            name: record.name.clone(),
-                            source: record.source,
-                            pid: 0,
-                            exe: String::new(),
-                            steam_app: None,
-                        },
-                        started: record.start_ms,
-                        missing_since: None,
-                        stats: Stats {
-                            gpu_sum: f64::from(record.gpu_avg.unwrap_or(0.0)),
-                            gpu_n: u32::from(record.gpu_avg.is_some()),
-                            gpu_peak: record.gpu_peak,
-                            cpu_sum: f64::from(record.cpu_avg.unwrap_or(0.0)),
-                            cpu_n: u32::from(record.cpu_avg.is_some()),
-                            cpu_peak: None,
-                            temp_peak: record.temp_peak,
-                        },
-                    };
-                    let _ = self
-                        .app
-                        .emit(EVENT_GAME_CARD, self.card(GameCardKind::Summary, &r, Some(record.end_ms), today));
+                    let _ = self.app.emit(EVENT_GAME_CARD, Self::summary_card(record, today));
                 } else {
                     // The start card is old news now.
                     self.live.drop_pending(SOURCE);
@@ -888,9 +908,17 @@ impl GamesHandle {
             inner.trying_until = None;
         }
         let keys = self.usb_keys(inner, device);
+        // League of Legends: the match's own lights, while its data answers.
+        let lol_on = in_session
+            && !s.quiet
+            && s.lol.enabled
+            && inner.tracker.session.as_ref().is_some_and(|r| is_lol(&r.game.key));
+        self.lol.want(lol_on);
+        let lol = lol_on.then(|| self.lol.snapshot()).flatten().filter(|l| l.lights());
         let show = trying || (in_session && !s.quiet && s.lights == GameLights::Keys);
-        let frame: Frame = match (&keys, show) {
-            (Some(k), true) => Some((keys_frame(k, &s), s.brightness)),
+        let frame: Frame = match (&keys, &lol, show) {
+            (Some(k), Some(l), _) if !trying => Some((crate::lol::frame(l, k, &s, now), s.brightness)),
+            (Some(k), _, true) => Some((keys_frame(k, &s), s.brightness)),
             _ => None,
         };
         if frame != inner.sent {
@@ -911,11 +939,17 @@ impl GamesHandle {
             drop(guard);
             let _ = self.app.emit(EVENT_GAMES, state);
         }
-        TICK
+        // The match's lights move (bars, flashes): 20 frames a second.
+        if lol_on {
+            LOL_TICK
+        } else {
+            TICK
+        }
     }
 
     /// Turned off: end the session, let go of the screen and the keys.
     fn idle(&self, device: &DeviceHandle, now: f64) {
+        self.lol.want(false);
         let Ok(mut inner) = self.inner.lock() else { return };
         if let Some(record) = inner.tracker.stop(now) {
             tracing::info!("game session ended (turned off)");
@@ -1122,6 +1156,7 @@ mod tests {
             gpu_peak: None,
             cpu_avg: None,
             temp_peak: None,
+            lol: None,
         };
         let records = [r(0.0, 100.0), r(150.0, 300.0)];
         assert_eq!(played_between(&records, None, 50.0, 400.0), 50.0 + 150.0);
@@ -1130,7 +1165,8 @@ mod tests {
 
     #[test]
     fn chosen_keys_lit_the_rest_dim_or_dark() {
-        let ids = KeyIds { all: vec![1, 2, 3], by_id: [("w".to_string(), 2u8)].into_iter().collect() };
+        let ids =
+            KeyIds { all: vec![1, 2, 3], by_id: [("w".to_string(), 2u8)].into_iter().collect(), x: HashMap::new() };
         let mut s = GamesSettings { keys: vec!["w".into(), "nope".into()], color: [200, 100, 0], ..Default::default() };
         s.rest = GameRest::Dark;
         assert_eq!(keys_frame(&ids, &s), vec![(1, [0, 0, 0]), (2, [200, 100, 0]), (3, [0, 0, 0])]);

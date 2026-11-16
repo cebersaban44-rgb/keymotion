@@ -1581,6 +1581,22 @@ const tr = {
   "auto.limit": "Bugünkü sınır doldu: yarına kadar yalnız ışık değişir.",
   "auto.error": "Son geçiş klavyeye yazılamadı. Kablonun takılı olduğundan emin ol.",
   "tray.autoProfile": "Uygulamaya göre değiştir",
+
+  // League of Legends
+  "games.lol": "League of Legends",
+  "games.lol.body": "Maç sırasında oyunun kendi verisinden ışıklar. League of Legends bu veriyi bilgisayarın içinde, araçlar için açıkça sunuyor; Keymotion oyunun belleğine girmez. Bu ışıklar oyun tuşlarının yerine geçer.",
+  "games.lol.bars": "Can ve mana",
+  "games.lol.bars.body": "Can 1–0 tuşlarında yeşilden kırmızıya bir çubuk, mana ya da enerji F1–F12'de.",
+  "games.lol.death": "Ölünce",
+  "games.lol.death.body": "Tuşlar koyu kırmızıya döner, 1–0 tuşları yeniden doğmaya kalan süreyle azalır.",
+  "games.lol.events": "Kısa efektler",
+  "games.lol.events.body": "Seviye atlayınca bir dalga; öldürme, çoklu öldürme ve as olunca parlama; ejder, Baron ve Herald kesilince, maç bitince zafer ya da yenilgi.",
+  "games.lol.card": "Maç sonu özeti",
+  "games.lol.never": "Rakibin bekleme süreleri, ejder ve Baron'un çıkış sayaçları ve sana ne yapacağını söyleyen uyarılar yok: Riot'un kuralları bunlara izin vermiyor. Teamfight Tactics maçlarında bu ışıklar yanmaz.",
+  "games.lol.legal": "Keymotion isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.",
+  "games.card.win": "Zafer",
+  "games.card.lose": "Yenilgi",
+  "games.card.cs": "Minyon",
 } as const;
 
 export type MessageKey = keyof typeof tr;
@@ -3163,6 +3179,22 @@ const en: Record<MessageKey, string> = {
   "auto.limit": "Today's limit is reached: until tomorrow only the lighting changes.",
   "auto.error": "The last switch couldn't be written to the keyboard. Check that the cable is plugged in.",
   "tray.autoProfile": "Switch by app",
+
+  // League of Legends
+  "games.lol": "League of Legends",
+  "games.lol.body": "Lights from the game's own data during a match. League of Legends offers this data on your computer for tools like this one; Keymotion never reaches into the game's memory. These lights take the place of the game keys.",
+  "games.lol.bars": "Health and mana",
+  "games.lol.bars.body": "Health as a green-to-red bar on 1–0, mana or energy on F1–F12.",
+  "games.lol.death": "When you die",
+  "games.lol.death.body": "The keys turn dark red and 1–0 count down to your respawn.",
+  "games.lol.events": "Short effects",
+  "games.lol.events.body": "A wave when you level up; a flash for kills, multikills and an ace; dragons, Baron and Herald; victory or defeat at the end.",
+  "games.lol.card": "End-of-match summary",
+  "games.lol.never": "No enemy cooldowns, no dragon or Baron spawn timers, and nothing that tells you what to do: Riot's rules don't allow them. Teamfight Tactics matches get no lights.",
+  "games.lol.legal": "Keymotion isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.",
+  "games.card.win": "Victory",
+  "games.card.lose": "Defeat",
+  "games.card.cs": "CS",
 };
 
 const messages: Record<Locale, Record<MessageKey, string>> = { tr, en };

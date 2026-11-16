@@ -19,6 +19,7 @@ mod ics;
 mod lighting;
 mod live;
 mod logging;
+mod lol;
 pub mod migrate;
 mod notify;
 mod now_playing;
