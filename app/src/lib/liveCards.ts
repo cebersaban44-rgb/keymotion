@@ -2,6 +2,7 @@
 // text cards: fonts loaded first, background dithered, text sharp.
 
 import type { CalendarCard } from "../bindings/CalendarCard";
+import type { GameCard } from "../bindings/GameCard";
 import type { PomodoroCard } from "../bindings/PomodoroCard";
 import type { PomodoroPhase } from "../bindings/PomodoroPhase";
 import type { PomodoroSettings } from "../bindings/PomodoroSettings";
@@ -634,4 +635,179 @@ export async function reminderCard(c: ReminderCard, w: ReminderWords): Promise<P
     name: `${w.name} · ${time} ${title}`,
     kind: "image",
   };
+}
+
+// ----------------------------------------------------------------- games
+
+/** Words the game cards need, in the UI language. */
+export interface GameWords {
+  /** Name of the feature, for the card's name in the app. */
+  name: string;
+  started: string;
+  ended: string;
+  today: string;
+  /** "{h} h {min} min" and "{min} min". */
+  hours: string;
+  minutes: string;
+  gpu: string;
+  temp: string;
+  cpu: string;
+  avg: string;
+  peak: string;
+  todayTotal: string;
+}
+
+export function gameWords(tNow: (key: MessageKey) => string): GameWords {
+  return {
+    name: tNow("games.card.name"),
+    started: tNow("games.card.started"),
+    ended: tNow("games.card.ended"),
+    today: tNow("games.card.today"),
+    hours: tNow("games.time.hours"),
+    minutes: tNow("games.time.minutes"),
+    gpu: tNow("games.card.gpu"),
+    temp: tNow("games.card.temp"),
+    cpu: tNow("games.card.cpu"),
+    avg: tNow("games.card.avg"),
+    peak: tNow("games.card.peak"),
+    todayTotal: tNow("games.card.todayTotal"),
+  };
+}
+
+function hhmm(ms: number) {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function played(ms: number, w: GameWords) {
+  const total = Math.max(0, Math.floor(ms / 60_000));
+  const h = Math.floor(total / 60);
+  const min = total % 60;
+  return h > 0 ? w.hours.replace("{h}", String(h)).replace("{min}", String(min)) : w.minutes.replace("{min}", String(min));
+}
+
+/** The game starts: its Steam picture (or its name on a dark tone), when
+ *  it started, and today's play time. A still picture: it stays true for
+ *  the whole session, nothing moves while the game runs. */
+export async function gameStartCard(c: GameCard, cover: Blob | null, w: GameWords): Promise<Prepared> {
+  const label = `${w.started} · ${hhmm(c.startedMs)}`;
+  const today = w.today.replace("{time}", played(c.todayMs, w));
+  await fonts(`${label} ${c.name} ${today}`);
+  const bmp = cover ? await createImageBitmap(cover).catch(() => null) : null;
+  const tone: [number, number, number] = bmp ? coverTone(bmp) : [92, 52, 150];
+  const max = Math.max(...tone, 1);
+  const accent = rgb(tone.map((v) => 120 + (v / max) * 135) as [number, number, number]);
+
+  const { bg, fg } = makeLayers();
+  bg.fillStyle = rgb(tone, 0.22);
+  bg.fillRect(0, 0, W, H);
+  const top = 82;
+  if (bmp) {
+    // Centre-crop the wide picture to the top band.
+    const want = W / top;
+    let sw = bmp.width;
+    let sh = sw / want;
+    if (sh > bmp.height) {
+      sh = bmp.height;
+      sw = sh * want;
+    }
+    bg.drawImage(bmp, (bmp.width - sw) / 2, (bmp.height - sh) / 2, sw, sh, 0, 0, W, top);
+    bmp.close();
+  } else {
+    bg.fillStyle = rgb(tone, 0.55);
+    bg.fillRect(0, 0, W, top);
+  }
+
+  fg.clearRect(0, 0, W, H);
+  fg.textBaseline = "alphabetic";
+  fg.textAlign = "left";
+  const left = 12;
+  const maxW = W - left * 2;
+  if (!bmp) {
+    // No picture: the name, large, in the band.
+    let px = 26;
+    let tl: string[] = [];
+    for (; px >= 14; px--) {
+      fg.font = `700 ${px}px ${DISPLAY}`;
+      tl = lines(fg, c.name, maxW, 2);
+      if (!tl.some((l) => l.endsWith("…")) || px === 14) break;
+    }
+    fg.fillStyle = "#ffffff";
+    const lh = Math.round(px * 1.1);
+    let y = Math.round((top - lh * tl.length) / 2 + px * 0.85);
+    for (const l of tl) {
+      fg.fillText(l, left, y);
+      y += lh;
+    }
+  }
+  fg.letterSpacing = "1px";
+  fg.fillStyle = accent;
+  fitFont(fg, label, (px) => `600 ${px}px ${SANS}`, maxW, 9, 7);
+  fg.fillText(label.toLocaleUpperCase(document.documentElement.lang || undefined), left, top + 17);
+  fg.letterSpacing = "0px";
+  fg.fillStyle = "#ffffff";
+  if (bmp) {
+    fitFont(fg, c.name, (px) => `700 ${px}px ${DISPLAY}`, maxW, 15, 10);
+    fg.fillText(lines(fg, c.name, maxW, 1)[0] ?? "", left, top + 34);
+  }
+  fg.fillStyle = "rgba(255,255,255,0.72)";
+  fg.font = `500 11px ${SANS}`;
+  fg.fillText(today, left, H - 9);
+
+  const px565 = compose565(bg.getImageData(0, 0, W, H).data, fg.getImageData(0, 0, W, H).data, true);
+  return { frames: [px565], delaysMs: [STILL_DELAY_MS], name: `${w.name} · ${c.name}`, kind: "image" };
+}
+
+/** The session ended: how long, the graphics card and processor load,
+ *  the hottest the card got, and today's total. Readings the computer did
+ *  not give are left out. */
+export async function gameSummaryCard(c: GameCard, w: GameWords): Promise<Prepared> {
+  const end = c.endedMs ?? Date.now();
+  const label = `${c.name} · ${w.ended} ${hhmm(end)}`;
+  const time = played(end - c.startedMs, w);
+  const pct = (v: number | null) => (v == null ? null : `%${Math.round(v)}`);
+  const cells: [string, string][] = [];
+  if (c.gpuAvg != null) {
+    const peak = pct(c.gpuPeak);
+    cells.push([w.gpu, `${w.avg} ${pct(c.gpuAvg)}${peak ? ` · ${w.peak} ${peak}` : ""}`]);
+  }
+  if (c.tempPeak != null) cells.push([w.temp, `${w.peak} ${Math.round(c.tempPeak)} °C`]);
+  if (c.cpuAvg != null) cells.push([w.cpu, `${w.avg} ${pct(c.cpuAvg)}`]);
+  cells.push([w.todayTotal, played(c.todayMs, w)]);
+  await fonts(`${label} ${time} ${cells.flat().join(" ")}`);
+
+  const { bg, fg } = makeLayers();
+  const grad = bg.createLinearGradient(0, 0, W, H);
+  grad.addColorStop(0, "rgb(30, 34, 46)");
+  grad.addColorStop(1, "rgb(12, 14, 20)");
+  bg.fillStyle = grad;
+  bg.fillRect(0, 0, W, H);
+
+  fg.clearRect(0, 0, W, H);
+  fg.textBaseline = "alphabetic";
+  fg.textAlign = "left";
+  const left = 12;
+  const maxW = W - left * 2;
+  fg.fillStyle = "rgba(255,255,255,0.6)";
+  fitFont(fg, label, (px) => `600 ${px}px ${SANS}`, maxW, 10, 7);
+  fg.fillText(lines(fg, label, maxW, 1)[0] ?? "", left, 20);
+  fg.fillStyle = "#ffffff";
+  fitFont(fg, time, (px) => `700 ${px}px ${DISPLAY}`, maxW, 32, 18);
+  fg.fillText(time, left, 54);
+
+  // Two columns of readings.
+  const colW = (W - left * 2 - 10) / 2;
+  cells.slice(0, 4).forEach(([k, v], i) => {
+    const x = left + (i % 2) * (colW + 10);
+    const y = 78 + Math.floor(i / 2) * 30;
+    fg.fillStyle = "rgba(255,255,255,0.55)";
+    fg.font = `500 9.5px ${SANS}`;
+    fg.fillText(k, x, y);
+    fg.fillStyle = "#ffffff";
+    fitFont(fg, v, (px) => `600 ${px}px ${SANS}`, colW, 11.5, 8);
+    fg.fillText(v, x, y + 14);
+  });
+
+  const px565 = compose565(bg.getImageData(0, 0, W, H).data, fg.getImageData(0, 0, W, H).data, true);
+  return { frames: [px565], delaysMs: [STILL_DELAY_MS], name: `${w.name} · ${c.name} · ${time}`, kind: "image" };
 }

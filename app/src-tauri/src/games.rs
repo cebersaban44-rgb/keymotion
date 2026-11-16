@@ -121,6 +121,18 @@ fn source_of(s: Source) -> GameSource {
     }
 }
 
+/// `path` is `mark` (a program) or lies in it (a game's folder).
+fn covered(path: &str, mark: &str) -> bool {
+    let norm = |s: &str| s.replace('/', "\\").trim_end_matches('\\').to_lowercase();
+    let (path, mark) = (norm(path), norm(mark));
+    path == mark || (path.starts_with(&mark) && path.as_bytes().get(mark.len()) == Some(&b'\\'))
+}
+
+/// The user's word on `path`, if any (the closest mark wins).
+fn mark_for<'a>(marks: &'a [GameMark], path: &str) -> Option<&'a GameMark> {
+    marks.iter().filter(|m| covered(path, &m.path)).max_by_key(|m| m.path.len())
+}
+
 /// The id a launcher's game is kept under: its folder, else its program.
 fn key_of(g: &KnownGame) -> String {
     g.dir.as_ref().or(g.exes.first()).map(|p| p.to_lowercase()).unwrap_or_default()
@@ -147,7 +159,7 @@ pub fn classify(front: &Front, marks: &[GameMark], known: &[KnownGame], launcher
         return None;
     }
     let path = front.path.as_deref()?;
-    if let Some(m) = marks.iter().find(|m| m.path.eq_ignore_ascii_case(path)) {
+    if let Some(m) = mark_for(marks, path) {
         return m.game.then(|| Detected {
             key: path.to_lowercase(),
             name: m.name.clone(),
@@ -544,7 +556,12 @@ impl GamesHandle {
         }
         if inner.settings.launchers {
             for g in inner.known.iter() {
-                push(key_of(g), g.name.clone(), source_of(g.source));
+                let key = key_of(g);
+                // The user said it is not a game.
+                if mark_for(&inner.settings.marks, &key).is_some_and(|m| !m.game) {
+                    continue;
+                }
+                push(key, g.name.clone(), source_of(g.source));
             }
         }
         // Games played before that no list has any more.
@@ -974,6 +991,18 @@ mod tests {
         let mine = [GameMark { path: r"D:\Emu\emu.exe".into(), name: "Emulator".into(), game: true }];
         let g = classify(&front(8, r"d:\emu\EMU.exe"), &mine, &known, false).unwrap();
         assert_eq!((g.name.as_str(), g.source), ("Emulator", GameSource::Mine));
+        // "Not a game" on a launcher's game folder covers its programs.
+        let steam = KnownGame {
+            name: "Dota 2".into(),
+            source: Source::Steam,
+            dir: Some(r"C:\Steam\steamapps\common\dota 2 beta".into()),
+            exes: vec![],
+            steam_app: Some(570),
+        };
+        let dota = front(10, r"C:\Steam\steamapps\common\dota 2 beta\game\bin\win64\dota2.exe");
+        assert!(classify(&dota, &[], std::slice::from_ref(&steam), true).is_some());
+        let no = [GameMark { path: r"c:\steam\steamapps\common\dota 2 beta".into(), name: "Dota 2".into(), game: false }];
+        assert_eq!(classify(&dota, &no, &[steam], true), None);
         // The shell is never a game.
         let mut shell = front(9, r"C:\Windows\explorer.exe");
         shell.class = "Progman".into();

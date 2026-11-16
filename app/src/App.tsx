@@ -26,7 +26,19 @@ import { connectionKey, tNow, useT, type MessageKey } from "./lib/i18n";
 import { useKeymap } from "./lib/keymap";
 import { useLayout } from "./lib/layout";
 import { startLive } from "./lib/live";
-import { calendarCard, calendarWords, nowPlayingCard, pomodoroCard, pomodoroWords, reminderCard, reminderWords } from "./lib/liveCards";
+import {
+  calendarCard,
+  calendarWords,
+  gameStartCard,
+  gameSummaryCard,
+  gameWords,
+  nowPlayingCard,
+  pomodoroCard,
+  pomodoroWords,
+  reminderCard,
+  reminderWords,
+} from "./lib/liveCards";
+import { gameCover, startGames } from "./lib/games";
 import { startPomodoro, usePomodoro, DEFAULT_SETTINGS } from "./lib/pomodoro";
 import { followGauges, useGauges } from "./lib/gauges";
 import { startCalendar, useCalendar } from "./lib/calendar";
@@ -38,6 +50,7 @@ import { useScreen } from "./lib/screen";
 import { OFFLINE_KEYBOARD } from "./lib/offline";
 import { useActiveKeyboard, useApp, type PageId } from "./lib/store";
 import { Calendar } from "./pages/Calendar";
+import { Games } from "./pages/Games";
 import { Connection } from "./pages/Connection";
 import { Keymap } from "./pages/Keymap";
 import { Macros } from "./pages/Macros";
@@ -129,6 +142,15 @@ function useLiveScreen() {
     [],
   );
   useEffect(() => startReminders((card) => reminderCard(card, reminderWords(tNow, useApp.getState().locale))), []);
+  useEffect(
+    () =>
+      startGames(async (card) =>
+        card.kind === "start"
+          ? gameStartCard(card, card.steamApp != null ? await gameCover(card.steamApp) : null, gameWords(tNow))
+          : gameSummaryCard(card, gameWords(tNow)),
+      ),
+    [],
+  );
   useEffect(() => startUpdates(), []);
   // Whether the system gauges are on (the Lighting page says so); the
   // tray menu can switch them too.
@@ -183,6 +205,7 @@ function useTray() {
       updateAvailable: tNow("tray.update.available"),
       updateReady: tNow("tray.update.ready"),
       updateTooltip: tNow("tray.update.tooltip"),
+      game: tNow("tray.game"),
       noticeReadyTitle: tNow("notice.update.ready.title"),
       noticeReadyBody: tNow("notice.update.ready.body"),
       noticeInstall: tNow("notice.update.install"),
@@ -312,6 +335,8 @@ export default function App() {
         return <Reminders kb={tool} />;
       case "calendar":
         return <Calendar />;
+      case "games":
+        return <Games kb={tool} />;
       case "screen":
         return <Screen kb={tool} />;
     }
