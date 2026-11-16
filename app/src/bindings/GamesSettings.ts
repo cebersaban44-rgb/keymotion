@@ -43,6 +43,10 @@ brightness: number,
  */
 quiet: boolean, 
 /**
+ * … but the meetings' and reminders' lights and cards still come.
+ */
+quietReminders: boolean, 
+/**
  * The user's own word on programs.
  */
 marks: Array<GameMark>, 

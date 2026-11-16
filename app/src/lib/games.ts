@@ -36,6 +36,7 @@ export const DEFAULT_GAMES: GamesSettings = {
   rest: "dim",
   brightness: 4,
   quiet: false,
+  quietReminders: true,
   marks: [],
   lol: { enabled: true, bars: true, death: true, events: true },
 };

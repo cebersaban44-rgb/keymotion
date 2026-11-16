@@ -13,7 +13,7 @@
 //! busy focus session a waiting timer card took every new upload, so no
 //! reminder card could go).
 
-use crate::device::DeviceHandle;
+use crate::device::{DeviceHandle, Quiet};
 use crate::dto::{LiveBack, LiveItem, LivePlan, LiveShown, LiveState, SongStop, TrackInfo};
 use crate::screen_lib::ScreenLibrary;
 use kb_protocol::sonix::screen::ScreenAnimation;
@@ -180,6 +180,20 @@ fn user_asked(rt: &Runtime) -> bool {
     rt.send_now || (rt.restore.is_some() && rt.restore_auto.is_none())
 }
 
+/// A game wants quiet: nothing goes but what the user asked for and, when
+/// the user lets them, a meeting's or a reminder's card.
+fn quieted(rt: &Runtime) -> bool {
+    match rt.quiet {
+        Quiet::Off => false,
+        _ if user_asked(rt) => false,
+        Quiet::ButReminders => !rt
+            .pending
+            .as_ref()
+            .is_some_and(|p| p.item.source == crate::calendar::SOURCE || p.item.source == crate::reminders::SOURCE),
+        Quiet::All => true,
+    }
+}
+
 /// Turning the live mode on must ask first (see `LiveState::factory_ack_needed`).
 fn factory_ack_needed(lib: &ScreenLibrary) -> bool {
     !lib.live().factory_ack && lib.factory_at_risk()
@@ -216,7 +230,7 @@ struct Runtime {
     holders: Vec<String>,
     /// A game wants the keyboard left alone: no card goes and the screen
     /// doesn't go back by itself; what the user asks for still does.
-    quiet: bool,
+    quiet: Quiet,
 }
 
 /// What to do about a scheduled return to the user's own picture.
@@ -535,6 +549,31 @@ impl LiveHandle {
         self.emit();
     }
 
+    /// A source let go of the screen (a game ended): a card another source
+    /// left there while the screen was held (a meeting's card during a
+    /// game) goes after `delay`, back to the user's own picture. Not while a
+    /// source holds the screen or a card waits; the song's card is
+    /// "Çalan şarkı"'s own business.
+    pub fn back_when_free(&self, delay: Duration) {
+        if !self.enabled() {
+            return;
+        }
+        let Some(source) = self.library.lock().ok().and_then(|l| l.live_showing()) else { return };
+        if source == crate::now_playing::SOURCE {
+            return;
+        }
+        {
+            let Ok(mut rt) = self.rt.lock() else { return };
+            if !rt.holders.is_empty() || rt.pending.is_some() || rt.uploading.is_some() || rt.back.is_some() {
+                return;
+            }
+            rt.back = Some(LiveBack { source: source.clone(), at_ms: now_ms() + delay.as_millis() as f64 });
+        }
+        tracing::info!(%source, secs = delay.as_secs(), "a card left from a held screen: going back soon");
+        self.wake();
+        self.emit();
+    }
+
     /// The user does not want the waiting card on the keyboard: forget it.
     /// The keyboard keeps what it shows now.
     pub fn drop_waiting(&self) -> Result<LiveState, String> {
@@ -566,16 +605,16 @@ impl LiveHandle {
         self.state()
     }
 
-    /// `source` has something to show again: forget its return.
-    /// A game wants the keyboard left alone (`on`), or not any more.
-    pub fn set_quiet(&self, on: bool) {
-        let changed = self.rt.lock().is_ok_and(|mut rt| std::mem::replace(&mut rt.quiet, on) != on);
+    /// A game wants the keyboard left alone, or not any more.
+    pub fn set_quiet(&self, quiet: Quiet) {
+        let changed = self.rt.lock().is_ok_and(|mut rt| std::mem::replace(&mut rt.quiet, quiet) != quiet);
         if changed {
-            tracing::info!(on, "live screen quiet for a game");
+            tracing::info!(?quiet, "live screen quiet for a game");
             self.wake();
         }
     }
 
+    /// `source` has something to show again: forget its return.
     pub fn cancel_return(&self, source: &str) {
         let cancelled = self
             .rt
@@ -598,8 +637,8 @@ impl LiveHandle {
         let Ok(mut lib) = self.library.lock() else { return IDLE };
         let Ok(rt) = self.rt.lock() else { return IDLE };
         let now = now_ms();
-        if rt.quiet && !user_asked(&rt) {
-            // `set_quiet(false)` wakes the worker.
+        if quieted(&rt) {
+            // `set_quiet` and a new card wake the worker.
             return IDLE;
         }
         if rt.restore.is_some() {
@@ -701,7 +740,7 @@ impl LiveHandle {
     }
 
     fn try_upload(&self, device: &DeviceHandle) {
-        if self.rt.lock().is_ok_and(|rt| rt.quiet && !user_asked(&rt)) {
+        if self.rt.lock().is_ok_and(|rt| quieted(&rt)) {
             return;
         }
         if self.restore(device) {
@@ -1046,5 +1085,25 @@ mod tests {
         let s: LiveStored = serde_json::from_str(r#"{"enabled":true,"budget":{"plan":"heavy"}}"#).unwrap();
         assert!(s.enabled);
         assert_eq!(s.budget.plan, LivePlan::Heavy);
+    }
+
+    #[test]
+    fn a_quiet_game_lets_meetings_through_if_the_user_wants() {
+        use crate::dto::LiveItem;
+        use kb_protocol::sonix::screen::{rgb565, Frame, ScreenAnimation};
+        let card = |source: &str| Pending {
+            anim: ScreenAnimation::still(Frame::filled(rgb565(0, 200, 80))),
+            content: "c".into(),
+            item: LiveItem { source: source.into(), name: "x".into() },
+        };
+        let rt = |quiet, source: &str| Runtime { quiet, pending: Some(card(source)), ..Runtime::default() };
+        assert!(!quieted(&rt(Quiet::Off, "game")));
+        assert!(quieted(&rt(Quiet::All, crate::calendar::SOURCE)));
+        assert!(!quieted(&rt(Quiet::ButReminders, crate::calendar::SOURCE)));
+        assert!(!quieted(&rt(Quiet::ButReminders, crate::reminders::SOURCE)));
+        assert!(quieted(&rt(Quiet::ButReminders, crate::now_playing::SOURCE)));
+        // What the user asks for always goes.
+        let asked = Runtime { send_now: true, ..rt(Quiet::All, "now-playing") };
+        assert!(!quieted(&asked));
     }
 }

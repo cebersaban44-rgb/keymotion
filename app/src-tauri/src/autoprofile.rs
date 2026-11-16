@@ -13,17 +13,21 @@
 //! * Written switches, when a rule asks for them: after the program has
 //!   been in front for 10 s, the profile's lighting, key mapping and macros
 //!   go to the keyboard (flash; never the screen), at most `WRITES_MAX`
-//!   times a day, only when nothing is unsaved and no write runs. A game's
-//!   profile stays for its whole session (Alt+Tab does not switch back).
-//!   When a program without a rule comes in front, the base profile is
-//!   written back, if the user chose one.
+//!   times a day, only when nothing is unsaved and no write runs. While a
+//!   game's session runs only that game writes: Alt+Tab to other work
+//!   changes the lighting, never the key mapping or macros mid-match.
+//! * Going back (`AutoBack`): before the first written switch the keyboard's
+//!   lighting, key mapping and macros are kept (`Back`). When the game's
+//!   session ends, or a program without a written rule comes in front, they
+//!   go back on the keyboard (or the base profile does). A keyboard changed
+//!   by hand since the last written switch is the user's: it stays.
 
 use crate::device::{DeviceHandle, LightLayer, LiveFrame, Request};
-use crate::dto::{AutoProfileSettings, AutoProfileState, AutoProgram, AutoRule, AUTO_RULE_GAMES};
+use crate::dto::{AutoBack, AutoProfileSettings, AutoProfileState, AutoProgram, AutoRule, AUTO_RULE_GAMES};
 use crate::front::FrontHub;
 use crate::games::covered;
 use crate::live::now_ms;
-use crate::profiles::LitKey;
+use crate::profiles::{LitKey, Profile};
 use crate::settings;
 use kb_protocol::sonix::level_factor;
 use kb_winsys::foreground::Front;
@@ -61,9 +65,14 @@ pub trait Host: Send + Sync {
     /// Writing is fine now: a keyboard on the cable, nothing unsaved, no
     /// write going on.
     fn may_write(&self) -> bool;
-    /// Write profile `id`'s lighting, key mapping and macros (not the
-    /// screen); the number of parts written (0: the keyboard had them).
-    fn write(&self, id: &str) -> Result<u32, String>;
+    /// Profile `id`.
+    fn profile(&self, id: &str) -> Option<Profile>;
+    /// The lighting, key mapping and macros of the keyboard on the cable, as
+    /// this computer recorded them.
+    fn keyboard(&self) -> Option<Profile>;
+    /// Write `profile`'s lighting, key mapping and macros (not the screen);
+    /// the number of parts written (0: the keyboard had them).
+    fn write(&self, profile: &Profile) -> Result<u32, String>;
     /// The game this program is, as the game session sees it.
     fn game(&self, front: &Front) -> Option<String>;
     /// The game whose session runs now.
@@ -88,6 +97,56 @@ struct Stored {
     /// Local date (YYYY-MM-DD) the count is for.
     writes_day: String,
     writes: u32,
+    /// A written switch is on the keyboard: what to go back to.
+    back: Option<Back>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Back {
+    /// The keyboard before the first written switch.
+    before: Profile,
+    /// The keyboard right after the last one; a keyboard that differs was
+    /// changed by hand.
+    after: Profile,
+}
+
+/// A written switch.
+#[derive(Debug, Clone, PartialEq)]
+enum Write {
+    Profile(String),
+    /// What the user chose to go back to (`AutoBack`).
+    Back,
+}
+
+/// What a target that held `WRITE_AFTER_MS` writes. `back`: a written switch
+/// is on the keyboard; `session`: the game whose session runs.
+fn to_write(t: &Target, settings: &AutoProfileSettings, back: bool, session: Option<&str>) -> Option<Write> {
+    if !t.may_write {
+        return None;
+    }
+    // While a game's session runs only the game writes (Alt+Tab changes the
+    // lighting, not the key mapping or macros).
+    if session.is_some() && t.game.as_deref() != session {
+        return None;
+    }
+    match &t.rule {
+        Some(r) if r.writes => Some(Write::Profile(r.profile.clone())),
+        _ if back && settings.back != AutoBack::Stay => Some(Write::Back),
+        _ => None,
+    }
+}
+
+/// Two records of a keyboard hold the same lighting, key mapping and macros.
+fn same_keyboard(a: &Profile, b: &Profile) -> bool {
+    a.model_id == b.model_id
+        && a.keymap == b.keymap
+        && a.macros == b.macros
+        && match (&a.lighting, &b.lighting) {
+            (Some(x), Some(y)) => x.same(y),
+            (None, None) => true,
+            _ => false,
+        }
 }
 
 fn today() -> String {
@@ -119,11 +178,9 @@ struct Inner {
     target: Option<Target>,
     /// The rule whose lighting shows (RAM) or was written.
     active: Option<Target>,
-    /// The profile this module last wrote to the keyboard.
-    written: Option<String>,
     sent: Option<LiveFrame>,
-    /// The active rule's game had its session running (so its end counts).
-    session_seen: bool,
+    /// The game whose session ran at the last pass.
+    session: Option<String>,
     last_error: Option<String>,
     recent: Vec<AutoProgram>,
     dirty: bool,
@@ -163,9 +220,8 @@ impl AutoProfiles {
             quiet: false,
             target: None,
             active: None,
-            written: None,
             sent: None,
-            session_seen: false,
+            session: None,
             last_error: None,
             recent: Vec::new(),
             dirty: true,
@@ -237,6 +293,10 @@ impl AutoProfiles {
             if inner.stored.settings.enabled != settings.enabled || inner.stored.settings.paused != settings.paused {
                 tracing::info!(on = settings.enabled, paused = settings.paused, "per-app profiles");
             }
+            if settings.back == AutoBack::Stay {
+                // Written parts stay from now on.
+                inner.stored.back = None;
+            }
             inner.stored.settings = settings;
             // The last program again with the new rules: its lighting now, a
             // written switch only once it comes to the front again.
@@ -288,6 +348,9 @@ impl AutoProfiles {
         let Ok(mut guard) = self.inner.lock() else { return IDLE };
         let inner = &mut *guard;
         let s = inner.stored.settings.clone();
+        // The game's session ended (or another game's began).
+        let ended = inner.session.is_some() && inner.session != session;
+        inner.session = session.clone();
         if !on || quiet {
             // Off, or a game wants the keyboard left alone: no light, no write.
             if let Some(front) = inner.front.take() {
@@ -308,28 +371,17 @@ impl AutoProfiles {
             return self.finish(guard, if on { TICK } else { IDLE });
         }
 
-        let active_game = inner.active.as_ref().and_then(|a| a.game.clone());
-        if active_game.is_some() && active_game == session {
-            inner.session_seen = true;
-        }
+        // Quiet mode or the game's session ended: what is in front counts
+        // again, at once (the session's end waited long enough).
+        let fresh = std::mem::take(&mut inner.quiet) || ended;
         let mut look = inner.front.take();
-        // The game's session ended, or quiet mode did: what is in front now
-        // counts again.
-        if std::mem::take(&mut inner.quiet) {
+        if fresh {
             look = look.or_else(|| in_front.clone());
         }
-        if inner.session_seen && active_game.is_some() && active_game != session {
-            inner.session_seen = false;
-            look = look.or_else(|| in_front.clone());
-            inner.active = None;
-        }
+        let since = if fresh { now - WRITE_AFTER_MS } else { now };
         let recheck = std::mem::take(&mut inner.recheck);
-        if let Some(front) = look {
-            if front.is_shell() || front.pid == std::process::id() {
-                // The desktop or Keymotion: a switch that hasn't happened yet
-                // waits for the program to come back (its 10 s start over).
-                inner.target = None;
-            } else {
+        match look {
+            Some(front) if !front.is_shell() && front.pid != std::process::id() => {
                 if let Some(path) = &front.path {
                     inner.recent.retain(|p| !crate::games::same_path(&p.path, path));
                     inner.recent.insert(0, AutoProgram { path: path.clone(), name: stem(&front.name) });
@@ -337,15 +389,22 @@ impl AutoProfiles {
                 }
                 let game = host.game(&front);
                 let rule = rule_for(&s.rules, front.path.as_deref(), game.is_some()).cloned();
-                // A game's profile stays for its session (Alt+Tab).
-                let keep = inner.session_seen && active_game.is_some() && active_game == session && game.is_none();
-                let want = Target { rule, because: Some(stem(&front.name)), game, since: now, may_write: !recheck };
+                let want = Target { rule, because: Some(stem(&front.name)), game, since, may_write: !recheck };
                 let same = inner.target.as_ref().map(|t| (&t.rule, &t.game)) == Some((&want.rule, &want.game));
-                if !keep && !same {
+                if fresh || !same {
                     inner.target = Some(want);
                 }
                 inner.last_program = Some(front);
             }
+            // The desktop or Keymotion in front when the game ended: the
+            // game's lighting goes, and the keyboard goes back.
+            _ if ended => {
+                inner.target = Some(Target { rule: None, because: None, game: None, since, may_write: true });
+            }
+            // The desktop or Keymotion: a switch that hasn't happened yet
+            // waits for the program to come back (its 10 s start over).
+            Some(_) => inner.target = None,
+            None => {}
         }
 
         // Lighting (RAM) once the target has held a moment.
@@ -356,38 +415,31 @@ impl AutoProfiles {
                 if inner.active.as_ref().map(|a| (&a.rule, &a.game)) != Some((&t.rule, &t.game)) {
                     tracing::debug!(profile = ?t.rule.as_ref().map(|r| &r.profile), "per-app profile in force");
                     inner.active = Some(t.clone());
-                    inner.session_seen = false;
                     inner.dirty = true;
                 }
                 self.send(inner, device, frame);
                 // Written switches wait longer. The keyboard may hold another
                 // profile by now (loaded by hand), so no "already written"
                 // shortcut: `load_part` skips the parts the keyboard has.
-                let write = match &t.rule {
-                    Some(r) if r.writes => Some(r.profile.clone()),
-                    Some(_) => None,
-                    None => s.base.clone().filter(|_| inner.written.is_some()),
-                };
                 if now - t.since >= WRITE_AFTER_MS {
                     inner.target = None;
-                    pending = write.filter(|_| t.may_write).map(|id| (id, t));
+                    pending = to_write(&t, &s, inner.stored.back.is_some(), session.as_deref()).map(|w| (w, t));
                 }
             }
         }
         let wait = self.finish(guard, TICK);
         // The write takes a few seconds: not under the lock (the page and
         // the tray menu read the state meanwhile).
-        if let Some((id, t)) = pending {
-            self.write(host, &id, t);
+        if let Some((what, t)) = pending {
+            self.write(host, what, t);
         }
         wait
     }
 
-    /// A written switch to profile `id`, within the day's limit. When it
-    /// can't go now (unsaved changes, another write), `target` waits for
-    /// the next pass.
-    fn write(&self, host: &dyn Host, id: &str, target: Target) {
-        {
+    /// A written switch, within the day's limit. When it can't go now
+    /// (unsaved changes, another write), `target` waits for the next pass.
+    fn write(&self, host: &dyn Host, what: Write, target: Target) {
+        let (stored_back, mode, base) = {
             let Ok(mut inner) = self.inner.lock() else { return };
             if inner.stored.writes_day != today() {
                 inner.stored.writes_day = today();
@@ -402,7 +454,8 @@ impl AutoProfiles {
                 self.finish(inner, TICK);
                 return;
             }
-        }
+            (inner.stored.back.clone(), inner.stored.settings.back, inner.stored.settings.base.clone())
+        };
         if !host.may_write() {
             if let Ok(mut inner) = self.inner.lock() {
                 if inner.target.is_none() {
@@ -411,27 +464,55 @@ impl AutoProfiles {
             }
             return;
         }
-        let result = host.write(id);
+        let keyboard = host.keyboard();
+        // Changed by hand since the last written switch: that keyboard is
+        // the user's choice now (and what a later switch goes back to).
+        let back = stored_back.clone().filter(|b| keyboard.as_ref().is_some_and(|k| same_keyboard(k, &b.after)));
+        if stored_back.is_some() && back.is_none() {
+            tracing::info!("per-app profiles: the keyboard was changed by hand");
+        }
+        let profile = match &what {
+            Write::Profile(id) => host.profile(id),
+            Write::Back => match (&back, mode) {
+                (Some(b), AutoBack::Previous) => Some(b.before.clone()),
+                (Some(_), AutoBack::Profile) => base.as_deref().and_then(|id| host.profile(id)),
+                _ => None,
+            },
+        };
+        let result = profile.as_ref().map(|p| host.write(p));
+        let after = if result.is_some() { host.keyboard() } else { None };
+
         let Ok(mut inner) = self.inner.lock() else { return };
-        let counted = match result {
-            Ok(parts) => {
-                tracing::info!(parts, "per-app profile written");
-                inner.written = Some(id.to_string());
+        let counted = match &result {
+            Some(Ok(parts)) => {
+                tracing::info!(parts, back = (what == Write::Back), "per-app profile written");
                 inner.last_error = None;
-                parts > 0
+                *parts > 0
             }
-            Err(e) => {
+            Some(Err(e)) => {
                 // Some parts may have gone before the failure: it counts.
                 tracing::warn!("per-app profile not written: {e}");
-                inner.last_error = Some(e);
+                inner.last_error = Some(e.clone());
                 true
             }
+            None => false,
+        };
+        inner.stored.back = match (&what, &result) {
+            // The profile is gone: nothing changed.
+            (Write::Profile(_), None) => stored_back,
+            (Write::Profile(_), Some(_)) => {
+                back.map(|b| b.before).or(keyboard).zip(after).map(|(before, after)| Back { before, after })
+            }
+            // A failed write back tries again with the next program.
+            (Write::Back, Some(Err(_))) => back.map(|b| Back { after: after.unwrap_or(b.after), before: b.before }),
+            // Back, or nothing to go back to.
+            (Write::Back, _) => None,
         };
         if counted {
             inner.stored.writes += 1;
-            if let Err(e) = self.save(&inner.stored) {
-                tracing::warn!("per-app profiles not saved: {e}");
-            }
+        }
+        if let Err(e) = self.save(&inner.stored) {
+            tracing::warn!("per-app profiles not saved: {e}");
         }
         inner.dirty = true;
         self.finish(inner, TICK);
@@ -492,6 +573,61 @@ mod tests {
         // A folder name that only starts the same.
         assert_eq!(pick(r"D:\Games\Racer2\racer.exe", false), None);
         assert_eq!(rule_for(&rules, None, false), None);
+    }
+
+    fn target(rule: Option<AutoRule>, game: Option<&str>) -> Target {
+        Target { rule, because: None, game: game.map(Into::into), since: 0.0, may_write: true }
+    }
+
+    #[test]
+    fn what_a_program_writes() {
+        let s = AutoProfileSettings::default();
+        assert_eq!(s.back, AutoBack::Previous, "going back is the default");
+        let racing = AutoRule { writes: true, ..rule(r"D:\Games\Racer", "racing") };
+        let work = rule(r"C:\Code\Code.exe", "work");
+        let racer = Some("racer");
+        // A written rule writes; without one the keyboard goes back, once a
+        // switch was written.
+        assert_eq!(
+            to_write(&target(Some(racing.clone()), racer), &s, false, None),
+            Some(Write::Profile("racing".into()))
+        );
+        assert_eq!(to_write(&target(None, None), &s, true, None), Some(Write::Back));
+        assert_eq!(to_write(&target(Some(work.clone()), None), &s, true, None), Some(Write::Back));
+        assert_eq!(to_write(&target(None, None), &s, false, None), None);
+        // During a game's session only the game writes: Alt+Tab to other
+        // work changes the lighting, not the key mapping or macros.
+        assert_eq!(to_write(&target(None, None), &s, true, racer), None);
+        let work_written = AutoRule { writes: true, ..work };
+        assert_eq!(to_write(&target(Some(work_written), None), &s, true, racer), None);
+        assert_eq!(
+            to_write(&target(Some(racing.clone()), racer), &s, true, racer),
+            Some(Write::Profile("racing".into()))
+        );
+        // "Leave as it is"; a change of the rules only.
+        let stay = AutoProfileSettings { back: AutoBack::Stay, ..s.clone() };
+        assert_eq!(to_write(&target(None, None), &stay, true, None), None);
+        let rules_changed = Target { may_write: false, ..target(Some(racing), racer) };
+        assert_eq!(to_write(&rules_changed, &s, true, None), None);
+    }
+
+    #[test]
+    fn a_keyboard_changed_by_hand_is_another_one() {
+        let kb = |macros: usize| Profile {
+            id: String::new(),
+            name: String::new(),
+            created_ms: 0.0,
+            updated_ms: 0.0,
+            model_id: "ak980pro".into(),
+            lighting: Some(crate::profiles::ProfileLighting::factory()),
+            keymap: Some(Default::default()),
+            macros: Some(vec![None; macros]),
+            screen: None,
+        };
+        assert!(same_keyboard(&kb(0), &kb(0)));
+        assert!(!same_keyboard(&kb(0), &kb(1)));
+        assert!(!same_keyboard(&kb(0), &Profile { lighting: None, ..kb(0) }));
+        assert!(!same_keyboard(&kb(0), &Profile { model_id: "other".into(), ..kb(0) }));
     }
 
     #[test]

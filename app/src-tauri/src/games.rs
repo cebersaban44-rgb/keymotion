@@ -17,12 +17,14 @@
 //!   calendar, a reminder and the focus timer rank above it.
 //! * The keys (`LightLayer::Game`, RAM only): the chosen keys lit, the rest
 //!   dark or dim. The gauges wait while it shows; the alerts stay on top.
+//!   They follow the window: Alt+Tab to other work and they wait (the
+//!   session goes on) until the game is in front again.
 //! * "Quiet": while a game runs nothing goes to the keyboard at all.
 //! * A program that covers the screen for 2 min with the graphics card
 //!   busy, and is neither a game nor a known non-game, is offered as
 //!   "Is this a game?". It never becomes one by itself.
 
-use crate::device::{DeviceHandle, LightLayer, LiveFrame, Request};
+use crate::device::{DeviceHandle, LightLayer, LiveFrame, Quiet, Request};
 use crate::dto::{
     Connection, GameCard, GameCardKind, GameEntry, GameLights, GameMark, GameRecord, GameRest, GameSessionInfo,
     GameSource, GameSuggestion, GamesSettings, GamesState,
@@ -440,6 +442,12 @@ pub(crate) fn keys_frame(ids: &KeyIds, s: &GamesSettings) -> Vec<(u8, Rgb)> {
     ids.all.iter().map(|&led| (led, if lit.contains(&led) { s.color } else { rest })).collect()
 }
 
+/// The program in front is the session's game (its process, or a program
+/// of its folder: a launcher game's other windows).
+fn plays(front: &Front, game: &Detected) -> bool {
+    front.pid == game.pid || front.path.as_deref().is_some_and(|p| covered(p, &game.key))
+}
+
 // ------------------------------------------------------------- worker
 
 type Frame = Option<(Vec<(u8, Rgb)>, u8)>;
@@ -473,8 +481,11 @@ struct Inner {
     programs: Vec<GameSuggestion>,
     /// When the last pass ran: a long gap means the computer slept.
     last_tick: f64,
-    /// The device and the live screen were told to leave the keyboard alone.
-    quiet_sent: bool,
+    /// What the device and the live screen were told about leaving the
+    /// keyboard alone.
+    quiet_sent: Quiet,
+    /// The session's game is not in front (Alt+Tab to other work).
+    away: bool,
     dirty: bool,
 }
 
@@ -541,7 +552,8 @@ impl GamesHandle {
             lol_seen: false,
             programs: Vec::new(),
             last_tick: 0.0,
-            quiet_sent: false,
+            quiet_sent: Quiet::Off,
+            away: false,
             dirty: true,
         }));
         let (tx, rx) = mpsc::channel();
@@ -908,9 +920,7 @@ impl GamesHandle {
             tracing::info!(minutes = ((now - before) / 60_000.0).round(), "the computer slept");
             if let Some(record) = inner.tracker.stop(before) {
                 self.keep_record(inner, record);
-                self.live.set_hold(SOURCE, false);
-                self.live.drop_pending(SOURCE);
-                self.live.return_after(SOURCE, STALE_CARD_BACK);
+                self.let_go();
             }
             inner.suggest = None;
             if inner.front.is_none() {
@@ -979,9 +989,7 @@ impl GamesHandle {
             inner.tracker.stop(now);
             tracing::info!("game session dropped: not a game any more");
             inner.dirty = true;
-            self.live.set_hold(SOURCE, false);
-            self.live.drop_pending(SOURCE);
-            self.live.return_after(SOURCE, STALE_CARD_BACK);
+            self.let_go();
         }
 
         let change = inner.tracker.tick(now, procs.as_deref());
@@ -1007,17 +1015,29 @@ impl GamesHandle {
                     let _ = self.app.emit(EVENT_GAME_CARD, Self::summary_card(record, today));
                 } else {
                     // The start card is old news now.
-                    self.live.drop_pending(SOURCE);
-                    self.live.return_after(SOURCE, STALE_CARD_BACK);
+                    self.let_go();
                 }
             }
             None => {}
         }
         let in_session = inner.tracker.session.is_some();
+        // The lights follow the window: away from the game its keys and the
+        // match's lights wait. The desktop and Alt+Tab change nothing.
+        match (&inner.tracker.session, &in_front) {
+            (Some(r), Some(f)) if !f.is_shell() => inner.away = !plays(f, &r.game),
+            (None, _) => inner.away = false,
+            _ => {}
+        }
+        let here = !inner.away;
         self.live.set_hold(SOURCE, in_session && live_on && !s.quiet && (s.start_card || s.summary_card));
         // "Leave the keyboard alone while playing": every light layer and
         // card waits, not only the game's.
-        self.set_quiet(inner, device, in_session && s.quiet);
+        let quiet = match (in_session && s.quiet, s.quiet_reminders) {
+            (false, _) => Quiet::Off,
+            (true, true) => Quiet::ButReminders,
+            (true, false) => Quiet::All,
+        };
+        self.set_quiet(inner, device, quiet);
 
         // Lights.
         let trying = inner.trying_until.is_some_and(|t| now < t);
@@ -1033,9 +1053,9 @@ impl GamesHandle {
         self.lol.want(lol_on);
         inner.lol_seen |= lol_on;
         let lol = lol_on.then(|| self.lol.snapshot()).flatten().filter(|l| l.lights());
-        let show = trying || (in_session && !s.quiet && s.lights == GameLights::Keys);
+        let show = trying || (in_session && here && !s.quiet && s.lights == GameLights::Keys);
         let frame: Frame = match (&keys, &lol, show) {
-            (Some(k), Some(l), _) if !trying => Some((crate::lol::frame(l, k, &s, now), s.brightness)),
+            (Some(k), Some(l), _) if !trying && here => Some((crate::lol::frame(l, k, &s, now), s.brightness)),
             (Some(k), _, true) => Some((keys_frame(k, &s), s.brightness)),
             _ => None,
         };
@@ -1058,7 +1078,7 @@ impl GamesHandle {
             let _ = self.app.emit(EVENT_GAMES, state);
         }
         // The match's lights move (bars, flashes): 20 frames a second.
-        if lol_on {
+        if lol_on && here {
             LOL_TICK
         } else {
             TICK
@@ -1081,12 +1101,22 @@ impl GamesHandle {
         record
     }
 
+    /// The session lets go of the screen: its start card goes back to the
+    /// user's own picture, and so does a card another source left there
+    /// during the game (a meeting's, a reminder's).
+    fn let_go(&self) {
+        self.live.set_hold(SOURCE, false);
+        self.live.drop_pending(SOURCE);
+        self.live.return_after(SOURCE, STALE_CARD_BACK);
+        self.live.back_when_free(STALE_CARD_BACK);
+    }
+
     /// Tell the device and the live screen to leave the keyboard alone (or not).
-    fn set_quiet(&self, inner: &mut Inner, device: &DeviceHandle, on: bool) {
-        if inner.quiet_sent != on {
-            inner.quiet_sent = on;
-            let _ = device.send(Request::SetQuiet(on));
-            self.live.set_quiet(on);
+    fn set_quiet(&self, inner: &mut Inner, device: &DeviceHandle, quiet: Quiet) {
+        if inner.quiet_sent != quiet {
+            inner.quiet_sent = quiet;
+            let _ = device.send(Request::SetQuiet(quiet));
+            self.live.set_quiet(quiet);
         }
     }
 
@@ -1097,13 +1127,12 @@ impl GamesHandle {
         let Ok(mut guard) = self.inner.lock() else { return IDLE };
         let inner = &mut *guard;
         inner.last_tick = 0.0;
-        self.set_quiet(inner, device, false);
+        self.set_quiet(inner, device, Quiet::Off);
         if let Some(record) = inner.tracker.stop(now) {
             tracing::info!("game session ended (turned off)");
             self.keep_record(inner, record);
             // Its start card is old news.
-            self.live.drop_pending(SOURCE);
-            self.live.return_after(SOURCE, STALE_CARD_BACK);
+            self.let_go();
         }
         inner.suggest = None;
         inner.front = None;
@@ -1272,6 +1301,15 @@ mod tests {
             exe: format!("{key}.exe"),
             steam_app: None,
         }
+    }
+
+    #[test]
+    fn the_game_in_front_by_its_process_or_folder() {
+        let racer = game(r"D:\Games\Racer", 7);
+        assert!(plays(&front(7, r"D:\Games\Racer\bin\racer.exe"), &racer));
+        assert!(plays(&front(9, r"d:\games\racer\launcher.exe"), &racer), "another program of the game");
+        assert!(!plays(&front(9, r"C:\Program Files\Discord\Discord.exe"), &racer));
+        assert!(!plays(&front(9, r"D:\Games\Racer2\racer.exe"), &racer));
     }
 
     fn procs(list: &[(u32, &str)]) -> Vec<(u32, String)> {

@@ -514,15 +514,29 @@ struct AutoHost {
     app: AppHandle,
 }
 
-impl AutoHost {
+impl autoprofile::Host for AutoHost {
     fn profile(&self, id: &str) -> Option<profiles::Profile> {
         let store = self.app.try_state::<Arc<Mutex<ProfileStore>>>()?;
         let profile = lock_profiles(&store).ok()?.get(id)?;
         Some(profile)
     }
-}
 
-impl autoprofile::Host for AutoHost {
+    fn keyboard(&self) -> Option<profiles::Profile> {
+        let model = usb_model(&self.app)?;
+        let current = profile_current(&self.app, &model).ok()?;
+        Some(profiles::Profile {
+            id: String::new(),
+            name: String::new(),
+            created_ms: 0.0,
+            updated_ms: 0.0,
+            model_id: current.model_id,
+            lighting: current.lighting,
+            keymap: Some(current.keymap),
+            macros: Some(current.macros),
+            screen: None,
+        })
+    }
+
     fn per_key(&self, id: &str) -> Option<(Vec<profiles::LitKey>, u8)> {
         let model = usb_model(&self.app)?;
         let profile = self.profile(id)?;
@@ -539,9 +553,8 @@ impl autoprofile::Host for AutoHost {
         usb_model(&self.app).is_some() && !close_needs_asking(&self.app)
     }
 
-    fn write(&self, id: &str) -> Result<u32, String> {
+    fn write(&self, profile: &profiles::Profile) -> Result<u32, String> {
         let model = usb_model(&self.app).ok_or("no keyboard on the USB cable")?;
-        let profile = self.profile(id).ok_or(profiles::ERR_UNKNOWN)?;
         let device = self.app.state::<Arc<DeviceHandle>>().inner().clone();
         let mut writer = DeviceWriter { device: &device, config_dir: self.app.path().app_config_dir().ok() };
         let mut written = 0;
@@ -551,7 +564,7 @@ impl autoprofile::Host for AutoHost {
                 continue;
             }
             let current = profile_current(&self.app, &model)?;
-            if profiles::load_part(&profile, part, &current, &mut writer)? == PartLoaded::Written {
+            if profiles::load_part(profile, part, &current, &mut writer)? == PartLoaded::Written {
                 written += 1;
             }
         }

@@ -202,7 +202,7 @@ pub enum Request {
     /// UI preview (`SetLive`) is set. `None` takes the layer away.
     SetLayer(LightLayer, Option<LiveFrame>),
     /// A game wants the keyboard left alone (see `Actor::quiet`).
-    SetQuiet(bool),
+    SetQuiet(Quiet),
     /// Start (`Some`, with what the keys should show) or stop the mirror.
     SetMirror(Option<MirrorExpect>),
     /// New colour calibration; re-sends the live frame at once so sliders
@@ -295,6 +295,17 @@ pub enum LightLayer {
     Alerts,
     Reminders,
     Nudges,
+}
+
+/// A game wants the keyboard left alone (the game session's quiet mode).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Quiet {
+    #[default]
+    Off,
+    /// Only the meetings' and reminders' lights and cards.
+    ButReminders,
+    /// Nothing at all.
+    All,
 }
 
 /// One LED of a composed frame: UI colour and linear brightness (0–1).
@@ -610,9 +621,10 @@ struct Actor {
     config_dir: Option<PathBuf>,
     /// When the next automatic clock sync is due, and attempts left.
     clock_due: Option<(Instant, u8)>,
-    /// A game wants the keyboard left alone: no light layer, no automatic
-    /// clock sync (a preview the user runs still shows).
-    quiet: bool,
+    /// A game wants the keyboard left alone: no light layer (or only the
+    /// meetings' and reminders'), no automatic clock sync (a preview the
+    /// user runs still shows).
+    quiet: Quiet,
     next_enumerate: Instant,
     next_live: Instant,
     next_mirror: Instant,
@@ -662,7 +674,7 @@ impl Actor {
             macros,
             config_dir,
             clock_due: None,
-            quiet: false,
+            quiet: Quiet::Off,
             next_enumerate: now,
             next_live: now,
             next_mirror: now,
@@ -685,7 +697,7 @@ impl Actor {
             }
             if let Some((due, attempts)) = self.clock_due {
                 // Not during a game that wants the keyboard left alone.
-                if now >= due && !self.quiet {
+                if now >= due && self.quiet == Quiet::Off {
                     self.clock_due = None;
                     if let Err(e) = self.sync_clock() {
                         tracing::warn!(attempts_left = attempts - 1, "automatic clock sync failed: {e}");
@@ -772,10 +784,10 @@ impl Actor {
                     self.next_live = Instant::now();
                 }
             }
-            Request::SetQuiet(on) => {
-                if self.quiet != on {
-                    tracing::info!(on, "keyboard left alone for a game");
-                    self.quiet = on;
+            Request::SetQuiet(quiet) => {
+                if self.quiet != quiet {
+                    tracing::info!(?quiet, "keyboard left alone for a game");
+                    self.quiet = quiet;
                     self.next_live = Instant::now();
                 }
             }
@@ -1031,14 +1043,29 @@ impl Actor {
     }
 
     fn has_layer(&self) -> bool {
-        !self.quiet && self.layers.any()
+        match self.quiet {
+            Quiet::Off => self.layers.any(),
+            Quiet::ButReminders => self.layers.reminders.is_some() || self.layers.nudges.is_some(),
+            Quiet::All => false,
+        }
     }
 
     fn send_live(&mut self) {
         if self.command_path.is_none() {
             return;
         }
-        let Some(keys) = compose(self.live.as_ref(), &self.layers) else {
+        let reminders_only;
+        let layers = if self.quiet == Quiet::ButReminders {
+            reminders_only = Layers {
+                reminders: self.layers.reminders.clone(),
+                nudges: self.layers.nudges.clone(),
+                ..Layers::default()
+            };
+            &reminders_only
+        } else {
+            &self.layers
+        };
+        let Some(keys) = compose(self.live.as_ref(), layers) else {
             return;
         };
         let cal = self.calibration;

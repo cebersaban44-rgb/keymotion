@@ -185,7 +185,16 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
             </p>
           </Row>
 
-          <Row icon={ShieldCheck} title={t("games.quiet")} body={t("games.quiet.body")} checked={s.settings.quiet} onChange={(quiet) => set({ quiet })} />
+          <Row icon={ShieldCheck} title={t("games.quiet")} body={t("games.quiet.body")} checked={s.settings.quiet} onChange={(quiet) => set({ quiet })}>
+            {s.settings.quiet && (
+              <Switch
+                label={t("games.quiet.reminders")}
+                body={t("games.quiet.reminders.body")}
+                on={s.settings.quietReminders}
+                onChange={(quietReminders) => set({ quietReminders })}
+              />
+            )}
+          </Row>
 
           <HistoryRow time={time} />
         </div>

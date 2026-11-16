@@ -6,6 +6,7 @@
 
 import { AppWindow, Gamepad2, Info, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import type { AutoBack } from "../bindings/AutoBack";
 import type { AutoRule } from "../bindings/AutoRule";
 import type { ProfileInfo } from "../bindings/ProfileInfo";
 import type { ProfilesState } from "../bindings/ProfilesState";
@@ -165,22 +166,43 @@ export function AutoProfiles({ profiles, usb }: { profiles: ProfilesState | null
       </div>
 
       <div className="flex flex-col gap-2 border-t border-line px-5 py-4">
-        <label className="flex flex-wrap items-center gap-3 text-[13px]">
-          <span className="font-medium">{t("auto.base")}</span>
-          <select
-            className="h-8 max-w-[240px] rounded-lg border border-line bg-bg-raise px-2 text-[13px] outline-none focus:border-signal"
-            value={s.settings.base ?? ""}
-            onChange={(e) => set({ base: e.target.value || null })}
-          >
-            <option value="">{t("auto.base.none")}</option>
-            {all.map((p) => (
-              <option key={p.id} value={p.id}>
-                {profileName(p, t)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p className="text-[12px] text-ink-3">{t("auto.base.body")}</p>
+        <div className="flex flex-wrap items-center gap-3 text-[13px]" data-auto-back>
+          <label className="flex flex-wrap items-center gap-3">
+            <span className="font-medium">{t("auto.back")}</span>
+            <select
+              className="h-8 max-w-[260px] rounded-lg border border-line bg-bg-raise px-2 text-[13px] outline-none focus:border-signal"
+              value={s.settings.back}
+              onChange={(e) => {
+                const back = e.target.value as AutoBack;
+                set(back === "profile" && !s.settings.base ? { back, base: firstProfile } : { back });
+              }}
+            >
+              <option value="previous">{t("auto.back.previous")}</option>
+              <option value="profile">{t("auto.back.profile")}</option>
+              <option value="stay">{t("auto.back.stay")}</option>
+            </select>
+          </label>
+          {s.settings.back === "profile" && (
+            <select
+              className="h-8 max-w-[240px] rounded-lg border border-line bg-bg-raise px-2 text-[13px] outline-none focus:border-signal"
+              value={s.settings.base ?? ""}
+              aria-label={t("auto.back.pick")}
+              onChange={(e) => set({ base: e.target.value })}
+            >
+              {!all.some((p) => p.id === s.settings.base) && (
+                <option value={s.settings.base ?? ""} disabled>
+                  {t("auto.profile.gone")}
+                </option>
+              )}
+              {all.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {profileName(p, t)}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+        <p className="text-[12px] text-ink-3">{t(`auto.back.body.${s.settings.back}`)}</p>
         <p className="text-[12px] text-ink-3" data-auto-writes>
           {t("auto.count", { n: s.writesToday, max: s.writesMax })}
         </p>

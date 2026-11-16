@@ -12,7 +12,7 @@ import { inTauri, invoke, listen } from "./ipc";
 /** The rule that stands for every game (dto.rs `AUTO_RULE_GAMES`). */
 export const RULE_GAMES = "games";
 
-export const DEFAULT_AUTO: AutoProfileSettings = { enabled: false, paused: false, rules: [], base: null };
+export const DEFAULT_AUTO: AutoProfileSettings = { enabled: false, paused: false, rules: [], back: "previous", base: null };
 
 const mock = {
   state: {

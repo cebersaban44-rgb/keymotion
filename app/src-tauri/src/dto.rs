@@ -2218,6 +2218,8 @@ pub struct GamesSettings {
     /// While a game runs, nothing is sent to the keyboard: no lights, no
     /// cards. For a game whose anti-cheat software might mind.
     pub quiet: bool,
+    /// … but the meetings' and reminders' lights and cards still come.
+    pub quiet_reminders: bool,
     /// The user's own word on programs.
     pub marks: Vec<GameMark>,
     /// League of Legends: lights from the game's own data.
@@ -2278,6 +2280,7 @@ impl Default for GamesSettings {
             rest: GameRest::default(),
             brightness: 4,
             quiet: false,
+            quiet_reminders: true,
             marks: Vec::new(),
             lol: LolSettings::default(),
         }
@@ -2470,9 +2473,25 @@ pub struct AutoProfileSettings {
     /// Turned off for now from the tray menu; the rules stay.
     pub paused: bool,
     pub rules: Vec<AutoRule>,
-    /// Profile written back when a program without a rule comes in front
-    /// after a written profile; `None`: written parts stay.
+    /// What goes back on the keyboard after a written switch, once its game
+    /// ends or a program without a written rule comes in front.
+    pub back: AutoBack,
+    /// The profile for `AutoBack::Profile`.
     pub base: Option<String>,
+}
+
+/// After a written switch (per-app profiles).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum AutoBack {
+    /// What the keyboard had before the first written switch.
+    #[default]
+    Previous,
+    /// The profile in `base`.
+    Profile,
+    /// The written parts stay.
+    Stay,
 }
 
 impl AutoProfileSettings {
