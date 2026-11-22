@@ -1,0 +1,77 @@
+---
+title: "支持的键盘：黑爵 AK980 V2（带屏版）及其他"
+sidebar:
+  label: 支持的键盘
+description: "Keymotion 支持黑爵 AK980 V2（带屏版），它的 USB 名称为 SONiX AK980 PRO。本页还介绍采用同一平台、之后可能支持的键盘，以及如何告诉我们你的键盘。"
+---
+
+import { Aside } from "@astrojs/starlight/components";
+import { Image } from "astro:assets";
+import ak980 from "../../../../assets/keyboards/ajazz-ak980-pro.webp";
+
+Keymotion 支持**黑爵 AK980 V2（带屏版）**，它的 USB 名称为 SONiX AK980 PRO。很多键盘基于同一平台打造：芯片类型相同，命令相同，厂商程序也常常相同，只是以不同的名称销售。这些键盘之后有可能得到支持，但每一款都要等有人实际试过之后才会加入，因为保证键盘安全的细节因型号而异。
+
+## 已测试，可用
+
+<Image src={ak980} alt="黑爵 AK980 V2（带屏版）" width={520} />
+
+| 键盘 | USB 有线 | 2.4G 接收器 | 蓝牙 | 状态 |
+|---|---|---|---|---|
+| **黑爵 AK980 V2（带屏版）** | 全部功能 | 打字、媒体键和旋钮 | 打字、媒体键、旋钮和电量 | <span class="km-status" data-s="works">可用 · 已测试</span> |
+
+这款键盘在不同商店里不止一个名称。Keymotion 测试所用的键盘购自 AJAZZ（黑爵）自己的店铺，商品名为“AK980MAX … V2”，包装盒上写着 **AK980 V2**。通过 USB 连接时，它报告的名称是“SONiX AK980 PRO”，Keymotion 正是据此识别它。所以，带屏幕的**黑爵 AK980 V2** 可以使用。其他 AK980 版本（例如不带屏幕的版本）内部可能不同：连接键盘时，Keymotion 会先检查它，不会向不认识的型号发送任何内容。2026 款 AK980 PRO（原生双 8K）是另一款键盘，Keymotion 不支持。
+
+设置通过 USB 数据线传输，这是由键盘本身的设计决定的。[连接键盘](/keymotion/zh-cn/guide/connecting/)页面介绍了三种连接方式。
+
+## 同一平台，尚未测试
+
+据其他在真实键盘上测量过这些键盘的开源项目，它们似乎与黑爵 AK980 V2（带屏版）使用同一套命令。Keymotion 目前还不识别它们：插上其中一款时，它会显示**暂不支持此键盘**，并提供**申请适配**按钮。这个按钮会复制键盘的信息（USB 标识、名称以及 Windows 对它的描述），不会向键盘写入任何内容。添加一款键盘所需要的，正是这些信息。
+
+| 键盘 | 屏幕 | 已知信息 | 状态 | 你有这款键盘？ |
+|---|---|---|---|---|
+| **AULA（狼蛛）F108 Pro**，也以 EPOMAKER x AULA F108 Pro 的名称销售 | 240×135，最多 141 帧 | 关系最近的一款：命令相同，所有共有按键的编号相同，厂商程序也相同。全尺寸配列，按键更多。 | 尚未测试 | [告诉我们](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+F108+Pro&model=AULA+F108+Pro) |
+| **AULA NOVA75** | 240×135，最多 107 帧 | 命令相同；屏幕和时钟已由他人测量。 | 尚未测试 | [告诉我们](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+NOVA75&model=AULA+NOVA75) |
+| **AULA F75 Max**（也有 EPOMAKER x AULA 版） | 128×128，最多 255 帧 | 命令相同；已由他人测量。 | 尚未测试 | [告诉我们](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+F75+Max&model=AULA+F75+Max) |
+| **AULA EA75 Max** | 135×240，竖屏 | 命令相同；已由他人测量。 | 尚未测试 | [告诉我们](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+EA75+Max&model=AULA+EA75+Max) |
+| **AULA S75 Pro** | 135×240，竖屏 | 命令相同，只有一个来源。 | 尚未测试 | [告诉我们](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+S75+Pro&model=AULA+S75+Pro) |
+| **AULA F98 Pro** | 1.14 英寸 | 只知道灯光命令，来源只有一个。 | 尚未测试 | [告诉我们](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+F98+Pro&model=AULA+F98+Pro) |
+| **黑爵 AK820 Pro**，使用 SONiX 程序的版本（也有 EPOMAKER AK820 Pro） | 128×128 | 命令相同；已由他人测量。另一个 AK820 Pro 版本使用不同的命令体系，见下文。 | 尚未测试 | [告诉我们](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK820+Pro&model=AJAZZ+AK820+Pro) |
+| **黑爵 AK820 MAX / MAX PLUS**，带 SONiX 屏幕的版本 | 128×128 | 命令相同；已由他人测量。 | 尚未测试 | [告诉我们](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK820+MAX&model=AJAZZ+AK820+MAX) |
+| **黑爵 AK35I V3 MAX** | 240×135，最多 141 帧 | 命令相同。它只把自己报告为“USB KEYBOARD”，所以永远无法仅凭名称识别。 | 尚未测试 | [告诉我们](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK35I+V3+MAX&model=AJAZZ+AK35I+V3+MAX) |
+| **黑爵 AKS075** | 128×128 | 屏幕和时钟已由他人测量。 | 尚未测试 | [告诉我们](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AKS075&model=AJAZZ+AKS075) |
+| **黑爵 AK650 / AK650 Pro** | 0.85 英寸 | 只知道时钟。 | 尚未测试 | [告诉我们](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK650&model=AJAZZ+AK650) |
+| **黑爵 AK980**，无屏版 | 无 | 只知道灯光。 | 尚未测试 | [告诉我们](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK980+%28no+screen%29&model=AJAZZ+AK980+%28no+screen%29) |
+| **LangTu（狼途）LT-104** | 160×80 | 同一命令体系；由其作者测量。 | 尚未测试 | [告诉我们](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+LangTu+LT-104&model=LangTu+LT-104) |
+
+你的键盘不在列表中？也可以先插上试试：如果 Keymotion 显示**申请适配**，[把它的信息发给我们](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml)。
+
+<Aside type="caution" title="为什么不直接开放支持">
+这些键盘对收到的内容不加检查就会接受。在一台 AULA F108 Pro 上，一段超出上限的屏幕动画永久覆盖了键盘自带的菜单图片。每个型号的上限都不同（107、140、141 或 255 帧），所以一个型号只有在测量出它自己的上限之后才会加入。
+</Aside>
+
+### 键盘如何逐步获得支持
+
+1. 有这款键盘的人通过**申请适配**或[键盘表单](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml)发送它的信息。
+2. 我们在 Keymotion 中描述这个型号，并为它准备一个测试版本。
+3. 测试者逐项试过每个功能并反馈结果。每份反馈都会在 GitHub 上用 `keyboard support` 标签跟踪。
+4. 所有功能都试过之后，这个型号会移到**已测试，可用**，并注明每种连接方式下可以使用的功能。
+
+状态一栏从**尚未测试**变为**测试中**，然后是**可用**或**不可用**。
+
+## 外观相似，内部不同
+
+有些键盘看起来像黑爵 AK980 V2（带屏版），或者与本页某款键盘同名，但使用的是另一种芯片或另一种命令体系。Keymotion 从不向它们发送任何内容。
+
+| 键盘 | 不同之处 |
+|---|---|
+| AK980 MAX（磁轴） | 另一种命令体系 |
+| 黑爵 AK820 Pro，固件版本为 1.07 或 1.16 的版本 | 另一种命令体系 |
+| 黑爵 AK820 MAX，使用网页设置工具的版本（包括 MAX HE） | 另一种命令体系 |
+| 黑爵 AK820 Max Plus（SinoWealth 版本）、AK820（非 Pro 版）、AK992 | 另一种芯片 |
+| AULA F75、F87、F87 Pro、F99、F99 Pro | 另一种芯片 |
+| AULA F87S 8K、Nova98；黑爵 AK680 V2 / MAX | 另一种命令体系 |
+| 黑爵 AKS068 | VIA/QMK 键盘 |
+
+尚不清楚的型号：黑爵 AK870 V2、AK820 MAX Ultra、AK870、AK873、AK966 和 AULA F99 Max。如果你有其中一款，[发送它的信息](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml)，我们来弄清楚。
+
+<p class="km-unofficial">我们对这些键盘的了解来自其他测量过它们的开源项目，包括 OpenKey、sonix-keyboard-studio、ak820pro-modder 和 OpenRGB，在此表示感谢。产品名称仅用于说明本软件适用于哪些硬件；Keymotion 与这些品牌均无关联。</p>

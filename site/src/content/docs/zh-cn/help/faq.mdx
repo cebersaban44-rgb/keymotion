@@ -1,0 +1,135 @@
+---
+title: Keymotion 和黑爵 AK980 V2（带屏版）常见问题
+sidebar:
+  label: 常见问题
+description: "关于 Keymotion 和黑爵 AK980 V2（带屏版）的简短解答：Windows 警告、杀毒软件扫描、驱动和黑爵官方驱动、在屏幕上显示 GIF、蓝牙和 2.4G 接收器、仅支持 Windows、键盘安全、游戏和反作弊程序、你的数据，以及 AK980 V2。"
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+这里是大家最常问的问题的简短解答。分步解决方法见[出现问题时](/keymotion/zh-cn/help/recovery/)。
+
+## 为什么安装 Keymotion 时 Windows 会发出警告？
+
+Keymotion 在 GitHub 上的安装程序还没有代码签名，因此 Windows 可能会用“Windows 已保护你的电脑”阻止它运行。只从项目的 [GitHub 发布页面](https://github.com/cebersaban44-rgb/keymotion/releases)下载安装程序。然后单击**更多信息**，再单击**仍要运行**。
+
+SignPath Foundation 免费为开源项目签名，但因为项目还很新，暂时拒绝了申请；项目之后会再次申请。如果想安装时不出现警告，可以从 [Microsoft Store](https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full) 获取 Keymotion：Microsoft Store 版由 Microsoft 签名。参见[代码签名政策](/keymotion/zh-cn/about/code-signing/)和[安装 Keymotion](/keymotion/zh-cn/guide/install/)。
+
+如果开启了**智能应用控制**（Windows 安全中心，**应用和浏览器控制**），由于安装程序没有签名，Windows 可能会直接阻止它，而且不显示**仍要运行**按钮。我们不会要求你为了 Keymotion 关闭智能应用控制；[Microsoft Store](https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full) 版在开启它的情况下也能安装。
+
+## Microsoft Store 版和 GitHub 版有区别吗？
+
+没有。两者是同一个应用，版本号和发行说明都相同。不同之处在于：Microsoft Store 版由 Microsoft Store 负责更新（应用自身的更新检查保持关闭）；Windows 显示它的版本号时会多出第四位数字，始终为 0（1.0.0.0）。Microsoft 审核完 Microsoft Store 版后，新版本会在同一天在两处推出。测试版只在 GitHub 上提供。装一个就够了：如果两个都安装了，打开 GitHub 版时会改为打开 Microsoft Store 版；参见 [GitHub 和 Microsoft Store](/keymotion/zh-cn/about/release-notes/#github-和-microsoft-store)。
+
+## 杀毒软件或 VirusTotal 标记了 Keymotion，它安全吗？
+
+对于 Keymotion 0.1.0，VirusTotal 上的 71 个杀毒引擎中有 70 个没有发现任何问题，其中包括 Microsoft Defender。唯一标记它的引擎 Trapmine 会用机器学习给新的、未签名的文件打分；这并不是与已知恶意软件相匹配，我们已将其作为误报上报。
+
+只从 GitHub 发布页面下载 Keymotion，并核对 SHA-256 校验值。VirusTotal 报告见[代码签名政策](/keymotion/zh-cn/about/code-signing/#杀毒软件扫描)。
+
+## 开着黑爵官方驱动时，Keymotion 能用吗？
+
+你可以保留已安装的 AJAZZ（黑爵）驱动。不过，驱动运行期间，Keymotion 不会向键盘保存任何内容，并会提示“黑爵驱动正在运行。保存到键盘前，请先将其关闭。”SignalRGB 和 OpenRGB 也是如此。
+
+键盘一次只听从一个程序的命令，两个程序的命令可能会混在一起。关闭另一个程序，然后再保存一次。
+
+安装着驱动还有一个用处：Keymotion 可以从中复制键盘的出厂屏幕动画。参见[出现问题时](/keymotion/zh-cn/help/recovery/#恢复出厂屏幕动画)。
+
+## 使用 Keymotion 需要黑爵官方驱动吗？
+
+不需要。Keymotion 通过 USB 数据线直接与键盘通信，所有功能都能独立完成：灯光、自定义按键、宏和屏幕。你可以卸载黑爵官方驱动。
+
+保留它只有一个用处：如果以后想要恢复键盘的出厂屏幕动画，Keymotion 可以从那里复制。参见[出现问题时](/keymotion/zh-cn/help/recovery/#恢复出厂屏幕动画)。
+
+## 黑爵 AK980 V2（带屏版）需要安装驱动吗？
+
+不需要。Windows 会自动识别这款键盘，所以打字、媒体键和旋钮无需安装任何东西就能使用。黑爵所说的键盘驱动，其实是一个设置程序。Keymotion 代替它完成这项工作，自身也不安装任何驱动。安装 Keymotion 也不需要管理员权限。
+
+## 怎样把 GIF 或自己的图片放到黑爵 AK980 V2（带屏版）的屏幕上？
+
+1. 连接 USB 数据线，并将键盘背面的开关拨到中间。
+2. 在 Keymotion 中打开**屏幕**，选择**图片或视频**。
+3. 选择一个 PNG、JPEG、GIF、WebP、APNG、MP4 或 WebM 文件，然后调整位置，并选择想要的部分。
+4. 单击**预览**，然后单击**上传到键盘**。
+
+静态图片几秒钟就能上传完。屏幕最多可容纳 140 帧，上传一段完整的 140 帧动画大约需要五分半钟。在键盘上按 **Fn+Home** 可以在时钟和你的图片之间切换。你还可以制作文字卡片和幻灯片：参见[屏幕](/keymotion/zh-cn/guide/screen/)。
+
+## Keymotion 能在 macOS 或 Linux 上运行吗？
+
+不能。Keymotion 运行在 64 位的 Windows 10 和 11 上。
+
+## 为什么无法通过蓝牙更改设置？
+
+通过蓝牙连接时，键盘只提供打字和电量信息，没有提供更改设置的方式。因此，Keymotion 在蓝牙连接下只读取电量。要更改设置，连接 USB 数据线，并将键盘背面的开关拨到中间。
+
+通过 USB 有线连接时则正好相反：键盘不报告电量，所以 Keymotion 会显示上次通过蓝牙读取的电量，以及距那次读取已过去多久。
+
+## 2.4G 接收器能用吗？
+
+使用接收器时，键盘可以正常工作，Keymotion 也能识别它，但目前还无法通过接收器更改设置。更改设置要用 USB 数据线。[连接](/keymotion/zh-cn/guide/connection/)页面列出了每种连接方式下可以使用的功能。
+
+## Keymotion 会损坏我的键盘吗？
+
+Keymotion 在设计上处处注意保护键盘：
+
+- 它只发送在这款键盘上测试过的命令。其他命令在离开你的电脑之前就会被拦截，包括会启动固件更新的命令。Keymotion 从不更新键盘的固件，通过蓝牙连接时也完全不写入任何内容。
+- 只有当你选择保存或上传时（例如单击**保存到键盘**），你的设置才会写入键盘的永久存储。预览不会保存。
+- 保存前，它会先检查。如果你的键盘固件版本没有在 Keymotion 上测试过，它会先询问你。如果无法识别固件，它不会发送任何内容。当有其他程序正在使用键盘，或有多个键盘通过 USB 连接时，它不会保存。
+- 如果在保存过程中关闭 Keymotion，它会等保存完成后再关闭。如果关闭 Windows，Windows 会显示 Keymotion 仍在保存到键盘。
+
+屏幕的存储芯片会随着每次上传慢慢损耗。它的确切寿命未知；按这类存储芯片通常的估计，每天上传几次，用上几年都没有问题。实时屏幕设有每日上传上限，正是出于这个原因。
+
+<Aside type="caution" title="风险自负">
+向设备的永久存储写入数据，总有可能让设备处于不希望出现的状态，而且 Keymotion 不提供任何担保。大多数更改都可以撤销：参见[出现问题时](/keymotion/zh-cn/help/recovery/)。
+</Aside>
+
+## 需要一直开着 Keymotion 吗？
+
+对于已保存的内容，不需要。灯光、自定义按键、宏和屏幕图片都保存在键盘上。
+
+专注计时器、提醒、日历卡片、实时屏幕、系统指标、游戏时段和按应用切换的配置文件需要 Keymotion 保持运行。关闭窗口后，Keymotion 会继续运行，图标显示在任务栏时钟旁。你可以在**设置**的**关闭和启动**部分更改这一点。参见[设置](/keymotion/zh-cn/guide/settings/)。
+
+## 在游戏和反作弊程序运行时使用 Keymotion 安全吗？
+
+Keymotion 不读取也不修改游戏的内存，不向游戏发送按键，也不安装驱动。它用与 Windows 辅助功能工具相同的方式查看哪个程序在前台；在英雄联盟对局中，它只读取游戏本身在你的电脑上提供的数据。如果某个游戏的反作弊程序仍然出现问题，在[游戏时段](/keymotion/zh-cn/guide/game-session/#反作弊程序)页面开启**游戏时不向键盘发送任何内容**。
+
+即使是存储在键盘上的宏，也可能违反英雄联盟、无畏契约（VALORANT）和 CS2 等竞技游戏的规则。Keymotion 从不会自行为某个游戏开启宏。
+
+## 我的设置保存在哪里？
+
+保存在你的电脑上，位于你的 Windows 用户文件夹中：
+
+- 设置和记录在 `%APPDATA%\dev.keymotion\`；
+- 日志文件在 `%LOCALAPPDATA%\dev.keymotion\logs\`。
+
+在**设置**的**关于**部分，**数据文件夹**和**日志文件**可以打开这些文件夹。Keymotion 中关于自定义按键和宏的记录是唯一的副本，因为键盘无法回报这些设置。要保留一份副本，打开**设置**，在**备份**下单击**导出**：所有内容会保存到一个文件中。完整列表见[隐私政策](/keymotion/zh-cn/about/privacy/#你的数据存放在哪里)。
+
+## Keymotion 会向外发送数据吗？
+
+不会。它不收集使用数据，没有账户，也不会发送任何关于你或你电脑的信息。它只在读取你添加的日历以及在 GitHub 上检查新版本时联网。问题报告只有在你亲自发送时才会提交到 GitHub。详情见[隐私政策](/keymotion/zh-cn/about/privacy/)。
+
+## 能用于其他键盘吗？
+
+暂时不能。Keymotion 支持黑爵 AK980 V2（带屏版）。如果你连接了一款尚未支持的 SONiX 或黑爵键盘，Keymotion 会告诉你，不会向它发送任何内容，并提供**申请适配**按钮，用于在 GitHub 上申请支持这款键盘。参见[支持的键盘](/keymotion/zh-cn/help/keyboards/)。
+
+## 支持黑爵 AK980 V2 吗？
+
+支持。Keymotion 测试所用的键盘就是以 AK980 V2 的名称销售的：黑爵的店铺将它列为“AK980MAX … V2”，包装盒上写着“AK980 V2”。通过 USB 连接时，它报告的名称是“SONiX AK980 PRO”，Keymotion 正是据此识别它。关键在于硬件：带 240×135 屏幕和旋钮的 98 键型号。2026 款 AK980 PRO（原生双 8K）是另一款键盘，Keymotion 不支持。参见[支持的键盘](/keymotion/zh-cn/help/keyboards/)。
+
+## Keymotion 是黑爵出品的吗？
+
+不是。Keymotion 是一个独立项目，与 AJAZZ（黑爵）、键盘主控芯片的制造商以及键盘官方驱动的作者均无关联，也没有得到他们的认可、赞助或支持。使用 AJAZZ（黑爵）这一名称，只是为了说明 Keymotion 适用于哪款键盘。
+
+## Keymotion 是怎么做出来的？
+
+我借助 AI 编程助手 Claude 开发了 Keymotion。大部分代码由 Claude 编写；Keymotion 要做什么由我决定，每项功能在加入之前，我都在自己的黑爵 AK980 V2（带屏版）上试过。每项更改都要经过拉取请求（pull request）和自动检查。所有与键盘通信的功能都先在真实键盘上测量过；可能损坏键盘的命令（例如固件更新）在代码中已被拦截。源代码是公开的，你可以确切地看到 Keymotion 做了什么。
+
+## 免费吗？
+
+是的。Keymotion 免费且开源，采用 MIT 或 Apache 2.0 许可证，可任选其一。不需要账户，也没有任何需要购买的内容。源代码在 [GitHub](https://github.com/cebersaban44-rgb/keymotion) 上。
+
+## 怎样报告问题？
+
+打开**设置**。在**关于**部分的**反馈**旁边，单击**报告问题**。打开的窗口会显示将要附带的信息。**在 GitHub 上报告**会复制这些信息，并打开项目在 GitHub 上的表单，你在那里粘贴并提交。你需要一个 GitHub 账户。在你提交之前，不会发送任何内容。
+
+有疑问可以到[问答与帮助](https://github.com/cebersaban44-rgb/keymotion/discussions/categories/q-a)提问。安全问题请通过[私密报告表单](https://github.com/cebersaban44-rgb/keymotion/security/advisories/new)私下报告。

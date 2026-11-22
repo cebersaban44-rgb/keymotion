@@ -71,7 +71,7 @@ Commands that write the keyboard's permanent memory refuse to run without `--yes
 - Work on a short-lived branch from `develop`, named in lowercase English with hyphens: `feature/keymap-editor`, `fix/mirror-gamma`, `docs/…`, `chore/…`.
 - Open the pull request against **`develop`**: GitHub offers `main`, the default branch, so change the base. Keep it to one change. It is squash-merged once CI is green.
 - In the description, say what changed, why, and how you tested it.
-- If people will see the change, add a line under **Unreleased** in `CHANGELOG.md`, and update the user guide in `site/` in English and Turkish.
+- If people will see the change, add a line under **Unreleased** in `CHANGELOG.md`, and update the user guide in `site/` in English and Turkish. The Russian and Chinese pages are kept up to date by the maintainer: say in the pull request which pages changed.
 - If the change alters behavior, try it in the running app, not only in tests.
 - Commit messages are in English. The first line is in the imperative and at most 72 characters; the body says why.
 - Never commit personal data: Bluetooth addresses, local paths with your user name, calendar addresses, keys.
