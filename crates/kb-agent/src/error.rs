@@ -107,6 +107,9 @@ error_codes! {
     NeedsUsb = "needs_usb" => UNAVAILABLE;
     /// The keyboard or this copy of the app cannot do it.
     Unsupported = "unsupported" => UNAVAILABLE;
+    /// The pipe is not Keymotion's: another user's program holds the name,
+    /// or it refused this user. Nothing was sent to it.
+    PipeNotTrusted = "pipe_not_trusted" => UNAVAILABLE;
     /// Too many requests; `retry_after_ms` says when to try again.
     RateLimited = "rate_limited" => TEMPORARY;
     /// The screen's write budget is used up for now.
@@ -115,6 +118,9 @@ error_codes! {
     BusyFlashWrite = "busy_flash_write" => TEMPORARY;
     /// No answer in time.
     Timeout = "timeout" => TEMPORARY;
+    /// The app closed the connection before answering (it is quitting or
+    /// restarting).
+    ConnectionLost = "connection_lost" => TEMPORARY;
     /// The CLI and the app have no protocol version in common.
     ProtocolMismatch = "protocol_mismatch" => PROTOCOL;
     /// The app does not know this command (it is older than the CLI).
@@ -234,10 +240,12 @@ mod tests {
             (NoKeyboard, 69),
             (NeedsUsb, 69),
             (Unsupported, 69),
+            (PipeNotTrusted, 69),
             (RateLimited, 75),
             (BudgetExhausted, 75),
             (BusyFlashWrite, 75),
             (Timeout, 75),
+            (ConnectionLost, 75),
             (ProtocolMismatch, 76),
             (AgentAccessOff, 77),
             (PermissionOff, 77),

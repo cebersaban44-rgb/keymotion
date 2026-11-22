@@ -12,6 +12,14 @@
 //! before it. Readers ignore fields they do not know, so later versions
 //! can add fields without breaking older ones; `cmd` + `args` leave room
 //! for new commands (focus, profile, card, scene).
+//!
+//! Versions: `hello` and its answer always travel as `v: 1`
+//! ([`HELLO_VERSION`]), whatever versions the two sides speak; the client
+//! lists the versions it speaks and the server picks the highest both
+//! know. Every later message on the connection carries that version. The
+//! hello exchange and the refusal envelope (`ok: false` with `error.code`
+//! and `error.message`) are frozen: no later version may change them, so
+//! any two builds can always agree or say why not.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -25,10 +33,12 @@ use crate::values::{
     check_settings_key, is_request_id, signal_duration_ms, Color, Effect, SignalId, SignalName, SourceName,
 };
 
-/// The protocol version this build speaks, and the `v` of every message.
-pub const PROTOCOL_VERSION: u32 = 1;
+/// The newest protocol version this build speaks.
+pub const PROTOCOL_VERSION: u32 = SUPPORTED_PROTOCOLS.max;
 /// The protocol versions this build can speak.
 pub const SUPPORTED_PROTOCOLS: ProtocolRange = ProtocolRange { min: 1, max: 1 };
+/// The `v` of `hello` and of its answer, in every version. Frozen.
+pub const HELLO_VERSION: u32 = 1;
 /// The longest line either side accepts, in bytes, without the newline.
 pub const MAX_LINE_BYTES: usize = 64 * 1024;
 
@@ -68,10 +78,12 @@ pub struct Refusal {
 }
 
 impl Request {
-    /// A request for `command`.
-    pub fn new(id: impl Into<String>, source: &SourceName, command: &Command) -> Self {
+    /// A request for `command` in the connection's `protocol` version (the
+    /// one `hello` agreed on). A `hello` always travels as
+    /// [`HELLO_VERSION`].
+    pub fn new(protocol: u32, id: impl Into<String>, source: &SourceName, command: &Command) -> Self {
         Self {
-            v: PROTOCOL_VERSION,
+            v: if matches!(command, Command::Hello(_)) { HELLO_VERSION } else { protocol },
             id: id.into(),
             source: source.as_str().to_string(),
             cmd: command.name().to_string(),
@@ -93,8 +105,9 @@ impl Request {
         Ok(line)
     }
 
-    /// Read and check one line (the server side): size, JSON, protocol
-    /// version, request id, source name. The source comes back normalized.
+    /// Read and check one line (the server side): size, JSON, request id,
+    /// source name. The source comes back normalized. Whether `v` fits the
+    /// connection is the [`Session`]'s check.
     pub fn decode(line: &str) -> Result<Request, Refusal> {
         let refuse = |id: &str, code: ErrorCode, message: String| Refusal {
             id: id.to_string(),
@@ -112,18 +125,6 @@ impl Request {
             Some(Value::String(id)) if is_request_id(id) => id.as_str(),
             _ => return Err(refuse("", ErrorCode::BadRequest, "The request has no valid id.".to_string())),
         };
-        let v = object.get("v").and_then(Value::as_u64);
-        if v != Some(u64::from(PROTOCOL_VERSION)) {
-            let got = v.map_or_else(|| "none".to_string(), |v| v.to_string());
-            return Err(Refusal {
-                id: id.to_string(),
-                error: AgentError::new(
-                    ErrorCode::ProtocolMismatch,
-                    format!("This Keymotion speaks protocol {PROTOCOL_VERSION}, the request uses {got}."),
-                )
-                .with_hint("Use the keymotion-cli installed with Keymotion, or update both."),
-            });
-        }
         let id = id.to_string();
         let mut request: Request = serde_json::from_value(value)
             .map_err(|e| refuse(&id, ErrorCode::BadRequest, format!("The request is malformed: {e}")))?;
@@ -213,6 +214,13 @@ impl Response {
         }
     }
 
+    /// The same answer in protocol version `v` (the connection's; answers
+    /// are made in [`PROTOCOL_VERSION`]).
+    pub fn with_version(mut self, v: u32) -> Self {
+        self.v = v;
+        self
+    }
+
     /// The line to send, without the newline. Never fails: an answer too
     /// long for the protocol becomes a `too_large` error.
     pub fn to_line(&self) -> String {
@@ -222,26 +230,31 @@ impl Response {
                 self.id.clone(),
                 AgentError::new(ErrorCode::TooLarge, format!("The answer is longer than {MAX_LINE_BYTES} bytes.")),
             )
+            .with_version(self.v)
             .to_line(),
             Err(e) => Self::error(
                 self.id.clone(),
                 AgentError::new(ErrorCode::Internal, format!("Could not write the answer: {e}")),
             )
+            .with_version(self.v)
             .to_line(),
         }
     }
 
-    /// Read one answer line (the client side).
-    pub fn decode(line: &str) -> Result<Response, AgentError> {
+    /// Read one answer line (the client side). A success must carry
+    /// `expected_v`, the version of the request ([`HELLO_VERSION`] for
+    /// `hello`); a refusal is read in any version, since its envelope is
+    /// frozen.
+    pub fn decode(line: &str, expected_v: u32) -> Result<Response, AgentError> {
         if line.len() > MAX_LINE_BYTES {
             return Err(AgentError::new(ErrorCode::BadResponse, "Keymotion's answer is too long."));
         }
         let response: Response = serde_json::from_str(line)
             .map_err(|e| AgentError::new(ErrorCode::BadResponse, format!("Keymotion's answer is malformed: {e}")))?;
-        if response.v != PROTOCOL_VERSION {
+        if response.ok && response.v != expected_v {
             return Err(AgentError::new(
                 ErrorCode::ProtocolMismatch,
-                format!("Keymotion answered in protocol {}, this keymotion-cli speaks {PROTOCOL_VERSION}.", response.v),
+                format!("Keymotion answered in protocol {}, the request used {expected_v}.", response.v),
             ));
         }
         Ok(response)
@@ -339,9 +352,14 @@ pub struct Peer {
     pub protocol: u32,
 }
 
-/// Answer `hello`: agree on a protocol version.
-pub fn answer_hello(args: &HelloArgs, server: &ServerInfo) -> Result<(HelloData, Peer), AgentError> {
-    let protocol = negotiate(args.protocol, SUPPORTED_PROTOCOLS)?;
+/// Answer `hello`: agree on a protocol version from the server's
+/// `protocols` (normally [`SUPPORTED_PROTOCOLS`]).
+pub fn answer_hello(
+    args: &HelloArgs,
+    server: &ServerInfo,
+    protocols: ProtocolRange,
+) -> Result<(HelloData, Peer), AgentError> {
+    let protocol = negotiate(args.protocol, protocols)?;
     let data =
         HelloData { app: "keymotion".to_string(), version: server.version.clone(), channel: server.channel, protocol };
     let peer = Peer { client: args.client.clone(), version: args.version.clone(), protocol };
@@ -620,12 +638,22 @@ pub struct Call<'a> {
 #[derive(Debug, Clone)]
 pub struct Session {
     info: Arc<ServerInfo>,
+    /// The versions this server speaks.
+    protocols: ProtocolRange,
     peer: Option<Peer>,
 }
 
 impl Session {
     pub fn new(info: Arc<ServerInfo>) -> Self {
-        Self { info, peer: None }
+        Self { info, protocols: SUPPORTED_PROTOCOLS, peer: None }
+    }
+
+    /// A session of a build that speaks `protocols`, to test how versions
+    /// meet.
+    #[cfg(test)]
+    fn speaking(mut self, protocols: ProtocolRange) -> Self {
+        self.protocols = protocols;
+        self
     }
 
     /// The client, once it said `hello`.
@@ -633,8 +661,16 @@ impl Session {
         self.peer.as_ref()
     }
 
-    /// Answer one line. `hello` is answered here; any other command goes to
-    /// `handler`, but only after `hello`. The answer echoes the request id.
+    /// The version of this connection's messages: [`HELLO_VERSION`] until
+    /// `hello`, then the one it agreed on.
+    pub fn version(&self) -> u32 {
+        self.peer.as_ref().map_or(HELLO_VERSION, |peer| peer.protocol)
+    }
+
+    /// Answer one line. `hello` (always `v: 1`) is answered here; any other
+    /// command goes to `handler`, but only after `hello` and only in the
+    /// version it agreed on. The answer echoes the request id and carries
+    /// the request's version.
     pub fn handle_line(
         &mut self,
         line: &str,
@@ -642,33 +678,58 @@ impl Session {
     ) -> String {
         let request = match Request::decode(line) {
             Ok(request) => request,
-            Err(refusal) => return Response::error(refusal.id, refusal.error).to_line(),
+            Err(refusal) => return Response::error(refusal.id, refusal.error).with_version(self.version()).to_line(),
         };
         let id = request.id.as_str();
-        let command = match request.command() {
-            Ok(command) => command,
-            Err(e) => return Response::error(id, e).to_line(),
+        if request.cmd == "hello" {
+            return self.hello(&request).with_version(HELLO_VERSION).to_line();
+        }
+        let Some(peer) = &self.peer else {
+            let e = AgentError::new(ErrorCode::BadRequest, "The first request on a connection must be hello.");
+            return Response::error(id, e).with_version(HELLO_VERSION).to_line();
         };
-        let response = match command {
-            Command::Hello(args) => match answer_hello(&args, &self.info) {
-                Ok((data, peer)) => {
-                    self.peer = Some(peer);
-                    Response::ok(id, data)
-                }
-                Err(e) => Response::error(id, e),
-            },
-            command => match (&self.peer, request.source_name()) {
-                (None, _) => Response::error(
-                    id,
-                    AgentError::new(ErrorCode::BadRequest, "The first request on a connection must be hello."),
+        let response = if request.v != peer.protocol {
+            Response::error(
+                id,
+                AgentError::new(
+                    ErrorCode::ProtocolMismatch,
+                    format!("This connection agreed on protocol {}, the request uses {}.", peer.protocol, request.v),
                 ),
-                (Some(_), Err(e)) => Response::error(id, e),
-                (Some(peer), Ok(source)) => {
+            )
+        } else {
+            match (request.command(), request.source_name()) {
+                (Err(e), _) | (_, Err(e)) => Response::error(id, e),
+                (Ok(command), Ok(source)) => {
                     Response::from_result(id, handler(Call { peer, source: &source, id }, command))
                 }
-            },
+            }
         };
-        response.to_line()
+        response.with_version(peer.protocol).to_line()
+    }
+
+    fn hello(&mut self, request: &Request) -> Response {
+        let id = request.id.as_str();
+        if request.v != HELLO_VERSION {
+            let e = AgentError::new(
+                ErrorCode::ProtocolMismatch,
+                format!("hello travels as v {HELLO_VERSION}, this one as v {}.", request.v),
+            );
+            return Response::error(id, e);
+        }
+        let args = match request.command() {
+            Ok(Command::Hello(args)) => args,
+            Ok(_) => {
+                return Response::error(id, AgentError::new(ErrorCode::Internal, "hello was read as another command."))
+            }
+            Err(e) => return Response::error(id, e),
+        };
+        match answer_hello(&args, &self.info, self.protocols) {
+            Ok((data, peer)) => {
+                self.peer = Some(peer);
+                Response::ok(id, data)
+            }
+            Err(e) => Response::error(id, e),
+        }
     }
 }
 
@@ -679,13 +740,16 @@ pub fn too_long_line() -> String {
         "",
         AgentError::new(ErrorCode::TooLarge, format!("The request is longer than {MAX_LINE_BYTES} bytes.")),
     )
+    .with_version(HELLO_VERSION)
     .to_line()
 }
 
 /// The answer to a line that is not UTF-8 text; the server closes the
 /// connection after it.
 pub fn not_text_line() -> String {
-    Response::error("", AgentError::new(ErrorCode::BadRequest, "The request is not UTF-8 text.")).to_line()
+    Response::error("", AgentError::new(ErrorCode::BadRequest, "The request is not UTF-8 text."))
+        .with_version(HELLO_VERSION)
+        .to_line()
 }
 
 #[cfg(test)]
@@ -728,7 +792,7 @@ mod tests {
             Command::SettingsGet(SettingsGetArgs { key: None }),
         ];
         for (i, command) in commands.iter().enumerate() {
-            let request = Request::new(i.to_string(), &source(), command);
+            let request = Request::new(1, i.to_string(), &source(), command);
             let line = request.to_line().unwrap();
             assert!(!line.contains('\n'));
             let back = Request::decode(&line).unwrap();
@@ -741,7 +805,7 @@ mod tests {
     #[test]
     fn the_wire_form_is_as_documented() {
         let request =
-            Request::new("7", &source(), &Command::Signal(SignalArgs { name: "done".into(), ..Default::default() }));
+            Request::new(1, "7", &source(), &Command::Signal(SignalArgs { name: "done".into(), ..Default::default() }));
         assert_eq!(
             serde_json::to_value(&request).unwrap(),
             json!({"v":1,"id":"7","source":"claude-code:3f9a","cmd":"signal","args":{"name":"done"}})
@@ -768,10 +832,10 @@ mod tests {
     #[test]
     fn responses_round_trip() {
         let ok = Response::ok("1", json!({"a": [1, 2]}));
-        assert_eq!(Response::decode(&ok.to_line()).unwrap().into_result().unwrap(), json!({"a": [1, 2]}));
-        assert_eq!(Response::decode(&Response::ok("1", ()).to_line()).unwrap().into_result().unwrap(), json!({}));
+        assert_eq!(Response::decode(&ok.to_line(), 1).unwrap().into_result().unwrap(), json!({"a": [1, 2]}));
+        assert_eq!(Response::decode(&Response::ok("1", ()).to_line(), 1).unwrap().into_result().unwrap(), json!({}));
         let err = Response::error("2", AgentError::new(ErrorCode::NeedsUsb, "Connect the cable.").with_hint("USB."));
-        let e = Response::decode(&err.to_line()).unwrap().into_result().unwrap_err();
+        let e = Response::decode(&err.to_line(), 1).unwrap().into_result().unwrap_err();
         assert_eq!(e.code, ErrorCode::NeedsUsb);
         assert_eq!(e.exit_code(), 69);
         assert_eq!(e.hint.as_deref(), Some("USB."));
@@ -785,13 +849,13 @@ mod tests {
         assert_eq!(args.validate().unwrap().color, Color::rgb(0xFF, 0, 0));
 
         let answer = r#"{"v":1,"id":"3","ok":true,"data":{"app":"keymotion","version":"9.0.0","channel":"beta","protocol":1,"new":1},"extra":[]}"#;
-        let data = Response::decode(answer).unwrap().into_result().unwrap();
+        let data = Response::decode(answer, 1).unwrap().into_result().unwrap();
         let hello: HelloData = serde_json::from_value(data).unwrap();
         assert_eq!(hello.channel, Channel::Other, "a channel this build does not know");
 
         let refusal =
             r#"{"v":1,"id":"4","ok":false,"error":{"code":"new_code","message":"Something new.","detail":1}}"#;
-        let e = Response::decode(refusal).unwrap().into_result().unwrap_err();
+        let e = Response::decode(refusal, 1).unwrap().into_result().unwrap_err();
         assert_eq!(e.code, ErrorCode::Internal);
         assert!(e.message.contains("new_code"));
     }
@@ -813,9 +877,10 @@ mod tests {
         assert_eq!(code(r#"{"v":1,"cmd":"status"}"#).error.code, ErrorCode::BadRequest);
         assert_eq!(code(r#"{"v":1,"id":"a b","cmd":"status"}"#).error.code, ErrorCode::BadRequest);
         assert_eq!(code(r#"{"v":1,"id":7,"cmd":"status"}"#).error.code, ErrorCode::BadRequest);
-        let v2 = code(r#"{"v":2,"id":"5","cmd":"status"}"#);
-        assert_eq!((v2.id.as_str(), v2.error.code), ("5", ErrorCode::ProtocolMismatch));
-        assert_eq!(code(r#"{"id":"5","cmd":"status"}"#).error.code, ErrorCode::ProtocolMismatch);
+        // Whether the version fits is the session's question; a missing one
+        // is malformed.
+        assert_eq!(Request::decode(r#"{"v":2,"id":"5","cmd":"status"}"#).unwrap().v, 2);
+        assert_eq!(code(r#"{"id":"5","cmd":"status"}"#).error.code, ErrorCode::BadRequest);
         let no_cmd = code(r#"{"v":1,"id":"6"}"#);
         assert_eq!((no_cmd.id.as_str(), no_cmd.error.code), ("6", ErrorCode::BadRequest));
         assert_eq!(code(r#"{"v":1,"id":"6","cmd":"status","args":[1]}"#).error.code, ErrorCode::BadRequest);
@@ -839,18 +904,18 @@ mod tests {
         assert_eq!(refusal.error.code, ErrorCode::TooLarge);
 
         let huge = Command::Light(LightArgs { color: "x".repeat(MAX_LINE_BYTES), ..Default::default() });
-        assert_eq!(Request::new("1", &source(), &huge).to_line().unwrap_err().code, ErrorCode::TooLarge);
+        assert_eq!(Request::new(1, "1", &source(), &huge).to_line().unwrap_err().code, ErrorCode::TooLarge);
 
         let big_answer = Response::ok("2", json!({ "pad": "x".repeat(MAX_LINE_BYTES) }));
         let line = big_answer.to_line();
         assert!(line.len() <= MAX_LINE_BYTES);
-        let e = Response::decode(&line).unwrap().into_result().unwrap_err();
+        let e = Response::decode(&line, 1).unwrap().into_result().unwrap_err();
         assert_eq!(e.code, ErrorCode::TooLarge);
-        assert_eq!(Response::decode(&"x".repeat(MAX_LINE_BYTES + 1)).unwrap_err().code, ErrorCode::BadResponse);
+        assert_eq!(Response::decode(&"x".repeat(MAX_LINE_BYTES + 1), 1).unwrap_err().code, ErrorCode::BadResponse);
 
-        let refusal = Response::decode(&too_long_line()).unwrap().into_result().unwrap_err();
+        let refusal = Response::decode(&too_long_line(), 1).unwrap().into_result().unwrap_err();
         assert_eq!(refusal.code, ErrorCode::TooLarge);
-        let refusal = Response::decode(&not_text_line()).unwrap().into_result().unwrap_err();
+        let refusal = Response::decode(&not_text_line(), 1).unwrap().into_result().unwrap_err();
         assert_eq!(refusal.code, ErrorCode::BadRequest);
     }
 
@@ -955,7 +1020,7 @@ mod tests {
         let answer = session.handle_line(line, |call, command| {
             Ok(json!({"cmd": command.name(), "source": call.source.as_str(), "client": call.peer.client}))
         });
-        Response::decode(&answer).unwrap()
+        Response::decode(&answer, 1).unwrap()
     }
 
     #[test]
@@ -967,7 +1032,7 @@ mod tests {
         assert_eq!(early.into_result().unwrap_err().code, ErrorCode::BadRequest);
         assert!(session.peer().is_none());
 
-        let hello = Request::new("h", &source(), &Command::Hello(hello_args())).to_line().unwrap();
+        let hello = Request::new(1, "h", &source(), &Command::Hello(hello_args())).to_line().unwrap();
         let answer = call(&mut session, &hello);
         assert_eq!(answer.id, "h");
         let data: HelloData = serde_json::from_value(answer.into_result().unwrap()).unwrap();
@@ -989,12 +1054,12 @@ mod tests {
     fn a_session_refuses_an_unknown_protocol_and_keeps_going_after_errors() {
         let mut session = Session::new(info());
         let future = HelloArgs { protocol: ProtocolRange { min: 2, max: 4 }, ..hello_args() };
-        let line = Request::new("h", &source(), &Command::Hello(future)).to_line().unwrap();
+        let line = Request::new(1, "h", &source(), &Command::Hello(future)).to_line().unwrap();
         let e = call(&mut session, &line).into_result().unwrap_err();
         assert_eq!(e.code, ErrorCode::ProtocolMismatch);
         assert!(session.peer().is_none());
 
-        let line = Request::new("h2", &source(), &Command::Hello(hello_args())).to_line().unwrap();
+        let line = Request::new(1, "h2", &source(), &Command::Hello(hello_args())).to_line().unwrap();
         assert!(call(&mut session, &line).ok);
         assert_eq!(call(&mut session, "{").into_result().unwrap_err().code, ErrorCode::BadRequest);
         let answer = call(&mut session, r#"{"v":1,"id":"x","cmd":"teleport"}"#);
@@ -1003,6 +1068,56 @@ mod tests {
         let failing = session.handle_line(r#"{"v":1,"id":"f","cmd":"keys"}"#, |_, _| {
             Err(AgentError::new(ErrorCode::NoKeyboard, "No keyboard is connected."))
         });
-        assert_eq!(Response::decode(&failing).unwrap().into_result().unwrap_err().code, ErrorCode::NoKeyboard);
+        assert_eq!(Response::decode(&failing, 1).unwrap().into_result().unwrap_err().code, ErrorCode::NoKeyboard);
+    }
+
+    #[test]
+    fn newer_builds_meet_older_ones_at_the_highest_common_version() {
+        let future_hello = r#"{"v":1,"id":"h","cmd":"hello","args":{"client":"keymotion-cli","version":"9.0.0","protocol":{"min":1,"max":2}}}"#;
+
+        // A future keymotion-cli speaking 1 and 2 says hello as v1, like every
+        // build, and today's app agrees on 1.
+        let mut app = Session::new(info());
+        let answer = call(&mut app, future_hello);
+        assert_eq!(answer.v, HELLO_VERSION);
+        let data: HelloData = serde_json::from_value(answer.into_result().unwrap()).unwrap();
+        assert_eq!(data.protocol, 1);
+        // From then on the connection speaks 1: a v2 message is refused, a v1
+        // one answered as v1.
+        let refused = call(&mut app, r#"{"v":2,"id":"a","cmd":"status"}"#);
+        assert_eq!(refused.into_result().unwrap_err().code, ErrorCode::ProtocolMismatch);
+        let answered = call(&mut app, r#"{"v":1,"id":"b","cmd":"status"}"#);
+        assert_eq!((answered.v, answered.ok), (1, true));
+
+        // A future app speaking 1 and 2 with today's client: 1 again.
+        let mut future_app = Session::new(info()).speaking(ProtocolRange { min: 1, max: 2 });
+        let hello = Request::new(1, "h", &source(), &Command::Hello(hello_args())).to_line().unwrap();
+        let data: HelloData = serde_json::from_value(call(&mut future_app, &hello).into_result().unwrap()).unwrap();
+        assert_eq!(data.protocol, 1);
+        let status = Request::new(data.protocol, "s", &source(), &Command::Status(StatusArgs {})).to_line().unwrap();
+        let answered = call(&mut future_app, &status);
+        assert_eq!((answered.v, answered.ok), (1, true));
+
+        // Two future builds agree on 2; later messages carry it, hello stays v1.
+        let mut both = Session::new(info()).speaking(ProtocolRange { min: 1, max: 2 });
+        let answer = call(&mut both, future_hello);
+        assert_eq!(answer.v, HELLO_VERSION);
+        let data: HelloData = serde_json::from_value(answer.into_result().unwrap()).unwrap();
+        assert_eq!(data.protocol, 2);
+        let status = Request::new(2, "s", &source(), &Command::Status(StatusArgs {}));
+        assert_eq!(status.v, 2);
+        let line = both.handle_line(&status.to_line().unwrap(), |_, _| Ok(json!({})));
+        let answered = Response::decode(&line, 2).unwrap();
+        assert_eq!((answered.v, answered.ok), (2, true));
+        assert_eq!(Response::decode(&line, 1).unwrap_err().code, ErrorCode::ProtocolMismatch);
+        assert_eq!(Request::new(2, "h", &source(), &Command::Hello(hello_args())).v, HELLO_VERSION);
+
+        // hello itself never leaves v1.
+        let v2_hello = future_hello.replacen(r#""v":1"#, r#""v":2"#, 1);
+        let refused = call(&mut Session::new(info()), &v2_hello);
+        assert_eq!(refused.into_result().unwrap_err().code, ErrorCode::ProtocolMismatch);
+        // A refusal reads in any version: its envelope is frozen.
+        let refusal = Response::error("r", AgentError::new(ErrorCode::NoKeyboard, "x")).with_version(7).to_line();
+        assert_eq!(Response::decode(&refusal, 1).unwrap().into_result().unwrap_err().code, ErrorCode::NoKeyboard);
     }
 }
