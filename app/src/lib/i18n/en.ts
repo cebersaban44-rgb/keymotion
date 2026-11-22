@@ -1635,7 +1635,7 @@ export const en = {
   "games.lol.motion": "As health drops",
   "games.lol.healthColor": "Health color",
   "games.lol.healthColor.auto": "By health (green, amber, red)",
-  "games.lol.healthColor.one": "One color",
+  "games.lol.healthColor.single": "One color",
   "games.lol.mana": "Show mana on the F keys",
   "games.lol.manaColor": "Mana color",
   "games.lol.mana.body": "Energy shows yellow, fury red.",

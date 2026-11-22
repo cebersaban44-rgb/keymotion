@@ -143,7 +143,7 @@ export function LolLights({
                   onChange={(e) => setLol({ healthColor: e.target.value === "one" ? [52, 199, 89] : null })}
                 >
                   <option value="auto">{t("games.lol.healthColor.auto")}</option>
-                  <option value="one">{t("games.lol.healthColor.one")}</option>
+                  <option value="one">{t("games.lol.healthColor.single")}</option>
                 </select>
               </Field>
               {l.healthColor && (

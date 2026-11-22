@@ -1628,7 +1628,7 @@ export const tr: Messages = {
   "games.lol.motion": "Can azalınca",
   "games.lol.healthColor": "Can rengi",
   "games.lol.healthColor.auto": "Cana göre (yeşil, sarı, kırmızı)",
-  "games.lol.healthColor.one": "Tek renk",
+  "games.lol.healthColor.single": "Tek renk",
   "games.lol.mana": "Manayı F tuşlarında göster",
   "games.lol.manaColor": "Mana rengi",
   "games.lol.mana.body": "Enerji sarı, öfke kırmızı yanar.",
