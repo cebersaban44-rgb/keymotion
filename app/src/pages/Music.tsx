@@ -2,7 +2,8 @@
 // plays, in one of four modes. The backend listens and lights the keys
 // (app/src-tauri/src/music.rs); this page sets it up and shows what the keys
 // show. The focus timer and a game's own lights go over the music; the
-// music goes over the system gauges (owner's decision, 2026-11-22).
+// music goes over the system gauges (owner's decision, 2026-11-22). The pill
+// pickers sit in a <div> so they keep their own width in the column.
 
 import { AudioLines, Gamepad2, Palette, ShieldCheck, Sparkles, Usb, Volume2, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -108,17 +109,19 @@ export function Music({ kb }: { kb: KeyboardInfo }) {
         {/* Settings. */}
         <div className="flex flex-col divide-y divide-line border-t border-line" data-music-settings>
           <Row icon={Sparkles} title={t("music.mode")} body={t(MODE_HINT[shown.mode])}>
-            <Segmented<MusicMode>
-              label={t("music.mode")}
-              value={shown.mode}
-              onChange={(mode) => set({ mode })}
-              options={[
-                { value: "bars", label: t("music.mode.bars") },
-                { value: "beat", label: t("music.mode.beat") },
-                { value: "level", label: t("music.mode.level") },
-                { value: "wave", label: t("music.mode.wave") },
-              ]}
-            />
+            <div>
+              <Segmented<MusicMode>
+                label={t("music.mode")}
+                value={shown.mode}
+                onChange={(mode) => set({ mode })}
+                options={[
+                  { value: "bars", label: t("music.mode.bars") },
+                  { value: "beat", label: t("music.mode.beat") },
+                  { value: "level", label: t("music.mode.level") },
+                  { value: "wave", label: t("music.mode.wave") },
+                ]}
+              />
+            </div>
             {(shown.mode === "bars" || shown.mode === "wave") && (
               <div className="flex items-start justify-between gap-3">
                 <span className="flex flex-col">
@@ -132,17 +135,19 @@ export function Music({ kb }: { kb: KeyboardInfo }) {
           <Row icon={Palette} title={t("music.look")} body={t("music.look.body")}>
             <div className="flex flex-col gap-2">
               <span className="text-[13px] font-medium">{t("music.palette")}</span>
-              <Segmented<MusicPalette>
-                label={t("music.palette")}
-                value={shown.palette}
-                onChange={(palette) => set({ palette })}
-                options={[
-                  { value: "heat", label: t("music.palette.heat") },
-                  { value: "rainbow", label: t("music.palette.rainbow") },
-                  { value: "one", label: t("music.palette.one") },
-                  { value: "two", label: t("music.palette.two") },
-                ]}
-              />
+              <div>
+                <Segmented<MusicPalette>
+                  label={t("music.palette")}
+                  value={shown.palette}
+                  onChange={(palette) => set({ palette })}
+                  options={[
+                    { value: "heat", label: t("music.palette.heat") },
+                    { value: "rainbow", label: t("music.palette.rainbow") },
+                    { value: "one", label: t("music.palette.one") },
+                    { value: "two", label: t("music.palette.two") },
+                  ]}
+                />
+              </div>
             </div>
             {(shown.palette === "one" || twoColors) && (
               <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-6">
@@ -182,28 +187,32 @@ export function Music({ kb }: { kb: KeyboardInfo }) {
             </div>
             <div className="flex flex-col gap-2">
               <span className="text-[13px] font-medium">{t("music.rest")}</span>
-              <Segmented<MusicRest>
-                label={t("music.rest")}
-                value={shown.rest}
-                onChange={(rest) => set({ rest })}
-                options={[
-                  { value: "dark", label: t("music.rest.dark") },
-                  { value: "dim", label: t("music.rest.dim") },
-                ]}
-              />
+              <div>
+                <Segmented<MusicRest>
+                  label={t("music.rest")}
+                  value={shown.rest}
+                  onChange={(rest) => set({ rest })}
+                  options={[
+                    { value: "dark", label: t("music.rest.dark") },
+                    { value: "dim", label: t("music.rest.dim") },
+                  ]}
+                />
+              </div>
             </div>
           </Row>
           <Row icon={Volume2} title={t("music.silence")} body={t("music.silence.body")}>
-            <Segmented<MusicSilence>
-              label={t("music.silence")}
-              value={shown.silence}
-              onChange={(silence) => set({ silence })}
-              options={[
-                { value: "saved", label: t("music.silence.saved") },
-                { value: "dim", label: t("music.silence.dim") },
-                { value: "dark", label: t("music.silence.dark") },
-              ]}
-            />
+            <div>
+              <Segmented<MusicSilence>
+                label={t("music.silence")}
+                value={shown.silence}
+                onChange={(silence) => set({ silence })}
+                options={[
+                  { value: "saved", label: t("music.silence.saved") },
+                  { value: "dim", label: t("music.silence.dim") },
+                  { value: "dark", label: t("music.silence.dark") },
+                ]}
+              />
+            </div>
           </Row>
           <Row
             icon={Gamepad2}

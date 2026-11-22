@@ -3,7 +3,9 @@
 // (app/src-tauri/src/music.rs); the page changes the settings and shows the
 // frame the backend works out. The browser preview has no sound to read: it
 // makes up a 120 BPM beat and draws the four modes with a small copy of the
-// backend's rules (music.rs `frame`): keep the two in step.
+// backend's rules (music.rs `frame`): keep the two in step. The made-up
+// sound has no randomness, so the same moment always looks the same
+// (screenshots step to a chosen frame with `__ksMockMusicStep`).
 
 import { create } from "zustand";
 import type { GeometryInfo } from "../bindings/GeometryInfo";
@@ -108,6 +110,8 @@ const mock = {
   geometry: null as GeometryInfo | null,
   timer: 0,
   emit: null as ((s: MusicState) => void) | null,
+  /** Stepped by hand (`__ksMockMusicStep`): the clock stands still. */
+  held: false,
   playing: true,
   quietSince: 0,
   showing: true,
@@ -151,7 +155,9 @@ function mockSynth() {
       const sw = Math.exp(-((b - 8) ** 2) / 12.5);
       const hw = b >= 12 ? (b - 12) / 7 : 0;
       const mel = b >= 3 && b <= 14 ? 0.28 + 0.22 * Math.sin(m.t * 2.1 + b * 0.9) * Math.sin(m.t * 0.6 + b * 0.33) : 0.05;
-      raw = (kick * kw + snare * sw * 0.75 + hat * hw * 0.55 + mel * 0.6 + Math.random() * 0.04) * sec * sens;
+      // A little slow shimmer instead of noise: no flicker between frames.
+      const shimmer = 0.02 * (1 + Math.sin(m.t * 7.3 + b * 1.7));
+      raw = (kick * kw + snare * sw * 0.75 + hat * hw * 0.55 + mel * 0.6 + shimmer) * sec * sens;
     }
     const v = m.bands[b]!;
     m.bands[b] = Math.max(0, Math.min(1, v + (raw > v ? (raw - v) * 0.7 : (raw - v) * 0.25)));
@@ -250,12 +256,38 @@ function mockState(): MusicState {
   };
 }
 
-function mockTick() {
+/** One frame (50 ms) of the made-up sound. */
+function mockAdvance() {
   mock.t += 0.05;
   mockSynth();
   if (mock.playing) mock.showing = true;
   else if (Date.now() - mock.quietSince >= QUIET_AFTER_MS) mock.showing = false;
+}
+
+function mockTick() {
+  if (mock.held) return;
+  mockAdvance();
   mock.emit?.(mockState());
+}
+
+/** Back to the first moment of the made-up song. */
+function mockRestart() {
+  Object.assign(mock, {
+    t: 0,
+    loud: 0,
+    loudPeak: 0,
+    loudPeakAt: 0,
+    beats: 0,
+    beat: -9,
+    strong: -9,
+    waves: [],
+    lastBeat: -1,
+    playing: true,
+    showing: true,
+  });
+  mock.bands.fill(0);
+  mock.peaks.fill(0);
+  mock.peakAt.fill(0);
 }
 
 if (import.meta.env.DEV && !inTauri && typeof window !== "undefined") {
@@ -264,6 +296,15 @@ if (import.meta.env.DEV && !inTauri && typeof window !== "undefined") {
   w.__ksMockMusic = (playing: boolean) => {
     if (mock.playing && !playing) mock.quietSince = Date.now();
     mock.playing = playing;
+  };
+  /** Browser preview: stop the clock and move the made-up song on `frames`
+   *  frames of 50 ms (from its start with `fromStart`), so the same moment
+   *  shows every time. `__ksMockMusicStep(-1)` lets the clock run again. */
+  w.__ksMockMusicStep = (frames: number, fromStart = false) => {
+    mock.held = frames >= 0;
+    if (fromStart) mockRestart();
+    for (let i = 0; i < frames; i++) mockAdvance();
+    mock.emit?.(mockState());
   };
 }
 
