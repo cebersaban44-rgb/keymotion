@@ -22,6 +22,7 @@ mod live;
 mod logging;
 mod lol;
 pub mod migrate;
+mod music;
 mod notify;
 mod now_playing;
 mod official_driver;
@@ -30,6 +31,7 @@ mod profiles;
 mod reminders;
 mod screen_lib;
 mod settings;
+mod spectrum;
 mod tray;
 mod updates;
 
@@ -41,14 +43,15 @@ use dto::{
     AutoProfileSettings, AutoProfileState, BackgroundSettings, CalendarSettings, CalendarState, Calibration,
     CalibrationInfo, ClockStatus, CrashNote, EffectInfo, EffectRequest, FlashWrite, GamesSettings, GamesState,
     GaugesSettings, GaugesState, IssueKind, KeyAssignment, KeyboardInfo, KeymapCatalog, KeymapLayer, KeymapState,
-    LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, PomodoroSettings, PomodoroState, Reminder,
-    ReminderSettings, ReminderState, ScreenItem, ScreenItemKind, ScreenState, SettingsReset, SongStop, ThemePreference,
-    TrayTexts, UiEnvironment, UnsupportedKeyboard, UpdateMode, UpdateState, WindowsPage,
+    LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, MusicSettings, MusicState, PomodoroSettings,
+    PomodoroState, Reminder, ReminderSettings, ReminderState, ScreenItem, ScreenItemKind, ScreenState, SettingsReset,
+    SongStop, ThemePreference, TrayTexts, UiEnvironment, UnsupportedKeyboard, UpdateMode, UpdateState, WindowsPage,
 };
 use games::GamesHandle;
 use gauges::GaugesHandle;
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
 use live::LiveHandle;
+use music::MusicHandle;
 use now_playing::NowPlaying;
 use pomodoro::{PomodoroAction, PomodoroHandle};
 use profiles::{PartLoaded, ProfilePart, ProfileParts, ProfileSaved, ProfileStore, ProfilesState};
@@ -123,6 +126,7 @@ type Library<'a> = State<'a, Arc<Mutex<ScreenLibrary>>>;
 type Live<'a> = State<'a, Arc<LiveHandle>>;
 type Pomodoro<'a> = State<'a, Arc<PomodoroHandle>>;
 type Gauges<'a> = State<'a, Arc<GaugesHandle>>;
+type Music<'a> = State<'a, Arc<MusicHandle>>;
 type Calendar<'a> = State<'a, Arc<CalendarHandle>>;
 type Reminders<'a> = State<'a, Arc<RemindersHandle>>;
 type Profiles<'a> = State<'a, Arc<Mutex<ProfileStore>>>;
@@ -495,6 +499,26 @@ fn gauges_configure(gauges: Gauges<'_>, settings: GaugesSettings) -> Result<Gaug
 #[tauri::command]
 fn gauges_watch(gauges: Gauges<'_>, on: bool) {
     gauges.watch(on);
+}
+
+/// Music mode.
+#[tauri::command]
+fn music_state(music: Music<'_>) -> Result<MusicState, String> {
+    music.state()
+}
+
+/// New music mode settings (saved).
+#[tauri::command]
+fn music_configure(music: Music<'_>, settings: MusicSettings) -> Result<MusicState, String> {
+    tracing::debug!(?settings, "ipc: music_configure");
+    music.configure(settings)
+}
+
+/// The music page opened or closed: it gets frames (`music` events) while
+/// open, even with music mode off (the sound is read meanwhile).
+#[tauri::command]
+fn music_watch(music: Music<'_>, on: bool) {
+    music.watch(on);
 }
 
 type Games<'a> = State<'a, Arc<GamesHandle>>;
@@ -1688,13 +1712,15 @@ pub fn run() {
             app.manage(updates);
             app.manage(RemindersHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir.clone()));
             let front = front::FrontHub::new();
-            app.manage(GamesHandle::spawn(
+            let games = GamesHandle::spawn(
                 app.handle().clone(),
                 live.clone(),
                 device.clone(),
                 front.clone(),
                 config_dir.clone(),
-            ));
+            );
+            app.manage(MusicHandle::spawn(app.handle().clone(), device.clone(), games.clone(), config_dir.clone()));
+            app.manage(games);
             let host: Arc<dyn autoprofile::Host> = Arc::new(AutoHost { app: app.handle().clone() });
             app.manage(autoprofile::AutoProfiles::spawn(
                 app.handle().clone(),
@@ -1790,6 +1816,9 @@ pub fn run() {
             gauges_state,
             gauges_configure,
             gauges_watch,
+            music_state,
+            music_configure,
+            music_watch,
             games_state,
             games_configure,
             games_mark,

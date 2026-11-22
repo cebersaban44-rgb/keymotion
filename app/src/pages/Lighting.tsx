@@ -1,4 +1,16 @@
-import { AlertTriangle, BoxSelect, Eraser, MousePointer2, PaintBucket, Paintbrush, RotateCcw, Usb, Gauge, X } from "lucide-react";
+import {
+  AlertTriangle,
+  AudioLines,
+  BoxSelect,
+  Eraser,
+  MousePointer2,
+  PaintBucket,
+  Paintbrush,
+  RotateCcw,
+  Usb,
+  Gauge,
+  X,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import type { EffectInfo } from "../bindings/EffectInfo";
@@ -21,6 +33,7 @@ import {
   type PaintTool,
 } from "../lib/lighting";
 import { useGauges } from "../lib/gauges";
+import { useMusic } from "../lib/music";
 import { useMirror } from "../lib/mirror";
 import { useApp } from "../lib/store";
 
@@ -48,6 +61,8 @@ export function Lighting({ kb }: { kb: KeyboardInfo }) {
   const perKey = useLighting((s) => s.perKey);
   // The gauges draw the keys while on: the saved lighting does not show.
   const gaugesOn = useGauges((s) => !!s.state?.settings.enabled);
+  // So does music mode while sound plays.
+  const musicOn = useMusic((s) => !!s.state?.settings.enabled);
   const setPage = useApp((s) => s.setPage);
 
   return (
@@ -91,6 +106,19 @@ export function Lighting({ kb }: { kb: KeyboardInfo }) {
             className="shrink-0 rounded-lg border border-line px-3 py-1.5 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink"
           >
             {t("light.gaugesGo")}
+          </button>
+        </div>
+      )}
+      {usb && musicOn && (
+        <div className="flex items-center gap-3 rounded-lg border border-line bg-bg-raise/60 px-4 py-3 text-[13px]" data-light-music>
+          <AudioLines size={16} className="shrink-0 text-signal" />
+          <span className="flex-1 text-ink-2">{t("light.musicOn")}</span>
+          <button
+            type="button"
+            onClick={() => setPage("music")}
+            className="shrink-0 rounded-lg border border-line px-3 py-1.5 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+          >
+            {t("light.musicGo")}
           </button>
         </div>
       )}

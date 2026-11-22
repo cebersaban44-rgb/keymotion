@@ -17,6 +17,21 @@ says so.
 
 ### Added
 
+- **Music mode:** Tools › **Music mode** moves the key lights with the
+  sound your PC plays, over USB: **Bars** (columns from bass on the left to
+  treble on the right, filling from the bottom row, with a mark that holds
+  at the top), **Beat** (the whole keyboard flashes on each beat, a ring
+  spreads from the middle on a strong beat), **Level** (a band of loudness
+  opening from the middle) and **Wave** (each bass beat sends a wave across
+  the keys). Colors **Green-yellow-red**, **Rainbow**, **One color** or
+  **Two colors**; **Center-out** for Bars and Wave; sensitivity from 50% to
+  200%; the other keys dark or dim. A few seconds after the sound stops,
+  the keyboard's own light comes back (or every key dim or dark, as you
+  choose). The lights wait while the focus timer runs, and while a game is
+  in front (**Pause while playing a game**, on at first). Keymotion reads
+  only how loud the sound going to your speakers or headphones is right
+  now, through Windows' own sound system: nothing is recorded, and the
+  microphone isn't used. Also in the tray menu and in backups.
 - **Game session:** Tools › **Game session** notices when you play. Games
   come from your launchers' lists (Steam, Epic Games, GOG, Xbox, Riot Games,
   Xbox Game Bar) and from your own word (**Add a game**, **Not a game**,

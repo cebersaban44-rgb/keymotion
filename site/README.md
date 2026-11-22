@@ -57,7 +57,7 @@ With the 2.4 GHz receiver or Bluetooth, this page is locked.
 ```
 
 - **Write for people, not for programmers.** Describe what is on the screen and what happens when you use it. Leave out how it works inside.
-- **Name controls exactly as the app does**, in bold: **Save to keyboard**. The app's words are in `app/src/lib/i18n.ts`; use the English text on English pages and each language's own text on its pages.
+- **Name controls exactly as the app does**, in bold: **Save to keyboard**. The app's words are in `app/src/lib/i18n/` (`en.ts`, `tr.ts`, …); use the English text on English pages and each language's own text on its pages.
 - **Short sentences, active voice, sentence-case headings.** No marketing words, no emoji. English pages use American spelling, like the app: color, license.
 - **Turkish pages are written in Turkish, not translated word by word.** They use Turkish words only (for example "odak zamanlayıcısı", never "Pomodoro"), like the app itself. File formats, key names and brand names stay as they are.
 - **Be exact.** Every behavior on a page must match the app. When unsure, check the code or leave it out.

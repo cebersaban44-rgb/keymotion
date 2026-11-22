@@ -761,6 +761,7 @@ async function mockInspect(bytes: ArrayBuffer): Promise<BackupSummary> {
   if (b.clock) sections.push({ section: "clock", count: 0 });
   if (b.pomodoro) sections.push({ section: "focus", count: 0 });
   if (b.gauges) sections.push({ section: "gauges", count: 0 });
+  if (b.music) sections.push({ section: "music", count: 0 });
   if (b.reminders) sections.push({ section: "reminders", count: list(b.reminders, "reminders") });
   if (b.calendar) sections.push({ section: "calendar", count: list(b.calendar, "sources") });
   if (list(b.profiles, "profiles")) sections.push({ section: "profiles", count: list(b.profiles, "profiles") });

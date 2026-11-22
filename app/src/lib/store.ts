@@ -15,6 +15,7 @@ export type PageId =
   | "connection"
   | "focus"
   | "gauges"
+  | "music"
   | "reminders"
   | "calendar"
   | "games"
