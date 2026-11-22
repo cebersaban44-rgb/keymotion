@@ -4,6 +4,7 @@
 //! the `kb-*` crates. All keyboard logic lives in those crates, and all
 //! hardware access goes through the single device actor.
 
+mod agent;
 mod autoprofile;
 mod backup;
 mod calendar;
@@ -37,17 +38,19 @@ mod tray;
 mod updates;
 mod zones;
 
+use agent::AgentHandle;
 use backup::{BackupExported, BackupImported, BackupSection, BackupSummary, PendingImport};
 use calendar::CalendarHandle;
 use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request, ScreenWriteStep};
 use diagnostics::{AppFolder, LastExport};
 use dto::{
-    AutoProfileSettings, AutoProfileState, BackgroundSettings, CalendarSettings, CalendarState, Calibration,
-    CalibrationInfo, ClockStatus, CrashNote, EffectInfo, EffectRequest, FlashWrite, GamesSettings, GamesState,
-    GaugesSettings, GaugesState, IssueKind, KeyAssignment, KeyboardInfo, KeymapCatalog, KeymapLayer, KeymapState,
-    LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, MusicSettings, MusicState, PomodoroSettings,
-    PomodoroState, Reminder, ReminderSettings, ReminderState, ScreenItem, ScreenItemKind, ScreenState, SettingsReset,
-    SongStop, ThemePreference, TrayTexts, UiEnvironment, UnsupportedKeyboard, UpdateMode, UpdateState, WindowsPage,
+    AgentLook, AgentSettings, AgentsState, AutoProfileSettings, AutoProfileState, BackgroundSettings, CalendarSettings,
+    CalendarState, Calibration, CalibrationInfo, ClockStatus, CrashNote, EffectInfo, EffectRequest, FlashWrite,
+    GamesSettings, GamesState, GaugesSettings, GaugesState, IssueKind, KeyAssignment, KeyboardInfo, KeymapCatalog,
+    KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, MusicSettings,
+    MusicState, PomodoroSettings, PomodoroState, Reminder, ReminderSettings, ReminderState, ScreenItem, ScreenItemKind,
+    ScreenState, SettingsReset, SongStop, ThemePreference, TrayTexts, UiEnvironment, UnsupportedKeyboard, UpdateMode,
+    UpdateState, WindowsPage,
 };
 use games::GamesHandle;
 use gauges::GaugesHandle;
@@ -132,6 +135,7 @@ type Music<'a> = State<'a, Arc<MusicHandle>>;
 type Calendar<'a> = State<'a, Arc<CalendarHandle>>;
 type Reminders<'a> = State<'a, Arc<RemindersHandle>>;
 type Profiles<'a> = State<'a, Arc<Mutex<ProfileStore>>>;
+type Agents<'a> = State<'a, Arc<AgentHandle>>;
 
 fn lock_library(lib: &Mutex<ScreenLibrary>) -> Result<std::sync::MutexGuard<'_, ScreenLibrary>, String> {
     lib.lock().map_err(|_| "screen library unavailable".to_string())
@@ -365,6 +369,41 @@ fn live_submit(live: Live<'_>, request: tauri::ipc::Request<'_>) -> Result<LiveS
 #[tauri::command]
 fn now_playing_cover(now_playing: State<'_, Arc<NowPlaying>>) -> Result<tauri::ipc::Response, String> {
     now_playing.cover().map(tauri::ipc::Response::new).ok_or_else(|| "no cover".to_string())
+}
+
+/// The AI agents: their settings, lights, log and the pipe.
+#[tauri::command]
+fn agents_state(agents: Agents<'_>) -> AgentsState {
+    agents.state()
+}
+
+/// New agent settings from the page (saved). Unlike agents, the page may
+/// change any of them.
+#[tauri::command]
+fn agents_save(agents: Agents<'_>, settings: AgentSettings) -> Result<AgentsState, String> {
+    tracing::debug!(access = settings.enabled, "ipc: agents_save");
+    agents.save(settings)
+}
+
+/// "Try on the keyboard": one look for a few seconds (works with access off).
+#[tauri::command]
+fn agents_try(agents: Agents<'_>, look: AgentLook, keys: Option<String>) -> Result<AgentsState, String> {
+    tracing::debug!(effect = ?look.effect, "ipc: agents_try");
+    agents.try_look(look, keys)
+}
+
+/// "Turn off every agent light".
+#[tauri::command]
+fn agents_clear_all(agents: Agents<'_>) -> AgentsState {
+    tracing::debug!("ipc: agents_clear_all");
+    agents.clear_all()
+}
+
+/// "Undo" on an entry of the agents' log: the settings it changed go back.
+#[tauri::command]
+fn agents_undo(agents: Agents<'_>, seq: u32) -> Result<AgentsState, String> {
+    tracing::debug!(seq, "ipc: agents_undo");
+    agents.undo(seq)
 }
 
 /// The Pomodoro timer.
@@ -1734,6 +1773,7 @@ pub fn run() {
             );
             app.manage(MusicHandle::spawn(app.handle().clone(), device.clone(), games.clone(), config_dir.clone()));
             app.manage(games);
+            app.manage(AgentHandle::spawn(app.handle().clone(), device.clone(), config_dir.clone()));
             let host: Arc<dyn autoprofile::Host> = Arc::new(AutoHost { app: app.handle().clone() });
             app.manage(autoprofile::AutoProfiles::spawn(
                 app.handle().clone(),
@@ -1824,6 +1864,11 @@ pub fn run() {
             live_send_now,
             live_drop_waiting,
             now_playing_cover,
+            agents_state,
+            agents_save,
+            agents_try,
+            agents_clear_all,
+            agents_undo,
             pomodoro_state,
             pomodoro_control,
             pomodoro_configure,

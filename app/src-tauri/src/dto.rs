@@ -2969,3 +2969,444 @@ pub struct AutoProfileState {
     /// Programs used lately (newest first), to add a rule for.
     pub recent: Vec<AutoProgram>,
 }
+
+// ------------------------------------------------------------------ agents
+
+/// How an agent's signal moves: the look the user picks for each signal
+/// (agents may override it per call with one of the five simple ones).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentEffect {
+    #[default]
+    Solid,
+    Pulse,
+    Blink,
+    Wave,
+    /// Quick flashes, like a car's headlights (never more than three a
+    /// second).
+    Flash,
+    /// One wave, then steady.
+    WaveThenSolid,
+    /// Three quick flashes, then a slow pulse.
+    FlashThenPulse,
+    /// Two blinks, then steady.
+    BlinkTwiceThenSolid,
+    /// No light.
+    Off,
+}
+
+/// How one signal looks on the keys.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentLook {
+    /// UI colour (sRGB).
+    pub color: [u8; 3],
+    pub effect: AgentEffect,
+    /// 1 (slow) to 5 (fast).
+    pub speed: u8,
+    /// How long it stays, in seconds (1 s to 2 h).
+    pub duration_s: u32,
+    /// It stays until the user answers (the agent takes it away), at most
+    /// `duration_s`.
+    pub until_answered: bool,
+}
+
+impl Default for AgentLook {
+    fn default() -> Self {
+        Self::new([255, 255, 255], AgentEffect::Solid, 3, 60)
+    }
+}
+
+impl AgentLook {
+    pub const fn new(color: [u8; 3], effect: AgentEffect, speed: u8, duration_s: u32) -> Self {
+        Self { color, effect, speed, duration_s, until_answered: false }
+    }
+
+    pub fn sanitized(self) -> Self {
+        Self { speed: self.speed.clamp(1, 5), duration_s: self.duration_s.clamp(1, 2 * 60 * 60), ..self }
+    }
+}
+
+/// The ready-made signals' looks (owner's defaults, 2026-11-22).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentSignalLooks {
+    /// Green, a wave then steady, 2 minutes.
+    pub done: AgentLook,
+    /// Orange, three quick flashes then a slow pulse, until the user
+    /// answers (at most 30 minutes).
+    pub attention: AgentLook,
+    /// Red, two blinks then steady, 10 minutes.
+    pub error: AgentLook,
+    /// No light: only takes the agent's earlier signals away.
+    pub busy: AgentLook,
+    /// A blue wave, 10 seconds.
+    pub info: AgentLook,
+}
+
+impl Default for AgentSignalLooks {
+    fn default() -> Self {
+        Self {
+            done: AgentLook::new([0, 255, 0], AgentEffect::WaveThenSolid, 3, 2 * 60),
+            attention: AgentLook {
+                until_answered: true,
+                ..AgentLook::new([255, 128, 0], AgentEffect::FlashThenPulse, 2, 30 * 60)
+            },
+            error: AgentLook::new([255, 0, 0], AgentEffect::BlinkTwiceThenSolid, 3, 10 * 60),
+            busy: AgentLook::new([0, 160, 255], AgentEffect::Off, 3, 60),
+            info: AgentLook::new([0, 0, 255], AgentEffect::Wave, 3, 10),
+        }
+    }
+}
+
+impl AgentSignalLooks {
+    pub fn sanitized(self) -> Self {
+        Self {
+            done: self.done.sanitized(),
+            attention: self.attention.sanitized(),
+            error: self.error.sanitized(),
+            busy: self.busy.sanitized(),
+            info: self.info.sanitized(),
+        }
+    }
+}
+
+/// A: the agent ran into its usage limit (told apart from an error). The
+/// hook events that say so come with the command line tool's hooks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentUsageLimit {
+    pub on: bool,
+    pub look: AgentLook,
+}
+
+impl Default for AgentUsageLimit {
+    fn default() -> Self {
+        Self { on: true, look: AgentLook::new([128, 0, 255], AgentEffect::Pulse, 1, 30 * 60) }
+    }
+}
+
+/// B: with two or more agent sessions, the waiting one's number lights on
+/// the number row (1–9). Comes with the hooks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentSessions {
+    pub on: bool,
+    pub color: [u8; 3],
+}
+
+impl Default for AgentSessions {
+    fn default() -> Self {
+        Self { on: true, color: [255, 255, 255] }
+    }
+}
+
+/// C: what finished or started waiting while nobody was at the computer
+/// flashes once when the user is back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentAway {
+    pub on: bool,
+    /// No input this long is "away", in seconds (1–60 minutes).
+    pub after_s: u32,
+}
+
+impl Default for AgentAway {
+    fn default() -> Self {
+        Self { on: true, after_s: 5 * 60 }
+    }
+}
+
+/// D: an agent's question nobody answered flashes again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentUnanswered {
+    pub on: bool,
+    /// Every this many seconds (1–30 minutes)…
+    pub every_s: u32,
+    /// …for at most this long after it came (1 minute to 2 hours).
+    pub up_to_s: u32,
+}
+
+impl Default for AgentUnanswered {
+    fn default() -> Self {
+        Self { on: true, every_s: 5 * 60, up_to_s: 30 * 60 }
+    }
+}
+
+/// The row a progress bar uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentProgressKeys {
+    #[default]
+    FRow,
+    Numbers,
+}
+
+/// E: a progress bar an agent asks for (`progress`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentProgress {
+    pub keys: AgentProgressKeys,
+    pub color: [u8; 3],
+}
+
+impl Default for AgentProgress {
+    fn default() -> Self {
+        Self { keys: AgentProgressKeys::FRow, color: [0, 200, 255] }
+    }
+}
+
+/// F: a card on the screen when a long task finishes ("Done · 14 min").
+/// Needs the screen permission; the card itself comes in a later step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentLongTask {
+    pub on: bool,
+    /// A task this long or longer counts, in seconds (1 minute to 4 hours).
+    pub after_s: u32,
+    /// The card stays this long, in seconds (10 s to 30 minutes).
+    pub show_s: u32,
+}
+
+impl Default for AgentLongTask {
+    fn default() -> Self {
+        Self { on: true, after_s: 10 * 60, show_s: 5 * 60 }
+    }
+}
+
+/// What the agents' lights do at night.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentNightMode {
+    /// Faint.
+    #[default]
+    Dim,
+    /// None at all.
+    Off,
+}
+
+/// G: night quiet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentNight {
+    pub on: bool,
+    /// From and to, in minutes after midnight (local time); `from` after
+    /// `to` runs over midnight.
+    pub from_min: u16,
+    pub to_min: u16,
+    pub mode: AgentNightMode,
+}
+
+impl Default for AgentNight {
+    fn default() -> Self {
+        Self { on: false, from_min: 23 * 60, to_min: 8 * 60, mode: AgentNightMode::Dim }
+    }
+}
+
+/// H: a helper agent (Claude Code's subagent) finished: a short wave on
+/// the F row. Comes with the hooks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentHelper {
+    pub on: bool,
+    pub color: [u8; 3],
+}
+
+impl Default for AgentHelper {
+    fn default() -> Self {
+        Self { on: false, color: [0, 0, 255] }
+    }
+}
+
+/// The agents' settings (persisted in `agents.json`). Access, the
+/// permissions, "agents may change these settings", "hide while playing"
+/// and the screen's hourly limit are the user's alone; agents may change
+/// the looks and the behaviour (`settings_set`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentSettings {
+    /// Agent access: off until the user turns it on.
+    pub enabled: bool,
+    /// Agents may put cards on the screen (a later step).
+    pub screen: bool,
+    /// Agents may use the focus timer (a later step).
+    pub focus: bool,
+    /// Agents may save a profile's lighting (a later step).
+    pub profiles: bool,
+    /// Agents may change the looks and the behaviour below.
+    pub agents_may_edit: bool,
+    /// The agents' lights wait while a game wants the keyboard left alone.
+    pub hide_in_game: bool,
+    /// Screen cards each agent may show in an hour (1–20).
+    pub screen_per_hour: u8,
+    pub signals: AgentSignalLooks,
+    pub usage_limit: AgentUsageLimit,
+    pub sessions: AgentSessions,
+    pub away: AgentAway,
+    pub unanswered: AgentUnanswered,
+    pub progress: AgentProgress,
+    pub long_task: AgentLongTask,
+    pub night: AgentNight,
+    pub helper: AgentHelper,
+}
+
+impl Default for AgentSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            screen: false,
+            focus: false,
+            profiles: false,
+            agents_may_edit: true,
+            hide_in_game: true,
+            screen_per_hour: 4,
+            signals: AgentSignalLooks::default(),
+            usage_limit: AgentUsageLimit::default(),
+            sessions: AgentSessions::default(),
+            away: AgentAway::default(),
+            unanswered: AgentUnanswered::default(),
+            progress: AgentProgress::default(),
+            long_task: AgentLongTask::default(),
+            night: AgentNight::default(),
+            helper: AgentHelper::default(),
+        }
+    }
+}
+
+impl AgentSettings {
+    pub fn sanitized(self) -> Self {
+        const MIN: u32 = 60;
+        let n = self.night;
+        Self {
+            screen_per_hour: self.screen_per_hour.clamp(1, 20),
+            signals: self.signals.sanitized(),
+            usage_limit: AgentUsageLimit { look: self.usage_limit.look.sanitized(), ..self.usage_limit },
+            away: AgentAway { after_s: self.away.after_s.clamp(MIN, 60 * MIN), ..self.away },
+            unanswered: AgentUnanswered {
+                every_s: self.unanswered.every_s.clamp(MIN, 30 * MIN),
+                up_to_s: self.unanswered.up_to_s.clamp(MIN, 120 * MIN),
+                ..self.unanswered
+            },
+            long_task: AgentLongTask {
+                after_s: self.long_task.after_s.clamp(MIN, 240 * MIN),
+                show_s: self.long_task.show_s.clamp(10, 30 * MIN),
+                ..self.long_task
+            },
+            night: AgentNight { from_min: n.from_min.min(24 * 60 - 1), to_min: n.to_min.min(24 * 60 - 1), ..n },
+            ..self
+        }
+    }
+}
+
+/// An agent's light, as the page lists it.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentSignalInfo {
+    /// Who sent it (`claude-code:3f9a`, `cli`).
+    pub source: String,
+    pub id: String,
+    /// `done`, `attention`, `error`, `busy`, `info`, `light`, `progress`
+    /// or `try` (the page's "Try on the keyboard").
+    pub kind: String,
+    pub color: [u8; 3],
+    /// The keys, as the agent named them (`all`, `f1-f12`).
+    pub keys: String,
+    /// It shows on at least one key now (a light of higher rank may cover
+    /// it).
+    pub shown: bool,
+    pub expires_in_ms: f64,
+    /// A progress bar's percent and label.
+    pub percent: Option<f64>,
+    pub label: Option<String>,
+}
+
+/// A setting an agent changed, as text (`#00ff00`, `2m`, `true`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentSettingChange {
+    pub key: String,
+    pub before: String,
+    pub after: String,
+}
+
+/// One agent request that changed (or tried to change) something. Never
+/// what the agent's user typed.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentLogEntry {
+    /// Counts up; `agents_undo` names an entry by it.
+    pub seq: u32,
+    pub at_ms: f64,
+    pub source: String,
+    pub command: String,
+    /// `None` when it went through, else the error code (`rate_limited`).
+    pub error: Option<String>,
+    /// The light it named, if any.
+    pub id: Option<String>,
+    /// Settings it changed (`settings_set`): "Undo" puts `before` back.
+    pub changes: Vec<AgentSettingChange>,
+    pub undone: bool,
+}
+
+/// Whether the agents' lights show as they are now, and why not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentLights {
+    /// They show.
+    Shown,
+    /// No keyboard is connected.
+    NoKeyboard,
+    /// The keyboard is not on the USB cable (lights need it).
+    NeedsUsb,
+    /// A game wants the keyboard left alone and "hide while playing" is on.
+    Game,
+    /// Night quiet, faint.
+    NightDim,
+    /// Night quiet, none.
+    NightOff,
+}
+
+/// The pipe the command line tool talks to the app over.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentServer {
+    pub running: bool,
+    /// Why it is not running (another program holds its name), in the
+    /// backend's words.
+    pub error: Option<String>,
+    pub connections: u32,
+}
+
+/// The agents page's state (`agents` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentsState {
+    pub settings: AgentSettings,
+    /// Every agent's lights now, highest rank first.
+    pub signals: Vec<AgentSignalInfo>,
+    /// The last agent requests, newest first.
+    pub log: Vec<AgentLogEntry>,
+    pub server: AgentServer,
+    pub lights: AgentLights,
+}

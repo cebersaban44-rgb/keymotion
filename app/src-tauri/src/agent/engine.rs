@@ -1,0 +1,1453 @@
+//! The agents' lights: who asked for what, until when, and what shows.
+//!
+//! * Each source (`claude-code:3f9a`, `cli`, `tests`) has its own lights,
+//!   at most [`MAX_PER_SOURCE`]. A light's id (default `<source>:<signal>`)
+//!   replaces the source's earlier light with that id; no source can touch
+//!   another's.
+//! * Every light ends: its time is up, it ran its cycles, or it is cleared.
+//!   `busy` takes the source's earlier lights away.
+//! * On a key named by several lights, the highest rank shows: a question
+//!   for the user (`attention`) over an `error` over the newest. Lights on
+//!   different keys show together.
+//! * A source may make [`RATE_PER_SECOND`] requests a second. Beyond that a
+//!   light that replaces one of its own still goes through (the newest
+//!   wins); anything else is `rate_limited`.
+//! * "While you were away" (C): a signal that came while nobody was at the
+//!   computer flashes once when the user is back, even if its time ran out
+//!   meanwhile. "Unanswered" (D): a question flashes again every few
+//!   minutes while it waits.
+//! * The log keeps the last [`LOG_SIZE`] requests that changed something or
+//!   were refused: source, command, result, time, the light's id, and for
+//!   settings what they were before (for "Undo"). Never what an agent's user
+//!   typed: the protocol carries no such text.
+//!
+//! Time is in milliseconds of a steady clock (`Now::mono`); the log shows
+//! the wall clock.
+
+use crate::agent::config;
+use crate::agent::effects::{burst_level, scale, Look, Motion, BURST_MS};
+use crate::agent::keys::KeyIndex;
+use crate::dto::{AgentLogEntry, AgentLook, AgentProgressKeys, AgentSettingChange, AgentSettings, AgentSignalInfo};
+use kb_agent::protocol::{ClearArgs, LightArgs, ProgressArgs, SettingsSetArgs, SignalArgs};
+use kb_agent::values::duration_ms;
+use kb_agent::{AgentError, Command, ErrorCode, KeyGroup, KeySpec, SignalId, SignalName, SourceName};
+use kb_protocol::sonix::Rgb;
+use serde_json::{json, Value};
+use std::collections::{BTreeMap, HashSet, VecDeque};
+
+pub const MAX_PER_SOURCE: usize = 8;
+/// Sources with lights at once.
+pub const MAX_SOURCES: usize = 64;
+pub const RATE_PER_SECOND: usize = 20;
+pub const LOG_SIZE: usize = 200;
+/// A `light` without a duration or a cycle count stays this long.
+pub const LIGHT_DEFAULT_MS: u64 = 60_000;
+/// A progress bar stays this long after its last update.
+pub const PROGRESS_DEFAULT_MS: u64 = 10 * 60_000;
+/// "Try on the keyboard" on the page.
+pub const TRY_MS: u64 = 6_000;
+/// The page's tries. Not a valid source name, so no agent can take it.
+pub const TRY_SOURCE: &str = "~try";
+/// Lights that ended while the user was away, kept for their return.
+const MAX_MISSED: usize = 8;
+
+/// Now, on both clocks.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Now {
+    /// Steady milliseconds.
+    pub mono: u64,
+    /// Unix milliseconds, for the log.
+    pub wall: f64,
+}
+
+/// What a light is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Signal(SignalName),
+    Light,
+    Progress,
+    /// The page's "Try on the keyboard".
+    Try,
+    /// A signal that ended while the user was away, flashing once on their
+    /// return.
+    Back,
+}
+
+impl Kind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Signal(name) => name.as_str(),
+            Self::Light => "light",
+            Self::Progress => "progress",
+            Self::Try => "try",
+            Self::Back => "back",
+        }
+    }
+
+    /// Higher shows over lower on a key both name.
+    fn rank(&self) -> u8 {
+        match self {
+            Self::Try => 5,
+            Self::Signal(SignalName::Attention) => 4,
+            Self::Back => 3,
+            Self::Signal(SignalName::Error) => 2,
+            _ => 1,
+        }
+    }
+}
+
+/// One light.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Lamp {
+    pub source: String,
+    pub id: String,
+    pub kind: Kind,
+    pub look: Look,
+    pub keys: KeySpec,
+    /// When it came (its look starts over then).
+    pub since: u64,
+    pub until: u64,
+    /// Counts up with every light placed: higher is newer.
+    order: u64,
+    pub percent: Option<f64>,
+    pub label: Option<String>,
+    /// It came while nobody was at the computer.
+    while_away: bool,
+    /// When it flashes again (the user came back).
+    burst: Option<u64>,
+}
+
+#[derive(Debug, Default)]
+struct Source {
+    lamps: Vec<Lamp>,
+    /// When its counted requests came, in the last second.
+    requests: VecDeque<u64>,
+    /// When a refusal for the rate was last logged.
+    refusal_logged: Option<u64>,
+}
+
+/// A setting an agent changed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Change {
+    pub key: String,
+    pub before: Value,
+    pub after: Value,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct Entry {
+    seq: u32,
+    at_ms: f64,
+    source: String,
+    command: &'static str,
+    error: Option<ErrorCode>,
+    id: Option<String>,
+    changes: Vec<Change>,
+    undone: bool,
+}
+
+/// What an operation did besides its answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Effects {
+    /// The settings changed (save them).
+    pub settings: bool,
+}
+
+#[derive(Debug, Default)]
+pub struct Engine {
+    settings: AgentSettings,
+    sources: BTreeMap<String, Source>,
+    log: VecDeque<Entry>,
+    next_seq: u32,
+    next_order: u64,
+    /// Nobody has touched the computer for `away.after`.
+    away: bool,
+    missed: Vec<Lamp>,
+    /// Something the page shows changed.
+    dirty: bool,
+}
+
+fn rgb(c: kb_agent::Color) -> Rgb {
+    [c.r, c.g, c.b]
+}
+
+fn needs(code: ErrorCode, message: &str) -> AgentError {
+    AgentError::new(code, message)
+}
+
+impl Engine {
+    pub fn new(settings: AgentSettings) -> Self {
+        Self { settings, next_seq: 1, ..Self::default() }
+    }
+
+    pub fn settings(&self) -> &AgentSettings {
+        &self.settings
+    }
+
+    /// The user saved the page. Turning access off takes every agent's
+    /// lights away.
+    pub fn set_settings(&mut self, settings: AgentSettings) {
+        if self.settings.enabled && !settings.enabled {
+            self.clear_agents();
+        }
+        self.settings = settings;
+        self.dirty = true;
+    }
+
+    /// Something the page shows changed since the last call.
+    pub fn take_dirty(&mut self) -> bool {
+        std::mem::take(&mut self.dirty)
+    }
+
+    /// Lights are on, or waiting for the user's return: the worker keeps
+    /// drawing and watching.
+    pub fn busy(&self) -> bool {
+        !self.missed.is_empty() || self.sources.values().any(|s| !s.lamps.is_empty())
+    }
+
+    /// A try from the page is on.
+    pub fn trying(&self, now: u64) -> bool {
+        self.sources.get(TRY_SOURCE).is_some_and(|s| s.lamps.iter().any(|l| l.until > now))
+    }
+
+    fn lamps(&self) -> impl Iterator<Item = &Lamp> {
+        self.sources.values().flat_map(|s| s.lamps.iter())
+    }
+
+    // ------------------------------------------------------------ requests
+
+    /// Carry out a command that is not `hello`, `status` or `keys` (the
+    /// caller answers those). `lights` is the keyboard on the cable, or why
+    /// there is none.
+    pub fn command(
+        &mut self,
+        source: &SourceName,
+        command: Command,
+        lights: Result<&KeyIndex, AgentError>,
+        now: Now,
+    ) -> (Result<Value, AgentError>, Effects) {
+        let name = command.name();
+        match command {
+            Command::Log(args) => (args.validate().map(|limit| self.log_view(limit)), Effects::default()),
+            Command::SettingsGet(args) => {
+                (args.validate().and_then(|key| self.settings_get(key.as_deref())), Effects::default())
+            }
+            Command::Hello(_) | Command::Status(_) | Command::Keys(_) => (
+                Err(AgentError::new(ErrorCode::Internal, format!("{name} is answered elsewhere."))),
+                Effects::default(),
+            ),
+            changing => {
+                let mut effects = Effects::default();
+                let mut id = None;
+                let mut changes = Vec::new();
+                let result = self.change(source, changing, lights, now, &mut id, &mut changes, &mut effects);
+                let log = match &result {
+                    // Merged into its light past the rate: the entry of the
+                    // light it replaced stands for it.
+                    Ok(data) if data["coalesced"] == json!(true) => false,
+                    Ok(_) => true,
+                    Err(e) if e.code == ErrorCode::RateLimited => {
+                        // One entry a second for a source that keeps going.
+                        let s = self.sources.get_mut(source.as_str());
+                        match s {
+                            Some(s) if s.refusal_logged.is_some_and(|t| now.mono.saturating_sub(t) < 1000) => false,
+                            Some(s) => {
+                                s.refusal_logged = Some(now.mono);
+                                true
+                            }
+                            None => true,
+                        }
+                    }
+                    Err(_) => true,
+                };
+                if log {
+                    self.record(source.as_str(), name, result.as_ref().err().map(|e| e.code), id, changes, now);
+                }
+                (result, effects)
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn change(
+        &mut self,
+        source: &SourceName,
+        command: Command,
+        lights: Result<&KeyIndex, AgentError>,
+        now: Now,
+        id: &mut Option<String>,
+        changes: &mut Vec<Change>,
+        effects: &mut Effects,
+    ) -> Result<Value, AgentError> {
+        if !self.settings.enabled {
+            return Err(AgentError::new(ErrorCode::AgentAccessOff, "Agent access is off in Keymotion.")
+                .with_hint("The user can turn it on in Keymotion › Tools › AI agents."));
+        }
+        match command {
+            Command::Signal(args) => self.signal(source, &args, lights, now, id),
+            Command::Light(args) => self.light(source, &args, lights, now, id),
+            Command::Progress(args) => self.progress(source, &args, lights, now, id),
+            Command::Clear(args) => self.clear(source, &args, id),
+            Command::SettingsSet(args) => {
+                let result = self.settings_set(source, &args, now, changes);
+                effects.settings = result.is_ok() && !changes.is_empty();
+                result
+            }
+            other => Err(AgentError::new(ErrorCode::Internal, format!("{} is not a change.", other.name()))),
+        }
+    }
+
+    /// Count a request of `source`. Past the rate, one that replaces the
+    /// source's light `id` still goes (`true`: it was merged into it).
+    fn admit(&mut self, source: &str, id: Option<&str>, now: u64) -> Result<bool, AgentError> {
+        if !self.sources.contains_key(source) {
+            if self.sources.len() >= MAX_SOURCES {
+                self.sources.retain(|_, s| !s.lamps.is_empty());
+            }
+            if self.sources.len() >= MAX_SOURCES {
+                return Err(AgentError::new(ErrorCode::RateLimited, "Too many agents have lights at once.")
+                    .with_retry_after(std::time::Duration::from_secs(10)));
+            }
+        }
+        let s = self.sources.entry(source.to_string()).or_default();
+        while s.requests.front().is_some_and(|&t| now.saturating_sub(t) >= 1000) {
+            s.requests.pop_front();
+        }
+        if s.requests.len() < RATE_PER_SECOND {
+            s.requests.push_back(now);
+            return Ok(false);
+        }
+        if id.is_some_and(|id| s.lamps.iter().any(|l| l.id == id)) {
+            return Ok(true);
+        }
+        let wait = 1000 - now.saturating_sub(*s.requests.front().unwrap_or(&now)).min(1000);
+        Err(AgentError::new(ErrorCode::RateLimited, format!("More than {RATE_PER_SECOND} requests a second."))
+            .with_hint("Send fewer, or reuse one id so newer lights replace older ones.")
+            .with_retry_after(std::time::Duration::from_millis(wait.max(1))))
+    }
+
+    fn signal(
+        &mut self,
+        source: &SourceName,
+        args: &SignalArgs,
+        lights: Result<&KeyIndex, AgentError>,
+        now: Now,
+        id_out: &mut Option<String>,
+    ) -> Result<Value, AgentError> {
+        let s = args.validate()?;
+        let id = s.id.clone().unwrap_or_else(|| SignalId::default_for(source, s.name)).as_str().to_string();
+        *id_out = Some(id.clone());
+        let coalesced = self.admit(source.as_str(), Some(&id), now.mono)?;
+        let chosen = *self.signal_look(s.name);
+        let color = s.color.map(rgb).unwrap_or(chosen.color);
+        let look = match &s.effect {
+            Some(effect) => Some(Look::plain(color, Motion::of(effect))),
+            None => Look::of_effect(color, chosen.effect, chosen.speed)
+                // A colour for a look the user turned off: steady in it.
+                .or_else(|| s.color.map(|_| Look::plain(color, Motion::Solid))),
+        };
+        let keys = s.keys.clone().unwrap_or_default();
+        if look.is_some() {
+            lights.clone()?.resolve(&keys)?;
+        }
+        let cleared = if s.name == SignalName::Busy { self.remove(source.as_str(), |_| true) } else { 0 };
+        let Some(look) = look else {
+            return Ok(json!({ "id": id, "shown": false, "lit": false, "cleared": cleared }));
+        };
+        let for_ms = match (s.duration, s.effect.as_ref().and_then(|e| e.run_time())) {
+            (Some(d), _) | (None, Some(d)) => duration_ms(d),
+            (None, None) => u64::from(chosen.duration_s) * 1000,
+        };
+        let lamp = self.lamp(source.as_str(), &id, Kind::Signal(s.name), look, keys, now.mono, for_ms);
+        let mut answer = self.place(lamp, lights, now.mono);
+        answer["coalesced"] = json!(coalesced);
+        if s.name == SignalName::Busy {
+            answer["cleared"] = json!(cleared);
+        }
+        Ok(answer)
+    }
+
+    fn light(
+        &mut self,
+        source: &SourceName,
+        args: &LightArgs,
+        lights: Result<&KeyIndex, AgentError>,
+        now: Now,
+        id_out: &mut Option<String>,
+    ) -> Result<Value, AgentError> {
+        let l = args.validate()?;
+        let id = l.id.as_ref().map_or_else(|| format!("{}:light", source.as_str()), |id| id.as_str().to_string());
+        *id_out = Some(id.clone());
+        let coalesced = self.admit(source.as_str(), Some(&id), now.mono)?;
+        lights.clone()?.resolve(&l.keys)?;
+        let for_ms = match (l.duration, l.effect.run_time()) {
+            (Some(d), _) | (None, Some(d)) => duration_ms(d),
+            (None, None) => LIGHT_DEFAULT_MS,
+        };
+        let look = Look::plain(rgb(l.color), Motion::of(&l.effect));
+        let lamp = self.lamp(source.as_str(), &id, Kind::Light, look, l.keys, now.mono, for_ms);
+        let mut answer = self.place(lamp, lights, now.mono);
+        answer["coalesced"] = json!(coalesced);
+        Ok(answer)
+    }
+
+    fn progress(
+        &mut self,
+        source: &SourceName,
+        args: &ProgressArgs,
+        lights: Result<&KeyIndex, AgentError>,
+        now: Now,
+        id_out: &mut Option<String>,
+    ) -> Result<Value, AgentError> {
+        let p = args.validate()?;
+        let id = p.id.as_ref().map_or_else(|| format!("{}:progress", source.as_str()), |id| id.as_str().to_string());
+        *id_out = Some(id.clone());
+        let coalesced = self.admit(source.as_str(), Some(&id), now.mono)?;
+        let keys = p.keys.clone().unwrap_or_else(|| {
+            let row = match self.settings.progress.keys {
+                AgentProgressKeys::FRow => KeyGroup::FRow,
+                AgentProgressKeys::Numbers => KeyGroup::Numbers,
+            };
+            KeySpec::parse(row.as_str()).unwrap_or_default()
+        });
+        lights.clone()?.resolve(&keys)?;
+        let color = p.color.map(rgb).unwrap_or(self.settings.progress.color);
+        let look = Look::plain(color, Motion::Bar { fraction: (p.percent / 100.0) as f32 });
+        let for_ms = p.duration.map_or(PROGRESS_DEFAULT_MS, duration_ms);
+        let mut lamp = self.lamp(source.as_str(), &id, Kind::Progress, look, keys, now.mono, for_ms);
+        lamp.percent = Some(p.percent);
+        lamp.label = p.label;
+        let mut answer = self.place(lamp, lights, now.mono);
+        answer["percent"] = json!(p.percent);
+        answer["coalesced"] = json!(coalesced);
+        Ok(answer)
+    }
+
+    fn clear(
+        &mut self,
+        source: &SourceName,
+        args: &ClearArgs,
+        id_out: &mut Option<String>,
+    ) -> Result<Value, AgentError> {
+        let id = args.validate()?;
+        *id_out = id.as_ref().map(|id| id.as_str().to_string());
+        let cleared = match &id {
+            Some(id) => self.remove(source.as_str(), |l| l.id == id.as_str()),
+            None => self.remove(source.as_str(), |_| true),
+        };
+        Ok(json!({ "cleared": cleared }))
+    }
+
+    /// Take away `source`'s lights that `which` picks, and what was kept of
+    /// them for the user's return. How many lights went.
+    fn remove(&mut self, source: &str, which: impl Fn(&Lamp) -> bool) -> usize {
+        let before = self.missed.len();
+        self.missed.retain(|l| !(l.source == source && which(l)));
+        let gone_missed = before - self.missed.len();
+        let Some(s) = self.sources.get_mut(source) else { return 0 };
+        let before = s.lamps.len();
+        s.lamps.retain(|l| !which(l));
+        let gone = before - s.lamps.len();
+        if gone + gone_missed > 0 {
+            self.dirty = true;
+        }
+        gone
+    }
+
+    /// Every agent's lights go (the page's "Turn off every agent light", or
+    /// access turned off). The page's own try stays.
+    pub fn clear_agents(&mut self) -> usize {
+        let mut gone = 0;
+        for (name, s) in &mut self.sources {
+            if name != TRY_SOURCE {
+                gone += s.lamps.len();
+                s.lamps.clear();
+            }
+        }
+        self.missed.clear();
+        self.dirty = true;
+        gone
+    }
+
+    fn signal_look(&self, name: SignalName) -> &AgentLook {
+        let s = &self.settings.signals;
+        match name {
+            SignalName::Done => &s.done,
+            SignalName::Attention => &s.attention,
+            SignalName::Error => &s.error,
+            SignalName::Busy => &s.busy,
+            SignalName::Info => &s.info,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn lamp(&self, source: &str, id: &str, kind: Kind, look: Look, keys: KeySpec, now: u64, for_ms: u64) -> Lamp {
+        let away = self.away && self.settings.away.on && matches!(kind, Kind::Signal(_));
+        Lamp {
+            source: source.to_string(),
+            id: id.to_string(),
+            kind,
+            look,
+            keys,
+            since: now,
+            until: now.saturating_add(for_ms.max(1)),
+            order: 0,
+            percent: None,
+            label: None,
+            while_away: away,
+            burst: None,
+        }
+    }
+
+    /// Put `lamp` in its source's place: over the light with its id, or as
+    /// a new one (the oldest goes when the source has
+    /// [`MAX_PER_SOURCE`]). The answer: its id, whether it shows now and
+    /// for how long, what it replaced or pushed out.
+    fn place(&mut self, mut lamp: Lamp, lights: Result<&KeyIndex, AgentError>, now: u64) -> Value {
+        lamp.order = self.next_order;
+        self.next_order += 1;
+        self.missed.retain(|m| !(m.source == lamp.source && m.id == lamp.id));
+        let (source, id, expires) = (lamp.source.clone(), lamp.id.clone(), lamp.until.saturating_sub(now));
+        let s = self.sources.entry(lamp.source.clone()).or_default();
+        let mut evicted = Vec::new();
+        let replaced = match s.lamps.iter_mut().find(|l| l.id == lamp.id) {
+            Some(old) => {
+                *old = lamp;
+                true
+            }
+            None => {
+                while s.lamps.len() >= MAX_PER_SOURCE {
+                    let oldest = s.lamps.iter().enumerate().min_by_key(|(_, l)| l.order).map(|(i, _)| i).unwrap_or(0);
+                    evicted.push(s.lamps.remove(oldest).id);
+                }
+                s.lamps.push(lamp);
+                false
+            }
+        };
+        self.dirty = true;
+        let shown = lights.is_ok_and(|index| self.shown(now, index).contains(&(source, id.clone())));
+        json!({
+            "id": id,
+            "shown": shown,
+            "lit": true,
+            "expires_in_ms": expires,
+            "replaced": replaced,
+            "evicted": evicted,
+        })
+    }
+
+    // ------------------------------------------------------------ settings
+
+    fn settings_set(
+        &mut self,
+        source: &SourceName,
+        args: &SettingsSetArgs,
+        now: Now,
+        changes: &mut Vec<Change>,
+    ) -> Result<Value, AgentError> {
+        let pairs = args.validate()?;
+        self.admit(source.as_str(), None, now.mono)?;
+        if !self.settings.agents_may_edit {
+            return Err(AgentError::new(
+                ErrorCode::PermissionOff,
+                "The user has not let agents change Keymotion's settings.",
+            )
+            .with_hint("The user can allow it in Keymotion › Tools › AI agents."));
+        }
+        let mut next = self.settings;
+        let mut found = Vec::new();
+        for (key, value) in &pairs {
+            let Some(before) = config::get(&next, key) else { return Err(config::unknown(key)) };
+            if !config::agent_may_set(key) {
+                return Err(AgentError::new(
+                    ErrorCode::PermissionOff,
+                    format!("Only the user can change '{key}', in Keymotion."),
+                ));
+            }
+            config::set(&mut next, key, value)?;
+            let after = config::get(&next, key).unwrap_or(Value::Null);
+            if before != after {
+                found.push(Change { key: key.clone(), before, after });
+            }
+        }
+        self.settings = next.sanitized();
+        if !found.is_empty() {
+            self.dirty = true;
+        }
+        let changed: Vec<Value> =
+            found.iter().map(|c| json!({ "key": c.key, "before": c.before, "after": c.after })).collect();
+        *changes = found;
+        Ok(json!({ "changed": changed, "log_entry": self.next_seq }))
+    }
+
+    fn settings_get(&self, key: Option<&str>) -> Result<Value, AgentError> {
+        let all = config::keys();
+        let picked: Vec<&String> = match key {
+            None => all.iter().collect(),
+            Some(key) => {
+                let under = format!("{key}.");
+                let picked: Vec<&String> = all.iter().filter(|k| *k == key || k.starts_with(&under)).collect();
+                if picked.is_empty() {
+                    return Err(config::unknown(key));
+                }
+                picked
+            }
+        };
+        let mut settings = serde_json::Map::new();
+        for k in picked {
+            if let Some(v) = config::get(&self.settings, k) {
+                settings.insert(k.clone(), v);
+            }
+        }
+        Ok(json!({
+            "settings": settings,
+            "agents_may_edit": self.settings.agents_may_edit,
+            "user_only": config::USER_ONLY,
+        }))
+    }
+
+    /// "Undo" on the page: what log entry `seq` changed goes back.
+    pub fn undo(&mut self, seq: u32) -> Result<(), String> {
+        let entry = self.log.iter_mut().find(|e| e.seq == seq).ok_or("log entry not found")?;
+        if entry.undone || entry.changes.is_empty() {
+            return Err("nothing to undo".into());
+        }
+        let mut next = self.settings;
+        for c in entry.changes.iter().rev() {
+            config::set(&mut next, &c.key, &c.before).map_err(|e| e.message)?;
+        }
+        entry.undone = true;
+        self.settings = next.sanitized();
+        self.dirty = true;
+        Ok(())
+    }
+
+    // ----------------------------------------------------------------- log
+
+    fn record(
+        &mut self,
+        source: &str,
+        command: &'static str,
+        error: Option<ErrorCode>,
+        id: Option<String>,
+        changes: Vec<Change>,
+        now: Now,
+    ) {
+        // A light updated again and again (a progress bar) keeps one entry,
+        // the newest, rather than filling the log.
+        if let Some(last) = self.log.back_mut() {
+            let again = last.source == source
+                && last.command == command
+                && last.id.is_some()
+                && last.id == id
+                && last.error.is_none()
+                && error.is_none()
+                && last.changes.is_empty()
+                && changes.is_empty();
+            if again {
+                last.at_ms = now.wall;
+                self.dirty = true;
+                return;
+            }
+        }
+        let seq = self.next_seq;
+        self.next_seq = self.next_seq.wrapping_add(1).max(1);
+        if self.log.len() == LOG_SIZE {
+            self.log.pop_front();
+        }
+        self.log.push_back(Entry {
+            seq,
+            at_ms: now.wall,
+            source: source.to_string(),
+            command,
+            error,
+            id,
+            changes,
+            undone: false,
+        });
+        self.dirty = true;
+    }
+
+    fn log_view(&self, limit: u32) -> Value {
+        let entries: Vec<Value> = self
+            .log
+            .iter()
+            .rev()
+            .take(limit as usize)
+            .map(|e| {
+                let mut v = json!({
+                    "seq": e.seq,
+                    "at_ms": e.at_ms,
+                    "source": e.source,
+                    "command": e.command,
+                    "result": e.error.map_or("ok", |c| c.as_str()),
+                });
+                if let Some(id) = &e.id {
+                    v["id"] = json!(id);
+                }
+                if !e.changes.is_empty() {
+                    v["changes"] = e
+                        .changes
+                        .iter()
+                        .map(|c| json!({ "key": c.key, "before": c.before, "after": c.after }))
+                        .collect();
+                    v["undone"] = json!(e.undone);
+                }
+                v
+            })
+            .collect();
+        json!({ "entries": entries })
+    }
+
+    /// The log for the page, newest first.
+    pub fn log_entries(&self) -> Vec<AgentLogEntry> {
+        self.log
+            .iter()
+            .rev()
+            .map(|e| AgentLogEntry {
+                seq: e.seq,
+                at_ms: e.at_ms,
+                source: e.source.clone(),
+                command: e.command.to_string(),
+                error: e.error.map(|c| c.as_str().to_string()),
+                id: e.id.clone(),
+                changes: e
+                    .changes
+                    .iter()
+                    .map(|c| AgentSettingChange {
+                        key: c.key.clone(),
+                        before: config::value_text(&c.before),
+                        after: config::value_text(&c.after),
+                    })
+                    .collect(),
+                undone: e.undone,
+            })
+            .collect()
+    }
+
+    // ---------------------------------------------------------------- tries
+
+    /// "Try on the keyboard": `look` on `keys` (default all) for a few
+    /// seconds, over every agent's light. Works with access off.
+    pub fn try_look(&mut self, look: &AgentLook, keys: KeySpec, index: &KeyIndex, now: u64) -> Result<(), AgentError> {
+        index.resolve(&keys)?;
+        let Some(drawn) = Look::of_effect(look.color, look.effect, look.speed) else {
+            self.remove(TRY_SOURCE, |_| true);
+            return Ok(());
+        };
+        let lamp = self.lamp(TRY_SOURCE, "try", Kind::Try, drawn, keys, now, TRY_MS);
+        self.place(lamp, Ok(index), now);
+        Ok(())
+    }
+
+    // ------------------------------------------------------------ the clock
+
+    /// Lights whose time is up go. One that came while the user was away
+    /// is kept for their return.
+    pub fn prune(&mut self, now: u64) {
+        let keep_missed = self.away && self.settings.away.on;
+        let mut missed = Vec::new();
+        for s in self.sources.values_mut() {
+            s.lamps.retain(|l| {
+                if l.until > now {
+                    return true;
+                }
+                if keep_missed && l.while_away {
+                    missed.push(l.clone());
+                }
+                false
+            });
+            if s.lamps.is_empty() && s.requests.back().is_none_or(|&t| now.saturating_sub(t) >= 1000) {
+                s.requests.clear();
+            }
+        }
+        if !missed.is_empty() {
+            self.dirty = true;
+        }
+        self.missed.extend(missed);
+        if self.missed.len() > MAX_MISSED {
+            let extra = self.missed.len() - MAX_MISSED;
+            self.missed.drain(..extra);
+        }
+        let before = self.sources.len();
+        self.sources.retain(|_, s| !s.lamps.is_empty() || !s.requests.is_empty());
+        if before != self.sources.len() {
+            self.dirty = true;
+        }
+    }
+
+    /// The user's input (`idle_ms` since the last one). Coming back flashes
+    /// what came meanwhile, once.
+    pub fn observe_idle(&mut self, idle_ms: Option<u64>, now: u64) {
+        let away = idle_ms.is_some_and(|ms| ms >= u64::from(self.settings.away.after_s) * 1000);
+        if away == self.away {
+            return;
+        }
+        self.away = away;
+        if away {
+            return;
+        }
+        let flash = self.settings.away.on;
+        for l in self.sources.values_mut().flat_map(|s| s.lamps.iter_mut()) {
+            if std::mem::take(&mut l.while_away) && flash {
+                l.burst = Some(now);
+            }
+        }
+        let missed = std::mem::take(&mut self.missed);
+        if flash {
+            for m in missed {
+                let mut back = self.lamp(
+                    &m.source,
+                    &m.id,
+                    Kind::Back,
+                    Look::plain(m.look.color, Motion::Solid),
+                    m.keys,
+                    now,
+                    BURST_MS,
+                );
+                back.burst = Some(now);
+                back.while_away = false;
+                self.place(back, Err(needs(ErrorCode::NoKeyboard, "")), now);
+            }
+        }
+        self.dirty = true;
+    }
+
+    /// Nobody has been at the computer for `away.after`.
+    #[cfg(test)]
+    pub fn away(&self) -> bool {
+        self.away
+    }
+
+    // ------------------------------------------------------------- drawing
+
+    /// The brightness of `lamp` on the key at `place` at `now`.
+    fn level(&self, lamp: &Lamp, now: u64, place: crate::agent::effects::Place) -> f32 {
+        if let Some(level) = lamp.burst.filter(|&b| now >= b).and_then(|b| burst_level(now - b)) {
+            return level;
+        }
+        let t = now.saturating_sub(lamp.since);
+        let d = &self.settings.unanswered;
+        if d.on && lamp.kind == Kind::Signal(SignalName::Attention) {
+            let every = u64::from(d.every_s).max(1) * 1000;
+            let k = t / every;
+            if k >= 1 && k * every <= u64::from(d.up_to_s) * 1000 {
+                if let Some(level) = burst_level(t - k * every) {
+                    return level;
+                }
+            }
+        }
+        lamp.look.level(t, place)
+    }
+
+    /// The lights in the order they claim keys: highest rank, then newest.
+    fn ranked(&self, now: u64) -> Vec<&Lamp> {
+        let mut lamps: Vec<&Lamp> = self.lamps().filter(|l| l.until > now).collect();
+        lamps.sort_by(|a, b| b.kind.rank().cmp(&a.kind.rank()).then(b.order.cmp(&a.order)));
+        lamps
+    }
+
+    /// What the agents' layer shows at `now` (UI colours, before the
+    /// brightness level): each key the lights name, in the colour of the
+    /// one that ranks highest there. Keys no light names are left out, so
+    /// the layers under it show there.
+    pub fn frame(&self, now: u64, index: &KeyIndex) -> Vec<(u8, Rgb)> {
+        let mut taken = HashSet::new();
+        let mut out = Vec::new();
+        for lamp in self.ranked(now) {
+            for (led, place) in index.resolve_lenient(&lamp.keys) {
+                if taken.insert(led) {
+                    out.push((led, scale(lamp.look.color, self.level(lamp, now, place))));
+                }
+            }
+        }
+        out
+    }
+
+    /// The lights that show on at least one key at `now`: (source, id).
+    pub fn shown(&self, now: u64, index: &KeyIndex) -> HashSet<(String, String)> {
+        let mut taken = HashSet::new();
+        let mut out = HashSet::new();
+        for lamp in self.ranked(now) {
+            let mut any = false;
+            for (led, _) in index.resolve_lenient(&lamp.keys) {
+                any |= taken.insert(led);
+            }
+            if any {
+                out.insert((lamp.source.clone(), lamp.id.clone()));
+            }
+        }
+        out
+    }
+
+    /// Every light for the page and `status`, highest rank first.
+    pub fn infos(&self, now: u64, index: Option<&KeyIndex>) -> Vec<AgentSignalInfo> {
+        let shown = index.map(|i| self.shown(now, i)).unwrap_or_default();
+        self.ranked(now)
+            .into_iter()
+            .map(|l| AgentSignalInfo {
+                source: if l.source == TRY_SOURCE { String::new() } else { l.source.clone() },
+                id: l.id.clone(),
+                kind: l.kind.as_str().to_string(),
+                color: l.look.color,
+                keys: l.keys.to_string(),
+                shown: shown.contains(&(l.source.clone(), l.id.clone())),
+                expires_in_ms: l.until.saturating_sub(now) as f64,
+                percent: l.percent,
+                label: l.label.clone(),
+            })
+            .collect()
+    }
+}
+
+/// Whether `minute` (after midnight) falls in the night from `from` to
+/// `to`, which may run over midnight. The same two ends mean no night.
+pub fn in_night(from: u16, to: u16, minute: u16) -> bool {
+    match from.cmp(&to) {
+        std::cmp::Ordering::Less => (from..to).contains(&minute),
+        std::cmp::Ordering::Greater => minute >= from || minute < to,
+        std::cmp::Ordering::Equal => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::effects::flash_period_ms;
+    use crate::dto::AgentEffect;
+    use kb_agent::protocol::LogArgs;
+
+    fn index() -> KeyIndex {
+        KeyIndex::for_model("ajazz-ak980-pro").unwrap()
+    }
+
+    fn on() -> Engine {
+        Engine::new(AgentSettings { enabled: true, ..AgentSettings::default() })
+    }
+
+    fn src(name: &str) -> SourceName {
+        SourceName::parse(name).unwrap()
+    }
+
+    fn at(ms: u64) -> Now {
+        Now { mono: ms, wall: 1_800_000_000_000.0 + ms as f64 }
+    }
+
+    fn signal(name: &str) -> Command {
+        Command::Signal(SignalArgs { name: name.into(), ..Default::default() })
+    }
+
+    fn run(e: &mut Engine, source: &str, command: Command, ms: u64) -> Result<Value, AgentError> {
+        let index = index();
+        e.command(&src(source), command, Ok(&index), at(ms)).0
+    }
+
+    fn led(id: &str) -> u8 {
+        index().keys().iter().find(|k| k.id == id).unwrap().led
+    }
+
+    /// The colour key `id` shows at `ms`, if any light names it.
+    fn key_at(e: &Engine, id: &str, ms: u64) -> Option<Rgb> {
+        e.frame(ms, &index()).into_iter().find(|k| k.0 == led(id)).map(|k| k.1)
+    }
+
+    fn ids(e: &Engine, ms: u64) -> Vec<String> {
+        e.infos(ms, Some(&index())).into_iter().map(|i| i.id).collect()
+    }
+
+    #[test]
+    fn access_off_refuses_every_change_and_says_how_to_allow_it() {
+        let mut e = Engine::new(AgentSettings::default());
+        let changes = [
+            signal("done"),
+            Command::Light(LightArgs { color: "red".into(), ..Default::default() }),
+            Command::Clear(ClearArgs::default()),
+            Command::Progress(ProgressArgs { percent: Some(5.0), ..Default::default() }),
+            Command::SettingsSet(SettingsSetArgs { values: [("night.on".into(), json!(true))].into_iter().collect() }),
+        ];
+        for command in changes {
+            let name = command.name();
+            let err = run(&mut e, "cli", command, 0).unwrap_err();
+            assert_eq!((err.code, err.exit_code()), (ErrorCode::AgentAccessOff, 77), "{name}");
+            assert!(err.hint.is_some());
+        }
+        assert!(!e.busy());
+        assert_eq!(e.log_entries().len(), 5, "refusals are logged");
+        assert!(e.log_entries().iter().all(|l| l.error.as_deref() == Some("agent_access_off")));
+        // Reading still works.
+        assert!(run(&mut e, "cli", Command::Log(LogArgs::default()), 0).is_ok());
+        assert!(run(&mut e, "cli", Command::SettingsGet(Default::default()), 0).is_ok());
+    }
+
+    #[test]
+    fn a_signal_shows_its_look_until_its_time_is_up() {
+        let mut e = on();
+        let answer = run(&mut e, "claude-code:3f9a", signal("done"), 1_000).unwrap();
+        assert_eq!(answer["id"], "claude-code:3f9a:done");
+        assert_eq!((answer["shown"].clone(), answer["expires_in_ms"].clone()), (json!(true), json!(120_000)));
+        // Done: a wave first, then steady green on every key.
+        assert_eq!(key_at(&e, "esc", 1_000 + 2_000), Some([0, 255, 0]));
+        assert_eq!(e.frame(3_000, &index()).len(), index().keys().len());
+        // Two minutes later it is gone, and the keys show what is under it.
+        e.prune(1_000 + 120_000);
+        assert!(e.frame(121_000, &index()).is_empty());
+        assert!(!e.busy());
+    }
+
+    #[test]
+    fn the_same_id_replaces_and_sources_stay_apart() {
+        let mut e = on();
+        run(&mut e, "a", signal("done"), 0).unwrap();
+        let again = run(
+            &mut e,
+            "a",
+            Command::Signal(SignalArgs { name: "done".into(), color: Some("blue".into()), ..Default::default() }),
+            10,
+        )
+        .unwrap();
+        assert_eq!(again["replaced"], true);
+        assert_eq!(ids(&e, 10), ["a:done"]);
+        // Another source's done is its own; clearing one leaves the other.
+        run(&mut e, "b", signal("done"), 20).unwrap();
+        assert_eq!(ids(&e, 20).len(), 2);
+        let cleared = run(&mut e, "a", Command::Clear(ClearArgs::default()), 30).unwrap();
+        assert_eq!(cleared["cleared"], 1);
+        assert_eq!(ids(&e, 30), ["b:done"]);
+        // `a` cannot clear `b`'s light, even by its id.
+        let none = run(&mut e, "a", Command::Clear(ClearArgs { id: Some("b:done".into()) }), 40).unwrap();
+        assert_eq!(none["cleared"], 0);
+        assert_eq!(ids(&e, 40), ["b:done"]);
+        // A chosen id.
+        run(
+            &mut e,
+            "b",
+            Command::Signal(SignalArgs { name: "info".into(), id: Some("build".into()), ..Default::default() }),
+            50,
+        )
+        .unwrap();
+        assert!(ids(&e, 50).contains(&"build".to_string()));
+        assert_eq!(run(&mut e, "b", Command::Clear(ClearArgs { id: Some("build".into()) }), 60).unwrap()["cleared"], 1);
+    }
+
+    #[test]
+    fn attention_covers_error_covers_the_newest_and_disjoint_keys_share() {
+        let mut e = on();
+        let with_keys = |name: &str, keys: &str| {
+            Command::Signal(SignalArgs {
+                name: name.into(),
+                keys: Some(keys.into()),
+                effect: Some("solid".into()),
+                ..Default::default()
+            })
+        };
+        run(&mut e, "a", with_keys("attention", "f1-f4"), 0).unwrap();
+        run(&mut e, "b", with_keys("error", "f1-f12"), 10).unwrap();
+        run(&mut e, "c", with_keys("done", "all"), 20).unwrap();
+        let orange = e.settings().signals.attention.color;
+        let red = e.settings().signals.error.color;
+        let green = e.settings().signals.done.color;
+        // The question on F1–F4 over the error, the error on the rest of the
+        // F row over the newer done, done elsewhere.
+        assert_eq!(key_at(&e, "f2", 100), Some(orange));
+        assert_eq!(key_at(&e, "f8", 100), Some(red));
+        assert_eq!(key_at(&e, "esc", 100), Some(green));
+        let infos = e.infos(100, Some(&index()));
+        assert_eq!(infos.iter().map(|i| i.kind.as_str()).collect::<Vec<_>>(), ["attention", "error", "done"]);
+        assert!(infos.iter().all(|i| i.shown));
+        // Among equals the newest wins.
+        run(&mut e, "d", with_keys("info", "esc"), 30).unwrap();
+        assert_eq!(key_at(&e, "esc", 100), Some(e.settings().signals.info.color));
+        // A done covering only F1 is not shown at all under the question.
+        run(&mut e, "c", with_keys("done", "f1"), 40).unwrap();
+        let done = e.infos(100, Some(&index())).into_iter().find(|i| i.id == "c:done").unwrap();
+        assert!(!done.shown);
+    }
+
+    #[test]
+    fn each_source_keeps_its_eight_newest() {
+        let mut e = on();
+        for i in 0..MAX_PER_SOURCE {
+            let light = LightArgs {
+                id: Some(format!("l{i}")),
+                color: "red".into(),
+                keys: Some("esc".into()),
+                ..Default::default()
+            };
+            let answer = run(&mut e, "a", Command::Light(light), i as u64 * 60).unwrap();
+            assert_eq!(answer["evicted"], json!([]));
+        }
+        let ninth = LightArgs { id: Some("l8".into()), color: "red".into(), ..Default::default() };
+        let answer = run(&mut e, "a", Command::Light(ninth), 1_000).unwrap();
+        assert_eq!(answer["evicted"], json!(["l0"]));
+        let mine: Vec<String> = ids(&e, 1_000);
+        assert_eq!(mine.len(), MAX_PER_SOURCE);
+        assert!(!mine.contains(&"l0".to_string()));
+        // Another source has its own eight.
+        run(&mut e, "b", Command::Light(LightArgs { color: "red".into(), ..Default::default() }), 1_000).unwrap();
+        assert_eq!(ids(&e, 1_000).len(), MAX_PER_SOURCE + 1);
+    }
+
+    #[test]
+    fn past_twenty_a_second_only_replacements_go_through() {
+        let mut e = on();
+        let light =
+            |id: &str| Command::Light(LightArgs { id: Some(id.into()), color: "red".into(), ..Default::default() });
+        for i in 0..RATE_PER_SECOND {
+            run(&mut e, "a", light("bar"), i as u64 * 10).unwrap();
+        }
+        // The 21st in the same second: the same id merges into its light…
+        let merged = run(&mut e, "a", light("bar"), 300).unwrap();
+        assert_eq!(merged["coalesced"], true);
+        // …a new one waits.
+        let err = run(&mut e, "a", light("other"), 300).unwrap_err();
+        assert_eq!((err.code, err.exit_code()), (ErrorCode::RateLimited, 75));
+        assert_eq!(err.retry_after_ms, Some(700));
+        let settings =
+            Command::SettingsSet(SettingsSetArgs { values: [("night.on".into(), json!(true))].into_iter().collect() });
+        assert_eq!(run(&mut e, "a", settings, 300).unwrap_err().code, ErrorCode::RateLimited);
+        // Clearing is never held back; other sources are not either.
+        assert!(run(&mut e, "a", Command::Clear(ClearArgs { id: Some("nothing".into()) }), 300).is_ok());
+        assert!(run(&mut e, "b", light("other"), 300).is_ok());
+        // A second later the source may go on.
+        assert!(run(&mut e, "a", light("other"), 1_000).is_ok());
+        // A source that keeps going is logged once a second, not each time.
+        let before = e.log_entries().len();
+        for i in 0..30 {
+            let _ = run(&mut e, "a", light(&format!("x{i}")), 1_001);
+        }
+        let refused = e.log_entries().len() - before;
+        assert!(refused <= 1, "{refused} entries");
+    }
+
+    #[test]
+    fn busy_lights_nothing_and_takes_the_sources_lights_away() {
+        let mut e = on();
+        run(&mut e, "a", signal("error"), 0).unwrap();
+        run(&mut e, "a", Command::Progress(ProgressArgs { percent: Some(40.0), ..Default::default() }), 0).unwrap();
+        run(&mut e, "b", signal("done"), 0).unwrap();
+        let busy = run(&mut e, "a", signal("busy"), 10).unwrap();
+        assert_eq!((busy["lit"].clone(), busy["cleared"].clone()), (json!(false), json!(2)));
+        assert_eq!(ids(&e, 10), ["b:done"]);
+        // It works without the cable too: nothing to light.
+        let none = e.command(&src("a"), signal("busy"), Err(needs(ErrorCode::NeedsUsb, "x")), at(20)).0;
+        assert!(none.is_ok());
+        // A look the user chose for it lights.
+        let mut s = *e.settings();
+        s.signals.busy.effect = AgentEffect::Pulse;
+        e.set_settings(s);
+        let lit = run(&mut e, "a", signal("busy"), 30).unwrap();
+        assert_eq!(lit["lit"], true);
+    }
+
+    #[test]
+    fn lights_need_the_cable_and_known_keys() {
+        let mut e = on();
+        for command in [
+            signal("done"),
+            Command::Light(LightArgs { color: "red".into(), ..Default::default() }),
+            Command::Progress(ProgressArgs { percent: Some(10.0), ..Default::default() }),
+        ] {
+            let name = command.name();
+            let err = e.command(&src("a"), command, Err(needs(ErrorCode::NeedsUsb, "USB only.")), at(0)).0.unwrap_err();
+            assert_eq!((err.code, err.exit_code()), (ErrorCode::NeedsUsb, 69), "{name}");
+        }
+        let unknown = Command::Light(LightArgs { color: "red".into(), keys: Some("f13".into()), ..Default::default() });
+        assert_eq!(run(&mut e, "a", unknown, 0).unwrap_err().code, ErrorCode::UnknownKey);
+        let bad = Command::Light(LightArgs { color: "teal".into(), ..Default::default() });
+        assert_eq!(run(&mut e, "a", bad, 0).unwrap_err().code, ErrorCode::BadColor);
+        assert!(!e.busy());
+    }
+
+    #[test]
+    fn a_light_with_cycles_ends_when_they_ran() {
+        let mut e = on();
+        let wave = LightArgs {
+            color: "green".into(),
+            keys: Some("f-row".into()),
+            effect: Some("wave".into()),
+            times: Some(2),
+            ..Default::default()
+        };
+        let answer = run(&mut e, "a", Command::Light(wave), 0).unwrap();
+        assert_eq!(answer["expires_in_ms"], 2 * 1800);
+        let plain = run(
+            &mut e,
+            "a",
+            Command::Light(LightArgs { id: Some("p".into()), color: "red".into(), ..Default::default() }),
+            0,
+        )
+        .unwrap();
+        assert_eq!(plain["expires_in_ms"], LIGHT_DEFAULT_MS);
+        // An agent's own effect replaces the user's look.
+        let flash =
+            SignalArgs { name: "done".into(), effect: Some("blink".into()), times: Some(3), ..Default::default() };
+        let answer = run(&mut e, "b", Command::Signal(flash), 0).unwrap();
+        assert_eq!(answer["expires_in_ms"], 3 * 900);
+    }
+
+    #[test]
+    fn a_progress_bar_fills_the_users_row() {
+        let mut e = on();
+        let p = |pct: f64| {
+            Command::Progress(ProgressArgs { percent: Some(pct), label: Some("Tests".into()), ..Default::default() })
+        };
+        let answer = run(&mut e, "a", p(50.0), 0).unwrap();
+        assert_eq!(answer["id"], "a:progress");
+        let lit = |e: &Engine| {
+            (1..=12).filter(|n| key_at(e, &format!("f{n}"), 10) == Some(e.settings().progress.color)).count()
+        };
+        assert_eq!(lit(&e), 6);
+        assert_eq!(key_at(&e, "esc", 10), None, "only its row");
+        run(&mut e, "a", p(100.0), 5).unwrap();
+        assert_eq!(lit(&e), 12);
+        let info = e.infos(10, Some(&index())).remove(0);
+        assert_eq!((info.percent, info.label.as_deref(), info.kind.as_str()), (Some(100.0), Some("Tests"), "progress"));
+        // The number row when the user chose it.
+        let mut s = *e.settings();
+        s.progress.keys = AgentProgressKeys::Numbers;
+        e.set_settings(s);
+        run(&mut e, "b", p(10.0), 5).unwrap();
+        assert_eq!(key_at(&e, "1", 10), Some(e.settings().progress.color));
+    }
+
+    #[test]
+    fn settings_set_changes_looks_but_never_access_permissions_or_limits() {
+        let mut e = on();
+        let set = |pairs: &[(&str, Value)]| {
+            Command::SettingsSet(SettingsSetArgs {
+                values: pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect(),
+            })
+        };
+        let answer =
+            run(&mut e, "a", set(&[("signals.done.color", json!("blue")), ("night.from", json!("22:30"))]), 0).unwrap();
+        assert_eq!(answer["changed"].as_array().unwrap().len(), 2);
+        assert_eq!(e.settings().signals.done.color, [0, 0, 255]);
+        assert_eq!(e.settings().night.from_min, 22 * 60 + 30);
+        for key in config::USER_ONLY {
+            let err = run(&mut e, "a", set(&[(key, json!(false))]), 100).unwrap_err();
+            assert_eq!((err.code, err.exit_code()), (ErrorCode::PermissionOff, 77), "{key}");
+        }
+        // All or nothing: one protected key keeps the others from changing.
+        let mixed = set(&[("signals.error.color", json!("white")), ("enabled", json!(true))]);
+        assert_eq!(run(&mut e, "a", mixed, 200).unwrap_err().code, ErrorCode::PermissionOff);
+        assert_eq!(e.settings().signals.error.color, [255, 0, 0]);
+        assert_eq!(run(&mut e, "a", set(&[("night.glow", json!(1))]), 200).unwrap_err().code, ErrorCode::BadValue);
+        assert_eq!(
+            run(&mut e, "a", set(&[("night.from", json!("25:00"))]), 200).unwrap_err().code,
+            ErrorCode::BadValue
+        );
+        // The user can say no to all of it.
+        let mut s = *e.settings();
+        s.agents_may_edit = false;
+        e.set_settings(s);
+        let err = run(&mut e, "a", set(&[("night.on", json!(true))]), 300).unwrap_err();
+        assert_eq!(err.code, ErrorCode::PermissionOff);
+    }
+
+    #[test]
+    fn undo_puts_back_what_an_agent_changed() {
+        let mut e = on();
+        let set = Command::SettingsSet(SettingsSetArgs {
+            values: [("signals.done.color".into(), json!("blue")), ("signals.done.duration".into(), json!("5m"))]
+                .into_iter()
+                .collect(),
+        });
+        let (result, effects) = e.command(&src("a"), set, Ok(&index()), at(0));
+        assert!(result.is_ok() && effects.settings);
+        let entry = e.log_entries().remove(0);
+        assert_eq!(entry.command, "settings_set");
+        assert_eq!(
+            entry.changes,
+            vec![
+                AgentSettingChange {
+                    key: "signals.done.color".into(),
+                    before: "#00ff00".into(),
+                    after: "#0000ff".into()
+                },
+                AgentSettingChange { key: "signals.done.duration".into(), before: "2m".into(), after: "5m".into() },
+            ]
+        );
+        e.undo(entry.seq).unwrap();
+        assert_eq!(e.settings().signals.done, AgentSettings::default().signals.done);
+        assert!(e.log_entries()[0].undone);
+        assert!(e.undo(entry.seq).is_err(), "once");
+        assert!(e.undo(9999).is_err());
+        // An entry that changed nothing has nothing to undo.
+        run(&mut e, "a", signal("done"), 10).unwrap();
+        assert!(e.undo(e.log_entries()[0].seq).is_err());
+    }
+
+    #[test]
+    fn the_log_keeps_the_last_two_hundred_and_no_text() {
+        let mut e = on();
+        for i in 0..(LOG_SIZE + 20) {
+            let light = LightArgs { id: Some(format!("l{}", i % 4)), color: "red".into(), ..Default::default() };
+            run(&mut e, "a", Command::Light(light), i as u64 * 100).unwrap();
+        }
+        let log = e.log_entries();
+        assert_eq!(log.len(), LOG_SIZE);
+        assert!(log.windows(2).all(|w| w[0].seq > w[1].seq), "newest first");
+        let view = run(&mut e, "a", Command::Log(LogArgs { limit: Some(3) }), 0).unwrap();
+        let entries = view["entries"].as_array().unwrap();
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0]["command"], "light");
+        assert_eq!(entries[0]["result"], "ok");
+        let mut keys: Vec<&str> = entries[0].as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["at_ms", "command", "id", "result", "seq", "source"]);
+        // Updates of one light, one after the other, keep one entry; merged
+        // requests past the rate add none.
+        let of = |e: &Engine, source: &str| {
+            e.log_entries().into_iter().filter(|l| l.source == source).map(|l| l.at_ms).collect::<Vec<_>>()
+        };
+        for i in 0..30u64 {
+            let p = ProgressArgs { percent: Some(i as f64), id: Some("bar".into()), ..Default::default() };
+            run(&mut e, "p", Command::Progress(p), 100_000 + i * 100).unwrap();
+        }
+        assert_eq!(of(&e, "p"), [at(100_000 + 29 * 100).wall]);
+        for i in 0..40u64 {
+            let light = LightArgs { id: Some("m".into()), color: "red".into(), ..Default::default() };
+            run(&mut e, "m", Command::Light(light), 200_000 + i).unwrap();
+        }
+        assert_eq!(of(&e, "m"), [at(200_000 + RATE_PER_SECOND as u64 - 1).wall]);
+        // A progress label stays with its light, not in the log.
+        run(
+            &mut e,
+            "a",
+            Command::Progress(ProgressArgs {
+                percent: Some(1.0),
+                label: Some("secret plan".into()),
+                ..Default::default()
+            }),
+            0,
+        )
+        .unwrap();
+        let text = serde_json::to_string(&e.log_entries()).unwrap();
+        assert!(!text.contains("secret"));
+    }
+
+    #[test]
+    fn coming_back_flashes_what_came_meanwhile() {
+        let mut e = on();
+        let away_ms = u64::from(e.settings().away.after_s) * 1000;
+        e.observe_idle(Some(away_ms), 0);
+        assert!(e.away());
+        // While away: a question that still waits and a done whose time runs out.
+        run(&mut e, "a", signal("attention"), 1_000).unwrap();
+        run(&mut e, "b", signal("done"), 1_000).unwrap();
+        e.prune(1_000 + 120_000);
+        assert_eq!(ids(&e, 121_000), ["a:attention"]);
+        assert!(e.busy());
+        // Back at the computer: both flash, at the safe rate.
+        let back = 200_000;
+        e.observe_idle(Some(10), back);
+        assert!(!e.away());
+        let green = e.settings().signals.done.color;
+        assert_eq!(key_at(&e, "esc", back), Some(e.settings().signals.attention.color), "the question ranks first");
+        run(&mut e, "a", Command::Clear(ClearArgs::default()), back).unwrap();
+        assert_eq!(key_at(&e, "esc", back), Some(green));
+        assert_eq!(key_at(&e, "esc", back + flash_period_ms() / 2 + 10), Some([0, 0, 0]), "the flash's dark half");
+        e.prune(back + BURST_MS);
+        assert!(e.frame(back + BURST_MS, &index()).is_empty(), "once");
+        // A light that came before the user left does not flash on return.
+        run(&mut e, "c", signal("error"), back + 2_000).unwrap();
+        e.observe_idle(Some(away_ms), back + 3_000);
+        e.observe_idle(Some(0), back + 400_000);
+        let red = e.settings().signals.error.color;
+        assert_eq!(key_at(&e, "esc", back + 400_000 + flash_period_ms() / 2 + 10), Some(red));
+    }
+
+    #[test]
+    fn coming_back_does_nothing_when_the_user_turned_it_off_or_the_agent_cleared() {
+        let mut e = on();
+        let mut s = *e.settings();
+        s.away.on = false;
+        e.set_settings(s);
+        e.observe_idle(Some(10 * 60_000), 0);
+        run(&mut e, "a", signal("done"), 0).unwrap();
+        e.prune(200_000);
+        e.observe_idle(Some(0), 300_000);
+        assert!(!e.busy());
+
+        let mut e = on();
+        e.observe_idle(Some(10 * 60_000), 0);
+        run(&mut e, "a", signal("done"), 0).unwrap();
+        e.prune(200_000);
+        run(&mut e, "a", Command::Clear(ClearArgs::default()), 250_000).unwrap();
+        e.observe_idle(Some(0), 300_000);
+        assert!(e.frame(300_000, &index()).is_empty());
+    }
+
+    #[test]
+    fn an_unanswered_question_flashes_again_every_five_minutes_for_half_an_hour() {
+        let mut e = on();
+        run(&mut e, "a", signal("attention"), 0).unwrap();
+        let orange = e.settings().signals.attention.color;
+        let dark_half = flash_period_ms() / 2 + 10;
+        // Between flashes the slow pulse: never fully dark.
+        let pulse_low = 60_000 + 1_200 + 2_400 / 2;
+        assert_ne!(key_at(&e, "esc", pulse_low), Some([0, 0, 0]));
+        for k in 1..=5u64 {
+            let t = k * 5 * 60_000;
+            assert_eq!(key_at(&e, "esc", t), Some(orange), "{k}");
+            assert_eq!(key_at(&e, "esc", t + dark_half), Some([0, 0, 0]), "{k}");
+        }
+        // The question ends at 30 minutes, the sixth flash with it; a longer
+        // one does not flash after 30 minutes.
+        assert_eq!(key_at(&e, "esc", 30 * 60_000), None);
+        let mut s = *e.settings();
+        s.signals.attention.duration_s = 60 * 60;
+        e.set_settings(s);
+        run(&mut e, "b", signal("attention"), 0).unwrap();
+        let t = 35 * 60_000 + dark_half;
+        let b = key_at(&e, "esc", t).unwrap();
+        assert_ne!(b, [0, 0, 0], "no flash at 35 minutes");
+        // Turned off: no flashes.
+        let mut s = *e.settings();
+        s.unanswered.on = false;
+        e.set_settings(s);
+        assert_ne!(key_at(&e, "esc", 5 * 60_000 + dark_half), Some([0, 0, 0]));
+    }
+
+    #[test]
+    fn a_try_shows_over_everything_for_a_few_seconds_even_with_access_off() {
+        let mut e = Engine::new(AgentSettings::default());
+        let look = AgentLook::new([1, 2, 3], AgentEffect::Solid, 3, 60);
+        e.try_look(&look, KeySpec::all(), &index(), 0).unwrap();
+        assert_eq!(key_at(&e, "esc", 10), Some([1, 2, 3]));
+        assert!(e.trying(10));
+        e.prune(TRY_MS);
+        assert!(!e.trying(TRY_MS) && !e.busy());
+        assert_eq!(
+            e.try_look(&look, KeySpec::parse("f13").unwrap(), &index(), 0).unwrap_err().code,
+            ErrorCode::UnknownKey
+        );
+        // Clearing every agent's light leaves the try.
+        let mut e = on();
+        run(&mut e, "a", signal("attention"), 0).unwrap();
+        e.try_look(&look, KeySpec::parse("esc").unwrap(), &index(), 0).unwrap();
+        assert_eq!(key_at(&e, "esc", 10), Some([1, 2, 3]));
+        assert_eq!(e.clear_agents(), 1);
+        assert!(e.trying(10));
+    }
+
+    #[test]
+    fn turning_access_off_takes_the_lights_away() {
+        let mut e = on();
+        run(&mut e, "a", signal("attention"), 0).unwrap();
+        let mut s = *e.settings();
+        s.enabled = false;
+        e.set_settings(s);
+        assert!(!e.busy());
+    }
+
+    #[test]
+    fn nights_may_run_over_midnight() {
+        assert!(in_night(23 * 60, 8 * 60, 23 * 60));
+        assert!(in_night(23 * 60, 8 * 60, 2 * 60));
+        assert!(!in_night(23 * 60, 8 * 60, 8 * 60));
+        assert!(!in_night(23 * 60, 8 * 60, 12 * 60));
+        assert!(in_night(13 * 60, 14 * 60, 13 * 60 + 30));
+        assert!(!in_night(13 * 60, 13 * 60, 13 * 60));
+    }
+}
