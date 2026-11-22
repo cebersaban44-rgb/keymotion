@@ -72,9 +72,31 @@
   --bg-raise: rgb(242 240 236 / 0.55);
 }
 
+/* The interface fonts by language (App.tsx sets <html lang>: "en", "tr",
+   "ru", "zh-CN"). Segoe UI has Latin, Turkish and Cyrillic letters. Chinese
+   adds Microsoft YaHei UI (in every Windows 10 and 11) for the characters, and
+   lang="zh-CN" keeps shared characters in their Simplified Chinese shapes
+   rather than Japanese ones. */
+:root {
+  --ui-display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --ui-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+:root:lang(ru) {
+  --ui-display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --ui-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+:root:lang(zh-CN) {
+  --ui-display: "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --ui-sans: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+}
+/* Chinese has no tightened letter spacing (nor italics). */
+:root:lang(zh-CN) .page-title {
+  letter-spacing: 0;
+}
+
 @theme inline {
-  --font-display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: var(--ui-display);
+  --font-sans: var(--ui-sans);
   --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
 
   --color-bg: var(--bg);

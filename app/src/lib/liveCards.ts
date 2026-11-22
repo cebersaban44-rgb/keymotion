@@ -9,14 +9,16 @@ import type { PomodoroSettings } from "../bindings/PomodoroSettings";
 import type { ReminderCard } from "../bindings/ReminderCard";
 import type { ReminderIcon } from "../bindings/ReminderIcon";
 import type { TrackInfo } from "../bindings/TrackInfo";
-import { percent, type MessageKey, type Translate } from "./i18n";
+import { clockTime, fillTemplate, percent, type MessageKey, type Translate } from "./i18n";
 import { iconTone } from "./icons";
 import { phaseColor } from "./pomodoro";
 import { H, STILL_DELAY_MS, W, type Prepared } from "./screenImport";
-import { compose565, makeLayers } from "./screenText";
+import { append, pieces, trimBeforeEllipsis } from "./lineBreak";
+import { compose565, makeLayers, SCRIPT_FONTS } from "./screenText";
 
-const DISPLAY = '"Bricolage Grotesque Variable", "Segoe UI Emoji", sans-serif';
-const SANS = '"Instrument Sans Variable", "Segoe UI Emoji", sans-serif';
+// Russian and Chinese letters come from SCRIPT_FONTS (the card fonts are Latin only).
+const DISPLAY = `"Bricolage Grotesque Variable", "Segoe UI Emoji", ${SCRIPT_FONTS}, sans-serif`;
+const SANS = `"Instrument Sans Variable", "Segoe UI Emoji", ${SCRIPT_FONTS}, sans-serif`;
 
 async function fonts(text: string) {
   try {
@@ -27,25 +29,27 @@ async function fonts(text: string) {
 }
 
 /** Lines of at most `maxW`, at most `max` of them; the last one ends in
- *  "…" when text is left over, and words wider than a line are cut. */
+ *  "…" when text is left over, and words wider than a line are cut. Chinese
+ *  breaks between words (lineBreak.ts). */
 function lines(ctx: CanvasRenderingContext2D, text: string, maxW: number, max: number): string[] {
   const width = (s: string) => ctx.measureText(s).width;
   const cut = (s: string) => {
-    let c = s;
-    while (c.length > 1 && width(`${c}…`) > maxW) c = c.slice(0, -1);
-    return `${c.replace(/[\s,.;:–-]+$/, "")}…`;
+    // By characters, so an emoji or a rare Chinese character is never split.
+    const chars = Array.from(s);
+    while (chars.length > 1 && width(`${chars.join("")}…`) > maxW) chars.pop();
+    return `${trimBeforeEllipsis(chars.join(""))}…`;
   };
   const out: string[] = [];
   let line = "";
   let rest = false;
-  for (const w of text.split(/\s+/).filter(Boolean)) {
-    const next = line ? `${line} ${w}` : w;
+  for (const p of pieces(text)) {
+    const next = append(line, p);
     if (!line || width(next) <= maxW) {
       line = next;
       continue;
     }
     out.push(line);
-    line = w;
+    line = p.text;
     if (out.length === max) {
       rest = true;
       break;
@@ -190,7 +194,8 @@ export async function nowPlayingCard(t: TrackInfo, cover: Blob | null, label: st
 
 // -------------------------------------------------------------- pomodoro
 
-const MONO = '"JetBrains Mono Variable", monospace';
+// Times and minutes; a Chinese unit after them ("25 分钟") comes from YaHei.
+const MONO = '"JetBrains Mono Variable", "Microsoft YaHei UI", monospace';
 
 /** Words the Pomodoro cards need, in the UI language. */
 export interface PomodoroWords {
@@ -259,7 +264,7 @@ export async function pomodoroCard(c: PomodoroCard, s: PomodoroSettings, w: Pomo
   const color = phaseColor(s, done ? (check ? "break" : "focus") : c.phase);
   const tone = hexRgb(color);
   const light = tone.map((v) => Math.round(v + (255 - v) * 0.35)) as [number, number, number];
-  const endTime = new Date(c.endedMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const endTime = clockTime(c.endedMs);
 
   const title = done ? (c.complete ? w.doneComplete : w.doneStopped) : w.phase[c.phase];
   const big = done ? `${c.focusMin} ${w.min}` : `${String(c.minutes).padStart(2, "0")}:00`;
@@ -376,7 +381,7 @@ export function calendarWords(tNow: (key: MessageKey) => string, locale: string)
   };
 }
 
-const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const clock = (ms: number) => clockTime(ms);
 
 /**
  * Calendar card ("Sıradaki", owner's choice 2026-11-11): the start large,
@@ -698,7 +703,7 @@ export function playTime(ms: number, w: Pick<GameWords, "hours" | "minutes" | "l
   const total = Math.max(0, Math.floor(ms / 60_000));
   const h = Math.floor(total / 60);
   const min = total % 60;
-  return h > 0 ? w.hours.replace("{h}", String(h)).replace("{min}", String(min)) : w.minutes.replace("{min}", String(min));
+  return h > 0 ? fillTemplate(w.hours, { h, min }) : fillTemplate(w.minutes, { min });
 }
 
 /** The game starts: its Steam picture (or its name on a dark tone), when
@@ -712,7 +717,7 @@ export async function gameStartCard(
   programIcon: () => Promise<ImageData | null> = () => Promise.resolve(null),
 ): Promise<Prepared> {
   const label = `${w.started} · ${hhmm(c.startedMs)}`;
-  const today = w.today.replace("{time}", playTime(c.todayMs, w));
+  const today = fillTemplate(w.today, { time: playTime(c.todayMs, w) });
   await fonts(`${label} ${c.name} ${today}`);
   const bmp = cover ? await createImageBitmap(cover).catch(() => null) : null;
   // No cover: the program's icon, on its own colour.
@@ -797,7 +802,7 @@ export async function gameSummaryCard(c: GameCard, w: GameWords): Promise<Prepar
   const end = c.endedMs ?? Date.now();
   const lol = c.lol;
   const who = lol?.champion ? `${c.name} · ${lol.champion}` : c.name;
-  const label = `${who} · ${w.endedAt.replace("{time}", hhmm(end))}`;
+  const label = `${who} · ${fillTemplate(w.endedAt, { time: hhmm(end) })}`;
   const length = playTime(end - c.startedMs, w);
   // A League of Legends match: the result first, then K/D/A.
   const result = lol?.win == null ? null : lol.win ? w.win : w.lose;
