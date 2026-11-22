@@ -14,14 +14,7 @@ targets = ["x86_64-pc-windows-msvc"]
 # ones (usually deep in Tauri) are not ours to replace.
 yanked = "deny"
 unmaintained = "workspace"
-ignore = [
-  # chrono and chrono-tz were declared unmaintained (2026-11; no
-  # vulnerability). The calendar's recurring events come from rrule, which is
-  # built on both, so moving to jiff means replacing rrule too: a change of
-  # its own, not a reason to fail every build until then.
-  { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained; needed by rrule, replacement planned" },
-  { id = "RUSTSEC-2026-0555", reason = "chrono-tz unmaintained; needed by rrule, replacement planned" },
-]
+ignore = []
 
 [licenses]
 # Every licence that actually occurs in the dependency tree, and nothing else.
