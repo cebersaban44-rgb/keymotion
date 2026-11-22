@@ -121,6 +121,8 @@ Klavyeniz listede yok mu? Yine de takın ve [bize bildirin](https://github.com/c
 | <img src="docs/images/features/screen.webp" width="240" alt="Klavyenin ekranı için görsel hazırlama"> | **Ekran stüdyosu**<br>240×135 ekrana görsel, GIF, video ve yazı kartı koyun. |
 | <img src="docs/images/features/live-screen.webp" width="240" alt="Ekranda canlı kartlar"> | **Canlı ekran**<br>Kendiliğinden güncellenen kartlar: çalan şarkı, sıradaki toplantı, odak zamanlayıcısı. |
 | <img src="docs/images/features/focus.webp" width="240" alt="Tuşlarda odak zamanlayıcısı"> | **Odak ve hatırlatıcılar**<br>Tuşlarda yanan odak zamanlayıcısı, hatırlatıcılar ve sistem göstergeleri. |
+| <img src="docs/images/features/game-session.webp" width="240" alt="League of Legends ışıkları: can tuşlarda azalıyor, mana F tuşlarında boşalıyor"> | **Oyun oturumu**<br>Oynadığınızı fark eder: oyun başlarken ekrana bir kart, bitince bir özet gönderir ve oyunun tuşlarını yakar. League of Legends'ta canınız, mananız ve maçın olayları tuşlarda görünür. |
+| <img src="docs/images/features/profiles.webp" width="240" alt="Bütün oyunları ve bir programı kendi profillerine bağlama"> | **Uygulamaya göre profiller**<br>Işığı, tuşları ve makroları profil olarak saklayın. Her program ya da bütün oyunlar öne gelince kendi profiline geçer. |
 
 [Kullanım kılavuzu](https://cebersaban44-rgb.github.io/keymotion/tr/) uygulamanın her sayfasını tek tek anlatır.
 
