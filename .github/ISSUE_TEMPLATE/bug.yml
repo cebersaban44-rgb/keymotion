@@ -8,7 +8,7 @@ body:
       value: |
         Thanks for taking the time. The quickest way: in Keymotion, open **Settings › Report a problem**. It fills in the title and copies the app's details for you; paste them into the "Details from the app" box below.
 
-        *Türkçe yazabilirsiniz.*
+        *Türkçe yazabilirsiniz. Можно писать по-русски. 可以用中文填写。*
   - type: textarea
     id: what
     attributes:

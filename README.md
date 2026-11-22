@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <b>English</b> · <a href="README.tr.md">Türkçe</a>
+  <b>English</b> · <a href="README.tr.md">Türkçe</a> · <a href="README.ru.md">Русский</a> · <a href="README.zh-CN.md">简体中文</a>
 </p>
 
 <p align="center">
