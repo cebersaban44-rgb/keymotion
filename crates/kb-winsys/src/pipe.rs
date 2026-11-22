@@ -6,18 +6,23 @@
 //! * Only this user: an explicit security descriptor whose DACL allows the
 //!   current user read and write and nobody else ([`server_sddl`]). Windows'
 //!   default pipe descriptor would let Everyone and anonymous read.
-//! * No squatting: the first instance is created with
-//!   `FILE_FLAG_FIRST_PIPE_INSTANCE`, so the server refuses to start when
-//!   another process already holds the name ([`io::ErrorKind::AddrInUse`]).
-//!   A client can ask which process serves the pipe
-//!   ([`PipeClient::server_process_id`]).
+//! * No squatting: the server creates the pipe with
+//!   `FILE_FLAG_FIRST_PIPE_INSTANCE` whenever it holds no instance, so it
+//!   never joins a pipe someone else created ([`io::ErrorKind::AddrInUse`]
+//!   at start). The pipe's owner is set to the user, and the client refuses
+//!   a pipe owned by anyone else, or one that refuses it
+//!   ([`ClientError::NotTrusted`]). A client can also ask which process
+//!   serves the pipe ([`PipeClient::server_process_id`]).
 //! * Byte mode, at most [`MAX_INSTANCES`] connections at once. Each line
 //!   must arrive within the read deadline (2 s by default) and fit the line
 //!   limit; otherwise the connection is closed. A handler that panics ends
 //!   its connection, not the server.
 //! * The client connects with a timeout and tells "nobody serves this
 //!   pipe" ([`ClientError::NotRunning`]) from "no answer in time"
-//!   ([`ClientError::Timeout`]).
+//!   ([`ClientError::Timeout`]), and "the line never arrived, the server had
+//!   closed the connection" ([`ClientError::NotDelivered`], safe to resend
+//!   on a new connection) from "the server closed it after the line
+//!   arrived" ([`ClientError::Closed`]).
 //!
 //! All I/O is overlapped, so every wait has a deadline and the server can
 //! stop at any moment.
@@ -26,6 +31,7 @@ use std::ffi::c_void;
 use std::fmt;
 use std::io;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -43,8 +49,8 @@ use windows::Win32::Storage::FileSystem::{
     FILE_SHARE_NONE, OPEN_EXISTING, PIPE_ACCESS_DUPLEX, SECURITY_IDENTIFICATION, SECURITY_SQOS_PRESENT,
 };
 use windows::Win32::System::Pipes::{
-    ConnectNamedPipe, CreateNamedPipeW, GetNamedPipeServerProcessId, WaitNamedPipeW, PIPE_READMODE_BYTE,
-    PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_WAIT,
+    ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeServerProcessId, WaitNamedPipeW,
+    PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_WAIT,
 };
 use windows::Win32::System::Threading::{
     CreateEventW, GetCurrentProcess, OpenProcessToken, SetEvent, WaitForMultipleObjects, INFINITE,
@@ -98,6 +104,7 @@ extern "system" {
 }
 
 const SDDL_REVISION_1: u32 = 1;
+const OWNER_SECURITY_INFORMATION: u32 = 1;
 const DACL_SECURITY_INFORMATION: u32 = 4;
 /// `SE_KERNEL_OBJECT` of `SE_OBJECT_TYPE`.
 const SE_KERNEL_OBJECT: i32 = 6;
@@ -151,12 +158,14 @@ pub fn current_session_id() -> io::Result<u32> {
     Ok(session)
 }
 
-/// The security descriptor every instance of a server's pipe gets: deny
-/// the network logon SID everything, allow `user_sid` to read and write
-/// (which includes creating more instances), nobody else anything, and no
-/// inherited entries.
+/// The security descriptor every instance of a server's pipe gets: owned
+/// by `user_sid` (also when the process runs as an administrator, whose
+/// default owner is the Administrators group), the network logon SID denied
+/// everything, `user_sid` allowed to read and write (which includes
+/// creating more instances), nobody else anything, and no inherited
+/// entries.
 pub fn server_sddl(user_sid: &str) -> String {
-    format!("D:P(D;;FA;;;NU)(A;;FRFW;;;{user_sid})")
+    format!("O:{user_sid}D:P(D;;FA;;;NU)(A;;FRFW;;;{user_sid})")
 }
 
 // --------------------------------------------------------------- helpers
@@ -204,6 +213,13 @@ fn event(manual_reset: bool) -> io::Result<OwnedHandle> {
     let raw = unsafe { CreateEventW(None, manual_reset, false, PCWSTR::null()) }.map_err(win_err)?;
     // SAFETY: an event handle just created, owned from here on.
     Ok(unsafe { OwnedHandle::from_raw_handle(raw.0) })
+}
+
+/// Whether the event is signalled now (no waiting).
+fn is_set(event: HANDLE) -> bool {
+    // SAFETY: a live event handle.
+    let woke = unsafe { WaitForMultipleObjects(&[event], false, 0) };
+    woke == WAIT_OBJECT_0
 }
 
 /// Milliseconds left until `deadline`, for a Win32 wait (never INFINITE).
@@ -287,6 +303,43 @@ fn dacl_sddl(h: &OwnedHandle) -> io::Result<String> {
     Ok(unsafe { take_local_string(text) })
 }
 
+/// The owner of the object behind `h`, as a SID string.
+fn owner_sid(h: &OwnedHandle) -> io::Result<String> {
+    let mut owner: *mut c_void = std::ptr::null_mut();
+    let mut descriptor: *mut c_void = std::ptr::null_mut();
+    // SAFETY: a live handle; the owner pointer points into the descriptor,
+    // which Windows allocates with LocalAlloc.
+    let status = unsafe {
+        GetSecurityInfo(
+            h.as_raw_handle(),
+            SE_KERNEL_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            &mut owner,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut descriptor,
+        )
+    };
+    if status != 0 {
+        return Err(io::Error::from_raw_os_error(status as i32));
+    }
+    // Freed after the owner is read: the owner lives inside it.
+    let descriptor = SecurityDescriptor(descriptor);
+    if owner.is_null() {
+        return Ok(String::new());
+    }
+    let mut text: *mut u16 = std::ptr::null_mut();
+    // SAFETY: a valid SID inside `descriptor`; valid out pointer.
+    let ok = unsafe { ConvertSidToStringSidW(owner, &mut text) };
+    drop(descriptor);
+    if ok == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: a LocalAlloc'd NUL-terminated string, read and freed once.
+    Ok(unsafe { take_local_string(text) })
+}
+
 // ---------------------------------------------------------- connections
 
 /// Why reading or writing a line stopped.
@@ -323,7 +376,15 @@ struct Conn {
 
 impl Conn {
     fn new(pipe: OwnedHandle) -> io::Result<Self> {
-        Ok(Self { pipe, event: event(true)?, pending: Vec::new() })
+        Ok(Self::with_event(pipe, event(true)?))
+    }
+
+    fn with_event(pipe: OwnedHandle, event: OwnedHandle) -> Self {
+        Self { pipe, event, pending: Vec::new() }
+    }
+
+    fn into_pipe(self) -> OwnedHandle {
+        self.pipe
     }
 
     /// Finish an overlapped call made with `ov` (`started` is what the call
@@ -408,6 +469,15 @@ impl Conn {
             if self.pending.len() > max {
                 return Err(Stop::TooLong);
             }
+            // On every pass, not only when a read has to wait: bytes that
+            // trickle in must not carry a line past its deadline, nor the
+            // connection past the server's stop.
+            if Instant::now() >= deadline {
+                return Err(Stop::Timeout);
+            }
+            if stop.is_some_and(is_set) {
+                return Err(Stop::Stopping);
+            }
             let n = self.read_some(&mut chunk, deadline, stop)?;
             self.pending.extend_from_slice(&chunk[..n]);
         }
@@ -471,15 +541,30 @@ impl Shared {
     }
 }
 
-/// Counts a connection while it lives, even if its handler panics.
-struct LiveGuard(Arc<Shared>);
+/// A connected instance, counted while its handle is open. The handle is
+/// closed and the count lowered together, under the count's lock, so the
+/// accepting thread knows exactly when the server holds no instance.
+struct LiveGuard {
+    shared: Arc<Shared>,
+    pipe: Option<OwnedHandle>,
+}
+
+impl LiveGuard {
+    fn new(shared: &Arc<Shared>, pipe: OwnedHandle) -> Self {
+        *shared.live() += 1;
+        Self { shared: shared.clone(), pipe: Some(pipe) }
+    }
+}
 
 impl Drop for LiveGuard {
     fn drop(&mut self) {
-        *self.0.live() -= 1;
-        self.0.ended.notify_all();
+        let mut live = self.shared.live();
+        drop(self.pipe.take());
+        *live -= 1;
+        drop(live);
+        self.shared.ended.notify_all();
         // SAFETY: a live event handle.
-        let _ = unsafe { SetEvent(handle(&self.0.freed)) };
+        let _ = unsafe { SetEvent(handle(&self.shared.freed)) };
     }
 }
 
@@ -488,6 +573,8 @@ pub struct PipeServer {
     name: String,
     shared: Arc<Shared>,
     accepting: Option<JoinHandle<()>>,
+    /// Set once `shutdown` ran, so dropping after `stop` does not wait again.
+    stopped: bool,
 }
 
 /// Serve `name` with the default limits ([`ServerOptions::default`]).
@@ -530,7 +617,7 @@ impl PipeServer {
         let accepting = std::thread::Builder::new().name("agent-pipe".into()).spawn(move || {
             accept_loop(&wide_name, &descriptor, options, first, &accept_event, &thread_shared, &handler)
         })?;
-        Ok(PipeServer { name: name.to_string(), shared, accepting: Some(accepting) })
+        Ok(PipeServer { name: name.to_string(), shared, accepting: Some(accepting), stopped: false })
     }
 
     pub fn name(&self) -> &str {
@@ -549,6 +636,9 @@ impl PipeServer {
     }
 
     fn shutdown(&mut self) {
+        if std::mem::replace(&mut self.stopped, true) {
+            return;
+        }
         // SAFETY: a live event handle.
         let _ = unsafe { SetEvent(handle(&self.shared.stop)) };
         if let Some(thread) = self.accepting.take() {
@@ -687,26 +777,41 @@ fn accept_loop<F, H>(
         }
         let pipe = match next.take() {
             Some(pipe) => pipe,
-            None => match create_instance(name, descriptor, options.max_instances, false) {
-                Ok(pipe) => pipe,
-                Err(e) => {
-                    tracing::warn!("agent pipe: could not create an instance: {e}");
-                    if stopping(shared, 200) {
-                        return;
+            None => {
+                // Under the count's lock, so no connection closes meanwhile.
+                // With none open the server holds no instance at all: the
+                // pipe is then created anew, and a name someone else took in
+                // between is refused rather than joined.
+                let live = shared.live();
+                let created = create_instance(name, descriptor, options.max_instances, *live == 0);
+                drop(live);
+                match created {
+                    Ok(pipe) => pipe,
+                    Err(e) => {
+                        tracing::warn!("agent pipe: could not create an instance: {e}");
+                        if stopping(shared, 200) {
+                            return;
+                        }
+                        continue;
                     }
-                    continue;
                 }
-            },
+            }
         };
         match accept(&pipe, wake, &shared.stop) {
             Accepted::Connected => {
-                *shared.live() += 1;
-                let guard = LiveGuard(shared.clone());
+                let guard = LiveGuard::new(shared, pipe);
+                // The next instance listens before this connection can end,
+                // so the name does not lapse between clients. The connected
+                // one is still open, so this cannot join someone else's pipe.
+                if *shared.live() < options.max_instances {
+                    next = create_instance(name, descriptor, options.max_instances, false)
+                        .map_err(|e| tracing::warn!("agent pipe: could not create an instance: {e}"))
+                        .ok();
+                }
                 let handler = handler.clone();
-                let spawned = std::thread::Builder::new().name("agent-pipe-conn".into()).spawn(move || {
-                    serve_connection(pipe, options, &guard.0, handler.as_ref());
-                    drop(guard);
-                });
+                let spawned = std::thread::Builder::new()
+                    .name("agent-pipe-conn".into())
+                    .spawn(move || serve_guarded(guard, options, handler.as_ref()));
                 if let Err(e) = spawned {
                     // The guard went down with the closure: the place is free.
                     tracing::warn!("agent pipe: could not start a connection thread: {e}");
@@ -714,9 +819,14 @@ fn accept_loop<F, H>(
             }
             Accepted::Stopping => return,
             Accepted::Failed(e) => {
-                // A client that gave up between connecting and being
-                // accepted; this instance is dropped and a new one made.
+                // Usually a client that left before it was accepted. The
+                // instance is reset and listens again rather than being
+                // closed, so the name does not lapse meanwhile.
                 tracing::debug!("agent pipe: a connection failed: {e}");
+                // SAFETY: a live pipe handle with no call in flight.
+                if unsafe { DisconnectNamedPipe(handle(&pipe)) }.is_ok() {
+                    next = Some(pipe);
+                }
                 if stopping(shared, 10) {
                     return;
                 }
@@ -725,34 +835,61 @@ fn accept_loop<F, H>(
     }
 }
 
-fn serve_connection<F, H>(pipe: OwnedHandle, options: ServerOptions, shared: &Shared, handler: &F)
+/// Serve the connection in `guard`, then hand its pipe back so it is closed
+/// under the count's lock.
+fn serve_guarded<F, H>(mut guard: LiveGuard, options: ServerOptions, handler: &F)
 where
     F: Fn() -> H,
     H: FnMut(Incoming<'_>) -> String + 'static,
 {
-    let mut conn = match Conn::new(pipe) {
-        Ok(conn) => conn,
+    let Some(pipe) = guard.pipe.take() else { return };
+    let stop = handle(&guard.shared.stop);
+    let pipe = match event(true) {
+        Ok(event) => {
+            let mut conn = Conn::with_event(pipe, event);
+            serve_connection(&mut conn, options, stop, handler);
+            conn.into_pipe()
+        }
         Err(e) => {
             tracing::warn!("agent pipe: {e}");
-            return;
+            pipe
         }
     };
-    let stop = Some(handle(&shared.stop));
-    let mut answer = handler();
+    guard.pipe = Some(pipe);
+}
+
+fn serve_connection<F, H>(conn: &mut Conn, options: ServerOptions, stop: HANDLE, handler: &F)
+where
+    F: Fn() -> H,
+    H: FnMut(Incoming<'_>) -> String + 'static,
+{
+    // A handler that panics ends its connection here, so the pipe still
+    // goes back to be closed in order.
+    let Ok(mut answer) = catch_unwind(AssertUnwindSafe(handler)) else {
+        tracing::warn!("agent pipe: a connection handler panicked");
+        return;
+    };
     loop {
-        let read = conn.read_line(options.max_line, Instant::now() + options.read_timeout, stop);
-        let (reply, last) = match &read {
+        if is_set(stop) {
+            return;
+        }
+        let read = conn.read_line(options.max_line, Instant::now() + options.read_timeout, Some(stop));
+        let (incoming, last) = match &read {
             Ok(bytes) => match std::str::from_utf8(bytes) {
-                Ok(line) => (answer(Incoming::Line(line)), false),
-                Err(_) => (answer(Incoming::NotText), true),
+                Ok(line) => (Incoming::Line(line), false),
+                Err(_) => (Incoming::NotText, true),
             },
-            Err(Stop::TooLong) => (answer(Incoming::TooLong), true),
+            Err(Stop::TooLong) => (Incoming::TooLong, true),
             Err(_) => return,
+        };
+        let Ok(reply) = catch_unwind(AssertUnwindSafe(|| answer(incoming))) else {
+            tracing::warn!("agent pipe: a handler panicked; its connection is closed");
+            return;
         };
         let mut out = reply.into_bytes();
         out.retain(|&b| b != b'\n' && b != b'\r');
         out.push(b'\n');
-        if conn.write_all(&out, Instant::now() + options.write_timeout, stop).is_err() || last {
+        if conn.write_all(&out, Instant::now() + options.write_timeout, Some(stop)).is_err() || last {
             return;
         }
     }
@@ -765,9 +902,17 @@ where
 pub enum ClientError {
     /// Nobody serves this pipe: the app is not running.
     NotRunning,
+    /// The pipe is not this user's: someone else owns it, or it refuses
+    /// this user. Nothing was sent.
+    NotTrusted(String),
     /// No connection or no answer in time.
     Timeout,
-    /// The server closed the connection.
+    /// The line never arrived: the server had already closed this
+    /// connection (its idle deadline passed, or it stopped). Nothing was
+    /// carried out; sending it again on a new connection is safe.
+    NotDelivered,
+    /// The server closed the connection after the line arrived, without
+    /// answering.
     Closed,
     /// The answer is longer than the line limit.
     TooLong,
@@ -778,7 +923,9 @@ impl fmt::Display for ClientError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotRunning => f.write_str("nobody serves the pipe"),
+            Self::NotTrusted(why) => write!(f, "the pipe is not trusted: {why}"),
             Self::Timeout => f.write_str("no answer in time"),
+            Self::NotDelivered => f.write_str("the connection was already closed; the line was not delivered"),
             Self::Closed => f.write_str("the other end closed the pipe"),
             Self::TooLong => f.write_str("the answer is too long"),
             Self::Io(e) => write!(f, "{e}"),
@@ -813,11 +960,20 @@ impl fmt::Debug for PipeClient {
 
 impl PipeClient {
     /// Connect to `name`, waiting at most `timeout` for a free instance.
-    /// [`ClientError::NotRunning`] at once when nobody serves the name.
+    /// [`ClientError::NotRunning`] at once when nobody serves the name;
+    /// [`ClientError::NotTrusted`] when the pipe is not owned by the current
+    /// user (another account took the name first) or refuses this user.
     ///
     /// The server may identify the client but not act as it
     /// (`SECURITY_IDENTIFICATION`), in case someone else serves the name.
     pub fn connect(name: &str, timeout: Duration) -> Result<PipeClient, ClientError> {
+        let user = current_user_sid().map_err(ClientError::Io)?;
+        Self::connect_owned_by(name, timeout, &user)
+    }
+
+    /// [`PipeClient::connect`] to a pipe that must be owned by `owner` (a
+    /// SID string).
+    fn connect_owned_by(name: &str, timeout: Duration, owner: &str) -> Result<PipeClient, ClientError> {
         if !name.starts_with(PIPE_NAMESPACE) {
             return Err(ClientError::Io(io::Error::new(io::ErrorKind::InvalidInput, "not a local pipe name")));
         }
@@ -841,12 +997,20 @@ impl PipeClient {
                 Ok(raw) => {
                     // SAFETY: a pipe handle just opened, owned from here on.
                     let pipe = unsafe { OwnedHandle::from_raw_handle(raw.0) };
+                    // Checked before a single byte is sent.
+                    let found = owner_sid(&pipe).map_err(ClientError::Io)?;
+                    if found != owner {
+                        return Err(ClientError::NotTrusted(format!("it belongs to {found}, not to {owner}")));
+                    }
                     return Ok(PipeClient { conn: Conn::new(pipe).map_err(ClientError::Io)?, max_line: 64 * 1024 });
                 }
                 Err(e) => win_err(e),
             };
             if is(&e, ERROR_FILE_NOT_FOUND) {
                 return Err(ClientError::NotRunning);
+            }
+            if is(&e, ERROR_ACCESS_DENIED) {
+                return Err(ClientError::NotTrusted("it does not let this user in".to_string()));
             }
             if !is(&e, ERROR_PIPE_BUSY) {
                 return Err(ClientError::Io(e));
@@ -896,16 +1060,24 @@ impl PipeClient {
             .map_err(|_| ClientError::Io(io::Error::new(io::ErrorKind::InvalidData, "the answer is not UTF-8")))
     }
 
-    /// Send a line and read the answer, within `timeout` in all. When the
-    /// server closes while the line is being sent (it refused it), its
-    /// answer is still read if it sent one.
+    /// Send a line and read the answer, within `timeout` in all.
+    ///
+    /// When the server had closed the connection before the line could be
+    /// sent, an answer it left behind (a refusal) is still returned;
+    /// without one the result is [`ClientError::NotDelivered`].
     pub fn request(&mut self, line: &str, timeout: Duration) -> Result<String, ClientError> {
         let deadline = Instant::now() + timeout;
-        match self.send_line(line, timeout) {
-            Ok(()) | Err(ClientError::Closed) => {}
-            Err(e) => return Err(e),
+        let sent = self.send_line(line, timeout);
+        let left = deadline.saturating_duration_since(Instant::now());
+        match sent {
+            Ok(()) => self.read_line(left),
+            Err(ClientError::Closed) => match self.read_line(left) {
+                Ok(answer) => Ok(answer),
+                Err(ClientError::Closed) => Err(ClientError::NotDelivered),
+                Err(e) => Err(e),
+            },
+            Err(e) => Err(e),
         }
-        self.read_line(deadline.saturating_duration_since(Instant::now()))
     }
 
     /// The process serving the pipe, to check it is the expected program.
@@ -919,6 +1091,12 @@ impl PipeClient {
     /// The pipe's DACL as SDDL (`D:…`), to check who may connect.
     pub fn dacl_sddl(&self) -> io::Result<String> {
         dacl_sddl(&self.conn.pipe)
+    }
+
+    /// The pipe's owner as a SID string ([`PipeClient::connect`] already
+    /// checked it is the current user).
+    pub fn owner_sid(&self) -> io::Result<String> {
+        owner_sid(&self.conn.pipe)
     }
 }
 
@@ -1065,6 +1243,44 @@ mod tests {
     }
 
     #[test]
+    fn the_pipe_belongs_to_this_user_and_no_one_else_is_trusted() {
+        let name = unique_name();
+        let server = serve(&name, echo).unwrap();
+        let mine = PipeClient::connect(&name, WAIT).unwrap();
+        // Set explicitly: an administrator's default owner would be the
+        // Administrators group.
+        assert_eq!(mine.owner_sid().unwrap(), current_user_sid().unwrap());
+        drop(mine);
+        // As if another account had taken the name first.
+        let e = PipeClient::connect_owned_by(&name, WAIT, "S-1-5-18").unwrap_err();
+        assert!(matches!(e, ClientError::NotTrusted(_)), "{e:?}");
+        server.stop();
+    }
+
+    #[test]
+    fn a_pipe_that_shuts_this_user_out_is_not_trusted() {
+        // Someone else's pipe whose DACL leaves this user out.
+        let name = unique_name();
+        let only_system = SecurityDescriptor::from_sddl("D:P(A;;FA;;;SY)").unwrap();
+        let _held = create_instance(&wide(&name), &only_system, 1, true).unwrap();
+        let e = PipeClient::connect(&name, WAIT).unwrap_err();
+        assert!(matches!(e, ClientError::NotTrusted(_)), "{e:?}");
+    }
+
+    #[test]
+    fn the_server_keeps_its_name_while_clients_come_and_go() {
+        let name = unique_name();
+        let server = serve(&name, echo).unwrap();
+        for i in 0..30 {
+            let mut client = PipeClient::connect(&name, WAIT).unwrap();
+            assert_eq!(client.request(&i.to_string(), WAIT).unwrap(), format!("echo:{i}"));
+        }
+        // Still its own: a second server cannot take the name.
+        assert_eq!(serve(&name, echo).unwrap_err().kind(), io::ErrorKind::AddrInUse);
+        server.stop();
+    }
+
+    #[test]
     fn a_missing_pipe_is_not_running_at_once() {
         let started = Instant::now();
         let e = PipeClient::connect(&unique_name(), Duration::from_secs(10)).unwrap_err();
@@ -1101,12 +1317,31 @@ mod tests {
         assert!(matches!(e, ClientError::Closed), "{e:?}");
         let waited = started.elapsed();
         assert!(waited >= Duration::from_millis(250) && waited < Duration::from_secs(3), "{waited:?}");
-        // A slow line is cut off the same way, however it trickles in.
-        let mut slow = PipeClient::connect(&name, WAIT).unwrap();
-        slow.conn.write_all(b"par", Instant::now() + WAIT, None).unwrap();
-        std::thread::sleep(Duration::from_millis(200));
-        let _ = slow.conn.write_all(b"tial", Instant::now() + WAIT, None);
-        assert!(matches!(slow.read_line(WAIT).unwrap_err(), ClientError::Closed));
+        // A line sent on the closed connection never arrived, and says so.
+        let e = client.request("late", WAIT).unwrap_err();
+        assert!(matches!(e, ClientError::NotDelivered), "{e:?}");
+        server.stop();
+    }
+
+    #[test]
+    fn a_line_must_arrive_by_its_deadline_however_it_trickles_in() {
+        let name = unique_name();
+        let server = PipeServer::start(&name, quick(400), echo).unwrap();
+        let slow = PipeClient::connect(&name, WAIT).unwrap();
+        let started = Instant::now();
+        // One byte every 100 ms for a second and never a line break: every
+        // read gets data well within 400 ms, so only a deadline for the
+        // whole line ends it.
+        let mut cut = None;
+        for _ in 0..10 {
+            if slow.conn.write_all(b"x", Instant::now() + WAIT, None).is_err() {
+                cut = Some(started.elapsed());
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let cut = cut.expect("the server kept a trickling line past its deadline");
+        assert!(cut >= Duration::from_millis(350) && cut < Duration::from_millis(900), "{cut:?}");
         server.stop();
     }
 
@@ -1135,7 +1370,10 @@ mod tests {
     #[test]
     fn at_most_four_connections_at_once() {
         let name = unique_name();
-        let server = serve(&name, echo).unwrap();
+        // A long idle deadline: a slow machine must not drop the four
+        // connections while the fifth waits.
+        let patient = ServerOptions { read_timeout: Duration::from_secs(60), ..ServerOptions::default() };
+        let server = PipeServer::start(&name, patient, echo).unwrap();
         let mut clients: Vec<PipeClient> =
             (0..MAX_INSTANCES).map(|_| PipeClient::connect(&name, WAIT).unwrap()).collect();
         for c in &mut clients {
