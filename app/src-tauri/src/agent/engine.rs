@@ -531,7 +531,10 @@ impl Engine {
         let hook = args.validate()?;
         let name = source.as_str();
         if hook.event == HookEvent::SessionEnd {
-            let cleared = self.remove(name, |_| true);
+            // Nobody is left to answer its question; what it finished or
+            // where it failed stays its time (a headless run ends its
+            // session right after its last turn).
+            let cleared = self.answer_all(name);
             if self.sessions.remove(name).is_some() {
                 self.dirty = true;
             }
@@ -2186,10 +2189,13 @@ mod tests {
         assert_eq!(run(&mut e, B, hook("answered", &["turn-6"]), 4_200).unwrap()["cleared"], 0);
         assert_eq!(run(&mut e, B, hook("answered", &["turn-7"]), 4_300).unwrap()["cleared"], 1);
         assert!(e.infos(4_300, true).iter().all(|i| i.source != B));
-        // The session ends: its lights and its number go.
+        // The session ends: its question and its number go; what it ended
+        // with stays its time (a headless run ends right after its turn).
+        run(&mut e, A, hook("attention", &["c9"]), 4_500).unwrap();
         let end = run(&mut e, A, hook("session_end", &[]), 5_000).unwrap();
-        assert!(end["cleared"].as_u64().unwrap() >= 1);
-        assert!(e.infos(5_000, true).iter().all(|i| i.source != A));
+        assert_eq!(end["cleared"], 1);
+        let left: Vec<String> = e.infos(5_000, true).into_iter().filter(|i| i.source == A).map(|i| i.kind).collect();
+        assert_eq!(left, ["usage_limit", "error"]);
         assert!(e.sessions(5_000).iter().all(|s| s.source != A));
     }
 

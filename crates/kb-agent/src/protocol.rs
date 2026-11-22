@@ -704,7 +704,8 @@ pub enum HookEvent {
     /// A helper agent (subagent) or a task of the session finished:
     /// behaviour H.
     Helper,
-    /// The session ended: its lights and its number go.
+    /// The session ended: its question and its number go; what it ended
+    /// with (done, an error) stays its time.
     SessionEnd,
 }
 

@@ -91,6 +91,9 @@ impl Read {
 /// of that agent, or means nothing for the lights (Claude Code's "waiting
 /// for your input" notification, for one).
 pub fn read(agent: Agent, input: &[u8]) -> Option<Read> {
+    // A byte-order mark is not JSON, but a Windows program writing UTF-8
+    // to a pipe may put one first.
+    let input = input.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(input);
     let p: Payload = serde_json::from_slice(input).ok()?;
     let session = p.session_id.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let (event, calls) = match agent {
@@ -482,6 +485,8 @@ mod tests {
             assert_eq!(read(Agent::Codex, junk), None, "{junk:?}");
         }
         // No session id: the agent's own source.
+        // A byte-order mark first (.NET writes one), a newline last.
+        assert!(read(Agent::Codex, b"\xEF\xBB\xBF{\"hook_event_name\":\"Stop\"}\r\n").is_some());
         let r = read(Agent::Codex, br#"{"hook_event_name":"Stop"}"#).unwrap();
         assert_eq!((r.source.as_str(), r.args.label.clone()), ("codex", None));
     }

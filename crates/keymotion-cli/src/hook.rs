@@ -53,17 +53,35 @@ pub fn run(agent: &str, deliver: Option<&str>, env: &Env) {
     // but there is no reason to write it either.
     std::panic::set_hook(Box::new(|_| {}));
     let _ = std::panic::catch_unwind(|| {
-        let Some(agent) = Agent::parse(agent) else { return };
+        let Some(agent) = Agent::parse(agent) else {
+            trace(|| format!("not an agent keymotion-cli knows: {}", kb_agent::values::shown(agent)));
+            return;
+        };
         match deliver {
             Some(token) => deliver_later(env, token),
             None => {
                 let input = read_input(MAX_INPUT, READ_WAIT);
-                if let Some(read) = event::read(agent, &input) {
-                    send(env, &read);
+                match event::read(agent, &input) {
+                    Some(read) => {
+                        trace(|| format!("{} bytes: {} from {}", input.len(), read.args.event, read.source));
+                        send(env, &read);
+                    }
+                    None => trace(|| format!("{} bytes: nothing for the lights", input.len())),
                 }
             }
         }
     });
+}
+
+/// `KEYMOTION_HOOK_LOG=1`: what hook mode did, on stderr (the event's
+/// meaning and the app's answer, nothing of the event itself). Agents do
+/// not show a hook's stderr when it exits with 0.
+pub const LOG_ENV: &str = "KEYMOTION_HOOK_LOG";
+
+fn trace(message: impl FnOnce() -> String) {
+    if std::env::var_os(LOG_ENV).is_some_and(|v| !v.is_empty() && v != "0") {
+        crate::output::write_stderr(&format!("keymotion-cli hook: {}\n", kb_agent::values::printable(&message())));
+    }
 }
 
 /// The event on stdin, or nothing: from a terminal (nobody would type an
@@ -105,21 +123,29 @@ fn ctx(env: &Env, source: &str, timeout: Option<&str>, no_start: bool) -> Option
 /// Send the event; when the app is not running and the event lights
 /// something, hand it to a copy of ourselves that starts the app.
 fn send(env: &Env, read: &event::Read) {
-    let Some(ctx) = ctx(env, &read.source, Some(CALL_WAIT), true) else { return };
+    let Some(ctx) = ctx(env, &read.source, Some(CALL_WAIT), true) else {
+        trace(|| "not a source name".to_string());
+        return;
+    };
     let command = Command::Hook(read.args.clone());
     match session::connect(&ctx, IfNotRunning::Report) {
         Ok(mut conn) => {
             let left = conn.left();
-            let _ = conn.client.call_within(&command, left);
+            let answer = conn.client.call_within(&command, left);
+            trace(|| match &answer {
+                Ok(v) => format!("Keymotion: lit {}, cleared {}", v["lit"], v["cleared"]),
+                Err(e) => format!("Keymotion: {}", e.code.as_str()),
+            });
         }
         Err(e) if e.code == ErrorCode::AppNotRunning && read.event().lights() => {
             if let Ok(exe) = std::env::current_exe() {
                 let token = encode(read);
                 let agent = read.args.agent.as_deref().unwrap_or("claude-code");
-                let _ = kb_winsys::shell::spawn_detached(&exe, &["hook", agent, "--deliver", &token]);
+                let started = kb_winsys::shell::spawn_detached(&exe, &["hook", agent, "--deliver", &token]);
+                trace(|| format!("Keymotion is not running; a copy delivers it after starting it: {started:?}"));
             }
         }
-        Err(_) => {}
+        Err(e) => trace(|| format!("not sent: {}", e.code.as_str())),
     }
 }
 
