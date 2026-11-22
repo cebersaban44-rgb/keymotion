@@ -80,9 +80,8 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const PROGRESS_EVERY: Duration = Duration::from_millis(150);
 /// GitHub's list of releases, newest first (test versions only).
 const RELEASES_API: &str = "https://api.github.com/repos/cebersaban44-rgb/keymotion/releases?per_page=10";
-/// The release notes on the documentation site, in the UI language.
-const NOTES_EN: &str = "https://cebersaban44-rgb.github.io/keymotion/about/release-notes/";
-const NOTES_TR: &str = "https://cebersaban44-rgb.github.io/keymotion/tr/about/release-notes/";
+/// The release notes on the documentation site (in the UI language's folder).
+const NOTES_PAGE: &str = "about/release-notes/";
 /// Notifications about updates replace each other.
 const NOTICE_TAG: &str = "update";
 
@@ -554,7 +553,7 @@ impl Updates {
         let store = crate::channel::store();
         self.notify("updated", move |t, app_id| {
             let title = fill(&t.notice_installed_title, &version);
-            let notes = if t.locale == "tr" { NOTES_TR } else { NOTES_EN };
+            let notes = crate::i18n::docs_page(&t.locale, NOTES_PAGE);
             crate::notify::show_notice(
                 app_id,
                 &crate::notify::Notice {
@@ -563,7 +562,7 @@ impl Updates {
                     // The Store build has no `keymotion:` address: Windows
                     // starts it by itself when the notification is clicked.
                     open: (!store).then_some(ADDRESS_OPEN),
-                    buttons: vec![(&t.notice_whats_new, Some(notes))],
+                    buttons: vec![(&t.notice_whats_new, Some(&notes))],
                     tag: Some(NOTICE_TAG),
                 },
             )
