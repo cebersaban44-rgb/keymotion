@@ -84,6 +84,13 @@ test("changelogSection: the Turkish file may call it Yayımlanmamış", () => {
   });
 });
 
+test("changelogSection: the Russian and Chinese files may use their own Unreleased heading", () => {
+  for (const heading of ["Не выпущено", "未发布"]) {
+    const md = `## [${heading}]\n\n- Item.\n`;
+    assert.deepEqual(changelogSection(md, "0.3.0", { allowUnreleased: true }), { label: "Unreleased", body: "- Item." });
+  }
+});
+
 test("changelogSection: no section at all is null even with the fallback", () => {
   assert.equal(changelogSection("# Changelog\n\nNothing yet.\n", "0.1.0", { allowUnreleased: true }), null);
 });
@@ -128,6 +135,12 @@ test("latestJson: notes is a JSON string with Turkish when there is some", () =>
   assert.deepEqual(JSON.parse(m.notes), { en: 'Fixed.\n\n- "quoted"', tr: "Düzeltildi." });
   // Empty Turkish notes are left out.
   assert.deepEqual(Object.keys(JSON.parse(latestJson({ ...manifestInput, notes: { en: "x", tr: "" } }).notes)), ["en"]);
+});
+
+test("latestJson: every language with notes, English first, in the interface's order", () => {
+  const m = latestJson({ ...manifestInput, notes: { "zh-CN": "修复。", en: "Fixed.", ru: "Исправлено.", tr: "", xx: "?" } });
+  assert.deepEqual(Object.keys(JSON.parse(m.notes)), ["en", "ru", "zh-CN", "xx"]);
+  assert.equal(JSON.parse(m.notes)["zh-CN"], "修复。");
 });
 
 test("latestJson: rejects a bad version, an empty signature and missing notes", () => {
@@ -244,6 +257,22 @@ test("CLI: writes latest.json and release-notes.md, fails without a section", (t
   const checkMissing = spawnSync(process.execPath, [script, "--check-notes", "--version", "0.3.0",
     "--changelog", join(dir, "CHANGELOG.md")], { encoding: "utf8", env });
   assert.equal(checkMissing.status, 1);
+
+  // --notes adds a language; its CHANGELOG link follows the Turkish one.
+  writeFileSync(join(dir, "ru.md"), "## [0.2.0] - 2026-12-01\n\n- Ошибка.\n");
+  const ru = run("0.2.0", "--notes", `ru=${join(dir, "ru.md")}`);
+  assert.equal(ru.status, 0, ru.stdout + ru.stderr);
+  assert.match(ru.stdout, /Turkish \[0\.2\.0\], Russian \[0\.2\.0\]/);
+  assert.deepEqual(JSON.parse(JSON.parse(readFileSync(join(dir, "latest.json"), "utf8")).notes), {
+    en: "### Fixed\n\n- A bug.\n- Another one.",
+    tr: "- Bir hata.",
+    ru: "- Ошибка.",
+  });
+  assert.match(
+    readFileSync(join(dir, "release-notes.md"), "utf8"),
+    /CHANGELOG\.tr\.md\) · \[Русский\]\(https:\/\/github\.com\/owner\/repo\/blob\/v0\.2\.0\/CHANGELOG\.ru\.md\)\n$/,
+  );
+  assert.equal(run("0.2.0", "--notes", "ru").status, 1);
 
   const fallback = run("0.3.0", "--allow-unreleased");
   assert.equal(fallback.status, 0, fallback.stdout + fallback.stderr);

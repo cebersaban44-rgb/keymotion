@@ -4,9 +4,9 @@
 //
 // Writes two files next to the setup .exe:
 //   - latest.json: the static updater manifest the app downloads. Its `notes`
-//     is a JSON string, {"en": "...", "tr": "..."}; the app parses it and
-//     shows the notes in the interface language ("tr" only when there are
-//     Turkish notes).
+//     is a JSON string, {"en": "...", "tr": "...", "ru": "...", "zh-CN": "..."}
+//     (English always, the others when there are notes in that language); the
+//     app parses it and shows the notes in the interface language.
 //   - release-notes.md: the body of the draft release: a download button for
 //     the setup file, the CHANGELOG.md section for the version (folded when
 //     long) and the SHA-256 of the setup file.
@@ -15,16 +15,19 @@
 //   - English: the CHANGELOG.md section whose heading is the version, in Keep
 //     a Changelog form: "## [0.2.0] - 2026-12-01" ("## 0.2.0" and "## [v0.2.0]"
 //     work too). A tag build fails when there is none.
-//   - Turkish (optional): the same kind of section in CHANGELOG.tr.md.
+//   - The other interface languages (optional): the same kind of section in
+//     CHANGELOG.tr.md, CHANGELOG.ru.md and CHANGELOG.zh-CN.md, when the file
+//     exists (--notes ru=path reads another file; --tr-notes path is the same
+//     as --notes tr=path).
 //   - --allow-unreleased (test builds from a branch): when the version has no
-//     section, the "## [Unreleased]" section is used instead ("Yayımlanmamış"
-//     is accepted as the same heading in the Turkish file).
+//     section, the "## [Unreleased]" section is used instead ("Yayımlanmamış",
+//     "Не выпущено" and "未发布" are accepted as the same heading).
 //
 // Usage:
 //   node tools/release/latest-json.mjs --version 0.2.0 \
 //     --setup release-out/Keymotion_0.2.0_x64-setup.exe --sha256 <hex> \
 //     [--repository owner/repo] [--allow-unreleased] [--out-dir dir] \
-//     [--changelog CHANGELOG.md] [--tr-notes CHANGELOG.tr.md]
+//     [--changelog CHANGELOG.md] [--notes ru=CHANGELOG.ru.md ...] [--tr-notes CHANGELOG.tr.md]
 //   node tools/release/latest-json.mjs --check-notes --version 0.2.0 \
 //     [--allow-unreleased]     only checks that the notes exist (before the
 //                              build, so a tag without notes fails early)
@@ -41,9 +44,12 @@ import { parseArgs } from "node:util";
 const root = fileURLToPath(new URL("../..", import.meta.url));
 
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
-const UNRELEASED = new Set(["unreleased", "yayımlanmamış"]);
-// "## [0.2.0] - 2026-12-01", "## 0.2.0", "## [v0.2.0]", "## [Unreleased]".
-const SECTION_HEADING = /^##\s+\[?(?:v(?=\d))?([^\]\s]+)\]?(?:\s.*)?$/;
+const UNRELEASED = new Set(["unreleased", "yayımlanmamış", "не выпущено", "未发布"]);
+/** The interface languages besides English, in the order the notes list them. */
+export const NOTE_LANGUAGES = ["tr", "ru", "zh-CN"];
+// "## [0.2.0] - 2026-12-01", "## 0.2.0", "## [v0.2.0]", "## [Unreleased]",
+// "## [Не выпущено]" (a label in brackets may have spaces).
+const SECTION_HEADING = /^##\s+(?:\[(?:v(?=\d))?([^\]]+)\]|(?:v(?=\d))?([^\]\s]+))(?:\s.*)?$/;
 const NEXT_SECTION = /^#{1,2}\s/;
 // "[0.2.0]: https://..." link definitions, which Keep a Changelog puts after
 // the last section.
@@ -56,7 +62,7 @@ function section(markdown, matches) {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const start = lines.findIndex((l) => {
     const m = SECTION_HEADING.exec(l.trimEnd());
-    return m !== null && matches(m[1]);
+    return m !== null && matches(m[1] ?? m[2]);
   });
   if (start < 0) return null;
   const body = [];
@@ -92,13 +98,22 @@ export function releaseAssetUrl({ repository, version, fileName }) {
 /** RFC 3339 in UTC, without milliseconds: 2026-11-12T09:30:00Z. */
 const rfc3339 = (date) => new Date(date).toISOString().replace(/\.\d{3}Z$/, "Z");
 
+const order = (lang) => {
+  const i = NOTE_LANGUAGES.indexOf(lang);
+  return i < 0 ? NOTE_LANGUAGES.length : i;
+};
+
 /** The Tauri static updater manifest (latest.json) for the Windows build. */
 export function latestJson({ version, notes, pubDate, url, signature }) {
   if (!SEMVER.test(version ?? "")) throw new Error(`not a version: ${JSON.stringify(version)}`);
   if (!notes?.en) throw new Error("English notes are required");
   if (!signature?.trim()) throw new Error("the updater signature is empty");
   if (!url?.startsWith("https://")) throw new Error(`not an https URL: ${JSON.stringify(url)}`);
-  const text = notes.tr ? { en: notes.en, tr: notes.tr } : { en: notes.en };
+  // English first, then the others that have notes (empty ones are left out).
+  const others = Object.keys(notes)
+    .filter((lang) => lang !== "en" && typeof notes[lang] === "string" && notes[lang].trim())
+    .sort((a, b) => order(a) - order(b) || a.localeCompare(b));
+  const text = Object.fromEntries([["en", notes.en], ...others.map((lang) => [lang, notes[lang]])]);
   return {
     version,
     notes: JSON.stringify(text),
@@ -140,6 +155,12 @@ export function foldNotes(notes) {
 
 /** Keymotion in the Microsoft Store: the Store app opens on its page. */
 export const STORE_URL = "https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full";
+/** Each language's name in the script's own messages. */
+const LANGUAGE_NAME = { tr: "Turkish", ru: "Russian", "zh-CN": "Chinese" };
+
+/** The link to each language's CHANGELOG under the release notes. */
+const NOTES_LINK = { tr: "Türkçe sürüm notları", ru: "Русский", "zh-CN": "简体中文" };
+
 /** Microsoft's own badge, unchanged: dark on light pages, light on dark. */
 const STORE_BADGE = (theme) => `https://get.microsoft.com/images/en-us%20${theme}.svg`;
 
@@ -151,11 +172,12 @@ const STORE_BADGE = (theme) => `https://get.microsoft.com/images/en-us%20${theme
  * same day (pre-releases don't). While releases are unsigned, the Windows
  * warning follows; then the notes, folded when long; then how to install,
  * the setup file's SHA-256 and the links SignPath asks a download page to
- * carry (code signing policy, privacy policy). `signed` drops the Windows
- * warning once releases are signed (roadmap stage 9). The buttons need
- * `repository` and `version`.
+ * carry (code signing policy, privacy policy), and links to the notes in
+ * `languages` (CHANGELOG.<lang>.md; Turkish by default). `signed` drops the
+ * Windows warning once releases are signed (roadmap stage 9). The buttons
+ * need `repository` and `version`.
  */
-export function releaseBody({ notes, fileName, sha256, size, preface, repository, version, signed = false }) {
+export function releaseBody({ notes, fileName, sha256, size, preface, repository, version, signed = false, languages = ["tr"] }) {
   if (!/^[0-9a-f]{64}$/.test(sha256 ?? "")) throw new Error(`not a SHA-256: ${JSON.stringify(sha256)}`);
   const parts = [];
   if (preface) parts.push(`> ${preface}`);
@@ -194,7 +216,9 @@ export function releaseBody({ notes, fileName, sha256, size, preface, repository
     `[Privacy policy](${SITE}/about/privacy/)`,
   ];
   if (repository && version) {
-    links.push(`[Türkçe sürüm notları](https://github.com/${repository}/blob/v${version}/CHANGELOG.tr.md)`);
+    for (const lang of languages) {
+      links.push(`[${NOTES_LINK[lang] ?? lang}](https://github.com/${repository}/blob/v${version}/CHANGELOG.${lang}.md)`);
+    }
   }
   parts.push(foldNotes(notes), "---", "### Install", ...install, `SHA-256 of \`${fileName}\`: \`${sha256}\``, links.join(" · "));
   return `${parts.join("\n\n")}\n`;
@@ -212,9 +236,21 @@ function main() {
       signed: { type: "boolean", default: false },
       "out-dir": { type: "string" },
       changelog: { type: "string", default: join(root, "CHANGELOG.md") },
-      "tr-notes": { type: "string", default: join(root, "CHANGELOG.tr.md") },
+      notes: { type: "string", multiple: true, default: [] },
+      "tr-notes": { type: "string" },
     },
   });
+  // Where each language's notes are: CHANGELOG.<lang>.md next to CHANGELOG.md
+  // unless named.
+  const notesFiles = Object.fromEntries(
+    NOTE_LANGUAGES.map((lang) => [lang, join(dirname(opt.changelog), `CHANGELOG.${lang}.md`)]),
+  );
+  if (opt["tr-notes"]) notesFiles.tr = opt["tr-notes"];
+  for (const pair of opt.notes) {
+    const m = /^([A-Za-z]{2,3}(?:-[A-Za-z0-9]+)*)=(.+)$/.exec(pair);
+    if (!m) throw new Error(`--notes takes lang=path (ru=CHANGELOG.ru.md), got ${JSON.stringify(pair)}`);
+    notesFiles[m[1]] = m[2];
+  }
   const required = opt["check-notes"] ? ["version"] : ["version", "setup", "sha256", "repository"];
   for (const name of required) {
     if (!opt[name]) throw new Error(`--${name} is required`);
@@ -230,10 +266,19 @@ function main() {
     );
   }
   if (!en.body) throw new Error(`the ${en.label} section of ${opt.changelog} is empty`);
-  const tr = existsSync(opt["tr-notes"])
-    ? changelogSection(readFileSync(opt["tr-notes"], "utf8"), version, { allowUnreleased })
-    : null;
-  const found = `CHANGELOG.md [${en.label}]${tr?.body ? `, Turkish [${tr.label}]` : ", no Turkish notes"}`;
+  // The other languages: their section for the version, when the file exists.
+  const translations = {};
+  const files = [];
+  for (const [lang, file] of Object.entries(notesFiles)) {
+    if (!existsSync(file)) continue;
+    files.push(lang);
+    const s = changelogSection(readFileSync(file, "utf8"), version, { allowUnreleased });
+    if (s?.body) translations[lang] = s;
+  }
+  const langs = Object.keys(translations);
+  const found =
+    `CHANGELOG.md [${en.label}]` +
+    (langs.length ? `, ${langs.map((l) => `${LANGUAGE_NAME[l] ?? l} [${translations[l].label}]`).join(", ")}` : ", no other languages");
   if (opt["check-notes"]) {
     console.log(`Release notes for ${version}: ${found}.`);
     return;
@@ -247,7 +292,7 @@ function main() {
   }
   const manifest = latestJson({
     version,
-    notes: { en: en.body, tr: tr?.body || undefined },
+    notes: { en: en.body, ...Object.fromEntries(langs.map((l) => [l, translations[l].body])) },
     pubDate: new Date(),
     url: releaseAssetUrl({ repository: opt.repository, version, fileName }),
     signature: readFileSync(sigPath, "utf8"),
@@ -265,6 +310,8 @@ function main() {
     repository: opt.repository,
     version,
     signed: opt.signed,
+    // A link for each language whose CHANGELOG is in the repository.
+    languages: files.sort((a, b) => order(a) - order(b)),
   });
 
   const outDir = opt["out-dir"] ?? dirname(setup);
