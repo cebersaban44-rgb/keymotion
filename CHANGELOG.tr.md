@@ -80,6 +80,19 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 - Yazmadan önce resmî yazılımı ya da SignalRGB'yi bulmak için kullanılan
   çalışan programlar listesi artık hiçbir programı açmıyor.
 
+### Düzeltilenler
+
+- **Takvim ve hatırlatıcılar:** saatlerin geri alındığı gece 03:00'e
+  (Avrupa'nın çoğunda; başka yerlerde değişikliğin bittiği saat) kurulu bir
+  hatırlatıcı bir saat erken çalıyordu; o saatteki, kendi saat dilimi
+  olmayan bir takvim etkinliği de bir saat erken görünüyordu.
+- **Takvim:** gece yarısı tekrarlanan bir etkinlik, saat değişikliğinin
+  gece yarısını atladığı ya da iki kez yaşattığı günde (Şili, Küba ve birkaç
+  yer daha) artık kaybolmuyor. Ayın sondan beşinci pazartesisi gibi bir
+  tekrarın yalnızca ilk tarihi değil, bütün tarihleri görünüyor. Kuralında
+  "ilk pazartesi" yazan haftalık bir tekrar artık her gün değil, yalnızca
+  pazartesileri geliyor.
+
 ## [1.1.0] - 2026-11-16
 
 Keymotion artık yeni sürüm çıkınca haber veriyor ve isterseniz kendiliğinden

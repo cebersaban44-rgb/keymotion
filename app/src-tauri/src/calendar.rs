@@ -747,7 +747,8 @@ impl CalendarHandle {
                 // Open the feed up again even when this read failed: the
                 // span moves on with time.
                 if let Some(text) = &read.text {
-                    match ics::occurrences(text, now - SPAN_BACK_MS, now + SPAN_AHEAD_MS, rrule::Tz::LOCAL) {
+                    let local = crate::zones::pc_zone();
+                    match ics::occurrences(text, now - SPAN_BACK_MS, now + SPAN_AHEAD_MS, &local) {
                         Ok(events) => {
                             tracing::debug!(%id, events = events.len(), "calendar read");
                             read.events = events;

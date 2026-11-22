@@ -28,6 +28,8 @@
 //! * Shutdown: while the app writes the keyboard's flash, Windows is told
 //!   why shutting down now is a bad idea (`ShutdownBlockReasonCreate`).
 //! * Web pages: opened in the default browser (`ShellExecuteW`, [`shell`]).
+//! * The taskbar clock's date and time and the time zone setting, asked
+//!   afresh each time ([`time`]).
 //!
 //! Types holding COM or PDH handles are not `Send`: make them on the thread
 //! that uses them.
@@ -48,6 +50,7 @@ pub mod secret;
 pub mod shell;
 pub mod startup;
 pub mod thermal;
+pub mod time;
 
 use std::collections::HashMap;
 

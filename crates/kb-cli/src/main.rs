@@ -245,9 +245,9 @@ fn main() -> Result<()> {
         Cmd::Clock { at } => {
             let time = match at {
                 Some(s) => {
-                    let t = chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S")
+                    let t = jiff::civil::DateTime::strptime("%Y-%m-%d %H:%M:%S", &s)
                         .context("tarih \"YYYY-MM-DD HH:MM:SS\" biçiminde olmalı")?;
-                    kb_core::clock::from_datetime(&t.and_utc())
+                    kb_core::clock::from_datetime(t)
                 }
                 None => kb_core::clock::now(),
             };

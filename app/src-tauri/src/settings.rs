@@ -74,14 +74,14 @@ pub fn mark_resets_shown() {
 }
 
 /// Name of the copy of `file` kept at `time`: `keymap.json.bak-20261111-143005`.
-pub(crate) fn backup_name(file: &str, time: chrono::NaiveDateTime) -> String {
-    format!("{file}.bak-{}", time.format("%Y%m%d-%H%M%S"))
+pub(crate) fn backup_name(file: &str, time: jiff::civil::DateTime) -> String {
+    format!("{file}.bak-{}", time.strftime("%Y%m%d-%H%M%S"))
 }
 
 /// Move `dir/file` aside under a backup name not taken yet (copy when it
 /// cannot be moved). Returns the backup's name.
 fn keep_aside(dir: &Path, file: &str) -> Option<String> {
-    let base = backup_name(file, chrono::Local::now().naive_local());
+    let base = backup_name(file, crate::zones::now().datetime());
     let name =
         (1..100).map(|n| if n == 1 { base.clone() } else { format!("{base}-{n}") }).find(|n| !dir.join(n).exists())?;
     let (from, to) = (dir.join(file), dir.join(&name));
@@ -490,7 +490,7 @@ mod tests {
 
     #[test]
     fn backup_names_carry_the_time() {
-        let t = chrono::NaiveDate::from_ymd_opt(2026, 11, 11).unwrap().and_hms_opt(9, 5, 7).unwrap();
+        let t = jiff::civil::date(2026, 11, 11).at(9, 5, 7, 0);
         assert_eq!(backup_name("keymap.json", t), "keymap.json.bak-20261111-090507");
     }
 

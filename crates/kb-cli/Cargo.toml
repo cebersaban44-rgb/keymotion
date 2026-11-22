@@ -13,8 +13,8 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
-chrono.workspace = true
 clap.workspace = true
+jiff.workspace = true
 kb-core.workspace = true
 kb-devices.workspace = true
 kb-protocol.workspace = true

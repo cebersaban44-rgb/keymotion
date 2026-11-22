@@ -28,7 +28,9 @@ use crate::live::{now_ms, LiveHandle};
 use crate::notify;
 use crate::pomodoro::{play_sound, KeyMap};
 use crate::settings;
-use chrono::{Datelike, Days, Local, NaiveDate, TimeZone};
+use jiff::civil::{Date, DateTime, Time};
+use jiff::tz::{AmbiguousOffset, TimeZone};
+use jiff::{Timestamp, ToSpan};
 use kb_protocol::sonix::{level_factor, Rgb};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -150,33 +152,42 @@ fn clean(mut r: Reminder, now: f64) -> Result<Reminder, String> {
 
 // --------------------------------------------------------------- schedule
 
-fn date_of<Tz: TimeZone>(tz: &Tz, ms: f64) -> Option<NaiveDate> {
-    tz.timestamp_millis_opt(ms as i64).single().map(|d| d.date_naive())
+fn date_of(tz: &TimeZone, ms: f64) -> Option<Date> {
+    Some(tz.to_datetime(Timestamp::from_millisecond(ms as i64).ok()?).date())
+}
+
+/// The first time a wall clock shows `t`; none when a clock change skips it.
+fn earliest(tz: &TimeZone, t: DateTime) -> Option<Timestamp> {
+    let at = tz.to_ambiguous_timestamp(t);
+    match at.offset() {
+        AmbiguousOffset::Gap { .. } => None,
+        _ => at.earlier().ok(),
+    }
 }
 
 /// `minute` (after midnight; 1440 is the next midnight) of `day`, local.
-fn at_minute<Tz: TimeZone>(tz: &Tz, day: NaiveDate, minute: u16) -> Option<f64> {
-    let m = u32::from(minute.min(DAY_MIN));
-    let t = if m == u32::from(DAY_MIN) {
-        day.succ_opt()?.and_hms_opt(0, 0, 0)?
+fn at_minute(tz: &TimeZone, day: Date, minute: u16) -> Option<f64> {
+    let m = minute.min(DAY_MIN);
+    let t = if m == DAY_MIN {
+        day.tomorrow().ok()?.to_datetime(Time::midnight())
     } else {
-        day.and_hms_opt(m / 60, m % 60, 0)?
+        day.to_datetime(Time::new((m / 60) as i8, (m % 60) as i8, 0, 0).ok()?)
     };
-    tz.from_local_datetime(&t).earliest().map(|d| d.timestamp_millis() as f64)
+    earliest(tz, t).map(|t| t.as_millisecond() as f64)
 }
 
-fn day_on(days: u8, day: NaiveDate) -> bool {
-    days & (1 << day.weekday().num_days_from_monday()) != 0
+fn day_on(days: u8, day: Date) -> bool {
+    days & (1 << day.weekday().to_monday_zero_offset()) != 0
 }
 
 /// A timed reminder's latest time at or before `now` (within a week).
-fn last_due<Tz: TimeZone>(when: &ReminderWhen, tz: &Tz, now: f64) -> Option<f64> {
+fn last_due(when: &ReminderWhen, tz: &TimeZone, now: f64) -> Option<f64> {
     match *when {
         ReminderWhen::Once { at } => (at <= now).then_some(at),
         ReminderWhen::Daily { minute, days } => {
             let today = date_of(tz, now)?;
             (0..8)
-                .filter_map(|i| today.checked_sub_days(Days::new(i)))
+                .filter_map(|i: i64| today.checked_sub(i.days()).ok())
                 .filter(|d| day_on(days, *d))
                 .filter_map(|d| at_minute(tz, d, minute))
                 .find(|&t| t <= now)
@@ -186,13 +197,13 @@ fn last_due<Tz: TimeZone>(when: &ReminderWhen, tz: &Tz, now: f64) -> Option<f64>
 }
 
 /// A timed reminder's first time after `after` (within a week).
-fn next_timed<Tz: TimeZone>(when: &ReminderWhen, tz: &Tz, after: f64) -> Option<f64> {
+fn next_timed(when: &ReminderWhen, tz: &TimeZone, after: f64) -> Option<f64> {
     match *when {
         ReminderWhen::Once { at } => (at > after).then_some(at),
         ReminderWhen::Daily { minute, days } => {
             let first = date_of(tz, after)?;
             (0..8)
-                .filter_map(|i| first.checked_add_days(Days::new(i)))
+                .filter_map(|i: i64| first.checked_add(i.days()).ok())
                 .filter(|d| day_on(days, *d))
                 .filter_map(|d| at_minute(tz, d, minute))
                 .find(|&t| t > after)
@@ -204,7 +215,7 @@ fn next_timed<Tz: TimeZone>(when: &ReminderWhen, tz: &Tz, after: f64) -> Option<
 /// A repeating reminder's next time: `every` after the anchor (the last
 /// time it went off, or the user's return), inside a chosen day's window,
 /// whose start also counts as an anchor. `None` for timed reminders.
-fn next_every<Tz: TimeZone>(when: &ReminderWhen, tz: &Tz, anchor: f64) -> Option<f64> {
+fn next_every(when: &ReminderWhen, tz: &TimeZone, anchor: f64) -> Option<f64> {
     let ReminderWhen::Every { every, from, to, days } = *when else { return None };
     let step = f64::from(every.max(1)) * MINUTE_MS;
     let mut day = date_of(tz, anchor)?;
@@ -218,7 +229,7 @@ fn next_every<Tz: TimeZone>(when: &ReminderWhen, tz: &Tz, anchor: f64) -> Option
                 return Some(t);
             }
         }
-        day = day.succ_opt()?;
+        day = day.tomorrow().ok()?;
         a = f64::NEG_INFINITY;
     }
     None
@@ -236,7 +247,7 @@ enum Check {
 
 /// `fired`: when it last went off or was saved; `anchor`: a repeating one's
 /// anchor.
-fn check<Tz: TimeZone>(when: &ReminderWhen, tz: &Tz, now: f64, fired: f64, anchor: f64) -> Check {
+fn check(when: &ReminderWhen, tz: &TimeZone, now: f64, fired: f64, anchor: f64) -> Check {
     let due = match when {
         ReminderWhen::Every { .. } => next_every(when, tz, anchor).filter(|&t| t <= now),
         _ => last_due(when, tz, now).filter(|&t| t > fired),
@@ -249,7 +260,7 @@ fn check<Tz: TimeZone>(when: &ReminderWhen, tz: &Tz, now: f64, fired: f64, ancho
 }
 
 /// When it goes off after `t` (the card's "Sonraki").
-fn next_after<Tz: TimeZone>(when: &ReminderWhen, tz: &Tz, t: f64) -> Option<f64> {
+fn next_after(when: &ReminderWhen, tz: &TimeZone, t: f64) -> Option<f64> {
     match when {
         ReminderWhen::Every { .. } => next_every(when, tz, t),
         _ => next_timed(when, tz, t),
@@ -366,10 +377,10 @@ impl RemindersHandle {
 
     pub fn state(&self) -> Result<ReminderState, String> {
         let inner = self.inner.lock().map_err(|_| "reminders unavailable")?;
-        Ok(Self::state_of(&inner, &Local))
+        Ok(Self::state_of(&inner, &crate::zones::pc_zone()))
     }
 
-    fn state_of<Tz: TimeZone>(inner: &Inner, tz: &Tz) -> ReminderState {
+    fn state_of(inner: &Inner, tz: &TimeZone) -> ReminderState {
         let s = &inner.stored.settings;
         let now = now_ms();
         ReminderState {
@@ -399,7 +410,7 @@ impl RemindersHandle {
 
     fn emit(&self) {
         if let Ok(mut inner) = self.inner.lock() {
-            let state = Self::state_of(&inner, &Local);
+            let state = Self::state_of(&inner, &crate::zones::pc_zone());
             inner.last_state = Some(state.clone());
             let _ = self.app.emit(EVENT_REMINDERS, state);
         }
@@ -540,7 +551,7 @@ impl RemindersHandle {
             for r in stored.reminders.iter_mut().filter(|r| r.enabled) {
                 let last = stored.fired.get(&r.id).copied().unwrap_or(0.0);
                 let anchor = *anchors.entry(r.id.clone()).or_insert(now);
-                let (t, went_off) = match check(&r.when, &Local, now, last, anchor) {
+                let (t, went_off) = match check(&r.when, &crate::zones::pc_zone(), now, last, anchor) {
                     Check::Quiet => continue,
                     Check::Fire(t) => (t, true),
                     Check::Missed(t) => {
@@ -598,8 +609,11 @@ impl RemindersHandle {
                 }
                 None => {
                     inner.card_skip = None;
-                    let card =
-                        ReminderCard { reminder: r.clone(), at_ms: *t, next_ms: next_after(&r.when, &Local, *t) };
+                    let card = ReminderCard {
+                        reminder: r.clone(),
+                        at_ms: *t,
+                        next_ms: next_after(&r.when, &crate::zones::pc_zone(), *t),
+                    };
                     self.live.set_hold(SOURCE, true);
                     self.live.cancel_return(SOURCE);
                     let _ = self.app.emit(EVENT_REMINDER_CARD, card);
@@ -636,7 +650,7 @@ impl RemindersHandle {
         }
         let waving = inner.wave_sent.is_some();
 
-        let state = Self::state_of(inner, &Local);
+        let state = Self::state_of(inner, &crate::zones::pc_zone());
         if inner.last_state.as_ref() != Some(&state) {
             inner.last_state = Some(state.clone());
             let _ = self.app.emit(EVENT_REMINDERS, state);
@@ -682,15 +696,15 @@ impl RemindersHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::FixedOffset;
+    use jiff::civil::date;
 
-    fn ist() -> FixedOffset {
-        FixedOffset::east_opt(3 * 3600).unwrap()
+    fn ist() -> TimeZone {
+        TimeZone::fixed(jiff::tz::offset(3))
     }
 
     /// November 2026, Istanbul time. The 11th is a Wednesday.
-    fn at(day: u32, h: u32, m: u32) -> f64 {
-        ist().with_ymd_and_hms(2026, 11, day, h, m, 0).unwrap().timestamp_millis() as f64
+    fn at(day: i8, h: i8, m: i8) -> f64 {
+        date(2026, 11, day).at(h, m, 0, 0).to_zoned(ist()).unwrap().timestamp().as_millisecond() as f64
     }
 
     const WEEKDAYS: u8 = 0b001_1111;
@@ -723,6 +737,21 @@ mod tests {
         assert_eq!(next_timed(&w, &tz, at(11, 14, 3)), Some(at(12, 14, 0)));
         // Friday afternoon, then Monday (the weekend is off).
         assert_eq!(next_timed(&w, &tz, at(13, 15, 0)), Some(at(16, 14, 0)));
+    }
+
+    #[test]
+    fn a_daily_reminder_across_clock_changes() {
+        let tz = TimeZone::get("Europe/Warsaw").unwrap();
+        let utc = |t: Option<f64>| t.map(|ms| Timestamp::from_millisecond(ms as i64).unwrap().to_string());
+        let noon = |m: i8, d: i8| date(2026, m, d).at(12, 0, 0, 0).to_zoned(tz.clone()).unwrap().timestamp();
+        let after = |m: i8, d: i8| noon(m, d).as_millisecond() as f64;
+        let daily = |h: u16, mi: u16| ReminderWhen::Daily { minute: h * 60 + mi, days: 0b111_1111 };
+        // 02:30 does not happen on 29 March (02:00 → 03:00): that day is skipped.
+        assert_eq!(utc(next_timed(&daily(2, 30), &tz, after(3, 28))), Some("2026-03-30T00:30:00Z".into()));
+        // It happens twice on 25 October (03:00 → 02:00): the first counts.
+        assert_eq!(utc(next_timed(&daily(2, 30), &tz, after(10, 24))), Some("2026-10-25T00:30:00Z".into()));
+        // 03:00 that night happens once, in winter time.
+        assert_eq!(utc(next_timed(&daily(3, 0), &tz, after(10, 24))), Some("2026-10-25T02:00:00Z".into()));
     }
 
     #[test]

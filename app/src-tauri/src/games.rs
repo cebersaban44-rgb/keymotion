@@ -396,14 +396,17 @@ struct History {
     records: Vec<GameRecord>,
 }
 
-/// Start of today, local time, in ms since the epoch.
+/// Start of today, local time, in ms since the epoch (a day ago when a
+/// clock change skips midnight).
 fn day_start(now: f64) -> f64 {
-    use chrono::{Local, TimeZone};
-    let Some(t) = Local.timestamp_millis_opt(now as i64).single() else { return now - DAY_MS };
-    t.date_naive()
-        .and_hms_opt(0, 0, 0)
-        .and_then(|d| Local.from_local_datetime(&d).earliest())
-        .map_or(now - DAY_MS, |d| d.timestamp_millis() as f64)
+    use jiff::tz::AmbiguousOffset;
+    let tz = crate::zones::pc_zone();
+    let Ok(t) = jiff::Timestamp::from_millisecond(now as i64) else { return now - DAY_MS };
+    let midnight = tz.to_ambiguous_timestamp(tz.to_datetime(t).date().to_datetime(jiff::civil::Time::midnight()));
+    match midnight.offset() {
+        AmbiguousOffset::Gap { .. } => now - DAY_MS,
+        _ => midnight.earlier().map_or(now - DAY_MS, |m| m.as_millisecond() as f64),
+    }
 }
 
 /// Time played within [from, to], the running session (started at

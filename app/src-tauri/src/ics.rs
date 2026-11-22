@@ -4,7 +4,7 @@
 //!
 //! * The text is parsed by `icalendar`'s low-level parser; this module
 //!   reads the few properties a card needs.
-//! * Repeats are opened up with `rrule` (RRULE, EXDATE, RDATE). A moved
+//! * Repeats are opened up by [`crate::recur`] (RRULE, EXDATE, RDATE). A moved
 //!   or changed instance (RECURRENCE-ID) replaces the one it overrides;
 //!   cancelled events and instances are left out.
 //! * Times: UTC (`…Z`), a zone by IANA name (Google, Apple), by Windows
@@ -13,11 +13,12 @@
 //!   zone none of these know falls back to its VTIMEZONE's standard
 //!   offset, or the PC's zone.
 
-use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use crate::recur::Rule;
 use icalendar::parser::{read_calendar, unfold, Component, Property};
-use rrule::{RRule, Tz, Unvalidated};
+use jiff::civil::{Date, DateTime, Time};
+use jiff::tz::TimeZone;
+use jiff::{SignedDuration, Timestamp, Zoned};
 use std::collections::{HashMap, HashSet};
-use std::str::FromStr;
 
 /// One event (or one instance of a repeating event) in the asked span.
 #[derive(Debug, Clone, PartialEq)]
@@ -32,7 +33,7 @@ pub struct Occurrence {
 }
 
 /// Most repeats a single event may open up into within the span.
-const MAX_REPEATS: u16 = 1_000;
+const MAX_REPEATS: usize = 1_000;
 
 /// The address gave a web page (a sign-in page, an event's or the
 /// calendar's page) instead of a calendar.
@@ -69,7 +70,7 @@ fn blocks(unfolded: &str) -> Vec<String> {
 /// Events of `text` that overlap `from_ms..to_ms`, sorted by start.
 /// `local`: the zone of floating times and whole days (the PC's zone).
 /// Errors: [`WEB_PAGE`], [`NOT_A_CALENDAR`].
-pub fn occurrences(text: &str, from_ms: f64, to_ms: f64, local: Tz) -> Result<Vec<Occurrence>, String> {
+pub fn occurrences(text: &str, from_ms: f64, to_ms: f64, local: &TimeZone) -> Result<Vec<Occurrence>, String> {
     let unfolded = unfold(text);
     let head = unfolded.trim_start_matches('\u{feff}').trim_start();
     if head.starts_with('<') {
@@ -102,8 +103,8 @@ pub fn occurrences(text: &str, from_ms: f64, to_ms: f64, local: Tz) -> Result<Ve
     let mut overridden: HashSet<(String, i64)> = HashSet::new();
     for e in &events {
         if let (Some(uid), Some(rid)) = (text_of(e, "UID"), prop(e, "RECURRENCE-ID")) {
-            if let Some((dt, _)) = zones.parse(rid) {
-                overridden.insert((uid, dt.timestamp_millis()));
+            if let Some(w) = zones.parse(rid) {
+                overridden.insert((uid, w.at.timestamp().as_millisecond()));
             }
         }
     }
@@ -113,33 +114,34 @@ pub fn occurrences(text: &str, from_ms: f64, to_ms: f64, local: Tz) -> Result<Ve
         if text_of(e, "STATUS").is_some_and(|s| s.eq_ignore_ascii_case("CANCELLED")) {
             continue;
         }
-        let Some((start, all_day)) = prop(e, "DTSTART").and_then(|p| zones.parse(p)) else { continue };
-        let length = event_length(e, &zones, start, all_day);
+        let Some(start) = prop(e, "DTSTART").and_then(|p| zones.parse(p)) else { continue };
+        let all_day = start.all_day;
+        let length = event_length(e, &zones, &start);
         let uid = text_of(e, "UID").unwrap_or_default();
         let title = text_of(e, "SUMMARY").map(|s| unescape(&s)).unwrap_or_default();
         let location = text_of(e, "LOCATION").map(|s| unescape(&s)).unwrap_or_default();
-        let make = |s: DateTime<Tz>| Occurrence {
+        let length_ms = length.as_millis() as f64;
+        let make = |s: Timestamp| Occurrence {
             uid: uid.clone(),
             title: title.clone(),
             location: location.clone(),
-            start_ms: s.timestamp_millis() as f64,
-            end_ms: (s + length).timestamp_millis() as f64,
+            start_ms: s.as_millisecond() as f64,
+            end_ms: s.as_millisecond() as f64 + length_ms,
             all_day,
         };
         let overlaps = |o: &Occurrence| o.end_ms > from_ms && o.start_ms < to_ms;
 
         let is_override = prop(e, "RECURRENCE-ID").is_some();
         let starts = match (prop(e, "RRULE"), is_override) {
-            (Some(rule), false) => {
-                repeats(e, &zones, rule.val.as_str(), start, length, from_ms, to_ms).unwrap_or_else(|err| {
+            (Some(rule), false) => repeats(e, &zones, rule.val.as_str(), &start, length, from_ms, to_ms)
+                .unwrap_or_else(|err| {
                     tracing::debug!(%uid, "repeat rule not understood ({err}); first instance only");
-                    vec![start]
-                })
-            }
-            _ => vec![start],
+                    vec![start.at.timestamp()]
+                }),
+            _ => vec![start.at.timestamp()],
         };
         for s in starts {
-            if !is_override && overridden.contains(&(uid.clone(), s.timestamp_millis())) {
+            if !is_override && overridden.contains(&(uid.clone(), s.as_millisecond())) {
                 continue;
             }
             let o = make(s);
@@ -159,56 +161,48 @@ fn repeats(
     e: &Component,
     zones: &Zones,
     rule: &str,
-    start: DateTime<Tz>,
-    length: Duration,
+    start: &When,
+    length: SignedDuration,
     from_ms: f64,
     to_ms: f64,
-) -> Result<Vec<DateTime<Tz>>, String> {
-    let rule = RRule::<Unvalidated>::from_str(rule).map_err(|e| e.to_string())?;
-    let mut set = rule.build(start).map_err(|e| e.to_string())?;
-    for p in props(e, "EXDATE") {
-        for dt in zones.parse_list(p) {
-            set = set.exdate(dt);
-        }
-    }
-    for p in props(e, "RDATE") {
-        for dt in zones.parse_list(p) {
-            set = set.rdate(dt);
-        }
-    }
-    let tz = start.timezone();
-    let at = |ms: f64| Utc.timestamp_millis_opt(ms as i64).single().map(|d| d.with_timezone(&tz));
-    let (Some(after), Some(before)) = (at(from_ms - length.num_milliseconds() as f64 - 1.0), at(to_ms)) else {
+) -> Result<Vec<Timestamp>, String> {
+    let series = rule.parse::<Rule>()?.validate(&start.at, start.floating)?;
+    let times = |name: &'static str| -> Vec<Timestamp> {
+        props(e, name).flat_map(|p| zones.parse_list(p)).map(|w| w.at.timestamp()).collect()
+    };
+    let (excluded, extra) = (times("EXDATE"), times("RDATE"));
+    let at = |ms: f64| Timestamp::from_millisecond(ms as i64).ok();
+    let (Some(after), Some(before)) = (at(from_ms - length.as_millis() as f64 - 1.0), at(to_ms)) else {
         return Err("span out of range".into());
     };
-    Ok(set.after(after).before(before).all(MAX_REPEATS).dates)
+    Ok(series.between(&extra, &excluded, after, before, MAX_REPEATS))
 }
 
 /// DTEND, or DURATION, or the defaults (a whole day; no length).
-fn event_length(e: &Component, zones: &Zones, start: DateTime<Tz>, all_day: bool) -> Duration {
-    if let Some((end, _)) = prop(e, "DTEND").and_then(|p| zones.parse(p)) {
-        if end > start {
-            return end - start;
+fn event_length(e: &Component, zones: &Zones, start: &When) -> SignedDuration {
+    if let Some(end) = prop(e, "DTEND").and_then(|p| zones.parse(p)) {
+        if end.at.timestamp() > start.at.timestamp() {
+            return start.at.timestamp().duration_until(end.at.timestamp());
         }
     }
     if let Some(d) = prop(e, "DURATION").and_then(|p| parse_duration(p.val.as_str())) {
         return d;
     }
-    if all_day {
-        Duration::days(1)
+    if start.all_day {
+        SignedDuration::from_hours(24)
     } else {
-        Duration::zero()
+        SignedDuration::ZERO
     }
 }
 
 /// `P1D`, `PT30M`, `PT1H30M`, `P1W` (the sign and seconds too).
-fn parse_duration(v: &str) -> Option<Duration> {
+fn parse_duration(v: &str) -> Option<SignedDuration> {
     let (neg, v) = match v.strip_prefix('-') {
         Some(rest) => (true, rest),
         None => (false, v.strip_prefix('+').unwrap_or(v)),
     };
     let v = v.strip_prefix('P')?;
-    let mut total = Duration::zero();
+    let mut total = SignedDuration::ZERO;
     let mut num = String::new();
     let mut time = false;
     for ch in v.chars() {
@@ -218,14 +212,15 @@ fn parse_duration(v: &str) -> Option<Duration> {
             unit => {
                 let n: i64 = num.parse().ok()?;
                 num.clear();
-                total += match (unit, time) {
-                    ('W', false) => Duration::weeks(n),
-                    ('D', false) => Duration::days(n),
-                    ('H', true) => Duration::hours(n),
-                    ('M', true) => Duration::minutes(n),
-                    ('S', true) => Duration::seconds(n),
+                let seconds = match (unit, time) {
+                    ('W', false) => 7 * 86_400,
+                    ('D', false) => 86_400,
+                    ('H', true) => 3_600,
+                    ('M', true) => 60,
+                    ('S', true) => 1,
                     _ => return None,
                 };
+                total = total.checked_add(SignedDuration::from_secs(n.checked_mul(seconds)?))?;
             }
         }
     }
@@ -270,16 +265,55 @@ fn param<'a>(p: &'a Property, key: &str) -> Option<&'a str> {
         .map(|v| v.as_str().trim_matches('"'))
 }
 
+/// A date-time value of the feed.
+#[derive(Debug, Clone)]
+struct When {
+    at: Zoned,
+    /// A whole day, not a time.
+    all_day: bool,
+    /// In the PC's zone: a floating time, a whole day or a zone nobody
+    /// knows. A repeat of such a start may end at a wall time there.
+    floating: bool,
+}
+
+/// A wall time in `tz` (RFC 5545): one a clock change skips is read with
+/// the offset before the change, of one it repeats the first counts.
+fn wall(tz: &TimeZone, t: DateTime) -> Option<Zoned> {
+    tz.to_ambiguous_zoned(t).compatible().ok()
+}
+
+/// `YYYYMMDD`.
+fn parse_date(v: &str) -> Option<Date> {
+    let b = v.as_bytes();
+    if b.len() != 8 || !b.iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    let n = |r: std::ops::Range<usize>| v[r].parse::<i16>().ok();
+    Date::new(n(0..4)?, n(4..6)? as i8, n(6..8)? as i8).ok()
+}
+
+/// `YYYYMMDDTHHMMSS`.
+fn parse_date_time(v: &str) -> Option<DateTime> {
+    let (date, time) = v.split_at_checked(8)?;
+    let time = time.strip_prefix('T')?;
+    let b = time.as_bytes();
+    if b.len() != 6 || !b.iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    let n = |r: std::ops::Range<usize>| time[r].parse::<i8>().ok();
+    Some(parse_date(date)?.to_datetime(Time::new(n(0..2)?, n(2..4)?, n(4..6)?, 0).ok()?))
+}
+
 /// Time zones of one calendar.
 struct Zones {
-    local: Tz,
+    local: TimeZone,
     /// Zones only the calendar's own VTIMEZONE explains: its standard
     /// offset, as a fixed zone.
-    fallback: HashMap<String, Tz>,
+    fallback: HashMap<String, TimeZone>,
 }
 
 impl Zones {
-    fn new(components: &[Component], local: Tz) -> Self {
+    fn new(components: &[Component], local: &TimeZone) -> Self {
         let mut fallback = HashMap::new();
         for c in components.iter().filter(|c| c.name.as_str().eq_ignore_ascii_case("VTIMEZONE")) {
             let Some(id) = text_of(c, "TZID") else { continue };
@@ -288,53 +322,51 @@ impl Zones {
                 fallback.insert(id, tz);
             }
         }
-        Self { local, fallback }
+        Self { local: local.clone(), fallback }
     }
 
-    fn zone(&self, tzid: Option<&str>) -> Tz {
-        let Some(id) = tzid.map(str::trim).filter(|s| !s.is_empty()) else { return self.local };
-        named_zone(id).or_else(|| self.fallback.get(id).copied()).unwrap_or(self.local)
+    /// The zone of a TZID; true when it is the PC's zone.
+    fn zone(&self, tzid: Option<&str>) -> (TimeZone, bool) {
+        let Some(id) = tzid.map(str::trim).filter(|s| !s.is_empty()) else { return (self.local.clone(), true) };
+        match named_zone(id).or_else(|| self.fallback.get(id).cloned()) {
+            Some(tz) => (tz, false),
+            None => (self.local.clone(), true),
+        }
     }
 
-    /// A date-time value with its parameters; true when it is a whole day.
-    fn parse(&self, p: &Property) -> Option<(DateTime<Tz>, bool)> {
+    /// A date-time value with its parameters.
+    fn parse(&self, p: &Property) -> Option<When> {
         self.parse_value(p.val.as_str(), param(p, "TZID"), param(p, "VALUE"))
     }
 
     /// Comma-separated values (EXDATE, RDATE).
-    fn parse_list(&self, p: &Property) -> Vec<DateTime<Tz>> {
+    fn parse_list(&self, p: &Property) -> Vec<When> {
         p.val
             .as_str()
             .split(',')
-            .filter_map(|v| self.parse_value(v.trim(), param(p, "TZID"), param(p, "VALUE")).map(|(d, _)| d))
+            .filter_map(|v| self.parse_value(v.trim(), param(p, "TZID"), param(p, "VALUE")))
             .collect()
     }
 
-    fn parse_value(&self, v: &str, tzid: Option<&str>, value: Option<&str>) -> Option<(DateTime<Tz>, bool)> {
+    fn parse_value(&self, v: &str, tzid: Option<&str>, value: Option<&str>) -> Option<When> {
         let is_date = value.is_some_and(|t| t.eq_ignore_ascii_case("DATE")) || (v.len() == 8 && !v.contains('T'));
         if is_date {
-            let d = NaiveDate::parse_from_str(v, "%Y%m%d").ok()?;
-            let dt = self.local.from_local_datetime(&d.and_hms_opt(0, 0, 0)?).earliest()?;
-            return Some((dt, true));
+            let at = wall(&self.local, parse_date(v)?.to_datetime(Time::midnight()))?;
+            return Some(When { at, all_day: true, floating: true });
         }
         if let Some(utc) = v.strip_suffix('Z').or_else(|| v.strip_suffix('z')) {
-            let n = NaiveDateTime::parse_from_str(utc, "%Y%m%dT%H%M%S").ok()?;
-            return Some((Tz::UTC.from_utc_datetime(&n), false));
+            let at = parse_date_time(utc)?.to_zoned(TimeZone::UTC).ok()?;
+            return Some(When { at, all_day: false, floating: false });
         }
-        let n = NaiveDateTime::parse_from_str(v, "%Y%m%dT%H%M%S").ok()?;
-        let tz = self.zone(tzid);
-        // A time skipped by a clock change (spring forward) moves on by
-        // the gap; one that happens twice takes the first.
-        let dt = tz
-            .from_local_datetime(&n)
-            .earliest()
-            .or_else(|| tz.from_local_datetime(&(n + Duration::hours(1))).earliest())?;
-        Some((dt, false))
+        let n = parse_date_time(v)?;
+        let (tz, floating) = self.zone(tzid);
+        let at = wall(&tz, n)?;
+        Some(When { at, all_day: false, floating })
     }
 }
 
 /// `+0300` → a fixed zone (`Etc/GMT-3`; whole hours only).
-fn fixed_zone(offset: &str) -> Option<Tz> {
+fn fixed_zone(offset: &str) -> Option<TimeZone> {
     let sign = match offset.as_bytes().first()? {
         b'+' => 1,
         b'-' => -1,
@@ -348,148 +380,36 @@ fn fixed_zone(offset: &str) -> Option<Tz> {
     }
     let total = sign * hours;
     let name = if total == 0 { "Etc/UTC".to_string() } else { format!("Etc/GMT{:+}", -total) };
-    chrono_tz::Tz::from_str(&name).ok().map(Tz::Tz)
+    TimeZone::get(&name).ok()
 }
 
 /// A zone by IANA name, Windows name or a vendor path ending in an IANA name.
-fn named_zone(id: &str) -> Option<Tz> {
-    if let Ok(tz) = chrono_tz::Tz::from_str(id) {
-        return Some(Tz::Tz(tz));
+fn named_zone(id: &str) -> Option<TimeZone> {
+    if let Ok(tz) = TimeZone::get(id) {
+        return Some(tz);
     }
-    if let Some((_, iana)) = WINDOWS_ZONES.iter().find(|(w, _)| w.eq_ignore_ascii_case(id)) {
-        return chrono_tz::Tz::from_str(iana).ok().map(Tz::Tz);
+    if let Some(tz) = crate::zones::windows_zone(id) {
+        return Some(tz);
     }
     // "/mozilla.org/20050126_1/Europe/Istanbul", "/softwarestudio.org/…".
     let parts: Vec<&str> = id.split('/').filter(|s| !s.is_empty()).collect();
-    (1..=3.min(parts.len())).find_map(|n| chrono_tz::Tz::from_str(&parts[parts.len() - n..].join("/")).ok().map(Tz::Tz))
+    (1..=3.min(parts.len())).find_map(|n| TimeZone::get(&parts[parts.len() - n..].join("/")).ok())
 }
-
-/// Windows zone names (Outlook) → IANA (CLDR windowsZones, main territory).
-const WINDOWS_ZONES: &[(&str, &str)] = &[
-    ("Dateline Standard Time", "Etc/GMT+12"),
-    ("UTC-11", "Etc/GMT+11"),
-    ("Hawaiian Standard Time", "Pacific/Honolulu"),
-    ("Alaskan Standard Time", "America/Anchorage"),
-    ("Pacific Standard Time (Mexico)", "America/Tijuana"),
-    ("UTC-09", "Etc/GMT+9"),
-    ("UTC-08", "Etc/GMT+8"),
-    ("Pacific Standard Time", "America/Los_Angeles"),
-    ("US Mountain Standard Time", "America/Phoenix"),
-    ("Mountain Standard Time (Mexico)", "America/Chihuahua"),
-    ("Mountain Standard Time", "America/Denver"),
-    ("Central America Standard Time", "America/Guatemala"),
-    ("Central Standard Time (Mexico)", "America/Mexico_City"),
-    ("Canada Central Standard Time", "America/Regina"),
-    ("Central Standard Time", "America/Chicago"),
-    ("SA Pacific Standard Time", "America/Bogota"),
-    ("Eastern Standard Time", "America/New_York"),
-    ("Venezuela Standard Time", "America/Caracas"),
-    ("Paraguay Standard Time", "America/Asuncion"),
-    ("Atlantic Standard Time", "America/Halifax"),
-    ("SA Western Standard Time", "America/La_Paz"),
-    ("Pacific SA Standard Time", "America/Santiago"),
-    ("Newfoundland Standard Time", "America/St_Johns"),
-    ("E. South America Standard Time", "America/Sao_Paulo"),
-    ("Argentina Standard Time", "America/Buenos_Aires"),
-    ("SA Eastern Standard Time", "America/Cayenne"),
-    ("Greenland Standard Time", "America/Godthab"),
-    ("Montevideo Standard Time", "America/Montevideo"),
-    ("Bahia Standard Time", "America/Bahia"),
-    ("UTC-02", "Etc/GMT+2"),
-    ("Mid-Atlantic Standard Time", "Etc/GMT+2"),
-    ("Azores Standard Time", "Atlantic/Azores"),
-    ("Cape Verde Standard Time", "Atlantic/Cape_Verde"),
-    ("UTC", "Etc/UTC"),
-    ("GMT Standard Time", "Europe/London"),
-    ("Greenwich Standard Time", "Atlantic/Reykjavik"),
-    ("Morocco Standard Time", "Africa/Casablanca"),
-    ("W. Europe Standard Time", "Europe/Berlin"),
-    ("Central Europe Standard Time", "Europe/Budapest"),
-    ("Romance Standard Time", "Europe/Paris"),
-    ("Central European Standard Time", "Europe/Warsaw"),
-    ("W. Central Africa Standard Time", "Africa/Lagos"),
-    ("Jordan Standard Time", "Asia/Amman"),
-    ("GTB Standard Time", "Europe/Bucharest"),
-    ("Middle East Standard Time", "Asia/Beirut"),
-    ("Egypt Standard Time", "Africa/Cairo"),
-    ("E. Europe Standard Time", "Europe/Chisinau"),
-    ("Syria Standard Time", "Asia/Damascus"),
-    ("South Africa Standard Time", "Africa/Johannesburg"),
-    ("FLE Standard Time", "Europe/Kiev"),
-    ("Israel Standard Time", "Asia/Jerusalem"),
-    ("Kaliningrad Standard Time", "Europe/Kaliningrad"),
-    ("Sudan Standard Time", "Africa/Khartoum"),
-    ("Libya Standard Time", "Africa/Tripoli"),
-    ("Namibia Standard Time", "Africa/Windhoek"),
-    ("Turkey Standard Time", "Europe/Istanbul"),
-    ("Arabic Standard Time", "Asia/Baghdad"),
-    ("Arab Standard Time", "Asia/Riyadh"),
-    ("Belarus Standard Time", "Europe/Minsk"),
-    ("Russian Standard Time", "Europe/Moscow"),
-    ("E. Africa Standard Time", "Africa/Nairobi"),
-    ("Volgograd Standard Time", "Europe/Volgograd"),
-    ("Iran Standard Time", "Asia/Tehran"),
-    ("Arabian Standard Time", "Asia/Dubai"),
-    ("Astrakhan Standard Time", "Europe/Astrakhan"),
-    ("Azerbaijan Standard Time", "Asia/Baku"),
-    ("Russia Time Zone 3", "Europe/Samara"),
-    ("Mauritius Standard Time", "Indian/Mauritius"),
-    ("Saratov Standard Time", "Europe/Saratov"),
-    ("Georgian Standard Time", "Asia/Tbilisi"),
-    ("Caucasus Standard Time", "Asia/Yerevan"),
-    ("Afghanistan Standard Time", "Asia/Kabul"),
-    ("West Asia Standard Time", "Asia/Tashkent"),
-    ("Ekaterinburg Standard Time", "Asia/Yekaterinburg"),
-    ("Pakistan Standard Time", "Asia/Karachi"),
-    ("India Standard Time", "Asia/Kolkata"),
-    ("Sri Lanka Standard Time", "Asia/Colombo"),
-    ("Nepal Standard Time", "Asia/Kathmandu"),
-    ("Central Asia Standard Time", "Asia/Almaty"),
-    ("Bangladesh Standard Time", "Asia/Dhaka"),
-    ("Omsk Standard Time", "Asia/Omsk"),
-    ("Myanmar Standard Time", "Asia/Yangon"),
-    ("SE Asia Standard Time", "Asia/Bangkok"),
-    ("N. Central Asia Standard Time", "Asia/Novosibirsk"),
-    ("North Asia Standard Time", "Asia/Krasnoyarsk"),
-    ("China Standard Time", "Asia/Shanghai"),
-    ("North Asia East Standard Time", "Asia/Irkutsk"),
-    ("Singapore Standard Time", "Asia/Singapore"),
-    ("W. Australia Standard Time", "Australia/Perth"),
-    ("Taipei Standard Time", "Asia/Taipei"),
-    ("Ulaanbaatar Standard Time", "Asia/Ulaanbaatar"),
-    ("Tokyo Standard Time", "Asia/Tokyo"),
-    ("Korea Standard Time", "Asia/Seoul"),
-    ("Yakutsk Standard Time", "Asia/Yakutsk"),
-    ("Cen. Australia Standard Time", "Australia/Adelaide"),
-    ("AUS Central Standard Time", "Australia/Darwin"),
-    ("E. Australia Standard Time", "Australia/Brisbane"),
-    ("AUS Eastern Standard Time", "Australia/Sydney"),
-    ("Tasmania Standard Time", "Australia/Hobart"),
-    ("Vladivostok Standard Time", "Asia/Vladivostok"),
-    ("Magadan Standard Time", "Asia/Magadan"),
-    ("Central Pacific Standard Time", "Pacific/Guadalcanal"),
-    ("UTC+12", "Etc/GMT-12"),
-    ("New Zealand Standard Time", "Pacific/Auckland"),
-    ("Fiji Standard Time", "Pacific/Fiji"),
-    ("UTC+13", "Etc/GMT-13"),
-    ("Tonga Standard Time", "Pacific/Tongatapu"),
-    ("Samoa Standard Time", "Pacific/Apia"),
-];
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn ist() -> Tz {
-        Tz::Tz(chrono_tz::Europe::Istanbul)
+    fn ist() -> TimeZone {
+        TimeZone::get("Europe/Istanbul").unwrap()
     }
 
     /// Milliseconds of a wall time in Istanbul (UTC+3).
-    fn at(y: i32, mo: u32, d: u32, h: u32, mi: u32) -> f64 {
-        ist().with_ymd_and_hms(y, mo, d, h, mi, 0).single().unwrap().timestamp_millis() as f64
+    fn at(y: i16, mo: i8, d: i8, h: i8, mi: i8) -> f64 {
+        jiff::civil::date(y, mo, d).at(h, mi, 0, 0).to_zoned(ist()).unwrap().timestamp().as_millisecond() as f64
     }
 
-    fn day(y: i32, mo: u32, d: u32) -> (f64, f64) {
+    fn day(y: i16, mo: i8, d: i8) -> (f64, f64) {
         (at(y, mo, d, 0, 0), at(y, mo, d, 23, 59))
     }
 
@@ -520,7 +440,7 @@ END:VCALENDAR\n";
     #[test]
     fn google_repeats_exclusions_moves_and_cancellations() {
         let (from, to) = (at(2026, 11, 9, 0, 0), at(2026, 11, 12, 0, 0));
-        let o = occurrences(GOOGLE, from, to, ist()).unwrap();
+        let o = occurrences(GOOGLE, from, to, &ist()).unwrap();
         let got: Vec<(f64, &str)> = o.iter().map(|o| (o.start_ms, o.title.as_str())).collect();
         assert_eq!(
             got,
@@ -534,7 +454,7 @@ END:VCALENDAR\n";
         assert_eq!(o[1].location, "Toplantı odası 2, 3. kat");
         assert_eq!(o[1].end_ms - o[1].start_ms, 3_600_000.0);
         // The week after, both days come back.
-        let o = occurrences(GOOGLE, at(2026, 11, 16, 0, 0), at(2026, 11, 19, 0, 0), ist()).unwrap();
+        let o = occurrences(GOOGLE, at(2026, 11, 16, 0, 0), at(2026, 11, 19, 0, 0), &ist()).unwrap();
         let starts: Vec<f64> = o.iter().map(|o| o.start_ms).collect();
         assert_eq!(starts, vec![at(2026, 11, 16, 10, 0), at(2026, 11, 18, 10, 0)]);
     }
@@ -542,7 +462,7 @@ END:VCALENDAR\n";
     #[test]
     fn outlook_windows_zones_folded_lines_and_vtimezone_fallback() {
         let (from, to) = day(2026, 11, 11);
-        let o = occurrences(OUTLOOK, from, to, ist()).unwrap();
+        let o = occurrences(OUTLOOK, from, to, &ist()).unwrap();
         assert_eq!(o.len(), 2);
         // "Custom Zone" is +02:00 by its VTIMEZONE: 09:00 there is 10:00 here.
         assert_eq!((o[0].title.as_str(), o[0].start_ms), ("Özel bölge", at(2026, 11, 11, 10, 0)));
@@ -554,7 +474,7 @@ END:VCALENDAR\n";
     #[test]
     fn apple_whole_days_counts_and_vendor_zone_paths() {
         let (from, to) = (at(2026, 11, 10, 0, 0), at(2026, 11, 14, 0, 0));
-        let o = occurrences(APPLE, from, to, ist()).unwrap();
+        let o = occurrences(APPLE, from, to, &ist()).unwrap();
         let sport: Vec<f64> = o.iter().filter(|o| o.title == "Spor").map(|o| o.start_ms).collect();
         assert_eq!(sport, vec![at(2026, 11, 10, 8, 30), at(2026, 11, 11, 8, 30), at(2026, 11, 12, 8, 30)]);
         let whole = o.iter().find(|o| o.all_day).unwrap();
@@ -564,16 +484,16 @@ END:VCALENDAR\n";
 
     #[test]
     fn an_event_running_at_the_start_of_the_span_counts() {
-        let o = occurrences(GOOGLE, at(2026, 11, 11, 14, 30), at(2026, 11, 11, 18, 0), ist()).unwrap();
+        let o = occurrences(GOOGLE, at(2026, 11, 11, 14, 30), at(2026, 11, 11, 18, 0), &ist()).unwrap();
         assert_eq!(o.iter().map(|o| o.title.as_str()).collect::<Vec<_>>(), vec!["Tasarım incelemesi"]);
     }
 
     #[test]
     fn web_pages_and_odd_entries() {
         // A sign-in page or an event's page, not a calendar.
-        assert_eq!(occurrences("<!DOCTYPE html><html>…</html>", 0.0, 1.0, ist()), Err(WEB_PAGE.into()));
-        assert_eq!(occurrences("\u{feff}  <html>", 0.0, 1.0, ist()), Err(WEB_PAGE.into()));
-        assert_eq!(occurrences("Not found", 0.0, 1.0, ist()), Err(NOT_A_CALENDAR.into()));
+        assert_eq!(occurrences("<!DOCTYPE html><html>…</html>", 0.0, 1.0, &ist()), Err(WEB_PAGE.into()));
+        assert_eq!(occurrences("\u{feff}  <html>", 0.0, 1.0, &ist()), Err(WEB_PAGE.into()));
+        assert_eq!(occurrences("Not found", 0.0, 1.0, &ist()), Err(NOT_A_CALENDAR.into()));
         // One entry the parser does not take is left out; the ones after it stay.
         let feed = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n\
 BEGIN:VEVENT\r\nUID:bad\r\nTHIS LINE HAS NO COLON\r\nDTSTART:20261111T070000Z\r\nSUMMARY:Bozuk\r\nEND:VEVENT\r\n\
@@ -582,27 +502,102 @@ ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN=\"Ayşe Yı
 DESCRIPTION:Bu etkinlik bir e-postadan otomatik olarak oluşturuldu.\\n<a href=\"https://x\">x</a>\r\n\
 BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-P0DT0H30M0S\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
         let (from, to) = day(2026, 11, 11);
-        let o = occurrences(feed, from, to, ist()).unwrap();
+        let o = occurrences(feed, from, to, &ist()).unwrap();
         let good: Vec<&Occurrence> = o.iter().filter(|o| o.title == "Sağlam").collect();
         assert_eq!(good.len(), 1);
         assert_eq!(good[0].start_ms, at(2026, 11, 11, 12, 0));
         let broken = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:x\nDTSTART:nonsense\nSUMMARY:x\nEND:VEVENT\nEND:VCALENDAR\n";
-        assert_eq!(occurrences(broken, 0.0, f64::MAX / 4.0, ist()).unwrap(), vec![]);
+        assert_eq!(occurrences(broken, 0.0, f64::MAX / 4.0, &ist()).unwrap(), vec![]);
     }
 
     #[test]
     fn durations_zones_and_escapes() {
-        assert_eq!(parse_duration("PT1H30M"), Some(Duration::minutes(90)));
-        assert_eq!(parse_duration("P1W"), Some(Duration::weeks(1)));
-        assert_eq!(parse_duration("-PT5M"), Some(Duration::minutes(-5)));
+        assert_eq!(parse_duration("PT1H30M"), Some(SignedDuration::from_mins(90)));
+        assert_eq!(parse_duration("P1W"), Some(SignedDuration::from_hours(7 * 24)));
+        assert_eq!(parse_duration("-PT5M"), Some(SignedDuration::from_mins(-5)));
         assert_eq!(parse_duration("1H"), None);
-        assert_eq!(named_zone("Turkey Standard Time").map(|z| z.name().to_string()), Some("Europe/Istanbul".into()));
         assert_eq!(
-            named_zone("/softwarestudio.org/Olson_20011030_5/America/New_York").map(|z| z.name().to_string()),
+            named_zone("Turkey Standard Time").and_then(|z| z.iana_name().map(str::to_string)),
+            Some("Europe/Istanbul".into())
+        );
+        assert_eq!(
+            named_zone("/softwarestudio.org/Olson_20011030_5/America/New_York")
+                .and_then(|z| z.iana_name().map(str::to_string)),
             Some("America/New_York".into())
         );
         assert!(named_zone("Nowhere Time").is_none());
-        assert_eq!(fixed_zone("+0300").map(|z| z.name().to_string()), Some("Etc/GMT-3".into()));
+        assert_eq!(fixed_zone("+0300").and_then(|z| z.iana_name().map(str::to_string)), Some("Etc/GMT-3".into()));
         assert_eq!(unescape("A\\, B\\; C\\nD\\\\"), "A, B; C D\\");
+    }
+
+    /// Repeats across zones and clock changes, with ends, skipped and
+    /// extra dates.
+    const REPEATS: &str = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n\
+BEGIN:VEVENT\r\nUID:r1\r\nDTSTART;VALUE=DATE:20261102\r\nDTEND;VALUE=DATE:20261103\r\nRRULE:FREQ=DAILY;UNTIL=20261106\r\nEXDATE;VALUE=DATE:20261104\r\nSUMMARY:Nöbet\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:r2\r\nDTSTART;TZID=W. Europe Standard Time:20261019T100000\r\nDTEND;TZID=W. Europe Standard Time:20261019T103000\r\nRRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=20261102T090000Z\r\nSUMMARY:Haftalık\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:r3\r\nDTSTART;TZID=Europe/Istanbul:20261102T090000\r\nRRULE:FREQ=DAILY;UNTIL=20261105T090000\r\nSUMMARY:Saatsiz son\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:r4\r\nDTSTART:20261102T070000Z\r\nDURATION:PT1H\r\nRRULE:FREQ=WEEKLY;COUNT=2\r\nRDATE:20261104T120000Z\r\nEXDATE:20261109T070000Z\r\nSUMMARY:Ek gün\r\nEND:VEVENT\r\n\
+END:VCALENDAR\r\n";
+
+    #[test]
+    fn repeats_with_ends_skipped_and_extra_dates() {
+        let o = occurrences(REPEATS, at(2026, 10, 1, 0, 0), at(2026, 12, 1, 0, 0), &ist()).unwrap();
+        let of = |uid: &str| -> Vec<f64> { o.iter().filter(|o| o.uid == uid).map(|o| o.start_ms).collect() };
+        // Whole days end on a date (the PC's zone) and skip the 4th.
+        let days = [2, 3, 5, 6].map(|d| at(2026, 11, d, 0, 0));
+        assert_eq!(of("r1"), days);
+        assert!(o.iter().filter(|o| o.uid == "r1").all(|o| o.all_day && o.end_ms - o.start_ms == 86_400_000.0));
+        // 10:00 in Berlin is 11:00 here in summer time, 12:00 after 25
+        // October; the UTC end takes in the last one.
+        assert_eq!(of("r2"), [at(2026, 10, 19, 11, 0), at(2026, 10, 26, 12, 0), at(2026, 11, 2, 12, 0)]);
+        // A zoned start with a wall-time end breaks the rule: the first only.
+        assert_eq!(of("r3"), [at(2026, 11, 2, 9, 0)]);
+        // An extra date joins, an excluded one goes.
+        assert_eq!(of("r4"), [at(2026, 11, 2, 10, 0), at(2026, 11, 4, 15, 0)]);
+    }
+
+    #[test]
+    fn floating_times_follow_the_pc_zone_through_clock_changes() {
+        // New York springs forward on 8 March 2026: a floating 02:30 that
+        // day moves on to 03:30; a daily 02:30 keeps its wall time.
+        let ny = TimeZone::get("America/New_York").unwrap();
+        let feed = "BEGIN:VCALENDAR\r\n\
+BEGIN:VEVENT\r\nUID:f1\r\nDTSTART:20260306T023000\r\nRRULE:FREQ=DAILY;COUNT=4\r\nSUMMARY:x\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:f2\r\nDTSTART:20260308T023000\r\nSUMMARY:y\r\nEND:VEVENT\r\n\
+END:VCALENDAR\r\n";
+        let wall = |ms: f64| {
+            let t = Timestamp::from_millisecond(ms as i64).unwrap().to_zoned(ny.clone());
+            t.strftime("%m-%d %H:%M").to_string()
+        };
+        let o = occurrences(feed, 0.0, 4e12, &ny).unwrap();
+        let got: Vec<(String, &str)> = o.iter().map(|o| (wall(o.start_ms), o.uid.as_str())).collect();
+        let want = [
+            ("03-06 02:30", "f1"),
+            ("03-07 02:30", "f1"),
+            ("03-08 03:30", "f1"),
+            ("03-08 03:30", "f2"),
+            ("03-09 02:30", "f1"),
+        ];
+        assert_eq!(got, want.map(|(w, u)| (w.to_string(), u)));
+    }
+
+    #[test]
+    fn a_whole_day_whose_midnight_is_skipped_still_shows() {
+        // Santiago skips 00:00-01:00 on 6 September 2026: the day starts at 01:00.
+        let santiago = TimeZone::get("America/Santiago").unwrap();
+        let feed = "BEGIN:VCALENDAR\r\n\
+BEGIN:VEVENT\r\nUID:d1\r\nDTSTART;VALUE=DATE:20260906\r\nDTEND;VALUE=DATE:20260907\r\nSUMMARY:x\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:d2\r\nDTSTART;VALUE=DATE:20260904\r\nRRULE:FREQ=DAILY;COUNT=4\r\nSUMMARY:y\r\nEND:VEVENT\r\n\
+END:VCALENDAR\r\n";
+        let o = occurrences(feed, 0.0, 4e12, &santiago).unwrap();
+        let utc = |uid: &str| -> Vec<String> {
+            let ms = o.iter().filter(|o| o.uid == uid).map(|o| o.start_ms as i64);
+            ms.map(|ms| Timestamp::from_millisecond(ms).unwrap().to_string()).collect()
+        };
+        assert_eq!(utc("d1"), ["2026-09-06T04:00:00Z"]);
+        let d1 = o.iter().find(|o| o.uid == "d1").unwrap();
+        assert_eq!(d1.end_ms - d1.start_ms, 23.0 * 3_600_000.0);
+        let days = ["2026-09-04T04:00:00Z", "2026-09-05T04:00:00Z", "2026-09-06T04:00:00Z", "2026-09-07T03:00:00Z"];
+        assert_eq!(utc("d2"), days);
     }
 }
