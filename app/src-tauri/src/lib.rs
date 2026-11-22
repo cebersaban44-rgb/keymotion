@@ -1640,8 +1640,15 @@ fn screen_journal(library: &Arc<Mutex<ScreenLibrary>>) -> device::ScreenWriteHoo
 /// The GitHub copy handed its start with Windows over (handoff.rs). Off the
 /// UI thread: turning the startup task on waits for Windows.
 /// A `keymotion:` address from a notification's button or its click
-/// (updates.rs). Every address but a valid "Update now" opens the window.
+/// (updates.rs), or keymotion-cli's `keymotion://background`. Every address
+/// but a valid "Update now" and that one opens the window.
 fn open_app_link(app: &AppHandle, link: updates::Link) {
+    if link == updates::Link::Background {
+        // keymotion-cli asked for the app, which already runs (perhaps
+        // still starting).
+        tracing::debug!("asked to run in the background: already running");
+        return;
+    }
     let Some(updates) = app.try_state::<Arc<updates::Updates>>() else {
         tray::show_main(app);
         return;
@@ -1650,6 +1657,7 @@ fn open_app_link(app: &AppHandle, link: updates::Link) {
         updates::Link::Open => tray::show_main(app),
         updates::Link::Update => updates.open_dialog(),
         updates::Link::Install { token } => updates.install_from_notice(&token),
+        updates::Link::Background => {}
     }
 }
 
@@ -1672,7 +1680,8 @@ pub fn run() {
     tauri::Builder::default()
         // One app at a time: two would send commands to the keyboard at
         // once. A second launch brings the open window forward instead,
-        // unless Windows started it (it stays in the tray).
+        // unless Windows started it (it stays in the tray) or keymotion-cli
+        // did (nothing changes).
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // A notification's button or click: Windows started a second
             // copy with the app's own address.
@@ -1683,7 +1692,7 @@ pub fn run() {
             if args.iter().any(|a| a == handoff::ARG_TAKE_STARTUP) {
                 take_startup(app);
             }
-            if !args.iter().any(|a| a == tray::ARG_HIDDEN) {
+            if !args.iter().any(|a| a == tray::ARG_HIDDEN) && !tray::background_start(&args) {
                 tray::show_main(app);
             }
         }))
@@ -1795,8 +1804,13 @@ pub fn run() {
             // startup task passes nothing, Windows tells how it started.
             let at_sign_in = std::env::args().any(|a| a == tray::ARG_HIDDEN)
                 || (channel::store() && kb_winsys::package::started_at_sign_in());
+            // keymotion-cli started it for an agent: the tray icon only, and
+            // not a start with Windows.
+            let args: Vec<String> = std::env::args().collect();
+            if tray::background_start(&args) {
+                tracing::info!("started in the background for an agent, in the tray");
             // Just updated: the window as the last version left it.
-            if after_update.unwrap_or(at_sign_in) {
+            } else if after_update.unwrap_or(at_sign_in) {
                 tracing::info!(after_update = after_update.is_some(), "started hidden, in the tray");
             } else {
                 window.show()?;

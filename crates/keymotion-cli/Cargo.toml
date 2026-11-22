@@ -1,0 +1,32 @@
+[package]
+name = "keymotion-cli"
+description = "The command-line tool AI coding agents and scripts use to light the keyboard's keys through the running Keymotion app. It talks to the app over kb-agent's named pipe and never opens the keyboard itself."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "keymotion-cli"
+path = "src/main.rs"
+
+[features]
+# Reads KEYMOTION_CLI_TEST_PIPE in a release build too, for running the
+# integration tests with --release. Debug builds always read it; a release
+# without this feature never does.
+test-pipe = []
+
+[dependencies]
+clap.workspace = true
+kb-agent.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+kb-winsys.workspace = true
+
+[dev-dependencies]
+toml.workspace = true
+
+[lints]
+workspace = true

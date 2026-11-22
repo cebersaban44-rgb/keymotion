@@ -57,6 +57,10 @@ const TRAY_ID: &str = "main";
 /// Windows starts the app with this when it starts with Windows: the
 /// window stays hidden, only the tray icon shows.
 pub const ARG_HIDDEN: &str = "--hidden";
+/// keymotion-cli started the app for an agent (or `keymotion://background`
+/// did): the window stays hidden as with [`ARG_HIDDEN`], but this is not a
+/// start with Windows. A running app that gets it shows nothing.
+pub const ARG_BACKGROUND: &str = "--background";
 /// The value's name in the `Run` key.
 pub const RUN_NAME: &str = "Keymotion";
 const FILE: &str = "background.json";
@@ -249,6 +253,14 @@ impl Background {
     fn take_notice(&self) -> bool {
         !self.notice_given.swap(true, Ordering::SeqCst)
     }
+}
+
+/// The command line asks for the app without its window, for an agent
+/// ([`ARG_BACKGROUND`] or `keymotion://background`). Not a start with
+/// Windows: that is [`ARG_HIDDEN`].
+pub fn background_start<S: AsRef<str>>(args: &[S]) -> bool {
+    args.iter().any(|a| a.as_ref() == ARG_BACKGROUND)
+        || crate::updates::link(args) == Some(crate::updates::Link::Background)
 }
 
 /// Bring the main window back: shown, restored, in front.
@@ -1019,6 +1031,15 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
 mod tests {
     use super::*;
     use jiff::civil::date;
+
+    #[test]
+    fn a_start_for_an_agent_is_hidden_but_not_a_start_with_windows() {
+        assert!(background_start(&["C:\\x\\keymotion.exe", "--background"]));
+        assert!(background_start(&["C:\\x\\keymotion.exe", "keymotion://background"]));
+        assert!(!background_start(&["C:\\x\\keymotion.exe", "--hidden"]));
+        assert!(!background_start(&["C:\\x\\keymotion.exe", "keymotion://open"]));
+        assert!(!background_start(&["C:\\x\\keymotion.exe"]));
+    }
 
     /// The classic sequence (6 blocks, 100 minutes), at block `block`.
     fn pomodoro(status: PomodoroStatus, phase: PomodoroPhase, block: u8, remaining_ms: f64) -> PomodoroState {

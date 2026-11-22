@@ -239,8 +239,14 @@ fn time_of_day(key: &str, v: &Value) -> Result<u16, AgentError> {
     }
 }
 
+/// A whole number, given as a number or as text: `keymotion-cli settings
+/// set` sends what was typed as text.
+fn whole(v: &Value) -> Option<u64> {
+    v.as_u64().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
+}
+
 fn speed(key: &str, v: &Value) -> Result<u8, AgentError> {
-    match v.as_u64() {
+    match whole(v) {
         Some(n @ 1..=5) => Ok(n as u8),
         _ => Err(bad(key, "use 1 (slow) to 5 (fast).")),
     }
@@ -275,7 +281,7 @@ pub fn set(s: &mut AgentSettings, key: &str, value: &Value) -> Result<(), AgentE
         "agents_may_edit" => s.agents_may_edit = flag(key, value)?,
         "hide_in_game" => s.hide_in_game = flag(key, value)?,
         "screen.per_hour" => {
-            s.screen_per_hour = match value.as_u64() {
+            s.screen_per_hour = match whole(value) {
                 Some(n @ 1..=20) => n as u8,
                 _ => return Err(bad(key, "use 1 to 20.")),
             }
@@ -332,6 +338,18 @@ pub fn value_text(v: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn numbers_may_come_as_text_from_the_command_line() {
+        let mut s = AgentSettings::default();
+        set(&mut s, "signals.done.speed", &json!("5")).unwrap();
+        set(&mut s, "signals.info.speed", &json!(1)).unwrap();
+        assert_eq!((get(&s, "signals.done.speed"), get(&s, "signals.info.speed")), (Some(json!(5)), Some(json!(1))));
+        assert_eq!(set(&mut s, "signals.done.speed", &json!("fast")).unwrap_err().code, ErrorCode::BadValue);
+        assert_eq!(set(&mut s, "signals.done.speed", &json!("9")).unwrap_err().code, ErrorCode::BadValue);
+        set(&mut s, "night.on", &json!("true")).unwrap();
+        assert_eq!(get(&s, "night.on"), Some(json!(true)));
+    }
 
     #[test]
     fn every_key_reads_back_what_it_sets() {

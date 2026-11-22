@@ -118,7 +118,13 @@ impl Client {
     /// idle connection, the command never reached it: the client connects
     /// again, says hello and sends it once more, all within the timeout.
     pub fn call(&mut self, command: &Command) -> Result<Value, AgentError> {
-        let deadline = Instant::now() + self.timeout;
+        self.call_within(command, self.timeout)
+    }
+
+    /// [`Client::call`] within `timeout` instead of the connection's, so a
+    /// program can give connecting and calling one deadline together.
+    pub fn call_within(&mut self, command: &Command, timeout: Duration) -> Result<Value, AgentError> {
+        let deadline = Instant::now() + timeout;
         self.next_id += 1;
         let id = self.next_id.to_string();
         match exchange(&mut self.pipe, self.app.protocol, &self.source, deadline, &id, command) {
@@ -139,6 +145,12 @@ impl Client {
     /// The process serving the pipe, for `doctor`.
     pub fn server_process_id(&self) -> Option<u32> {
         self.pipe.server_process_id().ok()
+    }
+
+    /// The pipe's owner as a SID string, for `doctor`. Connecting already
+    /// refused a pipe this user does not own.
+    pub fn pipe_owner_sid(&self) -> Option<String> {
+        self.pipe.owner_sid().ok()
     }
 }
 
@@ -310,6 +322,15 @@ mod tests {
         let e = client.call(&Command::Status(StatusArgs {})).unwrap_err();
         assert_eq!((e.code, e.exit_code()), (ErrorCode::Timeout, 75));
         assert!(started.elapsed() < Duration::from_millis(1000), "{:?}", started.elapsed());
+
+        // A call can have less time than the connection, what is left of a
+        // deadline the program set for connecting and calling together.
+        let mut client = connect(&name, WAIT).unwrap();
+        let started = Instant::now();
+        let e = client.call_within(&Command::Status(StatusArgs {}), Duration::from_millis(200)).unwrap_err();
+        assert_eq!(e.code, ErrorCode::Timeout);
+        assert!(started.elapsed() < Duration::from_millis(900), "{:?}", started.elapsed());
+        assert_eq!(client.pipe_owner_sid(), pipe::current_user_sid().ok());
     }
 
     #[test]

@@ -1,0 +1,136 @@
+---
+title: Ajan komut satırı
+description: Betiklerin ve yapay zekâ kodlama ajanlarının klavyenin ışıklarını Keymotion üzerinden yakmak için kullandığı komut satırı aracı keymotion-cli. Komutlar, JSON çıktısı, çıkış kodları, uygulamayı nasıl başlattığı ve güvenlik modeli.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+`keymotion-cli`, bir betiğin ya da yapay zekâ kodlama ajanının (Claude Code, Codex ve kabuk komutu çalıştırabilen diğerleri) kullanıcıya klavyenin ışıklarıyla bir şey söylemesini sağlar: bir iş bitti, bir soru bekliyor, üç test başarısız oldu. Neyi nasıl göstereceğine ajan karar verir; hazır sinyaller yalnız kısayoldur, tuşlar, renkler, efektler ve süreler serbestçe birleştirilebilir.
+
+<Aside type="caution">
+Araç yapım aşamasında. Kurulum dosyasında ve Store paketinde henüz yok; ajan erişimini açan sayfa ve Claude Code ile Codex kancalarıyla birlikte paketleme adımında gelecek. O zamana kadar depodan derlenir ([Geliştirme](#geliştirme) bölümüne bakın).
+</Aside>
+
+## Nasıl çalışır
+
+```text
+ajan ──çalıştırır──▶ keymotion-cli ──adlandırılmış kanal──▶ Keymotion (agent/) ──▶ cihaz aktörü ──USB──▶ klavye
+```
+
+- `keymotion-cli` klavyeyi hiç açmaz. Çalışan uygulamaya adlandırılmış bir kanaldan satır başına bir JSON mesajı gönderir ([protokol 1](#kanal), `crates/kb-agent`); klavyenin tek sahibi, ışık katmanları ve korumalarıyla uygulamanın cihaz aktörü olarak kalır. Bir test HID katmanını, Tauri'yi ve tokio'yu araçtan uzak tutar (`crates/keymotion-cli/tests/dependencies.rs`).
+- Ajanların ışıkları uygulamada tek bir ışık katmanıdır: odak zamanlayıcısının, oyun ışıklarının, müzik modunun, göstergelerin ve uygulamaya göre profilin üstünde; uyarıların, hatırlatmaların ve dalgalarının altında ([Mimari](/keymotion/tr/developers/architecture/)).
+- Her şey yalnız RAM'e gider: klavyenin kalıcı belleğine hiçbir şey yazılmaz ve her ışık en geç 2 saat sonra kendiliğinden söner.
+- Aracın sürümü her zaman uygulamanınkiyle aynıdır (`version.workspace = true`); `keymotion-cli --version` şunu yazar: `keymotion-cli 1.2.0 (protocol 1)`.
+
+## Komutlar
+
+| Komut | Ne yapar | Uygulamayı başlatır |
+|---|---|---|
+| `status` | Keymotion çalışıyor mu, sürümü ve kanalı, ajan erişimi ve izinler, klavyeler ve bağlantıları, ajan ışıkları şu an görünüyor mu (görünmüyorsa neden: klavye yok, USB kablosu yok, oyun, gece), yanan her ajan ışığı. Uygulama çalışmıyorsa `{"app":{"running":false}}` ve çıkış kodu 0. | Hayır |
+| `keys` | Klavyenin tuş kimlikleri ve etiketleri, tuş birimiyle konumları ve gruplar. | Evet |
+| `signal <ad>` | Hazır sinyal: `done`, `attention`, `error`, `busy` ya da `info`. Her birinin görünüşünü kullanıcı uygulamada seçer; `--color`, `--effect`, `--direction`, `--speed`, `--times`, `--for` ve `--keys` bu çağrı için onu ezer. `busy` varsayılan olarak ışık yakmaz, kaynağın önceki sinyallerini kaldırır. | Evet |
+| `light` | Ajanın kendi ışığı: `--color` (zorunlu), `--keys` (varsayılan: bütün klavye), `--effect solid\|pulse\|blink\|flash\|wave`, `--direction left\|right\|up\|down` (dalga), `--speed 1-5`, ve `--times N` ya da `--for <süre>` (varsayılan 60 sn). | Evet |
+| `progress <yüzde>` | Bir tuş sırasında 0'dan 100'e çubuk: kullanıcının seçtiği F sırası ya da rakam sırası, ya da `--keys`. `--label`, `--color`, `--for` (varsayılan: son güncellemeden 10 dakika sonra). Yeni yüzdeyle yeniden gönderilir. | Evet |
+| `clear` | Bir ışığı (`--id`) ya da bu kaynağın bütün ışıklarını kaldırır. Başka bir kaynağınkini hiçbir zaman. | Evet |
+| `log` | Uygulamanın son kabul ettiği ya da reddettiği ajan istekleri (`--limit`, varsayılan 20, en çok 200): kaynak, komut, sonuç, kimlik ve isteğin değiştirdiği ayarlar. | Evet |
+| `settings get [anahtar]` | Görünüş ve davranış ayarları (sinyal görünüşleri, ilerleme tuşları, gece sessizliği ve diğerleri) ve hangi anahtarları yalnız kullanıcının değiştirebileceği. | Evet |
+| `settings set <anahtar> <değer>` | Bir görünüş ya da davranış ayarını değiştirir, ör. `signals.done.color green`. Kullanıcı bunu uygulamanın günlüğünde görür ve geri alabilir. Erişim, izinler, "ajanlar bu ayarları değiştirebilsin", "oyunda gizle" ve ekranın saatlik sınırı yalnız kullanıcınındır: uygulama bunları reddeder (77). | Evet |
+| `version` | Aracın sürümü ve protokolü; uygulama çalışıyorsa onunkiler. Protokol uyuşmazlığı hata olarak değil, bilgi olarak bildirilir. | Hayır |
+| `guide` | Ajanlar için kısa rehber (en çok 60 satır): önce ne çalıştırılır, fikirler, değerler, çıkış kodları. Ajanlar bu sayfayı değil onu okur. | Hayır |
+| `doctor` | Kurulumu denetler ve ne bulursa bulsun 0 ile çıkar: araç, uygulama çalışıyor ve cevap veriyor mu, kanalı hangi program sunuyor (beklenen `keymotion.exe`) ve kanal bu kullanıcının mı, sürümler ve protokol, ajan erişimi, klavye ve USB kablosu, araç uygulamayı nasıl başlatırdı, `keymotion-cli` PATH'te ya da Store'un takma ad klasöründe mi, ve araç başka bir uygulamanın paket kutusunda mı çalışıyor. | Hayır |
+| `start` | Uygulamayı penceresiz başlatır ve cevap verene kadar bekler; çalışıyorsa bunu söyler. | Evet |
+
+Kanca kipi, Claude Code ve Codex'e bağlanma, odak zamanlayıcısı, profiller, ekran kartları, sahneler ve tuşlarda kelime yazma sonraki adımlarda gelecek.
+
+### Her komutun seçenekleri
+
+| Seçenek | Anlamı |
+|---|---|
+| `--json` | stdout'a başarıda da hatada da tam olarak bir JSON nesnesi. `KEYMOTION_OUTPUT=json` da olur. |
+| `--source <ad>` | Kim soruyor (`claude-code`, `build-script`). Her kaynağın kendi ışıkları vardır ve yalnız kendininkileri kaldırabilir. `KEYMOTION_SOURCE` da olur; varsayılan `cli`. `a-z 0-9 : . _ -` karakterlerinden en çok 64. |
+| `--timeout <süre>` | Uygulamayı ne kadar bekleyeceği, bağlanma ve cevap birlikte (varsayılan `5s`, en çok `5m`). Verilirse uygulamayı başlatma dahil bütün çalıştırmayı sınırlar; süre sınırı olan bir kanca hiçbir zaman yarıda kesilmez. Verilmezse başlatma en çok 15 saniye sürebilir, ardından çağrının 5 saniyesi olur. |
+| `--no-start` | Uygulamayı başlatmaz; çalışmıyorsa 69 ile çıkar. |
+| `-q`, `--quiet` | İnsan kipinde başarıda stdout'a da stderr'e de hiçbir şey yazmaz. Hatalar yine stderr'e gider. |
+| `--log <düzey>` | stderr'e tanı satırları: `off`, `error`, `warn` (varsayılan; `--quiet` ile `error`), `info`, `debug`. |
+
+### Değerler
+
+- **Tuşlar:** model dosyasındaki kimlikler (`esc`, `f1`, `w`, `1`), numaralı aralıklar (`f1-f12`, `1-3`), gruplar (`all`, `f-row`, `numbers`, `letters`, `wasd`, `arrows`, `numpad`); virgülle ayrılır. Aynı adlar her modelde çalışır; `keys` hepsini listeler.
+- **Renkler:** `#RRGGBB`, `RRGGBB` ya da bir ad: red, green, blue, amber, yellow, orange, purple, pink, cyan, white.
+- **Süreler:** tam sayı ve birim: `500ms`, `30s`, `5m`, `1h`; bir ışık en çok `2h` yanar.
+- **Kimlikler:** `--id` verilmezse komut, kaynağın aynı türdeki önceki ışığının yerine geçer (`<kaynak>:light`, `<kaynak>:progress`, `<kaynak>:<sinyal>`). Kimliklerle bir kaynak en çok 8 ışık tutar; dokuzuncusu en eskisini çıkarır ve cevap hangisi olduğunu söyler.
+- Yanıp sönme saniyede üç kezi hiçbir zaman geçmez (WCAG 2.3.1).
+
+Değerleri araç, bir şey göndermeden önce uygulamanın kullandığı kodla (`kb-agent`) denetler; uygulama da yeniden denetler.
+
+## Çıktı
+
+Sonuç stdout'a, tanı satırları stderr'e gider. Araç hiçbir şey sormaz ve stdin'i hiç okumaz. İnsan çıktısı birkaç kısa İngilizce satırdır. `--json` ile:
+
+```json
+{"ok":true,"schema":1,"command":"signal","data":{"id":"claude-code:done","shown":true,"lit":true,"expires_in_ms":120000,"replaced":false,"evicted":[],"coalesced":false,"hidden":null},"warnings":[]}
+```
+
+```json
+{"ok":false,"schema":1,"command":"light","error":{"code":"agent_access_off","message":"Agent access is off in Keymotion.","hint":"The user can turn it on in Keymotion › Tools › AI agents.","retry_after_ms":null}}
+```
+
+- `command`, yazıldığı biçimiyle komuttur (`signal`, `settings get`); komut satırı hiçbir komut adı içermiyorsa `null`. `--json` ile `--help` ve `--version`, `help` ve `version` olarak cevap verir; metin `data.text`'tedir.
+- `data` uygulamanın cevabıdır (`version`, `guide`, `doctor`, `start` ve `help` için aracın kendisininki). `signal`, `light` ve `progress` için: ışığın `id`'si, şu an görünüp görünmediği (`shown`), `expires_in_ms`, önceki bir ışığın yerine geçip geçmediği (`replaced`), neyi çıkardığı (`evicted`) ve beklerken `hidden` (`"game"` ya da `"night"`).
+- `warnings` çıktıyı okuyan için cümlelerdir: uygulama bu çağrı için başlatıldı, ışık şimdilik örtülü ya da gizli, ajan erişimi kapalı.
+- Olmadıklarında `hint` ve `retry_after_ms` `null`'dır.
+- Yalnız alan eklendikçe `schema` 1 kalır; bir alanı kaldırmak ya da anlamını değiştirmek onu artırır.
+- Yazılan hiçbir şey terminali yönetemez. İnsan çıktısında uygulamanın cevaplarından ya da geri yansıtılan girdiden gelen denetim karakterleri (kaçış dizileri dahil) ve görünmez ya da yön değiştiren karakterler açık yazılır (`\u{1B}`); JSON'da DEL, C1 denetim karakterleri ve bu karakterler, JSON'un zaten kaçırdıklarına ek olarak `\u` kaçışı olur.
+
+## Çıkış kodları
+
+| Kod | Anlamı | `error.code` |
+|---|---|---|
+| 0 | Tamam | — |
+| 1 | Beklenmeyen bir şey | `internal` |
+| 64 | Komut satırı: bilinmeyen komut ya da seçenek, eksik argüman, birlikte olmayan seçenekler | `bad_argument` |
+| 65 | Değer: renk, süre, tuş, efekt, kimlik, sayı | `bad_color`, `bad_duration`, `bad_keys`, `unknown_key`, `bad_effect`, `bad_value`, … |
+| 69 | Kullanılamıyor: uygulama çalışmıyor ve başlatılamadı, klavye yok, USB kablosu gerekiyor, kanal Keymotion'ın değil | `app_not_running`, `no_keyboard`, `needs_usb`, `unsupported`, `pipe_not_trusted` |
+| 75 | Sonra yeniden deneyin: hız sınırı (kaynak başına saniyede 20 istek), zaman aşımı, bağlantı kapandı | `rate_limited`, `timeout`, `connection_lost` |
+| 76 | Araçla uygulamanın ortak protokol sürümü yok ya da uygulama komuttan eski | `protocol_mismatch`, `unknown_command` |
+| 77 | İzin yok: ajan erişimi kapalı ya da yalnız kullanıcının değiştirebileceği bir ayar | `agent_access_off`, `permission_off` |
+
+Çıkış kodu 2 hiçbir zaman kullanılmaz: Claude Code ve Codex bir kancadan gelen 2'yi "devam et" (Codex ayrıca "izni reddet") diye okur. clap'in kendi kullanım hataları 64 olur; `--help` ve `--version` 0 ile çıkar.
+
+## Uygulamayı başlatma
+
+`status`, `version`, `guide` ve `doctor` uygulamayı hiçbir zaman başlatmaz. Diğer her komut, kanalı sunan kimse yoksa ve `--no-start` verilmemişse Keymotion'ı penceresiz başlatır ve kanalı bekler: en çok 15 saniye, `--timeout` verildiyse yalnız onun izin verdiği kadar (`start` her zaman 15 saniye bekler). Bir kopya zaten çalışıyor ama kanalı henüz açık değilse (başlamaktadır) araç hiçbir şey başlatmaz, en çok 5 saniye bekler; o kopya ajanlara cevap veremeyecek kadar eski bir Store kopyasıysa bunu hemen söyler.
+
+Araç başka bir paketli uygulamanın kutusunda çalışıyor olabilir: Claude masaüstü uygulamasının terminali buna bir örnek. Orada düz bir alt süreç olarak başlatılan program o kutuda kalır; AppData'ya yazdıkları öbür uygulamanın klasörüne düşer ve kullanıcının olmayan ayarları okur. Windows'un paket arayüzü böyle bir kutuyu göstermez (`GetCurrentPackageFullName` orada "paket yok" der), ama adlandırılmış kanallar kutunun dışına ulaşır. Bu yüzden araç `keymotion.exe`'yi hiçbir zaman kendi alt süreci olarak başlatmaz; Windows'tan başlatmasını şu sırayla ister (`crates/keymotion-cli/src/launch.rs`):
+
+1. Araç Keymotion'ın paket kimliğiyle çalışıyor (Store kopyasının takma adı): paketin uygulamasını AUMID'siyle, `--background` ile etkinleştirir.
+2. Store kopyası kurulu ve yeterince yeni: aynısını Store paketinin AUMID'siyle yapar (bilgisayar başına tek Keymotion kuralı Store kopyasını tercih eder). Yeterince yeni: `--background`'u bilen ilk sürüm (`kb_agent::BACKGROUND_START_SINCE`, 1.2.0) ve aracın kendi sürümü kadar yeni; sürüm paketin tam adından okunur. Daha eski bir Store kopyası penceresini açar ve kanalı yoktur; bu yüzden hiçbir zaman başlatılmaz.
+3. `keymotion:` adres şeması kurulu GitHub kopyasını açıyor (onu GitHub kopyası kaydeder; geliştirme sürümünün kaydı sayılmaz, çünkü başka bir uygulamanın kutusunda yapıldıysa Explorer onu görmez ve kullanıcıya hangi uygulamayla açacağını sorar): `explorer.exe keymotion://background`; Explorer tam yoluyla, `CreateProcessW` ile ve hiçbir tanıtıcı devredilmeden başlatılır (`kb_winsys::shell::run_alone`; Rust'ın kendi `Command`'ı devredilebilen her tanıtıcıyı geçirir). Böylece aracın çıktısını okuyan bir ajan Explorer yüzünden beklemez. Eski bir Store kopyasının yanındaki GitHub kopyası devretmez, kendisi gizli çalışır.
+4. Hiçbiri yoksa: hemen 69 ile çıkar, "Keymotion'ı başlatın" der; yalnız eski bir Store kopyası varsa "Keymotion'ı Microsoft Store'dan güncelleyin" der.
+
+Uygulamada `--background` ve `keymotion://background` "yalnız bildirim alanı simgesiyle çalış" demektir. İkisi de Windows ile başlama sayılmaz (o yine `--hidden`'dır); pencere durumu ve Windows ile başlamanın devri değişmez. Çalışan bir uygulama bunlardan birini alırsa görünür bir şey yapmaz; Store kopyasına devreden GitHub kopyası da `--background`'u ona iletir, ama yalnız onu bilen bir Store kopyasına (`app/src-tauri/src/tray.rs`, `handoff.rs`).
+
+## Güvenlik
+
+- **Bu bilgisayar, bu kullanıcı.** Kanal `\\.\pipe\keymotion-agent-<kullanıcı SID>-<oturum>` adını taşır, ağdan gelen istemcileri reddeder ve güvenlik tanımlayıcısı yalnız uygulamayı çalıştıran kullanıcıyı kabul eder. Uygulama kanalı ilk örnek olarak oluşturur; başka bir program adı fark edilmeden önceden kapamaz. Araç, bu kullanıcının olmayan bir kanala tek bayt göndermeden onu reddeder; `doctor` kanalı sunan süreci adıyla söyler. TCP ya da HTTP dinleyicisi, belirteç dosyası yoktur.
+- **Kullanıcının anahtarı.** Ajan erişimi, kullanıcı uygulamada açana kadar kapalıdır; kapalıyken yalnız `status`, `keys`, `log` ve `settings get` cevap verir, gerisi 77 ile çıkar. Hiçbir komut erişimi ya da bir izni açamaz.
+- **Klavyeyi ve kullanıcıyı koruyan sınırlar.** Yalnız RAM; kaynak başına saniyede 20 istek ve 8 ışık; saniyede en çok 3 yanıp sönme; ışık başına en çok 2 saat; sessizdeki mikrofon ve toplantı hatırlatması her zaman ajan ışıklarının üstünde görünür; klavyenin rahat bırakılmasını isteyen bir oyun onları gizler (kullanıcı bunu kapatabilir).
+- **Kaynaklar ayrı kalır.** Bir kaynak başka bir kaynağın ışıklarını kaldıramaz, yerine geçemez.
+- **Özel hiçbir şey günlüğe yazılmaz.** Uygulama her isteğin kaynağını, komutunu ve sonucunu yazar.
+
+## Kanal
+
+Protokol 1 `crates/kb-agent/src/protocol.rs`'te anlatılır: satır sonuyla ayrılmış JSON, satır başına en çok 64 KiB, önce iki tarafın konuştuğu protokol sürümleriyle `hello`. Araç `hello`'yu `keymotion-cli` adıyla ve kendi sürümüyle söyler; konuşmadığı bir sürümü seçen uygulamayı reddeder (76). Uygulamanın boşta kapattığı bir bağlantı, aynı süre içinde bir kez yeniden açılır.
+
+## Geliştirme
+
+```bash
+cargo build -p keymotion -j 2          # uygulama (başlatın ya da geliştirme sunucusuyla)
+cargo run -p keymotion-cli -- status
+cargo run -p keymotion-cli -- light --keys f1-f12 --color green --effect wave --times 1
+cargo test -p keymotion-cli
+```
+
+Uygulamayı gerektiren komutları denemeden önce uygulamanın geliştirme sürümünü başlatın: hiçbir Keymotion çalışmıyorsa araç kurulu olanı başlatır (yeterince yeniyse Store kopyasını). `--no-start` hiçbir şey başlatmamasını sağlar.
+
+Testler gerçek `keymotion-cli` programını, kendi kanalında (`KEYMOTION_CLI_TEST_PIPE`; başlatmayı da boş bir işe çevirir) `kb_agent::transport::serve` üzerine kurulmuş sahte bir uygulamaya karşı çalıştırır. Bu değişkeni yalnız hata ayıklama derlemeleri ve `test-pipe` özelliğiyle yapılan derlemeler okur; sürüm derlemesi hiçbir zaman okumaz, böylece ortam değişkenlerini ayarlayan biri ajanların çağrılarını sahte bir uygulamaya yönlendiremez. Tümleşik testler yalnız değişkeni okuyan derlemelerde derlenir (sürüm derlemesiyle denemek için `cargo test --release --features test-pipe`). Her komut, erişim kapalıyken, uygulama yokken, cevap vermeyen bir uygulama, başka bir protokol ve her kullanım hatası denenir; hiçbir çalıştırma 2 ile çıkamaz.

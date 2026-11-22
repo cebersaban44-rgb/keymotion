@@ -1,0 +1,136 @@
+---
+title: Agent command line
+description: keymotion-cli, the command-line tool scripts and AI coding agents use to light the keyboard through Keymotion. Commands, JSON output, exit codes, how it starts the app, and its security model.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+`keymotion-cli` lets a script or an AI coding agent (Claude Code, Codex and others that run shell commands) tell the user something with the keyboard's lights: a task finished, a question waits, three tests failed. The agent decides what to show and how; the ready signals are shortcuts, and keys, colors, effects and timing are free to combine.
+
+<Aside type="caution">
+The tool is being built. It is not in the installer or the Store package yet; that comes with the packaging step, together with the page that turns agent access on and the hooks for Claude Code and Codex. Until then, build it from the repository (see [Development](#development)).
+</Aside>
+
+## How it works
+
+```text
+agent ──runs──▶ keymotion-cli ──named pipe──▶ Keymotion (agent/) ──▶ device actor ──USB──▶ keyboard
+```
+
+- `keymotion-cli` never opens the keyboard. It sends one JSON message per line over a named pipe to the running app ([protocol 1](#the-pipe), `crates/kb-agent`), and the app's device actor stays the keyboard's only owner, with its light layers and guards. A test keeps the HID stack, Tauri and tokio out of the tool (`crates/keymotion-cli/tests/dependencies.rs`).
+- Agents' lights are one light layer in the app: over the focus timer, a game's lights, music mode, the gauges and the per-app profile; under the alerts, the reminders and their waves ([Architecture](/keymotion/developers/architecture/#from-a-click-to-a-hid-report)).
+- Everything is RAM only: nothing is written to the keyboard's memory, and every light ends by itself, after 2 hours at most.
+- The tool's version is always the app's (`version.workspace = true`); `keymotion-cli --version` prints `keymotion-cli 1.2.0 (protocol 1)`.
+
+## Commands
+
+| Command | What it does | Starts the app |
+|---|---|---|
+| `status` | Whether Keymotion runs, its version and channel, agent access and the permissions, the keyboards and their connection, whether agents' lights show now (or why not: no keyboard, no USB cable, a game, the night), every agent light that is on. When the app is not running: `{"app":{"running":false}}` and exit 0. | No |
+| `keys` | The keyboard's key ids and labels, their position in key units, and the groups. | Yes |
+| `signal <name>` | A ready signal: `done`, `attention`, `error`, `busy` or `info`. The user chooses each one's look in the app; `--color`, `--effect`, `--direction`, `--speed`, `--times`, `--for` and `--keys` override it for this call. `busy` shows nothing by default and clears the source's earlier signals. | Yes |
+| `light` | A light of the agent's own: `--color` (required), `--keys` (default: the whole keyboard), `--effect solid\|pulse\|blink\|flash\|wave`, `--direction left\|right\|up\|down` (wave), `--speed 1-5`, and `--times N` or `--for <duration>` (default 60 s). | Yes |
+| `progress <percent>` | A bar from 0 to 100 on a row of keys: the user's choice of the F row or the number row, or `--keys`. `--label`, `--color`, `--for` (default 10 minutes after the last update). Send it again with the new percent. | Yes |
+| `clear` | Takes away one light (`--id`) or every light of this source. Never another source's. | Yes |
+| `log` | The last agent requests the app took or refused (`--limit`, default 20, at most 200): source, command, result, id, and the settings a request changed. | Yes |
+| `settings get [key]` | The looks and behaviour settings (signal looks, progress keys, night quiet and the rest), and which keys only the user may change. | Yes |
+| `settings set <key> <value>` | Changes one look or behaviour setting, e.g. `signals.done.color green`. The user sees it in the app's log and can undo it. Access, the permissions, "agents may change these settings", "hide while playing" and the screen's hourly limit are the user's alone: the app refuses them (77). | Yes |
+| `version` | The tool's version and protocol, and the app's when it runs. A protocol mismatch is reported, not failed. | No |
+| `guide` | A short guide for agents (at most 60 lines): what to run first, ideas, values, exit codes. Agents read this rather than this page. | No |
+| `doctor` | Checks the setup and exits 0 whatever it finds: the tool, whether the app runs and answers, which program serves the pipe (expected `keymotion.exe`) and that the pipe is this user's, versions and protocol, agent access, the keyboard and its USB cable, how the tool would start the app, whether `keymotion-cli` is on PATH or in the Store's alias folder, and whether the tool runs inside another app's package box. | No |
+| `start` | Starts the app without a window and waits until it answers; if it runs, says so. | Yes |
+
+Hook mode, connecting to Claude Code and Codex, the focus timer, profiles, screen cards, scenes and spelling words on the keys come in later steps.
+
+### Options for every command
+
+| Option | Meaning |
+|---|---|
+| `--json` | Exactly one JSON object on stdout, on success and on failure. Also `KEYMOTION_OUTPUT=json`. |
+| `--source <name>` | Who is asking (`claude-code`, `build-script`). Each source has its own lights and can clear only its own. Also `KEYMOTION_SOURCE`; default `cli`. Up to 64 of `a-z 0-9 : . _ -`. |
+| `--timeout <duration>` | How long to wait for the app, connecting and the answer together (default `5s`, at most `5m`). When given, it bounds the whole run, starting the app included, so a hook with a time limit is never cut off. Without it, a start may take up to 15 seconds and the call then has 5. |
+| `--no-start` | Do not start the app; exit 69 when it is not running. |
+| `-q`, `--quiet` | Nothing on stdout or stderr on success, in human mode. Errors still go to stderr. |
+| `--log <level>` | Diagnostics on stderr: `off`, `error`, `warn` (default; `error` with `--quiet`), `info`, `debug`. |
+
+### Values
+
+- **Keys:** ids from the model file (`esc`, `f1`, `w`, `1`), numbered ranges (`f1-f12`, `1-3`), groups (`all`, `f-row`, `numbers`, `letters`, `wasd`, `arrows`, `numpad`), comma-separated. The same names work on every model; `keys` lists them.
+- **Colors:** `#RRGGBB`, `RRGGBB` or a name: red, green, blue, amber, yellow, orange, purple, pink, cyan, white.
+- **Durations:** a whole number and a unit: `500ms`, `30s`, `5m`, `1h`; lights last at most `2h`.
+- **Ids:** without `--id`, a command replaces the source's previous light of its kind (`<source>:light`, `<source>:progress`, `<source>:<signal>`). With ids a source keeps up to 8 lights; a ninth pushes out the oldest, and the answer says which.
+- Blinking and flashing never exceed three flashes a second (WCAG 2.3.1).
+
+Values are checked by the tool before anything is sent, with the same code the app uses (`kb-agent`), and checked again by the app.
+
+## Output
+
+Results go to stdout and diagnostics to stderr. The tool never asks anything and never reads stdin. Human output is a few short English lines. With `--json`:
+
+```json
+{"ok":true,"schema":1,"command":"signal","data":{"id":"claude-code:done","shown":true,"lit":true,"expires_in_ms":120000,"replaced":false,"evicted":[],"coalesced":false,"hidden":null},"warnings":[]}
+```
+
+```json
+{"ok":false,"schema":1,"command":"light","error":{"code":"agent_access_off","message":"Agent access is off in Keymotion.","hint":"The user can turn it on in Keymotion › Tools › AI agents.","retry_after_ms":null}}
+```
+
+- `command` is the command as typed (`signal`, `settings get`); `null` when the command line named none. `--help` and `--version` with `--json` answer as `help` and `version`, with the text in `data.text`.
+- `data` is the app's answer (for `version`, `guide`, `doctor`, `start` and `help`, the tool's own). For `signal`, `light` and `progress`: the light's `id`, whether it is `shown` now, `expires_in_ms`, whether it `replaced` an earlier one, what it `evicted`, and `hidden` (`"game"` or `"night"`) when it waits.
+- `warnings` are sentences for whoever reads the output: the app was started for this call, the light is covered or hidden for now, agent access is off.
+- `hint` and `retry_after_ms` are `null` when there is none.
+- `schema` stays 1 while fields are only added; removing a field or changing its meaning raises it.
+- Nothing printed can drive a terminal. In human output, control characters (escape sequences included) and invisible or direction-changing characters from the app's answers or from echoed input are written out (`\u{1B}`); in JSON, DEL, the C1 controls and those characters become `\u` escapes besides what JSON escapes anyway.
+
+## Exit codes
+
+| Code | Meaning | `error.code` |
+|---|---|---|
+| 0 | Done | — |
+| 1 | Something unexpected | `internal` |
+| 64 | The command line: an unknown command or option, a missing argument, options that do not go together | `bad_argument` |
+| 65 | A value: color, duration, key, effect, id, number | `bad_color`, `bad_duration`, `bad_keys`, `unknown_key`, `bad_effect`, `bad_value`, … |
+| 69 | Not available: the app is not running and could not be started, no keyboard, the USB cable is needed, a pipe that is not Keymotion's | `app_not_running`, `no_keyboard`, `needs_usb`, `unsupported`, `pipe_not_trusted` |
+| 75 | Try again later: rate limit (20 requests a second per source), timeout, the connection closed | `rate_limited`, `timeout`, `connection_lost` |
+| 76 | The tool and the app share no protocol version, or the app is older than the command | `protocol_mismatch`, `unknown_command` |
+| 77 | Not allowed: agent access is off, or a setting only the user may change | `agent_access_off`, `permission_off` |
+
+Exit code 2 is never used: Claude Code and Codex read 2 from a hook as "keep going" (and Codex also as "refuse the permission"). clap's own usage errors become 64, and `--help` and `--version` exit 0.
+
+## Starting the app
+
+`status`, `version`, `guide` and `doctor` never start the app. Every other command, when nobody serves the pipe, starts Keymotion without a window and waits for its pipe, unless `--no-start` is given: up to 15 seconds, or only as long as `--timeout` allows when it is given (`start` always has the 15 seconds). If a copy already runs but its pipe is not open yet (it is starting), the tool starts nothing and waits up to 5 seconds; if that copy is a Store copy too old to answer agents, it says so at once.
+
+The tool may run inside another packaged app's box: the Claude desktop app's terminal is one. A program started there as a plain child process stays in that box, so its AppData writes would land in the other app's folder and it would read settings that are not the user's. Windows' package API does not show such a box (`GetCurrentPackageFullName` answers "no package" there), but named pipes do cross it. So the tool never starts `keymotion.exe` as its own child; it asks Windows to start it, in this order (`crates/keymotion-cli/src/launch.rs`):
+
+1. The tool runs with Keymotion's package identity (the Store copy's app execution alias): it activates the package's app by its AUMID with `--background`.
+2. The Store copy is installed and new enough: the same with the Store package's AUMID (one Keymotion per computer prefers the Store copy). New enough means at least the first version that takes `--background` (`kb_agent::BACKGROUND_START_SINCE`, 1.2.0) and at least the tool's own version, read from the package's full name. An older Store copy would open its window and has no pipe, so it is never started.
+3. The `keymotion:` address scheme opens the installed GitHub copy (which registers it; a development build's registration does not count, as made inside another app's box it is invisible to Explorer, which would then ask the user for an app): `explorer.exe keymotion://background`, by Explorer's full path, started with `CreateProcessW` and no inherited handles (`kb_winsys::shell::run_alone`; Rust's own `Command` hands every inheritable handle on), so an agent reading the tool's output is never kept waiting by Explorer. A GitHub copy beside an old Store copy then stays itself, hidden, instead of handing over.
+4. None of these: exit 69 at once, "start Keymotion", or "update Keymotion from the Microsoft Store" when only an old Store copy is there.
+
+In the app, `--background` and `keymotion://background` mean "run with the tray icon only". Neither counts as a start with Windows (that stays `--hidden`), so the window state and the start-with-Windows hand-over are unchanged. A running app that receives either does nothing visible, and a GitHub copy that hands over to the Store copy passes `--background` on, but only to a Store copy that knows it (`app/src-tauri/src/tray.rs`, `handoff.rs`).
+
+## Security
+
+- **This computer, this user.** The pipe is `\\.\pipe\keymotion-agent-<user SID>-<session>`, refuses network clients, and its security descriptor admits only the user who runs the app. The app creates it as the first instance, so another program cannot hold the name first unnoticed; the tool refuses a pipe that this user does not own before sending a byte, and `doctor` names the process that serves it. There is no TCP or HTTP listener and no token file.
+- **The user's switch.** Agent access is off until the user turns it on in the app; with it off, only `status`, `keys`, `log` and `settings get` answer, and the rest exits 77. No command can turn access or a permission on.
+- **Limits that protect the keyboard and the user.** RAM only; 20 requests a second and 8 lights per source; at most 3 flashes a second; at most 2 hours per light; a muted microphone and a meeting reminder always show above agents' lights; a game that wants the keyboard left alone hides them (the user can turn that off).
+- **Sources stay apart.** A source cannot clear or replace another source's lights.
+- **Nothing private is logged.** The app logs the source, the command and the result of each request.
+
+## The pipe
+
+Protocol 1 is described in `crates/kb-agent/src/protocol.rs`: newline-delimited JSON, at most 64 KiB a line, `hello` first with the protocol versions each side speaks. The tool says hello as `keymotion-cli` with its version and refuses an app that picks a version it does not speak (76). A connection the app closed while idle is reopened once, within the same deadline.
+
+## Development
+
+```bash
+cargo build -p keymotion -j 2          # the app (start it, or the dev server's build)
+cargo run -p keymotion-cli -- status
+cargo run -p keymotion-cli -- light --keys f1-f12 --color green --effect wave --times 1
+cargo test -p keymotion-cli
+```
+
+Start the development build of the app before trying commands that need it: when no Keymotion runs, the tool starts the installed one (the Store copy, if it is new enough). `--no-start` keeps it from starting anything.
+
+The tests run the real `keymotion-cli` program against a fake app built on `kb_agent::transport::serve`, on a pipe of their own (`KEYMOTION_CLI_TEST_PIPE`, which also replaces the start with a no-op). Only debug builds and builds with the `test-pipe` feature read that variable; a release never does, so whoever sets an environment cannot point agents' calls at a fake app. The integration tests build only where it is read (`cargo test --release --features test-pipe` for a release run). Every command, access off, no app, a hung app, another protocol and every usage error are covered, and no run may exit with 2.

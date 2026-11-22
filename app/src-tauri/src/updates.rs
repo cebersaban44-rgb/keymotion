@@ -27,7 +27,9 @@
 //! (kb_winsys::protocol): Windows starts the app with the address, and the
 //! running app gets it through its single-instance lock (lib.rs). "Update
 //! now" carries a token made at start, so only this run's notification can
-//! start an install; any other address only opens the window.
+//! start an install; `keymotion://background` (keymotion-cli starting the
+//! app for an agent) opens nothing; any other address only opens the
+//! window.
 //!
 //! A test version ("0.1.0-rc.1") also looks at GitHub's pre-releases, so
 //! an update from one test version to the next can be tried for real; a
@@ -182,6 +184,10 @@ pub enum Link {
     /// Install the update found now ("Update now" on the notification). The
     /// token must be this run's.
     Install { token: String },
+    /// Run without opening the window (`keymotion://background`, what
+    /// keymotion-cli opens through Explorer to start the app for an agent).
+    /// A running app does nothing.
+    Background,
 }
 
 /// The address among a program's arguments, if any.
@@ -198,6 +204,7 @@ fn parse_link(arg: &str) -> Option<Link> {
     let (path, query) = rest.split_once('?').unwrap_or((rest, ""));
     Some(match path.trim_end_matches('/').to_ascii_lowercase().as_str() {
         "update" => Link::Update,
+        "background" => Link::Background,
         "update/install" => {
             Link::Install { token: query.split('&').find_map(|p| p.strip_prefix("t=")).unwrap_or_default().to_string() }
         }
@@ -865,6 +872,9 @@ mod tests {
         assert_eq!(link(&["KEYMOTION://Update/Install?t=00ab"]), Some(Link::Install { token: "00ab".into() }));
         assert_eq!(link(&["keymotion://update/install"]), Some(Link::Install { token: String::new() }));
         assert_eq!(link(&["keymotion://open"]), Some(Link::Open));
+        assert_eq!(link(&["C:\\x\\keymotion.exe", "keymotion://background"]), Some(Link::Background));
+        assert_eq!(link(&["KEYMOTION://Background/"]), Some(Link::Background));
+        assert_eq!(link(&["--background"]), None);
         // Anything else of ours only opens the window; other schemes are not ours.
         assert_eq!(link(&["keymotion:whatever/../x"]), Some(Link::Open));
         assert_eq!(link(&["https://example.com/keymotion://update"]), None);

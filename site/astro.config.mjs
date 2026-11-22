@@ -108,6 +108,7 @@ export default defineConfig({
             "developers/contributing",
             "developers/architecture",
             "developers/protocol",
+            "developers/agent-cli",
             "developers/adding-a-keyboard",
             "developers/microsoft-store",
           ],
