@@ -185,6 +185,15 @@ test("check: keys, placeholders and plurals", () => {
   // Russian without a plural where English has a .one form: a warning.
   const noPlural = checkDictionaries({ en: EN, tr: TR, ru: { "a.frames": "Кадров: {count}" }, "zh-CN": {} });
   assert.deepEqual(rules(noPlural, "ru", "a.frames"), ["warning:plural"]);
+  // An option named .one beside other options is not a plural form.
+  const options = { "a.color": "Color", "a.color.auto": "Automatic", "a.color.one": "One color" };
+  const opt = checkDictionaries({ en: { ...EN, ...options }, tr: { ...TR, ...options }, ru: {}, "zh-CN": {} });
+  assert.deepEqual(rules(opt, "en", "a.color.one"), ["error:keys"]);
+  // A count English shows only through its .one form may pick the Russian form.
+  const times = { "a.times": "times", "a.times.one": "time" };
+  const ruTimes = { "a.times": "{count, plural, one {раз} few {раза} many {раз} other {раза}}" };
+  const t = checkDictionaries({ en: { ...EN, ...times }, tr: { ...TR, ...times }, ru: ruTimes, "zh-CN": {} });
+  assert.deepEqual(rules(t, "ru", "a.times"), []);
 });
 
 test("check: untranslated text, scripts, punctuation, forbidden words, the Riot line", () => {

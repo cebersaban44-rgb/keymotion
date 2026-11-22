@@ -78,6 +78,12 @@ says so.
   alerts still come unless you turn that off, and quiet mode can be on for a
   single game.
 - **Terms of use:** the site has a Terms of use page.
+- **Russian and Simplified Chinese:** the app, the user guide, the installer
+  and the README are now also in Russian (Русский) and Simplified Chinese
+  (简体中文). Keymotion starts in the language Windows uses when it is one
+  of the four, and **Settings** › **Language** changes it at once. The
+  translations were made with AI help and wait for a review by native
+  speakers: corrections are welcome.
 
 ### Changed
 

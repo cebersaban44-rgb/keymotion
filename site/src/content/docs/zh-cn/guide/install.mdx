@@ -1,0 +1,116 @@
+---
+title: 安装 Keymotion
+description: 从 Microsoft Store 或用 GitHub 上的安装程序安装 Keymotion，处理 Windows 的警告，以及日后更新或卸载应用。
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+import DownloadButtons from "~/components/DownloadButtons.astro";
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Keymotion 有两种获取方式：从 Microsoft Store 安装，或使用 GitHub 上的安装程序。两者是同一个应用，版本号和发行说明也相同。无论哪种方式，都只为你的 Windows 账户安装，不需要管理员权限，几秒钟即可完成。
+
+<DownloadButtons />
+
+## Microsoft Store 还是 GitHub
+
+| | Microsoft Store | GitHub |
+|---|---|---|
+| 签名 | 有，由 Microsoft 签名：Windows 安装时不显示警告 | 暂无：运行前 Windows 可能会显示警告 |
+| 更新 | 由 Microsoft Store 保持最新 | Keymotion 每天检查一次 GitHub，安装前会先询问 |
+| 测试版本 | 无 | 有 |
+| 没有 Microsoft Store 也能使用 | 否 | 是 |
+
+我们建议使用 Microsoft Store。如果你的电脑没有 Microsoft Store（Windows LTSC，或已关闭 Microsoft Store 的工作电脑），或者你想使用测试版本，就选择 GitHub。两者只安装其中一个：它们共用你的设置，并且同一时间只能运行一个 Keymotion。
+
+## 所需条件
+
+- 64 位 Windows 10 或 Windows 11。
+- WebView2：Windows 中负责绘制应用窗口的组件。Windows 11 和已更新的 Windows 10 都已自带。如果你的电脑没有，GitHub 版安装程序会下载并安装它，所以安装时要保持联网。
+- 要调整键盘的设置，需要一把黑爵 AK980 V2（带屏版）及其 USB-C 数据线。没有键盘也能打开 Keymotion。
+
+## 从 Microsoft Store 安装
+
+<Steps>
+
+1. 打开 [Microsoft Store 中的 Keymotion](https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full)。Microsoft Store 应用会打开 Keymotion 的页面；如果浏览器询问是否打开它，选择允许。
+2. 选择**获取**。Microsoft Store 会下载并安装 Keymotion。
+3. 从“开始”菜单打开 **Keymotion**。
+
+</Steps>
+
+Microsoft Store 版由 Microsoft 签名，因此不会出现警告。它也由 Microsoft Store 负责更新，卸载方法和其他应用一样，见下文。本页从这里到[“开始”菜单和桌面](#开始菜单和桌面)之前的内容，介绍的都是 GitHub 版安装程序。
+
+## 下载安装程序
+
+<Steps>
+
+1. 打开 Keymotion 在 [GitHub 上的 Releases 页面](https://github.com/cebersaban44-rgb/keymotion/releases)。
+2. 在最新版本下方找到 **Assets** 列表。
+3. 下载文件名以 `x64-setup.exe` 结尾的文件，例如 `Keymotion_1.0.0_x64-setup.exe`。
+
+</Steps>
+
+该页面的发行说明中还列出了文件的 SHA-256 校验和，如果你想核对下载的文件，可以使用它。
+
+## 如果 Windows 提示已保护你的电脑
+
+GitHub 版安装程序还没有代码签名，因此 Windows 无法判断它的发布者。打开它时，Windows 可能会显示一个标题为 **Windows 已保护你的电脑**的蓝色窗口。
+
+<Steps>
+
+1. 选择**更多信息**。
+2. 确认显示的文件名就是你下载的安装程序。
+3. 选择**仍要运行**。
+
+</Steps>
+
+<Aside type="note" title="为什么还没有签名">
+[代码签名](/keymotion/zh-cn/about/code-signing/)页面说明了原因，以及 Keymotion 签名后会有哪些变化。[Microsoft Store](https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full) 版由 Microsoft 签名，安装时不会出现此警告。
+</Aside>
+
+## 运行安装程序
+
+Windows 为土耳其语时，安装程序显示土耳其语，否则显示英语。因此，下面保留了安装程序屏幕上的英文文字。
+
+<Steps>
+
+1. 在 **Welcome to the Keymotion setup** 页面上，点击 **Next**。
+2. 保留建议的文件夹或选择其他文件夹，然后继续。建议的文件夹 `%LOCALAPPDATA%\Keymotion` 位于你自己的用户文件夹中。
+3. 等待 Keymotion 安装完成。如果电脑上没有 WebView2，会先下载它。进度条走满后，点击 **Next**。
+4. 在最后一页，如果需要桌面图标，保持勾选 **Put a shortcut on the desktop**（在桌面上放置图标）。另一个复选框会立即打开 Keymotion。点击 **Finish**。
+
+</Steps>
+
+如果 Keymotion 正在运行，安装程序会先提出将它关闭。如果已经安装了某个版本，安装程序会显示 **Already installed** 页面，并询问你要怎么做：选择一个选项，然后点击 **Next**。
+
+## “开始”菜单和桌面
+
+安装程序总会把 **Keymotion** 添加到“开始”菜单；如果你保持勾选了那个复选框，也会添加到桌面。Keymotion 还会出现在 Windows 的已安装应用列表中，卸载也在那里进行。
+
+同一时间只能运行一个 Keymotion。Keymotion 在后台运行、图标显示在任务栏时钟旁时，从“开始”菜单再次打开它，会让它的窗口重新出现。打开后会看到什么，见[首次启动](/keymotion/zh-cn/guide/first-launch/)。
+
+## 更新 Keymotion
+
+Microsoft Store 版由 Microsoft Store 自动更新；Keymotion 的“设置 › 关于”会打开 Microsoft Store 的更新页面。本节其余内容针对 GitHub 版。
+
+Keymotion 打开后不久，会检查 GitHub 上是否有新版本，每天检查一次。发现新版本时，页面上方会出现一条提示栏。
+
+<Screenshot name="update-strip" alt="“概览”页面上方的提示栏，说明 Keymotion 新版本已就绪，带有“稍后”和“立即安装”按钮" />
+
+点击**立即安装**，阅读**新增内容**，然后点击**安装并重启**。Keymotion 会下载新版本，关闭，在一个小窗口中完成安装，然后重新打开。你的设置和素材库保持不变。在你点击之前，不会安装任何东西。如何手动检查更新或关闭每日检查，见[设置](/keymotion/zh-cn/guide/settings/)。
+
+## 卸载 Keymotion
+
+<Steps>
+
+1. 打开 Windows **设置**，然后依次进入**应用**和**已安装的应用**。在 Windows 10 中，这个列表叫作**应用和功能**。
+2. 找到 **Keymotion**。在 Windows 11 中，打开它旁边的 **⋯** 菜单。选择**卸载**并确认。
+3. Keymotion 的卸载程序随即打开。只有在你也想删除设置和已保存的数据时，才勾选 **Also delete my settings and saved data**（同时删除我的设置和已保存的数据），然后确认。
+
+</Steps>
+
+卸载程序会删除应用本身、它在“开始”菜单和桌面上的图标、它在已安装应用列表中的条目、随 Windows 启动的设置，以及 Windows 在 Keymotion 通知上显示的名称。除非勾选那个复选框，否则你的设置、记录和图片素材库都会保留在电脑上，以后重新安装时可以从上次的状态继续。如果 Keymotion 正在运行，卸载程序会提出将它关闭。
+
+<Aside type="caution" title="键盘会保留自己的设置">
+灯光、自定义按键、宏和屏幕上的图片都存储在键盘自身的存储空间中，卸载 Keymotion 不会改变它们。卸载前，你可以在[配置文件](/keymotion/zh-cn/guide/profiles/)页面加载**默认**配置文件，恢复出厂灯光和按键布局，并移除宏。更多内容见[出现问题时](/keymotion/zh-cn/help/recovery/)页面。
+</Aside>

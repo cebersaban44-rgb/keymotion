@@ -18,7 +18,7 @@
 ; This file is included before the pages are made, so the welcome page
 ; takes our plain title and text (K3) instead of NSIS's general advice about
 ; closing other programs. The strings are in lang/*.nsh
-; (customLanguageFiles), Turkish and English.
+; (customLanguageFiles): English, Turkish, Russian and Simplified Chinese.
 !define MUI_WELCOMEPAGE_TITLE "$(kmWelcomeTitle)"
 !define MUI_WELCOMEPAGE_TEXT "$(kmWelcomeText)"
 

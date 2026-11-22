@@ -1,0 +1,77 @@
+---
+title: "Поддерживаемые клавиатуры: AJAZZ AK980 PRO и другие"
+sidebar:
+  label: Поддерживаемые клавиатуры
+description: Keymotion работает с AJAZZ AK980 PRO, которая также продаётся как AK980 V2. Клавиатуры на той же платформе, которые могут быть добавлены следующими, и как рассказать нам о своей.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+import { Image } from "astro:assets";
+import ak980 from "../../../../assets/keyboards/ajazz-ak980-pro.webp";
+
+Keymotion работает с **AJAZZ AK980 PRO**. Многие клавиатуры построены на той же платформе: тот же тип микросхемы, тот же набор команд и часто та же программа производителя, но продаются они под разными названиями. Они могут быть добавлены следующими, но каждую добавляют только после того, как её кто-то проверил, потому что подробности, от которых зависит безопасность клавиатуры, у каждой модели свои.
+
+## Проверено и работает
+
+<Image src={ak980} alt="AJAZZ AK980 PRO" width={520} />
+
+| Клавиатура | USB-кабель | Приёмник 2,4 ГГц | Bluetooth | Статус |
+|---|---|---|---|---|
+| **AJAZZ AK980 PRO** | Всё | Набор текста, мультимедийные клавиши и регулятор | Набор текста, мультимедийные клавиши, регулятор и уровень заряда | <span class="km-status" data-s="works">Работает · проверена</span> |
+
+Магазины продают эту клавиатуру под несколькими названиями. Та, на которой проверяется Keymotion, куплена в собственном магазине AJAZZ, где значилась как «AK980MAX … V2», а на коробке написано **AK980 V2**. По USB она называет себя «SONiX AK980 PRO», и именно так Keymotion её распознаёт. Поэтому **AJAZZ AK980 V2** с экраном тоже работает. Другие версии AK980, например без экрана, внутри могут отличаться: Keymotion проверяет клавиатуру при подключении и ничего не отправляет модели, которую не знает.
+
+Настройки передаются через USB-кабель — так устроена клавиатура. Три способа подключения описаны на странице [Подключение клавиатуры](/keymotion/ru/guide/connecting/).
+
+## Та же платформа, пока не проверены
+
+Судя по другим проектам с открытым исходным кодом, которые изучали эти клавиатуры на настоящих устройствах, они, по-видимому, понимают тот же набор команд, что и AK980 PRO. Keymotion их пока не распознаёт: если подключить такую клавиатуру, появится надпись **Эта клавиатура пока не поддерживается** и кнопка **Запросить поддержку**. Эта кнопка копирует сведения о клавиатуре (её USB-идентификаторы, название и то, как её описывает Windows) и ничего не записывает в клавиатуру. Именно эти сведения нужны нам, чтобы её добавить.
+
+| Клавиатура | Экран | Что известно | Статус | У вас есть такая? |
+|---|---|---|---|---|
+| **AULA F108 Pro**, также продаётся как EPOMAKER x AULA F108 Pro | 240×135, до 141 кадра | Ближайший родственник: те же команды, те же номера для всех общих клавиш и та же программа производителя. Полноразмерный формат, клавиш больше. | Пока не проверена | [Сообщить](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+F108+Pro&model=AULA+F108+Pro) |
+| **AULA NOVA75** | 240×135, до 107 кадров | Те же команды; экран и часы изучены в других проектах. | Пока не проверена | [Сообщить](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+NOVA75&model=AULA+NOVA75) |
+| **AULA F75 Max** (также EPOMAKER x AULA) | 128×128, до 255 кадров | Те же команды; изучена в других проектах. | Пока не проверена | [Сообщить](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+F75+Max&model=AULA+F75+Max) |
+| **AULA EA75 Max** | 135×240, вертикальный | Те же команды; изучена в других проектах. | Пока не проверена | [Сообщить](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+EA75+Max&model=AULA+EA75+Max) |
+| **AULA S75 Pro** | 135×240, вертикальный | Те же команды, по данным только одного источника. | Пока не проверена | [Сообщить](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+S75+Pro&model=AULA+S75+Pro) |
+| **AULA F98 Pro** | 1,14 дюйма | Только команды подсветки, по данным одного источника. | Пока не проверена | [Сообщить](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AULA+F98+Pro&model=AULA+F98+Pro) |
+| **AJAZZ AK820 Pro**, версия с программой SONiX (также EPOMAKER AK820 Pro) | 128×128 | Те же команды; изучена в других проектах. Другая версия AK820 Pro использует другое семейство команд; см. ниже. | Пока не проверена | [Сообщить](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK820+Pro&model=AJAZZ+AK820+Pro) |
+| **AJAZZ AK820 MAX / MAX PLUS**, версия с экраном SONiX | 128×128 | Те же команды; изучена в других проектах. | Пока не проверена | [Сообщить](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK820+MAX&model=AJAZZ+AK820+MAX) |
+| **AJAZZ AK35I V3 MAX** | 240×135, до 141 кадра | Те же команды. Называет себя только «USB KEYBOARD», поэтому распознать её только по названию никогда не удастся. | Пока не проверена | [Сообщить](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK35I+V3+MAX&model=AJAZZ+AK35I+V3+MAX) |
+| **AJAZZ AKS075** | 128×128 | Экран и часы изучены в других проектах. | Пока не проверена | [Сообщить](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AKS075&model=AJAZZ+AKS075) |
+| **AJAZZ AK650 / AK650 Pro** | 0,85 дюйма | Известны только часы. | Пока не проверена | [Сообщить](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK650&model=AJAZZ+AK650) |
+| **AJAZZ AK980**, без экрана | Нет | Известна только подсветка. | Пока не проверена | [Сообщить](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK980+%28no+screen%29&model=AJAZZ+AK980+%28no+screen%29) |
+| **LangTu LT-104** | 160×80 | То же семейство команд; изучена автором источника. | Пока не проверена | [Сообщить](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+LangTu+LT-104&model=LangTu+LT-104) |
+
+Вашей клавиатуры нет в списке? Всё равно подключите её: если Keymotion предложит **Запросить поддержку**, [отправьте нам её сведения](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml).
+
+<Aside type="caution" title="Почему мы не включаем их просто так">
+Эти клавиатуры принимают всё, что им отправляют, без проверки. На AULA F108 Pro экранная анимация длиннее допустимого предела безвозвратно перезаписала собственные изображения меню клавиатуры. Пределы у каждой модели свои (107, 140, 141 или 255 кадров), поэтому модель добавляется только с её собственными измеренными пределами.
+</Aside>
+
+### Как клавиатура продвигается по этому списку
+
+1. Владелец клавиатуры отправляет её сведения кнопкой **Запросить поддержку** или через [форму для клавиатур](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml).
+2. Мы описываем модель в Keymotion и готовим для неё тестовую сборку.
+3. Тестировщик проверяет каждую функцию и сообщает результат. Каждое сообщение отслеживается на GitHub с меткой `keyboard support`.
+4. Когда всё проверено, модель переходит в раздел **Проверено и работает** — с указанием того, что работает при каждом способе подключения.
+
+Статус меняется с **Пока не проверена** на **Проверяется**, а затем на **Работает** или **Не работает**.
+
+## Похожи снаружи, отличаются внутри
+
+Некоторые клавиатуры похожи на AK980 PRO или носят то же название, что и одна из клавиатур на этой странице, но используют другую микросхему или другое семейство команд. Keymotion никогда ничего им не отправляет.
+
+| Клавиатура | Чем отличается |
+|---|---|
+| AJAZZ AK980 MAX | Другое семейство команд |
+| AJAZZ AK820 Pro, версия с прошивкой 1.07 или 1.16 | Другое семейство команд |
+| AJAZZ AK820 MAX, которая настраивается через браузер (включая MAX HE) | Другое семейство команд |
+| AJAZZ AK820 Max Plus (версия SinoWealth), AK820 (не Pro), AK992 | Другая микросхема |
+| AULA F75, F87, F87 Pro, F99, F99 Pro | Другая микросхема |
+| AULA F87S 8K, Nova98; AJAZZ AK680 V2 / MAX | Другое семейство команд |
+| AJAZZ AKS068 | Клавиатура на VIA/QMK |
+
+Пока неизвестно: AJAZZ AK870 V2, AK820 MAX Ultra, AK870, AK873, AK966 и AULA F99 Max. Если у вас есть одна из них, [отправьте её сведения](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml), и мы выясним.
+
+<p class="km-unofficial">Сведения об этих клавиатурах получены из других проектов с открытым исходным кодом, которые их исследовали, в том числе OpenKey, sonix-keyboard-studio, ak820pro-modder и OpenRGB. Спасибо им. Названия продуктов используются только для того, чтобы указать, с каким оборудованием работает эта программа; Keymotion не связан ни с одним из этих брендов.</p>

@@ -1,0 +1,59 @@
+---
+title: 发行说明
+description: 在哪里查看每个 Keymotion 版本的变更，以及 1.1.0、1.0.0 和首个版本 0.1.0 的简要说明。
+---
+
+import Screenshot from "~/components/Screenshot.astro";
+
+每个 Keymotion 版本都附有发行说明，介绍有哪些变更。
+
+## 在哪里查看
+
+- **GitHub 上**。[发布页面](https://github.com/cebersaban44-rgb/keymotion/releases)中，每个版本的说明都与它的安装程序以及安装程序的 SHA-256 校验值放在一起。
+- **Keymotion 中**。Keymotion 发现新版本后，在**设置**的**关于**部分单击**新增内容**，或在页面上方的横条中单击**立即安装**。更新窗口会在**新增内容**下显示说明；如果该版本有应用当前语言的说明，就以该语言显示，否则会显示一个 **GitHub 上的发行说明**链接。
+- **完整历史**。所有版本都以英文列在 GitHub 上的 [`CHANGELOG.md`](https://github.com/cebersaban44-rgb/keymotion/blob/main/CHANGELOG.md) 中，土耳其文版本见 [`CHANGELOG.tr.md`](https://github.com/cebersaban44-rgb/keymotion/blob/main/CHANGELOG.tr.md)。
+
+<Screenshot name="update-whats-new" alt="更新窗口在“新增内容”下显示新版本的说明" />
+
+## GitHub 和 Microsoft Store
+
+从 1.0.0 起，无论从哪里获取，Keymotion 的版本号都相同，发行说明也只有一份。
+
+- **设置 › 关于**在两个版本中以相同的方式显示版本：“版本 1.0.0”。在 Microsoft Store 版中，同一行还会说明由 Microsoft Store 负责更新。
+- **Windows 的已安装应用列表**显示 Microsoft Store 版时，会多出第四位数字，始终为 0：1.0.0 显示为 1.0.0.0。它们是同一个版本。
+- **新版本何时推出**。新版本会在同一天在 GitHub 和 Microsoft Store 上推出：GitHub 上的发布会等到 Microsoft 审核完 Microsoft Store 版之后。只有紧急修复（崩溃、安全问题）可能会先在 GitHub 上推出；它的发行说明会注明这一点。
+- **测试版**（版本号中带“-rc”）只在 GitHub 上提供。
+- **同一时间只运行一个 Keymotion**。如果两个版本都已安装，它们使用相同的设置。打开 GitHub 版会改为打开 Microsoft Store 版，随 Windows 启动也会改由 Microsoft Store 版完成。此时，Microsoft Store 版的“设置 › 关于”中会显示“GitHub 版”一行，其中的按钮可以打开 Windows 的“已安装的应用”，你可以在那里卸载 GitHub 版；要保留设置，不要勾选 **Also delete my settings and saved data**（同时删除我的设置和已保存的数据）。
+
+## Keymotion 1.1.0
+
+现在，Keymotion 会在新版本推出时告诉你，还可以自动安装新版本。它也已在 Microsoft Store 上架。
+
+- **更新通知**。新版本推出时，会出现一条 Windows 通知（每个版本只通知一次），带有**立即更新**和**稍后**。任务栏时钟旁 Keymotion 图标的菜单和窗口左下角的卡片也会提示，所以即使 Keymotion 在窗口关闭的状态下运行，你也能看到。
+- **自动更新**。在**设置 › 关于 › 更新**中，选择**自动更新**、**通知我**或**关闭**。自动更新会下载新版本，并在你不使用电脑时安装，绝不会在向键盘写入内容时安装。参见[更新](/keymotion/zh-cn/guide/settings/#更新)。
+- **更新之后**，会有一条通知告诉你安装了哪个版本，Keymotion 会以更新前的状态重新打开。
+- **Microsoft Store**。Keymotion 已在 Microsoft Store 上架，由 Microsoft 签名。如果两个版本都已安装，GitHub 版会改为打开 Microsoft Store 版。Microsoft Store 安装新版本后，Keymotion 会自动重新打开。
+
+## Keymotion 1.0.0
+
+与 0.1.0 是同一个应用，为上架 Microsoft Store 做好了准备。Microsoft Store 不接受以 0 开头的版本号，因此这个版本是 1.0.0。
+
+- **Microsoft Store 版**。Microsoft 为 Microsoft Store 版签名，因此 Windows 安装它时不会出现警告。从 Microsoft Store 安装的 Keymotion 由 Microsoft Store 负责更新，并通过 Windows 的启动设置随 Windows 启动。GitHub 上的版本照旧工作。
+
+## Keymotion 0.1.0
+
+首个版本。在 Windows 上支持黑爵 AK980 V2（带屏版）。
+
+- **连接**。可以通过 USB 有线、2.4G 接收器和蓝牙找到键盘。更改设置需要 USB 有线连接；通过蓝牙连接时会显示电量。
+- **概览**。显示整个键盘及每个按键上的字符、屏幕当前显示的内容，以及每个工具的入口。
+- **灯光**。19 种内置灯效、带画笔和选择工具的逐键颜色，以及颜色校准。
+- **自定义按键和宏**。基础层和 Fn 层、恢复出厂布局，以及通过按下按键录制的宏。
+- **屏幕**。为 240×135 屏幕提供图片、GIF、视频、文字卡片和幻灯片，还有素材库，以及恢复出厂动画的方法。Keymotion 也有一段自己的动画。
+- **实时屏幕**。会自动更新的卡片：正在播放的歌曲、专注计时器和即将开始的会议，受每日上传上限限制。
+- **工具**。专注计时器、提醒、来自 Google 日历、Outlook 和 iCloud 日历的日历卡片，以及按键上的系统指标。
+- **后台运行**。关闭窗口后，Keymotion 会继续在任务栏时钟旁运行，并且可以随 Windows 启动。
+- **更新和问题报告**。Keymotion 会在 GitHub 上检查新版本，只在你选择时才安装。问题由你自己在 GitHub 上报告。
+- **安装程序**。只为你的 Windows 账户安装，提供英文和土耳其文，无需管理员权限。
+- 英文和土耳其文界面，浅色和深色主题。
+
+Keymotion 0.1.0 尚未进行代码签名。参见[代码签名政策](/keymotion/zh-cn/about/code-signing/)。

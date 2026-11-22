@@ -1,0 +1,113 @@
+---
+title: Keymotion
+description: Keymotion — бесплатная программа с открытым исходным кодом для клавиатуры AJAZZ AK980 PRO в Windows; программа AJAZZ не нужна. Поклавишная подсветка, назначение клавиш, макросы, а также ваши GIF и изображения на её экране.
+template: splash
+head:
+  - tag: title
+    content: "Keymotion: бесплатное приложение для клавиатуры AJAZZ AK980 PRO в Windows"
+  - tag: meta
+    attrs:
+      property: og:title
+      content: "Keymotion: бесплатное приложение для клавиатуры AJAZZ AK980 PRO в Windows"
+  - tag: meta
+    attrs:
+      property: og:type
+      content: website
+  - tag: script
+    attrs:
+      type: application/ld+json
+    content: '{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Keymotion","url":"https://cebersaban44-rgb.github.io/keymotion/ru/","inLanguage":"ru","description":"Keymotion — бесплатная программа с открытым исходным кодом для клавиатуры AJAZZ AK980 PRO (также продаётся как AK980 V2) в Windows; программа AJAZZ не нужна. Поклавишная подсветка, назначение клавиш, макросы, а также ваши изображения, GIF и видео на её экране.","applicationCategory":"UtilitiesApplication","operatingSystem":"Windows 10, Windows 11 (64-bit)","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"isAccessibleForFree":true,"downloadUrl":"https://github.com/cebersaban44-rgb/keymotion/releases/latest","installUrl":"https://apps.microsoft.com/detail/9NL03GDZZ0ZS","image":"https://cebersaban44-rgb.github.io/keymotion/images/social-preview.png","license":["https://spdx.org/licenses/MIT.html","https://spdx.org/licenses/Apache-2.0.html"],"author":{"@type":"Person","name":"cebersaban44-rgb","url":"https://github.com/cebersaban44-rgb"},"sameAs":["https://github.com/cebersaban44-rgb/keymotion","https://apps.microsoft.com/detail/9NL03GDZZ0ZS"],"keywords":"AJAZZ AK980 PRO, AK980 PRO software, AK980 PRO screen, RGB keyboard, key remapping, macros","featureList":["Поклавишная RGB-подсветка и 19 встроенных эффектов","Назначение клавиш на основном слое и слое Fn","Макросы, которые записываются нажатием клавиш и редактируются по шагам","Изображения, GIF, видео, текстовые карточки и слайд-шоу на экране 240×135","Карточки живого экрана для музыки, таймера фокусировки, напоминаний и встреч","Игровая сессия: стартовая и итоговая карточки на экране, подсветка клавиш игры, а также здоровье и мана в League of Legends на клавишах","Музыкальный режим: подсветка клавиш, которая движется в такт звуку компьютера","Профили, которые могут переключаться по программам, таймер фокусировки, системные показатели, напоминания и календари"]}'
+hero:
+  title: Бесплатное приложение для AJAZZ AK980 PRO в Windows
+  tagline: Каждая клавиша, каждый огонёк, каждый пиксель. Настраивайте подсветку клавиша за клавишей, переназначайте любые клавиши, записывайте макросы и выводите свои GIF и изображения на маленький экран клавиатуры.
+  image:
+    html: '<img src="/keymotion/images/ajazz-ak980-pro.webp" width="1419" height="521" alt="Клавиатура AJAZZ AK980 PRO с подсветкой цветами радуги; справа вверху — её экран и регулятор.">'
+  actions:
+    - text: Скачать из Microsoft Store
+      link: https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full
+      attrs:
+        data-store-badge: true
+    - text: Скачать с GitHub
+      link: https://github.com/cebersaban44-rgb/keymotion/releases/latest
+      icon: download
+      variant: secondary
+    - text: Читать руководство
+      link: /keymotion/ru/guide/install/
+      icon: right-arrow
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
+import Screenshot from "~/components/Screenshot.astro";
+
+## Что такое Keymotion?
+
+Keymotion — бесплатное приложение для Windows с открытым исходным кодом для клавиатуры AJAZZ AK980 PRO. Собственная программа AJAZZ, которую часто называют драйвером AK980 PRO, не нужна: Keymotion самостоятельно настраивает подсветку, назначение клавиш, макросы и экран через USB-кабель. В некоторых магазинах эта же клавиатура продаётся как AJAZZ AK980 V2.
+
+<Screenshot name="overview" alt="Страница «Обзор» в Keymotion, клавиатура AJAZZ AK980 PRO подключена USB-кабелем" />
+
+| Коротко | |
+|---|---|
+| Цена | Бесплатно, без учётной записи |
+| Лицензия | MIT или Apache-2.0, исходный код на GitHub |
+| Windows | 64-разрядные Windows 10 и 11 |
+| Языки | Английский, турецкий, русский и упрощённый китайский |
+| Клавиатура | AJAZZ AK980 PRO, также продаётся как AK980 V2 |
+| Настройки | Через USB-кабель |
+| Где взять | В [Microsoft Store](https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full), с подписью Microsoft, или установщиком с [GitHub](https://github.com/cebersaban44-rgb/keymotion/releases/latest), пока без подписи: [что выбрать](/keymotion/ru/guide/install/) |
+
+## Что можно делать
+
+<CardGrid>
+  <Card title="Подсветка" icon="sun">
+    19 эффектов клавиатуры, свой цвет для каждой клавиши и отображение того, что показывают клавиши, в реальном времени. [Подсветка](/keymotion/ru/guide/lighting/)
+  </Card>
+  <Card title="Назначение клавиш" icon="puzzle">
+    Меняйте любую клавишу на основном слое и слое Fn: сочетания клавиш, мультимедийные клавиши, кнопки мыши. [Назначение клавиш](/keymotion/ru/guide/key-mapping/)
+  </Card>
+  <Card title="Макросы" icon="random">
+    Запишите последовательность, нажимая клавиши, затем измените каждый шаг и его задержку. [Макросы](/keymotion/ru/guide/macros/)
+  </Card>
+  <Card title="Студия экрана" icon="window">
+    Выводите изображения, GIF, видео и текстовые карточки на экран 240×135. [Экран](/keymotion/ru/guide/screen/)
+  </Card>
+  <Card title="Живой экран" icon="analytics">
+    Карточки, которые обновляются сами: песня, которая сейчас играет, ваша следующая встреча, таймер фокусировки. [Экран](/keymotion/ru/guide/screen/)
+  </Card>
+  <Card title="Фокусировка и напоминания" icon="clock">
+    Таймер фокусировки, напоминания и системные показатели, которые светятся на клавишах. [Таймер фокусировки](/keymotion/ru/guide/focus-timer/)
+  </Card>
+  <Card title="Музыкальный режим" icon="star">
+    Подсветка клавиш, которая движется в такт звуку компьютера: столбцы, удары ритма, полоса уровня или волны. [Музыкальный режим](/keymotion/ru/guide/music-mode/)
+  </Card>
+  <Card title="Игровая сессия" icon="rocket">
+    Карточка на экране, когда игра начинается, и итоги, когда она заканчивается, подсветка клавиш игры, а также здоровье и мана в League of Legends на клавишах. [Игровая сессия](/keymotion/ru/guide/game-session/)
+  </Card>
+  <Card title="Профили по приложениям" icon="laptop">
+    Храните подсветку, клавиши и макросы в профилях, и пусть каждая программа или любая игра переключается на свой профиль. [Профили](/keymotion/ru/guide/profiles/#по-приложениям)
+  </Card>
+</CardGrid>
+
+## Что работает в каждом режиме подключения
+
+Подключение выбирается переключателем на задней панели клавиатуры. Настройки передаются через USB-кабель — так устроена клавиатура.
+
+| Подключение | AJAZZ AK980 PRO |
+|---|---|
+| USB-кабель | Всё: подсветка, клавиши, макросы, экран и живые карточки |
+| Приёмник 2,4 ГГц | Набор текста, мультимедийные клавиши и регулятор |
+| Bluetooth | Набор текста, мультимедийные клавиши, регулятор и уровень заряда |
+
+<LinkCard title="Как вывести GIF на экран AK980 PRO" description="Шаги, типы файлов и сколько длится загрузка." href="/keymotion/ru/guide/screen/" />
+
+<LinkCard title="Часто задаваемые вопросы" description="Драйверы и программа AJAZZ, предупреждение Windows, Bluetooth, безопасность клавиатуры и многое другое." href="/keymotion/ru/help/faq/" />
+
+<LinkCard title="Поддерживаемые клавиатуры" description="Клавиатуры, с которыми работает Keymotion, и те, что могут появиться следующими." href="/keymotion/ru/help/keyboards/" />
+
+<div class="km-unofficial">
+
+[Политика подписи кода](/keymotion/ru/about/code-signing/) · [Политика конфиденциальности](/keymotion/ru/about/privacy/) · [Заметки о выпуске](/keymotion/ru/about/release-notes/)
+
+</div>
+
+<p class="km-unofficial">Keymotion — независимый проект. Он не связан с AJAZZ, не одобрен и не поддерживается этой компанией. Бесплатный, с открытым исходным кодом, по лицензии MIT или Apache-2.0.</p>

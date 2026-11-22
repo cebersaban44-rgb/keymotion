@@ -83,6 +83,7 @@ export const SAME_IN_EVERY_LANGUAGE = new Set([
   "calendar.placeholder.google",
   "calendar.placeholder.outlook",
   "calendar.placeholder.apple",
+  "calendar.placeholder.other",
   "games.source.steam",
   "games.source.epic",
   "games.source.gog",
@@ -169,10 +170,18 @@ export function checkDictionaries(dicts, { release = false, meta = null } = {}) 
   }
   const partsOf = (lang, key) => parsed.get(`${lang}\0${key}`);
 
-  // English: a `.one` key needs its base key.
+  // English: a `.one` key needs its base key. A `.one` key with no
+  // placeholder whose base has other sub-keys (".auto", ".two") is an option
+  // ("One color"), not a plural form: Russian and Chinese never get it.
   for (const key of enKeys) {
-    if (key.endsWith(".one") && !enKeys.has(key.slice(0, -4))) {
-      add("error", "en", key, "keys", `"${key.slice(0, -4)}" does not exist: a misspelled plural key?`);
+    if (!key.endsWith(".one")) continue;
+    const base = key.slice(0, -4);
+    if (!enKeys.has(base)) {
+      add("error", "en", key, "keys", `"${base}" does not exist: a misspelled plural key?`);
+    }
+    const siblings = [...enKeys].some((k) => k !== key && k.startsWith(`${base}.`));
+    if (siblings && !en[key].includes("{") && !(en[base] ?? "").includes("{")) {
+      add("error", "en", key, "keys", "looks like an option, not a plural form: name it something other than .one (e.g. .single)");
     }
   }
 
@@ -211,7 +220,12 @@ export function checkDictionaries(dicts, { release = false, meta = null } = {}) 
 
       // 2. Placeholders.
       const want = placeholderNames(enParts);
-      const have = placeholderNames(parts);
+      const have = new Set(placeholderNames(parts));
+      // English may show a count only through its `.one` form ("time",
+      // "times"); Russian then picks its form with {count, plural, …}.
+      if (`${key}.one` in en && !want.has("count") && plurals(parts).some((p) => p.name === "count")) {
+        have.delete("count");
+      }
       if (sorted(want) !== sorted(have)) {
         add("error", lang, key, "placeholders", `placeholders {${sorted(have)}} differ from English {${sorted(want)}}`);
       }
@@ -257,7 +271,11 @@ export function checkDictionaries(dicts, { release = false, meta = null } = {}) 
 
       // 6. Punctuation and tone.
       if (lits.some((l) => l.includes("!"))) add("error", lang, key, "tone", 'has "!"');
-      if (isLabel(source) && /[.。]\s*$/u.test(text)) add("error", lang, key, "punctuation", "ends with a full stop; the English label has none");
+      // A Russian abbreviation keeps its point ("ср." for "avg").
+      const abbreviation = lang === "ru" && /(?:^|\s)\p{L}{1,4}\.$/u.test(text);
+      if (isLabel(source) && /[.。]\s*$/u.test(text) && !abbreviation) {
+        add("error", lang, key, "punctuation", "ends with a full stop; the English label has none");
+      }
       if (lang === "zh-CN") {
         if (lits.some((l) => /\p{Script=Han}[,.;:?!()]/u.test(l) || /[,;:?!(](?=\p{Script=Han})/u.test(l))) {
           add("error", lang, key, "punctuation", "ASCII punctuation next to Chinese: use ，。；：？（）");

@@ -41,10 +41,12 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["English", "Turkish"],
+        "languages": ["English", "Turkish", "Russian", "SimpChinese"],
         "customLanguageFiles": {
           "English": "windows/lang/English.nsh",
-          "Turkish": "windows/lang/Turkish.nsh"
+          "Turkish": "windows/lang/Turkish.nsh",
+          "Russian": "windows/lang/Russian.nsh",
+          "SimpChinese": "windows/lang/SimpChinese.nsh"
         },
         "installerIcon": "icons/icon.ico",
         "uninstallerIcon": "icons/icon.ico",

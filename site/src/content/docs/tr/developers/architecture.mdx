@@ -50,7 +50,7 @@ Cargo çalışma alanı `crates/*` ile `app/src-tauri`'den oluşur. Çalışma a
 `app/src` React 19 ve TypeScript ile yazılır, Vite ile derlenir, Tailwind CSS ile biçimlenir.
 
 - `pages/` her kenar çubuğu sayfası için bir bileşen, `components/` ortak parçalar içerir.
-- `lib/` her özelliğin mantığını ve durumunu (zustand depoları), `lib/ipc.ts` arka uca yapılan bütün çağrıları, `lib/i18n.ts` bütün Türkçe ve İngilizce metinleri tutar.
+- `lib/` her özelliğin mantığını ve durumunu (zustand depoları), `lib/ipc.ts` arka uca yapılan bütün çağrıları, `lib/i18n/` bütün metinleri İngilizce (`en.ts`, kaynak), Türkçe, Rusça ve Basitleştirilmiş Çince olarak tutar; `tools/check-i18n.mjs` onları denetler.
 - Arayüzde klavye mantığı yoktur. Arayüz veriyi hazırlar, örneğin ekran görselini klavyenin biçimine çevirir (`lib/screen.ts`); ama arka uç her şeyi yeniden doğrular, çünkü klavyenin biçimi konusunda arayüze güvenilmez.
 - Tauri komutları aynı anda çalıştırır; art arda gelen iki çağrı yanlış sırayla ulaşabilir. Bu yüzden durum değiştiren komutlar `lib/ipc.ts`'teki tek bir sıradan geçer.
 

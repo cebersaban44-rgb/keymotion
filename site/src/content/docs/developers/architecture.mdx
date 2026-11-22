@@ -50,7 +50,7 @@ The Cargo workspace is `crates/*` plus `app/src-tauri`. The workspace denies `un
 `app/src` is React 19 and TypeScript, built with Vite and styled with Tailwind CSS.
 
 - `pages/` has one component per sidebar page, `components/` the shared pieces.
-- `lib/` holds each feature's logic and state (zustand stores), `lib/ipc.ts` every call to the backend, and `lib/i18n.ts` every text in Turkish and English.
+- `lib/` holds each feature's logic and state (zustand stores), `lib/ipc.ts` every call to the backend, and `lib/i18n/` every text in English (`en.ts`, the source), Turkish, Russian and Simplified Chinese; `tools/check-i18n.mjs` checks them.
 - The interface holds no keyboard logic. It prepares data, for example the screen image in the keyboard's format (`lib/screen.ts`), but the backend validates everything again: the interface is not trusted with the keyboard's format.
 - Tauri runs commands concurrently, so two quick calls can arrive in the wrong order. Commands that change state go through one serial queue in `lib/ipc.ts`.
 
