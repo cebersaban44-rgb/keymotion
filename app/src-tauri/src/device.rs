@@ -414,6 +414,14 @@ fn quiet_layers(l: &Layers, quiet: Quiet, game_tried: bool) -> Layers {
     }
 }
 
+/// When a frame set now should go out: at once, unless one went out less
+/// than [`LIVE_EVERY`] ago; then when that one's turn is up. A producer's
+/// new frame and the loop's resend could otherwise both go in the same
+/// timer step, doubling the frames the keyboard gets.
+fn live_due(now: Instant, last_sent: Option<Instant>) -> Instant {
+    last_sent.map_or(now, |t| now.max(t + LIVE_EVERY))
+}
+
 /// When the run loop wakes next: the next look for keyboards, the next
 /// frame or mirror read (`frames`), or the clock sync. A sync waits while a
 /// game wants the keyboard left alone (`SetQuiet` wakes the loop when that
@@ -749,6 +757,8 @@ struct Actor {
     game_tried: bool,
     next_enumerate: Instant,
     next_live: Instant,
+    /// When the last live frame went out.
+    last_live: Option<Instant>,
     next_mirror: Instant,
     /// The flash write in progress (shared with [`DeviceHandle`]).
     flash: FlashState,
@@ -800,6 +810,7 @@ impl Actor {
             game_tried: false,
             next_enumerate: now,
             next_live: now,
+            last_live: None,
             next_mirror: now,
         }
     }
@@ -815,6 +826,7 @@ impl Actor {
             }
             if self.streaming() && now >= self.next_live {
                 self.send_live();
+                self.last_live = Some(Instant::now());
                 self.next_live = Instant::now() + LIVE_EVERY;
             } else if self.mirror.is_some() && !self.streaming() && now >= self.next_mirror {
                 self.send_mirror();
@@ -934,7 +946,7 @@ impl Actor {
                     tracing::debug!("no light layer left; keyboard reverts to its saved effect");
                 }
                 if self.live.is_none() {
-                    self.next_live = Instant::now();
+                    self.next_live = live_due(Instant::now(), self.last_live);
                 }
             }
             Request::SetQuiet(quiet) => {
@@ -1533,6 +1545,18 @@ mod tests {
             write_block(1, check(false, false), || Some(Conflict::OpenRgb)),
             Some(WriteBlock::Program(Conflict::OpenRgb))
         );
+    }
+
+    #[test]
+    fn a_new_layer_frame_waits_for_the_last_ones_turn() {
+        let now = Instant::now();
+        // Nothing sent lately: at once.
+        assert_eq!(live_due(now, None), now);
+        assert_eq!(live_due(now, Some(now - LIVE_EVERY * 2)), now);
+        // The resend went out 10 ms ago: the new frame takes the next turn,
+        // not a second slot in the same 50 ms.
+        let sent = now - Duration::from_millis(10);
+        assert_eq!(live_due(now, Some(sent)), sent + LIVE_EVERY);
     }
 
     #[test]

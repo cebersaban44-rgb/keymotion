@@ -20,6 +20,7 @@ import { percent, useT, type MessageKey } from "../lib/i18n";
 import { fromHex, toHex } from "../lib/pomodoroLights";
 import { useMusic } from "../lib/music";
 import { usePomodoro } from "../lib/pomodoro";
+import { useApp } from "../lib/store";
 
 export function Gauges({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
@@ -42,7 +43,10 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
     }, 150);
     return () => window.clearTimeout(id);
   }, [draft]);
-  useEffect(() => watchGauges(kb.geometry ?? null), [kb.geometry]);
+  // Readings for the page only while the window is on screen (closed to
+  // the tray, the page stays mounted but nobody looks).
+  const windowShown = useApp((x) => x.windowShown);
+  useEffect(() => (windowShown ? watchGauges(kb.geometry ?? null) : undefined), [kb.geometry, windowShown]);
   const geometry = kb.geometry;
   const colors = useMemo(() => {
     if (!s || !geometry) return null;
@@ -71,7 +75,9 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
   const bars = shown.cpu || shown.gpu || shown.ram;
   // Music mode lies over the bars while sound plays.
   const musicOn = !!music?.settings.enabled;
-  const musicFront = musicOn && music?.status === "playing" && !timerFront;
+  // On the keys: while sound plays, and while it's quiet with "Dim color"
+  // or "Dark" (the backend says so).
+  const musicFront = !!music?.covers && !timerFront;
 
   return (
     <div className="flex flex-col gap-6" data-gauges>

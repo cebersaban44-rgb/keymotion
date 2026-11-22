@@ -8,6 +8,11 @@ import type { MusicStatus } from "./MusicStatus";
  */
 export type MusicState = { settings: MusicSettings, status: MusicStatus, 
 /**
+ * The music lights are on the keys now (while sound plays, and while
+ * it's quiet with "Dim color" or "Dark"): the layers under them wait.
+ */
+covers: boolean, 
+/**
  * What the music lights put on the keys now (UI colours, before
  * brightness); on the catalogue's model without a keyboard. Empty
  * when they show nothing.

@@ -249,10 +249,12 @@ function mockFrame(g: GeometryInfo, s: MusicSettings): LedColor[] {
 
 function mockState(): MusicState {
   const s = mock.settings;
+  const frame = mock.geometry ? mockFrame(mock.geometry, s) : [];
   return {
     settings: { ...s },
     status: !s.enabled ? "off" : mock.showing ? "playing" : "waiting",
-    frame: mock.geometry ? mockFrame(mock.geometry, s) : [],
+    covers: s.enabled && frame.length > 0,
+    frame,
   };
 }
 
@@ -327,26 +329,41 @@ export function configureMusic(settings: MusicSettings): Promise<MusicState> {
 
 interface MusicStore {
   state: MusicState | null;
+  /** Changes sent and not answered yet. */
+  pending: number;
   load: () => Promise<void>;
   configure: (patch: Partial<MusicSettings>) => Promise<void>;
 }
 
 export const useMusic = create<MusicStore>((set, get) => ({
   state: null,
+  pending: 0,
   load: async () => set({ state: await getMusic() }),
   configure: async (patch) => {
     const s = get().state;
     const settings = { ...(s?.settings ?? DEFAULT_MUSIC), ...patch };
     // Show the change at once; the backend answers with the same.
-    if (s) set({ state: { ...s, settings } });
-    set({ state: await configureMusic(settings) });
+    set((x) => ({ pending: x.pending + 1, state: s ? { ...s, settings } : x.state }));
+    try {
+      const state = await configureMusic(settings);
+      set({ state });
+    } finally {
+      set((x) => ({ pending: x.pending - 1 }));
+    }
   },
 }));
 
-/** Follow changes made elsewhere (the tray menu's switch). */
+/** A state the backend sent on its own: while a change of ours is on its
+ *  way, its settings may be older than what the page shows, so only the
+ *  status and the frame are taken. */
+function received(next: MusicState) {
+  useMusic.setState((x) => ({ state: x.pending > 0 && x.state ? { ...next, settings: x.state.settings } : next }));
+}
+
+/** Follow changes made elsewhere (the tray menu's switch, a status change). */
 export function followMusic(): () => void {
   if (import.meta.env.DEV && !inTauri) return () => {};
-  const off = listen<MusicState>("music", (e) => useMusic.setState({ state: e.payload }));
+  const off = listen<MusicState>("music", (e) => received(e.payload));
   return () => {
     off.then((f) => f()).catch(console.error);
   };
@@ -369,7 +386,7 @@ export function watchMusic(geometry: GeometryInfo | null): () => void {
     };
   }
   invoke("music_watch", { on: true }).catch(console.error);
-  const off = listen<MusicState>("music", (e) => useMusic.setState({ state: e.payload }));
+  const off = listen<MusicState>("music", (e) => received(e.payload));
   return () => {
     invoke("music_watch", { on: false }).catch(console.error);
     off.then((f) => f()).catch(console.error);

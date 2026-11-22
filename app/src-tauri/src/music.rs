@@ -28,7 +28,6 @@ use crate::dto::{
     Connection, LedColor, MusicMode, MusicPalette, MusicRest, MusicSettings, MusicSilence, MusicState, MusicStatus,
 };
 use crate::games::GamesHandle;
-use crate::live::now_ms;
 use crate::settings;
 use crate::spectrum::{Analyzer, Levels};
 use kb_devices::Model;
@@ -39,8 +38,8 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter, Listener};
 
 pub const EVENT_MUSIC: &str = "music";
 const FILE: &str = "music.json";
@@ -48,8 +47,18 @@ const VERSION: u32 = 1;
 
 /// One frame: 20 a second.
 const TICK: Duration = Duration::from_millis(50);
-/// Sleep while nobody needs the lights (a message wakes the worker).
+/// Sleep while nobody needs the lights (a message wakes the worker: a
+/// change of settings, the page, a keyboard or a game session).
 const IDLE: Duration = Duration::from_secs(5);
+/// Look again this often while the lights wait for a game in front, so
+/// they come back soon after switching away from it.
+const GAME_WAIT: Duration = Duration::from_secs(1);
+/// A read with nothing in it counts as silence only once no packet came for
+/// this long (ms); a wake a few ms after the last read is not silence.
+const PAD_AFTER_MS: f64 = 100.0;
+/// A new analysis at most this often (ms): a little under a frame, for the
+/// timer's steps. An extra wake (a setting changed) reuses the last one.
+const MIN_ANALYSIS_GAP_MS: f64 = 40.0;
 /// The page gets frames this often.
 const EMIT_EVERY_MS: f64 = 80.0;
 /// Windows' volume and mute are looked up again this often.
@@ -103,6 +112,13 @@ const WAVE_GONE: f64 = 6.0;
 /// Silence in "Dim colour": the palette's colour this far up, this bright.
 const QUIET_DIM_AT: f32 = 0.2;
 const QUIET_DIM: f32 = 0.07;
+
+/// Milliseconds on a clock that never goes back (a change of the PC's
+/// time would stall the silence timer and the page's updates otherwise).
+fn mono_ms() -> f64 {
+    static START: OnceLock<Instant> = OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_secs_f64() * 1000.0
+}
 
 // ------------------------------------------------------------------- keys
 
@@ -454,6 +470,51 @@ impl Silence {
     }
 }
 
+/// What the worker last saw: the status follows it, also when only the
+/// settings change between two passes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Seen {
+    usb: bool,
+    sound: Sound,
+    game: bool,
+    showing: bool,
+}
+
+impl Default for Seen {
+    fn default() -> Self {
+        Self { usb: false, sound: Sound::Quiet, game: false, showing: false }
+    }
+}
+
+impl Seen {
+    fn status(&self, s: &MusicSettings) -> MusicStatus {
+        status_of(s, self.usb, self.sound, self.game, self.showing)
+    }
+}
+
+/// Whether the page hears of this pass: whenever the status or whether the
+/// lights are on the keys changed (the tray, the gauges and Lighting pages
+/// rely on it), and a dozen times a second while the music page is open.
+fn should_emit(watched: bool, changed: bool, now: f64, next_emit: f64) -> bool {
+    changed || (watched && now >= next_emit)
+}
+
+/// Zeros to add when a read got nothing: none while packets came lately
+/// (a wake a few ms after the last read), a frame's worth once the gap
+/// shows the sound has stopped.
+fn silence_to_pad(frames: usize, since_packet_ms: Option<f64>, rate: u32) -> usize {
+    if frames > 0 || since_packet_ms.is_some_and(|ms| ms <= PAD_AFTER_MS) {
+        0
+    } else {
+        (f64::from(rate) * TICK.as_secs_f64()) as usize
+    }
+}
+
+/// Whether a new analysis is due (one per frame).
+fn analysis_due(since_last_ms: Option<f64>) -> bool {
+    since_last_ms.is_none_or(|ms| ms >= MIN_ANALYSIS_GAP_MS)
+}
+
 /// Where the lights stand, from what the worker knows.
 fn status_of(s: &MusicSettings, usb: bool, sound: Sound, game: bool, showing: bool) -> MusicStatus {
     match sound {
@@ -478,6 +539,10 @@ struct Ears {
     samples: Vec<f32>,
     next_refresh: f64,
     was_open: bool,
+    /// When the last packet came, and the last analysis (ms).
+    last_packet: Option<f64>,
+    last_analysis: Option<f64>,
+    levels: Option<Levels>,
 }
 
 /// What one listen got.
@@ -516,15 +581,26 @@ impl Ears {
         }
         self.was_open = open;
         if open {
-            if poll.frames == 0 {
-                // Nothing playing gives no packets: that is silence, not
-                // the last window again.
-                let silence = (f64::from(poll.rate) * TICK.as_secs_f64()) as usize;
-                self.samples.resize(silence, 0.0);
+            if poll.frames > 0 {
+                self.last_packet = Some(now);
             }
+            // Nothing playing gives no packets: once that lasts, it is
+            // silence, not the last window again.
+            let pad = silence_to_pad(poll.frames, self.last_packet.map(|t| now - t), poll.rate);
+            self.samples.resize(self.samples.len() + pad, 0.0);
             analyzer.push(&self.samples);
+        } else {
+            self.last_packet = None;
         }
-        let levels = analyzer.analyze(now / 1000.0);
+        let levels = match self.levels.clone() {
+            Some(levels) if !analysis_due(self.last_analysis.map(|t| now - t)) => levels,
+            _ => {
+                self.last_analysis = Some(now);
+                let levels = analyzer.analyze(now / 1000.0);
+                self.levels = Some(levels.clone());
+                levels
+            }
+        };
         let muted = self.audio.as_mut().and_then(Audio::speakers).is_some_and(|v| v.muted || v.level <= 0.0);
         Heard { sound: poll.state, levels, muted, wait: if open { TICK } else { capture.wait() } }
     }
@@ -553,6 +629,7 @@ struct Inner {
     model: Option<(String, Arc<Keys>)>,
     silence: Silence,
     tracker: Tracker,
+    seen: Seen,
 }
 
 enum Msg {
@@ -592,8 +669,17 @@ impl MusicHandle {
             model: None,
             silence: Silence::default(),
             tracker: Tracker::default(),
+            seen: Seen::default(),
         }));
         let (tx, rx) = mpsc::channel();
+        // A keyboard on the cable or a game session coming or going changes
+        // what the lights do: look at once rather than after the idle sleep.
+        for event in [crate::device::EVENT_KEYBOARDS_CHANGED, crate::games::EVENT_GAMES] {
+            let tx = tx.clone();
+            app.listen_any(event, move |_| {
+                let _ = tx.send(Msg::Wake);
+            });
+        }
         let handle = Arc::new(Self { tx, inner, app, config_dir });
         let worker = handle.clone();
         std::thread::Builder::new()
@@ -622,7 +708,12 @@ impl MusicHandle {
     }
 
     fn state_of(inner: &Inner) -> MusicState {
-        MusicState { settings: inner.settings.clone(), status: inner.status, frame: inner.shown.clone() }
+        MusicState {
+            settings: inner.settings.clone(),
+            status: inner.status,
+            covers: inner.sent.is_some(),
+            frame: inner.shown.clone(),
+        }
     }
 
     pub fn configure(&self, settings: MusicSettings) -> Result<MusicState, String> {
@@ -632,7 +723,8 @@ impl MusicHandle {
             if inner.settings.enabled != settings.enabled {
                 tracing::info!(on = settings.enabled, "music mode");
             }
-            inner.status = status_of(&settings, false, Sound::Quiet, false, false);
+            // What the worker saw stays true; only the settings changed.
+            inner.status = inner.seen.status(&settings);
             inner.settings = settings.clone();
             inner.next_emit = 0.0;
         }
@@ -654,7 +746,7 @@ impl MusicHandle {
 
     /// One pass of the worker; returns how long to sleep.
     fn tick(&self, device: &DeviceHandle, games: &GamesHandle, ears: &mut Ears) -> Duration {
-        let now = now_ms();
+        let now = mono_ms();
         let (in_front, quiet) = (games.playing_in_front(), games.quiet_now());
         let (watched, settings, usb) = match self.inner.lock() {
             Ok(mut i) => (i.watched, i.settings.clone(), self.usb_keys(&mut i, device)),
@@ -669,6 +761,7 @@ impl MusicHandle {
 
         let Ok(mut guard) = self.inner.lock() else { return IDLE };
         let inner = &mut *guard;
+        let before = (inner.status, inner.sent.is_some());
         // Settings may have changed while listening: take them as they are now.
         let s = inner.settings.clone();
         let on_keys = on_keys && s.enabled;
@@ -684,16 +777,17 @@ impl MusicHandle {
                     Some(k) => quiet_frame(k, &s),
                     None => None,
                 };
-                inner.status = status_of(&s, usb.is_some(), h.sound, game, showing);
+                inner.seen = Seen { usb: usb.is_some(), sound: h.sound, game, showing };
                 (lights, if showing { TICK } else { h.wait })
             }
             None => {
                 inner.silence = Silence::default();
                 inner.tracker = Tracker::default();
-                inner.status = status_of(&s, usb.is_some(), Sound::Quiet, game, false);
-                (None, IDLE)
+                inner.seen = Seen { usb: usb.is_some(), sound: Sound::Quiet, game, showing: false };
+                (None, if game && s.enabled { GAME_WAIT } else { IDLE })
             }
         };
+        inner.status = inner.seen.status(&s);
         inner.shown = lights.iter().flatten().map(|&(led, [r, g, b])| LedColor { led, r, g, b }).collect();
 
         let send: Frame = lights.filter(|_| on_keys).map(|f| (f, s.brightness));
@@ -704,7 +798,8 @@ impl MusicHandle {
             ));
             inner.sent = send;
         }
-        if inner.watched && now >= inner.next_emit {
+        let changed = (inner.status, inner.sent.is_some()) != before;
+        if should_emit(inner.watched, changed, now, inner.next_emit) {
             inner.next_emit = now + EMIT_EVERY_MS;
             let _ = self.app.emit(EVENT_MUSIC, Self::state_of(inner));
         }
@@ -741,6 +836,7 @@ fn fallback_keys() -> Option<Arc<Keys>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f64::consts::TAU;
 
     fn model() -> &'static Model {
         kb_devices::catalogue().unwrap().iter().find(|m| m.id.contains("ak980")).unwrap()
@@ -1034,6 +1130,78 @@ mod tests {
         assert_eq!(status_of(&on, true, Sound::NoOutput, false, false), MusicStatus::NoOutput);
         assert_eq!(status_of(&on, true, Sound::Quiet, false, false), MusicStatus::Waiting);
         assert_eq!(status_of(&on, true, Sound::Open, false, true), MusicStatus::Playing);
+    }
+
+    #[test]
+    fn a_change_of_settings_keeps_what_the_worker_saw() {
+        // A keyboard on the cable, sound playing: changing the color must not
+        // turn the status into "no USB" until the next pass.
+        let seen = Seen { usb: true, sound: Sound::Open, game: false, showing: true };
+        let on = MusicSettings { enabled: true, ..MusicSettings::default() };
+        assert_eq!(seen.status(&on), MusicStatus::Playing);
+        let recolored = MusicSettings { palette: MusicPalette::Rainbow, ..on };
+        assert_eq!(seen.status(&recolored), MusicStatus::Playing);
+        assert_eq!(seen.status(&MusicSettings::default()), MusicStatus::Off);
+        assert_eq!(Seen::default().status(&recolored), MusicStatus::NoUsb);
+    }
+
+    #[test]
+    fn the_page_hears_of_changes_even_while_closed() {
+        assert!(should_emit(false, true, 0.0, 1_000.0), "a change goes out with the page closed");
+        assert!(!should_emit(false, false, 5_000.0, 1_000.0), "nothing new, page closed: quiet");
+        assert!(should_emit(true, false, 1_000.0, 1_000.0), "the open page gets frames");
+        assert!(!should_emit(true, false, 999.0, 1_000.0));
+    }
+
+    #[test]
+    fn an_extra_wake_is_not_silence() {
+        let full = (48_000.0 * TICK.as_secs_f64()) as usize;
+        // A wake 5 ms after a read with sound: nothing to add.
+        assert_eq!(silence_to_pad(0, Some(5.0), 48_000), 0);
+        assert_eq!(silence_to_pad(240, Some(0.0), 48_000), 0);
+        // No packet for a while (or ever): the sound stopped.
+        assert_eq!(silence_to_pad(0, Some(150.0), 48_000), full);
+        assert_eq!(silence_to_pad(0, None, 48_000), full);
+        // One analysis per frame; an extra wake reuses the last.
+        assert!(analysis_due(None) && analysis_due(Some(50.0)));
+        assert!(!analysis_due(Some(5.0)));
+    }
+
+    #[test]
+    fn a_settings_wake_mid_song_makes_no_beat() {
+        // A steady tone, read frame by frame; halfway, the worker wakes 5 ms
+        // after a read (a slider moved) and the read gets nothing.
+        let rate = 48_000u32;
+        let per_tick = (f64::from(rate) * TICK.as_secs_f64()) as usize;
+        let tone: Vec<f32> =
+            (0..per_tick).map(|i| (0.5 * (i as f64 * 60.0 * TAU / f64::from(rate)).sin()) as f32).collect();
+        let mut a = Analyzer::new(rate, COLUMNS);
+        let (mut last_packet, mut last_analysis) = (None::<f64>, None::<f64>);
+        let mut beats = Vec::new();
+        let mut read = |a: &mut Analyzer, now: f64, frames: &[f32]| {
+            if !frames.is_empty() {
+                last_packet = Some(now);
+            }
+            let mut samples = frames.to_vec();
+            let pad = silence_to_pad(frames.len(), last_packet.map(|t| now - t), rate);
+            samples.resize(samples.len() + pad, 0.0);
+            a.push(&samples);
+            if analysis_due(last_analysis.map(|t| now - t)) {
+                last_analysis = Some(now);
+                let l = a.analyze(now / 1000.0);
+                if l.beat == Some(now / 1000.0) {
+                    beats.push(now);
+                }
+            }
+        };
+        for k in 1..=40 {
+            let now = f64::from(k) * 50.0;
+            read(&mut a, now, &tone);
+            if k == 20 {
+                read(&mut a, now + 5.0, &[]);
+            }
+        }
+        assert_eq!(beats, Vec::<f64>::new());
     }
 
     #[test]

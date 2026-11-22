@@ -19,6 +19,7 @@ import { percent, useT, type MessageKey } from "../lib/i18n";
 import { SENSITIVITY_MAX, SENSITIVITY_MIN, useMusic, watchMusic } from "../lib/music";
 import { usePomodoro } from "../lib/pomodoro";
 import { fromHex, toHex } from "../lib/pomodoroLights";
+import { useApp } from "../lib/store";
 
 const MODE_HINT: Record<MusicMode, MessageKey> = {
   bars: "music.mode.bars.hint",
@@ -38,6 +39,8 @@ export function Music({ kb }: { kb: KeyboardInfo }) {
   const [draft, setDraft] = useState<Partial<MusicSettings>>({});
   const configureRef = useRef(configure);
   configureRef.current = configure;
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   useEffect(() => {
     if (!Object.keys(draft).length) return;
     const id = window.setTimeout(() => {
@@ -46,7 +49,17 @@ export function Music({ kb }: { kb: KeyboardInfo }) {
     }, 150);
     return () => window.clearTimeout(id);
   }, [draft]);
-  useEffect(() => watchMusic(kb.geometry ?? null), [kb.geometry]);
+  // Leaving the page with a change still waiting saves it.
+  useEffect(
+    () => () => {
+      if (Object.keys(draftRef.current).length) configureRef.current(draftRef.current).catch(console.error);
+    },
+    [],
+  );
+  // The sound is read for the preview only while the window is on screen:
+  // closed to the tray, the page stays mounted but nobody looks.
+  const windowShown = useApp((x) => x.windowShown);
+  useEffect(() => (windowShown ? watchMusic(kb.geometry ?? null) : undefined), [kb.geometry, windowShown]);
   const geometry = kb.geometry;
   const colors = useMemo(() => {
     if (!s) return null;

@@ -1914,6 +1914,9 @@ pub enum MusicStatus {
 pub struct MusicState {
     pub settings: MusicSettings,
     pub status: MusicStatus,
+    /// The music lights are on the keys now (while sound plays, and while
+    /// it's quiet with "Dim color" or "Dark"): the layers under them wait.
+    pub covers: bool,
     /// What the music lights put on the keys now (UI colours, before
     /// brightness); on the catalogue's model without a keyboard. Empty
     /// when they show nothing.

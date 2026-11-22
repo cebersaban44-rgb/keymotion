@@ -7,8 +7,8 @@
 //!   it opens no stream and costs next to nothing, so it is what runs while
 //!   nothing plays.
 //! * [`Loopback`]: the capture stream itself, mixed down to mono as it is
-//!   read: left and right never reach the keys apart (no direction from a
-//!   game's sound).
+//!   read (the front left and right): left and right never reach the keys
+//!   apart (no direction from a game's sound).
 //! * [`Capture`]: both, managed. The stream is opened when the meter shows
 //!   sound and closed again after [`CLOSE_AFTER`] of silence, because an
 //!   open audio stream can keep Windows from going to sleep on its own.
@@ -224,8 +224,15 @@ impl std::fmt::Display for Format {
     }
 }
 
-/// Interleaved frames to mono: each frame's channels averaged, appended to
-/// `out`. A trailing partial frame is left out. Returns the frames added.
+/// Channels the mixdown reads: the front left and right, the first two
+/// in Windows' order. Music and most games put everything there; averaging
+/// a 7.1 output's eight channels (a virtual-surround headset) would make
+/// stereo sound four times quieter.
+pub const MIX_CHANNELS: u16 = 2;
+
+/// Interleaved frames to mono: each frame's front left and right averaged
+/// (the one channel of a mono output as it is), appended to `out`. A
+/// trailing partial frame is left out. Returns the frames added.
 pub fn mix_to_mono(data: &[u8], format: &Format, out: &mut Vec<f32>) -> usize {
     let size = format.sample.bytes();
     let frame = format.frame_bytes();
@@ -233,11 +240,11 @@ pub fn mix_to_mono(data: &[u8], format: &Format, out: &mut Vec<f32>) -> usize {
         return 0;
     }
     let frames = data.len() / frame;
-    let channels = f32::from(format.channels);
+    let used = format.channels.min(MIX_CHANNELS);
     out.reserve(frames);
     for f in data.chunks_exact(frame) {
-        let sum: f32 = f.chunks_exact(size).map(|s| format.sample.read(s)).sum();
-        out.push(sum / channels);
+        let sum: f32 = f.chunks_exact(size).take(usize::from(used)).map(|s| format.sample.read(s)).sum();
+        out.push(sum / f32::from(used));
     }
     frames
 }
@@ -935,8 +942,14 @@ mod tests {
         assert_eq!(mono(&data, 2, Sample::F32), vec![0.5, -0.25, 0.25, 0.0]);
         // Left and right give the same value: no direction reaches the keys.
         assert_eq!(mono(&f32s(&[0.8, 0.0]), 2, Sample::F32), mono(&f32s(&[0.0, 0.8]), 2, Sample::F32));
-        // 5.1: six channels per frame.
+        // 5.1: six channels per frame, the front pair read.
         assert_eq!(mono(&f32s(&[0.25; 12]), 6, Sample::F32), vec![0.25, 0.25]);
+        // 7.1 (a virtual-surround headset) playing stereo: only the front
+        // pair has sound, and it comes through at full level.
+        let stereo_in_71 = [0.5, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        assert_eq!(mono(&f32s(&stereo_in_71), 8, Sample::F32), vec![0.5]);
+        // The back channels never count.
+        assert_eq!(mono(&f32s(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0]), 8, Sample::F32), vec![0.0]);
         // A trailing partial frame is left out.
         assert_eq!(mono(&f32s(&[0.5, 0.5, 0.5]), 2, Sample::F32), vec![0.5]);
         // Overs are clipped, broken values are silence.

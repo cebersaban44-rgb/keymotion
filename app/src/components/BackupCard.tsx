@@ -9,6 +9,7 @@ import type { BackupSummary } from "../bindings/BackupSummary";
 import { useCalendar } from "../lib/calendar";
 import { friendlyError } from "../lib/errors";
 import { useGauges } from "../lib/gauges";
+import { useMusic } from "../lib/music";
 import { intlTag, useT, type MessageKey, type Translate } from "../lib/i18n";
 import { cancelImport, exportBackup, importBackup, inspectBackup, logUiError, revealExport } from "../lib/ipc";
 import { stageKeymapImport } from "../lib/keymap";
@@ -104,6 +105,7 @@ async function refreshAfterImport(result: BackupImported) {
     profilesModel ? useProfiles.getState().load(profilesModel) : Promise.resolve(),
     usePomodoro.getState().load(),
     useGauges.getState().load(),
+    useMusic.getState().load(),
     useReminders.getState().load(),
     useCalendar.getState().load(),
   ];
