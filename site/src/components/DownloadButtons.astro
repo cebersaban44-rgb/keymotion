@@ -3,15 +3,16 @@
 // the GitHub download (owner's request, 2026-11-16). Used in the guides;
 // the home page has the same pair in its hero (Hero.astro).
 import { LinkButton } from "@astrojs/starlight/components";
+import { LANG, UI, siteLocale } from "../i18n";
 import StoreBadge from "./StoreBadge.astro";
 
-const tr = Astro.currentLocale === "tr";
+const locale = siteLocale(Astro.currentLocale);
 ---
 
-<div class="download-buttons not-content">
+<div class="download-buttons not-content" lang={LANG[locale]}>
   <StoreBadge />
   <LinkButton href="https://github.com/cebersaban44-rgb/keymotion/releases/latest" variant="secondary" icon="download">
-    {tr ? "GitHub'dan indir" : "Download from GitHub"}
+    {UI[locale].downloadFromGitHub}
   </LinkButton>
 </div>
 
