@@ -31,8 +31,7 @@
 
 use crate::device::{DeviceHandle, EVENT_KEYBOARDS_CHANGED};
 use crate::dto::{
-    BackgroundSettings, Connection, KeyboardInfo, PomodoroPhase, PomodoroState, PomodoroStatus, ReminderState,
-    TrayTexts,
+    BackgroundSettings, Connection, PomodoroPhase, PomodoroState, PomodoroStatus, ReminderState, TrayTexts,
 };
 use crate::games::{GamesHandle, EVENT_GAMES};
 use crate::gauges::{GaugesHandle, EVENT_GAUGES};
@@ -524,16 +523,12 @@ fn view_of(t: &TrayTexts, f: &Facts, now_ms: f64, tz: &TimeZone) -> View {
     }
 }
 
-/// The keyboard the UI shows (USB first, as `useActiveKeyboard`).
+/// The keyboard the UI shows (`KeyboardInfo::focus_rank`, as
+/// `useActiveKeyboard`): a receiver never hides a connected Bluetooth one.
 fn keyboard_line(app: &AppHandle) -> Option<KeyboardLine> {
     let device = app.try_state::<Arc<DeviceHandle>>()?;
     let snap = device.snapshot.lock().ok()?;
-    let rank = |k: &&KeyboardInfo| match k.connection {
-        Connection::Usb => 0,
-        Connection::Dongle => 1,
-        Connection::Bluetooth => 2,
-    };
-    let k = snap.keyboards.iter().min_by_key(rank)?;
+    let k = snap.keyboards.iter().min_by_key(|k| k.focus_rank())?;
     let name = if k.model_name.starts_with(&k.vendor) {
         k.model_name.clone()
     } else {

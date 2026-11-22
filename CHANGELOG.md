@@ -89,6 +89,15 @@ says so.
 
 - The list of running programs, used to find the official software or
   SignalRGB before a write, no longer opens any program.
+- **Recognition:** only a keyboard whose USB name includes "AK980 PRO", as
+  the tested one reports, is taken for the AJAZZ AK980 PRO. Another AK980
+  with the same USB identity, for example one without the screen, is now
+  offered **Request support** instead.
+- **Untested firmware:** on a firmware version that hasn't been tested with
+  Keymotion, the keyboard clock waits for your go-ahead too, both the sync
+  on connect and **Sync now**. Keymotion asks the same question as before
+  saving, and a yes holds until it closes. Live lighting still goes on
+  without asking.
 
 ### Fixed
 
@@ -101,6 +110,15 @@ says so.
   other places). A repeat on, say, the fifth-last Monday of a month now
   shows all its dates, not just the first. A weekly repeat whose rule says
   "the first Monday" comes on Mondays only, not every day.
+- **2.4 GHz receiver:** with only the receiver plugged in, Keymotion no
+  longer says your keyboard works. The Connection page and the Overview say
+  that the receiver is plugged in and that Keymotion can't tell yet whether
+  the keyboard is turned on, and the dot next to it is grey. With the
+  keyboard on Bluetooth and the receiver still plugged in, the app and the
+  tray menu show Bluetooth, not the receiver.
+- A keyboard with the AK980 PRO's USB identity and name but built
+  differently inside showed up as an AK980 PRO on which every action failed.
+  It now gets **Request support**, and nothing is sent to it.
 
 ## [1.1.0] - 2026-11-16
 

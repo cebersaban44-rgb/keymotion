@@ -753,6 +753,14 @@ fn confirm_firmware(device: Device<'_>, firmware: String) -> Result<(), String> 
     device.send(Request::ConfirmFirmware(firmware))
 }
 
+/// The untested firmware version the clock sync on connect waits on, if
+/// any: the window may open after the question (`firmware-unverified`)
+/// went out.
+#[tauri::command]
+fn firmware_question(device: Device<'_>) -> Option<String> {
+    device.snapshot.lock().ok().and_then(|s| s.clock_waits_for.clone())
+}
+
 /// Settings files that could not be read at start-up and went back to
 /// their defaults, not yet reported to the user.
 #[tauri::command]
@@ -1759,6 +1767,7 @@ pub fn run() {
             keyboards,
             refresh_keyboards,
             confirm_firmware,
+            firmware_question,
             settings_resets,
             dismiss_settings_resets,
             lighting_catalog,

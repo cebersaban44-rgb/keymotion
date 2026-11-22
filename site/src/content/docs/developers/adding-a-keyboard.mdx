@@ -56,7 +56,7 @@ verified = false
 kind = "usb"
 vid = 0x0C45
 pid = 0x8009
-product_contains = "AK980"
+product_contains = "AK980 PRO"
 command_usage_page = 0xFF13
 display_usage_page = 0xFF68
 capabilities = ["lighting", "per-key-rgb", "keymap", "macros", "options", "screen", "clock"]
@@ -124,7 +124,7 @@ The device actor lists the HID collections every 2 seconds and matches each one 
 4. **Role.** The collection's usage page decides whether it is the command channel, the screen channel or a standard collection (keyboard, media keys, mouse), which the app only counts.
 5. **Bluetooth.** A paired Bluetooth LE device is matched by its name (`ble_name_prefix`).
 
-When the app opens a vendor channel, it then checks the shape of its report descriptor (`kb_core::shape`): the command channel must have 64-byte feature and output reports without report IDs, the screen channel a 4096-byte output report. If the shape is different, the channel is not used and nothing is sent.
+The app also checks the shape of each cable channel's report descriptor (`kb_core::shape`), as Windows keeps it, so reading it sends nothing to the keyboard: the command channel must have 64-byte feature and output reports without report IDs, the screen channel a 4096-byte output report. A keyboard whose IDs and name match but whose shape is different is not the model: it is listed as unsupported, with **Request support** (`kb_core::classify`). The shape is checked again when a channel is opened; if it is different, the channel is not used and nothing is sent.
 
 ### Why it is strict
 
@@ -134,7 +134,7 @@ When the app opens a vendor channel, it then checks the shape of its report desc
 - A keyboard that calls itself only "USB KEYBOARD" can't be recognised by name, so it isn't recognised automatically at all.
 - With two identical keyboards on the cable, the app refuses to write to permanent memory, because it can't tell which one the user means.
 
-A keyboard that has SONiX's vendor ID, or "AJAZZ" in its name, has a standard keyboard collection and matches no model is listed as unsupported, which is where **Request support** comes from (`kb_core::unknown_keyboards`).
+A keyboard that has SONiX's vendor ID, or "AJAZZ" in its name, has a standard keyboard collection and matches no model is listed as unsupported, which is where **Request support** comes from (`kb_core::unknown_keyboards`). So is a keyboard that matches a model by name but not by shape.
 
 ## What to measure before a model is added
 

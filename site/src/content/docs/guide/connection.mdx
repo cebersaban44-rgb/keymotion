@@ -17,8 +17,10 @@ The first card names the connection, **USB cable**, **2.4 GHz receiver** or **Bl
 | Connection | What the page says |
 |---|---|
 | USB cable | **Every feature of the app is available.** |
-| 2.4 GHz receiver | **Your keyboard works, but settings aren't available over this connection yet.** |
+| 2.4 GHz receiver | **The 2.4 GHz receiver is plugged in, but Keymotion can't tell yet whether your keyboard is turned on and connected to it. To change settings, use the USB cable.** |
 | Bluetooth | **Your keyboard works. Only the battery level is read over this connection.** |
+
+Keymotion sends nothing to the receiver yet, so it can't see the keyboard behind it. If the receiver stays plugged in while the keyboard is connected over Bluetooth, the page shows **Bluetooth**.
 
 Under it are the keyboard's details: **Device**, the model, and over the cable the **Firmware** version. Over Bluetooth you see the **Bluetooth name**, the **Channel** the keyboard is on (out of its three Bluetooth channels) and the **Bluetooth address**.
 
@@ -40,6 +42,7 @@ The keyboard's screen has a clock page. The **Keyboard clock** card keeps it rig
 - The card says how long ago the clock was synced, or **Not synced yet**. Point at it to see the exact date and time.
 - **Sync now** sets the keyboard's clock to your computer's time. Syncing also switches the keyboard's screen to its clock page.
 - **Sync on connect** syncs by itself when the keyboard connects over USB, at most once a day. It is on at first.
+- On a firmware version that hasn't been tested with Keymotion, the clock waits for your go-ahead: Keymotion asks **Untested firmware**, as it does before saving, and sets the clock only after **Continue**.
 
 Over the 2.4 GHz receiver or Bluetooth, the card says **To sync, connect the cable and set the switch on the back to the middle.** and **Sync now** can't be clicked.
 

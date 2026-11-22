@@ -2,7 +2,7 @@
 //
 // Browser mock (development only): outside Tauri, `pnpm dev` in a browser
 // uses stand-ins for the backend so the UI can be designed and tested
-// (`?mock=usb|bluetooth|dongle|none`, `?fw=`, `?reset=`, `?failPart=`,
+// (`?mock=usb|bluetooth|dongle|none`, `?fw=`, `?clock=wait`, `?reset=`, `?failPart=`,
 // `?unsupported`, `?crash`, `mock-close-requested`; lib/screen.ts, live.ts, pomodoro.ts, calendar.ts,
 // reminders.ts and gauges.ts have their own). Every mock branch is guarded
 // by `import.meta.env.DEV`, written out at the guard itself: Vite replaces
@@ -269,7 +269,20 @@ export async function confirmFirmware(version: string): Promise<void> {
   await invoke("confirm_firmware", { firmware: version });
 }
 
-/** A write was refused for untested firmware (also from the live mode). */
+/**
+ * The untested firmware version the clock sync on connect waits on, if any
+ * (its question may have gone out before the window was ready).
+ */
+export async function getFirmwareQuestion(): Promise<string | null> {
+  if (import.meta.env.DEV && !inTauri) {
+    // `?fw=1.07&clock=wait` plays the clock sync waiting at start-up.
+    const fw = mockFirmware();
+    return new URLSearchParams(location.search).get("clock") === "wait" && fw !== "1.06" ? fw : null;
+  }
+  return invoke<string | null>("firmware_question");
+}
+
+/** A write was refused for untested firmware (also from the live mode or the clock sync). */
 export async function onFirmwareUnverified(cb: (version: string) => void): Promise<UnlistenFn> {
   if (import.meta.env.DEV && !inTauri) return () => {};
   return listen<string>("firmware-unverified", (e) => cb(e.payload));
@@ -398,13 +411,18 @@ export function getClockStatus(): Promise<ClockStatus> {
   return invoke<ClockStatus>("clock_status");
 }
 
-/** Set the keyboard clock to the PC's local time now (USB only). */
-export async function syncClock(): Promise<ClockStatus> {
-  if (import.meta.env.DEV && !inTauri) {
-    await mockDelay(300);
-    return (mockClock = { ...mockClock, lastSyncMs: Date.now() });
-  }
-  return serial(() => invoke<ClockStatus>("sync_clock"));
+/**
+ * Set the keyboard clock to the PC's local time now (USB only). On untested
+ * firmware it waits for the user's go-ahead, like a save (flashWrite).
+ */
+export function syncClock(): Promise<ClockStatus> {
+  return flashWrite(async () => {
+    if (import.meta.env.DEV && !inTauri) {
+      await mockDelay(300);
+      return (mockClock = { ...mockClock, lastSyncMs: Date.now() });
+    }
+    return serial(() => invoke<ClockStatus>("sync_clock"));
+  });
 }
 
 /** Turn automatic clock sync (on USB connect, at most once a day) on or off. */
@@ -1156,7 +1174,7 @@ function mockKeyboards(): KeyboardInfo[] {
       hasSideLight: true,
       screen: { width: 240, height: 135, verified: true },
       connection: usb ? "usb" : dongle ? "dongle" : "bluetooth",
-      product: usb ? "SONiX AK980 PRO" : null,
+      product: usb ? "AK980 PRO" : null,
       firmware: usb ? mockFirmware() : null,
       // What the app drives in each mode (kb_core::app_capabilities).
       features: usb ? usbFeatures : dongle ? [] : ["battery"],
@@ -1169,6 +1187,7 @@ function mockKeyboards(): KeyboardInfo[] {
       hasDisplayChannel: usb,
       bleName: usb || dongle ? null : "AK980 PRO-1",
       bleAddress: usb || dongle ? null : "AA:BB:CC:DD:EE:FF",
+      bleConnected: !usb && !dongle,
       battery: usb || dongle ? null : { percent: 94, readAtMs: Date.now() - 40_000 },
       geometry: ak980Geometry as GeometryInfo,
     },

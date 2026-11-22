@@ -135,10 +135,20 @@ export function useNarrowWindow(): boolean {
   return narrow;
 }
 
-/** The keyboard the UI is focused on: prefer the richest connection. */
+/**
+ * Which entry to show when the app sees the keyboard more than one way,
+ * lowest first (the backend's `KeyboardInfo::focus_rank`, which the tray
+ * follows): the cable; Bluetooth while the keyboard says it is connected;
+ * the 2.4 GHz receiver, which shows up whether or not a keyboard is on
+ * behind it; Bluetooth not known to be connected.
+ */
+export function focusRank(k: KeyboardInfo): number {
+  if (k.connection === "usb") return 0;
+  if (k.connection === "bluetooth") return k.bleConnected ? 1 : 3;
+  return 2;
+}
+
+/** The keyboard the UI is focused on (focusRank). */
 export function useActiveKeyboard(): KeyboardInfo | null {
-  return useApp((s) => {
-    const rank = { usb: 0, dongle: 1, bluetooth: 2 } as const;
-    return [...s.keyboards].sort((a, b) => rank[a.connection] - rank[b.connection])[0] ?? null;
-  });
+  return useApp((s) => [...s.keyboards].sort((a, b) => focusRank(a) - focusRank(b))[0] ?? null);
 }

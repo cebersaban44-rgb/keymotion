@@ -17,11 +17,11 @@ A switch on the back picks the connection. From left to right it reads **2.4G ·
 
 | Mode | How Windows sees it | What Keymotion does |
 |---|---|---|
-| USB cable | VID `0C45`, PID `8009`. Manufacturer string `SONiX`, product string `AK980 PRO`. | Everything. The app matches VID, PID, the USB bus and "AK980" in the product name. |
+| USB cable | VID `0C45`, PID `8009`. Manufacturer string `SONiX`, product string `AK980 PRO`. | Everything. The app matches VID, PID, the USB bus and "AK980 PRO" in the product name. |
 | Bluetooth | Name `AK980 PRO-1`; the suffix is the Bluetooth channel. PnP ID: VID `0C45`, PID `FEFE`, version `0x0138`. | Reads the battery level. There is no vendor channel over Bluetooth. |
-| 2.4 GHz receiver | VID `0C45`, PID `FEFE` on the USB bus, with a vendor collection on usage page `FF60`. This comes from the model file and has not been measured here. | Recognises it; there is no driver for it. |
+| 2.4 GHz receiver | VID `0C45`, PID `FEFE` on the USB bus, with a vendor collection on usage page `FF60`. This comes from the model file and has not been measured here. | Shows that the receiver is plugged in. Nothing is sent to it, so whether the keyboard behind it is on is not known. |
 
-The receiver and Bluetooth share `0C45:FEFE`, so the app tells them apart by bus. Windows reports the firmware version only over the cable; over the receiver or Bluetooth it reports the radio's own version.
+The receiver and Bluetooth share `0C45:FEFE`, so the app tells them apart by bus. The receiver shows up whether or not the keyboard is on; when the keyboard is connected over Bluetooth too, the app shows that connection. Windows reports the firmware version only over the cable; over the receiver or Bluetooth it reports the radio's own version.
 
 ## USB interfaces
 
@@ -46,7 +46,7 @@ Read from the report descriptors (`kb descriptors`), and kept as test data in `c
 
 Windows adds a report ID byte of `00` in front, so a command travels as 65 bytes and a screen page as 4,097. In a 20-second passive listen on the `FF13` and `FFFF` collections, the keyboard sent no input reports at all.
 
-These shapes are what the app checks before it uses a channel (`kb_core::shape`). Keyboards of the other SONiX command family, some of which share the AK980 PRO's USB IDs, put 64-byte commands on `FF68` and add an `FF67` collection; they fail the check, and nothing is sent to them.
+These shapes are what the app checks when it finds a keyboard on the cable, and again before it uses a channel (`kb_core::shape`). Keyboards of the other SONiX command family, some of which share the AK980 PRO's USB IDs, put 64-byte commands on `FF68` and add an `FF67` collection; they fail the check, nothing is sent to them, and they are listed as unsupported.
 
 ## The command channel
 

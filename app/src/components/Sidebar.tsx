@@ -187,7 +187,9 @@ export function Sidebar() {
         onBlur={hideTip}
         data-device-status={kb ? kb.connection : "none"}
       >
-        <span className={`h-2 w-2 shrink-0 rounded-full ${kb ? "bg-ok" : "bg-ink-3"}`} aria-hidden />
+        {/* Not green for the receiver alone: whether the keyboard is on
+            behind it is not known yet. */}
+        <span className={`h-2 w-2 shrink-0 rounded-full ${kb && kb.connection !== "dongle" ? "bg-ok" : "bg-ink-3"}`} aria-hidden />
         {!collapsed && (
           <>
             <div className="min-w-0 flex-1 leading-tight">

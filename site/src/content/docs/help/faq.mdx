@@ -66,7 +66,7 @@ Over the USB cable it's the other way round: the keyboard doesn't report its bat
 
 ## What about the 2.4 GHz receiver?
 
-The keyboard works normally with the receiver, and Keymotion recognizes it, but settings can't be changed over the receiver yet. Use the USB cable to change them. [Connection](/keymotion/guide/connection/) shows what works in each mode.
+You can type over the receiver as usual. Keymotion sees that the receiver is plugged in, but it doesn't talk to it yet, so it can't tell whether the keyboard behind it is turned on, and settings can't be changed over the receiver. Use the USB cable to change them. [Connection](/keymotion/guide/connection/) shows what works in each mode.
 
 ## Can Keymotion break my keyboard?
 
@@ -74,7 +74,7 @@ Keymotion is built to be careful with the keyboard:
 
 - It sends only commands that were tested on this keyboard. Anything else is blocked before it leaves your computer, including the commands that would start a firmware update. Keymotion never updates the keyboard's firmware, and over Bluetooth it writes nothing at all.
 - Your settings go to the keyboard's permanent memory only when you choose to save or upload, for example with **Save to keyboard**. Previews aren't saved.
-- Before saving, it checks. If your keyboard's firmware version hasn't been tested with Keymotion, it asks you first. If it doesn't recognize the firmware, it sends nothing. While another program is using the keyboard, or more than one keyboard is connected by USB, it doesn't save.
+- Before saving, it checks. If your keyboard's firmware version hasn't been tested with Keymotion, it asks you first, and it doesn't set the keyboard's clock either until you say yes. Live lighting, which the keyboard doesn't keep, goes on without asking. If it doesn't recognize the firmware, it sends nothing. While another program is using the keyboard, or more than one keyboard is connected by USB, it doesn't save.
 - If you close Keymotion while it's saving, it waits and closes when the save is done. If you shut down Windows, Windows shows that Keymotion is still saving to the keyboard.
 
 The screen's memory wears out slowly with each upload. Its exact lifespan isn't known; by the usual estimate for this kind of memory, a few uploads a day are fine for years. The live screen has a daily upload limit for this reason.
@@ -124,7 +124,7 @@ Not yet. Keymotion supports the AJAZZ AK980 PRO. If you connect a SONiX or AJAZZ
 
 ## Does it work with the AJAZZ AK980 V2?
 
-Yes. The keyboard Keymotion is tested with was sold as the AK980 V2: AJAZZ's store listed it as "AK980MAX … V2" and the box says "AK980 V2". Over USB it calls itself "SONiX AK980 PRO", and that's how Keymotion recognizes it. What matters is the hardware: the 98-key model with the 240×135 screen and the knob. See [Supported keyboards](/keymotion/help/keyboards/).
+Yes. The keyboard Keymotion is tested with was sold as the AK980 V2: AJAZZ's store listed it as "AK980MAX … V2" and the box says "AK980 V2". Over USB it gives SONiX as its maker and "AK980 PRO" as its name, and Keymotion recognizes it by that name. What matters is the hardware: the 98-key model with the 240×135 screen and the knob. See [Supported keyboards](/keymotion/help/keyboards/).
 
 ## Is Keymotion made by AJAZZ?
 

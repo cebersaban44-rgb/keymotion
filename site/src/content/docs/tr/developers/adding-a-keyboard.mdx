@@ -56,7 +56,7 @@ verified = false
 kind = "usb"
 vid = 0x0C45
 pid = 0x8009
-product_contains = "AK980"
+product_contains = "AK980 PRO"
 command_usage_page = 0xFF13
 display_usage_page = 0xFF68
 capabilities = ["lighting", "per-key-rgb", "keymap", "macros", "options", "screen", "clock"]
@@ -124,7 +124,7 @@ Cihaz aktörü her 2 saniyede bir HID koleksiyonlarını listeler ve her birini 
 4. **Görev.** Koleksiyonun usage page'i onun komut kanalı mı, ekran kanalı mı yoksa uygulamanın yalnızca saydığı standart bir koleksiyon mu (klavye, medya tuşları, fare) olduğunu belirler.
 5. **Bluetooth.** Eşleştirilmiş bir Bluetooth LE aygıtı adına göre eşleştirilir (`ble_name_prefix`).
 
-Uygulama üreticiye özel bir kanalı açarken rapor tanımlayıcısının şeklini de denetler (`kb_core::shape`): komut kanalında rapor kimliği olmayan 64 baytlık feature ve output raporları, ekran kanalında 4096 baytlık bir output raporu olmalıdır. Şekil farklıysa kanal kullanılmaz ve hiçbir şey gönderilmez.
+Uygulama kablodaki her üreticiye özel kanalın rapor tanımlayıcısının şeklini de denetler (`kb_core::shape`). Tanımlayıcıyı Windows'un sakladığı yerden okur, yani klavyeye hiçbir şey göndermez: komut kanalında rapor kimliği olmayan 64 baytlık feature ve output raporları, ekran kanalında 4096 baytlık bir output raporu olmalıdır. Kimliği ve adı eşleşip şekli farklı olan klavye model sayılmaz; desteklenmeyenler arasında **Destek iste** ile listelenir (`kb_core::classify`). Kanal açılırken şekil yeniden denetlenir; farklıysa kanal kullanılmaz ve hiçbir şey gönderilmez.
 
 ### Neden bu kadar sıkı
 
@@ -134,7 +134,7 @@ Uygulama üreticiye özel bir kanalı açarken rapor tanımlayıcısının şekl
 - Kendini yalnızca "USB KEYBOARD" diye tanıtan bir klavye adından tanınamaz; bu yüzden hiç kendiliğinden tanınmaz.
 - Kabloda aynı modelden iki klavye varsa uygulama kalıcı belleğe yazmayı reddeder; çünkü kullanıcının hangisini kastettiğini bilemez.
 
-SONiX'in üretici kimliğini taşıyan ya da adında "AJAZZ" geçen, standart bir klavye koleksiyonu olan ve hiçbir modelle eşleşmeyen klavye desteklenmeyenler arasında listelenir; **Destek iste** düğmesi buradan gelir (`kb_core::unknown_keyboards`).
+SONiX'in üretici kimliğini taşıyan ya da adında "AJAZZ" geçen, standart bir klavye koleksiyonu olan ve hiçbir modelle eşleşmeyen klavye desteklenmeyenler arasında listelenir; **Destek iste** düğmesi buradan gelir (`kb_core::unknown_keyboards`). Adıyla bir modele uyup şekliyle uymayan klavye de oraya düşer.
 
 ## Bir model eklenmeden önce neler ölçülmeli
 

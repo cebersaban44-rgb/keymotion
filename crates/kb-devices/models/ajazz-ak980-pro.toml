@@ -23,11 +23,15 @@ verified = true
 
 # Verified 2026-11-10 on fw 0x0106: IDs, product "AK980 PRO", FF13/FF68
 # interfaces, F5 read-back and the 04 20 real-time stream (docs site: developers/protocol).
+# The product string is the measured one: other boards share these IDs, and
+# an AK980 that names itself differently (no screen, another generation,
+# other firmware) is offered "Request support" instead of being driven as
+# this one.
 [[modes]]
 kind = "usb"
 vid = 0x0C45
 pid = 0x8009
-product_contains = "AK980"
+product_contains = "AK980 PRO"
 command_usage_page = 0xFF13
 display_usage_page = 0xFF68
 capabilities = ["lighting", "per-key-rgb", "keymap", "macros", "options", "screen", "clock"]
