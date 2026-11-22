@@ -1037,7 +1037,20 @@ mod tests {
         let client = PipeClient::connect(&name, WAIT).unwrap();
         let sddl = client.dacl_sddl().unwrap();
         let user = current_user_sid().unwrap();
+        // Windows writes a few well-known accounts by their SDDL alias: the
+        // built-in Administrator (RID 500, which CI runners use) as `LA`, the
+        // Guest (RID 501) as `LG`.
+        let alias = match user.rsplit('-').next() {
+            Some("500") => "LA",
+            Some("501") => "LG",
+            _ => "",
+        };
         let mut found = aces(&sddl);
+        for ace in &mut found {
+            if !alias.is_empty() && ace.1 == alias {
+                ace.1.clone_from(&user);
+            }
+        }
         found.sort();
         let mut expected = vec![("A".to_string(), user), ("D".to_string(), "NU".to_string())];
         expected.sort();
