@@ -14,8 +14,9 @@ use crate::error::{AgentError, ErrorCode};
 /// At most this much of a rejected input is echoed back in a message.
 const ECHO_CHARS: usize = 40;
 
-/// `input` for an error message: trimmed, and cut short when long.
-pub(crate) fn shown(input: &str) -> String {
+/// `input` for an error message: trimmed, and cut short when long (the
+/// CLI uses it for its own messages too).
+pub fn shown(input: &str) -> String {
     let input = input.trim();
     if input.chars().count() <= ECHO_CHARS {
         input.to_string()

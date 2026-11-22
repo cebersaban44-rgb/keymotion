@@ -39,6 +39,16 @@ pub fn current() -> Option<Package> {
     holds(&package.install_dir, &exe).then_some(package)
 }
 
+/// The package this process runs with, whichever app's it is (for
+/// keymotion-cli's `doctor`). A program another packaged app started may
+/// carry that app's identity, or none and still have its AppData writes
+/// redirected into that app's folder, as programs started from the Claude
+/// desktop app do (measured 2026-11-22): `None` does not prove a program
+/// runs outside a package.
+pub fn identity() -> Option<Package> {
+    sys::current()
+}
+
 /// Whether `exe` lies inside `dir` (letters compared without case, as
 /// Windows does).
 fn holds(dir: &Path, exe: &Path) -> bool {
