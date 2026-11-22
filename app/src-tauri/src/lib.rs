@@ -15,6 +15,7 @@ mod front;
 mod games;
 mod gauges;
 mod handoff;
+mod i18n;
 mod ics;
 mod lighting;
 mod live;

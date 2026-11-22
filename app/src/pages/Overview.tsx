@@ -13,7 +13,7 @@ import type { GeometryInfo } from "../bindings/GeometryInfo";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import { KeyboardView } from "../components/KeyboardView";
 import { hidFromCode } from "../lib/hidCodes";
-import { connectionKey, percent, useAgo, useT } from "../lib/i18n";
+import { connectionKey, listOf, percent, useAgo, useT } from "../lib/i18n";
 import { useMirror } from "../lib/mirror";
 import { useApp, useNarrowWindow } from "../lib/store";
 import { FocusTile } from "./overview/FocusTile";
@@ -105,7 +105,7 @@ function useSpecs(kb: KeyboardInfo): string {
     kb.screen ? t("overview.spec.screen", { size: `${kb.screen.width}×${kb.screen.height}` }) : null,
     kb.hasKnob ? t("overview.spec.knob") : null,
   ].filter((p): p is string => !!p);
-  const list = new Intl.ListFormat(locale === "tr" ? "tr-TR" : "en-US", { type: "conjunction" }).format(parts);
+  const list = listOf(parts, locale);
   const firmware = firmwareOf(kb);
   return [t("overview.spec", { list }), firmware ? t("overview.firmware", { version: firmware }) : null].filter(Boolean).join(" ");
 }
