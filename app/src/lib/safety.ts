@@ -1,8 +1,9 @@
 // Device safety: the questions and notices that guard the keyboard's memory.
 //
 // - Untested firmware: the backend refuses the first write of a session on
-//   a firmware version the model file does not list (`firmware-unverified`).
-//   The user is asked once; a yes holds until the app closes.
+//   a firmware version the model file does not list (`firmware-unverified`),
+//   and the clock sync on connect waits there too. The user is asked once;
+//   a yes holds until the app closes (and lets the waiting clock sync go).
 // - Settings files that could not be read went back to their defaults; the
 //   old file was kept aside. The user is told once which records.
 //
@@ -15,6 +16,7 @@ import type { MessageKey } from "./i18n";
 import {
   confirmFirmware,
   dismissSettingsResets,
+  getFirmwareQuestion,
   getSettingsResets,
   onFirmwareUnverified,
   setFirmwareGate,
@@ -79,6 +81,12 @@ export function startSafety(): () => void {
     if (stopped) u();
     else off = u;
   });
+  // The clock sync on connect may have asked before this window listened.
+  getFirmwareQuestion()
+    .then((version) => {
+      if (!stopped && version) void askFirmware(version, false).catch(console.error);
+    })
+    .catch(console.error);
   getSettingsResets()
     .then((resets) => {
       if (!stopped) useSafety.setState({ resets });

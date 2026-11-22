@@ -45,6 +45,7 @@ export const OFFLINE_KEYBOARD: KeyboardInfo = {
   hasDisplayChannel: false,
   bleName: null,
   bleAddress: null,
+  bleConnected: false,
   battery: null,
   geometry: ak980Geometry as GeometryInfo,
 };

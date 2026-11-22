@@ -111,18 +111,7 @@ pub fn detect(interfaces: &[HidInterface], ble: &[BlePeer]) -> Vec<DetectedKeybo
     let mut out: Vec<DetectedKeyboard> = Vec::new();
 
     for iface in interfaces {
-        let probe = InterfaceProbe {
-            vid: iface.vid,
-            pid: iface.pid,
-            usage_page: iface.usage_page,
-            product: iface.product.as_deref(),
-            bus: match iface.bus {
-                hid::Bus::Usb => Bus::Usb,
-                hid::Bus::Bluetooth => Bus::Bluetooth,
-                hid::Bus::Other => Bus::Other,
-            },
-        };
-        let Some(m) = match_interface(models, &probe) else { continue };
+        let Some(m) = match_interface(models, &probe(iface)) else { continue };
         let idx = match out.iter().position(|k| k.model.id == m.model.id && k.connection == m.mode.kind) {
             Some(i) => i,
             None => {
@@ -230,52 +219,138 @@ impl UnknownKeyboard {
 /// standard keyboard collection count, so a SONiX webcam's buttons don't.
 pub fn unknown_keyboards(interfaces: &[HidInterface]) -> Vec<UnknownKeyboard> {
     let Ok(models) = catalogue() else { return Vec::new() };
+    unknown_among(interfaces, models, &[])
+}
+
+/// [`unknown_keyboards`], with the keyboards in `rejected` (model id and
+/// connection) counted as unknown although their IDs and name match.
+fn unknown_among(
+    interfaces: &[HidInterface],
+    models: &'static [Model],
+    rejected: &[(&str, ConnectionKind)],
+) -> Vec<UnknownKeyboard> {
     let named = |s: &Option<String>| s.as_deref().is_some_and(|s| s.to_ascii_lowercase().contains("ajazz"));
-    let mut out: Vec<UnknownKeyboard> = Vec::new();
+    // Each keyboard, and whether it matched a model whose shape it lacks:
+    // that one is a keyboard for sure, keyboard collection or not.
+    let mut out: Vec<(UnknownKeyboard, bool)> = Vec::new();
     for iface in interfaces {
-        if iface.vid != SONIX_VID && !named(&iface.product) && !named(&iface.manufacturer) {
-            continue;
-        }
-        let probe = InterfaceProbe {
-            vid: iface.vid,
-            pid: iface.pid,
-            usage_page: iface.usage_page,
-            product: iface.product.as_deref(),
-            bus: match iface.bus {
-                hid::Bus::Usb => Bus::Usb,
-                hid::Bus::Bluetooth => Bus::Bluetooth,
-                hid::Bus::Other => Bus::Other,
-            },
+        let rejected_model = match match_interface(models, &probe(iface)) {
+            Some(m) if rejected.contains(&(m.model.id.as_str(), m.mode.kind)) => true,
+            Some(_) => continue,
+            None => false,
         };
-        if match_interface(models, &probe).is_some() {
+        if !rejected_model && iface.vid != SONIX_VID && !named(&iface.product) && !named(&iface.manufacturer) {
             continue;
         }
         let same = |k: &UnknownKeyboard| {
             k.vid == iface.vid && k.pid == iface.pid && k.bus == iface.bus && k.product == iface.product
         };
-        let k = match out.iter_mut().position(|k| same(k)) {
+        let (k, known) = match out.iter().position(|(k, _)| same(k)) {
             Some(i) => &mut out[i],
             None => {
-                out.push(UnknownKeyboard {
-                    vid: iface.vid,
-                    pid: iface.pid,
-                    bus: iface.bus,
-                    release: iface.release,
-                    manufacturer: iface.manufacturer.clone(),
-                    product: iface.product.clone(),
-                    collections: Vec::new(),
-                    paths: Vec::new(),
-                });
+                out.push((
+                    UnknownKeyboard {
+                        vid: iface.vid,
+                        pid: iface.pid,
+                        bus: iface.bus,
+                        release: iface.release,
+                        manufacturer: iface.manufacturer.clone(),
+                        product: iface.product.clone(),
+                        collections: Vec::new(),
+                        paths: Vec::new(),
+                    },
+                    false,
+                ));
                 out.last_mut().expect("just pushed")
             }
         };
+        *known |= rejected_model;
         k.collections.push((iface.usage_page, iface.usage, iface.interface_number));
         k.paths.push(iface.path.clone());
     }
     // Generic desktop (0x01), keyboard (0x06).
-    out.retain(|k| k.collections.iter().any(|&(page, usage, _)| page == 0x0001 && usage == 0x0006));
+    let mut out: Vec<UnknownKeyboard> = out
+        .into_iter()
+        .filter(|(k, known)| *known || k.collections.iter().any(|&(page, usage, _)| page == 0x0001 && usage == 0x0006))
+        .map(|(k, _)| k)
+        .collect();
     out.sort_by_key(UnknownKeyboard::key);
     out
+}
+
+/// What the app can drive, and what it can only offer "Request support" for.
+#[derive(Debug, Clone, Default)]
+pub struct Found {
+    pub keyboards: Vec<DetectedKeyboard>,
+    pub unknown: Vec<UnknownKeyboard>,
+}
+
+/// [`detect`] and [`unknown_keyboards`] in one go, with the vendor channels
+/// of every keyboard on the cable checked against the protocol's report
+/// layout ([`crate::shape`]).
+///
+/// Other boards share the AK980 PRO's IDs, and some could share its name
+/// too (another firmware, another command family). One whose command or
+/// screen channel has another layout is not the model: nothing may be sent
+/// to it, so it is listed with the unknown keyboards, where the user can
+/// ask for support, instead of as a keyboard every action fails on.
+///
+/// `descriptor` gives a collection's report descriptor, as the OS keeps it
+/// (reading it sends nothing to the keyboard). `None` (it could not be
+/// read) leaves the keyboard as found: opening the channel checks the
+/// layout again before anything is sent.
+pub fn classify(
+    interfaces: &[HidInterface],
+    ble: &[BlePeer],
+    mut descriptor: impl FnMut(&HidInterface) -> Option<Vec<u8>>,
+) -> Found {
+    let Ok(models) = catalogue() else {
+        tracing::error!("embedded model catalogue failed to parse");
+        return Found::default();
+    };
+    let mut rejected: Vec<(&str, ConnectionKind)> = Vec::new();
+    for iface in interfaces {
+        let Some(m) = match_interface(models, &probe(iface)) else { continue };
+        let fits: fn(&[u8]) -> bool = match (m.mode.kind, m.role) {
+            (ConnectionKind::Usb, InterfaceRole::Command) => crate::shape::is_command_shape,
+            (ConnectionKind::Usb, InterfaceRole::Display) => crate::shape::is_display_shape,
+            _ => continue,
+        };
+        let key = (m.model.id.as_str(), m.mode.kind);
+        if rejected.contains(&key) {
+            continue;
+        }
+        if let Some(desc) = descriptor(iface) {
+            if !fits(&desc) {
+                // Every enumeration finds it again; the app logs the change.
+                tracing::debug!(
+                    model = %m.model.id,
+                    usage_page = format_args!("{:04X}", iface.usage_page),
+                    shape = ?crate::shape::report_shape(&desc),
+                    "name matches, report layout does not: listed as unsupported"
+                );
+                rejected.push(key);
+            }
+        }
+    }
+    let mut keyboards = detect(interfaces, ble);
+    keyboards.retain(|k| !rejected.contains(&(k.model.id.as_str(), k.connection)));
+    Found { keyboards, unknown: unknown_among(interfaces, models, &rejected) }
+}
+
+/// What the model catalogue needs to know about one HID collection.
+fn probe(iface: &HidInterface) -> InterfaceProbe<'_> {
+    InterfaceProbe {
+        vid: iface.vid,
+        pid: iface.pid,
+        usage_page: iface.usage_page,
+        product: iface.product.as_deref(),
+        bus: match iface.bus {
+            hid::Bus::Usb => Bus::Usb,
+            hid::Bus::Bluetooth => Bus::Bluetooth,
+            hid::Bus::Other => Bus::Other,
+        },
+    }
 }
 
 #[cfg(test)]
@@ -431,5 +506,102 @@ mod tests {
         // Other makers' keyboards are none of our business.
         let other = HidInterface { vid: 0x046D, ..collection(0xC31C, 0x0001, 0x0006, "USB Keyboard") };
         assert!(unknown_keyboards(&[other]).is_empty());
+    }
+
+    #[test]
+    fn an_ak980_by_another_name_asks_for_support() {
+        // Same ids as the AK980 PRO, but not its name: an AK980 without the
+        // screen, another generation, another firmware.
+        let ak980 = [collection(0x8009, 0x0001, 0x0006, "AK980"), collection(0x8009, 0xFF13, 0x0001, "AK980")];
+        assert!(detect(&ak980, &[]).is_empty());
+        let found = unknown_keyboards(&ak980);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name(), Some("AK980"));
+        // The name the owner's keyboard reports is the model.
+        let pro = ak980.clone().map(|i| HidInterface { product: Some("AK980 PRO".into()), ..i });
+        assert_eq!(detect(&pro, &[]).len(), 1);
+        assert!(unknown_keyboards(&pro).is_empty());
+    }
+
+    fn hex(s: &str) -> Vec<u8> {
+        s.split_whitespace().map(|b| u8::from_str_radix(b, 16).unwrap()).collect()
+    }
+
+    // The owner's AK980 PRO (fw 0x0106), as in shape.rs.
+    const FF13: &str = "06 13 ff 09 01 a1 01 09 02 15 00 26 ff 00 75 08 95 40 81 02 09 03 15 00 26 ff 00 75 08 \
+                        95 40 91 02 0a 00 ff 15 00 26 ff 00 75 08 95 40 b1 02 c0";
+    const FF68: &str = "06 68 ff 09 61 a1 01 09 62 15 00 26 ff 00 75 08 95 40 81 02 09 63 15 00 26 ff 00 75 08 \
+                        96 00 10 91 02 c0";
+    // The "AA" family's FF68: 64-byte commands, no 4096-byte pages.
+    const AA_FF68: &str = "06 68 ff 09 61 a1 01 15 00 26 ff 00 75 08 95 40 09 62 81 02 95 40 09 63 91 02 c0";
+
+    fn ak980_pro() -> [HidInterface; 3] {
+        [
+            collection(0x8009, 0x0001, 0x0006, "AK980 PRO"),
+            collection(0x8009, 0xFF13, 0x0001, "AK980 PRO"),
+            collection(0x8009, 0xFF68, 0x0061, "AK980 PRO"),
+        ]
+    }
+
+    /// Descriptors by usage page; the keyboard collection is never read.
+    fn descriptors(ff13: &'static str, ff68: &'static str) -> impl FnMut(&HidInterface) -> Option<Vec<u8>> {
+        move |i| match i.usage_page {
+            0xFF13 => Some(hex(ff13)),
+            0xFF68 => Some(hex(ff68)),
+            page => panic!("collection {page:04X} has no vendor layout to check"),
+        }
+    }
+
+    #[test]
+    fn the_right_layout_is_the_model() {
+        let found = classify(&ak980_pro(), &[], descriptors(FF13, FF68));
+        assert_eq!(found.keyboards.len(), 1);
+        assert_eq!(found.keyboards[0].connection, ConnectionKind::Usb);
+        assert!(found.unknown.is_empty());
+    }
+
+    #[test]
+    fn a_name_match_with_another_layout_asks_for_support() {
+        // Another command family behind the same ids and name: its screen
+        // channel takes 64-byte commands. Nothing may be sent to it, and the
+        // user gets "Request support" with every collection's details.
+        let found = classify(&ak980_pro(), &[], descriptors(FF13, AA_FF68));
+        assert!(found.keyboards.is_empty(), "not driven as the AK980 PRO");
+        assert_eq!(found.unknown.len(), 1);
+        let k = &found.unknown[0];
+        assert_eq!(k.key(), "0C45:8009:usb");
+        assert_eq!(k.name(), Some("AK980 PRO"));
+        assert_eq!(k.collections.len(), 3);
+        assert_eq!(k.paths.len(), 3);
+
+        // The command channel alone is enough to tell.
+        let found = classify(&ak980_pro(), &[], descriptors(FF68, FF68));
+        assert!(found.keyboards.is_empty());
+        assert_eq!(found.unknown.len(), 1);
+
+        // Listed even when the OS shows no keyboard collection for it: its
+        // ids and name already say it is a keyboard.
+        let vendor_only = [collection(0x8009, 0xFF13, 0x0001, "AK980 PRO")];
+        let found = classify(&vendor_only, &[], descriptors(FF68, FF68));
+        assert!(found.keyboards.is_empty());
+        assert_eq!(found.unknown.len(), 1);
+    }
+
+    #[test]
+    fn an_unreadable_layout_leaves_the_keyboard_as_found() {
+        // Opening the channel checks again before anything is sent.
+        let found = classify(&ak980_pro(), &[], |_| None);
+        assert_eq!(found.keyboards.len(), 1);
+        assert!(found.unknown.is_empty());
+    }
+
+    #[test]
+    fn only_the_cable_channels_are_checked() {
+        // The receiver and Bluetooth have no layout to check (nothing is sent
+        // there), so their descriptors are never read.
+        let list = [iface(0xFEFE, 0xFF60, hid::Bus::Usb, ""), iface(0xFEFE, 0x0001, hid::Bus::Bluetooth, "")];
+        let found = classify(&list, &[], |i| panic!("read {:04X}", i.usage_page));
+        assert_eq!(found.keyboards.len(), 2);
+        assert!(found.unknown.is_empty());
     }
 }

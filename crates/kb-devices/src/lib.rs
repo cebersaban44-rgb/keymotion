@@ -259,6 +259,10 @@ pub fn catalogue() -> Result<&'static [Model], &'static ModelError> {
 /// USB and dongle share VID/PIDs with unrelated SONiX boards, so a USB match
 /// also requires the product string when the model declares one. Bluetooth
 /// and the 2.4G dongle report the same VID/PID and are told apart by bus.
+///
+/// A match says only that the IDs and the name fit: whether the vendor
+/// channels have the protocol's shape is checked by the caller, which can
+/// read their report descriptors (kb_core `classify`).
 pub fn match_interface<'m>(models: &'m [Model], probe: &InterfaceProbe<'_>) -> Option<InterfaceMatch<'m>> {
     for model in models {
         for mode in &model.modes {
@@ -332,6 +336,20 @@ mod tests {
 
         let ak820 = InterfaceProbe { product: Some("SONiX AK820 PRO"), ..ak980.clone() };
         assert!(match_interface(models(), &ak820).is_none(), "AK820 shares the PID and must not match");
+    }
+
+    #[test]
+    fn wired_name_is_the_measured_ak980_pro() {
+        let probe = |product| InterfaceProbe { vid: 0x0C45, pid: 0x8009, usage_page: 0xFF13, product, bus: Bus::Usb };
+        // The product string the owner's keyboard reports (maker "SONiX" apart).
+        assert!(match_interface(models(), &probe(Some("AK980 PRO"))).is_some());
+        assert!(match_interface(models(), &probe(Some("ak980 pro"))).is_some(), "case does not matter");
+        // Other AK980s share the IDs but not the name: they are offered
+        // "Request support" instead of being driven as this one.
+        for other in ["AK980", "SONiX AK980", "AJAZZ AK980 V1", "AK980PRO"] {
+            assert!(match_interface(models(), &probe(Some(other))).is_none(), "{other} must not match");
+        }
+        assert!(match_interface(models(), &probe(None)).is_none(), "no name, no match");
     }
 
     #[test]

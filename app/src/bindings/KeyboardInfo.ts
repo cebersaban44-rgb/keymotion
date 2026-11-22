@@ -22,4 +22,8 @@ features: Array<Feature>,
 /**
  * What every connection mode of this model offers.
  */
-modes: Array<ModeInfo>, hasCommandChannel: boolean, hasDisplayChannel: boolean, bleName: string | null, bleAddress: string | null, battery: Battery | null, geometry: GeometryInfo | null, };
+modes: Array<ModeInfo>, hasCommandChannel: boolean, hasDisplayChannel: boolean, bleName: string | null, bleAddress: string | null, 
+/**
+ * Bluetooth only: the paired keyboard says it is connected right now.
+ */
+bleConnected: boolean, battery: Battery | null, geometry: GeometryInfo | null, };

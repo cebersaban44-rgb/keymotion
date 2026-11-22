@@ -7,7 +7,7 @@
 // and linking to its page. The connection details
 // and the clock live on the Bağlantı page.
 
-import { BatteryCharging, BatteryFull, BatteryMedium, Usb } from "lucide-react";
+import { BatteryCharging, BatteryFull, BatteryMedium, Radio, Usb } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { GeometryInfo } from "../bindings/GeometryInfo";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
@@ -122,6 +122,9 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
   const ago = useAgo();
   const usb = kb.connection === "usb";
+  // Only the receiver is seen: whether the keyboard is on behind it is not
+  // known yet, so nothing here says it is connected.
+  const receiver = kb.connection === "dongle";
   const live = usb && kb.hasCommandChannel && kb.features.includes("lighting");
   const mirror = useMirror(live);
   const pressed = usePressedKeys(kb.geometry ?? null);
@@ -145,7 +148,7 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <Pill data="connection">
-            <span className="h-2 w-2 rounded-full bg-ok" aria-hidden />
+            <span className={`h-2 w-2 rounded-full ${receiver ? "bg-ink-3" : "bg-ok"}`} aria-hidden />
             {t(connectionKey(kb.connection))}
           </Pill>
           {usb && charge && (
@@ -211,13 +214,15 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
       </div>
 
       {!usb && (
-        <section className="card flex gap-4 p-5" data-overview-unlock>
+        <section className="card flex gap-4 p-5" data-overview-unlock={receiver ? "receiver" : "usb"}>
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-signal/15 text-signal">
-            <Usb size={20} aria-hidden />
+            {receiver ? <Radio size={20} aria-hidden /> : <Usb size={20} aria-hidden />}
           </div>
           <div className="flex-1">
-            <h2 className="eyebrow">{t("overview.unlock.title")}</h2>
-            <p className="mt-0.5 max-w-[70ch] text-[13px] text-ink-2">{t("overview.unlock.body")}</p>
+            <h2 className="eyebrow">{t(receiver ? "overview.receiver.title" : "overview.unlock.title")}</h2>
+            <p className="mt-0.5 max-w-[70ch] text-[13px] text-ink-2">
+              {t(receiver ? "overview.receiver.body" : "overview.unlock.body")}
+            </p>
           </div>
         </section>
       )}

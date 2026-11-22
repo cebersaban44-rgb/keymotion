@@ -29,7 +29,8 @@
 //! colours, keymap, macros, screen uploads) [`write_block`] decides whether
 //! it may go: not with several keyboards on the cable, not while another
 //! program talks to the keyboard, and on firmware nobody tested only after
-//! the user said so in this session. Live frames and the clock skip it.
+//! the user said so in this session. The clock waits for that go-ahead too;
+//! live frames never wait ([`write_gate`]).
 
 use crate::dto::{Battery, FlashWrite, KeyboardInfo, LedColor, UnsupportedKeyboard};
 use crate::settings::{
@@ -125,11 +126,49 @@ pub fn write_block(
     if let Some(c) = running() {
         return Some(WriteBlock::Program(c));
     }
+    firmware_block(firmware)
+}
+
+/// An untested firmware version the user has not said yes to in this session.
+fn firmware_block(firmware: Option<FirmwareCheck>) -> Option<WriteBlock> {
     match firmware {
         Some(f) if !f.verified && !f.confirmed => {
             Some(WriteBlock::UnverifiedFirmware(kb_devices::firmware_text(f.release)))
         }
         _ => None,
+    }
+}
+
+/// What a write to the keyboard changes, as far as [`write_gate`] is
+/// concerned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteKind {
+    /// The keyboard's memory: effects, per-key colours, keymap, macros and
+    /// screen uploads.
+    Memory,
+    /// The keyboard's clock: "Sync now" and the sync when it connects.
+    Clock,
+    /// A live light frame (gauges, music, game, timer, previews): RAM only,
+    /// gone as soon as the stream stops.
+    Live,
+}
+
+/// Whether a write of `kind` may go now.
+///
+/// * Memory: every check of [`write_block`].
+/// * Clock: only an untested firmware waits, for the user's go-ahead (the
+///   same question a save asks; a yes holds for the session).
+/// * Live frames never wait: they leave nothing behind on the keyboard.
+pub fn write_gate(
+    kind: WriteKind,
+    wired: usize,
+    firmware: Option<FirmwareCheck>,
+    running: impl FnOnce() -> Option<Conflict>,
+) -> Option<WriteBlock> {
+    match kind {
+        WriteKind::Memory => write_block(wired, firmware, running),
+        WriteKind::Clock => firmware_block(firmware),
+        WriteKind::Live => None,
     }
 }
 
@@ -527,6 +566,10 @@ pub struct Snapshot {
     pub keymaps: Keymaps,
     /// What the app last wrote to each model's macro memory.
     pub macros: MacroRecord,
+    /// The untested firmware version ("1.07") the clock sync on connect
+    /// waits on until the user says yes. Kept for a window that opens after
+    /// the question went out (`firmware-unverified`).
+    pub clock_waits_for: Option<String>,
 }
 
 /// One step of a screen upload, in order (uploads run one at a time). The
@@ -682,6 +725,7 @@ pub fn spawn(
         clock,
         keymaps: keymaps.clone(),
         macros: macros.clone(),
+        clock_waits_for: None,
     }));
     let (tx, rx) = mpsc::channel();
     let shared = snapshot.clone();
@@ -708,8 +752,12 @@ struct Actor {
     shared: Arc<Mutex<Snapshot>>,
     hid: Option<Hid>,
     peers: Vec<BlePeer>,
-    /// Keyboards seen that no model matches (for support requests).
+    /// Keyboards seen that no model matches, or whose vendor channels don't
+    /// have the model's report layout (for support requests).
     unknown: Vec<kb_core::UnknownKeyboard>,
+    /// Report descriptors of the vendor channels on the cable, by path and
+    /// firmware version (kb_core::classify checks their layout).
+    layouts: HashMap<(String, u16), Vec<u8>>,
     last_ble_scan: Option<Instant>,
     batteries: HashMap<u64, (Battery, Instant)>,
     /// Last battery reading per model, kept on disk: shown over USB, where
@@ -749,6 +797,9 @@ struct Actor {
     config_dir: Option<PathBuf>,
     /// When the next automatic clock sync is due, and attempts left.
     clock_due: Option<(Instant, u8)>,
+    /// The automatic clock sync found an untested firmware and waits for
+    /// the user's go-ahead (`ConfirmFirmware`) while this keyboard stays.
+    clock_waits: bool,
     /// A game wants the keyboard left alone: no light layer (or only the
     /// meetings' and reminders'), no automatic clock sync (a preview the
     /// user runs still shows).
@@ -785,6 +836,7 @@ impl Actor {
             hid,
             peers: Vec::new(),
             unknown: Vec::new(),
+            layouts: HashMap::new(),
             last_ble_scan: None,
             batteries: HashMap::new(),
             last_battery: config_dir.as_deref().map(settings::load_batteries).unwrap_or_default(),
@@ -806,6 +858,7 @@ impl Actor {
             macros,
             config_dir,
             clock_due: None,
+            clock_waits: false,
             quiet: Quiet::Off,
             game_tried: false,
             next_enumerate: now,
@@ -836,10 +889,15 @@ impl Actor {
                 // Not during a game that wants the keyboard left alone.
                 if now >= due && self.quiet == Quiet::Off {
                     self.clock_due = None;
-                    if let Err(e) = self.sync_clock() {
-                        tracing::warn!(attempts_left = attempts - 1, "automatic clock sync failed: {e}");
-                        if attempts > 1 && self.command_path.is_some() {
-                            self.clock_due = Some((Instant::now() + CLOCK_RETRY, attempts - 1));
+                    match self.sync_clock() {
+                        Ok(()) => {}
+                        // The user was asked; a yes starts it (ConfirmFirmware).
+                        Err(_) if firmware_block(self.firmware_check()).is_some() => self.wait_clock(true),
+                        Err(e) => {
+                            tracing::warn!(attempts_left = attempts - 1, "automatic clock sync failed: {e}");
+                            if attempts > 1 && self.command_path.is_some() {
+                                self.clock_due = Some((Instant::now() + CLOCK_RETRY, attempts - 1));
+                            }
                         }
                     }
                 }
@@ -978,6 +1036,11 @@ impl Actor {
                     Some(release) => {
                         tracing::info!(firmware = %version, "writes on untested firmware confirmed for this session");
                         self.firmware_confirmed = Some(release);
+                        if self.clock_waits {
+                            tracing::debug!("automatic clock sync goes ahead");
+                            self.wait_clock(false);
+                            self.clock_due = Some((Instant::now(), CLOCK_ATTEMPTS));
+                        }
                     }
                     // The keyboard changed while the user was asked.
                     None => tracing::warn!(firmware = %version, "confirmed firmware is not the connected one"),
@@ -987,6 +1050,7 @@ impl Actor {
                 self.clock.auto_sync = on;
                 if !on {
                     self.clock_due = None;
+                    self.wait_clock(false);
                 }
                 let _ = reply.send(self.store_clock().map(|_| self.clock));
             }
@@ -1113,8 +1177,10 @@ impl Actor {
         Ok(result)
     }
 
-    /// Set the keyboard clock to the PC's local time, then record it.
+    /// Set the keyboard clock to the PC's local time, then record it. On an
+    /// untested firmware only after the user's go-ahead ([`write_gate`]).
     fn sync_clock(&mut self) -> Result<(), String> {
+        self.gate(WriteKind::Clock)?;
         let time = kb_core::clock::now();
         self.with_command(|d| d.set_clock(&time))?;
         tracing::info!(?time, "keyboard clock set");
@@ -1149,23 +1215,50 @@ impl Actor {
         SystemTime::now().duration_since(last).map_or(true, |age| age >= CLOCK_SYNC_EVERY)
     }
 
+    /// The automatic clock sync starts (or stops) waiting for the user's
+    /// go-ahead on an untested firmware. The version it waits on is kept
+    /// for the UI, which may open after the question went out.
+    fn wait_clock(&mut self, waits: bool) {
+        if waits {
+            tracing::info!("automatic clock sync waits for the user: firmware not tested");
+        }
+        self.clock_waits = waits;
+        let version = self.usb_firmware.filter(|_| waits).map(kb_devices::firmware_text);
+        if let Ok(mut s) = self.shared.lock() {
+            s.clock_waits_for = version;
+        }
+    }
+
     /// Whether a write to the keyboard's memory may go now (see
-    /// [`write_block`]). An untested firmware also tells the UI, so it can
-    /// ask the user even when the write came from the live mode.
+    /// [`write_block`]).
     fn may_write(&self) -> Result<(), String> {
+        self.gate(WriteKind::Memory)
+    }
+
+    /// The wired keyboard's firmware: tested, or said yes to this session.
+    fn firmware_check(&self) -> Option<FirmwareCheck> {
+        self.usb_model.zip(self.usb_firmware).map(|(model, release)| FirmwareCheck {
+            release,
+            verified: model.mode(ConnectionKind::Usb).is_some_and(|mode| mode.firmware_verified(release)),
+            confirmed: self.firmware_confirmed == Some(release),
+        })
+    }
+
+    /// Whether a write of `kind` may go now ([`write_gate`]). An untested
+    /// firmware also tells the UI, so it can ask the user even when the
+    /// write came from the background (the live mode, the clock sync on
+    /// connect).
+    fn gate(&self, kind: WriteKind) -> Result<(), String> {
         // Without a keyboard on the cable the write fails on its own.
         if self.command_path.is_none() {
             return Ok(());
         }
-        let firmware = self.usb_model.zip(self.usb_firmware).map(|(model, release)| FirmwareCheck {
-            release,
-            verified: model.mode(ConnectionKind::Usb).is_some_and(|mode| mode.firmware_verified(release)),
-            confirmed: self.firmware_confirmed == Some(release),
-        });
-        let Some(block) = write_block(self.wired, firmware, running_conflict) else { return Ok(()) };
+        let Some(block) = write_gate(kind, self.wired, self.firmware_check(), running_conflict) else {
+            return Ok(());
+        };
         match &block {
             WriteBlock::UnverifiedFirmware(v) => {
-                tracing::warn!(firmware = %v, "write waits for the user: firmware not tested");
+                tracing::warn!(firmware = %v, ?kind, "write waits for the user: firmware not tested");
                 let _ = self.app.emit(EVENT_FIRMWARE_UNVERIFIED, v);
             }
             WriteBlock::SeveralKeyboards => tracing::warn!(keyboards = self.wired, "write refused: several keyboards"),
@@ -1222,6 +1315,12 @@ impl Actor {
 
     fn send_live(&mut self) {
         if self.command_path.is_none() {
+            return;
+        }
+        // Live frames leave nothing on the keyboard: they never wait, not
+        // even on an untested firmware (write_gate).
+        if let Err(e) = self.gate(WriteKind::Live) {
+            tracing::debug!("live frame held: {e}");
             return;
         }
         let heard;
@@ -1303,8 +1402,32 @@ impl Actor {
             }
             None => Vec::new(),
         };
-        let detected = kb_core::detect(&interfaces, &self.peers);
-        self.unknown = kb_core::unknown_keyboards(&interfaces);
+        // The report layouts of the vendor channels on the cable, read once
+        // per collection and firmware version (from Windows; nothing is sent
+        // to the keyboard). A failed read is tried again next time.
+        self.layouts.retain(|(path, _), _| interfaces.iter().any(|i| &i.path == path));
+        let (hid, layouts) = (self.hid.as_ref(), &mut self.layouts);
+        let found = kb_core::classify(&interfaces, &self.peers, |iface| {
+            let key = (iface.path.clone(), iface.release);
+            if let Some(desc) = layouts.get(&key) {
+                return Some(desc.clone());
+            }
+            match hid?.report_descriptor_at(&iface.path) {
+                Ok(desc) => {
+                    layouts.insert(key, desc.clone());
+                    Some(desc)
+                }
+                Err(e) => {
+                    tracing::debug!(
+                        usage_page = format_args!("{:04X}", iface.usage_page),
+                        "report layout not read: {e}"
+                    );
+                    None
+                }
+            }
+        });
+        let detected = found.keyboards;
+        self.unknown = found.unknown;
         let unsupported: Vec<UnsupportedKeyboard> =
             self.unknown.iter().map(UnsupportedKeyboard::from_unknown).collect();
 
@@ -1318,6 +1441,9 @@ impl Actor {
             self.clock_due = Some((Instant::now() + CLOCK_SETTLE, CLOCK_ATTEMPTS));
         } else if self.command_path.is_none() {
             self.clock_due = None;
+            if self.clock_waits {
+                self.wait_clock(false);
+            }
         }
         self.usb_model = usb.filter(|k| k.command.is_some()).map(|k| k.model);
         self.usb_firmware = usb.and_then(|k| k.firmware);
@@ -1545,6 +1671,34 @@ mod tests {
             write_block(1, check(false, false), || Some(Conflict::OpenRgb)),
             Some(WriteBlock::Program(Conflict::OpenRgb))
         );
+    }
+
+    #[test]
+    fn on_untested_firmware_the_clock_waits_and_live_frames_do_not() {
+        let untested = Some(FirmwareCheck { release: 0x0107, verified: false, confirmed: false });
+        let asked = Some(WriteBlock::UnverifiedFirmware("1.07".into()));
+        // The clock sync (on connect or "Sync now") waits for the same
+        // go-ahead a save does; live frames (RAM only) go on.
+        assert_eq!(write_gate(WriteKind::Memory, 1, untested, || None), asked);
+        assert_eq!(write_gate(WriteKind::Clock, 1, untested, || None), asked);
+        assert_eq!(write_gate(WriteKind::Live, 1, untested, || None), None);
+        let clock = write_gate(WriteKind::Clock, 1, untested, || None).map(|b| b.to_string());
+        assert_eq!(clock.as_deref(), Some("untested keyboard firmware 1.07"), "the UI asks on this text");
+
+        // A yes this session, or a tested version: everything goes.
+        let confirmed = Some(FirmwareCheck { release: 0x0107, verified: false, confirmed: true });
+        let tested = Some(FirmwareCheck { release: 0x0106, verified: true, confirmed: false });
+        for kind in [WriteKind::Memory, WriteKind::Clock, WriteKind::Live] {
+            assert_eq!(write_gate(kind, 1, confirmed, || None), None, "{kind:?} confirmed");
+            assert_eq!(write_gate(kind, 1, tested, || None), None, "{kind:?} tested");
+            assert_eq!(write_gate(kind, 1, None, || None), None, "{kind:?} version unknown");
+        }
+
+        // Only saves stop for several keyboards or another program; the
+        // clock never looked for those, and it does not list programs.
+        assert_eq!(write_gate(WriteKind::Memory, 2, tested, || None), Some(WriteBlock::SeveralKeyboards));
+        assert_eq!(write_gate(WriteKind::Clock, 2, tested, || panic!("programs listed")), None);
+        assert_eq!(write_gate(WriteKind::Live, 2, untested, || panic!("programs listed")), None);
     }
 
     #[test]

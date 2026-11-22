@@ -35,7 +35,7 @@ export const en = {
   "conn.desc": "How your keyboard is connected and what you can use over each connection.",
   "conn.current": "Current connection",
   "conn.summary.usb": "Every feature of the app is available.",
-  "conn.summary.dongle": "Your keyboard works, but settings aren't available over this connection yet.",
+  "conn.summary.dongle": "The 2.4 GHz receiver is plugged in, but Keymotion can't tell yet whether your keyboard is turned on and connected to it. To change settings, use the USB cable.",
   "conn.summary.bluetooth": "Your keyboard works. Only the battery level is read over this connection.",
   "conn.switch": "Switch on the keyboard",
   "conn.switch.at": "Switch set to {mode}",
@@ -88,6 +88,8 @@ export const en = {
   "overview.mode.channel": "Channel",
   "overview.unlock.title": "Unlock every feature with the USB cable",
   "overview.unlock.body": "Lighting, key mapping, macros, and the screen can be set only over the USB cable. Connect the cable and set the switch on the back to the middle.",
+  "overview.receiver.title": "2.4 GHz receiver plugged in",
+  "overview.receiver.body": "Keymotion can't tell yet whether your keyboard is turned on and connected to the receiver. Lighting, key mapping, macros, and the screen can be set only over the USB cable. Connect the cable and set the switch on the back to the middle.",
 
   "soon.needsUsb": "Requires the USB cable",
 
@@ -1187,7 +1189,7 @@ export const en = {
   "err.untested": "This firmware hasn't been tested. Saving to the keyboard needs your confirmation.",
   "err.cancelled": "Nothing was saved to the keyboard.",
   "safety.fw.title": "Untested firmware",
-  "safety.fw.body": "Your keyboard's firmware (version {version}) hasn't been tested with this app, so saving might not work as expected.",
+  "safety.fw.body": "Your keyboard's firmware (version {version}) hasn't been tested with this app, so saving or syncing the keyboard's clock might not work as expected.",
   "safety.fw.cancel": "Cancel",
   "safety.fw.continue": "Continue",
   "safety.reset.title": "Some records couldn't be read",

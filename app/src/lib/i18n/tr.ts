@@ -28,7 +28,7 @@ export const tr: Messages = {
   "conn.desc": "Klavyenizin nasıl bağlı olduğu ve her bağlantıda neleri kullanabileceğiniz.",
   "conn.current": "Şu anki bağlantı",
   "conn.summary.usb": "Uygulamanın bütün özellikleri kullanılabilir.",
-  "conn.summary.dongle": "Klavyeniz çalışıyor, ama bu bağlantıda henüz ayar yapılamıyor.",
+  "conn.summary.dongle": "2.4 GHz alıcı takılı, ama Keymotion klavyenizin açık ve alıcıya bağlı olup olmadığını henüz anlayamıyor. Ayarları değiştirmek için USB kablosunu kullanın.",
   "conn.summary.bluetooth": "Klavyeniz çalışıyor. Bu bağlantıda yalnızca pil düzeyi okunur.",
   "conn.switch": "Klavyedeki anahtarın konumu",
   "conn.switch.at": "Anahtar {mode} konumunda",
@@ -81,6 +81,8 @@ export const tr: Messages = {
   "overview.mode.channel": "Kanal",
   "overview.unlock.title": "Tüm özellikler USB kablosuyla açılır",
   "overview.unlock.body": "Işıklar, tuş atama, makrolar ve ekran yalnızca USB kablosuyla ayarlanabilir. Kabloyu takın ve arkadaki anahtarı ortaya alın.",
+  "overview.receiver.title": "2.4 GHz alıcı takılı",
+  "overview.receiver.body": "Keymotion klavyenizin açık ve alıcıya bağlı olup olmadığını henüz anlayamıyor. Işıklar, tuş atama, makrolar ve ekran yalnızca USB kablosuyla ayarlanabilir. Kabloyu takın ve arkadaki anahtarı ortaya alın.",
 
   "soon.needsUsb": "USB kablosu gerekir",
 
@@ -1180,7 +1182,7 @@ export const tr: Messages = {
   "err.untested": "Bu klavye yazılımı denenmedi. Klavyeye kaydetmek için onayınız gerekiyor.",
   "err.cancelled": "Klavyeye kaydedilmedi.",
   "safety.fw.title": "Klavye yazılımı denenmedi",
-  "safety.fw.body": "Klavyenizin yazılımı (sürüm {version}) bu uygulamayla denenmedi, bu yüzden kaydetme beklendiği gibi çalışmayabilir.",
+  "safety.fw.body": "Klavyenizin yazılımı (sürüm {version}) bu uygulamayla denenmedi, bu yüzden kaydetme ya da klavyenin saatini eşitleme beklendiği gibi çalışmayabilir.",
   "safety.fw.cancel": "Vazgeç",
   "safety.fw.continue": "Devam et",
   "safety.reset.title": "Bazı kayıtlar okunamadı",

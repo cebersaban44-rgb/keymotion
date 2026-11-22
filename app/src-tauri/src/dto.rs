@@ -223,6 +223,8 @@ pub struct KeyboardInfo {
     pub has_display_channel: bool,
     pub ble_name: Option<String>,
     pub ble_address: Option<String>,
+    /// Bluetooth only: the paired keyboard says it is connected right now.
+    pub ble_connected: bool,
     pub battery: Option<Battery>,
     pub geometry: Option<GeometryInfo>,
 }
@@ -257,15 +259,78 @@ impl KeyboardInfo {
             has_display_channel: k.display.is_some(),
             ble_name: k.ble.as_ref().map(|b| b.name.clone()),
             ble_address: k.ble.as_ref().map(|b| b.address_text.clone()),
+            ble_connected: k.connection == ConnectionKind::Bluetooth && k.ble.as_ref().is_some_and(|b| b.connected),
             battery,
             geometry: m.geometry.as_ref().map(GeometryInfo::from_model),
+        }
+    }
+
+    /// Which entry the app shows when it sees the keyboard more than one
+    /// way, lowest first: the cable; Bluetooth while the keyboard says it
+    /// is connected; the 2.4 GHz receiver, which shows up whether or not a
+    /// keyboard is on behind it (nothing is sent to it yet, so nothing
+    /// tells); Bluetooth not known to be connected. The tray follows it, and
+    /// the UI's `useActiveKeyboard` (lib/store.ts) does the same.
+    pub fn focus_rank(&self) -> u8 {
+        match (self.connection, self.ble_connected) {
+            (Connection::Usb, _) => 0,
+            (Connection::Bluetooth, true) => 1,
+            (Connection::Dongle, _) => 2,
+            (Connection::Bluetooth, false) => 3,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{EffectInfo, GeometryInfo, KeymapCatalog};
+    use super::{Connection, EffectInfo, GeometryInfo, KeyboardInfo, KeymapCatalog};
+    use kb_core::detect::BlePeer;
+    use kb_transport::hid::{Bus, HidInterface};
+
+    fn collection(pid: u16, usage_page: u16, bus: Bus) -> HidInterface {
+        HidInterface {
+            vid: 0x0C45,
+            pid,
+            release: 0x0138,
+            usage_page,
+            usage: 1,
+            interface_number: -1,
+            bus,
+            manufacturer: None,
+            product: None,
+            serial: None,
+            path: format!("path-{pid:x}-{usage_page:x}"),
+        }
+    }
+
+    /// The entry the tray and the UI show, out of what the app sees.
+    fn shown(interfaces: &[HidInterface], ble: &[BlePeer]) -> Connection {
+        let infos: Vec<KeyboardInfo> =
+            kb_core::detect(interfaces, ble).iter().map(|k| KeyboardInfo::from_detected(k, None)).collect();
+        infos.iter().min_by_key(|k| k.focus_rank()).expect("a keyboard").connection
+    }
+
+    #[test]
+    fn a_receiver_does_not_hide_a_connected_bluetooth_keyboard() {
+        let receiver = collection(0xFEFE, 0xFF60, Bus::Usb);
+        let bluetooth = collection(0xFEFE, 0x0001, Bus::Bluetooth);
+        let peer = |connected| BlePeer {
+            name: "AK980 PRO-1".into(),
+            address: 1,
+            address_text: "00:00:00:00:00:01".into(),
+            connected,
+        };
+        // The keyboard is on Bluetooth and the receiver is still plugged in:
+        // whether a keyboard answers behind the receiver is not known.
+        assert_eq!(shown(&[receiver.clone(), bluetooth.clone()], &[peer(true)]), Connection::Bluetooth);
+        // Bluetooth paired but not connected: the keyboard may well be on
+        // the receiver.
+        assert_eq!(shown(&[receiver.clone(), bluetooth.clone()], &[peer(false)]), Connection::Dongle);
+        assert_eq!(shown(&[receiver.clone(), bluetooth], &[]), Connection::Dongle);
+        // The cable comes first, whatever else is there.
+        let cable = HidInterface { product: Some("AK980 PRO".into()), ..collection(0x8009, 0xFF13, Bus::Usb) };
+        assert_eq!(shown(&[receiver, cable], &[peer(true)]), Connection::Usb);
+    }
 
     /// Writes each model's geometry and the effect catalog for the UI's
     /// browser-only mock backend, so the mock never drifts from Rust.
