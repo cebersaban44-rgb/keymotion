@@ -350,7 +350,7 @@ impl KeyMap {
 }
 
 /// Where a key sits along the drain: keys with a higher value go dark first.
-fn drain_order(motion: PomodoroMotion, x: f32, y: f32) -> f32 {
+pub(crate) fn drain_order(motion: PomodoroMotion, x: f32, y: f32) -> f32 {
     match motion {
         PomodoroMotion::RightToLeft => x,
         PomodoroMotion::LeftToRight => 1.0 - x,
@@ -361,7 +361,7 @@ fn drain_order(motion: PomodoroMotion, x: f32, y: f32) -> f32 {
 }
 
 /// Light (0–1) of a key at `order` when `left` (0–1) of the phase is left.
-fn lit(motion: PomodoroMotion, order: f32, left: f32) -> f32 {
+pub(crate) fn lit(motion: PomodoroMotion, order: f32, left: f32) -> f32 {
     let left = left.clamp(0.0, 1.0);
     if motion == PomodoroMotion::Fade {
         return left;

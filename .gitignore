@@ -5,6 +5,7 @@
 node_modules/
 dist/
 .vite/
+*.tsbuildinfo
 
 # Tauri build-time generated schemas
 app/src-tauri/gen/

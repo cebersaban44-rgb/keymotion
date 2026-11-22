@@ -17,6 +17,7 @@ export type PageId =
   | "gauges"
   | "reminders"
   | "calendar"
+  | "games"
   | "settings";
 /** Tabs of the Screen page. */
 export type ScreenTab = "visuals" | "live";

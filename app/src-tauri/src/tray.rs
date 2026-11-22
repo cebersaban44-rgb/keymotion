@@ -33,6 +33,7 @@ use crate::dto::{
     BackgroundSettings, Connection, KeyboardInfo, PomodoroPhase, PomodoroState, PomodoroStatus, ReminderState,
     TrayTexts,
 };
+use crate::games::{GamesHandle, EVENT_GAMES};
 use crate::gauges::{GaugesHandle, EVENT_GAUGES};
 use crate::pomodoro::{PomodoroAction, PomodoroHandle, EVENT_POMODORO};
 use crate::reminders::{RemindersHandle, EVENT_REMINDERS};
@@ -335,6 +336,10 @@ struct Facts {
     profiles: Vec<(String, String, bool)>,
     /// A new version waits: its number, and whether it is downloaded.
     update: Option<(String, bool)>,
+    /// A game session runs: the game and when it started.
+    game: Option<(String, f64)>,
+    /// Per-app profiles run (on and not paused).
+    auto: bool,
 }
 
 /// Everything the menu shows, as text: what changed is set on its item.
@@ -343,6 +348,8 @@ struct View {
     /// The first line while a new version waits.
     update: Option<String>,
     keyboard: String,
+    /// The line under the keyboard's while a game session runs.
+    game: Option<String>,
     open: String,
     focus: String,
     focus_status: String,
@@ -359,6 +366,8 @@ struct View {
     gauges_on: bool,
     profiles_label: String,
     profiles: Vec<(String, String, bool)>,
+    auto_label: String,
+    auto_on: bool,
     quit: String,
     tooltip: String,
 }
@@ -451,14 +460,32 @@ where
     let update = f.update.as_ref().map(|(version, ready)| {
         fill(if *ready { &t.update_ready } else { &t.update_available }, &[("version", version)])
     });
+    let game = f.game.as_ref().map(|(name, started)| {
+        // As on the page: "1 h 5 min", "42 min", "under 1 min".
+        let ms = (now_ms - started).max(0.0);
+        let total = (ms / 60_000.0).floor() as u64;
+        let (h, min) = ((total / 60).to_string(), (total % 60).to_string());
+        let time = if ms < 60_000.0 {
+            t.game_less.clone()
+        } else if total >= 60 {
+            fill(&t.game_hours, &[("h", &h), ("min", &min)])
+        } else {
+            fill(&t.game_minutes, &[("min", &min)])
+        };
+        fill(&t.game, &[("name", name), ("time", &time)])
+    });
     let mut tooltip =
         if status == PomodoroStatus::Idle { "Keymotion".to_string() } else { format!("Keymotion — {focus_line}") };
+    if let Some(g) = &game {
+        tooltip = format!("{tooltip} · {g}");
+    }
     if f.update.is_some() {
         tooltip = format!("{tooltip} · {}", t.update_tooltip);
     }
     View {
         update,
         keyboard,
+        game,
         open: t.open.clone(),
         focus: t.focus.clone(),
         focus_status: focus_line.clone(),
@@ -484,6 +511,8 @@ where
                 (id.clone(), if name.is_empty() { t.default_profile.clone() } else { name.clone() }, *on)
             })
             .collect(),
+        auto_label: t.auto_profile.clone(),
+        auto_on: f.auto,
         quit: t.quit.clone(),
         tooltip,
     }
@@ -527,6 +556,8 @@ fn update_line(app: &AppHandle) -> Option<(String, bool)> {
 fn facts(app: &AppHandle) -> Facts {
     Facts {
         update: update_line(app),
+        game: app.try_state::<Arc<GamesHandle>>().and_then(|g| g.session()),
+        auto: app.try_state::<Arc<crate::autoprofile::AutoProfiles>>().and_then(|a| a.running()).unwrap_or(false),
         keyboard: keyboard_line(app),
         pomodoro: app.try_state::<Arc<PomodoroHandle>>().and_then(|p| p.state().ok()),
         reminders: app
@@ -560,6 +591,8 @@ struct Items {
     update: MenuItem<Wry>,
     update_sep: PredefinedMenuItem<Wry>,
     keyboard: MenuItem<Wry>,
+    /// Under the keyboard's line while a game session runs.
+    game: MenuItem<Wry>,
     open: MenuItem<Wry>,
     focus: Submenu<Wry>,
     focus_status: MenuItem<Wry>,
@@ -571,6 +604,8 @@ struct Items {
     reminders_on: CheckMenuItem<Wry>,
     gauges: CheckMenuItem<Wry>,
     profiles: Submenu<Wry>,
+    /// First in Profiles: the per-app profiles' switch.
+    auto: CheckMenuItem<Wry>,
     profile_items: Vec<CheckMenuItem<Wry>>,
     quit: MenuItem<Wry>,
 }
@@ -616,13 +651,17 @@ fn build(app: &AppHandle, v: &View) -> tauri::Result<(Menu<Wry>, Items)> {
     )?;
     let gauges = CheckMenuItem::with_id(app, "gauges", menu_text(&v.gauges_label), true, v.gauges_on, None::<&str>)?;
     let items = profile_items(app, v)?;
-    let refs: Vec<&dyn IsMenuItem<Wry>> = items.iter().map(|i| i as &dyn IsMenuItem<Wry>).collect();
+    let auto = CheckMenuItem::with_id(app, "auto", menu_text(&v.auto_label), true, v.auto_on, None::<&str>)?;
+    let auto_sep = PredefinedMenuItem::separator(app)?;
+    let mut refs: Vec<&dyn IsMenuItem<Wry>> = vec![&auto, &auto_sep];
+    refs.extend(items.iter().map(|i| i as &dyn IsMenuItem<Wry>));
     let profiles = Submenu::with_items(app, menu_text(&v.profiles_label), true, &refs)?;
     let keyboard = item(app, "keyboard", &v.keyboard, false)?;
     let open = item(app, "open", &v.open, true)?;
     let quit = item(app, "quit", &v.quit, true)?;
     let update = item(app, "update", v.update.as_deref().unwrap_or_default(), true)?;
     let update_sep = PredefinedMenuItem::separator(app)?;
+    let game = item(app, "game", v.game.as_deref().unwrap_or_default(), false)?;
     let menu = Menu::with_items(
         app,
         &[
@@ -637,6 +676,9 @@ fn build(app: &AppHandle, v: &View) -> tauri::Result<(Menu<Wry>, Items)> {
             &quit,
         ],
     )?;
+    if v.game.is_some() {
+        menu.insert(&game, 1)?;
+    }
     if v.update.is_some() {
         menu.insert(&update, 0)?;
         menu.insert(&update_sep, 1)?;
@@ -648,6 +690,7 @@ fn build(app: &AppHandle, v: &View) -> tauri::Result<(Menu<Wry>, Items)> {
             update,
             update_sep,
             keyboard,
+            game,
             open,
             focus,
             focus_status,
@@ -659,6 +702,7 @@ fn build(app: &AppHandle, v: &View) -> tauri::Result<(Menu<Wry>, Items)> {
             reminders_on,
             gauges,
             profiles,
+            auto,
             profile_items: items,
             quit,
         },
@@ -688,6 +732,16 @@ fn apply(app: &AppHandle, items: &mut Items, old: &View, new: &View) -> tauri::R
         (Some(a), Some(b)) if a != b => items.update.set_text(menu_text(b))?,
         _ => {}
     }
+    match (&old.game, &new.game) {
+        (None, Some(line)) => {
+            items.game.set_text(menu_text(line))?;
+            // Under the keyboard's line, which follows the update lines.
+            items.menu.insert(&items.game, if new.update.is_some() { 3 } else { 1 })?;
+        }
+        (Some(_), None) => items.menu.remove(&items.game)?,
+        (Some(a), Some(b)) if a != b => items.game.set_text(menu_text(b))?,
+        _ => {}
+    }
     text!(items.keyboard, keyboard);
     text!(items.open, open);
     text!(items.focus, focus);
@@ -700,6 +754,7 @@ fn apply(app: &AppHandle, items: &mut Items, old: &View, new: &View) -> tauri::R
     text!(items.reminders_on, reminders_on_label);
     text!(items.gauges, gauges_label);
     text!(items.profiles, profiles_label);
+    text!(items.auto, auto_label);
     text!(items.quit, quit);
     if old.focus_active != new.focus_active {
         items.focus_skip.set_enabled(new.focus_active)?;
@@ -707,6 +762,7 @@ fn apply(app: &AppHandle, items: &mut Items, old: &View, new: &View) -> tauri::R
     }
     items.reminders_on.set_checked(new.reminders_on)?;
     items.gauges.set_checked(new.gauges_on)?;
+    items.auto.set_checked(new.auto_on)?;
     let same_list = old.profiles.len() == new.profiles.len()
         && old.profiles.iter().zip(&new.profiles).all(|(a, b)| a.0 == b.0 && a.1 == b.1);
     if same_list {
@@ -756,6 +812,13 @@ fn on_menu(app: &AppHandle, id: &str) {
             });
             if let Err(e) = result {
                 tracing::warn!("reminders from the tray: {e}");
+            }
+        }
+        "auto" => {
+            if let Some(auto) = app.try_state::<Arc<crate::autoprofile::AutoProfiles>>() {
+                let on = !auto.running().unwrap_or(false);
+                tracing::info!(on, "per-app profiles from the tray");
+                auto.set_running(on);
             }
         }
         "gauges" => {
@@ -902,7 +965,14 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
     if let Ok(mut r) = bg.refresh.lock() {
         *r = Some(tx);
     }
-    for event in [EVENT_POMODORO, EVENT_KEYBOARDS_CHANGED, EVENT_REMINDERS, EVENT_UPDATE] {
+    for event in [
+        EVENT_POMODORO,
+        EVENT_KEYBOARDS_CHANGED,
+        EVENT_REMINDERS,
+        EVENT_UPDATE,
+        EVENT_GAMES,
+        crate::autoprofile::EVENT_AUTO_PROFILE,
+    ] {
         let app = app.clone();
         app.clone().listen_any(event, move |_| refresh(&app));
     }
@@ -985,6 +1055,8 @@ mod tests {
             gauges: Some(true),
             profiles: vec![("default".into(), String::new(), false), ("p1".into(), "Oyun & iş".into(), true)],
             update: None,
+            game: None,
+            auto: false,
         };
         let v = view_of(&t, &f, now, &tz);
         assert_eq!(v.keyboard, "AJAZZ AK980 PRO · Bluetooth · battery 80%");
@@ -1020,6 +1092,18 @@ mod tests {
         assert_eq!(v.tooltip, "Keymotion · update available");
         f.update = Some(("1.1.0".into(), true));
         assert_eq!(view_of(&t, &f, now, &tz).update.as_deref(), Some("Install now: Keymotion 1.1.0"));
+
+        // A game session: a line under the keyboard's, and in the tooltip.
+        f.update = None;
+        f.game = Some(("League of Legends".into(), now - 42.5 * 60_000.0));
+        let v = view_of(&t, &f, now, &tz);
+        assert_eq!(v.game.as_deref(), Some("Playing League of Legends · 42 min"));
+        assert_eq!(v.tooltip, "Keymotion · Playing League of Legends · 42 min");
+        // Hours, and under a minute, as on the page.
+        f.game = Some(("League of Legends".into(), now - 135.0 * 60_000.0));
+        assert_eq!(view_of(&t, &f, now, &tz).game.as_deref(), Some("Playing League of Legends · 2 h 15 min"));
+        f.game = Some(("League of Legends".into(), now - 20_000.0));
+        assert_eq!(view_of(&t, &f, now, &tz).game.as_deref(), Some("Playing League of Legends · under 1 min"));
     }
 
     #[test]

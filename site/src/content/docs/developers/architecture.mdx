@@ -39,7 +39,7 @@ The Cargo workspace is `crates/*` plus `app/src-tauri`. The workspace denies `un
 
 - **Commands.** `lib.rs` defines every `#[tauri::command]`. A command converts its input from the interface's types, hands the work on, and returns a result or an English error string. The interface maps those errors to its own messages (`app/src/lib/errors.ts`).
 - **The device actor** (`device.rs`) is the only code that talks to keyboards. One thread owns the HID subsystem. Requests arrive on a channel and run one at a time, so two protocol sessions can never interleave. Between requests it re-enumerates devices every 2 seconds, re-sends the current live frame every 50 ms, reads the keys' colors every 250 ms while the interface shows its mirror, and sets the keyboard's clock when it connects (at most once a day). It keeps the app's own record of the keymap and macros, because the keyboard cannot report them.
-- **Background tasks**, each with its own handle, started in `setup`: the live screen worker (`live.rs`), what Windows reports as playing (`now_playing.rs`), the focus timer (`pomodoro.rs`), the system gauges (`gauges.rs`), the calendar (`calendar.rs`, `ics.rs`), reminders (`reminders.rs`) and updates (`updates.rs`). They hand light layers to the device actor and screen cards to the live worker.
+- **Background tasks**, each with its own handle, started in `setup`: the live screen worker (`live.rs`), what Windows reports as playing (`now_playing.rs`), the focus timer (`pomodoro.rs`), the system gauges (`gauges.rs`), the calendar (`calendar.rs`, `ics.rs`), reminders (`reminders.rs`), the game session (`games.rs`, with League of Legends' lights in `lol.rs`), per-app profiles (`autoprofile.rs`) and updates (`updates.rs`). They hand light layers to the device actor and screen cards to the live worker. The game session and per-app profiles share one watcher of the program in front (`front.rs`), which runs only while one of them is on.
 - **The tray** (`tray.rs`). Closing the window can hide it, and the app goes on in the notification area, because the focus timer, reminders, calendar cards, live screen and gauges only work while it runs. The menu shows the keyboard and offers the focus timer, reminders, gauges, profiles and Quit. A profile chosen there opens the window to confirm it, since every write to permanent memory needs the user's yes.
 - **The updater** (`updates.rs`, `tauri-plugin-updater`). The release workflow publishes `latest.json` with each GitHub release; the updater checks the download against the public key in `tauri.conf.json`. If the user allows it, the app looks once a day; nothing installs until the user chooses to, and installing waits for a write to the keyboard to finish.
 - **Storage.** Settings are versioned JSON files in `%APPDATA%\dev.keymotion` (`settings.rs`); a damaged file is kept aside and reported once. The screen library (`screen_lib.rs`) is the only copy of uploaded pictures, because the keyboard cannot give them back. Logs go to `%LOCALAPPDATA%\dev.keymotion\logs`, one file a day.
@@ -120,6 +120,13 @@ Other paths use the same layers. A preview sends `set_live_frame`; the actor kee
 ## Safety layers
 
 Each layer works on its own, so a mistake in one is caught by the next.
+
+**Games and anti-cheat software.** Keymotion runs next to games protected by anti-cheat software (Riot Vanguard, Easy Anti-Cheat, BattlEye, FACEIT). What those block is almost always a kernel driver with known holes, a program that opens the game, reads its memory or sends it input. So, by rule:
+
+- No driver of any kind, no DLL injected anywhere, no overlay, no `SendInput`, no keyboard or mouse hooks.
+- The program in front comes from an out-of-context WinEvent hook (`kb-winsys/foreground.rs`); its path from `NtQuerySystemInformation(SystemProcessIdInformation)`, without a handle to the process. The running-programs list (`running_programs`) works the same way. Game libraries are read from the launchers' own files and registry keys (`kb-winsys/games.rs`).
+- Game data only through a game's documented interface for third-party tools: League of Legends' Live Client Data API, on `127.0.0.1:2999` only (`lol.rs`), and only the player's own visible state and public events.
+- Macros are never turned on for a game by the app itself.
 
 | Layer | Where | What it does |
 |---|---|---|

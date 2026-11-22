@@ -15,6 +15,60 @@ says so.
 
 ## [Unreleased]
 
+### Added
+
+- **Game session:** Tools › **Game session** notices when you play. Games
+  come from your launchers' lists (Steam, Epic Games, GOG, Xbox, Riot Games,
+  Xbox Game Bar) and from your own word (**Add a game**, **Not a game**,
+  **Undo**); a program that fills the screen for a few minutes is offered as
+  "Is it a game?". A session starts once a game
+  has been in front for 15 seconds and lasts while the game runs, Alt+Tab
+  included. With the live screen on, a card goes to the keyboard's screen
+  when it starts and a summary (time played, graphics card load and
+  temperature, processor load and peak, today's total) when a session of 5
+  minutes or more ends; nothing new comes up while you play. The keys the
+  game uses can light up (WASD, MOBA, 1–6 or your own), or a profile's
+  key-by-key lighting, without saving anything to the keyboard; the lights
+  follow the window, so they wait while you Alt+Tab to other work. The games
+  list shows each program's icon and the profile it gets, and sorts by last
+  or most played; a game without a Steam picture gets its icon on the start
+  card. A meeting's or reminder's card that came up during a game goes away
+  after the game. The history stays on this computer. "Update automatically"
+  waits for the game to end.
+- **League of Legends lights:** during a match, from the data the game
+  offers on your computer: your health on the whole keyboard, receding the
+  way you choose as it drops (as with the focus timer), or on 1–0; mana on
+  F1–F12; dark red when you die, the light coming back as respawn nears (on
+  1–0, the time left counting down); and an animation of your choice (wave,
+  flash, pulse, sparkle, ring, fade from the top) in your color for victory,
+  defeat, level ups, kills, an ace, dragons, Baron and Herald. A drawing on the page previews them with the
+  match's own code, and "Try on the keyboard" plays them. They're set up
+  under League of Legends in the games list (Special lights), grouped as a
+  match brings them; dragons, Herald and Baron light up only when your team
+  takes them, unless you turn that off. The summary card shows the result,
+  K/D/A and CS. No enemy timers or objective timers.
+- **Profiles by app:** Profiles › **By app** links a program, or every game,
+  to a profile. By default only a per-key design's lighting changes, without
+  saving anything to the keyboard; a rule can also save the key mapping and
+  macros, at most 20 times a day (the last one is kept for going back; a
+  profile for another keyboard model is skipped and not counted). A game's
+  key mapping and macros stay for the
+  whole game; when it ends, the keyboard goes back to what it had before (or
+  to a profile you choose, or stays), unless you changed it by hand meanwhile.
+  Rules still hold after a program updates (Microsoft Store apps, Discord,
+  Roblox). The tray menu can pause it.
+- **Send nothing to the keyboard while playing:** during a game Keymotion
+  sends no lights, cards or profiles to the keyboard, for anti-cheat software
+  that might mind; the keyboard keeps its own light. Meeting and reminder
+  alerts still come unless you turn that off, and quiet mode can be on for a
+  single game.
+- **Terms of use:** the site has a Terms of use page.
+
+### Changed
+
+- The list of running programs, used to find the official software or
+  SignalRGB before a write, no longer opens any program.
+
 ## [1.1.0] - 2026-11-16
 
 Keymotion now tells you when a new version is out, and can install it by
