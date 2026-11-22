@@ -30,6 +30,9 @@
 //! * Web pages: opened in the default browser (`ShellExecuteW`, [`shell`]).
 //! * The taskbar clock's date and time and the time zone setting, asked
 //!   afresh each time ([`time`]).
+//! * The named pipe `keymotion-cli` talks to the app through: only this
+//!   user, only this computer, created with an explicit security
+//!   descriptor (`pipe`, Windows only).
 //!
 //! Types holding COM or PDH handles are not `Send`: make them on the thread
 //! that uses them.
@@ -44,6 +47,8 @@ pub mod icon;
 pub mod loopback;
 pub mod os;
 pub mod package;
+#[cfg(windows)]
+pub mod pipe;
 pub mod protocol;
 pub mod registry;
 pub mod secret;
