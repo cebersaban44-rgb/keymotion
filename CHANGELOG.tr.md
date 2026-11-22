@@ -81,6 +81,19 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   yardımıyla yapıldı ve ana dili bu diller olan kişilerin incelemesini
   bekliyor: düzeltmeler memnuniyetle karşılanır. Çince arayüzde klavyenin
   adı, Çin'de satıldığı ad olan 黑爵 AK980 V2（带屏版）.
+- **Yapay zekâ kodlama ajanları (yapım aşamasında, kurulumda henüz yok):**
+  `keymotion-cli`, Claude Code'un, Codex'in ve betiklerin tuşları yakmasını
+  sağlar: biten bir iş, sizi bekleyen bir soru, bir hata, bir ilerleme
+  çubuğu ya da bir ajanın tuşlardan, renklerden ve efektlerden kurduğu her
+  şey. `keymotion-cli connect claude-code` ya da `connect codex`, o
+  uygulamanın ayarlarına birkaç kanca ve kısa bir yetenek ekler (önce neyin
+  değişeceğini gösterir, bir kopya saklar, başka hiçbir şeye dokunmaz);
+  ardından klavye ajan bitirince, onayınızı beklerken (siz cevap verene
+  kadar), hata verince ya da kullanım sınırına takılınca (yavaş mor)
+  kendiliğinden yanar; iki ya da daha çok oturum varken bekleyenin numarası
+  rakam sırasında yanar. Sizin ya da ajanın yazdığı hiçbir şey Keymotion'a
+  ulaşmaz: yalnız ne olduğu. `disconnect` hepsini geri alır. Ajan erişimi
+  siz açana kadar kapalı kalır.
 
 ### Değişenler
 

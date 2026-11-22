@@ -85,6 +85,18 @@ says so.
   translations were made with AI help and wait for a review by native
   speakers: corrections are welcome. In Chinese the keyboard is called
   黑爵 AK980 V2（带屏版）, the name it is sold under in China.
+- **AI coding agents (in the works, not in the installer yet):**
+  `keymotion-cli` lets Claude Code, Codex and scripts light the keys: a
+  finished task, a question waiting for you, an error, a progress bar, or
+  anything an agent makes of keys, colors and effects. `keymotion-cli
+  connect claude-code` or `connect codex` adds a few hooks and a short skill
+  to that app's settings (showing what changes first, keeping a copy, never
+  touching anything else); then the keyboard lights by itself when the agent
+  finishes, waits for your approval (until you answer), fails, or stops at
+  its usage limit (slow purple), and with two or more sessions the waiting
+  one's number lights on the number row. Nothing you or the agent writes
+  reaches Keymotion: only what happened. `disconnect` takes it all away
+  again. Agent access stays off until you turn it on.
 
 ### Changed
 

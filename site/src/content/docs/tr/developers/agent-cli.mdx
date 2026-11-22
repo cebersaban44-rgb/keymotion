@@ -1,6 +1,6 @@
 ---
 title: Ajan komut satırı
-description: Betiklerin ve yapay zekâ kodlama ajanlarının klavyenin ışıklarını Keymotion üzerinden yakmak için kullandığı komut satırı aracı keymotion-cli. Komutlar, JSON çıktısı, çıkış kodları, uygulamayı nasıl başlattığı ve güvenlik modeli.
+description: Betiklerin ve yapay zekâ kodlama ajanlarının klavyenin ışıklarını Keymotion üzerinden yakmak için kullandığı komut satırı aracı keymotion-cli. Komutlar, JSON çıktısı, çıkış kodları, uygulamayı nasıl başlattığı, Claude Code ve Codex için kancalar ve yetenek, güvenlik modeli.
 ---
 
 import { Aside } from "@astrojs/starlight/components";
@@ -8,7 +8,7 @@ import { Aside } from "@astrojs/starlight/components";
 `keymotion-cli`, bir betiğin ya da yapay zekâ kodlama ajanının (Claude Code, Codex ve kabuk komutu çalıştırabilen diğerleri) kullanıcıya klavyenin ışıklarıyla bir şey söylemesini sağlar: bir iş bitti, bir soru bekliyor, üç test başarısız oldu. Neyi nasıl göstereceğine ajan karar verir; hazır sinyaller yalnız kısayoldur, tuşlar, renkler, efektler ve süreler serbestçe birleştirilebilir.
 
 <Aside type="caution">
-Araç yapım aşamasında. Kurulum dosyasında ve Store paketinde henüz yok; ajan erişimini açan sayfa ve Claude Code ile Codex kancalarıyla birlikte paketleme adımında gelecek. O zamana kadar depodan derlenir ([Geliştirme](#geliştirme) bölümüne bakın).
+Araç yapım aşamasında. Kurulum dosyasında ve Store paketinde henüz yok; ajan erişimini açan ve Claude Code ile Codex'i bağlayan sayfayla birlikte paketleme adımında gelecek. O zamana kadar depodan derlenir ([Geliştirme](#geliştirme) bölümüne bakın).
 </Aside>
 
 ## Nasıl çalışır
@@ -39,8 +39,12 @@ ajan ──çalıştırır──▶ keymotion-cli ──adlandırılmış kanal�
 | `guide` | Ajanlar için kısa rehber (en çok 60 satır): önce ne çalıştırılır, fikirler, değerler, çıkış kodları. Ajanlar bu sayfayı değil onu okur. | Hayır |
 | `doctor` | Kurulumu denetler ve ne bulursa bulsun 0 ile çıkar: araç, uygulama çalışıyor ve cevap veriyor mu, kanalı hangi program sunuyor (beklenen `keymotion.exe`) ve kanal bu kullanıcının mı, sürümler ve protokol, ajan erişimi, klavye ve USB kablosu, araç uygulamayı nasıl başlatırdı, `keymotion-cli` PATH'te ya da Store'un takma ad klasöründe mi, ve araç başka bir uygulamanın paket kutusunda mı çalışıyor. | Hayır |
 | `start` | Uygulamayı penceresiz başlatır ve cevap verene kadar bekler; çalışıyorsa bunu söyler. | Evet |
+| `connect claude-code\|codex` | keymotion-cli'ın kancalarını, yeteneğini ve (Codex için) bir kuralı o ajanın ayarlarına ekler ([Kodlama ajanları](#kodlama-ajanları-kancalar-ve-yetenek)). Önce neyi değiştireceğini söyler; terminalde sorar, değilse `--yes` ister. `--dry-run` yalnız söyler. | Hayır |
+| `disconnect claude-code\|codex` | Yalnız `connect`'in eklediklerini ve yalnız onun açtığı boş kapları kaldırır. Aynı `--yes` ve `--dry-run`. | Hayır |
+| `connections` | Her ajan kurulu ve bağlı mı; Codex için kancaları henüz onaylayıp onaylamadığınız. | Hayır |
+| `hook claude-code\|codex` | Ajanların kanca olaylarında çalıştırdığı kip: olayı stdin'den okur, hiçbir şey yazmaz, her zaman 0 ile çıkar ([Kanca kipi](#kanca-kipi)). | Olay bir şey yakıyorsa |
 
-Kanca kipi, Claude Code ve Codex'e bağlanma, odak zamanlayıcısı, profiller, ekran kartları, sahneler ve tuşlarda kelime yazma sonraki adımlarda gelecek.
+Odak zamanlayıcısı, profiller, ekran kartları, sahneler ve tuşlarda kelime yazma sonraki adımlarda gelecek.
 
 ### Her komutun seçenekleri
 
@@ -65,7 +69,7 @@ Değerleri araç, bir şey göndermeden önce uygulamanın kullandığı kodla (
 
 ## Çıktı
 
-Sonuç stdout'a, tanı satırları stderr'e gider. Araç hiçbir şey sormaz ve stdin'i hiç okumaz. İnsan çıktısı birkaç kısa İngilizce satırdır. `--json` ile:
+Sonuç stdout'a, tanı satırları stderr'e gider. Araç stdin'i yalnız kanca kipinde okur, soruyu yalnız `connect` ve `disconnect`'te, terminaldeyken sorar. İnsan çıktısı birkaç kısa İngilizce satırdır. `--json` ile:
 
 ```json
 {"ok":true,"schema":1,"command":"signal","data":{"id":"claude-code:done","shown":true,"lit":true,"expires_in_ms":120000,"replaced":false,"evicted":[],"coalesced":false,"hidden":null},"warnings":[]}
@@ -110,13 +114,69 @@ Araç başka bir paketli uygulamanın kutusunda çalışıyor olabilir: Claude m
 
 Uygulamada `--background` ve `keymotion://background` "yalnız bildirim alanı simgesiyle çalış" demektir. İkisi de Windows ile başlama sayılmaz (o yine `--hidden`'dır); pencere durumu ve Windows ile başlamanın devri değişmez. Çalışan bir uygulama bunlardan birini alırsa görünür bir şey yapmaz; Store kopyasına devreden GitHub kopyası da `--background`'u ona iletir, ama yalnız onu bilen bir Store kopyasına (`app/src-tauri/src/tray.rs`, `handoff.rs`).
 
+## Kodlama ajanları: kancalar ve yetenek
+
+Ajanın kullanıcısına neler olduğunu iki şey söyler ve ikisinin işi ayrıdır. Ajan bir onay beklerken donmuştur; hizmeti hata verdiğinde hiç çalışmıyordur; bitirdiğini söylemeyi de unutabilir. Bu anları yalnız kodlama uygulamasının kendisi bilir; bu yüzden onları **kancalarla** kendisi söyler: kendi olaylarında `keymotion-cli hook <ajan>` çalıştırır; yapay zekâ modeli bundan habersizdir, bağlamında yer tutmaz. Ajan bundan fazlasını söylemek isterse (tuşlarda bir kelime, bir sayı, bir ilerleme çubuğu) aracı bir **yetenekle** kullanır: araç burada, önce `keymotion-cli guide` çalıştır diyen kısa bir dosya.
+
+`keymotion-cli connect claude-code|codex` ikisini de ekler; uygulamanın Ajanlar sayfası da ajan erişimini açtığınızda, ekleyeceklerini size gösterdikten sonra aynısını yapacak. Ajanların dosyalarında başka hiçbir şeye dokunulmaz:
+
+| | Claude Code | Codex |
+|---|---|---|
+| Ayar klasörü | `CLAUDE_CONFIG_DIR`, yoksa `%USERPROFILE%\.claude` | `CODEX_HOME`, yoksa `%USERPROFILE%\.codex` |
+| Kancalar | `settings.json`, `hooks` | `hooks.json` |
+| Kanca nasıl çalışır | program ve bağımsız değişkenleri, kabuksuz: `{"command": "<yol>\\keymotion-cli.exe", "args": ["hook", "claude-code"]}` | kabuğu PowerShell için tek satır: `<yol>\keymotion-cli.exe hook codex`, yol tırnak gerektiriyorsa `& '<yol>' hook codex` |
+| Yetenek | `skills\keymotion\SKILL.md` | `%USERPROFILE%\.agents\skills\keymotion\SKILL.md` |
+| Ayrıca | | `rules\keymotion.rules` (aşağıda) |
+| Onay | yok | Codex bir kez sorar: `/hooks` ya da uygulamada Ayarlar › Kancalar |
+
+- **Kanca satırı hiç değişmez.** Her olay için ve her sürümde aynıdır; bir olayın ne anlama geldiği keymotion-cli'da ve sizin Keymotion'daki ayarlarınızda durur. Bu, değişen her kancayı yeniden onaylatan Codex için önemlidir. Satır keymotion-cli'ı yerinden oynamayan bir yolla anar: Store kopyasında uygulama yürütme takma adı (`%LOCALAPPDATA%\Microsoft\WindowsApps\keymotion-cli.exe`; sürüm numaralı paket klasörü hiçbir zaman), GitHub kopyasında `bin` klasörü, geliştirme derlemesinde kendi yolu (bir uyarıyla: derleme yer değiştirince kancalar çalışmaz).
+- **Neden iki biçim.** Claude Code bir kancanın `command`'ını Git Bash kuruluysa onunla, değilse PowerShell ile çalıştırır; ardından bağımsız değişkenler gelen tırnaklı bir yolu ikisi aynı okumaz (PowerShell tırnaklı yoldan sonra gelen sözcükleri reddeder; Bash'te `&` işi arka plana atar). `args` biçiminde program doğrudan çalışır; kullanıcı klasöründeki boşluklar sorun olmaz. Codex 0.166.0 her kancayı `powershell -NoProfile -Command` ile çalıştırır; yalın yol, Codex'in hiçbir kabuk bilmediğinde kullandığı `cmd.exe`'de de çalışır.
+- **Dosyalarınız sizin kalır.** Yalnız katı JSON: okunmayan bir dosya reddedilir ve olduğu gibi bırakılır. Sizin anahtarlarınız ve kancalarınız sıralarını, dosya da girintisini ve satır sonlarını korur; bizimkiler sona, kendi gruplarına girer. İlk değişiklikten önce dosyanın o anki hâlinin bir kopyası bir kez saklanır (`settings.json.before-keymotion`). Dosyalar geçici bir dosya üzerinden bütün olarak yazılır. İki kez bağlamak hiçbir şeyi değiştirmez; başka bir keymotion-cli kopyasından bağlamak bizim girdilerimizi yerinde günceller. Yeteneğin yanındaki `connection.json` bağlanırken neyin açıldığını hatırlar; bağlantıyı kaldırmak yalnız onu kaldırır.
+- **Codex kuralı.** Codex ajanın komutlarını Keymotion'ın kullanıcıya özel kanalına ulaşamayan bir kum havuzunda çalıştırır. `rules\keymotion.rules`, `keymotion-cli status|keys|signal|light|progress|clear|log|settings|version|guide|doctor|start` komutlarının sormadan kum havuzunun dışında çalışmasını sağlar: adıyla ya da bu keymotion-cli'ın tam yoluyla (`host_executable`), o adı taşıyan başka bir programla değil; bir deponun beraberinde getirdiği bir kopya kum havuzunda kalır. `connect`, `disconnect` ve `hook` kuralda yoktur. `codex execpolicy check --resolve-host-executables` ile denendi.
+- **Yetenek** iki ajan için aynıdır ve ince kalır: araç burada, önce `keymotion-cli guide` çalıştır (`keymotion-cli` bulunmazsa tam yolla), kullanıcıya nasıl haber vereceğine sen karar verirsin, hazır sinyaller isteğe bağlıdır. Bir sürüm işareti taşır; uygulama açılışta kendi yetenek dosyasını ve Codex kuralını, kendi sürümünden eskiyse yeniden yazar: yalnız onları ve yalnız bulunduğu yerde.
+
+`keymotion-cli connections --json` her ajan için `state` söyler: `not_found`, `not_connected`, `connected`, `needs_approval` (Codex: henüz onaylamadığınız kancalar; Codex'in `config.toml`'undan okunur, keymotion-cli o dosyaya hiçbir zaman yazmaz), `outdated` (bizimkilerin bir kısmı eksik ya da başka bir keymotion-cli'ı anıyor) ya da `unreadable`.
+
+### Kanca kipi
+
+`keymotion-cli hook claude-code|codex` olayı stdin'den okur (en çok 16 MiB, 2 saniye içinde; terminalden hiç okumaz) ve uygulamaya olayın ne anlama geldiğini taşıyan tek bir `hook` isteği gönderir. Sonra çıkar.
+
+- **Her zaman 0, stdout'a tek bayt bile yok**, ne gelirse gelsin: bozuk JSON, tanımadığı bir olay ya da ajan, uygulama yok, ajan erişimi kapalı, bir panik. Bu ajanlar için 2 çıkış kodu "izni reddet", "devam et" ya da "istemi engelle" demektir; Codex stdout'taki metni de bir karar olarak okur. Kip komut satırı çözümleyicisinden önce okunur; komut satırındaki bir yanlış onu 64 ile de çıkaramaz.
+- **Hızlı.** Uygulamaya tek kısa istek (sürüm derlemesinde süreç başlangıcı dahil yaklaşık 12–15 ms); ajan onu bekleyebilir. Uygulama çalışmıyorsa kanca beklemez: bir şey yakan olay, kendi başına çalışan bir keymotion-cli kopyasına geçer (tutamak yok, pencere yok, kancayı çalıştıranın iş nesnesinin dışında, izin veriyorsa); o kopya Keymotion'ı `start` gibi başlatır ve olayı iletir. Yeni bir istem, bir cevap ya da oturumun başlaması veya bitmesi uygulamayı başlatmaya değmez.
+- **Süreçten yalnız anlamı çıkar.** Okunanlar: olayın adı, oturum kimliği (`claude-code:3f9a0c1d` gibi bir kaynağa, bir özete dönüşür), çalışma klasörünün son klasörü (oturumun numarasının yanında görünür), bir bildirimin türü, bir hatanın türü, yardımcı ajanın türü. Hiçbir zaman gönderilmez ve günlüğe yazılmaz: istem, ajanın mesajları, döküm dosyasının yolu, hiçbir aracın girdisi ya da çıktısı. Bir araç çağrısı yalnız oturumla tuzlanmış bir özetiyle anılır; böylece bir soru ile cevabı eşleştirilebilir.
+- `KEYMOTION_HOOK_LOG=1` kanca kipinin ne yaptığını (olayın anlamını ve uygulamanın cevabını) stderr'e yazar; ajanlar 0 ile biten bir kancanın stderr'ini göstermez.
+
+Olayların anlamı (ajanların belgeleriyle ve Codex için 0.166.0 kaynak koduyla denetlendi):
+
+| Anlamı | Claude Code | Codex |
+|---|---|---|
+| Bir oturum başlar: numarasını alır | `SessionStart` | `SessionStart` |
+| Çalışıyor: oturumun önceki ışıkları söner | `UserPromptSubmit` | `UserPromptSubmit`, `Interrupt` |
+| Sizi bekliyor (`attention`) | `PermissionRequest`; `AskUserQuestion` ve `ExitPlanMode` için `PreToolUse`; `Elicitation`; `Notification` `permission_prompt`, `elicitation_dialog`, `elicitation_url_dialog`, `agent_needs_input` | `PermissionRequest` |
+| Cevaplandı | `PostToolUse`, `PostToolUseFailure`, `PermissionDenied` (o çağrı); `PostToolBatch`, `ElicitationResult`, `Notification` `elicitation_complete`, `elicitation_response` (oturumun hepsi) | `PostToolUse` (o çağrı), `PreModelRequest` (o turun hepsi) |
+| Bitti | `Stop` | `Stop` |
+| Hata | `StopFailure` | `status: failed` olan `PostModelRequest` |
+| Kullanım sınırı (A) | `rate_limit`, `billing_error`, `server_error` (aşırı yüklü hizmet) ile `StopFailure` | iletisi kullanım ya da hız sınırından, krediden, harcama tavanından, kotadan ya da kapasitesi dolmuş bir modelden söz eden başarısız istek |
+| Yardımcı ajan bitti (H) | `SubagentStop` (türüyle), `TaskCompleted` | `SubagentStop` |
+| Oturum biter | `SessionEnd` | `SessionEnd` |
+
+- **"Sizi bekliyor" cevaplanana kadar kalır**, görünüşü öyle diyorsa (`signals.attention.until_answered`, varsayılan açık) en çok kendi süresi kadar (varsayılan 30 dakika); turun bitişi onu her durumda söndürür. Keymotion beklenen araç çağrılarını tutar: aynı anda birkaç çağrı çalışırken başka bir çağrının bitmesi ışığı söndürmez, sonuncusunun cevabı söndürür. Onaylanan bir çağrı kendi `PostToolUse`'uyla biter; onayladığınız uzun bir komut, bitene kadar ışığı yanık tutar (iki ajan da onayladığınız anı söylemiyor).
+- **Claude Code'un `idle_prompt`'u** (her biten turdan yaklaşık bir dakika sonra) hiçbir şey yakmaz: turun "bitti"si bunu zaten söyledi; her turdan sonra bir "sizi bekliyor" sinyali yıpratır.
+- **Codex** başarısız bazı istekleri yeniden dener; aynı turun yeniden hata vermesi ışığı olduğu gibi bırakır, o turun başarılı bir isteği ışığı söndürür. Hatayla biten bir tur `Stop` olmadan biter.
+- **Oturumun bitişi** onun sorusunu ve numarasını kaldırır; bittiği şey (bitti, hata) süresince kalır, çünkü etkileşimsiz bir çalıştırma (`claude -p`, `codex exec`) oturumunu turundan hemen sonra bitirir.
+- **B, hangi oturum bekliyor.** Her oturum, Keymotion'a ilk ulaştığı sıraya göre 1'den 9'a bir numara alır (biten ya da 12 saattir haber vermeyen oturum numarasını geri verir). İki ya da daha çok oturum varken bekleyen oturumun numara tuşu "bekliyor" ışığının üstünde beyaz yanar; `status` ve Ajanlar sayfası numarayı, proje klasörünü ve ajanı gösterir.
+- **A, H** ve görünüşler Keymotion'daki ayarlarınızdır (`usage_limit.*`, `helper.*`, `sessions.*`); H varsayılan olarak kapalıdır.
+
+Keymotion'ın eklediği kancalar: Claude Code için `SessionStart`, `UserPromptSubmit`, `PreToolUse` (eşleyici `AskUserQuestion|ExitPlanMode`), `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `PostToolBatch`, `Notification`, `Elicitation`, `ElicitationResult`, `Stop`, `StopFailure`, `SubagentStop`, `TaskCompleted` ve `SessionEnd` (süre sınırı 10 sn; sınırı sizin `SessionEnd` kancalarınızı da bağlayan `SessionEnd` için 2 sn; araç çağrısı olaylarında Claude Code beklemez); Codex için `SessionStart`, `UserPromptSubmit`, `PermissionRequest`, `PostToolUse`, `PreModelRequest`, `PostModelRequest`, `Stop`, `Interrupt`, `SubagentStop` ve `SessionEnd` (Codex her kanca için PowerShell başlatır, deneme bilgisayarında yaklaşık bir saniye; bu yüzden yalnız her zaman beklediği `Interrupt` ve `SessionEnd`'i en çok 3 sn bekler).
+
 ## Güvenlik
 
 - **Bu bilgisayar, bu kullanıcı.** Kanal `\\.\pipe\keymotion-agent-<kullanıcı SID>-<oturum>` adını taşır, ağdan gelen istemcileri reddeder ve güvenlik tanımlayıcısı yalnız uygulamayı çalıştıran kullanıcıyı kabul eder. Uygulama kanalı ilk örnek olarak oluşturur; başka bir program adı fark edilmeden önceden kapamaz. Araç, bu kullanıcının olmayan bir kanala tek bayt göndermeden onu reddeder; `doctor` kanalı sunan süreci adıyla söyler. TCP ya da HTTP dinleyicisi, belirteç dosyası yoktur.
 - **Kullanıcının anahtarı.** Ajan erişimi, kullanıcı uygulamada açana kadar kapalıdır; kapalıyken yalnız `status`, `keys`, `log` ve `settings get` cevap verir, gerisi 77 ile çıkar. Hiçbir komut erişimi ya da bir izni açamaz.
 - **Klavyeyi ve kullanıcıyı koruyan sınırlar.** Yalnız RAM; kaynak başına saniyede 20 istek ve 8 ışık; saniyede en çok 3 yanıp sönme; ışık başına en çok 2 saat; sessizdeki mikrofon ve toplantı hatırlatması her zaman ajan ışıklarının üstünde görünür; klavyenin rahat bırakılmasını isteyen bir oyun onları gizler (kullanıcı bunu kapatabilir).
 - **Kaynaklar ayrı kalır.** Bir kaynak başka bir kaynağın ışıklarını kaldıramaz, yerine geçemez.
-- **Özel hiçbir şey günlüğe yazılmaz.** Uygulama her isteğin kaynağını, komutunu ve sonucunu yazar.
+- **Özel hiçbir şey günlüğe yazılmaz.** Uygulama her isteğin kaynağını, komutunu ve sonucunu yazar. Kanca kipi bir olayın yalnız anlamını gönderir ([Kanca kipi](#kanca-kipi)).
+- **Başka programların ayarları yalnız isteyince.** `connect` ve `disconnect` Claude Code'un ve Codex'in dosyalarını yalnız siz istediğinizde, neyin değişeceğini söyledikten sonra ve yalnız Keymotion'ın kendi girdileriyle değiştirir; Codex kuralı kum havuzunun dışına yalnız ışık ve durum komutlarını çıkarır.
 
 ## Kanal
 
@@ -133,4 +193,10 @@ cargo test -p keymotion-cli
 
 Uygulamayı gerektiren komutları denemeden önce uygulamanın geliştirme sürümünü başlatın: hiçbir Keymotion çalışmıyorsa araç kurulu olanı başlatır (yeterince yeniyse Store kopyasını). `--no-start` hiçbir şey başlatmamasını sağlar.
 
-Testler gerçek `keymotion-cli` programını, kendi kanalında (`KEYMOTION_CLI_TEST_PIPE`; başlatmayı da boş bir işe çevirir) `kb_agent::transport::serve` üzerine kurulmuş sahte bir uygulamaya karşı çalıştırır. Bu değişkeni yalnız hata ayıklama derlemeleri ve `test-pipe` özelliğiyle yapılan derlemeler okur; sürüm derlemesi hiçbir zaman okumaz, böylece ortam değişkenlerini ayarlayan biri ajanların çağrılarını sahte bir uygulamaya yönlendiremez. Tümleşik testler yalnız değişkeni okuyan derlemelerde derlenir (sürüm derlemesiyle denemek için `cargo test --release --features test-pipe`). Her komut, erişim kapalıyken, uygulama yokken, cevap vermeyen bir uygulama, başka bir protokol ve her kullanım hatası denenir; hiçbir çalıştırma 2 ile çıkamaz.
+`connect`'i bir deneme klasöründe deneyin, hiçbir zaman çalıştığınız Claude Code'un ya da Codex'in ayarlarında değil: `KEYMOTION_CLI_TEST_HOME=<klasör>`, `connect`, `disconnect` ve `connections`'ı `<klasör>\.claude`, `<klasör>\.codex` ve `<klasör>\.agents` içinde çalıştırır (`CLAUDE_CONFIG_DIR` ve `CODEX_HOME` yalnız onun içindeyse sayılır). Kaydedilmiş bir olay elle verilir:
+
+```powershell
+'{"hook_event_name":"Stop","session_id":"s1","cwd":"C:\\dev\\demo"}' | cargo run -p keymotion-cli -- hook claude-code
+```
+
+Testler gerçek `keymotion-cli` programını, kendi kanalında (`KEYMOTION_CLI_TEST_PIPE`; başlatmayı da boş bir işe çevirir) `kb_agent::transport::serve` üzerine kurulmuş sahte bir uygulamaya karşı çalıştırır. Bu değişkeni yalnız hata ayıklama derlemeleri ve `test-pipe` özelliğiyle yapılan derlemeler okur; sürüm derlemesi hiçbir zaman okumaz, böylece ortam değişkenlerini ayarlayan biri ajanların çağrılarını sahte bir uygulamaya yönlendiremez. Tümleşik testler yalnız değişkeni okuyan derlemelerde derlenir (sürüm derlemesiyle denemek için `cargo test --release --features test-pipe`). Her komut, erişim kapalıyken, uygulama yokken, cevap vermeyen bir uygulama, başka bir protokol ve her kullanım hatası denenir; hiçbir çalıştırma 2 ile çıkamaz. `tests/hooks.rs` kanca kipine bozuk veri, boş girdi, 17 MiB ve tanınmayan ajanlar verir (her seferinde 0, çıktı yok), uygulamaya neyin ulaştığına bakar, sonradan açılan bir uygulamaya olayı iletir; adında boşluk olan bir klasörün altındaki deneme klasöründe bağlanıp bağlantıyı kaldırır ve `connect`'in yazdığı kanca satırlarını ajanların çalıştırdığı gibi çalıştırır: Claude Code'unkini program ve bağımsız değişkenleriyle, Codex'inkini PowerShell'le (yalın satırı `cmd.exe` ile de). `KEYMOTION_CLI_TEST_HOME`'u deneme kanalını okuyan derlemeler okur.

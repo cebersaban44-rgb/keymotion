@@ -131,6 +131,16 @@ pub fn status(data: &Value) -> String {
             out.push(line);
         }
     }
+    let sessions = data["sessions"].as_array().map(Vec::as_slice).unwrap_or_default();
+    if !sessions.is_empty() {
+        out.push("Coding agent sessions:".to_string());
+        for s in sessions {
+            let number = s["number"].as_u64().map_or_else(|| "-".to_string(), |n| n.to_string());
+            let label = s["label"].as_str().unwrap_or("(no folder)");
+            let waiting = if flag(s, "waiting") { "  waiting for the user" } else { "" };
+            out.push(format!("  {number}  {label}  {}{waiting}", text(s, "agent")));
+        }
+    }
     if let Some(conflict) = data["conflict"].as_str() {
         out.push(format!("Also talking to the keyboard: {conflict}"));
     }

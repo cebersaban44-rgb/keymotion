@@ -53,10 +53,11 @@ Values
     done replaces signal done); give ids to keep up to 8 lights. --source NAME
     (or KEYMOTION_SOURCE) names you; you can clear only your own lights.
 
-More: log (the last requests), settings get, settings set KEY VALUE (looks and
-behaviour; the user can undo it), doctor (setup problems), start.
-If Keymotion is not running, commands start it without a window (--no-start:
-they do not).
+Your coding app may be connected (keymotion-cli connections): then "done",
+"waiting for you" and errors light by themselves. Add what they cannot say.
+More: log, settings get, settings set KEY VALUE (looks and behaviour; the user
+can undo it), doctor (setup problems), start. If Keymotion is not running,
+commands start it with no window (--no-start: they do not).
 
 Exit codes
   0 done    64 bad command line    65 bad value (color, key, time)
