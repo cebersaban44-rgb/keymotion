@@ -2,6 +2,7 @@
 import type { AgentLights } from "./AgentLights";
 import type { AgentLogEntry } from "./AgentLogEntry";
 import type { AgentServer } from "./AgentServer";
+import type { AgentSessionInfo } from "./AgentSessionInfo";
 import type { AgentSettings } from "./AgentSettings";
 import type { AgentSignalInfo } from "./AgentSignalInfo";
 
@@ -13,6 +14,10 @@ export type AgentsState = { settings: AgentSettings,
  * Every agent's lights now, highest rank first.
  */
 signals: Array<AgentSignalInfo>, 
+/**
+ * The coding agents' sessions, by number.
+ */
+sessions: Array<AgentSessionInfo>, 
 /**
  * The last agent requests, newest first.
  */
