@@ -13,7 +13,7 @@
 //! busy focus session a waiting timer card took every new upload, so no
 //! reminder card could go).
 
-use crate::device::DeviceHandle;
+use crate::device::{DeviceHandle, Quiet};
 use crate::dto::{LiveBack, LiveItem, LivePlan, LiveShown, LiveState, SongStop, TrackInfo};
 use crate::screen_lib::ScreenLibrary;
 use kb_protocol::sonix::screen::ScreenAnimation;
@@ -160,9 +160,9 @@ impl Default for LiveStored {
 }
 
 /// Uploads a source's card leaves for the sources above it: the focus
-/// timer and the song keep one for a reminder or a meeting.
+/// timer, a game and the song keep one for a reminder or a meeting.
 fn keep_for(source: &str) -> f64 {
-    if source == crate::pomodoro::SOURCE || source == crate::now_playing::SOURCE {
+    if source == crate::pomodoro::SOURCE || source == crate::games::SOURCE || source == crate::now_playing::SOURCE {
         1.0
     } else {
         0.0
@@ -172,6 +172,49 @@ fn keep_for(source: &str) -> f64 {
 /// Time until the waiting card may go on the budget, `None` if it may now.
 fn pending_wait(lib: &mut ScreenLibrary, pending: &Pending, now: f64) -> Option<f64> {
     lib.live_mut().budget.ms_until(now, 1.0 + keep_for(&pending.item.source))
+}
+
+/// The user asked for this now: a card sent with "Send now" or their own
+/// picture put back. It goes even while a game wants quiet.
+fn user_asked(rt: &Runtime) -> bool {
+    rt.send_now || (rt.restore.is_some() && rt.restore_auto.is_none())
+}
+
+/// A game wants quiet: nothing goes but what the user asked for and, when
+/// the user lets them, a meeting's or a reminder's card.
+fn quieted(rt: &Runtime) -> bool {
+    match rt.quiet {
+        Quiet::Off => false,
+        _ if user_asked(rt) => false,
+        Quiet::ButReminders => !rt
+            .pending
+            .as_ref()
+            .is_some_and(|p| p.item.source == crate::calendar::SOURCE || p.item.source == crate::reminders::SOURCE),
+        Quiet::All => true,
+    }
+}
+
+/// The source of the card on the screen (`showing`, put there at
+/// `shown_ms`) when it was left there while `except` held the screen, from
+/// `since_ms` on, and the screen is free to go back: nobody holds it, no
+/// return is planned, nothing waits or goes but `except`'s own card (a game's
+/// summary replacing its start card). A card from before (a focus session's
+/// "Done") stays, so does `except`'s own (it goes back by itself) and the
+/// song's ("Çalan şarkı"'s own business).
+fn left_on_screen(
+    showing: Option<String>,
+    shown_ms: Option<f64>,
+    since_ms: f64,
+    except: &str,
+    rt: &Runtime,
+) -> Option<String> {
+    let source = showing.filter(|s| s != except && s != crate::now_playing::SOURCE)?;
+    if shown_ms.is_none_or(|t| t < since_ms) {
+        return None;
+    }
+    let waiting = rt.pending.as_ref().is_some_and(|p| p.item.source != except);
+    let busy = !rt.holders.is_empty() || waiting || rt.uploading.is_some() || rt.back.is_some();
+    (!busy).then_some(source)
 }
 
 /// Turning the live mode on must ask first (see `LiveState::factory_ack_needed`).
@@ -208,6 +251,9 @@ struct Runtime {
     /// calendar (around a meeting) over a reminder's card, both over the
     /// focus timer, all over "Çalan şarkı", which waits while anyone holds.
     holders: Vec<String>,
+    /// A game wants the keyboard left alone: no card goes and the screen
+    /// doesn't go back by itself; what the user asks for still does.
+    quiet: Quiet,
 }
 
 /// What to do about a scheduled return to the user's own picture.
@@ -490,16 +536,23 @@ impl LiveHandle {
 
     /// A card from `source` is on the GIF page, going there, or waiting.
     pub fn has_card_from(&self, source: &str) -> bool {
-        let showing = self.library.lock().map(|l| l.live_source_showing(source)).unwrap_or(false);
-        let queued = self
-            .rt
+        self.card_shown(source) || self.card_waiting(source)
+    }
+
+    /// A card from `source` is on the GIF page.
+    pub fn card_shown(&self, source: &str) -> bool {
+        self.library.lock().map(|l| l.live_source_showing(source)).unwrap_or(false)
+    }
+
+    /// A card from `source` waits or is going to the keyboard.
+    pub fn card_waiting(&self, source: &str) -> bool {
+        self.rt
             .lock()
             .map(|rt| {
                 rt.pending.as_ref().is_some_and(|p| p.item.source == source)
                     || rt.uploading.as_ref().is_some_and(|u| u.source == source)
             })
-            .unwrap_or(false);
-        showing || queued
+            .unwrap_or(false)
     }
 
     /// A song plays now (as the "Çalan şarkı" source last saw it).
@@ -522,6 +575,28 @@ impl LiveHandle {
             rt.back = Some(LiveBack { source: source.to_string(), at_ms: now_ms() + delay.as_millis() as f64 });
         }
         tracing::info!(%source, secs = delay.as_secs(), "going back to the own picture soon");
+        self.wake();
+        self.emit();
+    }
+
+    /// Source `except` let go of the screen it held since `since_ms` (a game
+    /// ended): a card another source left there meanwhile (a meeting's card
+    /// during the game) goes after `delay`, back to the user's own picture.
+    /// See [`left_on_screen`].
+    pub fn back_when_free(&self, delay: Duration, since_ms: f64, except: &str) {
+        if !self.enabled() {
+            return;
+        }
+        let Some((showing, shown_ms)) = self.library.lock().ok().map(|l| (l.live_showing(), l.live().last_ms)) else {
+            return;
+        };
+        let source = {
+            let Ok(mut rt) = self.rt.lock() else { return };
+            let Some(source) = left_on_screen(showing, shown_ms, since_ms, except, &rt) else { return };
+            rt.back = Some(LiveBack { source: source.clone(), at_ms: now_ms() + delay.as_millis() as f64 });
+            source
+        };
+        tracing::info!(%source, secs = delay.as_secs(), "a card left from a held screen: going back soon");
         self.wake();
         self.emit();
     }
@@ -557,6 +632,15 @@ impl LiveHandle {
         self.state()
     }
 
+    /// A game wants the keyboard left alone, or not any more.
+    pub fn set_quiet(&self, quiet: Quiet) {
+        let changed = self.rt.lock().is_ok_and(|mut rt| std::mem::replace(&mut rt.quiet, quiet) != quiet);
+        if changed {
+            tracing::info!(?quiet, "live screen quiet for a game");
+            self.wake();
+        }
+    }
+
     /// `source` has something to show again: forget its return.
     pub fn cancel_return(&self, source: &str) {
         let cancelled = self
@@ -580,6 +664,10 @@ impl LiveHandle {
         let Ok(mut lib) = self.library.lock() else { return IDLE };
         let Ok(rt) = self.rt.lock() else { return IDLE };
         let now = now_ms();
+        if quieted(&rt) {
+            // `set_quiet` and a new card wake the worker.
+            return IDLE;
+        }
         if rt.restore.is_some() {
             return Duration::from_millis(rt.retry_at.map_or(0.0, |t| (t - now).max(0.0)) as u64);
         }
@@ -679,6 +767,9 @@ impl LiveHandle {
     }
 
     fn try_upload(&self, device: &DeviceHandle) {
+        if self.rt.lock().is_ok_and(|rt| quieted(&rt)) {
+            return;
+        }
         if self.restore(device) {
             self.wake();
             return;
@@ -915,6 +1006,39 @@ mod tests {
     }
 
     #[test]
+    fn only_a_card_left_during_the_game_goes_back() {
+        let free = Runtime::default();
+        let game = crate::games::SOURCE;
+        let calendar = || Some(crate::calendar::SOURCE.to_string());
+        let start = 10_000.0;
+        // A meeting's card that came during the game.
+        assert_eq!(left_on_screen(calendar(), Some(start + 5.0), start, game, &free), calendar());
+        // One from before the game (a focus session's "Done") stays.
+        let done = Some(crate::pomodoro::SOURCE.to_string());
+        assert_eq!(left_on_screen(done, Some(start - 5.0), start, game, &free), None);
+        assert_eq!(left_on_screen(calendar(), None, start, game, &free), None);
+        // The game's own card goes back by itself; the song's is its own.
+        assert_eq!(left_on_screen(Some(game.into()), Some(start + 5.0), start, game, &free), None);
+        let song = Some(crate::now_playing::SOURCE.to_string());
+        assert_eq!(left_on_screen(song, Some(start + 5.0), start, game, &free), None);
+        // Someone holds the screen.
+        let held = Runtime { holders: vec![crate::pomodoro::SOURCE.into()], ..Runtime::default() };
+        assert_eq!(left_on_screen(calendar(), Some(start + 5.0), start, game, &held), None);
+        // The game's summary waiting doesn't stop it; another card does.
+        let waiting = |source: &str| Runtime {
+            pending: Some(Pending {
+                anim: ScreenAnimation::still(kb_protocol::sonix::screen::Frame::filled(0)),
+                content: String::new(),
+                item: LiveItem { source: source.into(), name: String::new() },
+            }),
+            ..Runtime::default()
+        };
+        assert_eq!(left_on_screen(calendar(), Some(start + 5.0), start, game, &waiting(game)), calendar());
+        let reminder = waiting(crate::reminders::SOURCE);
+        assert_eq!(left_on_screen(calendar(), Some(start + 5.0), start, game, &reminder), None);
+    }
+
+    #[test]
     fn going_back_waits_its_time_and_gives_way_to_new_cards() {
         let b = LiveBack { source: "pomodoro".into(), at_ms: 1_000.0 };
         assert_eq!(back_step(&b, 400.0, true, true, false, false), BackStep::Wait(600.0));
@@ -1021,5 +1145,25 @@ mod tests {
         let s: LiveStored = serde_json::from_str(r#"{"enabled":true,"budget":{"plan":"heavy"}}"#).unwrap();
         assert!(s.enabled);
         assert_eq!(s.budget.plan, LivePlan::Heavy);
+    }
+
+    #[test]
+    fn a_quiet_game_lets_meetings_through_if_the_user_wants() {
+        use crate::dto::LiveItem;
+        use kb_protocol::sonix::screen::{rgb565, Frame, ScreenAnimation};
+        let card = |source: &str| Pending {
+            anim: ScreenAnimation::still(Frame::filled(rgb565(0, 200, 80))),
+            content: "c".into(),
+            item: LiveItem { source: source.into(), name: "x".into() },
+        };
+        let rt = |quiet, source: &str| Runtime { quiet, pending: Some(card(source)), ..Runtime::default() };
+        assert!(!quieted(&rt(Quiet::Off, "game")));
+        assert!(quieted(&rt(Quiet::All, crate::calendar::SOURCE)));
+        assert!(!quieted(&rt(Quiet::ButReminders, crate::calendar::SOURCE)));
+        assert!(!quieted(&rt(Quiet::ButReminders, crate::reminders::SOURCE)));
+        assert!(quieted(&rt(Quiet::ButReminders, crate::now_playing::SOURCE)));
+        // What the user asks for always goes.
+        let asked = Runtime { send_now: true, ..rt(Quiet::All, "now-playing") };
+        assert!(!quieted(&asked));
     }
 }

@@ -51,6 +51,11 @@ Bu bilgiler yalnızca klavyede ve uygulamada göstermek için kullanılır. Beli
 | İşlemci, ekran kartı ve bellek kullanımı, Windows'un performans sayaçlarından | Sistem göstergeleri açıkken ya da sayfası açıkken | Tuşlardaki gösterge çubukları |
 | Hoparlör ses düzeyi ve sessizliği, mikrofon sessizliği, Windows'un ses sisteminden | Sistem göstergeleri açıkken ya da sayfası açıkken | Ses çubuğu ve sessizlik ışığı |
 | Klavyeye ya da fareye son dokunuşunuzdan bu yana geçen süre | Hatırlatıcılar açıkken | Tekrarlayan hatırlatmalar siz yokken bekler |
+| Hangi programın önde olduğu: dosya adı ve klasörü, penceresinin ekranı kaplayıp kaplamadığı. Pencere başlıkları hiç okunmaz, hiçbir program açılmaz | **Oyunları fark et** ya da profillerde **Uygulamaya göre** açıkken | Oyunu diğer programlardan ayırmak ve her programın profili |
+| Bir programın simgesi, dosyasından (program açılmaz) | Bir oyun ya da program listesinde görünürken ve Steam resmi olmayan (ya da okunamayan) bir oyun başlayınca | Listelerdeki ve başlangıç kartındaki simgeler |
+| Başlatıcılarınızın oyun listeleri (Steam, Epic Games, GOG, Xbox, Riot Games, Xbox Game Bar) | **Oyunları fark et** açıkken, birkaç dakikada bir | Hangi programların oyun olduğunu bilmek |
+| İşlemci ve ekran kartı yükü, ekran kartının sıcaklığı | Oyun oturumu sürerken | Özet kartı ve geçmiş |
+| League of Legends'ın maç verisi (canınız, mananız, seviyeniz, skorunuz, maçın olayları ve skor tablosundaki adlarıyla hangi oyuncuların takımınızda olduğu), oyunun bilgisayarınızda çalıştırdığı hizmetten | League of Legends maçı sırasında, ışıkları açıkken | Işıklar ve özet kartı |
 | Windows klavye düzeniniz | Uygulama açılınca ve öne gelince | Tuş adlarının sizin dilinizde yazılması |
 | Bağlı klavyeler (USB aygıtları, Bluetooth pil düzeyi) | Uygulama çalışırken | Klavyeyi bulmak ve yönetmek |
 | Bir klavyenin HID tanımları (Windows'un o klavye hakkında kaydettikleri) | Henüz desteklenmeyen bir klavye için destek istediğinizde | Destek isteği |
@@ -61,7 +66,9 @@ Bu bilgiler yalnızca klavyede ve uygulamada göstermek için kullanılır. Beli
 Her şey Windows kullanıcı klasörünüzdedir. **Ayarlar**'da, **Hakkında** bölümündeki **Veri klasörü** ve **Günlük dosyaları** bu klasörleri açar.
 
 - **Ayarlar ve kayıtlar**, `%APPDATA%\dev.keymotion\` klasöründe:
-  - `calibration.json`, `clock.json`, `lighting.json`, `pomodoro.json`, `gauges.json`, `reminders.json`, `battery.json`, `profiles.json`, `background.json`, `updates.json`;
+  - `calibration.json`, `clock.json`, `lighting.json`, `pomodoro.json`, `gauges.json`, `reminders.json`, `battery.json`, `profiles.json`, `background.json`, `updates.json`, `games.json`;
+  - `auto-profiles.json`: **Uygulamaya göre** profilleriniz ve bir program için klavyeye profil kaydedildikten sonra, geri dönmek için klavyenin önceki ışığının, tuş atamasının ve makrolarının bir kopyası;
+  - `game-history.json`: oyun oturumlarınız (oyun, başlangıç ve bitiş, okunan değerler, League of Legends sonucu). **Oyun oturumu** sayfasındaki **Geçmişi sil** onu boşaltır;
   - `keymap.json` ve `macros.json`: Keymotion'ın klavyeye ne yazdığının tek kaydı (klavye bunları geri okutmaz);
   - `calendar.json`: takvimleriniz. Takvim adresleri parola gibidir; bu yüzden Windows kullanıcı hesabınıza özel olarak şifrelenir (Windows Veri Koruma). Başka bir kullanıcı ya da başka bir bilgisayar bunları okuyamaz;
   - `screen\`: görsel kütüphaneniz, aldıysanız fabrika animasyonunun kopyası ve son canlı kart.

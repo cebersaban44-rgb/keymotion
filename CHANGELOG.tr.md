@@ -12,6 +12,59 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 
 ## [Yayımlanmamış]
 
+### Eklenenler
+
+- **Oyun oturumu:** Araçlar › **Oyun oturumu** oynadığınızı fark eder.
+  Oyunlar başlatıcılarınızın listelerinden (Steam, Epic Games, GOG, Xbox,
+  Riot Games, Xbox Game Bar) ve sizin sözünüzden gelir (**Oyun ekle**,
+  **Oyun değil**, **Geri al**); birkaç dakika ekranı kaplayan bir program için
+  "Bir oyun mu?" diye sorulur. Bir oyun 15 saniye
+  önde kalınca oturum başlar ve oyun açık kaldıkça, Alt+Tab'da da sürer.
+  Canlı ekran açıksa başlarken klavyenin ekranına bir kart, 5 dakika ya da
+  daha uzun bir oturum bitince bir özet (süre, ekran kartının yükü ve
+  sıcaklığı, işlemcinin ortalama ve en yüksek yükü, bugünün toplamı) gider;
+  oyun sürerken ekrana yeni bir şey gelmez. Oyunun tuşları (WASD, MOBA, 1–6
+  ya da sizin seçtikleriniz) ya da bir profilin tuş tuş ışığı, klavyeye bir
+  şey kaydedilmeden yanabilir; ışıklar öndeki pencereyi izler, Alt+Tab ile
+  başka işe geçince bekler. Oyun listesi her programın simgesini ve aldığı
+  profili gösterir, son oynanana ya da en çok oynanana göre sıralanır; Steam
+  resmi olmayan bir oyunun başlangıç kartında simgesi görünür. Oyun sırasında
+  gelen bir toplantı ya da hatırlatıcı kartı oyundan sonra kalkar. Geçmiş bu
+  bilgisayarda kalır. "Kendiliğinden güncelle" oyunun bitmesini bekler.
+- **League of Legends ışıkları:** maç sırasında, oyunun bilgisayarınızda
+  sunduğu veriden: canınız bütün klavyede, azaldıkça seçtiğiniz yönde
+  çekilerek (odak zamanlayıcısındaki gibi), ya da 1–0'da; mana F1–F12'de;
+  ölünce koyu kırmızı, yeniden doğmaya yaklaştıkça geri gelen ışık (1–0'da
+  geri sayılan kalan süre); zafer, yenilgi, seviye atlama, öldürme, as,
+  ejderha, Baron ve Vadi'nin Alameti için seçtiğiniz renkte seçtiğiniz animasyon
+  (dalga, parlama, nabız, kıvılcım, halka, yukarıdan sönme). Sayfadaki çizim
+  bunları maçın kendi koduyla önizler, "Klavyede dene" klavyede gösterir.
+  Oyun listesinde League of Legends'ın altında (Özel ışıklar), maçtaki
+  sırasıyla gruplanmış olarak ayarlanır; kapatmadıkça ejderha, Vadi'nin Alameti
+  ve Baron yalnız takımınız aldığında yanar. Özet kartı sonucu, K/D/A'yı ve
+  minyon sayısını gösterir. Rakip ya da hedef sayaçları yok.
+- **Uygulamaya göre profil:** Profiller › **Uygulamaya göre** bir programı
+  ya da bütün oyunları bir profile bağlar. Varsayılan olarak yalnız tuş
+  başına renk tasarımının ışığı değişir, klavyeye bir şey kaydedilmez; bir
+  kural tuş atamasını ve makroları da kaydedebilir, günde en çok 20 kez
+  (sonuncusu geri dönüşe ayrılır; başka bir klavye modeli için yapılmış
+  profil atlanır ve sayılmaz). Oyunun tuş ataması ve makroları oyun boyunca kalır; oyun bitince klavye
+  önceki haline döner (ya da seçtiğiniz profile geçer ya da olduğu gibi
+  kalır), bu arada elle değiştirmediyseniz. Kurallar program güncellendikten
+  sonra da tutar (Microsoft Store uygulamaları, Discord, Roblox). Simge
+  menüsünden duraklatılabilir.
+- **Oyun sürerken klavyeye hiçbir şey gönderilmesin:** oyun boyunca Keymotion
+  klavyeye ışık, kart ya da profil göndermez, klavye kendi ışığında kalır;
+  hile önleyicisi bundan rahatsız olabilecek oyunlar için. Kapatmadıkça
+  toplantı ve hatırlatıcı uyarıları yine gelir; sessiz mod tek bir oyun için
+  de açılabilir.
+- **Kullanım koşulları:** sitede bir Kullanım koşulları sayfası var.
+
+### Değişenler
+
+- Yazmadan önce resmî yazılımı ya da SignalRGB'yi bulmak için kullanılan
+  çalışan programlar listesi artık hiçbir programı açmıyor.
+
 ### Düzeltilenler
 
 - **Takvim ve hatırlatıcılar:** saatlerin geri alındığı gece 03:00'e

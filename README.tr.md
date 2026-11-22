@@ -201,3 +201,7 @@ PR açmadan önce [katkı rehberini](https://cebersaban44-rgb.github.io/keymotio
 Keymotion, seçiminize göre [Apache Lisansı 2.0](LICENSE-APACHE) ya da [MIT lisansı](LICENSE-MIT) ile lisanslanmıştır. Uygulamadaki üçüncü taraf yazılımlar [app/public/third-party-notices.txt](app/public/third-party-notices.txt) dosyasında listelenir.
 
 Keymotion bağımsız bir projedir. AJAZZ, AULA ya da burada adı geçen başka bir klavye markasıyla bağlantısı yoktur; onlar tarafından onaylanmamış ya da desteklenmemiştir. Ürün adları yalnızca uygulamanın hangi donanımla çalıştığını söylemek için kullanılır. [NOTICE](NOTICE) dosyasına bakın.
+
+League of Legends ışıkları için Riot Games'in istediği not:
+
+Keymotion isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.

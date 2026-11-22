@@ -4,18 +4,22 @@
 //! the `kb-*` crates. All keyboard logic lives in those crates, and all
 //! hardware access goes through the single device actor.
 
+mod autoprofile;
 mod backup;
 mod calendar;
 mod channel;
 mod device;
 mod diagnostics;
 mod dto;
+mod front;
+mod games;
 mod gauges;
 mod handoff;
 mod ics;
 mod lighting;
 mod live;
 mod logging;
+mod lol;
 pub mod migrate;
 mod notify;
 mod now_playing;
@@ -34,13 +38,14 @@ use calendar::CalendarHandle;
 use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request, ScreenWriteStep};
 use diagnostics::{AppFolder, LastExport};
 use dto::{
-    BackgroundSettings, CalendarSettings, CalendarState, Calibration, CalibrationInfo, ClockStatus, CrashNote,
-    EffectInfo, EffectRequest, FlashWrite, GaugesSettings, GaugesState, IssueKind, KeyAssignment, KeyboardInfo,
-    KeymapCatalog, KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint,
-    PomodoroSettings, PomodoroState, Reminder, ReminderSettings, ReminderState, ScreenItem, ScreenItemKind,
-    ScreenState, SettingsReset, SongStop, ThemePreference, TrayTexts, UiEnvironment, UnsupportedKeyboard, UpdateMode,
-    UpdateState, WindowsPage,
+    AutoProfileSettings, AutoProfileState, BackgroundSettings, CalendarSettings, CalendarState, Calibration,
+    CalibrationInfo, ClockStatus, CrashNote, EffectInfo, EffectRequest, FlashWrite, GamesSettings, GamesState,
+    GaugesSettings, GaugesState, IssueKind, KeyAssignment, KeyboardInfo, KeymapCatalog, KeymapLayer, KeymapState,
+    LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, PomodoroSettings, PomodoroState, Reminder,
+    ReminderSettings, ReminderState, ScreenItem, ScreenItemKind, ScreenState, SettingsReset, SongStop, ThemePreference,
+    TrayTexts, UiEnvironment, UnsupportedKeyboard, UpdateMode, UpdateState, WindowsPage,
 };
+use games::GamesHandle;
 use gauges::GaugesHandle;
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
 use live::LiveHandle;
@@ -81,14 +86,16 @@ fn close_needs_asking(app: &AppHandle) -> bool {
     app.try_state::<CloseGuard>().is_some_and(|g| g.unsaved.load(Ordering::SeqCst)) || flash_busy(app)
 }
 
-/// "Update by itself" waits: closing would ask first, or the focus timer
-/// runs or is paused (its place in the sequence is not kept over a restart).
+/// "Update by itself" waits: closing would ask first, the focus timer
+/// runs or is paused (its place in the sequence is not kept over a
+/// restart), or a game session runs.
 pub(crate) fn busy_for_update(app: &AppHandle) -> bool {
     close_needs_asking(app)
         || app
             .try_state::<Arc<PomodoroHandle>>()
             .and_then(|p| p.state().ok())
             .is_some_and(|s| s.status != dto::PomodoroStatus::Idle)
+        || app.try_state::<Arc<GamesHandle>>().is_some_and(|g| g.in_session())
 }
 
 /// The official driver's copy of the factory animation: searched once per
@@ -488,6 +495,191 @@ fn gauges_configure(gauges: Gauges<'_>, settings: GaugesSettings) -> Result<Gaug
 #[tauri::command]
 fn gauges_watch(gauges: Gauges<'_>, on: bool) {
     gauges.watch(on);
+}
+
+type Games<'a> = State<'a, Arc<GamesHandle>>;
+
+/// The keyboard on the USB cable (the only connection that takes settings
+/// and live frames).
+fn usb_model(app: &AppHandle) -> Option<String> {
+    let device = app.try_state::<Arc<DeviceHandle>>()?;
+    let snap = device.snapshot.lock().ok()?;
+    snap.keyboards
+        .iter()
+        .find(|k| k.connection == dto::Connection::Usb && k.has_command_channel)
+        .map(|k| k.model_id.clone())
+}
+
+/// What the per-app profiles need from the rest of the app.
+struct AutoHost {
+    app: AppHandle,
+}
+
+impl autoprofile::Host for AutoHost {
+    fn profile(&self, id: &str) -> Option<profiles::Profile> {
+        let store = self.app.try_state::<Arc<Mutex<ProfileStore>>>()?;
+        let profile = lock_profiles(&store).ok()?.get(id)?;
+        Some(profile)
+    }
+
+    fn keyboard(&self) -> Option<profiles::Profile> {
+        let model = usb_model(&self.app)?;
+        let current = profile_current(&self.app, &model).ok()?;
+        Some(profiles::Profile {
+            id: String::new(),
+            name: String::new(),
+            created_ms: 0.0,
+            updated_ms: 0.0,
+            model_id: current.model_id,
+            lighting: current.lighting,
+            keymap: Some(current.keymap),
+            macros: Some(current.macros),
+            screen: None,
+        })
+    }
+
+    fn per_key(&self, id: &str) -> Option<(Vec<profiles::LitKey>, u8)> {
+        let model = usb_model(&self.app)?;
+        let profile = self.profile(id)?;
+        profile.fits(&model).then(|| profile.lighting.as_ref()?.per_key()).flatten()
+    }
+
+    fn leds(&self) -> Option<Vec<u8>> {
+        let model = usb_model(&self.app)?;
+        let m = kb_devices::catalogue().ok()?.iter().find(|m| m.id == model)?;
+        Some(m.geometry.as_ref()?.keys.iter().map(|k| k.led).collect())
+    }
+
+    fn may_write(&self) -> bool {
+        usb_model(&self.app).is_some() && !close_needs_asking(&self.app)
+    }
+
+    fn write(&self, profile: &profiles::Profile) -> Result<u32, String> {
+        let model = usb_model(&self.app).ok_or("no keyboard on the USB cable")?;
+        let device = self.app.state::<Arc<DeviceHandle>>().inner().clone();
+        let mut writer = DeviceWriter { device: &device, config_dir: self.app.path().app_config_dir().ok() };
+        let mut written = 0;
+        // Never the screen: that is a library upload, on the live budget.
+        for part in [ProfilePart::Lighting, ProfilePart::Keymap, ProfilePart::Macros] {
+            if !profile.has(part) {
+                continue;
+            }
+            let current = profile_current(&self.app, &model)?;
+            if profiles::load_part(profile, part, &current, &mut writer)? == PartLoaded::Written {
+                written += 1;
+            }
+        }
+        tray::refresh(&self.app);
+        Ok(written)
+    }
+
+    fn game(&self, front: &kb_winsys::foreground::Front) -> Option<String> {
+        self.app.try_state::<Arc<GamesHandle>>()?.game_of(front)
+    }
+
+    fn session(&self) -> Option<String> {
+        self.app.try_state::<Arc<GamesHandle>>()?.session_key()
+    }
+
+    fn quiet(&self) -> bool {
+        self.app.try_state::<Arc<GamesHandle>>().is_some_and(|g| g.quiet_now())
+    }
+
+    fn quiet_game(&self, game: &str) -> bool {
+        self.app.try_state::<Arc<GamesHandle>>().is_some_and(|g| g.quiet_game(game))
+    }
+}
+
+type Auto<'a> = State<'a, Arc<autoprofile::AutoProfiles>>;
+
+/// Per-app profiles: the rules and what is in force.
+#[tauri::command]
+fn autoprofile_state(auto: Auto<'_>) -> Result<AutoProfileState, String> {
+    auto.state()
+}
+
+#[tauri::command]
+fn autoprofile_configure(auto: Auto<'_>, settings: AutoProfileSettings) -> Result<AutoProfileState, String> {
+    tracing::debug!("ipc: autoprofile_configure");
+    auto.configure(settings)
+}
+
+/// The game session: settings, the session that runs, games, history.
+#[tauri::command]
+fn games_state(games: Games<'_>) -> Result<GamesState, String> {
+    games.state()
+}
+
+#[tauri::command]
+fn games_configure(games: Games<'_>, settings: GamesSettings) -> Result<GamesState, String> {
+    tracing::debug!("ipc: games_configure");
+    games.configure(settings)
+}
+
+/// The user's word on a program: a game, not a game, or forget it (`null`).
+#[tauri::command]
+fn games_mark(games: Games<'_>, path: String, name: String, game: Option<bool>) -> Result<GamesState, String> {
+    games.mark(path, name, game)
+}
+
+#[tauri::command]
+fn games_clear_history(games: Games<'_>) -> Result<GamesState, String> {
+    games.clear_history()
+}
+
+/// Show the game lights on the keyboard for a moment.
+#[tauri::command]
+fn games_try_lights(games: Games<'_>) -> Result<(), String> {
+    games.try_lights()
+}
+
+/// Read the launchers' lists of games again.
+#[tauri::command]
+fn games_rescan(games: Games<'_>) {
+    games.rescan();
+}
+
+/// Steam's picture of a game (JPEG bytes), for the start card.
+#[tauri::command]
+fn games_cover(app_id: u32) -> Result<tauri::ipc::Response, String> {
+    GamesHandle::cover(app_id).map(tauri::ipc::Response::new).ok_or_else(|| "no cover".to_string())
+}
+
+/// League of Legends lights for the page's drawing: every frame of a scene
+/// (`lol::PREVIEW_STEP_MS` apart) on keyboard model `model_id`.
+#[tauri::command]
+fn games_lol_preview(
+    model_id: String,
+    settings: GamesSettings,
+    scene: dto::LolScene,
+) -> Result<Vec<lol::Keys>, String> {
+    GamesHandle::lol_preview(&model_id, &settings.sanitized(), scene)
+}
+
+/// Play a League of Legends scene on the keyboard for a moment (RAM only).
+#[tauri::command]
+fn games_try_lol(games: Games<'_>, scene: dto::LolScene) -> Result<(), String> {
+    games.try_lol(scene)
+}
+
+/// A program's icon, `size`×`size` RGBA, read from its file (the program
+/// isn't opened): lists of games and programs, a start card without a cover.
+/// Only a program (`.exe`) on this computer: a shortcut's or a link's icon
+/// could be fetched from elsewhere, and a network share can keep the call
+/// waiting (`exe_icon` turns those away too).
+#[tauri::command]
+async fn program_icon(path: String, size: u32) -> Result<tauri::ipc::Response, String> {
+    if !(16..=64).contains(&size) {
+        return Err("icon size out of range".into());
+    }
+    if !kb_winsys::icon::is_local_program(&path) {
+        return Err("not a program on this computer".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || kb_winsys::icon::exe_icon(&path, size))
+        .await
+        .map_err(|e| e.to_string())?
+        .map(tauri::ipc::Response::new)
+        .ok_or_else(|| "no icon".to_string())
 }
 
 #[tauri::command]
@@ -1497,7 +1689,24 @@ pub fn run() {
             let updates = updates::Updates::spawn(app.handle().clone(), config_dir.clone());
             let after_update = updates.start_hidden();
             app.manage(updates);
-            app.manage(RemindersHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir));
+            app.manage(RemindersHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir.clone()));
+            let front = front::FrontHub::new();
+            app.manage(GamesHandle::spawn(
+                app.handle().clone(),
+                live.clone(),
+                device.clone(),
+                front.clone(),
+                config_dir.clone(),
+            ));
+            let host: Arc<dyn autoprofile::Host> = Arc::new(AutoHost { app: app.handle().clone() });
+            app.manage(autoprofile::AutoProfiles::spawn(
+                app.handle().clone(),
+                device.clone(),
+                front.clone(),
+                host,
+                config_dir,
+            ));
+            app.manage(front);
             app.manage(library);
             app.manage(device);
             app.manage(live);
@@ -1584,6 +1793,18 @@ pub fn run() {
             gauges_state,
             gauges_configure,
             gauges_watch,
+            games_state,
+            games_configure,
+            games_mark,
+            games_clear_history,
+            games_try_lights,
+            games_rescan,
+            games_cover,
+            program_icon,
+            games_lol_preview,
+            games_try_lol,
+            autoprofile_state,
+            autoprofile_configure,
             calendar_state,
             calendar_configure,
             calendar_add,

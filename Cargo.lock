@@ -2135,6 +2135,7 @@ dependencies = [
 name = "kb-winsys"
 version = "1.1.0"
 dependencies = [
+ "serde_json",
  "tracing",
  "windows",
 ]

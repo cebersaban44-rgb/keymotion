@@ -26,7 +26,20 @@ import { connectionKey, tNow, useT, type MessageKey } from "./lib/i18n";
 import { useKeymap } from "./lib/keymap";
 import { useLayout } from "./lib/layout";
 import { startLive } from "./lib/live";
-import { calendarCard, calendarWords, nowPlayingCard, pomodoroCard, pomodoroWords, reminderCard, reminderWords } from "./lib/liveCards";
+import {
+  calendarCard,
+  calendarWords,
+  gameStartCard,
+  gameSummaryCard,
+  gameWords,
+  nowPlayingCard,
+  pomodoroCard,
+  pomodoroWords,
+  reminderCard,
+  reminderWords,
+} from "./lib/liveCards";
+import { gameCover, startGames } from "./lib/games";
+import { programIconData } from "./lib/icons";
 import { startPomodoro, usePomodoro, DEFAULT_SETTINGS } from "./lib/pomodoro";
 import { followGauges, useGauges } from "./lib/gauges";
 import { startCalendar, useCalendar } from "./lib/calendar";
@@ -34,10 +47,12 @@ import { startReminders } from "./lib/reminders";
 import { startUpdates, useUpdates } from "./lib/updates";
 import { UpdateDialog, UpdateStrip } from "./components/Updates";
 import { useMacros } from "./lib/macros";
+import { followAutoWrites } from "./lib/profiles";
 import { useScreen } from "./lib/screen";
 import { OFFLINE_KEYBOARD } from "./lib/offline";
 import { useActiveKeyboard, useApp, type PageId } from "./lib/store";
 import { Calendar } from "./pages/Calendar";
+import { Games } from "./pages/Games";
 import { Connection } from "./pages/Connection";
 import { Keymap } from "./pages/Keymap";
 import { Macros } from "./pages/Macros";
@@ -106,6 +121,8 @@ function useKeyboardRecords() {
     useMacros.getState().load(modelId).catch(console.error);
     useScreen.getState().load(modelId).catch(console.error);
   }, [modelId]);
+  // A profile written by the per-app profiles: those records are read again.
+  useEffect(() => (modelId ? followAutoWrites(modelId) : undefined), [modelId]);
 }
 
 /** Words of the Pomodoro cards in the current language. */
@@ -129,6 +146,17 @@ function useLiveScreen() {
     [],
   );
   useEffect(() => startReminders((card) => reminderCard(card, reminderWords(tNow, useApp.getState().locale))), []);
+  useEffect(
+    () =>
+      startGames(async (card) => {
+        if (card.kind !== "start") return gameSummaryCard(card, gameWords(tNow));
+        const cover = card.steamApp != null ? await gameCover(card.steamApp) : null;
+        // No cover (or one that can't be read): the program's own icon.
+        const exe = card.exe;
+        return gameStartCard(card, cover, gameWords(tNow), () => (exe ? programIconData(exe, 48) : Promise.resolve(null)));
+      }),
+    [],
+  );
   useEffect(() => startUpdates(), []);
   // Whether the system gauges are on (the Lighting page says so); the
   // tray menu can switch them too.
@@ -183,6 +211,11 @@ function useTray() {
       updateAvailable: tNow("tray.update.available"),
       updateReady: tNow("tray.update.ready"),
       updateTooltip: tNow("tray.update.tooltip"),
+      game: tNow("tray.game"),
+      gameHours: tNow("games.time.hours"),
+      gameMinutes: tNow("games.time.minutes"),
+      gameLess: tNow("games.time.less"),
+      autoProfile: tNow("tray.autoProfile"),
       noticeReadyTitle: tNow("notice.update.ready.title"),
       noticeReadyBody: tNow("notice.update.ready.body"),
       noticeInstall: tNow("notice.update.install"),
@@ -312,6 +345,8 @@ export default function App() {
         return <Reminders kb={tool} />;
       case "calendar":
         return <Calendar />;
+      case "games":
+        return <Games kb={tool} />;
       case "screen":
         return <Screen kb={tool} />;
     }
