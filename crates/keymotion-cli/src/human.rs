@@ -1,7 +1,12 @@
 //! Human output: a few short English lines per command, from the same data
 //! `--json` prints. Agents use `--json`; this is for a person at a
 //! terminal, so it says what happened and leaves out the rest.
+//!
+//! Every piece of the app's answer goes through `printable` here, so no
+//! text from the pipe can start a new line or reach the terminal as an
+//! escape sequence; `output::terminal` checks the whole text once more.
 
+use kb_agent::values::printable;
 use serde_json::Value;
 
 /// `850ms`, `45s`, `1.5s`, `2m`, `1m 58s`, `1h 5m`.
@@ -32,8 +37,14 @@ pub fn duration(ms: u64) -> String {
     }
 }
 
-fn text<'a>(v: &'a Value, key: &str) -> &'a str {
-    v.get(key).and_then(Value::as_str).unwrap_or("")
+/// A text field of the app's answer, written out for a terminal.
+fn text(v: &Value, key: &str) -> String {
+    v.get(key).and_then(Value::as_str).map(printable).unwrap_or_default()
+}
+
+/// The text items of a list field, written out.
+fn texts(v: &Value, key: &str) -> Vec<String> {
+    v[key].as_array().map(Vec::as_slice).unwrap_or_default().iter().filter_map(Value::as_str).map(printable).collect()
 }
 
 fn flag(v: &Value, key: &str) -> bool {
@@ -69,7 +80,7 @@ fn lights_word(word: &str) -> &str {
 fn app_line(app: &Value) -> String {
     let mut line = format!("Keymotion {}", text(app, "version"));
     if let Some(channel) = app.get("channel").and_then(Value::as_str) {
-        line.push_str(&format!(" ({channel})"));
+        line.push_str(&format!(" ({})", printable(channel)));
     }
     if let Some(p) = app.get("protocol").and_then(Value::as_u64) {
         line.push_str(&format!(", protocol {p}"));
@@ -102,7 +113,7 @@ pub fn status(data: &Value) -> String {
         }
         out.push(line);
     }
-    out.push(format!("Lights: {}", lights_word(text(data, "lights"))));
+    out.push(format!("Lights: {}", lights_word(&text(data, "lights"))));
     let signals = data["signals"].as_array().map(Vec::as_slice).unwrap_or_default();
     if signals.is_empty() {
         out.push("No agent lights on.".to_string());
@@ -131,10 +142,10 @@ pub fn keys(data: &Value) -> String {
     let mut out =
         vec![format!("{} ({}): {}", text(data, "name"), text(data, "model"), plural(keys.len() as u64, "key", "keys"))];
     // Rows by position, top to bottom, left to right.
-    let mut sorted: Vec<(f64, f64, &str)> =
+    let mut sorted: Vec<(f64, f64, String)> =
         keys.iter().map(|k| (k["y"].as_f64().unwrap_or(0.0), k["x"].as_f64().unwrap_or(0.0), text(k, "id"))).collect();
     sorted.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
-    let mut row: Vec<&str> = Vec::new();
+    let mut row: Vec<String> = Vec::new();
     let mut row_y = None;
     for (y, _, id) in sorted {
         if row_y.is_some_and(|ry: f64| (y - ry).abs() >= 0.5) {
@@ -149,7 +160,7 @@ pub fn keys(data: &Value) -> String {
     if !row.is_empty() {
         out.push(format!("  {}", row.join(" ")));
     }
-    let groups: Vec<&str> =
+    let groups: Vec<String> =
         data["groups"].as_array().map(Vec::as_slice).unwrap_or_default().iter().map(|g| text(g, "name")).collect();
     out.push(format!("Groups: {}", groups.join(", ")));
     out.push("Use ids, ranges (f1-f12) and groups, comma-separated, with --keys.".to_string());
@@ -199,14 +210,13 @@ pub fn lit_warnings(data: &Value) -> Vec<String> {
                 .to_string(),
         ),
         Some("night") => out.push("Not visible now: the user turned agents' lights off for the night.".to_string()),
-        Some(other) => out.push(format!("Not visible now ({other}).")),
+        Some(other) => out.push(format!("Not visible now ({}).", printable(other))),
         None if data.get("lit") != Some(&Value::Bool(false)) && data.get("shown") == Some(&Value::Bool(false)) => {
             out.push("Not visible now: another light covers these keys; it shows when that one ends.".to_string())
         }
         None => {}
     }
-    let evicted: Vec<&str> =
-        data["evicted"].as_array().map(Vec::as_slice).unwrap_or_default().iter().filter_map(Value::as_str).collect();
+    let evicted = texts(data, "evicted");
     if !evicted.is_empty() {
         out.push(format!("A source keeps at most 8 lights: {} went to make room.", evicted.join(", ")));
     }
@@ -232,7 +242,7 @@ pub fn log(data: &Value, now_ms: f64) -> String {
             let ago = e["at_ms"].as_f64().map(|at| (now_ms - at).max(0.0) as u64).map(duration).unwrap_or_default();
             let mut line = format!("{ago} ago  {}  {}  {}", text(e, "source"), text(e, "command"), text(e, "result"));
             if let Some(id) = e["id"].as_str() {
-                line.push_str(&format!("  {id}"));
+                line.push_str(&format!("  {}", printable(id)));
             }
             for c in e["changes"].as_array().map(Vec::as_slice).unwrap_or_default() {
                 line.push_str(&format!("  {}: {} -> {}", text(c, "key"), value(&c["before"]), value(&c["after"])));
@@ -249,21 +259,22 @@ pub fn log(data: &Value, now_ms: f64) -> String {
 /// A setting's value without JSON quotes.
 fn value(v: &Value) -> String {
     match v {
-        Value::String(s) => s.clone(),
-        other => other.to_string(),
+        Value::String(s) => printable(s),
+        other => printable(&other.to_string()),
     }
 }
 
 pub fn settings_get(data: &Value) -> String {
     let user_only: Vec<&str> =
         data["user_only"].as_array().map(Vec::as_slice).unwrap_or_default().iter().filter_map(Value::as_str).collect();
+    // Keys come from the app too.
     let mut out: Vec<String> = data["settings"]
         .as_object()
         .map(|m| {
             m.iter()
                 .map(|(k, v)| {
                     let only = if user_only.contains(&k.as_str()) { "  (only the user changes it)" } else { "" };
-                    format!("{k} = {}{only}", value(v))
+                    format!("{} = {}{only}", printable(k), value(v))
                 })
                 .collect()
         })
@@ -387,6 +398,22 @@ mod tests {
         assert!(
             text.contains("Agent access: off") && text.contains("none connected") && text.contains("No agent lights")
         );
+    }
+
+    #[test]
+    fn the_apps_text_cannot_drive_a_terminal() {
+        use kb_agent::values::is_unsafe_char;
+        let mut s = running_status();
+        s["app"]["version"] = json!("1.2.0\u{1b}[2J");
+        s["keyboards"][0]["name"] = json!("Board\nFake line");
+        s["signals"][0]["id"] = json!("x\u{9b}31m");
+        let out = status(&s);
+        assert!(!out.chars().any(|c| is_unsafe_char(c) && c != '\n'), "{out:?}");
+        assert!(out.contains("1.2.0\\u{1B}[2J") && out.contains("Board\\nFake line"), "{out}");
+        let set = json!({"changed": [{"key": "k\u{7}", "before": "\u{1b}", "after": 3}]});
+        assert!(!settings_set(&set).chars().any(|c| is_unsafe_char(c) && c != '\n'));
+        let d = json!({"checks": [{"id": "app", "status": "ok", "detail": "\u{1b}]0;x\u{7}"}], "problems": 0});
+        assert!(!doctor(&d).chars().any(|c| is_unsafe_char(c) && c != '\n'));
     }
 
     #[test]

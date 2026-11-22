@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 use crate::cli::{self, Env, Invocation, Plan};
 use crate::output::{self, Done, Logger};
-use crate::session::{self, Ctx, Started};
+use crate::session::{self, Ctx, IfNotRunning, Started};
 use crate::{doctor, guide, human};
 
 /// Run a command line clap took; the exit code.
@@ -36,7 +36,7 @@ fn execute(ctx: &Ctx, plan: Plan) -> Result<Done, AgentError> {
 
 /// A command for the app, which is started first when it is not running.
 fn call(ctx: &Ctx, command: Command) -> Result<Done, AgentError> {
-    let mut conn = session::connect(ctx, true)?;
+    let mut conn = session::connect(ctx, IfNotRunning::Start)?;
     let left = conn.left();
     let data = conn.client.call_within(&command, left)?;
     let mut warnings = Vec::new();
@@ -69,7 +69,7 @@ fn now_ms() -> f64 {
 
 /// `status`: works when the app is not running (exit 0, `running: false`).
 fn status(ctx: &Ctx) -> Result<Done, AgentError> {
-    match session::connect(ctx, false) {
+    match session::connect(ctx, IfNotRunning::Report) {
         Ok(mut conn) => {
             let left = conn.left();
             let data = conn.client.call_within(&cli::status_command(), left)?;
@@ -87,10 +87,15 @@ fn status(ctx: &Ctx) -> Result<Done, AgentError> {
             if ctx.app_running() {
                 let data = json!({ "app": { "running": true, "answering": false } });
                 let text = human::status(&data);
-                Ok(Done::new(data, text).warn([
-                    "Keymotion runs but does not answer agents yet: it may be starting, or older than keymotion-cli."
+                let why = match ctx.old_copy_running() {
+                    Some(old) => {
+                        let e = session::old_copy(old);
+                        format!("{} {}", e.message, e.hint.unwrap_or_default())
+                    }
+                    None => "Keymotion runs but does not answer agents yet: it may be starting, or older than keymotion-cli."
                         .to_string(),
-                ]))
+                };
+                Ok(Done::new(data, text).warn([why]))
             } else {
                 let data = json!({ "app": { "running": false } });
                 let text = human::status(&data);
@@ -113,7 +118,7 @@ pub fn cli_data() -> Value {
 /// `version`: the CLI's, and the app's when it runs (never starts it).
 fn version(ctx: &Ctx) -> Result<Done, AgentError> {
     let mut warnings = Vec::new();
-    let app = match session::connect(ctx, false) {
+    let app = match session::connect(ctx, IfNotRunning::Report) {
         Ok(conn) => {
             let a = conn.app();
             if a.version != crate::VERSION {
@@ -152,7 +157,7 @@ fn start(ctx: &Ctx) -> Result<Done, AgentError> {
         return Err(AgentError::new(ErrorCode::BadArgument, "start and --no-start ask for opposite things.")
             .with_hint("Leave out --no-start."));
     }
-    let conn = session::connect(ctx, true)?;
+    let conn = session::connect(ctx, IfNotRunning::StartAndWait)?;
     let a = conn.app();
     let app = json!({ "version": a.version, "channel": a.channel, "protocol": a.protocol });
     let data = match &conn.started {

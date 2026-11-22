@@ -32,8 +32,12 @@ pub const VERSION_LINE: &str = concat!(env!("CARGO_PKG_VERSION"), " (protocol 1)
 /// is ignored.
 pub const TEST_PIPE_PREFIX: &str = r"\\.\pipe\keymotion-cli-test-";
 /// Tests only: talk to this pipe instead of the app's, and never start the
-/// app (the start is only logged). Not documented for users.
+/// app (the start is only logged). Read only by debug builds and builds with
+/// the `test-pipe` feature: in a release, whoever sets a project's or a
+/// CI's environment could otherwise point agents' calls at a fake app.
 pub const TEST_PIPE_ENV: &str = "KEYMOTION_CLI_TEST_PIPE";
+/// Whether this build reads [`TEST_PIPE_ENV`].
+pub const TEST_PIPE_BUILD: bool = cfg!(any(debug_assertions, feature = "test-pipe"));
 pub const OUTPUT_ENV: &str = "KEYMOTION_OUTPUT";
 pub const SOURCE_ENV: &str = "KEYMOTION_SOURCE";
 
@@ -53,14 +57,15 @@ pub struct Env {
     pub output: Option<String>,
     /// `KEYMOTION_SOURCE`: the default `--source`.
     pub source: Option<String>,
-    /// [`TEST_PIPE_ENV`].
+    /// [`TEST_PIPE_ENV`], in builds that read it ([`TEST_PIPE_BUILD`]).
     pub test_pipe: Option<String>,
 }
 
 impl Env {
     pub fn read() -> Self {
         let var = |name: &str| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
-        Self { output: var(OUTPUT_ENV), source: var(SOURCE_ENV), test_pipe: var(TEST_PIPE_ENV) }
+        let test_pipe = if TEST_PIPE_BUILD { var(TEST_PIPE_ENV) } else { None };
+        Self { output: var(OUTPUT_ENV), source: var(SOURCE_ENV), test_pipe }
     }
 
     /// `KEYMOTION_OUTPUT=json` (any case).
@@ -68,11 +73,20 @@ impl Env {
         self.output.as_deref().is_some_and(|v| v.trim().eq_ignore_ascii_case("json"))
     }
 
-    /// The test pipe, when the variable holds a test pipe name.
+    /// The test pipe, when this build reads one and the variable holds a
+    /// test pipe name.
     pub fn test_pipe(&self) -> Option<&str> {
+        if !TEST_PIPE_BUILD {
+            return None;
+        }
         self.test_pipe
             .as_deref()
             .filter(|p| p.len() > TEST_PIPE_PREFIX.len() && p.len() <= 256 && p.starts_with(TEST_PIPE_PREFIX))
+    }
+
+    /// The variable is set but holds no test pipe name.
+    pub fn test_pipe_ignored(&self) -> bool {
+        self.test_pipe.is_some() && self.test_pipe().is_none()
     }
 }
 
@@ -395,8 +409,12 @@ fn setting_value(text: &str) -> Value {
 /// What came of the command line.
 #[derive(Debug)]
 pub enum Parsed {
-    /// `--help` or `--version`: print clap's text, exit 0.
-    Print(clap::Error),
+    /// `--help` or `--version`: print clap's text (in a JSON object with
+    /// `--json`), exit 0.
+    Print {
+        json: bool,
+        clap: clap::Error,
+    },
     /// clap refused the command line: exit 64.
     Usage {
         json: bool,
@@ -423,7 +441,9 @@ where
     let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
     match Cli::try_parse_from(&args) {
         Ok(cli) => Parsed::Run(Box::new(Invocation { global: cli.global, command: cli.command })),
-        Err(e) if matches!(e.kind(), ErrorKind::DisplayHelp | ErrorKind::DisplayVersion) => Parsed::Print(e),
+        Err(e) if matches!(e.kind(), ErrorKind::DisplayHelp | ErrorKind::DisplayVersion) => {
+            Parsed::Print { json: env.json() || wants_json(&args), clap: e }
+        }
         Err(e) => {
             let rendered = e.render().to_string();
             let message = rendered
@@ -667,12 +687,15 @@ mod tests {
     #[test]
     fn help_and_version_print_and_succeed() {
         for line in ["--help", "-h", "signal --help", "help light", "--version", "-V"] {
-            assert!(matches!(run(line), Parsed::Print(_)), "{line}");
+            assert!(matches!(run(line), Parsed::Print { json: false, .. }), "{line}");
         }
-        let Parsed::Print(e) = run("--version") else { unreachable!() };
+        assert!(matches!(run("--help --json"), Parsed::Print { json: true, .. }));
+        assert!(matches!(run("--json help light"), Parsed::Print { json: true, .. }));
+        let Parsed::Print { clap: e, .. } = run("--version") else { unreachable!() };
         assert!(e.render().to_string().contains(VERSION_LINE));
     }
 
+    #[cfg(any(debug_assertions, feature = "test-pipe"))]
     #[test]
     fn the_test_pipe_must_look_like_one() {
         let env = |p: &str| Env { test_pipe: Some(p.into()), ..Env::default() };

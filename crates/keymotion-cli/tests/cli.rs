@@ -3,7 +3,9 @@
 //! its own (`KEYMOTION_CLI_TEST_PIPE`, which also keeps the program from
 //! starting any real Keymotion). No keyboard, no app.
 
-#![cfg(windows)]
+// Only a build that reads the test pipe may run these: any other would
+// talk to the real app, and start it.
+#![cfg(all(windows, any(debug_assertions, feature = "test-pipe")))]
 
 use std::process::{Command as Process, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -438,6 +440,62 @@ fn usage_errors_are_64_never_2() {
         run(&pipe, &["--version"]).stdout,
         format!("keymotion-cli {} (protocol 1)\n", env!("CARGO_PKG_VERSION"))
     );
+    // With --json, help and the version are one JSON object too.
+    for (line, command) in [
+        ("--json --help", "help"),
+        ("signal --help --json", "help"),
+        ("--json help light", "help"),
+        ("--version --json", "version"),
+    ] {
+        let args: Vec<&str> = line.split_whitespace().collect();
+        let r = run(&pipe, &args);
+        assert_eq!(r.code, 0, "{line}: {r:?}");
+        let v = r.json();
+        assert_eq!((v["ok"].clone(), v["command"].clone()), (json!(true), json!(command)), "{line}");
+        assert!(v["data"]["text"].as_str().is_some_and(|t| t.contains("keymotion-cli")), "{line}: {v}");
+    }
+    let v = run_with(&pipe, &["--version"], &[("KEYMOTION_OUTPUT", "json")]).json();
+    assert_eq!(
+        (v["data"]["version"].clone(), v["data"]["protocol"].clone()),
+        (json!(env!("CARGO_PKG_VERSION")), json!(1))
+    );
+}
+
+#[test]
+fn with_a_timeout_a_start_never_outlasts_it() {
+    // The fake app comes up only after 4 s; --timeout 1s ends the run by
+    // then, start included: a hook with a time limit is never cut off.
+    let pipe = unique_pipe();
+    let later = pipe.clone();
+    let server = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(4));
+        let (server, _) = fake_app(&later);
+        std::thread::sleep(Duration::from_millis(500));
+        drop(server);
+    });
+    let r = run(&pipe, &["signal", "done", "--timeout", "1s", "--json"]);
+    assert_eq!((r.code, r.json()["error"]["code"].clone()), (75, json!("timeout")), "{r:?}");
+    assert!(r.took < Duration::from_millis(2500), "{:?}", r.took);
+    assert!(r.json()["error"]["retry_after_ms"].as_u64().is_some());
+    server.join().unwrap();
+}
+
+#[test]
+fn escape_sequences_never_reach_the_terminal() {
+    let pipe = unique_pipe();
+    // A color with an escape sequence: refused, and echoed written out.
+    let r = run(&pipe, &["light", "--color", "\u{1b}[2J\u{1b}]0;pwned\u{7}red"]);
+    assert_eq!(r.code, 65, "{r:?}");
+    assert!(!r.stderr.contains('\u{1b}') && !r.stderr.contains('\u{7}'), "{:?}", r.stderr);
+    assert!(r.stderr.contains("\\u{1B}[2J"), "{:?}", r.stderr);
+    let r = run(&pipe, &["light", "--color", "\u{9b}31mred", "--json"]);
+    assert_eq!(r.code, 65);
+    assert!(!r.stdout.contains('\u{9b}'), "{:?}", r.stdout);
+    assert_eq!(r.json()["error"]["code"], json!("bad_color"));
+    // A usage error echoes the argument: written out too.
+    let r = run(&pipe, &["light", "--\u{1b}[31mcolour", "red"]);
+    assert_eq!(r.code, 64, "{r:?}");
+    assert!(!r.stderr.contains('\u{1b}'), "{:?}", r.stderr);
 }
 
 #[test]

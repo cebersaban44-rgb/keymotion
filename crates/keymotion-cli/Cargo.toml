@@ -11,6 +11,12 @@ license.workspace = true
 name = "keymotion-cli"
 path = "src/main.rs"
 
+[features]
+# Reads KEYMOTION_CLI_TEST_PIPE in a release build too, for running the
+# integration tests with --release. Debug builds always read it; a release
+# without this feature never does.
+test-pipe = []
+
 [dependencies]
 clap.workspace = true
 kb-agent.workspace = true

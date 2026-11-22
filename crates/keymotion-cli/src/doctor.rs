@@ -19,7 +19,7 @@ use serde_json::{json, Value};
 use crate::cli;
 use crate::launch;
 use crate::output::Done;
-use crate::session::{self, Ctx};
+use crate::session::{self, Ctx, IfNotRunning};
 
 /// The program the pipe's server should be.
 const APP_EXE: &str = "keymotion.exe";
@@ -99,7 +99,7 @@ pub fn run(ctx: &Ctx) -> Done {
 
 /// The app, its pipe, versions, access and the keyboard.
 fn app(ctx: &Ctx, r: &mut Report) {
-    let mut conn = match session::connect(ctx, false) {
+    let mut conn = match session::connect(ctx, IfNotRunning::Report) {
         Ok(conn) => conn,
         Err(e) if e.code == ErrorCode::AppNotRunning => {
             if ctx.app_running() {

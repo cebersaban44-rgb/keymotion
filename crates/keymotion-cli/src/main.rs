@@ -49,10 +49,7 @@ fn main() -> ExitCode {
     let env = cli::Env::read();
     let code = match cli::parse(std::env::args_os(), &env) {
         // --help and --version.
-        cli::Parsed::Print(text) => {
-            let _ = text.print();
-            kb_agent::exit::OK
-        }
+        cli::Parsed::Print { json, clap } => output::print_help(json, &clap),
         cli::Parsed::Usage { json, command, error, clap } => {
             output::usage_error(json, command.as_deref(), &error, &clap)
         }

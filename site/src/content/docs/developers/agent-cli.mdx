@@ -48,7 +48,7 @@ Hook mode, connecting to Claude Code and Codex, the focus timer, profiles, scree
 |---|---|
 | `--json` | Exactly one JSON object on stdout, on success and on failure. Also `KEYMOTION_OUTPUT=json`. |
 | `--source <name>` | Who is asking (`claude-code`, `build-script`). Each source has its own lights and can clear only its own. Also `KEYMOTION_SOURCE`; default `cli`. Up to 64 of `a-z 0-9 : . _ -`. |
-| `--timeout <duration>` | How long to wait for the app, connecting and the answer together (default `5s`, at most `5m`). Waiting for an app that is starting has its own 15 seconds. |
+| `--timeout <duration>` | How long to wait for the app, connecting and the answer together (default `5s`, at most `5m`). When given, it bounds the whole run, starting the app included, so a hook with a time limit is never cut off. Without it, a start may take up to 15 seconds and the call then has 5. |
 | `--no-start` | Do not start the app; exit 69 when it is not running. |
 | `-q`, `--quiet` | Nothing on stdout or stderr on success, in human mode. Errors still go to stderr. |
 | `--log <level>` | Diagnostics on stderr: `off`, `error`, `warn` (default; `error` with `--quiet`), `info`, `debug`. |
@@ -75,11 +75,12 @@ Results go to stdout and diagnostics to stderr. The tool never asks anything and
 {"ok":false,"schema":1,"command":"light","error":{"code":"agent_access_off","message":"Agent access is off in Keymotion.","hint":"The user can turn it on in Keymotion › Tools › AI agents.","retry_after_ms":null}}
 ```
 
-- `command` is the command as typed (`signal`, `settings get`); `null` when the command line named none.
-- `data` is the app's answer (for `version`, `guide`, `doctor` and `start`, the tool's own). For `signal`, `light` and `progress`: the light's `id`, whether it is `shown` now, `expires_in_ms`, whether it `replaced` an earlier one, what it `evicted`, and `hidden` (`"game"` or `"night"`) when it waits.
+- `command` is the command as typed (`signal`, `settings get`); `null` when the command line named none. `--help` and `--version` with `--json` answer as `help` and `version`, with the text in `data.text`.
+- `data` is the app's answer (for `version`, `guide`, `doctor`, `start` and `help`, the tool's own). For `signal`, `light` and `progress`: the light's `id`, whether it is `shown` now, `expires_in_ms`, whether it `replaced` an earlier one, what it `evicted`, and `hidden` (`"game"` or `"night"`) when it waits.
 - `warnings` are sentences for whoever reads the output: the app was started for this call, the light is covered or hidden for now, agent access is off.
 - `hint` and `retry_after_ms` are `null` when there is none.
 - `schema` stays 1 while fields are only added; removing a field or changing its meaning raises it.
+- Nothing printed can drive a terminal. In human output, control characters (escape sequences included) and invisible or direction-changing characters from the app's answers or from echoed input are written out (`\u{1B}`); in JSON, DEL, the C1 controls and those characters become `\u` escapes besides what JSON escapes anyway.
 
 ## Exit codes
 
@@ -98,16 +99,16 @@ Exit code 2 is never used: Claude Code and Codex read 2 from a hook as "keep goi
 
 ## Starting the app
 
-`status`, `version`, `guide` and `doctor` never start the app. Every other command, when nobody serves the pipe, starts Keymotion without a window and waits up to 15 seconds for its pipe, unless `--no-start` is given. If a copy already runs but its pipe is not open yet (it is starting), the tool starts nothing and waits up to 5 seconds.
+`status`, `version`, `guide` and `doctor` never start the app. Every other command, when nobody serves the pipe, starts Keymotion without a window and waits for its pipe, unless `--no-start` is given: up to 15 seconds, or only as long as `--timeout` allows when it is given (`start` always has the 15 seconds). If a copy already runs but its pipe is not open yet (it is starting), the tool starts nothing and waits up to 5 seconds; if that copy is a Store copy too old to answer agents, it says so at once.
 
 The tool may run inside another packaged app's box: the Claude desktop app's terminal is one. A program started there as a plain child process stays in that box, so its AppData writes would land in the other app's folder and it would read settings that are not the user's. Windows' package API does not show such a box (`GetCurrentPackageFullName` answers "no package" there), but named pipes do cross it. So the tool never starts `keymotion.exe` as its own child; it asks Windows to start it, in this order (`crates/keymotion-cli/src/launch.rs`):
 
 1. The tool runs with Keymotion's package identity (the Store copy's app execution alias): it activates the package's app by its AUMID with `--background`.
-2. The Store copy is installed: the same with the Store package's AUMID (one Keymotion per computer prefers the Store copy).
-3. The `keymotion:` address scheme is registered (the GitHub copy registers it): `explorer.exe keymotion://background`, by Explorer's full path and without handing Explorer any of the tool's handles.
-4. None of these: exit 69, "start Keymotion".
+2. The Store copy is installed and new enough: the same with the Store package's AUMID (one Keymotion per computer prefers the Store copy). New enough means at least the first version that takes `--background` (`kb_agent::BACKGROUND_START_SINCE`, 1.2.0) and at least the tool's own version, read from the package's full name. An older Store copy would open its window and has no pipe, so it is never started.
+3. The `keymotion:` address scheme opens the installed GitHub copy (which registers it; a development build's registration does not count, as made inside another app's box it is invisible to Explorer, which would then ask the user for an app): `explorer.exe keymotion://background`, by Explorer's full path, started with `CreateProcessW` and no inherited handles (`kb_winsys::shell::run_alone`; Rust's own `Command` hands every inheritable handle on), so an agent reading the tool's output is never kept waiting by Explorer. A GitHub copy beside an old Store copy then stays itself, hidden, instead of handing over.
+4. None of these: exit 69 at once, "start Keymotion", or "update Keymotion from the Microsoft Store" when only an old Store copy is there.
 
-In the app, `--background` and `keymotion://background` mean "run with the tray icon only". Neither counts as a start with Windows (that stays `--hidden`), so the window state and the start-with-Windows hand-over are unchanged. A running app that receives either does nothing visible, and a GitHub copy that hands over to the Store copy passes `--background` on (`app/src-tauri/src/tray.rs`, `handoff.rs`).
+In the app, `--background` and `keymotion://background` mean "run with the tray icon only". Neither counts as a start with Windows (that stays `--hidden`), so the window state and the start-with-Windows hand-over are unchanged. A running app that receives either does nothing visible, and a GitHub copy that hands over to the Store copy passes `--background` on, but only to a Store copy that knows it (`app/src-tauri/src/tray.rs`, `handoff.rs`).
 
 ## Security
 
@@ -130,6 +131,6 @@ cargo run -p keymotion-cli -- light --keys f1-f12 --color green --effect wave --
 cargo test -p keymotion-cli
 ```
 
-Start the development build of the app before trying commands that need it: when no Keymotion runs, the tool starts the installed one (the Store copy, if it is installed), which may be an older version without the pipe. `--no-start` keeps it from starting anything.
+Start the development build of the app before trying commands that need it: when no Keymotion runs, the tool starts the installed one (the Store copy, if it is new enough). `--no-start` keeps it from starting anything.
 
-The tests run the real `keymotion-cli` program against a fake app built on `kb_agent::transport::serve`, on a pipe of their own. Every command, access off, no app, a hung app, another protocol and every usage error are covered, and no run may exit with 2.
+The tests run the real `keymotion-cli` program against a fake app built on `kb_agent::transport::serve`, on a pipe of their own (`KEYMOTION_CLI_TEST_PIPE`, which also replaces the start with a no-op). Only debug builds and builds with the `test-pipe` feature read that variable; a release never does, so whoever sets an environment cannot point agents' calls at a fake app. The integration tests build only where it is read (`cargo test --release --features test-pipe` for a release run). Every command, access off, no app, a hung app, another protocol and every usage error are covered, and no run may exit with 2.
