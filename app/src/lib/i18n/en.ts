@@ -25,6 +25,8 @@ export const en = {
   "nav.focus": "Focus timer",
 
   "device.none.title": "Waiting for a keyboard",
+  // The model's name as people know it where they live (see modelTitle).
+  "model.ajazz-ak980-pro": "AJAZZ AK980 PRO",
 
   "conn.usb": "USB cable",
   "conn.dongle": "2.4 GHz receiver",

@@ -28,6 +28,7 @@ export const ru: Partial<Messages> = {
   "nav.section.tools": "Инструменты",
   "nav.focus": "Таймер фокусировки",
   "device.none.title": "Ожидание клавиатуры",
+  "model.ajazz-ak980-pro": "AJAZZ AK980 PRO",
   "conn.usb": "USB-кабель",
   "conn.dongle": "Приёмник 2,4\u00a0ГГц",
   "conn.bluetooth": "Bluetooth",

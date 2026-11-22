@@ -6,9 +6,9 @@
 
 import { ArrowUpRight, BellRing, Images, Keyboard, Timer, type LucideIcon } from "lucide-react";
 import { ModeSwitch } from "../components/ModeSwitch";
-import { useT, type MessageKey } from "../lib/i18n";
+import { modelTitle, useT, type MessageKey } from "../lib/i18n";
 import { openLink } from "../lib/ipc";
-import { SUPPORTED_MODEL, docsPage } from "../lib/offline";
+import { SUPPORTED_MODEL, SUPPORTED_MODEL_ID, docsPage } from "../lib/offline";
 import { useReport, useUnsupportedKeyboards } from "../lib/report";
 import { useApp } from "../lib/store";
 
@@ -89,7 +89,7 @@ export function Welcome() {
       <section className="flex flex-wrap items-center justify-between gap-4 border-t border-line pt-5">
         <div className="flex flex-col gap-0.5">
           <span className="text-[12px] text-ink-3">{t("welcome.supported")}</span>
-          <span className="text-[15px] font-semibold">{SUPPORTED_MODEL}</span>
+          <span className="text-[15px] font-semibold">{modelTitle(t, SUPPORTED_MODEL_ID, SUPPORTED_MODEL)}</span>
         </div>
         <button
           type="button"

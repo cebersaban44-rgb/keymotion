@@ -83,7 +83,8 @@ says so.
   (简体中文). Keymotion starts in the language Windows uses when it is one
   of the four, and **Settings** › **Language** changes it at once. The
   translations were made with AI help and wait for a review by native
-  speakers: corrections are welcome.
+  speakers: corrections are welcome. In Chinese the keyboard is called
+  黑爵 AK980 V2（带屏版）, the name it is sold under in China.
 
 ### Changed
 

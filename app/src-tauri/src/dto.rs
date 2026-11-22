@@ -485,6 +485,12 @@ pub struct TrayTexts {
     /// Its line when the app installed the update by itself.
     pub notice_installed_auto: String,
     pub notice_whats_new: String,
+    /// Keyboard models' names in the UI language, by model id, for the
+    /// models sold under another name there (Chinese: 黑爵 AK980 V2（带屏版）).
+    /// A model not listed keeps its model file's name.
+    #[serde(default)]
+    #[ts(type = "Record<string, string>")]
+    pub model_names: std::collections::BTreeMap<String, String>,
 }
 
 /// Until the UI has sent its words (a start with Windows, before the page
@@ -540,6 +546,7 @@ impl Default for TrayTexts {
             notice_installed_title: s("Keymotion {version} installed"),
             notice_installed_auto: s("It updated by itself while the computer wasn't in use."),
             notice_whats_new: s("What's new"),
+            model_names: Default::default(),
         }
     }
 }

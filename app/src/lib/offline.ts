@@ -10,6 +10,7 @@ import ak980Geometry from "../bindings/geometry-ajazz-ak980-pro.json";
 
 /** The keyboard the app supports today (site: help/keyboards). */
 export const SUPPORTED_MODEL = "AJAZZ AK980 PRO";
+export const SUPPORTED_MODEL_ID = "ajazz-ak980-pro";
 
 /** The project's documentation site (site/, published from main). */
 export const DOCS_URL = "https://cebersaban44-rgb.github.io/keymotion/";
@@ -28,7 +29,7 @@ export const docsPage = (path: string, locale: Locale) => `${DOCS_URL}${DOCS_FOL
  */
 export const OFFLINE_KEYBOARD: KeyboardInfo = {
   key: "offline",
-  modelId: "ajazz-ak980-pro",
+  modelId: SUPPORTED_MODEL_ID,
   modelName: SUPPORTED_MODEL,
   vendor: "AJAZZ",
   layout: "98",

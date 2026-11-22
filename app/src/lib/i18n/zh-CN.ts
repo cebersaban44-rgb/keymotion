@@ -25,6 +25,7 @@ export const zhCN: Partial<Messages> = {
   "nav.section.tools": "工具",
   "nav.focus": "专注计时器",
   "device.none.title": "正在等待键盘",
+  "model.ajazz-ak980-pro": "黑爵 AK980 V2（带屏版）",
   "conn.usb": "USB 有线",
   "conn.dongle": "2.4G 接收器",
   "conn.bluetooth": "蓝牙",

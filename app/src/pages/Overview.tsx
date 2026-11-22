@@ -13,7 +13,7 @@ import type { GeometryInfo } from "../bindings/GeometryInfo";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import { KeyboardView } from "../components/KeyboardView";
 import { hidFromCode } from "../lib/hidCodes";
-import { connectionKey, listOf, percent, useAgo, useT } from "../lib/i18n";
+import { connectionKey, listOf, modelTitle, percent, useAgo, useT } from "../lib/i18n";
 import { useMirror } from "../lib/mirror";
 import { useApp, useNarrowWindow } from "../lib/store";
 import { FocusTile } from "./overview/FocusTile";
@@ -141,7 +141,7 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
     <div className="flex flex-col gap-5" data-overview>
       <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div className="min-w-0">
-          <h1 className="page-title">{kb.modelName}</h1>
+          <h1 className="page-title">{modelTitle(t, kb.modelId, kb.modelName)}</h1>
           <p className="page-desc num" data-overview-specs>
             {specs}
           </p>

@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type SyntheticEvent } from "react";
 import type { Feature } from "../bindings/Feature";
-import { connectionKey, percent, useT, type MessageKey } from "../lib/i18n";
+import { connectionKey, modelTitle, percent, useT, type MessageKey } from "../lib/i18n";
 import { fmtClock, phaseColor, remainingNow, usePomodoro } from "../lib/pomodoro";
 import { useActiveKeyboard, useApp, useNarrowWindow, type PageId } from "../lib/store";
 import { useUnsaved } from "../lib/unsaved";
@@ -143,7 +143,7 @@ export function Sidebar() {
     );
   };
 
-  const deviceTitle = kb ? kb.modelName : t("device.none.title");
+  const deviceTitle = kb ? modelTitle(t, kb.modelId, kb.modelName) : t("device.none.title");
   const deviceSub = kb ? t(connectionKey(kb.connection)) : t("device.none.sub");
 
   return (

@@ -59,6 +59,25 @@ export function useT(): Translate {
   return (key, vars) => message(locale, key, vars);
 }
 
+/**
+ * A keyboard model's name in the interface language: the dictionaries may
+ * name a model the way it is sold there (key "model.<id>"); otherwise the
+ * model file's name. In Chinese the AK980 PRO is 黑爵 AK980 V2（带屏版）.
+ */
+export function modelTitle(t: Translate, modelId: string, fallback: string): string {
+  const key = `model.${modelId}`;
+  return key in en ? t(key as MessageKey) : fallback;
+}
+
+/** The models the dictionaries name (model id → name now), for the tray. */
+export function modelNames(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of Object.keys(en)) {
+    if (key.startsWith("model.")) out[key.slice("model.".length)] = tNow(key as MessageKey);
+  }
+  return out;
+}
+
 export const connectionKey = (c: Connection, short = false): MessageKey =>
   `conn.${c}${short ? ".short" : ""}` as MessageKey;
 
