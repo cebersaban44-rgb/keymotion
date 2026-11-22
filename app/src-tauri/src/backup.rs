@@ -16,6 +16,7 @@
 //!   "macros": { "models": { … } },                          // macros.json
 //!   "pomodoro": { … },                                      // pomodoro.json
 //!   "gauges": { … },                                        // gauges.json
+//!   "music": { … },                                         // music.json
 //!   "reminders": { "settings": { … }, "reminders": [ … ] },
 //!   "calendar": { "settings": { … }, "sources": [ { "name", "url", "color", "enabled" } ] },
 //!   "lighting": { … },                                      // lighting.json's state
@@ -47,9 +48,10 @@
 use crate::calendar::{CalendarBackup, CalendarHandle};
 use crate::device::{DeviceHandle, Request};
 use crate::dto::{
-    GaugesSettings, KeymapState, MacroInfo, PomodoroSettings, Reminder, ReminderSettings, ScreenItemKind,
+    GaugesSettings, KeymapState, MacroInfo, MusicSettings, PomodoroSettings, Reminder, ReminderSettings, ScreenItemKind,
 };
 use crate::gauges::GaugesHandle;
+use crate::music::MusicHandle;
 use crate::pomodoro::PomodoroHandle;
 use crate::profiles::{Profile, ProfileStore};
 use crate::reminders::RemindersHandle;
@@ -106,6 +108,8 @@ pub struct Backup {
     pub pomodoro: Option<PomodoroSettings>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gauges: Option<GaugesSettings>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub music: Option<MusicSettings>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reminders: Option<RemindersBackup>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -207,6 +211,7 @@ pub enum BackupSection {
     Clock,
     Focus,
     Gauges,
+    Music,
     Reminders,
     Calendar,
     Profiles,
@@ -363,6 +368,9 @@ pub fn check(mut backup: Backup, in_library: &dyn Fn(&str) -> bool) -> Result<(P
     if backup.gauges.is_some() {
         add(BackupSection::Gauges, 0);
     }
+    if backup.music.is_some() {
+        add(BackupSection::Music, 0);
+    }
     if let Some(r) = &backup.reminders {
         add(BackupSection::Reminders, r.reminders.len());
     }
@@ -400,6 +408,7 @@ pub fn collect(app: &AppHandle, with_addresses: bool) -> Result<Backup, String> 
     }
     b.pomodoro = Some(app.state::<Arc<PomodoroHandle>>().state()?.settings);
     b.gauges = Some(app.state::<Arc<GaugesHandle>>().state()?.settings);
+    b.music = Some(app.state::<Arc<MusicHandle>>().state()?.settings);
     let reminders = app.state::<Arc<RemindersHandle>>().state()?;
     b.reminders = Some(RemindersBackup {
         settings: reminders.settings,
@@ -524,6 +533,9 @@ pub fn apply(app: &AppHandle, pending: Pending, sections: &[BackupSection]) -> B
     if let Some(g) = b.gauges.clone() {
         run(BackupSection::Gauges, &mut out, &mut || app.state::<Arc<GaugesHandle>>().configure(g.clone()).map(|_| 0));
     }
+    if let Some(m) = b.music.clone() {
+        run(BackupSection::Music, &mut out, &mut || app.state::<Arc<MusicHandle>>().configure(m.clone()).map(|_| 0));
+    }
     if let Some(r) = b.reminders.clone() {
         run(BackupSection::Reminders, &mut out, &mut || {
             let handle = app.state::<Arc<RemindersHandle>>();
@@ -632,6 +644,13 @@ mod tests {
         b.macros = Some(macros);
         b.pomodoro = Some(PomodoroSettings::default());
         b.gauges = Some(GaugesSettings::default());
+        b.music = Some(MusicSettings {
+            enabled: true,
+            mode: crate::dto::MusicMode::Wave,
+            center: true,
+            sensitivity: 150,
+            ..MusicSettings::default()
+        });
         b.reminders = Some(RemindersBackup {
             settings: ReminderSettings::default(),
             reminders: vec![Reminder { title: "Su iç".into(), ..Reminder::default() }],
@@ -679,6 +698,22 @@ mod tests {
     }
 
     #[test]
+    fn music_settings_come_back_and_an_older_backup_has_none() {
+        let b = sample();
+        let text = String::from_utf8(b.encode().unwrap()).unwrap();
+        assert!(text.contains(r#""music""#) && text.contains(r#""mode": "wave""#), "{text}");
+        assert_eq!(parse(&b.encode().unwrap()).unwrap().music, b.music);
+        // A backup from before music mode: no section, nothing restored.
+        let old = parse(br#"{"kind":"kb-backup","version":1,"gauges":{"enabled":true}}"#).unwrap();
+        assert_eq!(old.music, None);
+        let (_, summary) = check(old, &|_| false).unwrap();
+        assert!(!summary.sections.iter().any(|i| i.section == BackupSection::Music));
+        // A damaged value is put back in range when it is applied.
+        let odd = parse(br#"{"kind":"kb-backup","version":1,"music":{"sensitivity":900}}"#).unwrap();
+        assert_eq!(odd.music.map(|m| m.sanitized().sensitivity), Some(200));
+    }
+
+    #[test]
     fn other_files_and_versions_are_refused() {
         assert_eq!(parse(b"not json"), Err(ERR_NOT_BACKUP.into()));
         assert_eq!(parse(br#"{"version":1}"#), Err(ERR_NOT_BACKUP.into()));
@@ -700,6 +735,7 @@ mod tests {
         assert_eq!(count(BackupSection::Calendar), Some(0), "settings only: no addresses in the file");
         assert_eq!(count(BackupSection::Lighting), Some(0));
         assert_eq!(count(BackupSection::Profiles), Some(1), "a profile for an unknown model is left out");
+        assert_eq!(count(BackupSection::Music), Some(0));
         assert_eq!(summary.screen_new, 1, "one picture is in the library already");
         assert_eq!(pending.items.len(), 2);
         assert!(!pending.backup.keymaps.as_ref().unwrap().models.contains_key("unknown-model"));

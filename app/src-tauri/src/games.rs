@@ -646,6 +646,13 @@ impl GamesHandle {
         i.tracker.session.as_ref().map(|s| s.game.key.clone())
     }
 
+    /// A session runs and its game is in front, as for the game's own
+    /// lights: the desktop and Alt+Tab do not count as leaving it (the
+    /// music lights' "pause while playing a game").
+    pub fn playing_in_front(&self) -> bool {
+        self.inner.lock().is_ok_and(|i| i.tracker.session.is_some() && !i.away)
+    }
+
     /// A session runs with "leave the keyboard alone while playing" on (for
     /// every game, or for its game).
     pub fn quiet_now(&self) -> bool {

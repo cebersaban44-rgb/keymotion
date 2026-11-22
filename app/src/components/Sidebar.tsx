@@ -1,4 +1,5 @@
 import {
+  AudioLines,
   BellRing,
   Cable,
   CalendarDays,
@@ -61,6 +62,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { id: "focus", label: "nav.focus", icon: Timer },
       { id: "gauges", label: "nav.gauges", icon: Gauge },
+      { id: "music", label: "nav.music", icon: AudioLines },
       { id: "reminders", label: "nav.reminders", icon: BellRing },
       { id: "calendar", label: "nav.calendar", icon: CalendarDays },
       { id: "games", label: "nav.games", icon: Gamepad2 },

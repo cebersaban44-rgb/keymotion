@@ -3,4 +3,4 @@
 /**
  * A part of a backup the user can choose to restore.
  */
-export type BackupSection = "lighting" | "keymap" | "macros" | "screen" | "calibration" | "clock" | "focus" | "gauges" | "reminders" | "calendar" | "profiles";
+export type BackupSection = "lighting" | "keymap" | "macros" | "screen" | "calibration" | "clock" | "focus" | "gauges" | "music" | "reminders" | "calendar" | "profiles";

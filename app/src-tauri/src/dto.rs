@@ -389,6 +389,8 @@ pub struct TrayTexts {
     pub reminders_none: String,
     pub tomorrow: String,
     pub gauges: String,
+    /// Music mode's switch.
+    pub music: String,
     pub profiles: String,
     pub default_profile: String,
     pub quit: String,
@@ -452,6 +454,7 @@ impl Default for TrayTexts {
             reminders_none: s("No reminders coming up"),
             tomorrow: s("tomorrow"),
             gauges: s("System gauges on the keys"),
+            music: s("Music mode"),
             profiles: s("Profiles"),
             default_profile: s("Default"),
             quit: s("Quit"),
@@ -1768,6 +1771,156 @@ pub struct GaugesState {
     pub frame: Vec<LedColor>,
     /// The volume bar shows (for a moment after a change).
     pub volume_showing: bool,
+}
+
+// -------------------------------------------------------------- music mode
+
+/// How the music lights move (owner's choice of all four, 2026-11-22).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum MusicMode {
+    /// Columns from left (bass) to right (treble), each filling from the
+    /// bottom row up, with a mark at its peak for a moment.
+    #[default]
+    Bars,
+    /// The whole keyboard in one colour, pulsing on each beat, a ring
+    /// spreading from the middle on a strong beat.
+    Beat,
+    /// How loud it is, as a band opening from the middle to both sides.
+    Level,
+    /// Each bass beat sends a wave of light across the keys.
+    Wave,
+}
+
+/// The music lights' colours.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum MusicPalette {
+    /// Green, yellow, red: from the bottom row up (bars), from the middle
+    /// out (level).
+    #[default]
+    Heat,
+    Rainbow,
+    /// `MusicSettings::color`.
+    One,
+    /// From `color` to `color2`.
+    Two,
+}
+
+/// The keys the music does not light.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum MusicRest {
+    #[default]
+    Dark,
+    /// Faintly in the palette's colour.
+    Dim,
+}
+
+/// What the keys show once it has been quiet for a few seconds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum MusicSilence {
+    /// The music lights step aside: the keyboard's own light (or the layer
+    /// under them, such as the gauges) shows.
+    #[default]
+    Saved,
+    /// Every key faintly lit.
+    Dim,
+    /// Every key off.
+    Dark,
+}
+
+/// Music mode settings (persisted in `music.json`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct MusicSettings {
+    /// The music lights are on the keys (RAM only, no flash write).
+    pub enabled: bool,
+    pub mode: MusicMode,
+    pub palette: MusicPalette,
+    /// The colours of `One` and `Two` (UI colours, sRGB).
+    pub color: [u8; 3],
+    pub color2: [u8; 3],
+    /// Bars and Wave start in the middle: bass in the middle, treble at
+    /// both ends.
+    pub center: bool,
+    /// How strongly the lights react, in percent (50–200).
+    pub sensitivity: u16,
+    pub rest: MusicRest,
+    pub silence: MusicSilence,
+    /// The music lights wait while a game is in front.
+    pub pause_in_games: bool,
+    /// Light brightness in the keyboard's own steps, 1–5.
+    pub brightness: u8,
+}
+
+impl Default for MusicSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: MusicMode::default(),
+            palette: MusicPalette::default(),
+            color: [0, 200, 255],
+            color2: [255, 45, 149],
+            center: false,
+            sensitivity: 100,
+            rest: MusicRest::default(),
+            silence: MusicSilence::default(),
+            pause_in_games: true,
+            brightness: 4,
+        }
+    }
+}
+
+impl MusicSettings {
+    pub fn sanitized(self) -> Self {
+        Self { sensitivity: self.sensitivity.clamp(50, 200), brightness: self.brightness.clamp(1, 5), ..self }
+    }
+}
+
+/// Where the music lights stand.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum MusicStatus {
+    /// Music mode is off.
+    Off,
+    /// No keyboard on the USB cable (the only connection that takes the
+    /// lights).
+    NoUsb,
+    /// Windows' sound system could not be started.
+    Unavailable,
+    /// No speakers or headphones.
+    NoOutput,
+    /// A game is in front (and the lights wait for games), or a game wants
+    /// the keyboard left alone.
+    Game,
+    /// Nothing plays.
+    Waiting,
+    /// The lights move with the sound.
+    Playing,
+}
+
+/// Music mode state (`music` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct MusicState {
+    pub settings: MusicSettings,
+    pub status: MusicStatus,
+    /// The music lights are on the keys now (while sound plays, and while
+    /// it's quiet with "Dim color" or "Dark"): the layers under them wait.
+    pub covers: bool,
+    /// What the music lights put on the keys now (UI colours, before
+    /// brightness); on the catalogue's model without a keyboard. Empty
+    /// when they show nothing.
+    pub frame: Vec<LedColor>,
 }
 
 // ---------------------------------------------------------------- calendar
