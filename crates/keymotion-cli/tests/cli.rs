@@ -145,6 +145,10 @@ fn fake_app(pipe: &str) -> (PipeServer, Arc<Fake>) {
                 }
                 Ok(json!({"changed": [{"key": key, "before": "#00ff00", "after": value}], "log_entry": 7}))
             }
+            Command::Hook(a) => {
+                a.validate()?;
+                Ok(json!({"lit": true, "cleared": 0}))
+            }
             Command::Hello(_) => Err(AgentError::new(ErrorCode::Internal, "hello reached the handler")),
         }
     })
@@ -414,7 +418,10 @@ fn usage_errors_are_64_never_2() {
         "log --limit many",
         "--log loud status",
         "status extra",
-        "hook claude-code",
+        // `hook` is hook mode now (tests/hooks.rs); connect knows two agents.
+        "connect",
+        "connect cursor",
+        "disconnect codex --sure",
     ] {
         let args: Vec<&str> = line.split_whitespace().collect();
         let r = run(&pipe, &args);
