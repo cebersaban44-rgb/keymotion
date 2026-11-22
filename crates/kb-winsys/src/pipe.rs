@@ -629,6 +629,13 @@ impl PipeServer {
         *self.shared.live()
     }
 
+    /// The server still takes new connections: its accepting thread runs.
+    /// When it has stopped (a failure it could not get past), the owner
+    /// should start a new server.
+    pub fn accepting(&self) -> bool {
+        self.accepting.as_ref().is_some_and(|t| !t.is_finished())
+    }
+
     /// Stop accepting, end the connections and wait for them (at most a
     /// few seconds for a handler that is still busy).
     pub fn stop(mut self) {
@@ -1156,6 +1163,7 @@ mod tests {
         assert_eq!(client.read_line(WAIT).unwrap(), "echo:b");
         assert_eq!(client.server_process_id().unwrap(), std::process::id());
         assert!(client.send_line("x\ny", WAIT).is_err());
+        assert!(server.accepting());
         drop(client);
         server.stop();
     }

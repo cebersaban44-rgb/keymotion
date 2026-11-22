@@ -454,7 +454,7 @@ pub enum Quiet {
 /// the meetings' and reminders' when the user lets them through, the game
 /// layer when it is the user's own try, and the agents' when the user
 /// turned their "hide while playing" off (`agent_in_quiet`).
-fn quiet_layers(l: &Layers, quiet: Quiet, game_tried: bool, agent_in_quiet: bool) -> Layers {
+pub(crate) fn quiet_layers(l: &Layers, quiet: Quiet, game_tried: bool, agent_in_quiet: bool) -> Layers {
     let reminders = quiet == Quiet::ButReminders;
     Layers {
         game: l.game.clone().filter(|_| game_tried),
@@ -462,6 +462,17 @@ fn quiet_layers(l: &Layers, quiet: Quiet, game_tried: bool, agent_in_quiet: bool
         reminders: l.reminders.clone().filter(|_| reminders),
         nudges: l.nudges.clone().filter(|_| reminders),
         ..Layers::default()
+    }
+}
+
+/// Whether a layer shows: any while no game wants quiet, else one of those
+/// [`quiet_layers`] lets through (without copying them: the run loop asks
+/// often). The actor streams frames while one does.
+fn shows_a_layer(l: &Layers, quiet: Quiet, game_tried: bool, agent_in_quiet: bool) -> bool {
+    let reminders = quiet == Quiet::ButReminders && (l.reminders.is_some() || l.nudges.is_some());
+    match quiet {
+        Quiet::Off => l.any(),
+        _ => reminders || (game_tried && l.game.is_some()) || (agent_in_quiet && l.agent.is_some()),
     }
 }
 
@@ -1015,6 +1026,7 @@ impl Actor {
                 self.next_live = Instant::now();
             }
             Request::SetLayer(layer, frame) => {
+                let was_streaming = self.streaming();
                 let slot = self.layers.slot(layer);
                 match (&frame, &slot) {
                     (None, Some(_)) => tracing::debug!(?layer, "light layer stopped"),
@@ -1022,7 +1034,9 @@ impl Actor {
                     _ => {}
                 }
                 *slot = frame;
-                if !self.streaming() {
+                // Once, when the last one goes: a layer a game hides may still
+                // get frames 20 times a second.
+                if was_streaming && !self.streaming() {
                     tracing::debug!("no light layer left; keyboard reverts to its saved effect");
                 }
                 if self.live.is_none() {
@@ -1337,13 +1351,7 @@ impl Actor {
     }
 
     fn has_layer(&self) -> bool {
-        let tried = self.game_tried && self.layers.game.is_some();
-        let agent = self.agent_in_quiet && self.layers.agent.is_some();
-        match self.quiet {
-            Quiet::Off => self.layers.any(),
-            Quiet::ButReminders => self.layers.reminders.is_some() || self.layers.nudges.is_some() || tried || agent,
-            Quiet::All => tried || agent,
-        }
+        shows_a_layer(&self.layers, self.quiet, self.game_tried, self.agent_in_quiet)
     }
 
     fn send_live(&mut self) {
@@ -1896,6 +1904,53 @@ mod tests {
         assert_eq!(shown(Quiet::ButReminders, true), Some(vec![(1, [60; 3], 1.0), (2, [7; 3], 1.0)]));
         // Not quiet: the flag changes nothing.
         assert_eq!(compose(None, &layers), Some(vec![(1, [60; 3], 1.0), (2, [7; 3], 1.0)]));
+    }
+
+    #[test]
+    fn a_layer_shows_exactly_when_quiet_mode_lets_one_through() {
+        let f = || Some(frame(&[(1, 9)], 1.0));
+        let all = [
+            LightLayer::Profile,
+            LightLayer::Gauges,
+            LightLayer::Music,
+            LightLayer::Game,
+            LightLayer::Timer,
+            LightLayer::Agent,
+            LightLayer::Alerts,
+            LightLayer::Reminders,
+            LightLayer::Nudges,
+        ];
+        // Every set of layers, every quiet mode and both flags: the actor
+        // streams exactly when something would be on the keys.
+        for mask in 0..(1u32 << all.len()) {
+            let mut layers = Layers::default();
+            for (i, l) in all.iter().enumerate() {
+                if mask & (1 << i) != 0 {
+                    *layers.slot(*l) = f();
+                }
+            }
+            for quiet in [Quiet::Off, Quiet::ButReminders, Quiet::All] {
+                for (tried, agent) in [(false, false), (true, false), (false, true), (true, true)] {
+                    let shown = if quiet == Quiet::Off {
+                        compose(None, &layers)
+                    } else {
+                        compose(None, &quiet_layers(&layers, quiet, tried, agent))
+                    };
+                    assert_eq!(
+                        shows_a_layer(&layers, quiet, tried, agent),
+                        shown.is_some(),
+                        "layers {mask:09b}, {quiet:?}, tried {tried}, agent {agent}"
+                    );
+                }
+            }
+        }
+        // The cases the agents' layer adds, by name.
+        let agent = Layers { agent: f(), ..Layers::default() };
+        assert!(shows_a_layer(&agent, Quiet::Off, false, false));
+        assert!(!shows_a_layer(&agent, Quiet::All, false, false), "hidden while playing");
+        assert!(!shows_a_layer(&agent, Quiet::ButReminders, false, false));
+        assert!(shows_a_layer(&agent, Quiet::All, false, true), "the user lets it show");
+        assert!(shows_a_layer(&agent, Quiet::ButReminders, false, true));
     }
 
     fn layer(layer: LightLayer, v: u8) -> Request {

@@ -21,4 +21,8 @@ id: string | null,
 /**
  * Settings it changed (`settings_set`): "Undo" puts `before` back.
  */
-changes: Array<AgentSettingChange>, undone: boolean, };
+changes: Array<AgentSettingChange>, undone: boolean, 
+/**
+ * Keys "Undo" left as they were: they had changed again since.
+ */
+kept: Array<string>, };

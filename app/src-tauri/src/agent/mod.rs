@@ -53,6 +53,9 @@ const FILE: &str = "agents.json";
 const VERSION: u32 = 1;
 /// A frame while lights are on: 20 a second, the app's live rate.
 const TICK: Duration = Duration::from_millis(50);
+/// While only lights kept for the user's return wait: a look at the
+/// user's input now and then.
+const WATCH: Duration = Duration::from_millis(250);
 /// Otherwise a look now and then (the pipe server, the page).
 const IDLE: Duration = Duration::from_secs(1);
 /// The page hears of changes at most this often.
@@ -61,8 +64,9 @@ const EMIT_EVERY_MS: u64 = 250;
 const SERVER_RETRY_MS: u64 = 30_000;
 /// The layer's brightness, in the keyboard's own steps.
 const LEVEL: u8 = 5;
-/// Night quiet's "faint": this share of it.
-const NIGHT_DIM: f32 = 0.2;
+/// Night quiet's "faint": the colours at this share (about a fifth of the
+/// light: the keyboard's LEDs are linear, the colours are not).
+const NIGHT_DIM: f32 = 0.5;
 /// The conflicting-program check lists every process: kept this long.
 const CONFLICT_KEEP: Duration = Duration::from_secs(5);
 
@@ -147,6 +151,9 @@ pub struct Core {
     /// The key layout of the model on the cable.
     index: Mutex<Option<Arc<KeyIndex>>>,
     server: Mutex<ServerSlot>,
+    /// Held while `agents.json` is written, so two saves never cross and
+    /// the last one written is the newest.
+    saving: Mutex<()>,
     /// Open the user's pipe (not in tests, which serve their own).
     serve_pipe: bool,
     wake: Mutex<Option<Sender<()>>>,
@@ -185,6 +192,7 @@ impl Core {
             engine: Mutex::new(Engine::new(settings)),
             index: Mutex::new(None),
             server: Mutex::new(ServerSlot::default()),
+            saving: Mutex::new(()),
             serve_pipe,
             wake: Mutex::new(None),
         })
@@ -276,7 +284,7 @@ impl Core {
             (result, effects, *e.settings())
         };
         if effects.settings {
-            self.persist(&settings);
+            self.persist();
         }
         self.wake();
         let mut data = result?;
@@ -290,8 +298,12 @@ impl Core {
         Ok(data)
     }
 
-    fn persist(&self, settings: &AgentSettings) {
-        if let Err(e) = self.host.save(settings) {
+    /// Write the newest settings: read from the engine while no other save
+    /// runs, so an older copy is never written last.
+    fn persist(&self) {
+        let _saving = lock(&self.saving);
+        let settings = self.settings();
+        if let Err(e) = self.host.save(&settings) {
             tracing::warn!("agent settings not saved: {e}");
         }
     }
@@ -329,8 +341,11 @@ impl Core {
         };
         let signals: Vec<Value> = {
             let index = self.lights().ok();
-            let e = lock(&self.engine);
-            e.infos(now.mono, index.as_deref())
+            let mut e = lock(&self.engine);
+            if let Some(index) = &index {
+                e.refresh_keys(index);
+            }
+            e.infos(now.mono, index.is_some())
                 .into_iter()
                 .filter(|i| i.kind != "try")
                 .map(|i| {
@@ -401,12 +416,21 @@ impl Core {
             if !self.serve_pipe {
                 return;
             }
-            {
-                let slot = lock(&self.server);
-                if slot.pipe.is_some() || now < slot.retry_at {
-                    return;
+            let stopped = {
+                let mut slot = lock(&self.server);
+                if slot.pipe.as_ref().is_some_and(|p| !p.accepting()) {
+                    tracing::warn!("agent pipe stopped accepting; opening it again");
+                    slot.retry_at = 0;
+                    slot.pipe.take()
+                } else {
+                    if slot.pipe.is_some() || now < slot.retry_at {
+                        return;
+                    }
+                    None
                 }
-            }
+            };
+            // Its connections end (a few seconds at most) outside the lock.
+            drop(stopped);
             let started = kb_agent::transport::current_pipe_name().and_then(|name| self.serve(&name));
             let mut slot = lock(&self.server);
             match started {
@@ -450,25 +474,31 @@ impl Core {
         let now = self.host.mono_ms();
         let index = self.lights().ok();
         let (settings, signals, log) = {
-            let e = lock(&self.engine);
-            (*e.settings(), e.infos(now, index.as_deref()), e.log_entries())
+            let mut e = lock(&self.engine);
+            if let Some(index) = &index {
+                e.refresh_keys(index);
+            }
+            (*e.settings(), e.infos(now, index.is_some()), e.log_entries())
         };
         AgentsState { lights: self.lights_now(&settings), settings, signals, log, server: self.server_state() }
     }
 
-    /// The page saved its settings (any of them).
+    /// The page saved its settings (any of them). They are written first
+    /// and only then used: a save that fails changes nothing.
     pub fn save(&self, settings: AgentSettings) -> Result<AgentsState, String> {
         let settings = settings.sanitized();
-        {
-            let mut e = lock(&self.engine);
-            if e.settings().enabled != settings.enabled {
-                tracing::info!(on = settings.enabled, "agent access");
-            }
-            e.set_settings(settings);
-        }
-        self.host.save(&settings)?;
+        let written = {
+            let _saving = lock(&self.saving);
+            self.host.save(&settings).map(|()| {
+                let mut e = lock(&self.engine);
+                if e.settings().enabled != settings.enabled {
+                    tracing::info!(on = settings.enabled, "agent access");
+                }
+                e.set_settings(settings);
+            })
+        };
         self.wake();
-        Ok(self.state())
+        written.map(|()| self.state())
     }
 
     /// "Try on the keyboard": `look` on `keys` (default every key).
@@ -495,15 +525,12 @@ impl Core {
         self.state()
     }
 
-    /// "Undo" on a log entry.
+    /// "Undo" on a log entry. Settings changed again since stay as they
+    /// are; the entry lists them (`kept`).
     pub fn undo(&self, seq: u32) -> Result<AgentsState, String> {
-        let settings = {
-            let mut e = lock(&self.engine);
-            e.undo(seq)?;
-            *e.settings()
-        };
-        tracing::info!(seq, "agent change undone");
-        self.persist(&settings);
+        let kept = lock(&self.engine).undo(seq)?;
+        tracing::info!(seq, kept = kept.len(), "agent change undone");
+        self.persist();
         self.wake();
         Ok(self.state())
     }
@@ -517,26 +544,36 @@ impl Core {
         self.ensure_server(now);
         let idle = self.host.idle_ms();
         let index = self.lights().ok();
-        let (frame, busy, dirty, settings, trying) = {
+        let settings = self.settings();
+        // Hidden while a game wants the keyboard left alone: no frames at all.
+        // Night quiet dims every light but the page's own try (the engine).
+        let (hidden, night) = match self.lights_now(&settings) {
+            AgentLights::Game => (true, 1.0),
+            AgentLights::NightDim => (false, NIGHT_DIM),
+            AgentLights::NightOff => (false, 0.0),
+            _ => (false, 1.0),
+        };
+        let (frame, lit, waiting, dirty) = {
             let mut e = lock(&self.engine);
             e.observe_idle(idle, now);
             e.prune(now);
-            let frame = index.as_deref().map(|i| e.frame(now, i)).unwrap_or_default();
-            (frame, e.busy(), e.take_dirty(), *e.settings(), e.trying(now))
+            e.apply_queued(now);
+            let frame = match &index {
+                Some(index) if !hidden => {
+                    e.refresh_keys(index);
+                    e.frame(now, night)
+                }
+                _ => Vec::new(),
+            };
+            (frame, e.lit(), e.waiting(), e.take_dirty())
         };
         let in_quiet = !settings.hide_in_game;
         if w.in_quiet != Some(in_quiet) {
             self.host.send(Request::SetAgentInQuiet(in_quiet));
             w.in_quiet = Some(in_quiet);
         }
-        // Night quiet leaves the page's own try alone.
-        let night = match self.lights_now(&settings) {
-            AgentLights::NightDim if !trying => NIGHT_DIM,
-            AgentLights::NightOff if !trying => 0.0,
-            _ => 1.0,
-        };
-        let colors = w.guard.check(now, if night > 0.0 { frame } else { Vec::new() });
-        let out = (!colors.is_empty()).then(|| LiveFrame { colors, level: level_factor(LEVEL) * night });
+        let colors = w.guard.check(now, frame);
+        let out = (!colors.is_empty()).then(|| LiveFrame { colors, level: level_factor(LEVEL) });
         if out != w.sent {
             if out.is_some() != w.sent.is_some() {
                 tracing::debug!(on = out.is_some(), "agent lights");
@@ -553,10 +590,27 @@ impl Core {
             w.emit_pending = false;
             w.last_emit = Some(now);
         }
-        if busy || w.sent.is_some() || w.emit_pending {
+        if lit || w.sent.is_some() || w.emit_pending {
             TICK
+        } else if waiting {
+            WATCH
         } else {
             IDLE
+        }
+    }
+
+    /// The worker's pass, kept alive through a panic: the agents' layer is
+    /// taken off the keys (no frame stays stuck), and the next pass starts
+    /// afresh.
+    pub fn tick_safely(&self, w: &mut Worker) -> Duration {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.tick(w))) {
+            Ok(wait) => wait,
+            Err(_) => {
+                tracing::error!("agent lights: the worker failed; their layer is cleared");
+                self.host.send(Request::SetLayer(LightLayer::Agent, None));
+                *w = Worker::default();
+                IDLE
+            }
         }
     }
 }
@@ -710,7 +764,7 @@ impl AgentHandle {
             .spawn(move || {
                 let mut w = Worker::default();
                 loop {
-                    let wait = worker.tick(&mut w);
+                    let wait = worker.tick_safely(&mut w);
                     match rx.recv_timeout(wait) {
                         Ok(()) | Err(RecvTimeoutError::Timeout) => {}
                         Err(RecvTimeoutError::Disconnected) => break,
@@ -749,7 +803,7 @@ mod tests {
     use kb_agent::protocol::{ClearArgs, LightArgs, SettingsSetArgs, SignalArgs, StatusArgs};
     use kb_agent::transport::Client;
     use kb_agent::SourceName;
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
     /// A host with a keyboard on the cable and a device that only records.
     struct Fake {
@@ -761,6 +815,11 @@ mod tests {
         in_quiet: Mutex<Vec<bool>>,
         saved: Mutex<Vec<AgentSettings>>,
         published: AtomicU64,
+        idle: Mutex<Option<u64>>,
+        /// Saving fails (a full disk).
+        save_fails: AtomicBool,
+        /// Asking for the cable panics (a bug somewhere in the worker's pass).
+        cable_panics: AtomicBool,
     }
 
     impl Fake {
@@ -774,6 +833,9 @@ mod tests {
                 in_quiet: Mutex::new(Vec::new()),
                 saved: Mutex::new(Vec::new()),
                 published: AtomicU64::new(0),
+                idle: Mutex::new(Some(0)),
+                save_fails: AtomicBool::new(false),
+                cable_panics: AtomicBool::new(false),
             })
         }
 
@@ -794,6 +856,7 @@ mod tests {
             1_800_000_000_000.0 + self.mono_ms() as f64
         }
         fn cable(&self) -> Cable {
+            assert!(!self.cable_panics.load(Ordering::SeqCst), "the cable panicked (expected in this test)");
             lock(&self.cable).clone()
         }
         fn keyboards(&self) -> Vec<KeyboardInfo> {
@@ -815,7 +878,7 @@ mod tests {
             None
         }
         fn idle_ms(&self) -> Option<u64> {
-            Some(0)
+            *lock(&self.idle)
         }
         fn minute_of_day(&self) -> u16 {
             *lock(&self.minute)
@@ -828,6 +891,9 @@ mod tests {
             }
         }
         fn save(&self, settings: &AgentSettings) -> Result<(), String> {
+            if self.save_fails.load(Ordering::SeqCst) {
+                return Err("disk full".into());
+            }
             lock(&self.saved).push(*settings);
             Ok(())
         }
@@ -857,6 +923,10 @@ mod tests {
 
     fn signal(name: &str) -> Command {
         Command::Signal(SignalArgs { name: name.into(), ..Default::default() })
+    }
+
+    fn scale_rgb(c: [u8; 3], k: f32) -> [u8; 3] {
+        effects::scale(c, k)
     }
 
     #[test]
@@ -942,14 +1012,196 @@ mod tests {
         let answer = cli.call(&signal("attention")).unwrap();
         assert_eq!(answer["hidden"], "game");
         assert_eq!(core.state().lights, AgentLights::Game);
+        // What the keys show: the device composes what the agents sent with
+        // its own quiet rule.
+        let on_keys = |fake: &Fake| {
+            let layers = crate::device::Layers { agent: fake.last_frame(), ..Default::default() };
+            let in_quiet = lock(&fake.in_quiet).last().copied().unwrap_or(false);
+            crate::device::compose(None, &crate::device::quiet_layers(&layers, Quiet::All, false, in_quiet))
+        };
         let mut w = Worker::default();
-        core.tick(&mut w);
+        for _ in 0..5 {
+            fake.advance(50);
+            core.tick(&mut w);
+        }
         assert_eq!(*lock(&fake.in_quiet), [false], "the device hides the layer");
-        // The user turns "hide while playing" off: the device is told.
+        assert!(lock(&fake.frames).is_empty(), "and no frames go out while hidden");
+        assert_eq!(on_keys(&fake), None);
+        // The user turns "hide while playing" off: the question shows over
+        // the game.
         core.save(AgentSettings { enabled: true, hide_in_game: false, ..AgentSettings::default() }).unwrap();
         core.tick(&mut w);
         assert_eq!(*lock(&fake.in_quiet), [false, true]);
         assert_eq!(core.state().lights, AgentLights::Shown);
+        let shown = on_keys(&fake).expect("the agents' keys show while the game is quiet");
+        assert_eq!(shown.len(), KeyIndex::for_model("ajazz-ak980-pro").unwrap().keys().len());
+        // On again: the layer goes off the keys.
+        core.save(AgentSettings { enabled: true, ..AgentSettings::default() }).unwrap();
+        core.tick(&mut w);
+        assert_eq!(fake.last_frame(), None);
+        assert_eq!(on_keys(&fake), None);
+    }
+
+    /// The times key `led` changed colour in the frames the device got.
+    fn key_changes(fake: &Fake, times: &[u64], led: u8) -> Vec<u64> {
+        let frames = lock(&fake.frames).clone();
+        let mut last = None;
+        let mut out = Vec::new();
+        for (frame, &t) in frames.iter().zip(times) {
+            let now = frame.as_ref().and_then(|f| f.colors.iter().find(|k| k.0 == led).map(|k| k.1));
+            if last.is_some() && last != Some(now) {
+                out.push(t);
+            }
+            last = Some(now);
+        }
+        out
+    }
+
+    #[test]
+    fn an_agent_switching_colours_fast_never_flashes_the_keys_too_fast() {
+        let (fake, core, _server, name) = setup(AgentSettings { enabled: true, ..AgentSettings::default() });
+        let mut cli = client(&name, "tests");
+        let mut w = Worker::default();
+        let mut times = Vec::new();
+        // 20 requests a second for five seconds, white and grey in turn,
+        // then red and blue; a frame after each.
+        for i in 0..200u64 {
+            let color = match (i / 100, i % 2) {
+                (0, 0) => "#ffffff",
+                (0, _) => "#404040",
+                (_, 0) => "red",
+                _ => "blue",
+            };
+            let light =
+                LightArgs { id: Some("x".into()), color: color.into(), keys: Some("esc".into()), ..Default::default() };
+            cli.call(&Command::Light(light)).unwrap();
+            fake.advance(50);
+            let before = lock(&fake.frames).len();
+            core.tick(&mut w);
+            if lock(&fake.frames).len() > before {
+                times.push(fake.mono_ms());
+            }
+        }
+        let changes = key_changes(&fake, &times, 1);
+        let most = changes.iter().map(|&t| changes.iter().filter(|&&u| u >= t && u < t + 1000).count()).max();
+        assert!(most.unwrap_or(0) <= effects::MAX_CHANGES, "{changes:?}");
+        assert!(changes.len() >= 4 * 9, "it still changes at the safe rate: {changes:?}");
+    }
+
+    #[test]
+    fn replacements_past_the_rate_wait_for_the_worker() {
+        let (fake, core, _server, name) = setup(AgentSettings { enabled: true, ..AgentSettings::default() });
+        let mut cli = client(&name, "tests");
+        // 60 updates of one light at once (the fake clock stands still).
+        for i in 0..60u8 {
+            let color = format!("#0000{i:02x}");
+            let light = LightArgs { id: Some("bar".into()), color, keys: Some("esc".into()), ..Default::default() };
+            let answer = cli.call(&Command::Light(light)).unwrap();
+            assert_eq!(answer["queued"], i >= 20, "{i}");
+        }
+        let mut w = Worker::default();
+        core.tick(&mut w);
+        assert_eq!(fake.last_frame().unwrap().colors, [(1, [0, 0, 19])], "the newest put up so far");
+        fake.advance(1_000);
+        core.tick(&mut w);
+        assert_eq!(fake.last_frame().unwrap().colors, [(1, [0, 0, 59])], "then the newest that waited");
+    }
+
+    #[test]
+    fn busy_without_the_cable_still_clears() {
+        let (fake, core, _server, name) = setup(AgentSettings { enabled: true, ..AgentSettings::default() });
+        let mut cli = client(&name, "tests");
+        cli.call(&signal("attention")).unwrap();
+        *lock(&fake.cable) = Cable::NotUsb;
+        assert_eq!(cli.call(&signal("busy")).unwrap()["cleared"], 1);
+        // Plugged in again: the question does not come back.
+        *lock(&fake.cable) = Cable::Usb("ajazz-ak980-pro".into());
+        let mut w = Worker::default();
+        core.tick(&mut w);
+        assert_eq!(fake.last_frame(), None);
+        assert!(core.state().signals.is_empty());
+    }
+
+    #[test]
+    fn a_failed_save_changes_nothing_and_concurrent_saves_end_with_the_newest() {
+        let (fake, core, _server, name) = setup(AgentSettings { enabled: true, ..AgentSettings::default() });
+        let (tx, rx) = mpsc::channel();
+        *lock(&core.wake) = Some(tx);
+        fake.save_fails.store(true, Ordering::SeqCst);
+        let off = AgentSettings { enabled: false, ..AgentSettings::default() };
+        assert_eq!(core.save(off).unwrap_err(), "disk full");
+        assert!(core.state().settings.enabled, "the engine kept what is on disk");
+        assert!(rx.try_recv().is_ok(), "the worker was woken anyway");
+        fake.save_fails.store(false, Ordering::SeqCst);
+
+        // Agents and the page saving at once: what is on disk at the end is
+        // what the app uses.
+        let colors = ["red", "green", "blue", "white", "amber", "cyan", "pink", "purple"];
+        let threads: Vec<_> = (0..8)
+            .map(|n| {
+                let name = name.clone();
+                std::thread::spawn(move || {
+                    let mut cli = client(&name, &format!("agent{n}"));
+                    for i in 0..10 {
+                        let key = ["signals.done.color", "signals.error.color", "progress.color"][(n + i) % 3];
+                        let values = [(key.to_string(), json!(colors[(n + i) % 8]))].into_iter().collect();
+                        cli.call(&Command::SettingsSet(SettingsSetArgs { values })).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for i in 0..10u8 {
+            let mut s = core.state().settings;
+            s.helper.color = [i, i, i];
+            core.save(s).unwrap();
+        }
+        for t in threads {
+            t.join().unwrap();
+        }
+        assert_eq!(*lock(&fake.saved).last().unwrap(), core.state().settings);
+    }
+
+    #[test]
+    fn a_panic_in_the_worker_takes_the_agents_layer_off_and_it_goes_on() {
+        let (fake, core, _server, name) = setup(AgentSettings { enabled: true, ..AgentSettings::default() });
+        let mut cli = client(&name, "tests");
+        cli.call(&Command::Light(LightArgs { color: "red".into(), keys: Some("esc".into()), ..Default::default() }))
+            .unwrap();
+        let mut w = Worker::default();
+        core.tick_safely(&mut w);
+        assert!(fake.last_frame().is_some());
+        fake.cable_panics.store(true, Ordering::SeqCst);
+        core.tick_safely(&mut w);
+        assert_eq!(*lock(&fake.frames).last().unwrap(), None, "no frame stays stuck on the keys");
+        fake.cable_panics.store(false, Ordering::SeqCst);
+        fake.advance(50);
+        core.tick_safely(&mut w);
+        assert_eq!(fake.last_frame().unwrap().colors, [(1, [255, 0, 0])], "the next pass draws again");
+    }
+
+    #[test]
+    fn the_worker_only_watches_while_lights_wait_for_the_users_return() {
+        let (fake, core, _server, name) = setup(AgentSettings { enabled: true, ..AgentSettings::default() });
+        let mut cli = client(&name, "tests");
+        let mut w = Worker::default();
+        *lock(&fake.idle) = Some(60 * 60_000);
+        core.tick(&mut w);
+        cli.call(&signal("done")).unwrap();
+        assert_eq!(core.tick(&mut w), TICK);
+        fake.advance(3 * 60_000);
+        let mut wait = core.tick(&mut w);
+        for _ in 0..10 {
+            wait = core.tick(&mut w);
+        }
+        assert_eq!(fake.last_frame(), None);
+        assert_eq!(wait, WATCH, "only a look at the user's input now and then");
+        // Back: the done flashes once.
+        *lock(&fake.idle) = Some(0);
+        assert_eq!(core.tick(&mut w), TICK);
+        assert_eq!(
+            fake.last_frame().unwrap().colors.len(),
+            KeyIndex::for_model("ajazz-ak980-pro").unwrap().keys().len()
+        );
     }
 
     #[test]
@@ -981,11 +1233,15 @@ mod tests {
         let light = Command::Light(LightArgs { color: "white".into(), keys: Some("esc".into()), ..Default::default() });
         let answer = core.handle(Call { peer: &peer, source: &tests, id: "1" }, light.clone()).unwrap();
         assert_eq!(answer["hidden"], Value::Null, "faint is not hidden");
+        // The page's try on F1 at the same time is not dimmed.
+        core.try_look(look, Some("f1".into())).unwrap();
         core.tick(&mut w);
         let frame = fake.last_frame().unwrap();
-        assert_eq!(frame.colors, [(1, [255, 255, 255])]);
-        assert!((frame.level - level_factor(LEVEL) * NIGHT_DIM).abs() < 1e-6);
+        let faint = scale_rgb([255, 255, 255], NIGHT_DIM);
+        assert_eq!(frame.colors, [(2, [10, 20, 30]), (1, faint)]);
+        assert_eq!(frame.level, level_factor(LEVEL));
         assert_eq!(core.state().lights, AgentLights::NightDim);
+        fake.advance(engine::TRY_MS);
         night.night.mode = AgentNightMode::Off;
         core.save(night).unwrap();
         let answer = core.handle(Call { peer: &peer, source: &other, id: "2" }, light).unwrap();
