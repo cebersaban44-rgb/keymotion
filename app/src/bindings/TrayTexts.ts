@@ -71,4 +71,10 @@ noticeInstalledTitle: string,
 /**
  * Its line when the app installed the update by itself.
  */
-noticeInstalledAuto: string, noticeWhatsNew: string, };
+noticeInstalledAuto: string, noticeWhatsNew: string, 
+/**
+ * Keyboard models' names in the UI language, by model id, for the
+ * models sold under another name there (Chinese: 黑爵 AK980 V2（带屏版）).
+ * A model not listed keeps its model file's name.
+ */
+modelNames: Record<string, string>, };

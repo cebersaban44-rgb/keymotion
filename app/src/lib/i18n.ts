@@ -69,6 +69,15 @@ export function modelTitle(t: Translate, modelId: string, fallback: string): str
   return key in en ? t(key as MessageKey) : fallback;
 }
 
+/** The models the dictionaries name (model id → name now), for the tray. */
+export function modelNames(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of Object.keys(en)) {
+    if (key.startsWith("model.")) out[key.slice("model.".length)] = tNow(key as MessageKey);
+  }
+  return out;
+}
+
 export const connectionKey = (c: Connection, short = false): MessageKey =>
   `conn.${c}${short ? ".short" : ""}` as MessageKey;
 

@@ -22,7 +22,7 @@ import {
 } from "./lib/ipc";
 import { follow } from "./lib/follow";
 import { useUnsaved } from "./lib/unsaved";
-import { connectionKey, tNow, useT, type MessageKey } from "./lib/i18n";
+import { connectionKey, modelNames, tNow, useT, type MessageKey } from "./lib/i18n";
 import { useKeymap } from "./lib/keymap";
 import { useLayout } from "./lib/layout";
 import { startLive } from "./lib/live";
@@ -232,6 +232,7 @@ function useTray() {
       noticeInstalledTitle: tNow("notice.update.installed.title"),
       noticeInstalledAuto: tNow("notice.update.installed.auto"),
       noticeWhatsNew: tNow("update.whatsNew"),
+      modelNames: modelNames(),
     }).catch(console.error);
   }, [locale]);
   useEffect(() => {

@@ -321,6 +321,7 @@ pub fn refresh(app: &AppHandle) {
 /// The keyboard line's facts.
 #[derive(Debug, Clone, PartialEq)]
 struct KeyboardLine {
+    model_id: String,
     name: String,
     connection: Connection,
     battery: Option<u8>,
@@ -442,7 +443,9 @@ fn view_of(t: &TrayTexts, f: &Facts, now_ms: f64, tz: &TimeZone) -> View {
     let keyboard = match &f.keyboard {
         None => t.no_keyboard.clone(),
         Some(k) => {
-            let mut parts = vec![k.name.clone(), connection_word(t, k.connection).to_string()];
+            // The name the UI gives the model in its language, if any.
+            let name = t.model_names.get(&k.model_id).unwrap_or(&k.name).clone();
+            let mut parts = vec![name, connection_word(t, k.connection).to_string()];
             if let Some(n) = k.battery.filter(|_| k.connection != Connection::Usb) {
                 parts.push(fill(t, &t.battery, &[("n", &n.to_string())]));
             }
@@ -534,7 +537,12 @@ fn keyboard_line(app: &AppHandle) -> Option<KeyboardLine> {
     } else {
         format!("{} {}", k.vendor, k.model_name)
     };
-    Some(KeyboardLine { name, connection: k.connection, battery: k.battery.as_ref().map(|b| b.percent) })
+    Some(KeyboardLine {
+        model_id: k.model_id.clone(),
+        name,
+        connection: k.connection,
+        battery: k.battery.as_ref().map(|b| b.percent),
+    })
 }
 
 fn next_reminder(s: &ReminderState) -> Option<(f64, String)> {
@@ -1072,6 +1080,7 @@ mod tests {
         let at = ms;
         let mut f = Facts {
             keyboard: Some(KeyboardLine {
+                model_id: "ajazz-ak980-pro".into(),
                 name: "AJAZZ AK980 PRO".into(),
                 connection: Connection::Bluetooth,
                 battery: Some(80),
@@ -1104,11 +1113,20 @@ mod tests {
         assert_eq!(view_of(&t, &f, now, &tz).reminders_next, "Reminders off");
 
         // The cable: no battery; no keyboard; the timer idle.
-        f.keyboard =
-            Some(KeyboardLine { name: "AJAZZ AK980 PRO".into(), connection: Connection::Usb, battery: Some(80) });
+        f.keyboard = Some(KeyboardLine {
+            model_id: "ajazz-ak980-pro".into(),
+            name: "AJAZZ AK980 PRO".into(),
+            connection: Connection::Usb,
+            battery: Some(80),
+        });
         f.pomodoro = Some(pomodoro(PomodoroStatus::Idle, PomodoroPhase::Focus, 1, 0.0));
         let v = view_of(&t, &f, now, &tz);
         assert_eq!(v.keyboard, "AJAZZ AK980 PRO · USB cable");
+        // The UI's name for the model, in Chinese the name it is sold under.
+        let mut zh = t.clone();
+        zh.model_names.insert("ajazz-ak980-pro".into(), "黑爵 AK980 V2（带屏版）".into());
+        zh.conn_usb = "USB 有线".into();
+        assert_eq!(view_of(&zh, &f, now, &tz).keyboard, "黑爵 AK980 V2（带屏版） · USB 有线");
         assert_eq!((v.focus_toggle.as_str(), v.focus_active, v.tooltip.as_str()), ("Start", false, "Keymotion"));
         f.keyboard = None;
         assert_eq!(view_of(&t, &f, now, &tz).keyboard, "No keyboard connected");
