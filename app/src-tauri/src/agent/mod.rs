@@ -139,6 +139,9 @@ pub struct Worker {
     in_quiet: Option<bool>,
     emit_pending: bool,
     last_emit: Option<u64>,
+    /// Frames the flash guard changed since it was last logged, and when.
+    held: u32,
+    held_logged: Option<u64>,
 }
 
 /// The agents' state and the pipe's handler, shared by the pipe's
@@ -572,7 +575,16 @@ impl Core {
             self.host.send(Request::SetAgentInQuiet(in_quiet));
             w.in_quiet = Some(in_quiet);
         }
+        let wanted = frame.clone();
         let colors = w.guard.check(now, frame);
+        if colors != wanted {
+            w.held += 1;
+        }
+        if w.held > 0 && w.held_logged.is_none_or(|t| now.saturating_sub(t) >= 1000) {
+            tracing::debug!(frames = w.held, "flash guard held keys that changed too fast");
+            w.held = 0;
+            w.held_logged = Some(now);
+        }
         let out = (!colors.is_empty()).then(|| LiveFrame { colors, level: level_factor(LEVEL) });
         if out != w.sent {
             if out.is_some() != w.sent.is_some() {
