@@ -669,23 +669,45 @@ fn marker_version(text: &str, marker: &str) -> Option<u32> {
     digits.parse().ok()
 }
 
-/// The Codex rule. Kept to the one rule: a mistake in any rules file drops
-/// all of the user's rules too, so it carries no examples that a later
-/// Codex could read differently.
-pub fn rules_text() -> String {
+/// The Codex rule (checked with `codex execpolicy check
+/// --resolve-host-executables`, Codex 0.166.0): `keymotion-cli <command>`
+/// by its name, or by the full path of this keymotion-cli, and no other
+/// program of that name (a copy a repository brings along stays in the
+/// sandbox: `host_executable`). Kept to what it must say: a mistake in any
+/// rules file drops all of the user's rules too, so it carries no examples
+/// that a later Codex could read differently.
+pub fn rules_text(cli: &Cli) -> String {
     let allowed = ALLOWED_COMMANDS.iter().map(|c| format!("\"{c}\"")).collect::<Vec<_>>().join(", ");
+    let path = starlark_string(&cli.path_text());
     format!(
         "# {RULES_MARKER} {RULES_VERSION}. Written by Keymotion; changes made here do not last.
 # Lets the agent's own keymotion-cli calls for the keyboard's lights and status
 # run outside Codex's sandbox, which cannot reach Keymotion's per-user pipe.
 # Connecting or disconnecting a coding app is not among them: Codex still asks.
 prefix_rule(
-    pattern = [\"keymotion-cli\", [{allowed}]],
+    pattern = [[\"keymotion-cli\", \"keymotion-cli.exe\"], [{allowed}]],
     decision = \"allow\",
     justification = \"Keymotion's keyboard lights: keymotion-cli talks to the Keymotion app over a pipe the sandbox cannot reach.\",
 )
+host_executable(name = \"keymotion-cli\", paths = [{path}])
 "
     )
+}
+
+/// `text` as a Starlark string literal.
+fn starlark_string(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for c in text.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 /// keymotion-cli's commands the Codex rule lets out of the sandbox: lights,
@@ -747,7 +769,7 @@ pub fn plan_connect(agent: Agent, homes: &Homes, cli: &Cli) -> Result<Plan, Setu
         edits.push(Edit {
             path: rules.clone(),
             before: read_text(&rules)?,
-            after: Some(rules_text()),
+            after: Some(rules_text(cli)),
             summary: format!("a rule that lets keymotion-cli {} out of the sandbox", ALLOWED_COMMANDS.join(", ")),
             backup: false,
         });
@@ -1167,7 +1189,7 @@ pub fn refresh(homes: &Homes, cli: &Cli) -> Vec<PathBuf> {
     }
     let rules = homes.rules_file();
     if let Ok(text) = std::fs::read_to_string(&rules) {
-        let current = rules_text();
+        let current = rules_text(cli);
         if marker_version(&text, RULES_MARKER).is_some() && text != current && write_atomic(&rules, &current).is_ok() {
             done.push(rules);
         }
@@ -1411,6 +1433,20 @@ mod tests {
         let _ = std::fs::remove_dir_all(&home);
     }
 
+    /// The hashes Codex 0.166.0 itself gave for these two hooks
+    /// (`codex app-server`, `hooks/list`, `currentHash`, 2026-11-22).
+    #[test]
+    fn the_trust_hash_is_the_one_codex_computes() {
+        assert_eq!(
+            codex_hook_hash("Stop", r"& 'C:\Users\A B\bin\keymotion-cli.exe' hook codex", true, 10),
+            "sha256:0e8fc55d859112b65786dd58471581168cbff85c091e71692fb749ba119af30c"
+        );
+        assert_eq!(
+            codex_hook_hash("SessionEnd", r"C:\x\keymotion-cli.exe hook codex", false, 3),
+            "sha256:5405e135140ffbf019672932b7710cbc386fa93b93949b72a049268067fe3589"
+        );
+    }
+
     fn toml_key(k: &str) -> String {
         format!("'{k}'")
     }
@@ -1503,7 +1539,13 @@ mod tests {
         assert!(text.lines().count() < 40);
         assert!(text.is_ascii());
         assert_eq!(skill_version(&text), Some(SKILL_VERSION));
-        assert!(rules_text().contains("\"keymotion-cli\""));
+        let rules = rules_text(&cli(Path::new(r"C:\Users\Ana B")));
+        assert!(rules.contains("\"keymotion-cli\""));
+        // Starlark reads a backslash as an escape: each one doubled.
+        assert!(
+            rules.contains(r#"paths = ["C:\\Users\\Ana B\\Program Files\\Key Motion\\bin\\keymotion-cli.exe"]"#),
+            "{rules}"
+        );
         for never in ["connect", "disconnect", "hook"] {
             assert!(!ALLOWED_COMMANDS.contains(&never));
         }

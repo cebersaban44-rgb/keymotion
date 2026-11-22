@@ -9,9 +9,10 @@
 //! code 2 never happens: [`parse`] uses `try_parse` and maps every refusal
 //! to 64.
 //!
-//! Later steps add commands here (hook mode, connect and disconnect, focus,
-//! profile, card, scene and spell): each is a [`Cmd`] variant with a
-//! [`Plan`].
+//! Later steps add commands here (focus, profile, card, scene and spell):
+//! each is a [`Cmd`] variant with a [`Plan`]. Hook mode (`hook`) is read by
+//! `main` before clap, so nothing about its command line can make it exit
+//! with anything but 0 (`crate::hook`); clap knows it too, for `--help`.
 
 use std::ffi::OsString;
 
@@ -38,6 +39,11 @@ pub const TEST_PIPE_PREFIX: &str = r"\\.\pipe\keymotion-cli-test-";
 pub const TEST_PIPE_ENV: &str = "KEYMOTION_CLI_TEST_PIPE";
 /// Whether this build reads [`TEST_PIPE_ENV`].
 pub const TEST_PIPE_BUILD: bool = cfg!(any(debug_assertions, feature = "test-pipe"));
+/// Tests only: the home folder `connect` and `disconnect` work in, instead
+/// of the user's (`.claude`, `.codex`, `.agents` under it;
+/// `CLAUDE_CONFIG_DIR` and `CODEX_HOME` count only inside it). Read by the
+/// same builds as [`TEST_PIPE_ENV`].
+pub const TEST_HOME_ENV: &str = "KEYMOTION_CLI_TEST_HOME";
 pub const OUTPUT_ENV: &str = "KEYMOTION_OUTPUT";
 pub const SOURCE_ENV: &str = "KEYMOTION_SOURCE";
 
@@ -59,13 +65,16 @@ pub struct Env {
     pub source: Option<String>,
     /// [`TEST_PIPE_ENV`], in builds that read it ([`TEST_PIPE_BUILD`]).
     pub test_pipe: Option<String>,
+    /// [`TEST_HOME_ENV`], in the same builds.
+    pub test_home: Option<String>,
 }
 
 impl Env {
     pub fn read() -> Self {
         let var = |name: &str| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
         let test_pipe = if TEST_PIPE_BUILD { var(TEST_PIPE_ENV) } else { None };
-        Self { output: var(OUTPUT_ENV), source: var(SOURCE_ENV), test_pipe }
+        let test_home = if TEST_PIPE_BUILD { var(TEST_HOME_ENV) } else { None };
+        Self { output: var(OUTPUT_ENV), source: var(SOURCE_ENV), test_pipe, test_home }
     }
 
     /// `KEYMOTION_OUTPUT=json` (any case).
@@ -170,6 +179,52 @@ pub enum Cmd {
     Doctor,
     /// Start Keymotion without a window and wait until it answers
     Start,
+    /// Connect Keymotion to a coding agent: its hooks, a skill (and for Codex a rule)
+    Connect(ConnectCmd),
+    /// Take Keymotion's hooks, skill and rule away from a coding agent again
+    Disconnect(ConnectCmd),
+    /// Whether Claude Code and Codex are connected
+    Connections,
+    /// For a coding agent's hooks: reads the event on stdin, prints nothing, always exits 0
+    Hook(HookCmd),
+}
+
+/// The coding agents `connect` knows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum AgentArg {
+    ClaudeCode,
+    Codex,
+}
+
+impl AgentArg {
+    pub fn agent(self) -> kb_hooks::Agent {
+        match self {
+            Self::ClaudeCode => kb_hooks::Agent::ClaudeCode,
+            Self::Codex => kb_hooks::Agent::Codex,
+        }
+    }
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ConnectCmd {
+    /// claude-code or codex
+    #[arg(value_enum)]
+    pub agent: AgentArg,
+    /// Do it without asking (needed when no one is at a terminal)
+    #[arg(long, short = 'y')]
+    pub yes: bool,
+    /// Only say what would change
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct HookCmd {
+    /// claude-code or codex
+    pub agent: String,
+    /// Internal: deliver an event read earlier, starting Keymotion first
+    #[arg(long, hide = true, value_name = "EVENT")]
+    pub deliver: Option<String>,
 }
 
 /// How a light looks and how long it stays (`signal` and `light`).
@@ -276,6 +331,11 @@ pub enum Plan {
     Guide,
     Doctor,
     Start,
+    Connect { agent: kb_hooks::Agent, yes: bool, dry_run: bool },
+    Disconnect { agent: kb_hooks::Agent, yes: bool, dry_run: bool },
+    Connections,
+    /// Hook mode, reached through clap (`main` reads it first otherwise).
+    Hook { agent: String, deliver: Option<String> },
 }
 
 impl Cmd {
@@ -295,6 +355,10 @@ impl Cmd {
             Self::Guide => "guide",
             Self::Doctor => "doctor",
             Self::Start => "start",
+            Self::Connect(_) => "connect",
+            Self::Disconnect(_) => "disconnect",
+            Self::Connections => "connections",
+            Self::Hook(_) => "hook",
         }
     }
 
@@ -306,6 +370,12 @@ impl Cmd {
             Self::Guide => return Ok(Plan::Guide),
             Self::Doctor => return Ok(Plan::Doctor),
             Self::Start => return Ok(Plan::Start),
+            Self::Connect(c) => return Ok(Plan::Connect { agent: c.agent.agent(), yes: c.yes, dry_run: c.dry_run }),
+            Self::Disconnect(c) => {
+                return Ok(Plan::Disconnect { agent: c.agent.agent(), yes: c.yes, dry_run: c.dry_run })
+            }
+            Self::Connections => return Ok(Plan::Connections),
+            Self::Hook(h) => return Ok(Plan::Hook { agent: h.agent.clone(), deliver: h.deliver.clone() }),
             Self::Keys => Command::Keys(KeysArgs {}),
             Self::Signal(s) => {
                 let l = &s.look;
