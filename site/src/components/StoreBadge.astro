@@ -6,6 +6,10 @@
 // the site so a visit asks nothing of another server (owner's choice,
 // 2026-11-16). Microsoft's guidelines: never stretch, recolor or change the
 // badge; the dark one goes on light backgrounds and the light one on dark.
+// Each site language has Microsoft's badge in that language; its label is
+// the words printed on it (src/i18n.ts).
+import { LANG, UI, siteLocale } from "../i18n";
+
 interface Props {
   /** The link; the Store page in "full" mode by default. */
   href?: string;
@@ -14,15 +18,13 @@ interface Props {
 const STORE_URL ="https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full";
 
 const { href = STORE_URL } = Astro.props;
-const tr = Astro.currentLocale === "tr";
-const name = tr ? "tr" : "en";
-const width = tr ? 180 : 161;
-const label = tr ? "Microsoft'tan alın" : "Get it from Microsoft";
+const locale = siteLocale(Astro.currentLocale);
+const { file, width, label } = UI[locale].storeBadge;
 ---
 
-<a class="store-badge not-content" {href} aria-label={label}>
-  <img src={`/keymotion/images/store/get-it-from-microsoft-${name}-dark.svg`} {width} height="44" alt="" class="on-light" />
-  <img src={`/keymotion/images/store/get-it-from-microsoft-${name}-light.svg`} {width} height="44" alt="" class="on-dark" />
+<a class="store-badge not-content" {href} aria-label={label} lang={LANG[locale]}>
+  <img src={`/keymotion/images/store/get-it-from-microsoft-${file}-dark.svg`} {width} height="44" alt="" class="on-light" />
+  <img src={`/keymotion/images/store/get-it-from-microsoft-${file}-light.svg`} {width} height="44" alt="" class="on-dark" />
 </a>
 
 <style>

@@ -6,7 +6,7 @@ import type { ProfileInfo } from "../bindings/ProfileInfo";
 import type { ProfilePart } from "../bindings/ProfilePart";
 import type { ProfileParts } from "../bindings/ProfileParts";
 import type { ProfilesState } from "../bindings/ProfilesState";
-import type { Locale, MessageKey, Translate } from "./i18n";
+import { intlTag, listOf, type Locale, type MessageKey, type Translate } from "./i18n";
 import { getProfiles, inTauri, listen, loadProfilePart } from "./ipc";
 import { adoptKeymapRecord } from "./keymap";
 import { initLighting } from "./lighting";
@@ -47,15 +47,11 @@ export const PART_NOUN: Record<ProfilePart, MessageKey> = {
 
 export const PARTS: readonly ProfilePart[] = ["lighting", "keymap", "macros", "screen"];
 
-const intl = (locale: Locale) => (locale === "tr" ? "tr-TR" : "en-US");
-
-/** "a, b ve c" / "a, b, and c". */
-export function listOf(items: string[], locale: Locale): string {
-  return new Intl.ListFormat(intl(locale), { type: "conjunction" }).format(items);
-}
+/** "a, b ve c" / "a, b, and c" (in i18n.ts; the Profiles page imports it from here). */
+export { listOf };
 
 function capitalize(text: string, locale: Locale): string {
-  return text.charAt(0).toLocaleUpperCase(intl(locale)) + text.slice(1);
+  return text.charAt(0).toLocaleUpperCase(intlTag(locale)) + text.slice(1);
 }
 
 export function profileName(p: ProfileInfo, t: Translate): string {

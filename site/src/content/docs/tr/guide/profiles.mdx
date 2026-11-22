@@ -1,12 +1,12 @@
 ---
 title: Profiller
-description: Işık, tuş atama ve makrolarınızı adlandırılmış setler olarak saklayın, birini tek seferde klavyeye yükleyin.
+description: Işık, tuş atama ve makrolarınızı adlandırılmış setler olarak saklayın; birini tek seferde klavyeye yükleyin ya da öndeki programa göre seçilsin.
 ---
 
 import Screenshot from "~/components/Screenshot.astro";
 import { Aside, Steps } from "@astrojs/starlight/components";
 
-Profil, klavye ayarlarından oluşan adlandırılmış bir settir: ışık, tuş atama, makrolar ve isterseniz bir ekran görseli. Bir profili yüklediğinizde klavye bunların hepsini tek seferde alır; örneğin iş için bir set, oyun için başka bir set tutabilirsiniz.
+Profil, klavye ayarlarından oluşan adlandırılmış bir settir: ışık, tuş atama, makrolar ve isterseniz bir ekran görseli. Bir profili yüklediğinizde klavye bunların hepsini tek seferde alır; örneğin iş için bir set, oyun için başka bir set tutabilirsiniz. [Uygulamaya göre](#uygulamaya-göre) açıkken profil, programlar arasında geçtikçe kendiliğinden değişir.
 
 <Screenshot name="profiles" alt="Biri Klavyede diye işaretli iki kayıtlı profil, Varsayılan profil ve yeni profile neler gireceğinin seçimiyle Profiller sayfası" />
 
@@ -78,10 +78,12 @@ Listenin altındaki **Uygulamaya göre** bölümü, programlar arasında geçtik
 <Steps>
 
 1. **Uygulamaya göre**'yi açın.
-2. **Program seç** listesinden **Bütün oyunlar**'ı, oynadığınız bir oyunu ya da son kullandığınız bir programı seçip **Ekle**'ye tıklayın. Listede olmayan bir program, onu bir kez öne getirince görünür.
+2. **Bir program seçin** listesinden **Bütün oyunlar**'ı, oynadığınız bir oyunu ya da son kullandığınız bir programı seçip **Ekle**'ye tıklayın. Listede olmayan bir program, onu bir kez öne getirince görünür.
 3. Onun profilini seçin.
 
 </Steps>
+
+<Screenshot name="profiles-by-app" alt="Uygulamaya göre açık: Bütün oyunlar bir profile, Code başka bir profile bağlı; her kuralın altında Tuş atamasını ve makroları da değiştir kutusu, altta program seçme listesi, Ekle ve kaydedilen bir profilden sonra ne olacağının seçimi" />
 
 - **Varsayılan olarak yalnız ışık.** Işığı tuş başına renk olan bir profil, programı öne geldikten bir saniye sonra tuşlarda görünür, başka bir program öne gelince gider. Klavyeye hiçbir şey kaydedilmez; bu yüzden sık geçişler klavyeyi yıpratmaz. Işığı hazır bir efekt olan profil, sonraki seçenek açık değilse hiçbir şeyi değiştirmez. Diğer ışıklar önce gelir: sistem göstergeleri, odak zamanlayıcısı ya da oyun ışıkları yanarken onu örter.
 - **Tuş atamasını ve makroları da değiştir**, programı 10 saniye önde kalınca profili klavyeye kaydeder: ışık, tuş atama ve makrolar; ekran görseli hiçbir zaman. Programdan daha önce ayrılırsanız hiçbir şey kaydedilmez. Klavye yıpranmasın diye günde en çok 20 kez olur; kaydedilmemiş bir değişiklik varken siz kaydedene kadar bekler.

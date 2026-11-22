@@ -162,7 +162,8 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
   );
 }
 
-/** Pill-shaped single choice (radio group). */
+/** Pill-shaped single choice (radio group). An option's `lang` marks a label
+ *  in another language (the language picker), so it gets that language's font. */
 export function Segmented<T extends string>({
   value,
   options,
@@ -171,7 +172,7 @@ export function Segmented<T extends string>({
   disabled,
 }: {
   value: T;
-  options: { value: T; label: string; icon?: ReactNode }[];
+  options: { value: T; label: string; icon?: ReactNode; lang?: string }[];
   onChange: (v: T) => void;
   label: string;
   disabled?: boolean;
@@ -189,6 +190,7 @@ export function Segmented<T extends string>({
           type="button"
           role="radio"
           aria-checked={o.value === value}
+          lang={o.lang}
           disabled={disabled}
           onClick={() => onChange(o.value)}
           className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[13px] transition-colors disabled:cursor-not-allowed ${
