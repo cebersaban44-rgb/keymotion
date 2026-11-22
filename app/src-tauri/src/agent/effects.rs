@@ -10,10 +10,10 @@
 //! * A "flash again" ([`BURST_MS`]: three flashes at the safe rate) goes
 //!   over a light for a moment: when the user comes back to the computer,
 //!   or when a question has waited too long.
-//! * [`FlashGuard`] watches the frames that go out, key by key, and holds
-//!   a key dark rather than let it light up a fourth time within a second,
-//!   whatever the looks, the flashes again and the lights taking turns on
-//!   it add up to.
+//! * [`FlashGuard`] watches the frames that go out, key by key, and holds a
+//!   key's colour rather than let it change more than six times (three
+//!   flashes) within a second, whatever the looks, the flashes again, the
+//!   lights taking turns on it or an agent switching colours add up to.
 
 use crate::dto::AgentEffect;
 use kb_agent::values::{clamp_flash_period, MAX_FLASHES_PER_SECOND, MIN_FLASH_PERIOD};
@@ -203,7 +203,17 @@ impl Look {
         let intro = self.intro_ms();
         match self.intro {
             Some((motion, _)) if t < intro => motion.level(t, place),
-            _ => self.main.level(t - intro.min(t), place),
+            _ => self.main.level(t - intro.min(t) + self.main_from(), place),
+        }
+    }
+
+    /// Where the main motion starts, in ms of its cycle. A pulse after an
+    /// opening starts from its dark side: the flashes end dark, and a pulse
+    /// that lit up at once and faded again would make a fourth flash.
+    fn main_from(&self) -> u64 {
+        match (self.intro, self.main) {
+            (Some(_), Motion::Pulse { period_ms }) => period_ms / 2,
+            _ => 0,
         }
     }
 }
@@ -221,15 +231,49 @@ pub fn scale(color: Rgb, k: f32) -> Rgb {
     color.map(|v| (f32::from(v) * k).round() as u8)
 }
 
-/// A key counts as lit at this brightness of its brightest channel, and
-/// as dark again below [`DARK`] (the gap keeps a pulse near the line from
-/// counting as flashes).
-const LIT: u8 = 96;
-const DARK: u8 = 48;
+/// A swing this large in a channel (of 255) is a change of the key's light:
+/// brighter or darker, or another colour (red to blue swings two channels).
+const SWING: i16 = 40;
+/// Changes a key may make in any second: three flashes, each on and off.
+pub const MAX_CHANGES: usize = 2 * MAX_FLASHES_PER_SECOND as usize;
 const WINDOW_MS: u64 = 1000;
 
-/// The last check before a frame goes out: no key lights up more than
-/// three times in any second. A key that would is held dark for that frame.
+/// One channel's last turn: where it was and which way it went since.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Swing {
+    /// The highest value since it last went up, or the lowest since it last
+    /// went down.
+    extreme: u8,
+    /// 1 up, -1 down, 0 not yet moved.
+    way: i8,
+}
+
+impl Swing {
+    /// The channel moves to `v`: whether that completes a change, and how
+    /// it stands after.
+    fn to(self, v: u8) -> (bool, Swing) {
+        let (e, v16) = (i16::from(self.extreme), i16::from(v));
+        match self.way {
+            1 if v16 >= e => (false, Swing { extreme: v, way: 1 }),
+            -1 if v16 <= e => (false, Swing { extreme: v, way: -1 }),
+            1 if e - v16 >= SWING => (true, Swing { extreme: v, way: -1 }),
+            -1 if v16 - e >= SWING => (true, Swing { extreme: v, way: 1 }),
+            0 if (v16 - e).abs() >= SWING => (true, Swing { extreme: v, way: if v16 > e { 1 } else { -1 } }),
+            _ => (false, self),
+        }
+    }
+}
+
+/// The last check before a frame goes out: no key changes its light more
+/// than [`MAX_CHANGES`] times in any second (three flashes, WCAG 2.3.1),
+/// whatever asks for it: a look, a flash again, lights taking turns on a
+/// key, or an agent switching a light between two colours. Each swing of
+/// a channel by [`SWING`] or more counts once, however many frames it
+/// takes, so pulses and waves pass untouched; channels swinging the same
+/// way are one change even when they cross the line on different frames
+/// (an orange dimming), channels swinging opposite ways (red to blue) are
+/// a change every time. A key that would change once more keeps the colour
+/// it shows.
 #[derive(Debug, Default)]
 pub struct FlashGuard {
     keys: HashMap<u8, KeyState>,
@@ -237,43 +281,72 @@ pub struct FlashGuard {
 
 #[derive(Debug, Default)]
 struct KeyState {
-    lit: bool,
-    /// When it lit up lately, oldest first.
-    ups: VecDeque<u64>,
+    channels: [Swing; 3],
+    /// The way its last change went: 1 brighter, -1 darker, 0 neither (a
+    /// change of colour, or none yet).
+    way: i8,
+    /// What it shows now: `None` when the frame leaves it to the layers
+    /// under the agents' (dark, as far as this layer goes).
+    shown: Option<Rgb>,
+    /// When it changed lately, oldest first.
+    changes: VecDeque<u64>,
 }
 
 impl FlashGuard {
     /// `frame` as it may go out at `now` (ms).
     pub fn check(&mut self, now: u64, frame: Vec<(u8, Rgb)>) -> Vec<(u8, Rgb)> {
-        let seen: Vec<u8> = frame.iter().map(|k| k.0).collect();
-        for (led, state) in &mut self.keys {
-            while state.ups.front().is_some_and(|&t| now.saturating_sub(t) >= WINDOW_MS) {
-                state.ups.pop_front();
-            }
-            // A key the frame leaves out shows what is under the agents'
-            // layer: dark, as far as this layer goes.
-            if !seen.contains(led) {
-                state.lit = false;
+        let mut wanted: HashMap<u8, Rgb> = HashMap::with_capacity(frame.len());
+        let mut order: Vec<u8> = Vec::with_capacity(frame.len());
+        for (led, color) in frame {
+            if wanted.insert(led, color).is_none() {
+                order.push(led);
             }
         }
-        let out = frame
-            .into_iter()
-            .map(|(led, color)| {
-                let state = self.keys.entry(led).or_default();
-                let peak = color.into_iter().max().unwrap_or(0);
-                if !state.lit && peak >= LIT {
-                    if state.ups.len() >= MAX_FLASHES_PER_SECOND as usize {
-                        return (led, [0, 0, 0]);
-                    }
-                    state.ups.push_back(now);
-                    state.lit = true;
-                } else if state.lit && peak < DARK {
-                    state.lit = false;
+        // Keys shown before and left out now come last, in LED order.
+        let mut gone: Vec<u8> = self.keys.keys().copied().filter(|led| !wanted.contains_key(led)).collect();
+        gone.sort_unstable();
+        order.extend(gone);
+        let mut out = Vec::with_capacity(order.len());
+        for led in order {
+            let want = wanted.get(&led).copied();
+            let state = self.keys.entry(led).or_default();
+            while state.changes.front().is_some_and(|&t| now.saturating_sub(t) >= WINDOW_MS) {
+                state.changes.pop_front();
+            }
+            let target = want.unwrap_or([0, 0, 0]);
+            let (mut up, mut down) = (false, false);
+            let mut next = state.channels;
+            for (c, &v) in next.iter_mut().zip(&target) {
+                let (done, swing) = c.to(v);
+                up |= done && swing.way > 0;
+                down |= done && swing.way < 0;
+                *c = swing;
+            }
+            let way = match (up, down) {
+                (true, false) => 1,
+                (false, true) => -1,
+                _ => 0,
+            };
+            // Another channel going the way the last change went is the same
+            // change, a little later.
+            let changed = (up || down) && !(way != 0 && way == state.way);
+            let shows = if changed && state.changes.len() >= MAX_CHANGES {
+                // Held: the key keeps what it shows.
+                state.shown
+            } else {
+                if changed {
+                    state.changes.push_back(now);
+                    state.way = way;
                 }
-                (led, color)
-            })
-            .collect();
-        self.keys.retain(|_, s| s.lit || !s.ups.is_empty());
+                state.channels = next;
+                state.shown = want;
+                want
+            };
+            if let Some(color) = shows {
+                out.push((led, color));
+            }
+        }
+        self.keys.retain(|_, s| s.shown.is_some() || !s.changes.is_empty());
         out
     }
 }
@@ -368,9 +441,11 @@ mod tests {
         assert_eq!(lit(&attention, 200), 0.0);
         let Motion::Pulse { period_ms } = attention.main else { panic!("{:?}", attention.main) };
         assert_eq!(period_ms, 2400, "speed 2");
-        assert_eq!(lit(&attention, attention.intro_ms()), 1.0, "the pulse starts bright");
+        // The pulse starts dark, where the flashes ended, and is bright half
+        // a cycle later.
+        assert!((lit(&attention, attention.intro_ms()) - PULSE_FLOOR).abs() < 1e-3);
         let half = attention.intro_ms() + period_ms / 2;
-        assert!((lit(&attention, half) - PULSE_FLOOR).abs() < 1e-3);
+        assert!((lit(&attention, half) - 1.0).abs() < 1e-3);
 
         // Error: two blinks (0.9 s each at speed 3), then steady red.
         let error = Look::from_settings(&looks.error).unwrap();
@@ -413,38 +488,83 @@ mod tests {
         assert_eq!(bar(1.0), vec![1.0; 4]);
     }
 
-    #[test]
-    fn the_guard_holds_a_key_dark_rather_than_a_fourth_flash() {
-        let mut guard = FlashGuard::default();
-        let mut ups_out = Vec::new();
-        let mut lit = false;
-        // Something asks for on, off, on, off… every frame (10 a second).
-        for i in 0..100u64 {
-            let now = i * 50;
-            let color = if i % 2 == 0 { [255, 0, 0] } else { [0, 0, 0] };
-            let out = guard.check(now, vec![(7, color), (8, [0, 200, 0])]);
-            assert_eq!(out[1], (8, [0, 200, 0]), "a steady key is left alone");
-            let peak = out[0].1.into_iter().max().unwrap();
-            if !lit && peak >= LIT {
-                ups_out.push(now);
-                lit = true;
-            } else if lit && peak < DARK {
-                lit = false;
+    /// The times `led` changes in the guard's output: its colour differs
+    /// from the frame before.
+    fn changes_out(frames: &[(u64, Vec<(u8, Rgb)>)], led: u8) -> Vec<u64> {
+        let mut last: Option<Option<Rgb>> = None;
+        let mut out = Vec::new();
+        for (t, frame) in frames {
+            let now = frame.iter().find(|k| k.0 == led).map(|k| k.1);
+            if last.is_some_and(|l| l != now) {
+                out.push(*t);
             }
+            last = Some(now);
         }
-        assert!(most_in_a_second(&ups_out) <= 3, "{ups_out:?}");
-        assert!(ups_out.len() >= 3 * 4, "it still flashes, at the safe rate: {ups_out:?}");
+        out
+    }
 
-        // A key that leaves the frame and comes back lit counts as lighting up.
+    /// Runs `ask` (the frame wanted at each time) through a guard, at 20
+    /// frames a second for `ms`.
+    fn guarded(ms: u64, ask: impl Fn(u64) -> Vec<(u8, Rgb)>) -> Vec<(u64, Vec<(u8, Rgb)>)> {
         let mut guard = FlashGuard::default();
-        let mut shown = 0;
-        for i in 0..40u64 {
-            let frame = if i % 2 == 0 { vec![(3, [255, 255, 255])] } else { vec![] };
-            if guard.check(i * 50, frame).iter().any(|k| k.1 != [0, 0, 0]) {
-                shown += 1;
+        (0..ms).step_by(50).map(|t| (t, guard.check(t, ask(t)))).collect()
+    }
+
+    fn most_changes_in_a_second(changes: &[u64]) -> usize {
+        changes.iter().map(|&t| changes.iter().filter(|&&u| u >= t && u < t + 1000).count()).max().unwrap_or(0)
+    }
+
+    #[test]
+    fn the_guard_holds_a_key_rather_than_let_it_flash_too_fast() {
+        // An agent switching a light between two colours 20 times a second:
+        // bright and grey, two colours, on and off, two of the same brightness.
+        let pairs: [([u8; 3], [u8; 3]); 4] = [
+            ([255, 255, 255], [0x40, 0x40, 0x40]),
+            ([255, 0, 0], [0, 0, 255]),
+            ([255, 0, 0], [0, 0, 0]),
+            ([200, 120, 0], [120, 200, 0]),
+        ];
+        for (a, b) in pairs {
+            let frames = guarded(10_000, |t| vec![(7, if (t / 50) % 2 == 0 { a } else { b }), (8, [0, 200, 0])]);
+            let changes = changes_out(&frames, 7);
+            assert!(most_changes_in_a_second(&changes) <= MAX_CHANGES, "{a:?}/{b:?}: {changes:?}");
+            assert!(changes.len() >= 5 * 9, "{a:?}/{b:?}: it still changes, at the safe rate: {}", changes.len());
+            assert!(frames.iter().all(|(_, f)| f.contains(&(8, [0, 200, 0]))), "a steady key is left alone");
+        }
+        // A key that comes and goes counts too: it shows what is under it.
+        let frames = guarded(4_000, |t| if (t / 50) % 2 == 0 { vec![(3, [255, 255, 255])] } else { vec![] });
+        let changes = changes_out(&frames, 3);
+        assert!(most_changes_in_a_second(&changes) <= MAX_CHANGES, "{changes:?}");
+        assert!(changes.len() >= 3 * 5, "{changes:?}");
+        // Small steps add up to one change, not many: a slow ramp passes
+        // frame by frame.
+        let ramp = guarded(1_000, |t| vec![(1, [(t / 4).min(255) as u8, 0, 0])]);
+        assert_eq!(changes_out(&ramp, 1).len(), ramp.len() - 1);
+    }
+
+    #[test]
+    fn the_guard_lets_every_look_through_untouched() {
+        for effect in ALL_EFFECTS {
+            for speed in 1..=5 {
+                let Some(look) = Look::of_effect([255, 128, 0], effect, speed) else { continue };
+                let places = [Place::ALONE, Place { x: 0.0, y: 0.0, rank: 0, count: 10 }];
+                let ask = |t: u64| -> Vec<(u8, Rgb)> {
+                    places.iter().enumerate().map(|(i, p)| (i as u8, scale(look.color, look.level(t, *p)))).collect()
+                };
+                let mut guard = FlashGuard::default();
+                for t in (0..20_000).step_by(50) {
+                    assert_eq!(guard.check(t, ask(t)), ask(t), "{effect:?} speed {speed} at {t} ms");
+                }
             }
         }
-        assert_eq!(shown, 3 + 3, "three in each of the two seconds");
+        // A flash again over the attention's pulse (D) too.
+        let mut guard = FlashGuard::default();
+        let pulse = Look::of_effect([255, 128, 0], AgentEffect::FlashThenPulse, 2).unwrap();
+        for t in (0..20_000).step_by(50) {
+            let again = if t >= 7_000 { burst_level(t % 7_000) } else { None };
+            let want = vec![(1, scale(pulse.color, again.unwrap_or_else(|| pulse.level(t, Place::ALONE))))];
+            assert_eq!(guard.check(t, want.clone()), want, "{t} ms");
+        }
     }
 
     #[test]

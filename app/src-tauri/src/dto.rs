@@ -3364,6 +3364,8 @@ pub struct AgentLogEntry {
     /// Settings it changed (`settings_set`): "Undo" puts `before` back.
     pub changes: Vec<AgentSettingChange>,
     pub undone: bool,
+    /// Keys "Undo" left as they were: they had changed again since.
+    pub kept: Vec<String>,
 }
 
 /// Whether the agents' lights show as they are now, and why not.
