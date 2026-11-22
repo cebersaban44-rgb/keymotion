@@ -410,6 +410,82 @@ export const SHOTS = [
       await fitHeight(page);
     },
   },
+  // Games and profiles by app
+  // A game being played, the profile each game gets, and the start card on
+  // the keyboard's screen: the top of the page down to the games list.
+  {
+    name: "game-session",
+    page: "games",
+    viewport: { height: 1000 },
+    clip: async (page) => {
+      const list = await page.locator("[data-games-list]").boundingBox();
+      return { x: 0, y: 0, width: page.viewportSize().width, height: Math.min(page.viewportSize().height, list.y + list.height + 16) };
+    },
+    steps: async (page, km) => {
+      await byApp(page, km);
+      await liveOn(page);
+      await gamesOn(page);
+      await page.evaluate(() => window.__ksMockGame(true));
+      await page.waitForTimeout(1500);
+    },
+  },
+  {
+    name: "game-session-lights",
+    page: "games",
+    viewport: { height: 1000 },
+    clip: async (page) => padded(await lightsRow(page).boundingBox(), 0),
+    steps: async (page) => {
+      await gamesOn(page);
+      await click(page, "games.lights.keys", { role: "radio", wait: 500 });
+      await click(page, "games.keys.moba", { wait: 600 });
+      await scrollTo(page, lightsRow(page), 20);
+    },
+  },
+  {
+    name: "game-session-lol",
+    page: "games",
+    // The panel from its title to the end of the health settings.
+    viewport: { height: 1200 },
+    clip: async (page) => {
+      const panel = await page.locator("[data-lol]").boundingBox();
+      const bars = await page.locator("[data-lol-bars]").boundingBox();
+      return { x: panel.x - 12, y: panel.y - 12, width: panel.width + 24, height: bars.y + bars.height - panel.y + 16 };
+    },
+    steps: async (page) => {
+      await gamesOn(page);
+      await page.locator("[data-game='League of Legends'] [data-game-special]").click();
+      await page.waitForTimeout(900);
+      await scrollTo(page, page.locator("[data-lol]"), 24);
+    },
+  },
+  {
+    name: "game-session-lol-events",
+    page: "games",
+    viewport: { height: 1200 },
+    // The animations from their switch down to the Riot notice.
+    clip: async (page) => {
+      const panel = await page.locator("[data-lol]").boundingBox();
+      const title = await page.locator("[data-lol]").getByText(await t(page, "games.lol.events"), { exact: true }).first().boundingBox();
+      return { x: panel.x - 12, y: title.y - 9, width: panel.width + 24, height: panel.y + panel.height - title.y + 21 };
+    },
+    steps: async (page) => {
+      await gamesOn(page);
+      await page.locator("[data-game='League of Legends'] [data-game-special]").click();
+      await page.waitForTimeout(900);
+      await scrollTo(page, await find(page, "switch", "games.lol.events"), 40);
+    },
+  },
+  {
+    name: "profiles-by-app",
+    page: "profiles",
+    viewport: { height: 1000 },
+    clip: async (page) => padded(await page.locator("[data-auto-profiles]").boundingBox(), 16),
+    steps: async (page, km) => {
+      await gamesOn(page);
+      await byApp(page, km);
+      await scrollTo(page, page.locator("[data-auto-profiles]"), 30);
+    },
+  },
   {
     name: "calendar-add-google",
     page: "calendar",
@@ -523,6 +599,46 @@ async function twoProfiles(page, { lang }) {
   await create(L(lang, "Gaming", "Oyun"));
 }
 
+/** Game session › Notice games. */
+async function gamesOn(page) {
+  await go(page, "games");
+  await click(page, "games.on", { role: "switch", wait: 700 });
+}
+
+/** Game session's "Lights while playing" row. */
+const lightsRow = (page) => page.locator("[data-games] div.border-t > div").filter({ has: page.getByRole("radiogroup") }).first();
+
+/** Lighting › Per-key color › `preset`, saved, then a profile `name` from it. */
+async function perKeyProfile(page, preset, name) {
+  await go(page, "lighting");
+  await click(page, "light.tab.perKey", { role: "tab", wait: 700 });
+  await click(page, preset, { wait: 600 });
+  await click(page, "bar.save", { wait: 300 });
+  await waitText(page, "bar.saved");
+  await go(page, "profiles");
+  await click(page, "prof.create", { wait: 500 });
+  await page.getByLabel(await t(page, "prof.create.name"), { exact: true }).fill(name);
+  await click(page, "prof.create.button", { wait: 1200 });
+}
+
+/** Profiles › By app: every game gets "Gaming", the code editor "Work". */
+async function byApp(page, { lang }) {
+  const work = L(lang, "Work", "İş");
+  const gaming = L(lang, "Gaming", "Oyun");
+  await perKeyProfile(page, "light.preset.home", work);
+  await perKeyProfile(page, "light.preset.wasd", gaming);
+  await go(page, "profiles");
+  await click(page, "auto.title", { role: "switch", wait: 600 });
+  const add = async (program, profile) => {
+    await page.getByRole("combobox", { name: await t(page, "auto.add"), exact: true }).selectOption({ label: program });
+    await click(page, "auto.add", { wait: 500 });
+    await page.getByRole("combobox", { name: await t(page, "auto.profile"), exact: true }).last().selectOption({ label: profile });
+    await page.waitForTimeout(400);
+  };
+  await add(await t(page, "auto.allGames"), gaming);
+  await add("Code", work);
+}
+
 /** The README's main picture: the Overview page of a keyboard in use. */
 export const HERO = { name: "hero", page: "overview", steps: busyOverview };
 
@@ -541,6 +657,17 @@ async function boxOf(locator, pad = 12, height) {
 }
 
 const LIGHTING_TOUR = ["fx.11", "fx.12", "fx.9", "fx.16", "fx.4"];
+/** Health and mana, in percent, for each frame of the "game-session" clip. */
+const LOL_TOUR = [
+  [100, 90],
+  [86, 78],
+  [72, 66],
+  [58, 52],
+  [44, 40],
+  [32, 30],
+  [20, 18],
+  [9, 8],
+];
 const tours = new WeakMap();
 
 /** Short animations for the README's feature table (docs/images/features).
@@ -726,4 +853,70 @@ export const CLIPS = [
       await page.waitForTimeout(4300);
     },
   },
+  {
+    // League of Legends lights' drawing: health recedes right to left and
+    // turns amber, then red, while mana empties on F1–F12.
+    name: "game-session",
+    page: "games",
+    viewport: { height: 1000 },
+    frames: LOL_TOUR.length,
+    delay: (i) => (i === 0 ? 1100 : 550),
+    hold: 1500,
+    clip: async (page) => boxOf(page.locator("[data-lol-preview]"), 12),
+    steps: async (page) => {
+      await gamesOn(page);
+      await page.locator("[data-game='League of Legends'] [data-game-special]").click();
+      await page.waitForTimeout(900);
+      await scrollTo(page, page.locator("[data-lol-preview]"), 40);
+    },
+    frame: async (page, i) => {
+      const [health, mana] = LOL_TOUR[i];
+      await setRange(page, await t(page, "games.lol.preview.health"), health);
+      await setRange(page, await t(page, "games.lol.preview.mana"), mana);
+      await page.waitForTimeout(450);
+    },
+  },
+  {
+    // Profiles › By app: every game gets "Gaming", then the code editor
+    // "Work". A narrower window, so the card's text stays readable at 480 px.
+    name: "profiles",
+    page: "profiles",
+    viewport: { width: 980, height: 1000 },
+    frames: 6,
+    delay: [1000, 800, 900, 1000, 800, 900],
+    hold: 2200,
+    clip: async (page) => {
+      const card = await page.locator("[data-auto-profiles]").boundingBox();
+      return { x: card.x - 8, y: card.y - 8, width: card.width + 16, height: 560 };
+    },
+    steps: async (page, { lang }) => {
+      // The name the fourth frame picks.
+      tours.set(page, L(lang, "Gaming", "Oyun"));
+      await gamesOn(page);
+      await perKeyProfile(page, "light.preset.home", L(lang, "Work", "İş"));
+      await perKeyProfile(page, "light.preset.wasd", L(lang, "Gaming", "Oyun"));
+      await go(page, "profiles");
+      await click(page, "auto.title", { role: "switch", wait: 600 });
+      await scrollTo(page, page.locator("[data-auto-profiles]"), 30);
+    },
+    frame: async (page, i) => {
+      const program = page.getByRole("combobox", { name: await t(page, "auto.add"), exact: true });
+      const profile = page.getByRole("combobox", { name: await t(page, "auto.profile"), exact: true });
+      if (i === 1) await program.selectOption({ label: await t(page, "auto.allGames") });
+      if (i === 2) await press(page, "button", "auto.add");
+      if (i === 3) await profile.last().selectOption({ label: tours.get(page) });
+      if (i === 4) await program.selectOption({ label: "Code" });
+      if (i === 5) await press(page, "button", "auto.add");
+      await page.mouse.move(1, 1);
+      await page.waitForTimeout(450);
+    },
+  },
 ];
+
+/** Set a range input (found by its label) as if dragged. */
+async function setRange(page, label, value) {
+  await page.getByLabel(label, { exact: true }).evaluate((el, v) => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, String(v));
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }, value);
+}

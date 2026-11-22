@@ -5,12 +5,14 @@
 //
 // Images: src/assets/screens/<lang>/<light|dark>/<name>.webp, taken by
 // tools/screenshots (sample data, a stand-in keyboard). The project keeps
-// English dark-theme shots only (owner's decision, 2026-11-12): a Turkish page
-// shows the English shot, and one shot serves both site themes. When a page
-// has both a light and a dark shot, each theme shows its own. While a shot is
-// missing, a labelled placeholder keeps the page building.
+// English dark-theme shots only (owner's decision, 2026-11-12; the same for
+// Russian and Chinese, 2026-11-22): a page in another language shows the
+// English shot, and one shot serves both site themes. When a page has both a
+// light and a dark shot, each theme shows its own. While a shot is missing, a
+// labelled placeholder keeps the page building.
 import { Image } from "astro:assets";
 import type { ImageMetadata } from "astro";
+import { siteLocale } from "../i18n";
 
 interface Props {
   name: string;
@@ -18,7 +20,7 @@ interface Props {
   caption?: string;
 }
 const { name, alt, caption } = Astro.props;
-const lang = Astro.currentLocale === "tr" ? "tr" : "en";
+const lang = siteLocale(Astro.currentLocale);
 const shots = import.meta.glob<{ default: ImageMetadata }>("/src/assets/screens/*/*/*.webp", { eager: true });
 const pick = (theme: "light" | "dark") =>
   shots[`/src/assets/screens/${lang}/${theme}/${name}.webp`]?.default ??
