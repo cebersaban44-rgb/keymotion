@@ -368,7 +368,10 @@ pub fn frame(live: &Live, ids: &KeyIds, s: &GamesSettings, now: f64) -> Vec<(u8,
         ids.all.iter().map(|&led| (led, rest)).collect()
     };
     let whole = l.layout == LolLayout::Keyboard;
-    if l.death && live.dead {
+    // Once the match is over, its health and death mean nothing: the end
+    // has the keys (and the game's own lights after it, until it closes).
+    let over = live.win.is_some();
+    if !over && l.death && live.dead {
         let left = ((live.respawn_at - now) / live.respawn_total.max(1.0) / 1_000.0).clamp(0.0, 1.0) as f32;
         if whole {
             // Dark red; the light comes back the way health would fill.
@@ -382,7 +385,7 @@ pub fn frame(live: &Live, ids: &KeyIds, s: &GamesSettings, now: f64) -> Vec<(u8,
             }
             bar(&mut out, &row(ids, &NUMBER_ROW), left, RESPAWN);
         }
-    } else if l.bars {
+    } else if !over && l.bars {
         if let Some((h, max)) = live.health {
             let share = (h / max).clamp(0.0, 1.0);
             let color = health_color(&l, share);
@@ -418,6 +421,13 @@ pub fn frame(live: &Live, ids: &KeyIds, s: &GamesSettings, now: f64) -> Vec<(u8,
                 Effect::Dragon(kind, _) if l.dragon_kind_color => *kind,
                 _ => light.color,
             };
+            // The match's end plays on the whole keyboard, not over health
+            // and mana like the events during it.
+            if matches!(e, Effect::Win | Effect::Lose) {
+                for k in &mut out {
+                    k.1 = [0, 0, 0];
+                }
+            }
             // A streak plays the animation once per kill.
             let n = f32::from(e.times());
             animate(&mut out, ids, light.anim, color, if n > 1.0 { (t * n).fract() } else { t });
@@ -812,6 +822,35 @@ mod tests {
         assert_eq!(f[0].1, [9, 9, 9]);
         // A streak plays it once per kill, quicker.
         assert_eq!(Effect::Kill(3).length_ms(LolAnim::Flash), 900.0 * 0.6 * 3.0);
+    }
+
+    #[test]
+    fn the_end_of_the_match_has_the_whole_keyboard() {
+        let mut s = GamesSettings::default();
+        s.lol.lights.win = crate::dto::LolEventLight { on: true, anim: LolAnim::Flash, color: [1, 2, 3] };
+        s.lol.lights.lose = crate::dto::LolEventLight { on: true, anim: LolAnim::Flash, color: [4, 5, 6] };
+        let ids = ids();
+        let plain = frame(&Live { connected: true, ..Live::default() }, &ids, &s, 0.0);
+        for (result, color) in [("Win", [1, 2, 3]), ("Lose", [4, 5, 6])] {
+            // Half health, the player dead, when the match ends.
+            let mut live = Live { connected: true, last_event: -1, ..Live::default() };
+            live.read_active(&active(500.0, 1000.0, 3), 0.0);
+            live.read_players(
+                &json!([{ "riotId": "Oyuncu#TR1", "isDead": true, "respawnTimer": 10.0, "scores": {} }]),
+                0.0,
+            );
+            live.read_events(&json!({ "Events": [{ "EventID": 0, "EventName": "GameStart" }] }), 0.0);
+            live.read_events(
+                &json!({ "Events": [{ "EventID": 1, "EventName": "GameEnd", "Result": result }] }),
+                1_000.0,
+            );
+            // A flash: every key, the lit half of health too.
+            assert!(frame(&live, &ids, &s, 1_000.0).iter().all(|k| k.1 == color), "{result}");
+            // Between the flashes: dark, not health, mana or death.
+            assert!(frame(&live, &ids, &s, 1_300.0).iter().all(|k| k.1 == [0, 0, 0]), "{result}");
+            // After it: the game's own lights, without the match's health.
+            assert_eq!(frame(&live, &ids, &s, 2_000.0), plain, "{result}");
+        }
     }
 
     #[test]
