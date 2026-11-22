@@ -29,6 +29,9 @@ mod profiles;
 mod reminders;
 mod screen_lib;
 mod settings;
+// Read by the music lights (music.rs), the next step of that work.
+#[allow(dead_code)]
+mod spectrum;
 mod tray;
 mod updates;
 
