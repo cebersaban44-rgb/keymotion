@@ -38,7 +38,8 @@ use crate::pomodoro::{PomodoroAction, PomodoroHandle, EVENT_POMODORO};
 use crate::reminders::{RemindersHandle, EVENT_REMINDERS};
 use crate::updates::{Updates, EVENT_UPDATE};
 use crate::{notify, settings};
-use chrono::{DateTime, Local, TimeZone};
+use jiff::tz::TimeZone;
+use jiff::{Timestamp, Zoned};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -398,20 +399,16 @@ fn focus_status(t: &TrayTexts, p: &PomodoroState, now_ms: f64) -> String {
 
 /// "14:30" today, "tomorrow 09:00", "14.11 09:00" (Turkish) or
 /// "Nov 14 09:00" later.
-fn when<Tz: TimeZone>(t: &TrayTexts, at_ms: f64, now_ms: f64, tz: &Tz) -> String
-where
-    Tz::Offset: std::fmt::Display,
-{
-    let at: Option<DateTime<Tz>> = tz.timestamp_millis_opt(at_ms as i64).single();
-    let now: Option<DateTime<Tz>> = tz.timestamp_millis_opt(now_ms as i64).single();
-    let (Some(at), Some(now)) = (at, now) else { return String::new() };
-    let time = at.format("%H:%M").to_string();
-    let days = (at.date_naive() - now.date_naive()).num_days();
+fn when(t: &TrayTexts, at_ms: f64, now_ms: f64, tz: &TimeZone) -> String {
+    let zoned = |ms: f64| -> Option<Zoned> { Some(Timestamp::from_millisecond(ms as i64).ok()?.to_zoned(tz.clone())) };
+    let (Some(at), Some(now)) = (zoned(at_ms), zoned(now_ms)) else { return String::new() };
+    let time = at.strftime("%H:%M").to_string();
+    let days = at.date().since(now.date()).map_or(0, |s| s.get_days());
     match days {
         ..=0 => time,
         1 => format!("{} {time}", t.tomorrow),
-        _ if t.locale == "tr" => format!("{} {time}", at.format("%d.%m")),
-        _ => format!("{} {time}", at.format("%b %-d")),
+        _ if t.locale == "tr" => format!("{} {time}", at.strftime("%d.%m")),
+        _ => format!("{} {time}", at.strftime("%b %-d")),
     }
 }
 
@@ -423,10 +420,7 @@ fn connection_word(t: &TrayTexts, c: Connection) -> &str {
     }
 }
 
-fn view_of<Tz: TimeZone>(t: &TrayTexts, f: &Facts, now_ms: f64, tz: &Tz) -> View
-where
-    Tz::Offset: std::fmt::Display,
-{
+fn view_of(t: &TrayTexts, f: &Facts, now_ms: f64, tz: &TimeZone) -> View {
     let keyboard = match &f.keyboard {
         None => t.no_keyboard.clone(),
         Some(k) => {
@@ -861,7 +855,7 @@ fn keep_up(
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
         }
-        let view = view_of(&bg.texts(), &facts(&app), crate::now_ms(), &Local);
+        let view = view_of(&bg.texts(), &facts(&app), crate::now_ms(), &TimeZone::system());
         if let Err(e) = apply(&app, &mut items, &shown, &view) {
             tracing::warn!("tray menu not updated: {e}");
         }
@@ -880,7 +874,7 @@ fn keep_up(
 /// Put the icon in the tray and keep its menu and tooltip up to date.
 pub fn start(app: &AppHandle) -> tauri::Result<()> {
     let bg = app.state::<Arc<Background>>().inner().clone();
-    let first = view_of(&bg.texts(), &facts(app), crate::now_ms(), &Local);
+    let first = view_of(&bg.texts(), &facts(app), crate::now_ms(), &TimeZone::system());
     let (menu, items) = build(app, &first)?;
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .tooltip(&first.tooltip)
@@ -917,7 +911,7 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::FixedOffset;
+    use jiff::civil::date;
 
     /// The classic sequence (6 blocks, 100 minutes), at block `block`.
     fn pomodoro(status: PomodoroStatus, phase: PomodoroPhase, block: u8, remaining_ms: f64) -> PomodoroState {
@@ -948,7 +942,7 @@ mod tests {
         }
     }
 
-    const UTC3: i32 = 3 * 3600;
+    const UTC3: i8 = 3;
 
     #[test]
     fn focus_line_shows_phase_block_and_minutes() {
@@ -970,10 +964,13 @@ mod tests {
     #[test]
     fn view_reads_like_the_menu() {
         let t = tr();
-        let tz = FixedOffset::east_opt(UTC3).unwrap();
+        let tz = TimeZone::fixed(jiff::tz::offset(UTC3));
+        let ms = |d: i8, h: i8, m: i8| {
+            date(2026, 11, d).at(h, m, 0, 0).to_zoned(tz.clone()).unwrap().timestamp().as_millisecond() as f64
+        };
         // 2026-11-12 10:00 local.
-        let now = tz.with_ymd_and_hms(2026, 11, 12, 10, 0, 0).unwrap().timestamp_millis() as f64;
-        let at = |d: u32, h: u32, m: u32| tz.with_ymd_and_hms(2026, 11, d, h, m, 0).unwrap().timestamp_millis() as f64;
+        let now = ms(12, 10, 0);
+        let at = ms;
         let mut f = Facts {
             keyboard: Some(KeyboardLine {
                 name: "AJAZZ AK980 PRO".into(),

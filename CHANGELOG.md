@@ -15,6 +15,13 @@ says so.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Calendar and reminders:** on the night the clocks go back, a reminder
+  at 03:00 (in most of Europe; elsewhere, the hour the change ends) went off
+  an hour early, and a calendar event at that time with no time zone of its
+  own showed an hour early.
+
 ## [1.1.0] - 2026-11-16
 
 Keymotion now tells you when a new version is out, and can install it by

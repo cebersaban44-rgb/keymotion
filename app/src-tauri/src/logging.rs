@@ -63,7 +63,7 @@ thread_local! {
 }
 
 fn today() -> String {
-    chrono::Local::now().format("%Y-%m-%d").to_string()
+    jiff::Zoned::now().strftime("%Y-%m-%d").to_string()
 }
 
 fn log_name(date: &str) -> String {
@@ -246,9 +246,10 @@ fn install_panic_hook() {
             tracing::error!(%thread, location = %redact(&location), "panic: {}", redact(&message));
         }
         if let Some((dir, version)) = CRASH.get() {
-            let now = chrono::Local::now();
-            let note = crash_note(version, &now.to_rfc3339(), &thread, &location, &message);
-            let path = dir.join(format!("crash-{}.txt", now.format("%Y-%m-%d-%H%M%S")));
+            let now = jiff::Zoned::now();
+            let time = now.timestamp().display_with_offset(now.offset()).to_string();
+            let note = crash_note(version, &time, &thread, &location, &message);
+            let path = dir.join(format!("crash-{}.txt", now.strftime("%Y-%m-%d-%H%M%S")));
             let _ = fs::write(path, note);
         }
         previous(info);

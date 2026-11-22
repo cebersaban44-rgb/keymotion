@@ -12,6 +12,13 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 
 ## [Yayımlanmamış]
 
+### Düzeltilenler
+
+- **Takvim ve hatırlatıcılar:** saatlerin geri alındığı gece 03:00'e
+  (Avrupa'nın çoğunda; başka yerlerde değişikliğin bittiği saat) kurulu bir
+  hatırlatıcı bir saat erken çalıyordu; o saatteki, kendi saat dilimi
+  olmayan bir takvim etkinliği de bir saat erken görünüyordu.
+
 ## [1.1.0] - 2026-11-16
 
 Keymotion artık yeni sürüm çıkınca haber veriyor ve isterseniz kendiliğinden

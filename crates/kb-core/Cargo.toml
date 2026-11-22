@@ -8,8 +8,8 @@ publish.workspace = true
 license.workspace = true
 
 [dependencies]
-chrono.workspace = true
 gif.workspace = true
+jiff.workspace = true
 kb-devices.workspace = true
 kb-protocol.workspace = true
 kb-transport.workspace = true

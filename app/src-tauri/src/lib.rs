@@ -22,6 +22,7 @@ mod now_playing;
 mod official_driver;
 mod pomodoro;
 mod profiles;
+mod recur;
 mod reminders;
 mod screen_lib;
 mod settings;
@@ -907,7 +908,10 @@ async fn diagnostics_report(app: AppHandle, language: String, context: Option<St
         let facts = diagnostics::Facts {
             app_name: app.package_info().name.clone(),
             app_version: channel::version_line(&app.package_info().version.to_string()),
-            time: chrono::Local::now().to_rfc3339(),
+            time: {
+                let now = jiff::Zoned::now();
+                now.timestamp().display_with_offset(now.offset()).to_string()
+            },
             windows: kb_winsys::os::windows_release()
                 .map_or_else(|| format!("unknown (build {})", os_build()), |r| r.describe()),
             webview: tauri::webview_version().unwrap_or_else(|e| format!("unknown ({e})")),
