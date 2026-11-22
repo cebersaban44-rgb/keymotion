@@ -182,9 +182,10 @@ fn codex(p: &Payload, session: Option<&str>) -> Option<(HookEvent, Vec<String>)>
         // turn was answered.
         "PreModelRequest" => (HookEvent::Answered, calls(&[turn_key(session, p)])),
         // A turn that fails ends without Stop: the failed request is the only
-        // word of it. Codex names the kind in the error's text only. A
-        // request that is tried again comes back with the same turn, which
-        // takes the failure away (the engine).
+        // word of it. Codex names the kind in the error's text only. Codex
+        // tries some requests again (seen: a 401, twelve times in a minute);
+        // the same turn failing again changes nothing (the engine), and a
+        // request of that turn that goes through takes the failure away.
         "PostModelRequest" if p.status.as_deref() == Some("failed") => {
             let text = p.error.as_ref().and_then(Value::as_str).unwrap_or_default().to_lowercase();
             let event = if CODEX_USAGE_LIMITS.iter().any(|m| text.contains(m)) {
@@ -192,7 +193,10 @@ fn codex(p: &Payload, session: Option<&str>) -> Option<(HookEvent, Vec<String>)>
             } else {
                 HookEvent::Error
             };
-            (event, calls(&[turn_key(session, p)]))
+            (event, calls(&[failure_key(session, p)]))
+        }
+        "PostModelRequest" if p.status.as_deref() == Some("completed") => {
+            (HookEvent::Answered, calls(&[failure_key(session, p)]))
         }
         "PostModelRequest" => return None,
         // The user stopped the turn: whatever it waited for is moot.
@@ -239,6 +243,13 @@ fn content_key(session: Option<&str>, p: &Payload) -> Option<String> {
 fn turn_key(session: Option<&str>, p: &Payload) -> Option<String> {
     let turn = p.turn_id.as_deref().filter(|s| !s.is_empty())?;
     Some(format!("t{}", &digest(&["turn", session.unwrap_or_default(), turn])[..16]))
+}
+
+/// A turn's failure (`f…`), for Codex: apart from [`turn_key`], so the
+/// turn's next request (which answers its questions) leaves the failure.
+fn failure_key(session: Option<&str>, p: &Payload) -> Option<String> {
+    let turn = p.turn_id.as_deref().filter(|s| !s.is_empty())?;
+    Some(format!("f{}", &digest(&["failed", session.unwrap_or_default(), turn])[..16]))
 }
 
 /// SHA-256 of the parts, in lowercase hex.
@@ -454,8 +465,11 @@ mod tests {
         let end = json!({"session_id": "thr_123", "transcript_path": "/workspace/.codex/rollout.jsonl", "cwd": "/workspace", "hook_event_name": "SessionEnd", "reason": "other"});
         assert_eq!(event(Agent::Codex, end).unwrap().0, HookEvent::SessionEnd);
         assert_eq!(cx("PreToolUse", json!({"tool_name": "Bash"})), None);
-        // Requests: only a failed one says something, by its text.
-        assert_eq!(cx("PostModelRequest", json!({"status": "completed", "error": null})), None);
+        // Requests: a failed one says what failed, by its text; one that went
+        // through takes its turn's failure away; a cancelled one says nothing.
+        let through = cx("PostModelRequest", json!({"status": "completed", "error": null})).unwrap();
+        assert_eq!(through.0, HookEvent::Answered);
+        assert!(!ask.1.contains(&through.1[0]), "it answers no question");
         assert_eq!(cx("PostModelRequest", json!({"status": "cancelled", "error": null})), None);
         assert_eq!(cx("PostModelRequest", json!({})), None);
         for text in [
@@ -468,7 +482,8 @@ mod tests {
         ] {
             let failed = cx("PostModelRequest", json!({"status": "failed", "error": text})).unwrap();
             assert_eq!(failed.0, HookEvent::UsageLimit, "{text}");
-            assert_eq!(failed.1, next.1, "the turn names the failure: {text}");
+            assert_eq!(failed.1, through.1, "the turn's next request takes it away: {text}");
+            assert_ne!(failed.1, next.1, "its next attempt does not: {text}");
         }
         for text in ["exceeded retry limit, last status: 500", "context window exceeded", ""] {
             let failed = cx("PostModelRequest", json!({"status": "failed", "error": text})).unwrap();

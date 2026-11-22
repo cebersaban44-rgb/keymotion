@@ -574,6 +574,12 @@ impl Engine {
                 }
                 json!({ "lit": false, "cleared": cleared, "waiting": self.waiting_calls(name) })
             }
+            // The same turn failing again (Codex trying a request again and
+            // again): the failure that shows goes on as it was, with no new
+            // blinks.
+            HookEvent::Error | HookEvent::UsageLimit if self.fails_again(name, &hook.calls, now.mono) => {
+                json!({ "lit": true, "kept": true, "cleared": 0 })
+            }
             HookEvent::Done | HookEvent::Error => {
                 let cleared = self.answer_all(name);
                 if let Some(s) = self.sessions.get_mut(name) {
@@ -718,6 +724,18 @@ impl Engine {
             s.failed.clear();
         }
         self.remove(name, |l| l.kind == Kind::Signal(SignalName::Attention))
+    }
+
+    /// `name`'s session fails again where its failure shows: the same keys,
+    /// and its error or usage-limit light still up.
+    fn fails_again(&self, name: &str, calls: &[String], now: u64) -> bool {
+        !calls.is_empty()
+            && self.sessions.get(name).is_some_and(|s| s.failed == calls)
+            && self.sources.get(name).is_some_and(|s| {
+                s.lamps.iter().any(|l| {
+                    l.until > now && matches!(l.kind, Kind::Signal(SignalName::Error) | Kind::UsageLimit)
+                })
+            })
     }
 
     fn waiting_calls(&self, name: &str) -> usize {
@@ -2184,6 +2202,13 @@ mod tests {
         e.set_settings(s);
         let plain = run(&mut e, B, hook("usage_limit", &[]), 4_000).unwrap();
         assert_eq!(plain["id"], format!("{B}:error"));
+        // The same turn failing again and again (Codex retrying): kept as
+        // it is, no new blinks.
+        run(&mut e, B, hook("error", &["fail-7"]), 4_050).unwrap();
+        let again = run(&mut e, B, hook("error", &["fail-7"]), 4_080).unwrap();
+        assert_eq!(again["kept"], true);
+        let since = e.lamps().find(|l| l.source == B && l.kind == Kind::Signal(SignalName::Error)).unwrap().since;
+        assert_eq!(since, 4_050);
         // A failure of a turn the agent goes on with (a retried request) goes.
         run(&mut e, B, hook("error", &["turn-7"]), 4_100).unwrap();
         assert_eq!(run(&mut e, B, hook("answered", &["turn-6"]), 4_200).unwrap()["cleared"], 0);
