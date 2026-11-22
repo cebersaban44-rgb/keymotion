@@ -382,8 +382,6 @@ pub struct LiveFrame {
 pub enum LightLayer {
     Profile,
     Gauges,
-    // Sent by the music lights (music.rs), the next step of that work.
-    #[allow(dead_code)]
     Music,
     Game,
     Timer,

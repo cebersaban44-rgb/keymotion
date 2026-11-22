@@ -15,7 +15,7 @@
 //!   [`BAND_RANGE_DB`]; below [`GATE_DB`] a band is silent. The reference
 //!   follows the loudest band up at once and a quieter sound down by
 //!   halving the gap every [`AGC_HALF_LIFE`] s, so the bars look full at
-//!   any volume. Sensitivity (1–10) moves it.
+//!   any volume. Sensitivity (50–200 %) moves it.
 //! * Motion: a bar rises at once and falls from full to empty in
 //!   [`RELEASE_SECS`]; its peak mark stays [`PEAK_HOLD_SECS`], then falls.
 //! * Beats: the bass (40–150 Hz) level against its average over the last
@@ -58,10 +58,12 @@ pub const AGC_HALF_LIFE: f64 = 3.0;
 /// The reference never goes below this (dBFS): quiet is not turned up
 /// into noise.
 const AGC_FLOOR_DB: f32 = -45.0;
-/// Each sensitivity step away from [`DEFAULT_SENSITIVITY`] moves the
+/// Each doubling of the sensitivity (percent; 100 is the middle) moves the
 /// reference this much (dB): higher is fuller.
-const SENSITIVITY_STEP_DB: f32 = 2.0;
-pub const DEFAULT_SENSITIVITY: u8 = 5;
+const SENSITIVITY_DB_PER_DOUBLING: f32 = 12.0;
+pub const DEFAULT_SENSITIVITY: u16 = 100;
+pub const MIN_SENSITIVITY: u16 = 50;
+pub const MAX_SENSITIVITY: u16 = 200;
 /// A bar falls from full to empty in this long (s).
 pub const RELEASE_SECS: f32 = 0.25;
 /// A peak mark stays this long (s)…
@@ -134,6 +136,11 @@ pub fn band_edges(rate: u32, fft_len: usize, n: usize) -> Vec<usize> {
         edges[i] = edges[i].min(edges[i + 1].saturating_sub(1));
     }
     edges
+}
+
+/// Doublings of the sensitivity from the middle: −1 at 50 %, 1 at 200 %.
+fn doublings(sensitivity: u16) -> f32 {
+    (f32::from(sensitivity.clamp(MIN_SENSITIVITY, MAX_SENSITIVITY)) / f32::from(DEFAULT_SENSITIVITY)).log2()
 }
 
 fn to_db(power: f32) -> f32 {
@@ -225,7 +232,7 @@ impl Beats {
     }
 
     /// One analysis' bass level (dBFS). True on a beat.
-    fn step(&mut self, bass_db: f32, now: f64, sensitivity: u8) -> bool {
+    fn step(&mut self, bass_db: f32, now: f64, sensitivity: u16) -> bool {
         if self.since.is_some_and(|s| now < s) || self.last.is_some_and(|t| now < t) {
             // The clock went back: start over.
             self.reset();
@@ -251,9 +258,10 @@ impl Beats {
                 (mean, var.sqrt())
             }
         };
-        // Sensitivity 1–10: a smaller rise counts when higher.
-        let s = f32::from(sensitivity);
-        let threshold = (9.0 - 0.5 * s).max(mean + (2.0 - 0.1 * s) * spread);
+        // Higher sensitivity: a smaller rise counts (6.5 dB and 1.5 spreads
+        // at 100 %; 4 dB and 1 spread at 200 %; 9 dB and 2 spreads at 50 %).
+        let s = doublings(sensitivity);
+        let threshold = (6.5 - 2.5 * s).max(mean + (1.5 - 0.5 * s) * spread);
         let beat = now - since >= ONSET_WINDOW
             && bass_db >= BEAT_GATE_DB
             && rise >= threshold
@@ -285,7 +293,7 @@ pub struct Analyzer {
     /// Per band (dB).
     tilt: Vec<f32>,
     bass: (usize, usize),
-    sensitivity: u8,
+    sensitivity: u16,
     band_ref: Agc,
     loud_ref: Agc,
     bands: Vec<f32>,
@@ -348,9 +356,9 @@ impl Analyzer {
         self.rate
     }
 
-    /// 1–10; 5 is the middle.
-    pub fn set_sensitivity(&mut self, sensitivity: u8) {
-        self.sensitivity = sensitivity.clamp(1, 10);
+    /// In percent, 50–200; 100 is the middle.
+    pub fn set_sensitivity(&mut self, sensitivity: u16) {
+        self.sensitivity = sensitivity.clamp(MIN_SENSITIVITY, MAX_SENSITIVITY);
     }
 
     /// New samples (mono, −1…1). A broken value counts as silence.
@@ -398,7 +406,7 @@ impl Analyzer {
         let raw: Vec<f32> = self.edges.windows(2).map(|e| to_db(power(e[0], e[1]))).collect();
         let tilted: Vec<f32> = raw.iter().zip(&self.tilt).map(|(r, t)| r + t).collect();
         let top = raw.iter().zip(&tilted).filter(|(r, _)| **r >= GATE_DB).map(|(_, t)| *t).fold(SILENT_DB, f32::max);
-        let more = (f32::from(self.sensitivity) - f32::from(DEFAULT_SENSITIVITY)) * SENSITIVITY_STEP_DB;
+        let more = doublings(self.sensitivity) * SENSITIVITY_DB_PER_DOUBLING;
         let reference = self.band_ref.follow(top, dt) - more;
         let step = dt as f32;
         for (((bar, peak), raw), tilted) in self.bands.iter_mut().zip(&mut self.peaks).zip(&raw).zip(&tilted) {
@@ -571,7 +579,7 @@ mod tests {
         assert!(faint.bands[own] > 0.8, "{:?}", faint.bands);
         // The most sensitive setting never goes over either.
         let mut a = Analyzer::new(RATE, 16);
-        a.set_sensitivity(10);
+        a.set_sensitivity(MAX_SENSITIVITY);
         assert!(feed(&mut a, 0.0, 1.0, sine(1_000.0, 0.9)).iter().all(|(_, l)| l.bands.iter().all(|b| *b <= 1.0)));
     }
 
@@ -586,7 +594,13 @@ mod tests {
             let band = band_of(&a, 4_000.0);
             feed(&mut a, 0.0, 1.0, two).pop().unwrap().1.bands[band]
         };
-        assert!(height(10) > height(5) && height(5) > height(1), "{} {} {}", height(1), height(5), height(10));
+        assert!(
+            height(200) > height(100) && height(100) > height(50),
+            "{} {} {}",
+            height(50),
+            height(100),
+            height(200)
+        );
     }
 
     #[test]
