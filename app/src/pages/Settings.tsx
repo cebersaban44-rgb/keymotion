@@ -7,7 +7,7 @@ import { UpdateRows } from "../components/Updates";
 import { CalibrationCard } from "../components/CalibrationCard";
 import { Segmented } from "../components/controls";
 import { copyDiagnostics } from "../lib/diagnostics";
-import { useT, type Locale, type MessageKey } from "../lib/i18n";
+import { LOCALE_NAMES, LOCALES, useT, type Locale, type MessageKey } from "../lib/i18n";
 import { openFolder, openIssue, openLink } from "../lib/ipc";
 import { docsPage } from "../lib/offline";
 import { useReport } from "../lib/report";
@@ -62,10 +62,7 @@ export function Settings() {
             label={t("settings.language")}
             value={locale}
             onChange={setLocale}
-            options={[
-              { value: "tr", label: "Türkçe" },
-              { value: "en", label: "English" },
-            ]}
+            options={LOCALES.map((l) => ({ value: l, label: LOCALE_NAMES[l], lang: l }))}
           />
         </Row>
       </section>

@@ -3,7 +3,7 @@ import { create } from "zustand";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { ThemePreference } from "../bindings/ThemePreference";
 import type { UiEnvironment } from "../bindings/UiEnvironment";
-import type { Locale } from "./i18n";
+import { LOCALES, localeForWindows, type Locale } from "./i18n/locales";
 
 export type PageId =
   | "overview"
@@ -59,12 +59,12 @@ function load<T extends string>(key: string, allowed: readonly T[], fallback: T)
 }
 
 /** The language to start in until the user picks one in Settings: Windows'
- *  display language when the app has it (Turkish), English for every other
- *  (owner's decision, 2026-11-12). WebView2 starts with Windows' display
- *  language, so `navigator.language` is it. */
+ *  display language when the app has it, English otherwise (the rules are
+ *  in localeForWindows). WebView2 starts with Windows' display language, so
+ *  `navigator.language` is it. */
 function windowsLocale(): Locale {
   try {
-    return navigator.language.toLowerCase().startsWith("tr") ? "tr" : "en";
+    return localeForWindows(navigator.language);
   } catch {
     return "en";
   }
@@ -85,7 +85,7 @@ export const useApp = create<AppState>((set) => ({
   page: "overview",
   screenTab: load<ScreenTab>("ks.screenTab", ["visuals", "live"], "visuals"),
   theme: load<ThemePreference>("ks.theme", ["system", "dark", "light"], "system"),
-  locale: load<Locale>("ks.locale", ["tr", "en"], windowsLocale()),
+  locale: load<Locale>("ks.locale", LOCALES, windowsLocale()),
   windowShown: true,
   profileRequest: null,
   setKeyboards: (keyboards) => set({ keyboards, loaded: true }),
