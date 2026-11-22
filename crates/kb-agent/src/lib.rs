@@ -31,8 +31,8 @@ pub mod values;
 pub use error::{exit, AgentError, ErrorCode};
 pub use keys::{KeyGroup, KeyItem, KeySpec};
 pub use protocol::{
-    Call, Channel, Command, HelloArgs, HelloData, Peer, ProtocolRange, Request, Response, ServerInfo, Session,
-    HELLO_VERSION, MAX_LINE_BYTES, PROTOCOL_VERSION, SUPPORTED_PROTOCOLS,
+    Call, Channel, Command, HelloArgs, HelloData, Hook, HookArgs, HookEvent, Peer, ProtocolRange, Request, Response,
+    ServerInfo, Session, HELLO_VERSION, MAX_LINE_BYTES, PROTOCOL_VERSION, SUPPORTED_PROTOCOLS,
 };
 pub use values::{Color, Direction, Effect, EffectKind, SignalId, SignalName, SourceName};
 

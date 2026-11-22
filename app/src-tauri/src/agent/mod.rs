@@ -342,13 +342,27 @@ impl Core {
             Quiet::ButReminders => "but_reminders",
             Quiet::All => "all",
         };
-        let signals: Vec<Value> = {
+        let (signals, sessions): (Vec<Value>, Vec<Value>) = {
             let index = self.lights().ok();
             let mut e = lock(&self.engine);
             if let Some(index) = &index {
                 e.refresh_keys(index);
             }
-            e.infos(now.mono, index.is_some())
+            let sessions = e
+                .sessions(now.mono)
+                .into_iter()
+                .map(|s| {
+                    json!({
+                        "number": s.number,
+                        "source": s.source,
+                        "agent": s.agent,
+                        "label": s.label,
+                        "waiting": s.waiting,
+                    })
+                })
+                .collect();
+            let signals = e
+                .infos(now.mono, index.is_some())
                 .into_iter()
                 .filter(|i| i.kind != "try")
                 .map(|i| {
@@ -362,7 +376,8 @@ impl Core {
                         "percent": i.percent,
                     })
                 })
-                .collect()
+                .collect();
+            (signals, sessions)
         };
         json!({
             "app": { "running": true, "version": self.info.version, "channel": self.info.channel, "protocol": protocol },
@@ -379,6 +394,7 @@ impl Core {
             "quiet": quiet,
             "focus": self.host.focus(),
             "signals": signals,
+            "sessions": sessions,
             "screen_budget": self.host.screen_budget(),
             "flash_write": self.host.flash_write(),
             "conflict": self.host.conflict(),
@@ -476,14 +492,14 @@ impl Core {
     pub fn state(&self) -> AgentsState {
         let now = self.host.mono_ms();
         let index = self.lights().ok();
-        let (settings, signals, log) = {
+        let (settings, signals, sessions, log) = {
             let mut e = lock(&self.engine);
             if let Some(index) = &index {
                 e.refresh_keys(index);
             }
-            (*e.settings(), e.infos(now, index.is_some()), e.log_entries())
+            (*e.settings(), e.infos(now, index.is_some()), e.sessions(now), e.log_entries())
         };
-        AgentsState { lights: self.lights_now(&settings), settings, signals, log, server: self.server_state() }
+        AgentsState { lights: self.lights_now(&settings), settings, signals, sessions, log, server: self.server_state() }
     }
 
     /// The page saved its settings (any of them). They are written first

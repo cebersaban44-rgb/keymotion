@@ -679,6 +679,145 @@ impl ProgressArgs {
     }
 }
 
+/// What a coding agent's hook said, in words of its own that do not depend
+/// on the agent: `keymotion-cli hook claude-code|codex` reads the agent's
+/// event and sends one of these; the app turns it into lights by the user's
+/// settings (the looks, A usage limit, B session numbers, H helper agents).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HookEvent {
+    /// A session started: it gets its number (B), nothing lights.
+    SessionStart,
+    /// The user sent a prompt: the session's earlier lights go (`busy`).
+    Busy,
+    /// The agent waits for the user (an approval, a question).
+    Attention,
+    /// The user answered, or the agent moved on: the session's question
+    /// goes when nothing else is waiting ([`HookArgs::calls`]).
+    Answered,
+    /// The turn finished.
+    Done,
+    /// The turn failed.
+    Error,
+    /// The turn stopped at a usage limit (rate limit, billing, the service
+    /// overloaded): behaviour A, told apart from an error.
+    UsageLimit,
+    /// A helper agent (subagent) or a task of the session finished:
+    /// behaviour H.
+    Helper,
+    /// The session ended: its lights and its number go.
+    SessionEnd,
+}
+
+impl HookEvent {
+    pub const ALL: [HookEvent; 9] = [
+        Self::SessionStart,
+        Self::Busy,
+        Self::Attention,
+        Self::Answered,
+        Self::Done,
+        Self::Error,
+        Self::UsageLimit,
+        Self::Helper,
+        Self::SessionEnd,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::SessionStart => "session_start",
+            Self::Busy => "busy",
+            Self::Attention => "attention",
+            Self::Answered => "answered",
+            Self::Done => "done",
+            Self::Error => "error",
+            Self::UsageLimit => "usage_limit",
+            Self::Helper => "helper",
+            Self::SessionEnd => "session_end",
+        }
+    }
+
+    pub fn parse(input: &str) -> Result<Self, AgentError> {
+        let s = input.trim();
+        Self::ALL.into_iter().find(|e| e.as_str().eq_ignore_ascii_case(s)).ok_or_else(|| {
+            AgentError::new(ErrorCode::BadValue, format!("'{}' is not a hook event.", crate::values::shown(input)))
+        })
+    }
+
+    /// Whether it may light something: when the app is not running, only
+    /// these are worth starting it for.
+    pub const fn lights(self) -> bool {
+        matches!(self, Self::Attention | Self::Done | Self::Error | Self::UsageLimit | Self::Helper)
+    }
+}
+
+/// A session's label, for the app's page: the project folder's name.
+pub const MAX_HOOK_LABEL_CHARS: usize = 40;
+/// The most tool calls one hook request names.
+pub const MAX_HOOK_CALLS: usize = 4;
+/// A tool call's key: a short hash keymotion-cli makes of the call (never
+/// the call itself).
+pub const MAX_HOOK_CALL_LEN: usize = 32;
+
+/// `hook`: a coding agent's hook event ([`HookEvent`]). As typed;
+/// [`HookArgs::validate`] checks it. The request's source is the session
+/// (`claude-code:3f9a0c1d`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HookArgs {
+    pub event: String,
+    /// The coding agent: `claude-code`, `codex`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    /// The session's project folder name, for the page.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// For `attention`: the tool calls that wait; for `answered`: the calls
+    /// that were answered. Empty: for `answered`, every question of the
+    /// session; for `attention`, a question with no call of its own.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub calls: Vec<String>,
+}
+
+/// A checked `hook`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hook {
+    pub event: HookEvent,
+    pub agent: Option<SourceName>,
+    pub label: Option<String>,
+    pub calls: Vec<String>,
+}
+
+impl HookArgs {
+    pub fn validate(&self) -> Result<Hook, AgentError> {
+        let event = HookEvent::parse(&self.event)?;
+        let agent = self.agent.as_deref().map(SourceName::parse).transpose()?;
+        let label = match self.label.as_deref().map(str::trim) {
+            None | Some("") => None,
+            Some(label) => {
+                check_text(label, MAX_HOOK_LABEL_CHARS, 1)?;
+                Some(label.to_string())
+            }
+        };
+        if self.calls.len() > MAX_HOOK_CALLS {
+            return Err(AgentError::new(
+                ErrorCode::BadArgument,
+                format!("A hook names at most {MAX_HOOK_CALLS} tool calls."),
+            ));
+        }
+        for call in &self.calls {
+            let ok = !call.is_empty()
+                && call.len() <= MAX_HOOK_CALL_LEN
+                && call.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+            if !ok {
+                return Err(AgentError::new(
+                    ErrorCode::BadValue,
+                    format!("'{}' is not a tool call key.", crate::values::shown(call)),
+                ));
+            }
+        }
+        Ok(Hook { event, agent, label, calls: self.calls.clone() })
+    }
+}
+
 /// Every command of protocol v1, with its arguments as typed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
@@ -692,12 +831,24 @@ pub enum Command {
     SettingsGet(SettingsGetArgs),
     SettingsSet(SettingsSetArgs),
     Progress(ProgressArgs),
+    Hook(HookArgs),
 }
 
 impl Command {
     /// Every command name of this build.
-    pub const NAMES: [&'static str; 10] =
-        ["hello", "status", "keys", "signal", "light", "clear", "log", "settings_get", "settings_set", "progress"];
+    pub const NAMES: [&'static str; 11] = [
+        "hello",
+        "status",
+        "keys",
+        "signal",
+        "light",
+        "clear",
+        "log",
+        "settings_get",
+        "settings_set",
+        "progress",
+        "hook",
+    ];
 
     /// The `cmd` string.
     pub const fn name(&self) -> &'static str {
@@ -712,6 +863,7 @@ impl Command {
             Self::SettingsGet(_) => "settings_get",
             Self::SettingsSet(_) => "settings_set",
             Self::Progress(_) => "progress",
+            Self::Hook(_) => "hook",
         }
     }
 
@@ -728,6 +880,7 @@ impl Command {
             Self::SettingsGet(a) => serde_json::to_value(a),
             Self::SettingsSet(a) => serde_json::to_value(a),
             Self::Progress(a) => serde_json::to_value(a),
+            Self::Hook(a) => serde_json::to_value(a),
         };
         // Plain structs of strings and numbers always serialize to objects.
         match value {
@@ -754,6 +907,7 @@ impl Command {
             "settings_get" => Self::SettingsGet(typed(cmd, args)?),
             "settings_set" => Self::SettingsSet(typed(cmd, args)?),
             "progress" => Self::Progress(typed(cmd, args)?),
+            "hook" => Self::Hook(typed(cmd, args)?),
             _ => {
                 return Err(AgentError::new(
                     ErrorCode::UnknownCommand,
@@ -943,6 +1097,13 @@ mod tests {
                 keys: Some("numbers".into()),
                 ..Default::default()
             }),
+            Command::Hook(HookArgs {
+                event: "attention".into(),
+                agent: Some("claude-code".into()),
+                label: Some("klavye".into()),
+                calls: vec!["3f9a0c1d2b4e5f60".into()],
+            }),
+            Command::Hook(HookArgs { event: "answered".into(), ..Default::default() }),
         ];
         for (i, command) in commands.iter().enumerate() {
             let request = Request::new(1, i.to_string(), &source(), command);
@@ -1251,6 +1412,52 @@ mod tests {
         assert!(matches!(Command::from_parts("progress", &args), Ok(Command::Progress(_))));
         let args: Map<String, Value> = serde_json::from_str(r#"{"percent":"half"}"#).unwrap();
         assert_eq!(Command::from_parts("progress", &args).unwrap_err().code, ErrorCode::BadRequest);
+    }
+
+    #[test]
+    fn hook_args_are_checked() {
+        for event in HookEvent::ALL {
+            assert_eq!(HookEvent::parse(event.as_str()).unwrap(), event);
+        }
+        let lit: Vec<&str> = HookEvent::ALL.iter().filter(|e| e.lights()).map(|e| e.as_str()).collect();
+        assert_eq!(lit, ["attention", "done", "error", "usage_limit", "helper"]);
+        let hook = HookArgs {
+            event: "Attention".into(),
+            agent: Some("Codex".into()),
+            label: Some("  my project  ".into()),
+            calls: vec!["ab12".into(), "c-3".into()],
+        }
+        .validate()
+        .unwrap();
+        assert_eq!(hook.event, HookEvent::Attention);
+        assert_eq!(hook.agent.unwrap().as_str(), "codex");
+        assert_eq!(hook.label.as_deref(), Some("my project"));
+        let bare = HookArgs { event: "done".into(), label: Some(" ".into()), ..Default::default() }.validate().unwrap();
+        assert_eq!((bare.agent, bare.label, bare.calls.len()), (None, None, 0));
+
+        let code = |a: HookArgs| a.validate().unwrap_err().code;
+        assert_eq!(code(HookArgs::default()), ErrorCode::BadValue);
+        assert_eq!(code(HookArgs { event: "stop".into(), ..Default::default() }), ErrorCode::BadValue);
+        let long = "x".repeat(MAX_HOOK_LABEL_CHARS + 1);
+        assert_eq!(code(HookArgs { event: "done".into(), label: Some(long), ..Default::default() }), ErrorCode::TextTooLong);
+        assert_eq!(
+            code(HookArgs { event: "done".into(), label: Some("a\u{1b}[2J".into()), ..Default::default() }),
+            ErrorCode::BadText
+        );
+        assert_eq!(
+            code(HookArgs { event: "done".into(), agent: Some("a b".into()), ..Default::default() }),
+            ErrorCode::BadSource
+        );
+        for bad in ["", "AB12", "a b", "a/b", &"a".repeat(MAX_HOOK_CALL_LEN + 1)] {
+            let args = HookArgs { event: "answered".into(), calls: vec![bad.to_string()], ..Default::default() };
+            assert_eq!(code(args), ErrorCode::BadValue, "{bad:?}");
+        }
+        let many =
+            HookArgs { event: "answered".into(), calls: vec!["a".into(); MAX_HOOK_CALLS + 1], ..Default::default() };
+        assert_eq!(code(many), ErrorCode::BadArgument);
+        // An app of this version reads what a newer CLI adds.
+        let args: Map<String, Value> = serde_json::from_str(r#"{"event":"done","tool":"Bash"}"#).unwrap();
+        assert!(matches!(Command::from_parts("hook", &args), Ok(Command::Hook(_))));
     }
 
     fn call(session: &mut Session, line: &str) -> Response {
