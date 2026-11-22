@@ -85,6 +85,15 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 
 - Yazmadan önce resmî yazılımı ya da SignalRGB'yi bulmak için kullanılan
   çalışan programlar listesi artık hiçbir programı açmıyor.
+- **Tanıma:** AJAZZ AK980 PRO olarak yalnızca USB adında, denenen klavyenin
+  bildirdiği gibi "AK980 PRO" geçen klavye sayılıyor. Aynı USB kimliğini
+  taşıyan başka bir AK980, örneğin ekransız olanı, artık **Destek iste**'yi
+  görüyor.
+- **Denenmemiş klavye yazılımı:** Keymotion'la denenmemiş bir yazılım
+  sürümünde klavyenin saati de onayınızı bekliyor; hem bağlanınca eşitleme
+  hem **Şimdi eşitle**. Keymotion kaydetmeden önceki soruyu soruyor,
+  verdiğiniz onay uygulama kapanana kadar geçerli. Canlı ışıklar sormadan
+  çalışmayı sürdürüyor.
 
 ### Düzeltilenler
 
@@ -98,6 +107,15 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   tekrarın yalnızca ilk tarihi değil, bütün tarihleri görünüyor. Kuralında
   "ilk pazartesi" yazan haftalık bir tekrar artık her gün değil, yalnızca
   pazartesileri geliyor.
+- **2.4 GHz alıcı:** yalnızca alıcı takılıyken Keymotion artık klavyenizin
+  çalıştığını söylemiyor. Bağlantı sayfası ve Genel bakış, alıcının takılı
+  olduğunu ve Keymotion'ın klavyenin açık olup olmadığını henüz
+  anlayamadığını söylüyor; yanındaki nokta gri. Klavye Bluetooth'la
+  bağlıyken alıcı takılı kalırsa uygulama ve bildirim alanı menüsü alıcıyı
+  değil, Bluetooth'u gösteriyor.
+- AK980 PRO'nun USB kimliğini ve adını taşıyan ama içi farklı yapılmış bir
+  klavye, her işlemin başarısız olduğu bir AK980 PRO gibi görünüyordu. Artık
+  **Destek iste**'yi görüyor ve ona hiçbir şey gönderilmiyor.
 
 ## [1.1.0] - 2026-11-16
 

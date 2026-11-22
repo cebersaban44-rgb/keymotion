@@ -17,11 +17,11 @@ Bağlantıyı arkadaki anahtar seçer. Soldan sağa **2.4G · USB · BT** yazar;
 
 | Mod | Windows'un gördüğü | Keymotion'ın yaptığı |
 |---|---|---|
-| USB kablo | VID `0C45`, PID `8009`. Üretici dizgesi `SONiX`, ürün dizgesi `AK980 PRO`. | Her şey. Uygulama VID, PID, USB veri yolu ve ürün adında "AK980" geçmesine bakar. |
+| USB kablo | VID `0C45`, PID `8009`. Üretici dizgesi `SONiX`, ürün dizgesi `AK980 PRO`. | Her şey. Uygulama VID, PID, USB veri yolu ve ürün adında "AK980 PRO" geçmesine bakar. |
 | Bluetooth | Ad `AK980 PRO-1`; son ek Bluetooth kanalıdır. PnP kimliği: VID `0C45`, PID `FEFE`, sürüm `0x0138`. | Pil düzeyini okur. Bluetooth'ta üreticiye özel kanal yoktur. |
-| 2.4 GHz alıcı | USB veri yolunda VID `0C45`, PID `FEFE`, `FF60` usage page'inde üreticiye özel bir koleksiyon. Bu bilgi model dosyasından gelir; burada ölçülmedi. | Alıcıyı tanır; sürücüsü yoktur. |
+| 2.4 GHz alıcı | USB veri yolunda VID `0C45`, PID `FEFE`, `FF60` usage page'inde üreticiye özel bir koleksiyon. Bu bilgi model dosyasından gelir; burada ölçülmedi. | Alıcının takılı olduğunu gösterir. Ona hiçbir şey gönderilmediği için arkasındaki klavyenin açık olup olmadığı bilinmez. |
 
-Alıcı ile Bluetooth aynı `0C45:FEFE` kimliğini taşır; uygulama ikisini veri yoluna bakarak ayırır. Windows klavye yazılımının sürümünü yalnızca kabloda bildirir; alıcıda ya da Bluetooth'ta radyonun kendi sürümünü verir.
+Alıcı ile Bluetooth aynı `0C45:FEFE` kimliğini taşır; uygulama ikisini veri yoluna bakarak ayırır. Alıcı, klavye açık olsun olmasın görünür; klavye Bluetooth'la da bağlıysa uygulama o bağlantıyı gösterir. Windows klavye yazılımının sürümünü yalnızca kabloda bildirir; alıcıda ya da Bluetooth'ta radyonun kendi sürümünü verir.
 
 ## USB arayüzleri
 
@@ -46,7 +46,7 @@ Rapor tanımlayıcılarından (`kb descriptors`) okundu ve `crates/kb-core/src/s
 
 Windows başa `00` değerinde bir rapor kimliği baytı ekler; bu yüzden bir komut 65 bayt, bir ekran sayfası 4.097 bayt olarak gider. `FF13` ve `FFFF` koleksiyonları 20 saniye boyunca yalnızca dinlendiğinde klavye kendiliğinden hiç giriş raporu göndermedi.
 
-Uygulama bir kanalı kullanmadan önce bu şekilleri denetler (`kb_core::shape`). Bazıları AK980 PRO'yla aynı USB kimliğini taşıyan öteki SONiX komut ailesinin klavyeleri 64 baytlık komutları `FF68`'e koyar ve bir de `FF67` koleksiyonu ekler; denetimden geçemezler ve onlara hiçbir şey gönderilmez.
+Uygulama kabloda bir klavye bulduğunda ve bir kanalı kullanmadan önce bu şekilleri denetler (`kb_core::shape`). Bazıları AK980 PRO'yla aynı USB kimliğini taşıyan öteki SONiX komut ailesinin klavyeleri 64 baytlık komutları `FF68`'e koyar ve bir de `FF67` koleksiyonu ekler; denetimden geçemezler, onlara hiçbir şey gönderilmez ve desteklenmeyenler arasında listelenirler.
 
 ## Komut kanalı
 
