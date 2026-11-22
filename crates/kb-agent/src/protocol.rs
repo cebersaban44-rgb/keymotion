@@ -30,7 +30,7 @@ use serde_json::{Map, Value};
 use crate::error::{AgentError, ErrorCode};
 use crate::keys::KeySpec;
 use crate::values::{
-    check_settings_key, is_request_id, signal_duration_ms, Color, Effect, SignalId, SignalName, SourceName,
+    check_settings_key, check_text, is_request_id, signal_duration_ms, Color, Effect, SignalId, SignalName, SourceName,
 };
 
 /// The newest protocol version this build speaks.
@@ -546,6 +546,139 @@ impl SettingsGetArgs {
     }
 }
 
+/// The most settings one `settings_set` may change.
+pub const MAX_SETTINGS_PER_SET: usize = 32;
+/// The longest text value `settings_set` takes, in characters.
+pub const MAX_SETTING_TEXT_CHARS: usize = 64;
+
+/// `settings set key=value …`: change look and behaviour settings (colors,
+/// effects, durations, thresholds, night hours, progress keys). The app
+/// decides which keys an agent may change; access, permissions and limits
+/// are the user's alone. As typed; [`SettingsSetArgs::validate`] checks
+/// the form, the app checks each value.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SettingsSetArgs {
+    /// Key → new value: a string, a number or `true`/`false`.
+    pub values: Map<String, Value>,
+}
+
+impl SettingsSetArgs {
+    /// The keys (normalized, see [`check_settings_key`]) with their values,
+    /// in the order given. At least one, at most [`MAX_SETTINGS_PER_SET`],
+    /// each key once; values are strings (at most
+    /// [`MAX_SETTING_TEXT_CHARS`], no control characters), numbers or
+    /// booleans.
+    pub fn validate(&self) -> Result<Vec<(String, Value)>, AgentError> {
+        if self.values.is_empty() {
+            return Err(AgentError::new(ErrorCode::BadArgument, "Give at least one setting to change.")
+                .with_hint("e.g. signals.done.color=green"));
+        }
+        if self.values.len() > MAX_SETTINGS_PER_SET {
+            return Err(AgentError::new(
+                ErrorCode::BadArgument,
+                format!("At most {MAX_SETTINGS_PER_SET} settings can change at once."),
+            ));
+        }
+        let mut out: Vec<(String, Value)> = Vec::with_capacity(self.values.len());
+        for (key, value) in &self.values {
+            let key = check_settings_key(key)?;
+            if out.iter().any(|(k, _)| *k == key) {
+                return Err(AgentError::new(ErrorCode::BadArgument, format!("'{key}' is given twice.")));
+            }
+            match value {
+                Value::Bool(_) | Value::Number(_) => {}
+                Value::String(s) => {
+                    if s.chars().count() > MAX_SETTING_TEXT_CHARS || s.chars().any(char::is_control) {
+                        return Err(AgentError::new(
+                            ErrorCode::BadValue,
+                            format!("The value of '{key}' is not a short line of text."),
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(AgentError::new(
+                        ErrorCode::BadValue,
+                        format!("The value of '{key}' must be text, a number, true or false."),
+                    ))
+                }
+            }
+            out.push((key, value.clone()));
+        }
+        Ok(out)
+    }
+}
+
+/// A progress bar's label: at most this many characters, one line.
+pub const MAX_PROGRESS_LABEL_CHARS: usize = 40;
+
+/// `progress <percent>`: a progress bar on a row of keys (the F row or the
+/// number row by the user's choice, or keys the agent names). As typed;
+/// [`ProgressArgs::validate`] checks it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ProgressArgs {
+    /// 0 to 100.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub percent: Option<f64>,
+    /// What is progressing, for the app's page (not shown on the keys).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Default: the row the user chose.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keys: Option<String>,
+    /// Default: the user's color.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// How long the bar stays after this update; default the app's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub for_ms: Option<u64>,
+}
+
+// `percent` is checked to be finite, so equality is total in practice.
+impl Eq for ProgressArgs {}
+
+/// A checked `progress`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Progress {
+    /// 0 to 100.
+    pub percent: f64,
+    pub label: Option<String>,
+    pub id: Option<SignalId>,
+    pub keys: Option<KeySpec>,
+    pub color: Option<Color>,
+    pub duration: Option<Duration>,
+}
+
+impl ProgressArgs {
+    pub fn validate(&self) -> Result<Progress, AgentError> {
+        let percent = match self.percent {
+            None => {
+                return Err(AgentError::new(ErrorCode::BadArgument, "A progress bar needs a percent.")
+                    .with_hint("Give a number from 0 to 100."))
+            }
+            Some(p) if p.is_finite() && (0.0..=100.0).contains(&p) => p,
+            Some(p) => {
+                return Err(AgentError::new(ErrorCode::BadValue, format!("{p} is not a percent; use 0 to 100.")))
+            }
+        };
+        let label = match self.label.as_deref().map(str::trim) {
+            None | Some("") => None,
+            Some(label) => {
+                check_text(label, MAX_PROGRESS_LABEL_CHARS, 1)?;
+                Some(label.to_string())
+            }
+        };
+        let id = self.id.as_deref().map(SignalId::parse).transpose()?;
+        let keys = self.keys.as_deref().map(KeySpec::parse).transpose()?;
+        let color = self.color.as_deref().map(Color::parse).transpose()?;
+        let duration = self.for_ms.map(signal_duration_ms).transpose()?;
+        Ok(Progress { percent, label, id, keys, color, duration })
+    }
+}
+
 /// Every command of protocol v1, with its arguments as typed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
@@ -557,11 +690,14 @@ pub enum Command {
     Clear(ClearArgs),
     Log(LogArgs),
     SettingsGet(SettingsGetArgs),
+    SettingsSet(SettingsSetArgs),
+    Progress(ProgressArgs),
 }
 
 impl Command {
     /// Every command name of this build.
-    pub const NAMES: [&'static str; 8] = ["hello", "status", "keys", "signal", "light", "clear", "log", "settings_get"];
+    pub const NAMES: [&'static str; 10] =
+        ["hello", "status", "keys", "signal", "light", "clear", "log", "settings_get", "settings_set", "progress"];
 
     /// The `cmd` string.
     pub const fn name(&self) -> &'static str {
@@ -574,6 +710,8 @@ impl Command {
             Self::Clear(_) => "clear",
             Self::Log(_) => "log",
             Self::SettingsGet(_) => "settings_get",
+            Self::SettingsSet(_) => "settings_set",
+            Self::Progress(_) => "progress",
         }
     }
 
@@ -588,6 +726,8 @@ impl Command {
             Self::Clear(a) => serde_json::to_value(a),
             Self::Log(a) => serde_json::to_value(a),
             Self::SettingsGet(a) => serde_json::to_value(a),
+            Self::SettingsSet(a) => serde_json::to_value(a),
+            Self::Progress(a) => serde_json::to_value(a),
         };
         // Plain structs of strings and numbers always serialize to objects.
         match value {
@@ -612,6 +752,8 @@ impl Command {
             "clear" => Self::Clear(typed(cmd, args)?),
             "log" => Self::Log(typed(cmd, args)?),
             "settings_get" => Self::SettingsGet(typed(cmd, args)?),
+            "settings_set" => Self::SettingsSet(typed(cmd, args)?),
+            "progress" => Self::Progress(typed(cmd, args)?),
             _ => {
                 return Err(AgentError::new(
                     ErrorCode::UnknownCommand,
@@ -790,6 +932,17 @@ mod tests {
             Command::Clear(ClearArgs::default()),
             Command::Log(LogArgs { limit: Some(5) }),
             Command::SettingsGet(SettingsGetArgs { key: None }),
+            Command::SettingsSet(SettingsSetArgs {
+                values: [("signals.done.color".to_string(), json!("green")), ("night.on".to_string(), json!(true))]
+                    .into_iter()
+                    .collect(),
+            }),
+            Command::Progress(ProgressArgs {
+                percent: Some(42.5),
+                label: Some("Tests".into()),
+                keys: Some("numbers".into()),
+                ..Default::default()
+            }),
         ];
         for (i, command) in commands.iter().enumerate() {
             let request = Request::new(1, i.to_string(), &source(), command);
@@ -1014,6 +1167,90 @@ mod tests {
             Some("agents.screen")
         );
         assert_eq!(SettingsGetArgs { key: Some("../x".into()) }.validate().unwrap_err().code, ErrorCode::BadValue);
+    }
+
+    #[test]
+    fn settings_set_takes_short_scalar_values_once_each() {
+        let args = |pairs: &[(&str, Value)]| SettingsSetArgs {
+            values: pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect(),
+        };
+        let ok =
+            args(&[("Signals.Done.Color", json!("#00ff00")), ("away.after", json!("5m")), ("night.on", json!(false))])
+                .validate()
+                .unwrap();
+        assert_eq!(
+            ok,
+            vec![
+                ("signals.done.color".to_string(), json!("#00ff00")),
+                ("away.after".to_string(), json!("5m")),
+                ("night.on".to_string(), json!(false)),
+            ]
+        );
+        assert!(args(&[("progress.speed", json!(3))]).validate().is_ok());
+
+        let code = |a: SettingsSetArgs| a.validate().unwrap_err().code;
+        assert_eq!(code(SettingsSetArgs::default()), ErrorCode::BadArgument);
+        assert_eq!(code(args(&[("a.b", json!([1]))])), ErrorCode::BadValue);
+        assert_eq!(code(args(&[("a.b", json!({"x": 1}))])), ErrorCode::BadValue);
+        assert_eq!(code(args(&[("a.b", Value::Null)])), ErrorCode::BadValue);
+        assert_eq!(code(args(&[("a.b", json!("x".repeat(MAX_SETTING_TEXT_CHARS + 1)))])), ErrorCode::BadValue);
+        assert_eq!(code(args(&[("a.b", json!("line\nbreak"))])), ErrorCode::BadValue);
+        assert_eq!(code(args(&[("../x", json!(1))])), ErrorCode::BadValue);
+        // Two spellings of one key.
+        assert_eq!(code(args(&[("night.on", json!(true)), ("Night.On", json!(false))])), ErrorCode::BadArgument);
+        let many: Vec<(String, Value)> = (0..=MAX_SETTINGS_PER_SET).map(|i| (format!("k{i}"), json!(i))).collect();
+        assert_eq!(code(SettingsSetArgs { values: many.into_iter().collect() }), ErrorCode::BadArgument);
+    }
+
+    #[test]
+    fn progress_args_are_checked() {
+        let p = ProgressArgs {
+            percent: Some(100.0),
+            label: Some("  Build  ".into()),
+            keys: Some("f1-f12".into()),
+            color: Some("cyan".into()),
+            id: Some("Build".into()),
+            for_ms: Some(60_000),
+        }
+        .validate()
+        .unwrap();
+        assert_eq!(p.percent, 100.0);
+        assert_eq!(p.label.as_deref(), Some("Build"));
+        assert_eq!(p.id.unwrap().as_str(), "build");
+        assert_eq!(p.keys.unwrap().to_string(), "f1-f12");
+        assert_eq!(p.duration, Some(Duration::from_secs(60)));
+        let bare = ProgressArgs { percent: Some(0.0), label: Some(" ".into()), ..Default::default() };
+        let bare = bare.validate().unwrap();
+        assert_eq!((bare.label, bare.keys, bare.color, bare.duration), (None, None, None, None));
+
+        let code = |a: ProgressArgs| a.validate().unwrap_err().code;
+        assert_eq!(code(ProgressArgs::default()), ErrorCode::BadArgument);
+        for bad in [-0.5, 100.01, f64::NAN, f64::INFINITY] {
+            assert_eq!(code(ProgressArgs { percent: Some(bad), ..Default::default() }), ErrorCode::BadValue, "{bad}");
+        }
+        let long = "x".repeat(MAX_PROGRESS_LABEL_CHARS + 1);
+        assert_eq!(
+            code(ProgressArgs { percent: Some(5.0), label: Some(long), ..Default::default() }),
+            ErrorCode::TextTooLong
+        );
+        assert_eq!(
+            code(ProgressArgs { percent: Some(5.0), label: Some("two\nlines".into()), ..Default::default() }),
+            ErrorCode::TextTooLong
+        );
+        assert_eq!(
+            code(ProgressArgs { percent: Some(5.0), color: Some("teal".into()), ..Default::default() }),
+            ErrorCode::BadColor
+        );
+        assert_eq!(
+            code(ProgressArgs { percent: Some(5.0), for_ms: Some(0), ..Default::default() }),
+            ErrorCode::BadDuration
+        );
+        // A newer client's extra fields are ignored; a percent of the wrong
+        // type is malformed.
+        let args: Map<String, Value> = serde_json::from_str(r#"{"percent":50,"steps":3}"#).unwrap();
+        assert!(matches!(Command::from_parts("progress", &args), Ok(Command::Progress(_))));
+        let args: Map<String, Value> = serde_json::from_str(r#"{"percent":"half"}"#).unwrap();
+        assert_eq!(Command::from_parts("progress", &args).unwrap_err().code, ErrorCode::BadRequest);
     }
 
     fn call(session: &mut Session, line: &str) -> Response {

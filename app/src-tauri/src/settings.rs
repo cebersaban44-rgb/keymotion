@@ -150,14 +150,27 @@ fn guard_overwrite(dir: &Path, file: &str) -> io::Result<()> {
     }
 }
 
-/// Write `value` atomically (temp file, then rename).
+/// Write `value` atomically: to a temp file of its own (two saves of the
+/// same file at once never share one), flushed to the disk, then renamed
+/// over the file. A crash leaves the old file or the new one, never half
+/// of one.
 pub(crate) fn save<T: Serialize>(dir: &Path, file: &str, version: u32, value: T) -> io::Result<()> {
+    use std::io::Write;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SAVES: AtomicU64 = AtomicU64::new(0);
     fs::create_dir_all(dir)?;
     guard_overwrite(dir, file)?;
     let json = serde_json::to_string_pretty(&Versioned { version, value }).map_err(io::Error::other)?;
-    let tmp = dir.join(format!("{file}.tmp"));
-    fs::write(&tmp, json)?;
-    fs::rename(&tmp, dir.join(file))
+    let tmp = dir.join(format!("{file}.{}-{}.tmp", std::process::id(), SAVES.fetch_add(1, Ordering::Relaxed)));
+    let written = fs::File::create(&tmp).and_then(|mut f| {
+        f.write_all(json.as_bytes())?;
+        f.sync_all()
+    });
+    let result = written.and_then(|()| fs::rename(&tmp, dir.join(file)));
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    result
 }
 
 /// The saved calibration, or the default when none was saved yet or the
@@ -372,6 +385,32 @@ mod tests {
     fn missing_file_gives_default() {
         assert_eq!(load_calibration(&temp_dir("missing")), LedCalibration::DEFAULT);
         assert_eq!(load_clock(&temp_dir("missing")), ClockSettings::default());
+    }
+
+    #[test]
+    fn saves_at_the_same_time_never_tear_the_file() {
+        let dir = temp_dir("together");
+        let threads: Vec<_> = (0..8u64)
+            .map(|n| {
+                let dir = dir.clone();
+                std::thread::spawn(move || {
+                    for i in 0..25u64 {
+                        let clock = ClockSettings { auto_sync: n % 2 == 0, last_sync_ms: Some(n * 1000 + i) };
+                        // Two writers may race for the rename; neither may tear the file.
+                        let _ = save_clock(&dir, clock);
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        let text = fs::read_to_string(dir.join(CLOCK_FILE)).unwrap();
+        assert!(serde_json::from_str::<serde_json::Value>(&text).is_ok(), "{text}");
+        assert!(load_clock(&dir).last_sync_ms.is_some());
+        let left: Vec<_> = fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name()).collect();
+        assert_eq!(left, [std::ffi::OsString::from(CLOCK_FILE)], "no temp files left");
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

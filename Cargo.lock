@@ -2169,6 +2169,7 @@ dependencies = [
  "gif",
  "icalendar",
  "jiff",
+ "kb-agent",
  "kb-core",
  "kb-devices",
  "kb-protocol",
