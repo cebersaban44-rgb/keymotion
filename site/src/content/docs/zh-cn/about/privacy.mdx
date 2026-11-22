@@ -50,6 +50,7 @@ Keymotion 本身不会发送任何关于你的信息。当你使用以下服务�
 | 正在播放的歌曲（标题、艺术家、封面、播放的应用），来自 Windows | 实时屏幕及其**正在播放**来源开启时 | 键盘屏幕上的歌曲卡片 |
 | 处理器、显卡和内存负载，来自 Windows 的性能计数器 | 系统指标开启时，或其页面打开时 | 按键上的负载条 |
 | 扬声器音量和静音状态、麦克风静音状态，来自 Windows 的声音系统 | 系统指标开启时，或其页面打开时 | 音量条和静音指示灯 |
+| 电脑正在播放的声音此刻的响度，来自 Windows 的声音系统（发往扬声器或耳机的混合声音；从不读取麦克风） | 音乐模式开启时，或其页面打开时 | 按键上的音乐灯光。不会录制、存储或向任何地方发送声音；只短暂保留它的响度 |
 | 距你上次使用键盘或鼠标的时间 | 提醒开启时 | 你不在时，重复提醒会等待 |
 | 哪个程序在前台：它的文件名和文件夹，以及它的窗口是否占满屏幕。从不读取窗口标题，也不会打开任何程序 | **识别游戏**或配置文件的**按应用切换**开启时 | 区分游戏和其他程序，以及为每个程序切换配置文件 |
 | 程序的图标，从它的文件中读取（不会打开该程序） | 游戏或程序列表中显示它时，以及没有 Steam 图片（或图片无法读取）的游戏启动时 | 列表中和开局卡片上的图标 |
@@ -66,7 +67,7 @@ Keymotion 本身不会发送任何关于你的信息。当你使用以下服务�
 所有内容都在你的 Windows 用户文件夹中。在**设置**的**关于**部分，**数据文件夹**和**日志文件**可以打开这些文件夹。
 
 - **设置和记录**，位于 `%APPDATA%\dev.keymotion\`：
-  - `calibration.json`、`clock.json`、`lighting.json`、`pomodoro.json`、`gauges.json`、`reminders.json`、`battery.json`、`profiles.json`、`background.json`、`updates.json`、`games.json`；
+  - `calibration.json`、`clock.json`、`lighting.json`、`pomodoro.json`、`gauges.json`、`music.json`、`reminders.json`、`battery.json`、`profiles.json`、`background.json`、`updates.json`、`games.json`；
   - `auto-profiles.json`：你的**按应用切换**配置文件；以及在为某个程序把配置文件保存到键盘之后，保存之前键盘上的灯光、自定义按键和宏的一份副本，用于恢复之前的状态；
   - `game-history.json`：你的游戏时段（游戏、开始和结束时间、读取的数值、英雄联盟的对局结果）。**游戏时段**页面上的**删除历史记录**会清空它；
   - `keymap.json` 和 `macros.json`：Keymotion 对已写入键盘内容的唯一记录，因为键盘无法回报这些设置；

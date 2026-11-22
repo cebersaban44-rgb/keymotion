@@ -932,7 +932,7 @@ export const tr: Messages = {
   "music.palette": "Renk",
   "music.palette.heat": "Yeşil-sarı-kırmızı",
   "music.palette.rainbow": "Gökkuşağı",
-  "music.palette.one": "Tek renk",
+  "music.palette.single": "Tek renk",
   "music.palette.two": "İki renk",
   "music.color": "Renk",
   "music.color.first": "Birinci renk",

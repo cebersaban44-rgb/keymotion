@@ -156,7 +156,7 @@ export function Music({ kb }: { kb: KeyboardInfo }) {
                   options={[
                     { value: "heat", label: t("music.palette.heat") },
                     { value: "rainbow", label: t("music.palette.rainbow") },
-                    { value: "one", label: t("music.palette.one") },
+                    { value: "one", label: t("music.palette.single") },
                     { value: "two", label: t("music.palette.two") },
                   ]}
                 />

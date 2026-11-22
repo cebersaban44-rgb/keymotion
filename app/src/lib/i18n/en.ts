@@ -939,7 +939,7 @@ export const en = {
   "music.palette": "Color",
   "music.palette.heat": "Green-yellow-red",
   "music.palette.rainbow": "Rainbow",
-  "music.palette.one": "One color",
+  "music.palette.single": "One color",
   "music.palette.two": "Two colors",
   "music.color": "Color",
   "music.color.first": "First color",

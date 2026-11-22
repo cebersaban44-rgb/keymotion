@@ -170,10 +170,18 @@ export function checkDictionaries(dicts, { release = false, meta = null } = {}) 
   }
   const partsOf = (lang, key) => parsed.get(`${lang}\0${key}`);
 
-  // English: a `.one` key needs its base key.
+  // English: a `.one` key needs its base key. A `.one` key with no
+  // placeholder whose base has other sub-keys (".auto", ".two") is an option
+  // ("One color"), not a plural form: Russian and Chinese never get it.
   for (const key of enKeys) {
-    if (key.endsWith(".one") && !enKeys.has(key.slice(0, -4))) {
-      add("error", "en", key, "keys", `"${key.slice(0, -4)}" does not exist: a misspelled plural key?`);
+    if (!key.endsWith(".one")) continue;
+    const base = key.slice(0, -4);
+    if (!enKeys.has(base)) {
+      add("error", "en", key, "keys", `"${base}" does not exist: a misspelled plural key?`);
+    }
+    const siblings = [...enKeys].some((k) => k !== key && k.startsWith(`${base}.`));
+    if (siblings && !en[key].includes("{") && !(en[base] ?? "").includes("{")) {
+      add("error", "en", key, "keys", "looks like an option, not a plural form: name it something other than .one (e.g. .single)");
     }
   }
 

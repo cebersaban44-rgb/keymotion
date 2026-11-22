@@ -127,6 +127,7 @@ Keymotion 已在黑爵 AK980 V2（带屏版）上测试。基于同一平台的�
 | <img src="docs/images/features/screen.webp" width="240" alt="为键盘屏幕准备图片"> | **屏幕工作室**<br>把图片、GIF、视频和文字卡片放到 240×135 屏幕上。 |
 | <img src="docs/images/features/live-screen.webp" width="240" alt="屏幕上的实时卡片"> | **实时屏幕**<br>自动更新的卡片：正在播放的歌曲、你的下一个会议、专注计时器。 |
 | <img src="docs/images/features/focus.webp" width="240" alt="按键上的专注计时器"> | **专注与提醒**<br>专注计时器、提醒，以及在按键上亮起的系统指标。 |
+| <img src="docs/images/features/music.webp" width="240" alt="音乐模式：按键灯光以光柱、节拍、响度光带和波浪的形式随声音变化"> | **音乐模式**<br>随电脑播放的声音变化的按键灯光：从低音到高音的光柱、随每个节拍闪动的脉冲、一条表示响度的光带，或者波浪。不会录制声音，也不使用麦克风。 |
 | <img src="docs/images/features/game-session.webp" width="240" alt="英雄联盟灯光：生命值在按键上逐渐消退，法力值在 F 键上逐渐耗尽"> | **游戏时段**<br>识别你何时在玩游戏：游戏开始时在屏幕上显示一张卡片，结束时显示结算卡片，并点亮游戏用到的按键。在英雄联盟（League of Legends）中，你的生命值、法力值和对局中的事件会显示在按键上。国服（腾讯）未测试。 |
 | <img src="docs/images/features/profiles.webp" width="240" alt="将所有游戏和一个程序分别关联到各自的配置文件"> | **按应用切换配置文件**<br>将灯光、按键和宏保存为配置文件。每个程序（或所有游戏）来到前台时，都会切换到各自的配置文件。 |
 
