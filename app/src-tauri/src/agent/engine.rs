@@ -557,20 +557,25 @@ impl Engine {
             HookEvent::SessionStart | HookEvent::SessionEnd => json!({ "lit": false, "cleared": 0 }),
             HookEvent::Busy => {
                 let asked = self.answer_all(name);
-                let mut a =
-                    self.signal(source, &SignalArgs { name: "busy".into(), ..Default::default() }, lights, now, id_out)?;
+                let mut a = self.signal(
+                    source,
+                    &SignalArgs { name: "busy".into(), ..Default::default() },
+                    lights,
+                    now,
+                    id_out,
+                )?;
                 a["cleared"] = json!(asked + a["cleared"].as_u64().unwrap_or(0) as usize);
                 a
             }
             HookEvent::Attention => self.ask(source, &hook.calls, lights, now, id_out)?,
             HookEvent::Answered => {
                 let mut cleared = self.answer(name, &hook.calls);
-                let retried = self
-                    .sessions
-                    .get_mut(name)
-                    .is_some_and(|s| hook.calls.iter().any(|c| s.failed.contains(c)) && !std::mem::take(&mut s.failed).is_empty());
+                let retried = self.sessions.get_mut(name).is_some_and(|s| {
+                    hook.calls.iter().any(|c| s.failed.contains(c)) && !std::mem::take(&mut s.failed).is_empty()
+                });
                 if retried {
-                    cleared += self.remove(name, |l| matches!(l.kind, Kind::Signal(SignalName::Error) | Kind::UsageLimit));
+                    cleared +=
+                        self.remove(name, |l| matches!(l.kind, Kind::Signal(SignalName::Error) | Kind::UsageLimit));
                 }
                 json!({ "lit": false, "cleared": cleared, "waiting": self.waiting_calls(name) })
             }
@@ -586,8 +591,13 @@ impl Engine {
                     s.failed = if hook.event == HookEvent::Error { hook.calls.clone() } else { Vec::new() };
                 }
                 let signal = if hook.event == HookEvent::Done { "done" } else { "error" };
-                let mut a =
-                    self.signal(source, &SignalArgs { name: signal.into(), ..Default::default() }, lights, now, id_out)?;
+                let mut a = self.signal(
+                    source,
+                    &SignalArgs { name: signal.into(), ..Default::default() },
+                    lights,
+                    now,
+                    id_out,
+                )?;
                 a["cleared"] = json!(cleared);
                 a
             }
@@ -599,7 +609,13 @@ impl Engine {
                 let mut a = if self.settings.usage_limit.on {
                     self.usage_limit(source, lights, now, id_out)?
                 } else {
-                    self.signal(source, &SignalArgs { name: "error".into(), ..Default::default() }, lights, now, id_out)?
+                    self.signal(
+                        source,
+                        &SignalArgs { name: "error".into(), ..Default::default() },
+                        lights,
+                        now,
+                        id_out,
+                    )?
                 };
                 a["cleared"] = json!(cleared);
                 a
@@ -689,7 +705,9 @@ impl Engine {
             *id_out = Some(id.clone());
             let shown = self.shown(now.mono).contains(&(name.to_string(), id.clone()));
             self.dirty = true;
-            return Ok(json!({ "id": id, "shown": shown, "lit": true, "kept": true, "expires_in_ms": expires, "cleared": 0 }));
+            return Ok(
+                json!({ "id": id, "shown": shown, "lit": true, "kept": true, "expires_in_ms": expires, "cleared": 0 }),
+            );
         }
         let mut answer =
             self.signal(source, &SignalArgs { name: "attention".into(), ..Default::default() }, lights, now, id_out)?;
@@ -732,9 +750,9 @@ impl Engine {
         !calls.is_empty()
             && self.sessions.get(name).is_some_and(|s| s.failed == calls)
             && self.sources.get(name).is_some_and(|s| {
-                s.lamps.iter().any(|l| {
-                    l.until > now && matches!(l.kind, Kind::Signal(SignalName::Error) | Kind::UsageLimit)
-                })
+                s.lamps
+                    .iter()
+                    .any(|l| l.until > now && matches!(l.kind, Kind::Signal(SignalName::Error) | Kind::UsageLimit))
             })
     }
 

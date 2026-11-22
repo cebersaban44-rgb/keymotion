@@ -280,8 +280,11 @@ pub fn is_ours(agent: Agent, handler: &Json) -> bool {
     if !command.contains("keymotion-cli") {
         return false;
     }
-    let args: Vec<&str> =
-        handler.get("args").and_then(Json::as_array).map(|a| a.iter().filter_map(Json::as_str).collect()).unwrap_or_default();
+    let args: Vec<&str> = handler
+        .get("args")
+        .and_then(Json::as_array)
+        .map(|a| a.iter().filter_map(Json::as_str).collect())
+        .unwrap_or_default();
     let tail = format!("hook {}", agent.id());
     args == ["hook", agent.id()] || command.trim_end().trim_end_matches(['"', '\'']).ends_with(&tail)
 }
@@ -476,9 +479,10 @@ fn merge_hooks(agent: Agent, path: &Path, root: &mut Json, cli: &Cli) -> Result<
         root.set("hooks", Json::object());
         made.hooks = true;
     }
-    let hooks = root.get_mut("hooks").filter(|h| h.as_object().is_some()).ok_or_else(|| {
-        SetupError::invalid(path, "has a \"hooks\" entry that is not an object")
-    })?;
+    let hooks = root
+        .get_mut("hooks")
+        .filter(|h| h.as_object().is_some())
+        .ok_or_else(|| SetupError::invalid(path, "has a \"hooks\" entry that is not an object"))?;
     check_events(path, hooks)?;
     let wanted = our_hooks(agent);
     // Ours on events we no longer use.
@@ -597,13 +601,14 @@ fn find_ours(agent: Agent, root: &Json, cli: Option<&Cli>) -> (usize, bool, Opti
     let mut path = None;
     let Some(hooks) = root.get("hooks").and_then(Json::as_object) else { return (0, false, None) };
     for h in our_hooks(agent) {
-        let found = hooks.iter().filter(|(k, _)| k == h.event).flat_map(|(_, g)| g.as_array().into_iter().flatten()).find_map(
-            |group| {
-                let handlers = group.get("hooks")?.as_array()?;
-                let handler = handlers.iter().find(|x| is_ours(agent, x))?;
-                Some((group.get("matcher").and_then(Json::as_str).filter(|m| !m.is_empty()) == h.matcher, handler))
-            },
-        );
+        let found =
+            hooks.iter().filter(|(k, _)| k == h.event).flat_map(|(_, g)| g.as_array().into_iter().flatten()).find_map(
+                |group| {
+                    let handlers = group.get("hooks")?.as_array()?;
+                    let handler = handlers.iter().find(|x| is_ours(agent, x))?;
+                    Some((group.get("matcher").and_then(Json::as_str).filter(|m| !m.is_empty()) == h.matcher, handler))
+                },
+            );
         match found {
             Some((right_group, handler)) => {
                 count += 1;
@@ -712,8 +717,9 @@ fn starlark_string(text: &str) -> String {
 
 /// keymotion-cli's commands the Codex rule lets out of the sandbox: lights,
 /// status and help. Later steps add theirs here (and [`RULES_VERSION`]).
-pub const ALLOWED_COMMANDS: [&str; 12] =
-    ["status", "keys", "signal", "light", "progress", "clear", "log", "settings", "version", "guide", "doctor", "start"];
+pub const ALLOWED_COMMANDS: [&str; 12] = [
+    "status", "keys", "signal", "light", "progress", "clear", "log", "settings", "version", "guide", "doctor", "start",
+];
 
 // ------------------------------------------------------------- planning
 
@@ -773,7 +779,9 @@ pub fn plan_connect(agent: Agent, homes: &Homes, cli: &Cli) -> Result<Plan, Setu
             summary: format!("a rule that lets keymotion-cli {} out of the sandbox", ALLOWED_COMMANDS.join(", ")),
             backup: false,
         });
-        warnings.push("Codex asks you to trust new hooks once: run /hooks in Codex, or open Settings > Hooks in the app.".into());
+        warnings.push(
+            "Codex asks you to trust new hooks once: run /hooks in Codex, or open Settings > Hooks in the app.".into(),
+        );
     }
 
     // What was made before stays recorded.
@@ -1006,7 +1014,9 @@ pub fn status(agent: Agent, homes: &Homes, cli: Option<&Cli>) -> Status {
     let found = homes.of(agent).is_dir();
     let skill = std::fs::read_to_string(&skill_file).ok().as_deref().and_then(skill_version);
     let rules = (agent == Agent::Codex)
-        .then(|| std::fs::read_to_string(homes.rules_file()).ok().as_deref().and_then(|t| marker_version(t, RULES_MARKER)))
+        .then(|| {
+            std::fs::read_to_string(homes.rules_file()).ok().as_deref().and_then(|t| marker_version(t, RULES_MARKER))
+        })
         .flatten();
     let wanted = our_hooks(agent).len();
     let mut s = Status {
@@ -1220,7 +1230,10 @@ mod tests {
     }
 
     fn cli(home: &Path) -> Cli {
-        Cli { path: home.join("Program Files").join("Key Motion").join("bin").join("keymotion-cli.exe"), kind: CliKind::Installed }
+        Cli {
+            path: home.join("Program Files").join("Key Motion").join("bin").join("keymotion-cli.exe"),
+            kind: CliKind::Installed,
+        }
     }
 
     fn read(p: &Path) -> String {
@@ -1278,7 +1291,10 @@ mod tests {
         let hooks = v.get("hooks").unwrap();
         let stop = hooks.get("Stop").unwrap().as_array().unwrap();
         assert_eq!(stop.len(), 2, "the user's group first, ours after");
-        assert_eq!(stop[0].get("hooks").unwrap().as_array().unwrap()[0].get("command").unwrap().as_str(), Some("say done"));
+        assert_eq!(
+            stop[0].get("hooks").unwrap().as_array().unwrap()[0].get("command").unwrap().as_str(),
+            Some("say done")
+        );
         let ours = &stop[1].get("hooks").unwrap().as_array().unwrap()[0];
         assert_eq!(ours.get("command").and_then(Json::as_str), Some(cli.path_text().as_str()));
         assert_eq!(serde_json::to_string(ours.get("args").unwrap()).unwrap(), r#"["hook","claude-code"]"#);
@@ -1348,7 +1364,14 @@ mod tests {
         let homes = Homes::with(&home, None, None);
         std::fs::create_dir_all(&homes.claude).unwrap();
         let settings = homes.hooks_file(Agent::ClaudeCode);
-        for bad in ["{ \"a\": 1, }", "// comment\n{}", "[1, 2]", "{\"hooks\": []}", "{\"hooks\": {\"Stop\": {}}}", "{\"hooks\": {\"Stop\": [{\"hooks\": 5}]}}"] {
+        for bad in [
+            "{ \"a\": 1, }",
+            "// comment\n{}",
+            "[1, 2]",
+            "{\"hooks\": []}",
+            "{\"hooks\": {\"Stop\": {}}}",
+            "{\"hooks\": {\"Stop\": [{\"hooks\": 5}]}}",
+        ] {
             std::fs::write(&settings, bad).unwrap();
             let e = connect(Agent::ClaudeCode, &homes, &cli(&home)).unwrap_err();
             assert_eq!(e.kind, ErrorKind::Invalid, "{bad}");
@@ -1463,7 +1486,8 @@ mod tests {
         let users = "{\n  \"description\": \"mine\",\n  \"hooks\": {\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"notify.exe\"\n          }\n        ]\n      }\n    ]\n  }\n}\n";
         std::fs::write(&file, users).unwrap();
         std::fs::create_dir_all(homes.rules_dir()).unwrap();
-        std::fs::write(homes.rules_dir().join("default.rules"), "prefix_rule(pattern=[\"git\"], decision=\"allow\")\n").unwrap();
+        std::fs::write(homes.rules_dir().join("default.rules"), "prefix_rule(pattern=[\"git\"], decision=\"allow\")\n")
+            .unwrap();
         connect(Agent::Codex, &homes, &cli(&home)).unwrap();
         let v = Json::parse(&read(&file)).unwrap();
         assert_eq!(v.get("description").and_then(Json::as_str), Some("mine"));
@@ -1479,13 +1503,23 @@ mod tests {
 
     #[test]
     fn the_hook_line_never_needs_quotes_it_cannot_have() {
-        let plain = Cli { path: PathBuf::from(r"C:\Users\saban\AppData\Local\Microsoft\WindowsApps\keymotion-cli.exe"), kind: CliKind::Store };
-        assert_eq!(codex_command(&plain), r"C:\Users\saban\AppData\Local\Microsoft\WindowsApps\keymotion-cli.exe hook codex");
-        let spaced = Cli { path: PathBuf::from(r"C:\Users\Ana María\bin\keymotion-cli.exe"), kind: CliKind::Installed };
+        let plain = Cli {
+            path: PathBuf::from(r"C:\Users\saban\AppData\Local\Microsoft\WindowsApps\keymotion-cli.exe"),
+            kind: CliKind::Store,
+        };
+        assert_eq!(
+            codex_command(&plain),
+            r"C:\Users\saban\AppData\Local\Microsoft\WindowsApps\keymotion-cli.exe hook codex"
+        );
+        let spaced =
+            Cli { path: PathBuf::from(r"C:\Users\Ana María\bin\keymotion-cli.exe"), kind: CliKind::Installed };
         assert_eq!(codex_command(&spaced), r"& 'C:\Users\Ana María\bin\keymotion-cli.exe' hook codex");
         let quote = Cli { path: PathBuf::from(r"C:\Users\O'Neil\bin\keymotion-cli.exe"), kind: CliKind::Installed };
         assert_eq!(codex_command(&quote), r"& 'C:\Users\O''Neil\bin\keymotion-cli.exe' hook codex");
-        assert_eq!(command_line(Agent::ClaudeCode, &spaced), r#""C:\Users\Ana María\bin\keymotion-cli.exe" hook claude-code"#);
+        assert_eq!(
+            command_line(Agent::ClaudeCode, &spaced),
+            r#""C:\Users\Ana María\bin\keymotion-cli.exe" hook claude-code"#
+        );
         // Ours, whichever form.
         for line in [&codex_command(&plain), &codex_command(&spaced), "\"C:\\x\\keymotion-cli.exe\" hook codex"] {
             assert!(is_ours(Agent::Codex, &Json::Object(vec![("command".into(), Json::str(line))])), "{line}");
@@ -1497,7 +1531,11 @@ mod tests {
     #[test]
     fn the_stable_path_is_the_alias_or_the_install() {
         let local = PathBuf::from(r"C:\Users\a\AppData\Local");
-        let store = Cli::for_exe(Path::new(r"C:\Program Files\WindowsApps\cebersaban.Keymotion_1.2.0.0_x64__pa98\keymotion-cli.exe"), true, Some(&local));
+        let store = Cli::for_exe(
+            Path::new(r"C:\Program Files\WindowsApps\cebersaban.Keymotion_1.2.0.0_x64__pa98\keymotion-cli.exe"),
+            true,
+            Some(&local),
+        );
         assert_eq!(store, Cli { path: local.join(r"Microsoft\WindowsApps\keymotion-cli.exe"), kind: CliKind::Store });
         let home = temp_home();
         let dir = home.join("Keymotion");
@@ -1521,7 +1559,11 @@ mod tests {
         let dev = Cli { path: home.join("target").join("keymotion-cli.exe"), kind: CliKind::Dev };
         assert!(refresh(&homes, &dev).is_empty(), "another copy's connection stays as it is");
         let skill = homes.skill_file(Agent::Codex);
-        std::fs::write(&skill, read(&skill).replace(&format!("{SKILL_MARKER} {SKILL_VERSION}"), &format!("{SKILL_MARKER} 0"))).unwrap();
+        std::fs::write(
+            &skill,
+            read(&skill).replace(&format!("{SKILL_MARKER} {SKILL_VERSION}"), &format!("{SKILL_MARKER} 0")),
+        )
+        .unwrap();
         std::fs::write(homes.rules_file(), format!("# {RULES_MARKER} 0\n")).unwrap();
         let done = refresh(&homes, &cli);
         assert_eq!(done, [skill.clone(), homes.rules_file()]);

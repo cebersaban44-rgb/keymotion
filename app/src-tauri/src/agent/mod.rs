@@ -499,7 +499,14 @@ impl Core {
             }
             (*e.settings(), e.infos(now, index.is_some()), e.sessions(now), e.log_entries())
         };
-        AgentsState { lights: self.lights_now(&settings), settings, signals, sessions, log, server: self.server_state() }
+        AgentsState {
+            lights: self.lights_now(&settings),
+            settings,
+            signals,
+            sessions,
+            log,
+            server: self.server_state(),
+        }
     }
 
     /// The page saved its settings (any of them). They are written first

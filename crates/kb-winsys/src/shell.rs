@@ -224,8 +224,9 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn a_detached_program_runs_on_its_own() {
-        let powershell = std::path::PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into()))
-            .join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
+        let powershell =
+            std::path::PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into()))
+                .join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
         let target = std::env::temp_dir().join(format!("kb-winsys detached {}.txt", std::process::id()));
         let _ = std::fs::remove_file(&target);
         let script = format!("Set-Content -LiteralPath '{}' -Value ok", target.display());

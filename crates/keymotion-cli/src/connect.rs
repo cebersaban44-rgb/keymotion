@@ -48,7 +48,14 @@ fn setup_error(e: SetupError) -> AgentError {
 }
 
 /// `connect` or `disconnect`.
-pub fn run(env: &Env, agent: Agent, connecting: bool, yes: bool, dry_run: bool, json: bool) -> Result<Done, AgentError> {
+pub fn run(
+    env: &Env,
+    agent: Agent,
+    connecting: bool,
+    yes: bool,
+    dry_run: bool,
+    json: bool,
+) -> Result<Done, AgentError> {
     let homes = homes(env)?;
     let plan = if connecting {
         let cli = this_cli()?;
@@ -84,7 +91,10 @@ pub fn run(env: &Env, agent: Agent, connecting: bool, yes: bool, dry_run: bool, 
             write_stderr(&format!("note: {w}\n"));
         }
         if !ask(&format!("{} {}? [y/N] ", capitalized(verb), agent.title())) {
-            return Ok(Done::new(json!({ "agent": agent.id(), "changed": false, "cancelled": true }), "Nothing was changed."));
+            return Ok(Done::new(
+                json!({ "agent": agent.id(), "changed": false, "cancelled": true }),
+                "Nothing was changed.",
+            ));
         }
     }
     setup::apply(&plan).map_err(setup_error)?;
@@ -127,7 +137,8 @@ fn describe(plan: &Plan, home: &Path, connecting: bool) -> String {
             (Some(_), None) => "remove",
             _ => "change",
         };
-        let shown = e.path.strip_prefix(home).map_or_else(|_| e.path.display().to_string(), |p| p.display().to_string());
+        let shown =
+            e.path.strip_prefix(home).map_or_else(|_| e.path.display().to_string(), |p| p.display().to_string());
         out.push_str(&format!("  {action:<7} {shown}: {}\n", e.summary));
         if e.backup && e.before.is_some() && e.after.is_some() {
             out.push_str(&format!("          (a copy of it as it was: {}{})\n", shown, setup::BACKUP_SUFFIX));

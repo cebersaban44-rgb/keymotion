@@ -1440,7 +1440,10 @@ mod tests {
         assert_eq!(code(HookArgs::default()), ErrorCode::BadValue);
         assert_eq!(code(HookArgs { event: "stop".into(), ..Default::default() }), ErrorCode::BadValue);
         let long = "x".repeat(MAX_HOOK_LABEL_CHARS + 1);
-        assert_eq!(code(HookArgs { event: "done".into(), label: Some(long), ..Default::default() }), ErrorCode::TextTooLong);
+        assert_eq!(
+            code(HookArgs { event: "done".into(), label: Some(long), ..Default::default() }),
+            ErrorCode::TextTooLong
+        );
         assert_eq!(
             code(HookArgs { event: "done".into(), label: Some("a\u{1b}[2J".into()), ..Default::default() }),
             ErrorCode::BadText

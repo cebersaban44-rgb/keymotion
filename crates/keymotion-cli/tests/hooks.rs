@@ -267,7 +267,8 @@ fn connect_writes_hook_lines_that_run_from_a_folder_with_spaces() {
     let r = cli(&["connect", "codex", "--yes"]);
     assert_eq!(r.code, 0, "{r:?}");
     let v: Value = serde_json::from_slice(&cli(&["connections", "--json"]).stdout).unwrap();
-    let states: Vec<&str> = v["data"]["agents"].as_array().unwrap().iter().map(|a| a["state"].as_str().unwrap()).collect();
+    let states: Vec<&str> =
+        v["data"]["agents"].as_array().unwrap().iter().map(|a| a["state"].as_str().unwrap()).collect();
     assert_eq!(states, ["connected", "needs_approval"], "{v}");
     assert_eq!(v["data"]["cli"]["kind"], json!("installed"));
 
@@ -316,8 +317,8 @@ fn a_path_without_spaces_runs_plain_in_powershell_and_cmd() {
     let (_server, seen) = fake_app(&pipe, true);
     let stop = br#"{"session_id":"thr_2","cwd":"C:\\w","hook_event_name":"Stop","turn_id":"t","model":"m"}"#;
     run_codex_line(&line, stop, &pipe);
-    let cmd = PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into()))
-        .join(r"System32\cmd.exe");
+    let cmd =
+        PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into())).join(r"System32\cmd.exe");
     let r = run_program(&cmd, &["/C", &line], stop, &pipe, None);
     assert_eq!((r.code, r.stdout.len()), (0, 0), "{r:?}");
     assert_eq!(wait_for(&seen, 2, Duration::from_secs(5)).len(), 2);

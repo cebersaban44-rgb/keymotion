@@ -331,11 +331,22 @@ pub enum Plan {
     Guide,
     Doctor,
     Start,
-    Connect { agent: kb_hooks::Agent, yes: bool, dry_run: bool },
-    Disconnect { agent: kb_hooks::Agent, yes: bool, dry_run: bool },
+    Connect {
+        agent: kb_hooks::Agent,
+        yes: bool,
+        dry_run: bool,
+    },
+    Disconnect {
+        agent: kb_hooks::Agent,
+        yes: bool,
+        dry_run: bool,
+    },
     Connections,
     /// Hook mode, reached through clap (`main` reads it first otherwise).
-    Hook { agent: String, deliver: Option<String> },
+    Hook {
+        agent: String,
+        deliver: Option<String>,
+    },
 }
 
 impl Cmd {

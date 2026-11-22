@@ -312,7 +312,10 @@ mod tests {
     fn claude_codes_events_map_as_planned() {
         let bash = json!({"command": "rm -rf node_modules", "description": "Remove node_modules directory"});
         let cases = [
-            (with(base("SessionStart"), json!({"source": "startup", "model": "claude-x"})), Some(HookEvent::SessionStart)),
+            (
+                with(base("SessionStart"), json!({"source": "startup", "model": "claude-x"})),
+                Some(HookEvent::SessionStart),
+            ),
             (with(base("UserPromptSubmit"), json!({"prompt": "Write a function"})), Some(HookEvent::Busy)),
             (
                 with(
@@ -352,7 +355,10 @@ mod tests {
             ),
             (base("PostToolBatch"), Some(HookEvent::Answered)),
             (
-                with(base("Elicitation"), json!({"mcp_server_name": "my-mcp-server", "message": "Please provide", "mode": "form"})),
+                with(
+                    base("Elicitation"),
+                    json!({"mcp_server_name": "my-mcp-server", "message": "Please provide", "mode": "form"}),
+                ),
                 Some(HookEvent::Attention),
             ),
             (
@@ -360,12 +366,21 @@ mod tests {
                 Some(HookEvent::Answered),
             ),
             (
-                with(base("Notification"), json!({"message": "Claude needs your permission", "notification_type": "permission_prompt"})),
+                with(
+                    base("Notification"),
+                    json!({"message": "Claude needs your permission", "notification_type": "permission_prompt"}),
+                ),
                 Some(HookEvent::Attention),
             ),
-            (with(base("Notification"), json!({"notification_type": "elicitation_dialog"})), Some(HookEvent::Attention)),
+            (
+                with(base("Notification"), json!({"notification_type": "elicitation_dialog"})),
+                Some(HookEvent::Attention),
+            ),
             (with(base("Notification"), json!({"notification_type": "agent_needs_input"})), Some(HookEvent::Attention)),
-            (with(base("Notification"), json!({"notification_type": "elicitation_response"})), Some(HookEvent::Answered)),
+            (
+                with(base("Notification"), json!({"notification_type": "elicitation_response"})),
+                Some(HookEvent::Answered),
+            ),
             (with(base("Notification"), json!({"notification_type": "idle_prompt"})), None),
             (with(base("Notification"), json!({"notification_type": "auth_success"})), None),
             (with(base("Notification"), json!({"message": "no type"})), None),
@@ -383,7 +398,10 @@ mod tests {
             (with(base("StopFailure"), json!({"error": "max_output_tokens"})), Some(HookEvent::Error)),
             (with(base("StopFailure"), json!({})), Some(HookEvent::Error)),
             (
-                with(base("SubagentStop"), json!({"agent_id": "def456", "agent_type": "Explore", "stop_hook_active": false})),
+                with(
+                    base("SubagentStop"),
+                    json!({"agent_id": "def456", "agent_type": "Explore", "stop_hook_active": false}),
+                ),
                 Some(HookEvent::Helper),
             ),
             (with(base("SubagentStop"), json!({"agent_id": "x", "agent_type": ""})), None),
@@ -414,7 +432,8 @@ mod tests {
         assert_eq!(ask.1.len(), 1);
         assert!(done.1.contains(&ask.1[0]), "{ask:?} {done:?}");
         // Another command, another key; the same command in another session too.
-        let other = cc(with(base("PostToolUse"), json!({"tool_name": "Bash", "tool_input": {"command": "ls"}}))).unwrap();
+        let other =
+            cc(with(base("PostToolUse"), json!({"tool_name": "Bash", "tool_input": {"command": "ls"}}))).unwrap();
         assert!(!other.1.contains(&ask.1[0]));
         let mut elsewhere = with(base("PermissionRequest"), json!({"tool_name": "Bash", "tool_input": input}));
         elsewhere["session_id"] = json!("zzz");
@@ -432,9 +451,13 @@ mod tests {
         assert_eq!(r.args.label.as_deref(), Some("klavye"));
         assert!(r.source.starts_with("claude-code:") && r.source.len() == "claude-code:".len() + 8);
         for key in done.1.iter().chain(&ask.1) {
-            assert!(kb_agent::protocol::HookArgs { event: "answered".into(), calls: vec![key.clone()], ..Default::default() }
-                .validate()
-                .is_ok());
+            assert!(kb_agent::protocol::HookArgs {
+                event: "answered".into(),
+                calls: vec![key.clone()],
+                ..Default::default()
+            }
+            .validate()
+            .is_ok());
         }
     }
 
@@ -449,18 +472,23 @@ mod tests {
         };
         assert_eq!(cx("SessionStart", json!({"source": "startup"})).unwrap().0, HookEvent::SessionStart);
         assert_eq!(cx("UserPromptSubmit", json!({"prompt": "x"})).unwrap().0, HookEvent::Busy);
-        let ask = cx("PermissionRequest", json!({"tool_name": "Bash", "tool_input": {"command": "ls", "description": null}}))
-            .unwrap();
+        let ask =
+            cx("PermissionRequest", json!({"tool_name": "Bash", "tool_input": {"command": "ls", "description": null}}))
+                .unwrap();
         assert_eq!((ask.0, ask.1.len()), (HookEvent::Attention, 2));
-        let next = cx("PreModelRequest", json!({"attempt_number": 1, "kind": "x", "request_id": "r", "thread_id": "t"}))
-            .unwrap();
+        let next =
+            cx("PreModelRequest", json!({"attempt_number": 1, "kind": "x", "request_id": "r", "thread_id": "t"}))
+                .unwrap();
         assert_eq!(next.0, HookEvent::Answered);
         assert!(ask.1.contains(&next.1[0]), "the turn names the question");
         let ran = cx("PostToolUse", json!({"tool_name": "Bash", "tool_use_id": "call_1", "tool_input": {"command": "ls"}, "tool_response": "x"}))
             .unwrap();
         assert!(ask.1.iter().any(|k| ran.1.contains(k)), "the call names it too");
         assert_eq!(cx("Interrupt", json!({})).unwrap().0, HookEvent::Busy);
-        assert_eq!(cx("Stop", json!({"stop_hook_active": false, "last_assistant_message": null})).unwrap().0, HookEvent::Done);
+        assert_eq!(
+            cx("Stop", json!({"stop_hook_active": false, "last_assistant_message": null})).unwrap().0,
+            HookEvent::Done
+        );
         assert_eq!(cx("SubagentStop", json!({"agent_id": "a", "agent_type": "worker"})).unwrap().0, HookEvent::Helper);
         let end = json!({"session_id": "thr_123", "transcript_path": "/workspace/.codex/rollout.jsonl", "cwd": "/workspace", "hook_event_name": "SessionEnd", "reason": "other"});
         assert_eq!(event(Agent::Codex, end).unwrap().0, HookEvent::SessionEnd);
