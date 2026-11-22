@@ -44,6 +44,9 @@ struct Facts {
     store_installed: bool,
     /// Started with Windows (`--hidden`, or the Store copy's startup task).
     sign_in: bool,
+    /// keymotion-cli started it for an agent (`--background` or
+    /// `keymotion://background`): no window, but not a start with Windows.
+    background: bool,
     /// The GitHub copy asked this one to take over its start with Windows.
     take_startup: bool,
     /// A copy already runs.
@@ -69,6 +72,9 @@ fn plan(f: Facts) -> Plan {
         let mut args = Vec::new();
         if f.sign_in {
             args.push(tray::ARG_HIDDEN);
+        }
+        if f.background {
+            args.push(tray::ARG_BACKGROUND);
         }
         if f.run_entry == Some(true) {
             args.push(ARG_TAKE_STARTUP);
@@ -104,6 +110,7 @@ pub fn before_start() -> bool {
         // The startup task passes no arguments; Windows tells how it
         // started (asked only when it matters).
         sign_in: has(tray::ARG_HIDDEN) || (store_build && running && kb_winsys::package::started_at_sign_in()),
+        background: tray::background_start(&args),
         take_startup: has(ARG_TAKE_STARTUP),
         running,
         run_entry: kb_winsys::startup::entry(tray::RUN_NAME).map(|e| !e.disabled),
@@ -208,5 +215,17 @@ mod tests {
         // Opened by the user: the running copy's window comes forward.
         assert_eq!(plan(Facts { sign_in: false, ..f }), Plan::Start);
         assert_eq!(plan(Facts { running: false, ..f }), Plan::Start);
+    }
+
+    #[test]
+    fn a_start_for_an_agent_stays_windowless_and_is_not_a_start_with_windows() {
+        // The GitHub copy hands the start to the Store copy, still without
+        // a window, and does not hand over its start with Windows.
+        let f = Facts { background: true, ..github(false, None) };
+        assert_eq!(plan(f), Plan::HandOver { args: vec![tray::ARG_BACKGROUND], drop_run_entry: false });
+        // With a copy already running, it goes to that copy (which shows
+        // nothing), unlike a second start with Windows.
+        let f = Facts { background: true, running: true, ..Facts::default() };
+        assert_eq!(plan(f), Plan::Start);
     }
 }
