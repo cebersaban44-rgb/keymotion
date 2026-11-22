@@ -760,6 +760,38 @@ impl Host for AppHost {
     }
 }
 
+/// The keymotion-cli this copy of the app comes with: the Store copy's
+/// alias, the GitHub copy's `bin` folder, a development build's own folder.
+pub fn bundled_cli(channel: Channel) -> Option<kb_hooks::setup::Cli> {
+    use kb_hooks::setup::{Cli, CliKind};
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    Some(match channel {
+        Channel::Store => {
+            let local = PathBuf::from(std::env::var_os("LOCALAPPDATA")?);
+            Cli { path: local.join(r"Microsoft\WindowsApps\keymotion-cli.exe"), kind: CliKind::Store }
+        }
+        Channel::Github => Cli { path: dir.join("bin").join("keymotion-cli.exe"), kind: CliKind::Installed },
+        _ => Cli { path: dir.join("keymotion-cli.exe"), kind: CliKind::Dev },
+    })
+}
+
+/// At start, off the main thread: the skill (and Codex rule) Keymotion put
+/// in a connected agent's folders is brought up to this version's, if it is
+/// older. Only our own files, and only where they are (`kb_hooks::setup::
+/// refresh`).
+fn refresh_connections(channel: Channel) {
+    let spawned = std::thread::Builder::new().name("agents-refresh".into()).spawn(move || {
+        let (Some(homes), Some(cli)) = (kb_hooks::setup::Homes::from_env(), bundled_cli(channel)) else { return };
+        for path in kb_hooks::setup::refresh(&homes, &cli) {
+            tracing::info!(file = %path.display(), "agent skill brought up to date");
+        }
+    });
+    if let Err(e) = spawned {
+        tracing::warn!("agent skill check not started: {e}");
+    }
+}
+
 /// The agents (managed Tauri state).
 pub struct AgentHandle {
     core: Arc<Core>,
@@ -781,6 +813,7 @@ impl AgentHandle {
         } else {
             Channel::Github
         };
+        refresh_connections(channel);
         let info = ServerInfo { version: app.package_info().version.to_string(), channel };
         let host = Arc::new(AppHost { app, device, config_dir, started: Instant::now(), conflict: Mutex::new(None) });
         let core = Core::new(host, settings, info, true);

@@ -1173,24 +1173,27 @@ fn default_codex_timeout(event: &str) -> u32 {
 // -------------------------------------------------------------- refresh
 
 /// At the app's start: our skill files and our Codex rule, where they are
-/// (only connected agents have them) and differ from this version's
-/// (an older version, another keymotion-cli path), are written anew. Our
-/// files only, never the agents' settings. The files rewritten.
+/// (only connected agents have them) and older than this version's, are
+/// written anew for `cli`. Only an older version counts: a copy that merely
+/// names another keymotion-cli was written by another connection (the
+/// Store copy's, say, while a development build runs), and connecting again
+/// is what moves it. Our files only, never the agents' settings. The files
+/// rewritten.
 pub fn refresh(homes: &Homes, cli: &Cli) -> Vec<PathBuf> {
     let mut done = Vec::new();
     let skill = skill_text(cli);
     for agent in Agent::ALL {
         let path = homes.skill_file(agent);
         if let Ok(text) = std::fs::read_to_string(&path) {
-            if skill_version(&text).is_some() && text != skill && write_atomic(&path, &skill).is_ok() {
+            if skill_version(&text).is_some_and(|v| v < SKILL_VERSION) && write_atomic(&path, &skill).is_ok() {
                 done.push(path);
             }
         }
     }
     let rules = homes.rules_file();
     if let Ok(text) = std::fs::read_to_string(&rules) {
-        let current = rules_text(cli);
-        if marker_version(&text, RULES_MARKER).is_some() && text != current && write_atomic(&rules, &current).is_ok() {
+        let outdated = marker_version(&text, RULES_MARKER).is_some_and(|v| v < RULES_VERSION);
+        if outdated && write_atomic(&rules, &rules_text(cli)).is_ok() {
             done.push(rules);
         }
     }
@@ -1515,6 +1518,8 @@ mod tests {
         connect(Agent::ClaudeCode, &homes, &cli).unwrap();
         connect(Agent::Codex, &homes, &cli).unwrap();
         assert!(refresh(&homes, &cli).is_empty(), "up to date");
+        let dev = Cli { path: home.join("target").join("keymotion-cli.exe"), kind: CliKind::Dev };
+        assert!(refresh(&homes, &dev).is_empty(), "another copy's connection stays as it is");
         let skill = homes.skill_file(Agent::Codex);
         std::fs::write(&skill, read(&skill).replace(&format!("{SKILL_MARKER} {SKILL_VERSION}"), &format!("{SKILL_MARKER} 0"))).unwrap();
         std::fs::write(homes.rules_file(), format!("# {RULES_MARKER} 0\n")).unwrap();

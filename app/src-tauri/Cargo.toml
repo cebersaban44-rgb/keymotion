@@ -19,6 +19,7 @@ base64 = "0.23"
 icalendar = { version = "0.17", default-features = false, features = ["parser"] }
 jiff.workspace = true
 kb-agent.workspace = true
+kb-hooks.workspace = true
 kb-core.workspace = true
 kb-devices.workspace = true
 kb-protocol.workspace = true

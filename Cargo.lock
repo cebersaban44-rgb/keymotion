@@ -2183,6 +2183,7 @@ dependencies = [
  "kb-agent",
  "kb-core",
  "kb-devices",
+ "kb-hooks",
  "kb-protocol",
  "kb-transport",
  "kb-winsys",
