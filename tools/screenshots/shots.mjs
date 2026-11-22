@@ -126,6 +126,16 @@ async function gaugesOn(page) {
   await click(page, "gauges.on", { role: "switch", wait: 600 });
 }
 
+/** Music mode › Show on keys. */
+async function musicOn(page) {
+  await go(page, "music");
+  await click(page, "music.on", { role: "switch", wait: 600 });
+}
+
+/** The made-up song's frame the music shots show (50 ms each from its
+ *  start): 1.55 s, just after a snare. */
+const MUSIC_FRAME = 31;
+
 /** The Overview of a keyboard in use: a reminder, a calendar, the gauges
  *  and a saved effect. */
 async function busyOverview(page, { lang }) {
@@ -486,6 +496,35 @@ export const SHOTS = [
       await scrollTo(page, page.locator("[data-auto-profiles]"), 30);
     },
   },
+  // Music mode
+  // The page with Bars on the keys, at the same moment of the made-up song
+  // every time (just after a snare, so bass and middle stand tall).
+  {
+    name: "music",
+    page: "music",
+    steps: async (page) => {
+      await musicOn(page);
+      await page.evaluate((n) => window.__ksMockMusicStep(n, true), MUSIC_FRAME);
+      await page.waitForTimeout(300);
+    },
+  },
+  {
+    // The mode and appearance settings.
+    name: "music-modes",
+    page: "music",
+    viewport: { height: 1000 },
+    clip: async (page) => {
+      const rows = page.locator("[data-music-settings] > div");
+      const first = await rows.nth(0).boundingBox();
+      const second = await rows.nth(1).boundingBox();
+      return { x: first.x, y: first.y, width: first.width, height: second.y + second.height - first.y };
+    },
+    steps: async (page) => {
+      await musicOn(page);
+      await page.evaluate((n) => window.__ksMockMusicStep(n, true), MUSIC_FRAME);
+      await scrollTo(page, page.locator("[data-music-settings]"), 20);
+    },
+  },
   {
     name: "calendar-add-google",
     page: "calendar",
@@ -657,6 +696,9 @@ async function boxOf(locator, pad = 12, height) {
 }
 
 const LIGHTING_TOUR = ["fx.11", "fx.12", "fx.9", "fx.16", "fx.4"];
+/** The "music" clip's modes, each shown this many frames (70 ms apiece). */
+const MUSIC_MODES = ["music.mode.bars", "music.mode.beat", "music.mode.level", "music.mode.wave"];
+const MUSIC_MODE_FRAMES = 14;
 /** Health and mana, in percent, for each frame of the "game-session" clip. */
 const LOL_TOUR = [
   [100, 90],
@@ -874,6 +916,36 @@ export const CLIPS = [
       await setRange(page, await t(page, "games.lol.preview.health"), health);
       await setRange(page, await t(page, "games.lol.preview.mana"), mana);
       await page.waitForTimeout(450);
+    },
+  },
+  {
+    // Music mode: the keys follow the made-up song, a second of each mode
+    // (Bars, Beat, Level, Wave). Stepped frame by frame, so every run is the
+    // same. A narrower window, so the keys stay readable at 480 px.
+    name: "music",
+    page: "music",
+    viewport: { width: 980, height: 900 },
+    frames: MUSIC_MODES.length * MUSIC_MODE_FRAMES,
+    delay: 70,
+    quality: 75,
+    clip: async (page) => {
+      const card = await page.locator("[data-music] section.card").first().boundingBox();
+      const modes = await page.locator("[data-music-settings] [role=radiogroup]").first().boundingBox();
+      return { x: card.x, y: card.y, width: card.width, height: modes.y + modes.height + 16 - card.y };
+    },
+    steps: async (page) => {
+      await musicOn(page);
+      await page.evaluate(() => document.querySelector("main").scrollTo({ top: 0, behavior: "instant" }));
+      await page.evaluate(() => window.__ksMockMusicStep(20, true));
+      await page.waitForTimeout(300);
+    },
+    frame: async (page, i) => {
+      if (i % MUSIC_MODE_FRAMES === 0) {
+        await press(page, "radio", MUSIC_MODES[i / MUSIC_MODE_FRAMES]);
+      }
+      await page.evaluate(() => window.__ksMockMusicStep(1));
+      await page.mouse.move(1, 1);
+      await page.waitForTimeout(80);
     },
   },
   {

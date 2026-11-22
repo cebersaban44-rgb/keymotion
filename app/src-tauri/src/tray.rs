@@ -14,6 +14,7 @@
 //!   skip to the next phase, stop;
 //! * Reminders ▸ the next one, on / off;
 //! * System gauges on the keys (on / off; RAM only, no flash write);
+//! * Music mode (on / off; RAM only, no flash write);
 //! * Profiles ▸ each profile, the keyboard's own ticked;
 //! * Quit.
 //!
@@ -35,6 +36,7 @@ use crate::dto::{
 };
 use crate::games::{GamesHandle, EVENT_GAMES};
 use crate::gauges::{GaugesHandle, EVENT_GAUGES};
+use crate::music::{MusicHandle, EVENT_MUSIC};
 use crate::pomodoro::{PomodoroAction, PomodoroHandle, EVENT_POMODORO};
 use crate::reminders::{RemindersHandle, EVENT_REMINDERS};
 use crate::updates::{Updates, EVENT_UPDATE};
@@ -333,6 +335,7 @@ struct Facts {
     /// Reminders on, and the next one (when, title).
     reminders: Option<(bool, Option<(f64, String)>)>,
     gauges: Option<bool>,
+    music: Option<bool>,
     /// Id, name (empty: the built-in one) and whether the keyboard has it.
     profiles: Vec<(String, String, bool)>,
     /// A new version waits: its number, and whether it is downloaded.
@@ -365,6 +368,8 @@ struct View {
     reminders_on: bool,
     gauges_label: String,
     gauges_on: bool,
+    music_label: String,
+    music_on: bool,
     profiles_label: String,
     profiles: Vec<(String, String, bool)>,
     auto_label: String,
@@ -502,6 +507,8 @@ fn view_of(t: &TrayTexts, f: &Facts, now_ms: f64, tz: &TimeZone) -> View {
         reminders_on,
         gauges_label: t.gauges.clone(),
         gauges_on: f.gauges.unwrap_or(false),
+        music_label: t.music.clone(),
+        music_on: f.music.unwrap_or(false),
         profiles_label: t.profiles.clone(),
         profiles: f
             .profiles
@@ -564,6 +571,7 @@ fn facts(app: &AppHandle) -> Facts {
             .and_then(|r| r.state().ok())
             .map(|s| (s.settings.enabled, next_reminder(&s))),
         gauges: app.try_state::<Arc<GaugesHandle>>().and_then(|g| g.state().ok()).map(|s| s.settings.enabled),
+        music: app.try_state::<Arc<MusicHandle>>().and_then(|m| m.state().ok()).map(|s| s.settings.enabled),
         profiles: crate::tray_profiles(app)
             .map(|(state, connected)| {
                 std::iter::once(state.factory)
@@ -602,6 +610,7 @@ struct Items {
     reminders_next: MenuItem<Wry>,
     reminders_on: CheckMenuItem<Wry>,
     gauges: CheckMenuItem<Wry>,
+    music: CheckMenuItem<Wry>,
     profiles: Submenu<Wry>,
     /// First in Profiles: the per-app profiles' switch.
     auto: CheckMenuItem<Wry>,
@@ -649,6 +658,7 @@ fn build(app: &AppHandle, v: &View) -> tauri::Result<(Menu<Wry>, Items)> {
         &[&reminders_next, &PredefinedMenuItem::separator(app)?, &reminders_on],
     )?;
     let gauges = CheckMenuItem::with_id(app, "gauges", menu_text(&v.gauges_label), true, v.gauges_on, None::<&str>)?;
+    let music = CheckMenuItem::with_id(app, "music", menu_text(&v.music_label), true, v.music_on, None::<&str>)?;
     let items = profile_items(app, v)?;
     let auto = CheckMenuItem::with_id(app, "auto", menu_text(&v.auto_label), true, v.auto_on, None::<&str>)?;
     let auto_sep = PredefinedMenuItem::separator(app)?;
@@ -670,6 +680,7 @@ fn build(app: &AppHandle, v: &View) -> tauri::Result<(Menu<Wry>, Items)> {
             &focus,
             &reminders,
             &gauges,
+            &music,
             &profiles,
             &PredefinedMenuItem::separator(app)?,
             &quit,
@@ -700,6 +711,7 @@ fn build(app: &AppHandle, v: &View) -> tauri::Result<(Menu<Wry>, Items)> {
             reminders_next,
             reminders_on,
             gauges,
+            music,
             profiles,
             auto,
             profile_items: items,
@@ -752,6 +764,7 @@ fn apply(app: &AppHandle, items: &mut Items, old: &View, new: &View) -> tauri::R
     text!(items.reminders_next, reminders_next);
     text!(items.reminders_on, reminders_on_label);
     text!(items.gauges, gauges_label);
+    text!(items.music, music_label);
     text!(items.profiles, profiles_label);
     text!(items.auto, auto_label);
     text!(items.quit, quit);
@@ -761,6 +774,7 @@ fn apply(app: &AppHandle, items: &mut Items, old: &View, new: &View) -> tauri::R
     }
     items.reminders_on.set_checked(new.reminders_on)?;
     items.gauges.set_checked(new.gauges_on)?;
+    items.music.set_checked(new.music_on)?;
     items.auto.set_checked(new.auto_on)?;
     let same_list = old.profiles.len() == new.profiles.len()
         && old.profiles.iter().zip(&new.profiles).all(|(a, b)| a.0 == b.0 && a.1 == b.1);
@@ -833,6 +847,21 @@ fn on_menu(app: &AppHandle, id: &str) {
                     let _ = app.emit(EVENT_GAUGES, state);
                 }
                 Err(e) => tracing::warn!("gauges from the tray: {e}"),
+            }
+        }
+        "music" => {
+            let music = app.state::<Arc<MusicHandle>>();
+            let result = music.state().and_then(|s| {
+                let mut settings = s.settings;
+                settings.enabled = !settings.enabled;
+                music.configure(settings)
+            });
+            match result {
+                // The page's switch follows (it listens only while open).
+                Ok(state) => {
+                    let _ = app.emit(EVENT_MUSIC, state);
+                }
+                Err(e) => tracing::warn!("music mode from the tray: {e}"),
             }
         }
         _ => {
@@ -1055,6 +1084,7 @@ mod tests {
             pomodoro: Some(pomodoro(PomodoroStatus::Running, PomodoroPhase::Focus, 1, 5.0 * 60_000.0)),
             reminders: Some((true, Some((at(12, 14, 30), "Su iç".into())))),
             gauges: Some(true),
+            music: Some(true),
             profiles: vec![("default".into(), String::new(), false), ("p1".into(), "Oyun & iş".into(), true)],
             update: None,
             game: None,
@@ -1066,6 +1096,8 @@ mod tests {
         assert!(v.focus_active);
         assert_eq!(v.reminders_next, "Next: 14:30 · Su iç");
         assert!(v.gauges_on);
+        assert!(v.music_on);
+        assert_eq!(v.music_label, "Music mode");
         assert_eq!(v.profiles[0].1, "Default");
         assert_eq!(v.tooltip, "Keymotion — Focus · Blok 1/6 · 1 dk kaldı");
 

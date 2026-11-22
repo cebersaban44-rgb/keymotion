@@ -15,6 +15,9 @@
 //!   default microphone's mute (only the Windows mute: a mute button inside
 //!   a call app does not reach Windows). The caller looks the default
 //!   devices up again now and then, so a switch of device is followed.
+//! * The sound playing, for the music lights: Windows' loopback capture of
+//!   the default speakers, opened only while something plays
+//!   ([`loopback`]). No microphone; nothing is recorded or kept.
 //! * Running programs: a Toolhelp snapshot, with each program's path where
 //!   Windows gives it, so the app can refuse to write to the keyboard while
 //!   another program talks to it. No program is opened for it.
@@ -38,6 +41,7 @@ pub mod copies;
 pub mod foreground;
 pub mod games;
 pub mod icon;
+pub mod loopback;
 pub mod os;
 pub mod package;
 pub mod protocol;
@@ -369,7 +373,17 @@ mod sys {
     }
 
     /// Undoes `CoInitializeEx` when the thread's audio reader goes away.
-    struct Com(bool);
+    pub(crate) struct Com(bool);
+
+    impl Com {
+        /// Start COM on this thread (multithreaded). S_FALSE (already
+        /// started) also needs its CoUninitialize; a thread already in
+        /// another mode can still use COM.
+        pub(crate) fn start() -> Self {
+            // SAFETY: plain COM start-up for this thread.
+            Self(unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }.is_ok())
+        }
+    }
 
     impl Drop for Com {
         fn drop(&mut self) {
@@ -391,10 +405,7 @@ mod sys {
 
     impl Audio {
         pub fn new() -> Option<Self> {
-            // S_FALSE (already started) also needs its CoUninitialize; a
-            // thread already in another mode can still use COM.
-            // SAFETY: plain COM start-up for this thread.
-            let com = Com(unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }.is_ok());
+            let com = Com::start();
             // SAFETY: COM is started on this thread.
             let enumerator: IMMDeviceEnumerator =
                 unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) }.ok()?;

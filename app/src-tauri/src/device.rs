@@ -2,7 +2,11 @@
 //!
 //! One thread owns the HID subsystem and every open device. Requests from
 //! the UI arrive on a channel and run one at a time, so protocol sessions
-//! (START … COMMIT) can never interleave. Between requests the actor
+//! (START … COMMIT) can never interleave. Requests already waiting are
+//! taken together, and of the light frames among them only the newest per
+//! layer is applied (see [`next_batch`]): frames that piled up during a
+//! long request (a screen upload) don't play back seconds late. Between
+//! requests the actor
 //!
 //! * re-enumerates devices and emits `keyboards-changed`,
 //! * streams the live (RAM-only) LED frame while one is set: a preview the
@@ -41,7 +45,7 @@ use kb_protocol::sonix::keymap::{KeyAction, Layer};
 use kb_protocol::sonix::screen::ScreenAnimation;
 use kb_protocol::sonix::{scale_to_level, EffectSettings, Rgb, MAX_LEVEL};
 use kb_transport::hid::{Hid, HidChannel};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
@@ -247,6 +251,88 @@ pub enum Request {
     },
 }
 
+/// What a frame request sets: the preview or one background layer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FrameSlot {
+    Live,
+    Layer(LightLayer),
+}
+
+impl Request {
+    /// The slot a `SetLive` or `SetLayer` sets (with a frame or `None`).
+    fn frame_slot(&self) -> Option<FrameSlot> {
+        match self {
+            Self::SetLive(_) => Some(FrameSlot::Live),
+            Self::SetLayer(layer, _) => Some(FrameSlot::Layer(*layer)),
+            _ => None,
+        }
+    }
+
+    /// Talks to a keyboard (or reads a device) and takes a while. Such a
+    /// request runs in a turn of its own, after the frame set before it
+    /// went out, as every request did before frames were batched. The
+    /// others only change what the actor holds, so the order they are
+    /// applied in within a turn is all that matters. Every variant is named
+    /// so a new one has to be placed.
+    fn uses_keyboard(&self) -> bool {
+        match self {
+            Self::ApplyEffect(..)
+            | Self::ApplyPerKey { .. }
+            | Self::SyncClock(_)
+            | Self::ApplyKeymap { .. }
+            | Self::ApplyMacros { .. }
+            | Self::DescribeUnsupported { .. }
+            | Self::UploadScreen { .. } => true,
+            Self::Refresh
+            | Self::SetLive(_)
+            | Self::SetLayer(..)
+            | Self::SetQuiet(_)
+            | Self::SetGameTried(_)
+            | Self::SetMirror(_)
+            | Self::SetCalibration(_)
+            | Self::ConfirmFirmware(_)
+            | Self::SetClockAuto(..) => false,
+        }
+    }
+}
+
+/// The requests to handle in one turn, from the front of `waiting`:
+///
+/// * a request that uses the keyboard, alone;
+/// * else every request up to the next one that does, with each frame
+///   request left out when a later one in the same run sets the same slot
+///   (the preview, or the same layer; a `None` that takes the layer away
+///   counts as a frame too).
+///
+/// Nothing is reordered, and only frame requests are ever left out: every
+/// other request (each with its reply) is handled, in order. A frame left
+/// out is one nothing would have shown: its slot is set again later in the
+/// same turn, no frame goes out within a turn, and no request in the run
+/// reads the slot. A run never reaches past a request that uses the
+/// keyboard, so the frames set before a screen upload or a write still go
+/// out before it, and the ones after it come after it.
+fn next_batch(waiting: &mut VecDeque<Request>) -> Vec<Request> {
+    if waiting.front().is_some_and(Request::uses_keyboard) {
+        return waiting.pop_front().into_iter().collect();
+    }
+    let end = waiting.iter().position(Request::uses_keyboard).unwrap_or(waiting.len());
+    let mut set = Vec::new();
+    let mut batch: Vec<Request> = waiting
+        .drain(..end)
+        .rev()
+        .filter(|r| match r.frame_slot() {
+            Some(slot) if set.contains(&slot) => false,
+            Some(slot) => {
+                set.push(slot);
+                true
+            }
+            None => true,
+        })
+        .collect();
+    batch.reverse();
+    batch
+}
+
 /// How a screen upload ended.
 #[derive(Debug, Clone)]
 pub struct ScreenUploadResult {
@@ -268,19 +354,22 @@ pub struct LiveFrame {
 }
 
 /// Background light layers, from the bottom up (owner's decision,
-/// 2026-11-10; the game and profile layers 2026-11-16). A live frame covers
-/// the whole keyboard, so the keyboard's own saved light only shows when no
-/// layer is set.
+/// 2026-11-10; the game and profile layers 2026-11-16; music 2026-11-22). A
+/// live frame covers the whole keyboard, so the keyboard's own saved light
+/// only shows when no layer is set.
 ///
 /// * `Profile`: the per-key design of the profile linked to the program in
 ///   front (per-app profiles), shown without writing the flash.
 /// * `Gauges`: the system gauges (processor, graphics, memory bars) with
 ///   the rest of the keys dark or tinted.
+/// * `Music`: the music lights, moving with the sound the PC plays, set
+///   only while something plays. The gauges and the profile wait while it
+///   shows.
 /// * `Game`: a game's lights while a game session runs (its keys
-///   highlighted, or League of Legends' health and events). The gauges wait
-///   while it shows.
+///   highlighted, or League of Legends' health and events). The music and
+///   the gauges wait while it shows.
 /// * `Timer`: the focus timer. It uses the whole keyboard ("the light left
-///   is the time left"), so the gauges wait while it shows.
+///   is the time left"), so the music and the gauges wait while it shows.
 /// * `Alerts`: only the keys it names (volume bar for a moment, the
 ///   microphone key), on top of the timer or the gauges.
 /// * `Reminders`: only the keys it names (a key blinking before a meeting),
@@ -293,6 +382,7 @@ pub struct LiveFrame {
 pub enum LightLayer {
     Profile,
     Gauges,
+    Music,
     Game,
     Timer,
     Alerts,
@@ -324,6 +414,14 @@ fn quiet_layers(l: &Layers, quiet: Quiet, game_tried: bool) -> Layers {
     }
 }
 
+/// When a frame set now should go out: at once, unless one went out less
+/// than [`LIVE_EVERY`] ago; then when that one's turn is up. A producer's
+/// new frame and the loop's resend could otherwise both go in the same
+/// timer step, doubling the frames the keyboard gets.
+fn live_due(now: Instant, last_sent: Option<Instant>) -> Instant {
+    last_sent.map_or(now, |t| now.max(t + LIVE_EVERY))
+}
+
 /// When the run loop wakes next: the next look for keyboards, the next
 /// frame or mirror read (`frames`), or the clock sync. A sync waits while a
 /// game wants the keyboard left alone (`SetQuiet` wakes the loop when that
@@ -341,6 +439,7 @@ pub type LitKey = (u8, Rgb, f32);
 pub struct Layers {
     pub profile: Option<LiveFrame>,
     pub gauges: Option<LiveFrame>,
+    pub music: Option<LiveFrame>,
     pub game: Option<LiveFrame>,
     pub timer: Option<LiveFrame>,
     pub alerts: Option<LiveFrame>,
@@ -353,6 +452,7 @@ impl Layers {
         match layer {
             LightLayer::Profile => &mut self.profile,
             LightLayer::Gauges => &mut self.gauges,
+            LightLayer::Music => &mut self.music,
             LightLayer::Game => &mut self.game,
             LightLayer::Timer => &mut self.timer,
             LightLayer::Alerts => &mut self.alerts,
@@ -364,6 +464,7 @@ impl Layers {
     fn any(&self) -> bool {
         self.profile.is_some()
             || self.gauges.is_some()
+            || self.music.is_some()
             || self.game.is_some()
             || self.timer.is_some()
             || self.alerts.is_some()
@@ -373,14 +474,16 @@ impl Layers {
 }
 
 /// What the keys show: the preview alone, or the timer (else the game,
-/// else the gauges, else the profile) with the alerts', the reminders' and
-/// then the nudges' keys on top. `None` when nothing is set.
+/// else the music, else the gauges, else the profile) with the alerts',
+/// the reminders' and then the nudges' keys on top. `None` when nothing is
+/// set.
 pub fn compose(live: Option<&LiveFrame>, l: &Layers) -> Option<Vec<LitKey>> {
     let keys = |f: &LiveFrame| f.colors.iter().map(|&(l, c)| (l, c, f.level)).collect::<Vec<_>>();
     if let Some(live) = live {
         return Some(keys(live));
     }
-    let mut out = l.timer.as_ref().or(l.game.as_ref()).or(l.gauges.as_ref()).or(l.profile.as_ref()).map(keys);
+    let base = [&l.timer, &l.game, &l.music, &l.gauges, &l.profile];
+    let mut out = base.into_iter().find_map(Option::as_ref).map(keys);
     for over in [l.alerts.as_ref(), l.reminders.as_ref(), l.nudges.as_ref()].into_iter().flatten() {
         let base = out.get_or_insert_with(Vec::new);
         for (led, c, level) in keys(over) {
@@ -654,6 +757,8 @@ struct Actor {
     game_tried: bool,
     next_enumerate: Instant,
     next_live: Instant,
+    /// When the last live frame went out.
+    last_live: Option<Instant>,
     next_mirror: Instant,
     /// The flash write in progress (shared with [`DeviceHandle`]).
     flash: FlashState,
@@ -705,11 +810,14 @@ impl Actor {
             game_tried: false,
             next_enumerate: now,
             next_live: now,
+            last_live: None,
             next_mirror: now,
         }
     }
 
     fn run(mut self, rx: mpsc::Receiver<Request>) {
+        // Taken from the channel, not handled yet.
+        let mut waiting = VecDeque::new();
         loop {
             let now = Instant::now();
             if now >= self.next_enumerate {
@@ -718,6 +826,7 @@ impl Actor {
             }
             if self.streaming() && now >= self.next_live {
                 self.send_live();
+                self.last_live = Some(Instant::now());
                 self.next_live = Instant::now() + LIVE_EVERY;
             } else if self.mirror.is_some() && !self.streaming() && now >= self.next_mirror {
                 self.send_mirror();
@@ -736,15 +845,49 @@ impl Actor {
                 }
             }
 
-            let frames =
-                if self.streaming() { Some(self.next_live) } else { self.mirror.as_ref().map(|_| self.next_mirror) };
-            let wake = wake_at(self.next_enumerate, frames, self.clock_due.map(|(due, _)| due), self.quiet);
-            let timeout = wake.saturating_duration_since(Instant::now());
-            match rx.recv_timeout(timeout) {
-                Ok(req) => self.handle(req),
-                Err(RecvTimeoutError::Timeout) => {}
-                Err(RecvTimeoutError::Disconnected) => break,
+            if waiting.is_empty() {
+                let frames = if self.streaming() {
+                    Some(self.next_live)
+                } else {
+                    self.mirror.as_ref().map(|_| self.next_mirror)
+                };
+                let wake = wake_at(self.next_enumerate, frames, self.clock_due.map(|(due, _)| due), self.quiet);
+                let timeout = wake.saturating_duration_since(Instant::now());
+                match rx.recv_timeout(timeout) {
+                    Ok(req) => waiting.push_back(req),
+                    Err(RecvTimeoutError::Timeout) => continue,
+                    Err(RecvTimeoutError::Disconnected) => break,
+                }
             }
+            self.handle_waiting(&rx, &mut waiting);
+        }
+    }
+
+    /// Handle one turn's requests ([`next_batch`]) out of those waiting
+    /// now. After one that used the keyboard (a screen upload can take
+    /// seconds), what came in meanwhile is taken too, so the next frame
+    /// sent is the newest and not one from before the upload.
+    fn handle_waiting(&mut self, rx: &mpsc::Receiver<Request>, waiting: &mut VecDeque<Request>) {
+        waiting.extend(rx.try_iter());
+        let used_keyboard = waiting.front().is_some_and(Request::uses_keyboard);
+        self.handle_batch(waiting);
+        if used_keyboard {
+            waiting.extend(rx.try_iter());
+            if waiting.front().is_some_and(|r| !r.uses_keyboard()) {
+                self.handle_batch(waiting);
+            }
+        }
+    }
+
+    fn handle_batch(&mut self, waiting: &mut VecDeque<Request>) {
+        let before = waiting.len();
+        let batch = next_batch(waiting);
+        let skipped = before - waiting.len() - batch.len();
+        if skipped > 0 {
+            tracing::debug!(skipped, "older light frames skipped");
+        }
+        for req in batch {
+            self.handle(req);
         }
     }
 
@@ -803,7 +946,7 @@ impl Actor {
                     tracing::debug!("no light layer left; keyboard reverts to its saved effect");
                 }
                 if self.live.is_none() {
-                    self.next_live = Instant::now();
+                    self.next_live = live_due(Instant::now(), self.last_live);
                 }
             }
             Request::SetQuiet(quiet) => {
@@ -1325,6 +1468,7 @@ mod tests {
         let all = Layers {
             profile: None,
             gauges: Some(gauges),
+            music: None,
             game: None,
             timer: Some(timer),
             alerts: Some(alerts.clone()),
@@ -1404,6 +1548,18 @@ mod tests {
     }
 
     #[test]
+    fn a_new_layer_frame_waits_for_the_last_ones_turn() {
+        let now = Instant::now();
+        // Nothing sent lately: at once.
+        assert_eq!(live_due(now, None), now);
+        assert_eq!(live_due(now, Some(now - LIVE_EVERY * 2)), now);
+        // The resend went out 10 ms ago: the new frame takes the next turn,
+        // not a second slot in the same 50 ms.
+        let sent = now - Duration::from_millis(10);
+        assert_eq!(live_due(now, Some(sent)), sent + LIVE_EVERY);
+    }
+
+    #[test]
     fn a_clock_sync_due_while_quiet_lets_the_loop_sleep() {
         let now = Instant::now();
         let enumerate = now + Duration::from_secs(5);
@@ -1447,5 +1603,249 @@ mod tests {
         let alerts = frame(&[(2, 99)], 1.0);
         let layers = Layers { timer: Some(timer), alerts: Some(alerts), ..Layers::default() };
         assert_eq!(compose(Some(&live), &layers), Some(vec![(5, [50; 3], 1.0)]));
+    }
+
+    #[test]
+    fn music_lies_between_the_gauges_and_the_game() {
+        let with = |l: &Layers| compose(None, l);
+        let playing = Layers {
+            profile: Some(frame(&[(1, 5), (2, 5)], 1.0)),
+            gauges: Some(frame(&[(1, 10), (2, 10)], 0.5)),
+            music: Some(frame(&[(1, 40), (2, 40)], 0.8)),
+            alerts: Some(frame(&[(2, 99)], 1.0)),
+            ..Layers::default()
+        };
+        // Over the gauges and the profile; the volume bar over the music.
+        assert_eq!(with(&playing), Some(vec![(1, [40; 3], 0.8), (2, [99; 3], 1.0)]));
+        // The game's lights and the focus timer cover it.
+        let in_game = Layers { game: Some(frame(&[(1, 30), (2, 30)], 1.0)), ..playing.clone() };
+        assert_eq!(with(&in_game), Some(vec![(1, [30; 3], 1.0), (2, [99; 3], 1.0)]));
+        let timer = Layers { timer: Some(frame(&[(1, 20), (2, 20)], 0.8)), ..playing.clone() };
+        assert_eq!(with(&timer), Some(vec![(1, [20; 3], 0.8), (2, [99; 3], 1.0)]));
+        // A reminder's wave goes over it too.
+        let wave = Layers { nudges: Some(frame(&[(1, 77)], 1.0)), ..playing.clone() };
+        assert_eq!(with(&wave), Some(vec![(1, [77; 3], 1.0), (2, [99; 3], 1.0)]));
+        // When the music stops, the gauges show again.
+        let stopped = Layers { music: None, alerts: None, ..playing.clone() };
+        assert_eq!(with(&stopped), Some(vec![(1, [10; 3], 0.5), (2, [10; 3], 0.5)]));
+        // Alone, it is the whole frame.
+        let alone = Layers { music: playing.music.clone(), ..Layers::default() };
+        assert!(alone.any());
+        assert_eq!(with(&alone), Some(vec![(1, [40; 3], 0.8), (2, [40; 3], 0.8)]));
+    }
+
+    #[test]
+    fn a_game_that_wants_quiet_hides_the_music() {
+        let mut layers = Layers::default();
+        *layers.slot(LightLayer::Music) = Some(frame(&[(1, 40)], 1.0));
+        assert_eq!(compose(None, &layers), Some(vec![(1, [40; 3], 1.0)]));
+        assert_eq!(compose(None, &quiet_layers(&layers, Quiet::All, false)), None);
+        assert_eq!(compose(None, &quiet_layers(&layers, Quiet::ButReminders, false)), None);
+        // The user's try of the game's lights is not the music.
+        assert_eq!(compose(None, &quiet_layers(&layers, Quiet::All, true)), None);
+    }
+
+    fn layer(layer: LightLayer, v: u8) -> Request {
+        Request::SetLayer(layer, Some(frame(&[(1, v)], 1.0)))
+    }
+
+    fn upload(id: &str) -> Request {
+        let pages = vec![(kb_protocol::sonix::screen::Frame::filled(0), 10)];
+        let anim = ScreenAnimation::new(pages).expect("one frame");
+        Request::UploadScreen { id: id.into(), anim: Box::new(anim), reply: mpsc::channel().0 }
+    }
+
+    fn per_key(brightness: u8) -> Request {
+        Request::ApplyPerKey { colors: Vec::new(), brightness, reply: mpsc::channel().0 }
+    }
+
+    /// What a request is, to compare queues (requests hold replies).
+    fn label(r: &Request) -> String {
+        match r {
+            Request::SetLayer(l, Some(f)) => format!("{l:?}={}", f.colors[0].1[0]),
+            Request::SetLayer(l, None) => format!("{l:?}=off"),
+            Request::SetLive(Some(f)) => format!("live={}", f.colors[0].1[0]),
+            Request::SetLive(None) => "live=off".into(),
+            Request::SetQuiet(q) => format!("quiet={q:?}"),
+            Request::SetGameTried(on) => format!("tried={on}"),
+            Request::SetClockAuto(on, _) => format!("clock-auto={on}"),
+            Request::SyncClock(_) => "sync-clock".into(),
+            Request::UploadScreen { id, .. } => format!("upload {id}"),
+            Request::ApplyPerKey { brightness, .. } => format!("per-key {brightness}"),
+            _ => "other".into(),
+        }
+    }
+
+    /// The turns `requests` are handled in, if they were all waiting.
+    fn turns(requests: Vec<Request>) -> Vec<Vec<String>> {
+        let mut waiting: VecDeque<Request> = requests.into();
+        let mut out = Vec::new();
+        while !waiting.is_empty() {
+            out.push(next_batch(&mut waiting).iter().map(label).collect());
+        }
+        out
+    }
+
+    #[test]
+    fn piled_up_frames_apply_only_the_newest() {
+        // Music frames that came in during a screen upload, and a game
+        // asking for quiet in the middle of them: one turn, and the quiet
+        // is not lost.
+        let mut queue: Vec<Request> = (0..100).map(|v| layer(LightLayer::Music, v)).collect();
+        queue.insert(50, Request::SetQuiet(Quiet::All));
+        assert_eq!(turns(queue), [["quiet=All", "Music=99"]]);
+    }
+
+    #[test]
+    fn each_layer_and_the_preview_keep_their_newest_in_order() {
+        let preview = |v| Request::SetLive(Some(frame(&[(1, v)], 1.0)));
+        let queue = vec![
+            layer(LightLayer::Music, 1),
+            layer(LightLayer::Game, 1),
+            preview(1),
+            layer(LightLayer::Music, 2),
+            Request::SetGameTried(true),
+            layer(LightLayer::Game, 2),
+            Request::SetLive(None),
+            Request::SetClockAuto(true, mpsc::channel().0),
+            layer(LightLayer::Gauges, 1),
+        ];
+        assert_eq!(turns(queue), [["Music=2", "tried=true", "Game=2", "live=off", "clock-auto=true", "Gauges=1"]]);
+    }
+
+    #[test]
+    fn taking_a_layer_away_is_a_frame_too() {
+        use LightLayer::{Game, Music};
+        // The newest wins, whether it sets a frame or takes the layer away:
+        // a frame from before the clear never lands after it.
+        let queue = vec![layer(Music, 1), layer(Music, 2), Request::SetLayer(Music, None)];
+        assert_eq!(turns(queue), [["Music=off"]]);
+        let queue = vec![Request::SetLayer(Music, None), layer(Music, 3)];
+        assert_eq!(turns(queue), [["Music=3"]]);
+        // Another layer's clear leaves this one's frames alone.
+        let queue = vec![layer(Music, 1), Request::SetLayer(Game, None), layer(Music, 2)];
+        assert_eq!(turns(queue), [["Game=off", "Music=2"]]);
+    }
+
+    #[test]
+    fn frames_never_cross_a_request_that_uses_the_keyboard() {
+        use LightLayer::Music;
+        let queue = vec![
+            layer(Music, 1),
+            layer(Music, 2),
+            upload("song card"),
+            layer(Music, 3),
+            layer(Music, 4),
+            Request::SetLayer(Music, None),
+            Request::SyncClock(mpsc::channel().0),
+            per_key(3),
+            layer(Music, 5),
+            per_key(4),
+        ];
+        assert_eq!(
+            turns(queue),
+            vec![
+                vec!["Music=2"],
+                vec!["upload song card"],
+                vec!["Music=off"],
+                vec!["sync-clock"],
+                vec!["per-key 3"],
+                vec!["Music=5"],
+                vec!["per-key 4"],
+            ]
+        );
+    }
+
+    /// The state requests set, as the actor holds it.
+    #[derive(Default)]
+    struct Held {
+        live: Option<LiveFrame>,
+        layers: Layers,
+        quiet: Quiet,
+        tried: bool,
+    }
+
+    impl Held {
+        fn apply(&mut self, r: &Request) {
+            match r {
+                Request::SetLive(f) => self.live = f.clone(),
+                Request::SetLayer(l, f) => *self.layers.slot(*l) = f.clone(),
+                Request::SetQuiet(q) => self.quiet = *q,
+                Request::SetGameTried(on) => self.tried = *on,
+                _ => {}
+            }
+        }
+
+        /// What the keys show (as `send_live` composes it).
+        fn shown(&self) -> Option<Vec<LitKey>> {
+            if self.quiet == Quiet::Off {
+                compose(self.live.as_ref(), &self.layers)
+            } else {
+                compose(self.live.as_ref(), &quiet_layers(&self.layers, self.quiet, self.tried))
+            }
+        }
+    }
+
+    /// A made-up stream of requests, mostly music frames (the same for the
+    /// same seed).
+    fn random_requests(seed: u64, count: usize) -> Vec<Request> {
+        use LightLayer::{Game, Gauges, Music, Timer};
+        let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        let mut next = move |n: u64| {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x % n
+        };
+        (0..count)
+            .map(|i| {
+                let v = (i % 250) as u8;
+                let pick = [Music, Game, Gauges, Timer][next(4) as usize];
+                match next(16) {
+                    0..=7 => layer(Music, v),
+                    8 | 9 => layer(pick, v),
+                    10 => Request::SetLayer(pick, None),
+                    11 => Request::SetLive((next(2) == 0).then(|| frame(&[(1, v)], 1.0))),
+                    12 => Request::SetQuiet([Quiet::Off, Quiet::ButReminders, Quiet::All][next(3) as usize]),
+                    13 => Request::SetGameTried(next(2) == 0),
+                    14 => Request::SyncClock(mpsc::channel().0),
+                    _ => upload("x"),
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn batched_turns_show_what_one_at_a_time_would() {
+        // What the keys show going into each request that uses the
+        // keyboard, and at the end: handled one at a time, and in turns.
+        for seed in 1..=25 {
+            let mut held = Held::default();
+            let mut one_at_a_time = Vec::new();
+            for r in random_requests(seed, 400) {
+                if r.uses_keyboard() {
+                    one_at_a_time.push(held.shown());
+                }
+                held.apply(&r);
+            }
+            one_at_a_time.push(held.shown());
+
+            let mut held = Held::default();
+            let mut batched = Vec::new();
+            let mut handled = 0;
+            let mut waiting: VecDeque<Request> = random_requests(seed, 400).into();
+            while !waiting.is_empty() {
+                for r in next_batch(&mut waiting) {
+                    handled += 1;
+                    if r.uses_keyboard() {
+                        batched.push(held.shown());
+                    }
+                    held.apply(&r);
+                }
+            }
+            batched.push(held.shown());
+            assert_eq!(one_at_a_time, batched, "seed {seed}");
+            assert!(handled < 350, "seed {seed}: {handled} of 400 handled");
+        }
     }
 }

@@ -82,6 +82,7 @@ export default defineConfig({
             "guide/profiles",
             "guide/focus-timer",
             "guide/system-gauges",
+            "guide/music-mode",
             "guide/reminders",
             "guide/calendar",
             "guide/game-session",

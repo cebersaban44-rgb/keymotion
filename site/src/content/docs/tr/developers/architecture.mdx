@@ -16,7 +16,7 @@ kb-core            ortak mantık         tanıma, protokol sürücüsü, renk, g
    ├── kb-protocol   paketler ve güvenlik denetimi   (G/Ç yok)
    ├── kb-devices    model dosyaları ve eşleştirme   (G/Ç yok)
    └── kb-transport  HID ve Bluetooth LE erişimi     (bayt taşır)
-kb-winsys          Windows okumaları    işlemci, ekran kartı, ses, çalışan programlar
+kb-winsys          Windows okumaları    işlemci, ekran kartı, ses, çalan ses, çalışan programlar
 kb-cli (kb)        aynı crate'leri kullanan geliştirici aracı
 ```
 
@@ -30,7 +30,7 @@ Cargo çalışma alanı `crates/*` ile `app/src-tauri`'den oluşur. Çalışma a
 | `kb-devices` | Klavye model dosyaları (`models/` altındaki TOML dosyaları, derleme sırasında programa gömülür) ve eşleştirme: bir HID koleksiyonunun hangi modele ve bağlantı moduna ait olduğu. G/Ç yoktur. |
 | `kb-transport` | Aygıtlara ham erişim. `hid`, HID koleksiyonlarını listeler ve hidapi üzerinden feature, output ve input raporları alıp verir. `ble`, pil düzeyini WinRT ile Bluetooth LE'den okur ve yazma işlevi yoktur. Bayt taşır, protokollerden habersizdir. |
 | `kb-core` | Uygulamanın ve `kb`'nin ortak mantığı: tanıma (`detect`), HID tanımlayıcısının şekil denetimi (`shape`), oturumları, yankıları, bayt toplamları ve ekran yüklemesiyle komut kanalı sürücüsü (`sonix`), renk kalibrasyonu (`color`), geri okumanın yorumlanması (`readback`), klavyeyle çakışan programlar (`conflicts`), saat, tuş atama kuralları ve ekran için dosya içe aktarma. |
-| `kb-winsys` | Sistem göstergeleri ve hatırlatıcılar için Windows'tan okunanlar: işlemci, ekran kartı ve bellek yükü, hoparlör sesi, mikrofonun sessizde olup olmadığı, boşta geçen süre, çalışan programlar. Ayrıca Windows sürümü, görev çubuğu saatinin gösterdiği saat ve saat dilimi ayarı (klavye saati, takvim ve hatırlatıcılar için her seferinde yeniden okunur), takvim adresleri için kullanıcıya özel veri koruması, başlangıç kaydı ve bildirim kimliği. Win32 ve COM'u doğrudan çağıran tek crate'tir; bunları küçük ve güvenli tiplerin arkasında tutar. |
+| `kb-winsys` | Sistem göstergeleri, müzik modu ve hatırlatıcılar için Windows'tan okunanlar: işlemci, ekran kartı ve bellek yükü, hoparlör sesi, mikrofonun sessizde olup olmadığı, çalan sesin yüksekliği (varsayılan çıkışın WASAPI loopback yakalaması, yalnız bir şey çalarken açılır, tek kanala indirilir; `loopback.rs`), boşta geçen süre, çalışan programlar. Ayrıca Windows sürümü, görev çubuğu saatinin gösterdiği saat ve saat dilimi ayarı (klavye saati, takvim ve hatırlatıcılar için her seferinde yeniden okunur), takvim adresleri için kullanıcıya özel veri koruması, başlangıç kaydı ve bildirim kimliği. Win32 ve COM'u doğrudan çağıran tek crate'tir; bunları küçük ve güvenli tiplerin arkasında tutar. |
 | `kb-cli` | `kb` geliştirici aracı: klavyeleri listeler, tanımlayıcıları ve renkleri okur, canlı kare akışı yapar, ölçülmüş yazma komutlarını `--yes` ile çalıştırır. |
 
 ## Tauri kabuğu
@@ -39,8 +39,8 @@ Cargo çalışma alanı `crates/*` ile `app/src-tauri`'den oluşur. Çalışma a
 
 - **Komutlar.** Her `#[tauri::command]` `lib.rs`'tedir. Bir komut girdisini arayüzün tiplerinden dönüştürür, işi devreder ve bir sonuç ya da İngilizce bir hata metni döndürür. Arayüz bu hataları kendi iletilerine çevirir (`app/src/lib/errors.ts`).
 - **Cihaz aktörü** (`device.rs`), klavyelerle konuşan tek koddur. HID alt sistemine tek bir iş parçacığı sahip olur. İstekler bir kanaldan gelir ve birer birer çalışır; böylece iki protokol oturumu asla iç içe geçmez. İstekler arasında aktör her 2 saniyede bir aygıtları yeniden listeler, o anki canlı kareyi her 50 ms'de bir yeniden gönderir, arayüz aynayı gösterirken tuşların renklerini her 250 ms'de bir okur ve klavye bağlanınca saatini ayarlar (günde en çok bir kez). Klavye tuş atamalarını ve makroları geri okuyamadığı için bunların kaydını uygulama kendisi tutar.
-- **Arka plan işleri**; her birinin kendi tutamacı vardır ve `setup` içinde başlatılır: canlı ekran işçisi (`live.rs`), Windows'un çalıyor dediği şarkı (`now_playing.rs`), odak zamanlayıcısı (`pomodoro.rs`), sistem göstergeleri (`gauges.rs`), takvim (`calendar.rs`, `ics.rs`), hatırlatıcılar (`reminders.rs`), oyun oturumu (`games.rs`; League of Legends ışıkları `lol.rs`'te), uygulamaya göre profiller (`autoprofile.rs`) ve güncellemeler (`updates.rs`). Işık katmanlarını cihaz aktörüne, ekran kartlarını canlı ekran işçisine verirler. Oyun oturumu ve uygulamaya göre profiller öndeki programı tek bir izleyiciden alır (`front.rs`); izleyici yalnız biri açıkken çalışır.
-- **Bildirim alanı** (`tray.rs`). Pencereyi kapatmak onu gizleyebilir ve uygulama bildirim alanında çalışmayı sürdürür; çünkü odak zamanlayıcısı, hatırlatıcılar, takvim kartları, canlı ekran ve göstergeler yalnızca uygulama çalışırken işler. Menü klavyeyi gösterir; odak zamanlayıcısını, hatırlatıcıları, göstergeleri, profilleri ve çıkışı sunar. Menüden seçilen bir profil, onaylanmak üzere pencereyi açar; çünkü kalıcı belleğe her yazma kullanıcının onayını ister.
+- **Arka plan işleri**; her birinin kendi tutamacı vardır ve `setup` içinde başlatılır: canlı ekran işçisi (`live.rs`), Windows'un çalıyor dediği şarkı (`now_playing.rs`), odak zamanlayıcısı (`pomodoro.rs`), sistem göstergeleri (`gauges.rs`), müzik modu (`music.rs`; ses çözümlemesi `spectrum.rs`'te), takvim (`calendar.rs`, `ics.rs`), hatırlatıcılar (`reminders.rs`), oyun oturumu (`games.rs`; League of Legends ışıkları `lol.rs`'te), uygulamaya göre profiller (`autoprofile.rs`) ve güncellemeler (`updates.rs`). Işık katmanlarını cihaz aktörüne, ekran kartlarını canlı ekran işçisine verirler. Oyun oturumu ve uygulamaya göre profiller öndeki programı tek bir izleyiciden alır (`front.rs`); izleyici yalnız biri açıkken çalışır.
+- **Bildirim alanı** (`tray.rs`). Pencereyi kapatmak onu gizleyebilir ve uygulama bildirim alanında çalışmayı sürdürür; çünkü odak zamanlayıcısı, hatırlatıcılar, takvim kartları, canlı ekran ve göstergeler yalnızca uygulama çalışırken işler. Menü klavyeyi gösterir; odak zamanlayıcısını, hatırlatıcıları, göstergeleri, müzik modunu, profilleri ve çıkışı sunar. Menüden seçilen bir profil, onaylanmak üzere pencereyi açar; çünkü kalıcı belleğe her yazma kullanıcının onayını ister.
 - **Güncelleyici** (`updates.rs`, `tauri-plugin-updater`). Sürüm iş akışı her GitHub sürümüyle birlikte `latest.json` yayımlar; güncelleyici indirilen dosyayı `tauri.conf.json`'daki ortak anahtarla doğrular. Kullanıcı izin verirse uygulama günde bir kez bakar. Kullanıcı seçmedikçe hiçbir şey kurulmaz; kurulum, klavyeye süren bir yazmanın bitmesini bekler.
 - **Kayıtlar.** Ayarlar `%APPDATA%\dev.keymotion` içinde sürüm numaralı JSON dosyalarıdır (`settings.rs`); bozuk bir dosya kenara alınır ve kullanıcıya bir kez bildirilir. Klavye yüklenen görseli geri veremediği için ekran kütüphanesi (`screen_lib.rs`) bu görsellerin tek kopyasıdır. Günlükler `%LOCALAPPDATA%\dev.keymotion\logs` altına, her gün için bir dosya olarak yazılır.
 - **Tek kopya.** `tauri-plugin-single-instance` ikinci bir kopya başlatmak yerine açık pencereyi öne getirir; iki kopya klavyeye aynı anda komut gönderirdi. Bilgisayar açılışındaki ikinci başlatma (`--hidden`) sessiz kalır; GitHub kopyası da kurulu bir Microsoft Store kopyasına devreder (`handoff.rs`; [Microsoft Store paketi](/keymotion/tr/developers/microsoft-store/)).
@@ -79,7 +79,7 @@ Aynı test çalışması, tarayıcıdaki sahte arka ucun verilerini de Rust'tan 
 
 ### Tarayıcıdaki sahte arka uç
 
-Arayüz üzerinde uygulama ya da klavye olmadan çalışmak için `pnpm --dir app dev` komutunu çalıştırın ve tarayıcıda `http://127.0.0.1:1420/` adresini açın. Tauri dışında `lib/ipc.ts`'teki her işlev arka ucu çağırmak yerine örnek veri döndürür; `lib/screen.ts`, `live.ts`, `pomodoro.ts`, `calendar.ts`, `reminders.ts` ve `gauges.ts`'in kendi örnekleri vardır. Adrese eklenebilecek anahtarlar:
+Arayüz üzerinde uygulama ya da klavye olmadan çalışmak için `pnpm --dir app dev` komutunu çalıştırın ve tarayıcıda `http://127.0.0.1:1420/` adresini açın. Tauri dışında `lib/ipc.ts`'teki her işlev arka ucu çağırmak yerine örnek veri döndürür; `lib/screen.ts`, `live.ts`, `pomodoro.ts`, `calendar.ts`, `reminders.ts`, `gauges.ts` ve `music.ts`'in kendi örnekleri vardır. Adrese eklenebilecek anahtarlar:
 
 | Anahtar | Ne yapar |
 |---|---|
@@ -115,7 +115,7 @@ Bir ışık efektinin kaydedilmesi, adım adım:
 
 </Steps>
 
-Öteki yollar da aynı katmanları kullanır. Bir önizleme `set_live_frame` gönderir; aktör kareyi tutar ve altında odak zamanlayıcısının ya da göstergelerin ışık katmanıyla birlikte her 50 ms'de bir, yalnızca RAM'e giden bir canlı kare olarak yollar. Ekran yüklemesi, arayüzün hazırladığı bir görselle başlar; `screen_add` onu yeniden doğrular, `screen_upload` da ekran kanalından sayfa sayfa gönderir ve ilerlemeyi olaylarla bildirir. Odak zamanlayıcısının, takvimin, hatırlatıcıların ve çalan şarkının canlı kartları, kabloyu ve günlük yükleme sınırını bekleyen canlı ekran işçisinden geçer.
+Öteki yollar da aynı katmanları kullanır. Bir önizleme `set_live_frame` gönderir; aktör kareyi tutar ve altındaki ışık katmanlarıyla birlikte her 50 ms'de bir, yalnızca RAM'e giden bir canlı kare olarak yollar. Katmanlar aşağıdan yukarı: uygulamaya göre profil, göstergeler, müzik modu, oyunun ışıkları ve odak zamanlayıcısı; uyarılar, hatırlatmalar ve dalgaları en üstte. Kanalda bekleyen istekler birlikte ele alınır ve aralarındaki karelerden her katman için yalnız en yenisi uygulanır; böylece ekran yüklemesi sırasında biriken kareler geç oynamaz. Ekran yüklemesi, arayüzün hazırladığı bir görselle başlar; `screen_add` onu yeniden doğrular, `screen_upload` da ekran kanalından sayfa sayfa gönderir ve ilerlemeyi olaylarla bildirir. Odak zamanlayıcısının, takvimin, hatırlatıcıların ve çalan şarkının canlı kartları, kabloyu ve günlük yükleme sınırını bekleyen canlı ekran işçisinden geçer.
 
 ## Güvenlik katmanları
 
@@ -125,6 +125,7 @@ Her katman kendi başına çalışır; birindeki bir hatayı bir sonraki yakalar
 
 - Hiçbir sürücü yok, hiçbir yere DLL sokulmaz, kaplama yok, `SendInput` yok, klavye ya da fare kancası yok.
 - Öndeki program bağlam dışı bir WinEvent kancasından gelir (`kb-winsys/foreground.rs`); yolu, sürece tutamak açmadan `NtQuerySystemInformation(SystemProcessIdInformation)` ile alınır. Çalışan programlar listesi (`running_programs`) de aynı yolla çalışır. Oyun kütüphaneleri başlatıcıların kendi dosyalarından ve kayıt defteri anahtarlarından okunur (`kb-winsys/games.rs`).
+- Müzik modu yalnızca Windows'un kendi loopback yakalamasının her programa verdiği karışık çıkışı okur (görüşme ve yayın uygulamaları gibi), hiçbir zaman bir oyunun sürecini değil; sol ve sağ tek kanala indirilir, tuşlara yön bilgisi gitmez.
 - Oyun verisi yalnız oyunun üçüncü taraf araçlar için belgelediği yoldan: League of Legends'ın Live Client Data API'si, yalnız `127.0.0.1:2999` (`lol.rs`), ve yalnız oyuncunun kendi görünen durumu ile herkese açık olaylar.
 - Uygulama bir oyun için makroları kendi başına açmaz.
 

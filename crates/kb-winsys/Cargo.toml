@@ -1,6 +1,6 @@
 [package]
 name = "kb-winsys"
-description = "Readings from Windows for the key-light gauges and reminders: processor, graphics and memory load, speaker volume, microphone mute, time since the last input, running programs. Also the Windows release, the clock and time zone setting, and per-user data protection. The only crate that calls Win32/COM directly."
+description = "Readings from Windows for the key-light gauges and reminders: processor, graphics and memory load, speaker volume, microphone mute, how loud the sound playing is, time since the last input, running programs. Also the Windows release, the clock and time zone setting, and per-user data protection. The only crate that calls Win32/COM directly."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

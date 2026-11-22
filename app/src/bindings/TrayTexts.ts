@@ -31,7 +31,11 @@ ready: string, reminders: string, remindersOn: string, remindersOff: string,
 /**
  * `{time}`, `{title}`.
  */
-remindersNext: string, remindersNone: string, tomorrow: string, gauges: string, profiles: string, defaultProfile: string, quit: string, hiddenTitle: string, hiddenBody: string, 
+remindersNext: string, remindersNone: string, tomorrow: string, gauges: string, 
+/**
+ * Music mode's switch.
+ */
+music: string, profiles: string, defaultProfile: string, quit: string, hiddenTitle: string, hiddenBody: string, 
 /**
  * The menu's first line while a new version waits. `{version}`.
  */

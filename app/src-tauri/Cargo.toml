@@ -23,6 +23,7 @@ kb-devices.workspace = true
 kb-protocol.workspace = true
 kb-transport.workspace = true
 kb-winsys.workspace = true
+realfft = "3.5"
 semver = "1"
 serde.workspace = true
 serde_json.workspace = true
