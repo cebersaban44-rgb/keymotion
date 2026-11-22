@@ -389,6 +389,8 @@ pub struct TrayTexts {
     pub reminders_none: String,
     pub tomorrow: String,
     pub gauges: String,
+    /// Music mode's switch.
+    pub music: String,
     pub profiles: String,
     pub default_profile: String,
     pub quit: String,
@@ -452,6 +454,7 @@ impl Default for TrayTexts {
             reminders_none: s("No reminders coming up"),
             tomorrow: s("tomorrow"),
             gauges: s("System gauges on the keys"),
+            music: s("Music mode"),
             profiles: s("Profiles"),
             default_profile: s("Default"),
             quit: s("Quit"),

@@ -203,6 +203,7 @@ function useTray() {
       remindersNone: tNow("tray.reminders.none"),
       tomorrow: tNow("tray.tomorrow"),
       gauges: tNow("tray.gauges"),
+      music: tNow("tray.music"),
       profiles: tNow("tray.profiles"),
       defaultProfile: tNow("prof.default"),
       quit: tNow("tray.quit"),

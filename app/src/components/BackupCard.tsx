@@ -33,6 +33,7 @@ const SECTION_LABEL: Record<BackupSection, MessageKey> = {
   clock: "clock.title",
   focus: "nav.focus",
   gauges: "nav.gauges",
+  music: "nav.music",
   reminders: "nav.reminders",
   calendar: "data.section.calendar",
   profiles: "nav.profiles",
