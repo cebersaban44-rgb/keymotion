@@ -79,7 +79,8 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   var. Windows'un dili bu dördünden biriyse Keymotion o dilde başlar;
   **Ayarlar** › **Dil** dili hemen değiştirir. Çeviriler yapay zekâ
   yardımıyla yapıldı ve ana dili bu diller olan kişilerin incelemesini
-  bekliyor: düzeltmeler memnuniyetle karşılanır.
+  bekliyor: düzeltmeler memnuniyetle karşılanır. Çince arayüzde klavyenin
+  adı, Çin'de satıldığı ad olan 黑爵 AK980 V2（带屏版）.
 
 ### Değişenler
 
