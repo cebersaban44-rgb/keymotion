@@ -17,6 +17,7 @@ kb-core            shared logic         detection, the protocol driver, color, r
    ├── kb-devices    model files and matching       (no I/O)
    └── kb-transport  HID and Bluetooth LE access    (moves bytes)
 kb-winsys          Windows readings     processor, graphics, audio, sound playing, running programs
+kb-agent           agent protocol       messages and checks for keymotion-cli (no HID)
 kb-cli (kb)        developer tool on the same crates
 ```
 
@@ -30,8 +31,9 @@ The Cargo workspace is `crates/*` plus `app/src-tauri`. The workspace denies `un
 | `kb-devices` | Keyboard model files (TOML in `models/`, embedded at compile time) and matching: which model and connection mode an HID collection belongs to. No I/O. |
 | `kb-transport` | Raw device access. `hid` enumerates HID collections and exchanges feature, output and input reports through hidapi. `ble` reads the battery over Bluetooth LE through WinRT and has no write function. It moves bytes and knows nothing about protocols. |
 | `kb-core` | Logic shared by the app and `kb`: detection (`detect`), HID descriptor shape checks (`shape`), the command-channel driver with its sessions, echoes, checksums and screen upload (`sonix`), color calibration (`color`), read-back interpretation (`readback`), programs that conflict with the keyboard (`conflicts`), the clock, keymap rules and screen import. |
-| `kb-winsys` | Readings from Windows for the system gauges, music mode and reminders: processor, graphics and memory load, speaker volume, microphone mute, how loud the sound playing is (WASAPI loopback of the default output, opened only while something plays, mixed to mono; `loopback.rs`), idle time, running programs. Also the Windows version, the taskbar clock's time and the time zone setting (read afresh each time, for the keyboard clock, the calendar and reminders), per-user data protection for calendar addresses, the startup entry and the notification identity. The only crate that calls Win32 and COM directly, behind small safe types. |
+| `kb-winsys` | Readings from Windows for the system gauges, music mode and reminders: processor, graphics and memory load, speaker volume, microphone mute, how loud the sound playing is (WASAPI loopback of the default output, opened only while something plays, mixed to mono; `loopback.rs`), idle time, running programs. Also the Windows version, the taskbar clock's time and the time zone setting (read afresh each time, for the keyboard clock, the calendar and reminders), per-user data protection for calendar addresses, the startup entry and the notification identity, and the named pipe for `kb-agent` (`pipe.rs`: an explicit security descriptor that admits only the current user, no clients from the network, a first-instance check against squatting). The only crate that calls Win32 and COM directly, behind small safe types. |
 | `kb-cli` | The `kb` developer tool: lists keyboards, reads descriptors and colors, streams live frames, and runs measured write commands behind `--yes`. |
+| `kb-agent` | The local protocol of `keymotion-cli`, the coming command-line tool for scripts and AI coding agents: one JSON message per line over a named pipe (protocol 1, `hello` first, at most 64 KiB a line), the checks of colors, durations, effects and key lists that the tool and the app share (the app checks again), stable error codes and exit codes (never 2), and the pipe name `\\.\pipe\keymotion-agent-<user SID>-<session>`. It never opens the keyboard: a test keeps it away from `kb-transport` and hidapi. Not wired into the app yet. |
 
 ## The Tauri shell
 
