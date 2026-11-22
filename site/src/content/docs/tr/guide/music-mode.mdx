@@ -1,0 +1,85 @@
+---
+title: Müzik modu
+description: Tuş ışıklarınız bilgisayarınızda çalan sese göre çubuk, ritim, düzey ya da dalga olarak hareket etsin.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Müzik modu tuş ışıklarınızı bilgisayarınızda çalan sese göre hareket ettirir: müzik, video, oyun, hoparlörünüzden ya da kulaklığınızdan ne çıkıyorsa. Tuşlar sesi dört biçimde gösterebilir: çubuklar, her vuruşta bir nabız, bir ses yüksekliği şeridi ya da dalgalar.
+
+## Müzik modunu açın
+
+<Steps>
+
+1. Kenar çubuğunda **Araçlar** altından **Müzik modu** sayfasını açın.
+2. **Tuşlarda göster** anahtarını açın.
+3. Bir şey çalın.
+
+</Steps>
+
+Anahtarın altındaki satır tuşların şu an ne yaptığını söyler; örneğin **Sese göre hareket ediyor**, **Ses çalınca ışıklar başlar.** ya da **Yalnız önizleme**. Klavye çizimi tuşlarda görüneni gösterir. Çizim, müzik modunu açmadan önce de çalışır; modları ve renkleri önce deneyebilirsiniz.
+
+Ses çalarken kayıtlı ışığınız görünmez. Birkaç saniye ses gelmezse tuşlar **Ses yokken** altında seçtiğinizi gösterir.
+
+Pencereyi kapattığınızda Keymotion çalışmaya devam ediyorsa saatin yanındaki simgesinin menüsünden de **Müzik modu** açılıp kapatılabilir.
+
+<Aside type="note" title="USB kablosu gerekir">
+Müzik ışıklarını tuşlarda görmek için kabloyu takın ve klavyenin arkasındaki anahtarı ortaya alın. Sayfadaki çizim bu arada da çalışır.
+</Aside>
+
+## Modlar
+
+- **Çubuklar**: Tuşlar soldan sağa sütunlara bölünür; bas solda, tiz sağdadır. Her sütun sesin kendi bölümü kadar alt sıradan yukarı dolar; sütunun tepesindeki işaret bir an kalıp düşer.
+- **Ritim**: Bütün klavye tek renktir. Her vuruşta parlayıp söner, güçlü bir vuruşta ortadan bir halka yayılır; vuruşlar arasında tuşlar ses yüksekliğiyle hafifçe yanar.
+- **Düzey**: Sesin ne kadar yüksek olduğu, klavyenin ortasından iki yana açılan bir şerit olarak görünür; şeridin kenarında bir işaret kalır.
+- **Dalga**: Her bas vuruşu tuşlar boyunca giden bir ışık dalgası başlatır.
+
+**Ortadan** seçeneği **Çubuklar** ve **Dalga** içindir: basları ortaya, tizleri iki uca koyar ve dalgaları ortadan başlatır.
+
+## Görünüm
+
+- **Renk**: **Yeşil-sarı-kırmızı**, **Gökkuşağı**, **Tek renk** ya da seçtiğiniz **İki renk**.
+- **Hassasiyet** %50 ile %200 arasındadır. Yükseldikçe ışıklar sessiz seslere de daha çok tepki verir.
+- **Parlaklık** 1 ile 5 arasındadır.
+- **Diğer tuşlar**, yani müziğin yakmadığı tuşlar, **Karanlık** ya da **Soluk** olur.
+
+## Ses yokken
+
+Ses durduktan birkaç saniye sonra tuşlar şunu gösterir:
+
+- **Klavyenin kendi ışığı**: Müzik ışıkları çekilir, kayıtlı ışığınız geri gelir (açıksa [sistem göstergeleri](/keymotion/tr/guide/system-gauges/)).
+- **Soluk renk**: Bütün tuşlar hafifçe yanar.
+- **Karanlık**: Bütün tuşlar söner.
+
+Ses geri gelince müzik ışıkları da geri gelir.
+
+## Oyun oynarken
+
+**Oyun oynarken dur** açıkken (başta açıktır) [oyun oturumunda](/keymotion/tr/guide/game-session/) oyun öndeyken müzik ışıkları bekler, başka bir programa geçince geri gelir. Oyunun kendi ışıkları açıksa zaten müzik ışıklarının üstünde görünür.
+
+Müzik modu hiçbir oyuna dokunmaz: Yalnızca Windows'un hoparlörünüze gönderdiği karışık sesi okur ve sol ile sağ kanal tuşlarda hiçbir zaman ayrı gösterilmez.
+
+## Öncelik sırası
+
+Tuşları aynı anda birkaç şey yakmak isteyebilir. Yukarıdan aşağı:
+
+1. [Işıklar](/keymotion/tr/guide/lighting/) sayfasındaki önizleme, yalnız orada düzenlerken.
+2. Hatırlatmalar ile sistem göstergelerinin ses düzeyi ve mikrofon tuşları, yalnız kendi tuşlarında.
+3. [Odak zamanlayıcısı](/keymotion/tr/guide/focus-timer/), bütün klavyede.
+4. Oyun oturumunda oyunun kendi ışıkları.
+5. **Müzik modu**, ses çalarken.
+6. Sistem göstergelerinin yük çubukları.
+7. Öndeki programa bağlı profil.
+8. Yukarıdakilerin hiçbiri yokken kayıtlı ışığınız.
+
+Yani odak zamanlayıcısı çalışırken müzik ışıkları bekler; ses durunca göstergelerin çubukları geri gelir.
+
+## Duyamadıkları
+
+- **Sesi kendine ayıran bir program**: Bazı müzik çalarlar bunu yapabilir (ayarlarında çoğunlukla "özel mod" ya da "exclusive mode" diye geçer). Windows bu sesi başka hiçbir programa vermez, ışıklar da tepki vermez.
+- **Yayın uygulamalarındaki bazı korumalı film ve diziler**, aynı nedenle.
+- **Ekrana kart yüklemesi**: Şarkı kartı klavyenin ekranına giderken (yaklaşık 3 saniye) tuşlarda kayıtlı ışığınız görünür, sonra müzik ışıkları geri gelir. Klavye ikisini aynı anda alamaz.
+
+<Aside type="tip" title="Hiçbir şey kaydedilmez">
+Ses kaydedilmez ve bilgisayarınızdan çıkmaz; yalnızca o anki yüksekliği okunur. Mikrofon kullanılmaz. Müzik modunu ya da Keymotion'ı kapatınca kayıtlı ışığınız geri gelir ve klavyeye hiçbir şey kaydedilmez.
+</Aside>

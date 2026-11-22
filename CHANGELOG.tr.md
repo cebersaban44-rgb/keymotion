@@ -14,6 +14,21 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 
 ### Eklenenler
 
+- **Müzik modu:** Araçlar › **Müzik modu** tuş ışıklarını bilgisayarınızda
+  çalan sese göre hareket ettirir (USB kablosuyla): **Çubuklar** (solda
+  bastan sağda tize sütunlar alt sıradan yukarı dolar, tepede bir işaret bir
+  an kalır), **Ritim** (bütün klavye her vuruşta parlar, güçlü vuruşta
+  ortadan bir halka yayılır), **Düzey** (ortadan iki yana açılan bir ses
+  yüksekliği şeridi) ve **Dalga** (her bas vuruşu tuşlar boyunca bir dalga
+  gönderir). Renkler **Yeşil-sarı-kırmızı**, **Gökkuşağı**, **Tek renk** ya da
+  **İki renk**; Çubuklar ve Dalga için **Ortadan**; %50 ile %200 arasında
+  hassasiyet; diğer tuşlar karanlık ya da soluk. Ses durduktan birkaç saniye
+  sonra klavyenin kendi ışığı geri gelir (ya da seçiminize göre bütün tuşlar
+  soluk ya da karanlık olur). Odak zamanlayıcısı çalışırken ve oyun öndeyken
+  (**Oyun oynarken dur**, başta açık) ışıklar bekler. Keymotion yalnızca
+  hoparlörünüze ya da kulaklığınıza giden sesin o anki yüksekliğini,
+  Windows'un kendi ses sistemiyle okur: Ses kaydedilmez, mikrofon
+  kullanılmaz. Bildirim alanı menüsünde ve yedeklerde de var.
 - **Oyun oturumu:** Araçlar › **Oyun oturumu** oynadığınızı fark eder.
   Oyunlar başlatıcılarınızın listelerinden (Steam, Epic Games, GOG, Xbox,
   Riot Games, Xbox Game Bar) ve sizin sözünüzden gelir (**Oyun ekle**,

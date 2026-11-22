@@ -121,6 +121,7 @@ Not on the list? Plug it in anyway and [tell us about it](https://github.com/ceb
 | <img src="docs/images/features/screen.webp" width="240" alt="Preparing a picture for the keyboard's screen"> | **Screen studio**<br>Put images, GIFs, videos and text cards on the 240×135 screen. |
 | <img src="docs/images/features/live-screen.webp" width="240" alt="Live cards on the screen"> | **Live screen**<br>Cards that update on their own: the song that is playing, your next meeting, the focus timer. |
 | <img src="docs/images/features/focus.webp" width="240" alt="The focus timer on the keys"> | **Focus and reminders**<br>A focus timer, reminders and system gauges that light up on the keys. |
+| | **Music mode**<br>Key lights that move with the sound your PC plays: bars from bass to treble, a pulse on each beat, a band of loudness, or waves. Nothing is recorded and the microphone isn't used. |
 | <img src="docs/images/features/game-session.webp" width="240" alt="League of Legends lights: health recedes across the keys and mana empties on the F keys"> | **Game session**<br>Notices when you play: a card on the screen when a game starts and a summary when it ends, and the game's keys lit. In League of Legends, your health, mana and the match's events show on the keys. |
 | <img src="docs/images/features/profiles.webp" width="240" alt="Linking every game and a program to their own profiles"> | **Profiles by app**<br>Keep lighting, keys and macros as profiles. Each program, or every game, switches to its own when it comes to the front. |
 
