@@ -3,6 +3,7 @@ title: Oyun oturumu
 description: Keymotion oynadığınızı fark eder; oyun başlarken klavyenin ekranına bir kart, oyun bitince bir özet gönderir, oyunun tuşlarını yakar ve League of Legends'ta maçın kendi verisinden ışıklar verir.
 ---
 
+import Screenshot from "~/components/Screenshot.astro";
 import { Aside, Steps } from "@astrojs/starlight/components";
 
 Bir oyun başlayınca Keymotion bunu fark eder. Klavyenin ekranına bir kart, oyun bitince bir özet gönderebilir, oyunun kullandığı tuşları yakabilir ve oynadığınız süreleri bu bilgisayarda tutar. League of Legends'ta tuşlar ayrıca canınızı, mananızı ve maçın olaylarını gösterebilir.
@@ -19,6 +20,8 @@ Keymotion oyunların içine girmez: oyunun belleğini okumaz, ona tuş gönderme
 </Steps>
 
 Anahtarın altındaki satır Keymotion'ın şu an ne yaptığını söyler; örneğin **Bir oyun bekleniyor** ya da **League of Legends oynanıyor**. Altında **Şimdi**, **Bugün** ve **Son 7 gün** oynadığınız süreleri gösterir. Oynarken bunların altındaki satır başlangıç kartının nerede olduğunu (klavyenin ekranında, sırasını bekliyor ya da yerine başka bir kart geldi) ve o ana kadarki ekran kartı ve işlemci yükünü söyler.
+
+<Screenshot name="game-session" alt="Bir oyun sürerken Oyun oturumu sayfası: Oyunları fark et açık, Ember Isles oynanıyor, şimdiki, bugünkü ve son 7 günkü oyun süresi, oyun olup olmadığı sorulan bir program ve her oyunun başlatıcısı, toplam süresi ve profiliyle Oyunlar listesi" />
 
 Pencereyi kapattıktan sonra Keymotion saatin yanında çalışmaya devam ediyorsa, simgesinin menüsü oyunu ve ne kadar süredir oynadığınızı gösterir.
 
@@ -50,17 +53,23 @@ Oturum sürerken çalan şarkının kartları bekler. Toplantı ve hatırlatıc�
 
 **Klavyenin kendi ışığı** hiçbir şeyi değiştirmez (League of Legends maçında onun kendi ışıkları gelir, aşağıya bakın). **Oyun tuşlarını yak**, seçtiğiniz tuşları tek renkte yakar, diğerlerini soluk ya da karanlık bırakır. Hazır seçimler **WASD**, **MOBA (QWER DF B)** ve **1–6**'dır; tuş eklemek ya da çıkarmak için çizimdeki tuşlara tıklayın. **Klavyede dene** ışıkları birkaç saniye gösterir. **Bir profilin ışığı**, seçtiğiniz profilin tuş tuş ışık tasarımını gösterir; gökkuşağı gibi hazır efektler bu yolla gösterilemez.
 
+<Screenshot name="game-session-lights" alt="Oyun tuşlarını yak seçiliyken Oyunda ışıklar: klavye çiziminde turuncu yanan Q, W, E, R, D, F ve B tuşları, hazır seçimler, renk, parlaklık, soluk kalan diğer tuşlar ve Klavyede dene" />
+
 Bu ışıklar klavyeye kaydedilmez; oyun bitince klavye kendi ışığına döner. Öndeki pencereyi izlerler: Alt+Tab ile başka bir programa geçince oyun yeniden öne gelene kadar beklerler, oturum ise sürer. Oyun sırasında [odak zamanlayıcısını](/keymotion/tr/guide/focus-timer/) başlatırsanız onun ışığı oyunun ışıklarının üstünde kalır. Oyun tuşları yanarken [sistem göstergeleri](/keymotion/tr/guide/system-gauges/) bekler; mikrofon kapalı uyarısı her zaman görünür. Işıklar için USB kablosu gerekir.
 
 ## League of Legends
 
 League of Legends maç sırasında verisini bilgisayarınızdaki araçlara sunar. Keymotion yalnız oyunun size gösterdiklerini okur ve ışığa çevirir. Bu ışıklar **Oyunlar** listesinde **League of Legends**'ın altında ayarlanır: yanındaki **Özel ışıklar**'a tıklayın. **Başlatıcıların oyun listeleri** açıkken League of Legends kurulur kurulmaz, siz oynamadan da listede görünür.
 
+<Screenshot name="game-session-lol" alt="League of Legends'ın altında açılan Bu oyuna özel ışıklar: çizimde klavyenin çoğunda yeşil can, F1–F7'de mavi mana; Can ve Mana kaydırıcıları, Ölümü göster, Klavyede dene ve canın nerede, nasıl görüneceği" />
+
 - **Can ve mana**: canınız, **Can gösterimi**nde seçtiğiniz gibi **Bütün klavye**de (varsayılan) ya da **Tuş sırası (1–0)**nda. Bütün klavyede canınız azaldıkça ışık, [odak zamanlayıcısındaki](/keymotion/tr/guide/focus-timer/) gibi seçtiğiniz yönde çekilir: sağdan sola, soldan sağa, yukarıdan aşağı, ortaya doğru ya da yavaşça sönerek. Rengi yeşilden sarıya ve kırmızıya döner ya da seçtiğiniz tek renkte kalır. Mana ya da enerji F1–F12'de görünür; kapatabilir, mananın rengini seçebilirsiniz.
 - **Ölünce**: tuşlar koyu kırmızıya döner. Bütün klavyede yeniden doğmaya yaklaştıkça ışık, can için seçtiğiniz yönde geri gelir; tuş sırasında 1–0 tuşları kalan süreyi geri sayar. **Can ve mana** kapalıyken de bunu **Can gösterimi** belirler.
 - **Kısa animasyonlar**, maçtaki sırasıyla: **Sizin** (seviye atlama, öldürme), **Harita ve takım** (as, ejderha, Vadi'nin Alameti, Baron) ve **Maç sonu** (zafer, yenilgi). Her birine bir animasyon: **Dalga**, **Parlama**, **Nabız**, **Kıvılcım**, **Ortadan halka** ya da **Yukarıdan söner**, seçtiğiniz renkte. Siz değiştirmedikçe zaferde yeşil kıvılcımlar, yenilgide yukarıdan sönen kırmızı ışık görünür; ejderha, kapatmadıkça kendi renginde yanar. Maç sırasında animasyonlar can ve mananın üstünde oynar; maç sonu ise onların yerine bütün klavyeyi kaplar. Art arda öldürmelerde animasyon her öldürme için bir kez oynar. **Yalnız takımınız aldığında**'yı kapatmadıkça ejderha, Vadi'nin Alameti ve Baron yalnız takımınız aldığında yanar; bunu anlamak için Keymotion, skor tablosundaki adlarıyla hangi oyuncuların takımınızda olduğunu okur.
 
 Her biri ayrı, bölümün tamamı da kapatılabilir. Bölümün başındaki çizim bunları maçta kullanılan kodla gösterir: **Can** ve **Mana** kaydırıcılarını oynatın, **Ölümü göster**'e ya da listede bir olayın yanındaki **Oynat**'a tıklayın. **Klavyede dene** bunu birkaç saniye klavyede, hiçbir şey kaydetmeden gösterir. Maç boyunca bu ışıklar **Oyunda ışıklar** seçiminin yerine geçer; **Oyun tuşlarını yak** seçiliyse ve can tuş sırasındaysa seçtiğiniz tuşlar altta yanık kalır. USB kablosu gerekir. Maçın özet kartı zafer ya da yenilgiyi, K/D/A'nızı, minyon sayınızı ve şampiyonunuzu gösterir.
+
+<Screenshot name="game-session-lol-events" alt="Sizin, Harita ve takım ve Maç sonu diye üç grupta kısa animasyonlar; her olayın animasyonu, rengi ve oynat düğmesi; altında örnek bir maç sonu özeti kartı ve Riot'un notu" />
 
 Keymotion rakiplerin bekleme sürelerini, ejderha ve Baron'un çıkış sayaçlarını ya da size ne yapacağınızı söyleyen uyarıları hiç göstermez; Riot'un kuralları bunlara izin vermez. Teamfight Tactics maçlarında bu ışıklar yanmaz.
 

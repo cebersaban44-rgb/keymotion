@@ -23,10 +23,10 @@ Keymotion connects to the internet for two things only: the calendars you add, a
 
 ### The update check
 
-- **When.** If **Check for updates automatically** is on in **Settings**, under **About** (it's on at first), Keymotion looks at most once a day: a little after it starts, and again each day while it keeps running. **Check for updates** in the same place does the same at any time. With the switch off, Keymotion looks only when you click that button.
+- **When.** Unless **Updates** is set to **Off** in **Settings**, under **About** (it starts as **Let me know**), Keymotion looks at most once a day: a little after it starts, and again each day while it keeps running. **Check for updates** in the same place does the same at any time. With **Off**, Keymotion looks only when you click that button.
 - **What it reads.** A small file, `latest.json`, from the project's release page on GitHub. The request goes to `github.com`, and the file comes from GitHub's download server.
 - **What it sends.** An ordinary download request. Apart from the updater component's name and version (`tauri-plugin-updater`), it holds nothing about you: no account, no usage data, no settings. Like any server, GitHub sees the IP address the request comes from.
-- **When a new version is found.** Keymotion doesn't install it by itself; it asks you. When you choose **Install and restart**, the installer is downloaded from GitHub and its signature is checked with the key built into Keymotion. If it doesn't match, it isn't installed.
+- **When a new version is found.** With **Let me know**, Keymotion asks you; with **Update automatically**, it downloads the new version and installs it while the computer isn't in use. Either way the installer comes from GitHub and its signature is checked with the key built into Keymotion. If it doesn't match, it isn't installed.
 - **Test versions.** Versions with a suffix in their number, such as "-rc", also read GitHub's public list of releases (`api.github.com`), to see test releases too. Normal versions don't read that list.
 - **Microsoft Store version.** Keymotion installed from the Microsoft Store never makes this check: the Store updates it.
 
@@ -48,6 +48,11 @@ These readings are used only to show things on the keyboard and in the app. They
 | Processor, graphics and memory load, from Windows' performance counters | While system gauges are on, or their page is open | The bars on the keys |
 | Speaker volume and mute, microphone mute, from Windows' sound system | While system gauges are on, or their page is open | The volume bar and the mute light |
 | Time since you last used the keyboard or mouse | While reminders are on | Repeating reminders wait while you're away |
+| Which program is in front: its file name and folder, and whether its window fills the screen. Never window titles, and no program is opened | While **Notice games** or profiles **By app** are on | Telling a game from other programs, and the profile for each program |
+| A program's icon, from its file (the program isn't opened) | When a list of games or programs shows it, and when a game without a Steam picture (or with one that can't be read) starts | The icons in the lists and on the start card |
+| Your launchers' game lists (Steam, Epic Games, GOG, Xbox, Riot Games, Xbox Game Bar) | While **Notice games** is on, every few minutes | Telling which programs are games |
+| Processor and graphics load and the graphics card's temperature | While a game session runs | The summary card and the history |
+| League of Legends' match data (your health, mana, level, score, the match's events, and which players are on your team, by the names the scoreboard shows), from the service the game runs on your computer | During a League of Legends match, while its lights are on | The lights and the summary card |
 | Your Windows keyboard layout | When the app opens or comes to the front | Key labels in your language |
 | Connected keyboards (USB devices, Bluetooth battery level) | While the app runs | Finding and controlling the keyboard |
 | A keyboard's HID descriptions (what Windows recorded about it) | When you ask for support for a keyboard that isn't supported yet | The support request |
@@ -58,12 +63,16 @@ These readings are used only to show things on the keyboard and in the app. They
 Everything is in your Windows user folder. In **Settings**, under **About**, **Data folder** and **Log files** open these folders.
 
 - **Settings and records**, in `%APPDATA%\dev.keymotion\`:
-  - `calibration.json`, `clock.json`, `lighting.json`, `pomodoro.json`, `gauges.json`, `reminders.json`, `battery.json`, `profiles.json`, `background.json`, `updates.json`;
+  - `calibration.json`, `clock.json`, `lighting.json`, `pomodoro.json`, `gauges.json`, `reminders.json`, `battery.json`, `profiles.json`, `background.json`, `updates.json`, `games.json`;
+  - `auto-profiles.json`: your profiles **By app** and, after a profile was saved to the keyboard for a program, a copy of the keyboard's lighting, key mapping and macros from before, to go back to;
+  - `game-history.json`: your game sessions (game, start and end, the readings, a League of Legends result). **Delete history** on the **Game session** page empties it;
   - `keymap.json` and `macros.json`: Keymotion's only record of what it wrote to the keyboard, because the keyboard can't report them;
   - `calendar.json`: your calendars. Their addresses work like passwords, so they're encrypted for your Windows user account (Windows Data Protection). Another user or another computer can't read them;
   - `screen\`: your picture library, the copy of the factory animation if you made one, and the last live card.
 - **Log files**, in `%LOCALAPPDATA%\dev.keymotion\logs\`: one file per day for the last 7 days, at most 4 MB each, and short crash notes. Before anything is written, web addresses are cut to their server name and your Windows user name is removed from folder paths. Reminder titles and meeting names are never written.
 - **Interface preferences**, in `%LOCALAPPDATA%\dev.keymotion\EBWebView\`: theme, language and edits you haven't saved yet, kept by the app's window.
+
+Keymotion installed from the Microsoft Store uses the same folders. If they weren't there before (Keymotion from GitHub was never installed), Windows keeps them in the app's own folder, `%LOCALAPPDATA%\Packages\<the app's package name>\LocalCache\`, and deletes them when you uninstall the app; the buttons in **Settings** then open that folder.
 
 ## Diagnostics
 

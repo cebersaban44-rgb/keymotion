@@ -1,12 +1,12 @@
 ---
 title: Profiles
-description: Keep your lighting, key mapping and macros as named sets, and load one onto the keyboard in one go.
+description: Keep your lighting, key mapping and macros as named sets, load one onto the keyboard in one go, or let the program in front choose one.
 ---
 
 import Screenshot from "~/components/Screenshot.astro";
 import { Aside, Steps } from "@astrojs/starlight/components";
 
-A profile is a named set of the keyboard's settings: its lighting, key mapping and macros, and a screen picture if you want. Load a profile and the keyboard gets all of them in one go, for example one set for work and another for games.
+A profile is a named set of the keyboard's settings: its lighting, key mapping and macros, and a screen picture if you want. Load a profile and the keyboard gets all of them in one go, for example one set for work and another for games. With [By app](#by-app), the profile changes by itself when you switch programs.
 
 <Screenshot name="profiles" alt="The Profiles page with two saved profiles, one marked On keyboard, the Default profile, and the choice of what goes into a new profile" />
 
@@ -82,6 +82,8 @@ A backup file is not a profile: open it with **Restore from a backup** on the [S
 3. Choose the profile for it.
 
 </Steps>
+
+<Screenshot name="profiles-by-app" alt="By app turned on: Every game linked to the Gaming profile and Code to the Work profile, each with an Also change the key mapping and macros box, then the program list, Add, and what happens after a profile is saved to the keyboard" />
 
 - **Only the lighting, by default.** A profile with a per-key color design shows on the keys a second after its program comes to the front, and goes when another program does. Nothing is saved to the keyboard, so switching back and forth doesn't wear it. A profile whose lighting is a built-in effect changes nothing unless the next option is on. The other lights come first: while the system gauges, the focus timer or a game's lights show, they cover it.
 - **Also change the key mapping and macros** saves the profile to the keyboard once its program has been in front for 10 seconds: lighting, key mapping and macros, never the screen picture. If you leave the program sooner, nothing is saved. To spare the keyboard, this happens at most 20 times a day; while a change is unsaved it waits until you save it.

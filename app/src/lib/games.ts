@@ -6,6 +6,8 @@
 
 import { create } from "zustand";
 import type { GameCard } from "../bindings/GameCard";
+import type { GeometryInfo } from "../bindings/GeometryInfo";
+import ak980Geometry from "../bindings/geometry-ajazz-ak980-pro.json";
 import type { GamesSettings } from "../bindings/GamesSettings";
 import type { GamesState } from "../bindings/GamesState";
 import type { LolScene } from "../bindings/LolScene";
@@ -84,9 +86,9 @@ const mock = {
     settings: { ...DEFAULT_GAMES },
     session: null,
     games: [
-      { key: "c:\\steam\\steamapps\\common\\example", name: "Örnek Oyun", source: "steam", totalMs: 31 * HOUR, lastMs: Date.now() - 2 * HOUR, played: true, exe: null },
+      { key: "c:\\steam\\steamapps\\common\\example", name: "Ember Isles", source: "steam", totalMs: 31 * HOUR, lastMs: Date.now() - 2 * HOUR, played: true, exe: null },
       { key: "c:\\riot games\\league of legends\\game\\league of legends.exe", name: "League of Legends", source: "riot", totalMs: 12 * HOUR, lastMs: Date.now() - 26 * HOUR, played: true, exe: null },
-      { key: "d:\\games\\racer\\racer.exe", name: "Yarış Oyunu", source: "mine", totalMs: 4 * HOUR, lastMs: Date.now() - 5 * 24 * HOUR, played: true, exe: null },
+      { key: "d:\\games\\racer\\racer.exe", name: "Skyline Rally", source: "mine", totalMs: 4 * HOUR, lastMs: Date.now() - 5 * 24 * HOUR, played: true, exe: null },
       { key: "c:\\riot games\\valorant\\live\\shootergame\\binaries\\win64\\valorant-win64-shipping.exe", name: "VALORANT", source: "riot", totalMs: 0, lastMs: null, played: false, exe: null },
     ],
     suggestions: [{ path: "D:\\Emulators\\emulator.exe", name: "emulator" }],
@@ -95,7 +97,7 @@ const mock = {
     recent: [
       {
         key: "c:\\steam\\steamapps\\common\\example",
-        name: "Örnek Oyun",
+        name: "Ember Isles",
         source: "steam",
         startMs: Date.now() - 4 * HOUR - 14 * 60_000,
         endMs: Date.now() - 2 * HOUR,
@@ -105,6 +107,19 @@ const mock = {
         cpuPeak: 81,
         tempPeak: 71,
         lol: null,
+      },
+      {
+        key: "c:\\riot games\\league of legends\\game\\league of legends.exe",
+        name: "League of Legends",
+        source: "riot",
+        startMs: Date.now() - 26 * HOUR - 33 * 60_000,
+        endMs: Date.now() - 26 * HOUR,
+        gpuAvg: 61,
+        gpuPeak: 88,
+        cpuAvg: 27,
+        cpuPeak: 64,
+        tempPeak: 66,
+        lol: { win: true, kills: 8, deaths: 3, assists: 12, cs: 214, champion: "Ahri", mode: "CLASSIC" },
       },
     ],
     temperature: true,
@@ -118,6 +133,38 @@ const mock = {
 };
 
 const mockCopy = (): GamesState => structuredClone(mock.state);
+
+/** Browser preview: health and mana drawn as lol.rs `frame` draws them on
+ *  the AK980 PRO (the still scene only; death and events play nothing). */
+function mockLolPreview(s: GamesSettings, scene: LolScene): LolFrame[] {
+  if (scene.kind !== "bars") return [];
+  type Rgb = [number, number, number];
+  const g = ak980Geometry as GeometryInfo;
+  const l = s.lol;
+  const clamp = (v: number) => Math.min(1, Math.max(0, v));
+  const scale = (c: Rgb, k: number) => c.map((v) => Math.round(v * clamp(k))) as Rgb;
+  const mix = (a: Rgb, b: Rgb, k: number) => a.map((v, i) => Math.round(v * (1 - clamp(k)) + b[i]! * clamp(k))) as Rgb;
+  const rest: Rgb = s.rest === "dark" ? [0, 0, 0] : scale(s.color, 0.12);
+  const frame = new Map(g.keys.map((k) => [k.id, s.lights === "keys" && s.keys.includes(k.id) ? s.color : rest]));
+  const bar = (ids: string[], share: number, c: Rgb) =>
+    ids.forEach((id, i) => frame.set(id, scale(c, Math.max(clamp(share * ids.length - i), 0.06))));
+  const health = clamp(scene.health);
+  const hp: Rgb = l.healthColor ?? (health > 0.6 ? [52, 199, 89] : health > 0.3 ? [255, 176, 32] : [255, 59, 48]);
+  if (l.layout === "keyboard") {
+    for (const k of g.keys) {
+      const x = clamp((k.x + k.w / 2) / g.width);
+      const y = clamp((k.y + k.h / 2) / g.height);
+      const order = { rightToLeft: x, leftToRight: 1 - x, topToBottom: 1 - y, toCenter: Math.abs(x - 0.5) * 2, fade: 0 }[l.motion];
+      const edge = health * 1.08 - 0.04;
+      const lit = l.motion === "fade" ? health : clamp((edge - order) / 0.04 + 0.5);
+      frame.set(k.id, mix(scale(hp, 0.06), hp, lit));
+    }
+  } else {
+    bar(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"], health, hp);
+  }
+  if (l.mana) bar(["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12"], clamp(scene.mana), l.manaColor);
+  return [g.keys.map((k) => [k.led, frame.get(k.id)!] as [number, Rgb])];
+}
 
 if (import.meta.env.DEV && !inTauri && typeof window !== "undefined") {
   const w = window as unknown as Record<string, unknown>;
@@ -195,7 +242,7 @@ export const LOL_STEP_MS = 40;
 /** Every frame of a League of Legends scene, drawn by the backend's own
  *  light code, for the keyboard model `modelId`. */
 export function lolPreview(modelId: string, settings: GamesSettings, scene: LolScene): Promise<LolFrame[]> {
-  if (import.meta.env.DEV && !inTauri) return Promise.resolve([]);
+  if (import.meta.env.DEV && !inTauri) return Promise.resolve(mockLolPreview(settings, scene));
   return invoke<LolFrame[]>("games_lol_preview", { modelId, settings, scene });
 }
 

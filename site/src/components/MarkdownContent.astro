@@ -1,0 +1,10 @@
+---
+// Starlight's MarkdownContent, with one addition: on Russian and Chinese
+// pages, the AI translation note (AiNote.astro) comes first. It is the one
+// part of a page that both the home page and the guide pages render.
+import Default from "@astrojs/starlight/components/MarkdownContent.astro";
+import AiNote from "./AiNote.astro";
+---
+
+<AiNote />
+<Default><slot /></Default>

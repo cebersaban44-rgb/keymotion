@@ -1,0 +1,73 @@
+---
+// The note at the top of every page in a language that was translated with
+// AI help (Russian and Simplified Chinese; owner's decision, 2026-11-22):
+// that it was, who checked it once someone has (REVIEWERS in src/i18n.ts),
+// and a link to report a wrong translation on the guide's issue form, with
+// the page's address already filled in. Shown by MarkdownContent.astro, so
+// it appears on the home page too. A page that is not translated yet shows
+// the English text under Starlight's own "not in your language yet" notice;
+// the note still applies there, to the menus.
+import { Icon } from "@astrojs/starlight/components";
+import { LANG, REPORT_FORM, REVIEWERS, UI, siteLocale } from "../i18n";
+
+const locale = siteLocale(Astro.currentLocale);
+const note = UI[locale].aiNote;
+const reviewer = REVIEWERS[locale];
+const [before, after] = (note?.reviewedBy ?? "{name}").split("{name}");
+// Chinese sentences follow each other without a space (they end in "。").
+const gap = locale === "zh-cn" ? "" : " ";
+const page = new URL(Astro.url.pathname, Astro.site);
+const report = `${REPORT_FORM}&where=${encodeURIComponent(page.href)}`;
+---
+
+{
+  note && (
+    <p class="km-ai-note not-content" lang={LANG[locale]} data-pagefind-ignore>
+      <Icon name="translate" size="1.25em" class="km-ai-note-icon" />
+      <span>
+        {note.text}
+        {reviewer && (
+          <>
+            {gap}
+            {before}
+            {reviewer.url ? <a href={reviewer.url}>{reviewer.name}</a> : reviewer.name}
+            {after}
+          </>
+        )}
+        {gap}
+        <a href={report}>{note.report}</a>
+      </span>
+    </p>
+  )
+}
+
+<style>
+  .km-ai-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6em;
+    margin-bottom: 1.5rem;
+    padding: 0.6rem 0.9rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.6rem;
+    background: var(--sl-color-gray-6);
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-sm);
+    line-height: 1.6;
+  }
+
+  :global([data-theme="light"]) .km-ai-note {
+    border-color: var(--sl-color-gray-6);
+    background: var(--sl-color-gray-7);
+  }
+
+  .km-ai-note :global(.km-ai-note-icon) {
+    flex: none;
+    margin-top: 0.1em;
+    color: var(--km-signal);
+  }
+
+  .km-ai-note a {
+    color: var(--sl-color-text-accent);
+  }
+</style>

@@ -1,6 +1,8 @@
 // The Keymotion documentation site (roadmap stage 7). Built with Astro and
 // Starlight and published to GitHub Pages by .github/workflows/pages.yml.
-// English is the default language at the site root; Turkish lives under /tr/.
+// English is the default language at the site root; Turkish lives under /tr/,
+// Russian under /ru/ and Simplified Chinese under /zh-cn/. A page that has no
+// translation yet shows the English one with Starlight's notice.
 import { fileURLToPath } from "node:url";
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
@@ -41,10 +43,16 @@ export default defineConfig({
       locales: {
         root: { label: "English", lang: "en" },
         tr: { label: "Türkçe", lang: "tr" },
+        ru: { label: "Русский", lang: "ru" },
+        "zh-cn": { label: "简体中文", lang: "zh-CN" },
       },
       social: [{ icon: "github", label: "GitHub", href: REPO }],
-      // The home page's download row also shows Microsoft's Store badge.
-      components: { Hero: "./src/components/Hero.astro" },
+      // The home page's download row also shows Microsoft's Store badge;
+      // Russian and Chinese pages open with the AI translation note.
+      components: {
+        Hero: "./src/components/Hero.astro",
+        MarkdownContent: "./src/components/MarkdownContent.astro",
+      },
       editLink: { baseUrl: `${REPO}/edit/develop/site/` },
       customCss: [
         "@fontsource-variable/bricolage-grotesque",
@@ -54,15 +62,17 @@ export default defineConfig({
       ],
       lastUpdated: false,
       credits: false,
+      // Group names in the other languages, keyed by language tag ("zh-CN",
+      // not the folder name). The Russian and Chinese ones wait for review.
       sidebar: [
         {
           label: "Getting started",
-          translations: { tr: "Başlarken" },
+          translations: { tr: "Başlarken", ru: "Начало работы", "zh-CN": "开始使用" },
           items: ["guide/install", "guide/first-launch", "guide/connecting"],
         },
         {
           label: "Using Keymotion",
-          translations: { tr: "Keymotion'ı kullanma" },
+          translations: { tr: "Keymotion'ı kullanma", ru: "Работа с Keymotion", "zh-CN": "使用 Keymotion" },
           items: [
             "guide/overview",
             "guide/lighting",
@@ -81,17 +91,17 @@ export default defineConfig({
         },
         {
           label: "Help",
-          translations: { tr: "Yardım" },
+          translations: { tr: "Yardım", ru: "Помощь", "zh-CN": "帮助" },
           items: ["help/keyboards", "help/recovery", "help/faq"],
         },
         {
           label: "About",
-          translations: { tr: "Hakkında" },
+          translations: { tr: "Hakkında", ru: "О проекте", "zh-CN": "关于" },
           items: ["about/privacy", "about/terms", "about/code-signing", "about/release-notes"],
         },
         {
           label: "Developers",
-          translations: { tr: "Geliştiriciler" },
+          translations: { tr: "Geliştiriciler", ru: "Разработчикам", "zh-CN": "开发者" },
           collapsed: true,
           items: [
             "developers/contributing",
@@ -113,7 +123,7 @@ export default defineConfig({
           details: [
             "- Settings are changed over the USB cable, with the switch on the back of the keyboard in the middle. Over Bluetooth Keymotion only reads the battery level; over the 2.4 GHz receiver it recognizes the keyboard but can't change settings yet.",
             "- Keymotion sends only commands that were measured on this keyboard and never updates its firmware.",
-            "- The interface is in English and Turkish. The Turkish guide is at " + SITE + "/tr/.",
+            `- The app and this guide are in English, Turkish, Russian and Simplified Chinese. The guide in the other languages: ${SITE}/tr/ (Turkish), ${SITE}/ru/ (Russian), ${SITE}/zh-cn/ (Simplified Chinese).`,
             "- Source code, releases and issues: " + REPO + ".",
           ].join("\n"),
           demote: ["developers/**"],

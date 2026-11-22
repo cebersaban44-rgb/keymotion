@@ -2,7 +2,7 @@
 title: Frequently asked questions about Keymotion and the AK980 PRO
 sidebar:
   label: Frequently asked questions
-description: "Short answers about Keymotion and the AJAZZ AK980 PRO: the Windows warning, antivirus scans, drivers and AJAZZ's software, putting a GIF on the screen, Bluetooth and the 2.4 GHz receiver, Windows only, keyboard safety, your data and the AK980 V2."
+description: "Short answers about Keymotion and the AJAZZ AK980 PRO: the Windows warning, antivirus scans, drivers and AJAZZ's software, putting a GIF on the screen, Bluetooth and the 2.4 GHz receiver, Windows only, keyboard safety, games and anti-cheat software, your data and the AK980 V2."
 ---
 
 import { Aside } from "@astrojs/starlight/components";
@@ -87,7 +87,13 @@ Writing to a device's permanent memory can always leave it in an unwanted state,
 
 No, not for what you save. Lighting, key assignments, macros and the screen picture are saved on the keyboard itself.
 
-The focus timer, reminders, calendar cards, the live screen and the system gauges need Keymotion running. When you close its window, Keymotion keeps running with an icon next to the clock. You can change this in **Settings**, under **Closing and starting**. See [Settings](/keymotion/guide/settings/).
+The focus timer, reminders, calendar cards, the live screen, the system gauges, the game session and profiles by app need Keymotion running. When you close its window, Keymotion keeps running with an icon next to the clock. You can change this in **Settings**, under **Closing and starting**. See [Settings](/keymotion/guide/settings/).
+
+## Is Keymotion safe to run with games and anti-cheat software?
+
+Keymotion doesn't read or change a game's memory, doesn't send keys to games and installs no driver. It sees which program is in front the way Windows' accessibility tools do, and during a League of Legends match it reads only the data the game itself offers on your computer. If a game's anti-cheat software still gives you trouble, turn on **Send nothing to the keyboard while playing** on the [Game session](/keymotion/guide/game-session/#anti-cheat-software) page.
+
+Macros, even the keyboard's own, can break the rules of competitive games such as League of Legends, VALORANT and CS2. Keymotion never turns macros on for a game by itself.
 
 ## Where are my settings stored?
 
