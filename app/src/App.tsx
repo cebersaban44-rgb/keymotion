@@ -42,6 +42,7 @@ import { gameCover, startGames } from "./lib/games";
 import { programIconData } from "./lib/icons";
 import { startPomodoro, usePomodoro, DEFAULT_SETTINGS } from "./lib/pomodoro";
 import { followGauges, useGauges } from "./lib/gauges";
+import { followMusic, useMusic } from "./lib/music";
 import { startCalendar, useCalendar } from "./lib/calendar";
 import { startReminders } from "./lib/reminders";
 import { startUpdates, useUpdates } from "./lib/updates";
@@ -58,6 +59,7 @@ import { Keymap } from "./pages/Keymap";
 import { Macros } from "./pages/Macros";
 import { Focus } from "./pages/Focus";
 import { Gauges } from "./pages/Gauges";
+import { Music } from "./pages/Music";
 import { Reminders } from "./pages/Reminders";
 import { Lighting } from "./pages/Lighting";
 import { Overview } from "./pages/Overview";
@@ -163,6 +165,12 @@ function useLiveScreen() {
   useEffect(() => {
     useGauges.getState().load().catch(console.error);
     return followGauges();
+  }, []);
+  // Whether music mode is on (the Lighting and gauges pages say so); the
+  // tray menu can switch it too.
+  useEffect(() => {
+    useMusic.getState().load().catch(console.error);
+    return followMusic();
   }, []);
 }
 
@@ -342,6 +350,8 @@ export default function App() {
         return <Focus kb={tool} />;
       case "gauges":
         return <Gauges kb={tool} />;
+      case "music":
+        return <Music kb={tool} />;
       case "reminders":
         return <Reminders kb={tool} />;
       case "calendar":
