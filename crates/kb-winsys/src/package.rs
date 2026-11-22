@@ -100,6 +100,33 @@ pub fn installed(family_name: &str) -> bool {
     sys::installed(family_name)
 }
 
+/// The newest version of the family `family_name` installed for this user
+/// (`[major, minor, build, revision]`), from the packages' full names;
+/// `None` when none is installed. Any program can ask.
+pub fn installed_version(family_name: &str) -> Option<[u16; 4]> {
+    sys::installed_full_names(family_name).iter().filter_map(|n| version_in_full_name(n)).max()
+}
+
+/// The version in a package's full name,
+/// `Name_1.2.3.0_x64__publisherid` → `[1, 2, 3, 0]`.
+pub fn version_in_full_name(full_name: &str) -> Option<[u16; 4]> {
+    let version = full_name.split('_').nth(1)?;
+    let mut parts = version.split('.').map(|p| p.parse::<u16>().ok());
+    let out = [parts.next()??, parts.next()??, parts.next()??, parts.next()??];
+    parts.next().is_none().then_some(out)
+}
+
+/// The version of a packaged program from its path, when it runs from a
+/// package's install folder (`…\WindowsApps\Name_1.2.3.0_x64__id\x.exe`):
+/// tells an old Store copy that is running apart from a new one.
+pub fn version_in_install_path(path: &str) -> Option<[u16; 4]> {
+    let mut parts = path.rsplit(['\\', '/']);
+    let _program = parts.next()?;
+    let folder = parts.next()?;
+    let parent = parts.next()?;
+    parent.eq_ignore_ascii_case("WindowsApps").then(|| version_in_full_name(folder)).flatten()
+}
+
 /// Start a packaged app, `<family>!<application id>`, with `arguments` on
 /// its command line; its process id. A link to it (`shell:AppsFolder\…`)
 /// cannot pass arguments.
@@ -192,6 +219,50 @@ mod sys {
         (err.is_ok() || err == ERROR_INSUFFICIENT_BUFFER) && count > 0
     }
 
+    pub fn installed_full_names(family: &str) -> Vec<String> {
+        use windows::Win32::Storage::Packaging::Appx::GetPackagesByPackageFamily;
+        let family = windows::core::HSTRING::from(family);
+        // A package installed between the two calls makes the second one
+        // too small: ask again.
+        for _ in 0..3 {
+            let (mut count, mut len) = (0u32, 0u32);
+            // SAFETY: no buffers; the API writes how many packages there
+            // are and the length their names need, NULs included.
+            let err = unsafe { GetPackagesByPackageFamily(&family, &mut count, None, &mut len, None) };
+            if !(err.is_ok() || err == ERROR_INSUFFICIENT_BUFFER) || count == 0 || len == 0 {
+                return Vec::new();
+            }
+            let mut names = vec![PWSTR::null(); count as usize];
+            let mut buf = vec![0u16; len as usize];
+            // SAFETY: an array of `count` name pointers and a buffer of
+            // `len` characters, the sizes the first call asked for; the
+            // pointers it writes point into `buf`.
+            let err = unsafe {
+                GetPackagesByPackageFamily(
+                    &family,
+                    &mut count,
+                    Some(names.as_mut_ptr()),
+                    &mut len,
+                    Some(PWSTR(buf.as_mut_ptr())),
+                )
+            };
+            if err == ERROR_INSUFFICIENT_BUFFER {
+                continue;
+            }
+            if err.is_err() {
+                return Vec::new();
+            }
+            return names
+                .iter()
+                .take(count as usize)
+                .filter(|p| !p.is_null())
+                // SAFETY: NUL-terminated names inside `buf`, which is alive.
+                .filter_map(|p| unsafe { p.to_string() }.ok())
+                .collect();
+        }
+        Vec::new()
+    }
+
     pub fn activate(aumid: &str, arguments: &str) -> Result<u32, String> {
         use windows::core::HSTRING;
         use windows::Win32::System::Com::{
@@ -235,6 +306,10 @@ mod sys {
         false
     }
 
+    pub fn installed_full_names(_family: &str) -> Vec<String> {
+        Vec::new()
+    }
+
     pub fn activate(_aumid: &str, _arguments: &str) -> Result<u32, String> {
         Err("packaged apps are only available on Windows".into())
     }
@@ -253,6 +328,42 @@ mod tests {
     fn restart_after_an_update_can_be_registered() {
         // Only this test process is registered, and it ends with the run.
         restart_after_update("--hidden").unwrap();
+    }
+
+    #[test]
+    fn versions_come_from_full_names_and_install_folders() {
+        assert_eq!(version_in_full_name("cebersaban.Keymotion_1.1.0.0_x64__pa98x8fw006yg"), Some([1, 1, 0, 0]));
+        assert_eq!(version_in_full_name("Keymotion_12.3.45.6_neutral_~_abc"), Some([12, 3, 45, 6]));
+        for bad in [
+            "Keymotion",
+            "Keymotion_1.1.0_x64__a",
+            "Keymotion_1.1.0.0.0_x64__a",
+            "K_a.b.c.d_x64__a",
+            "K_99999.0.0.0_x64",
+        ] {
+            assert_eq!(version_in_full_name(bad), None, "{bad}");
+        }
+        assert_eq!(
+            version_in_install_path(
+                r"C:\Program Files\WindowsApps\cebersaban.Keymotion_1.1.0.0_x64__pa98x8fw006yg\keymotion.exe"
+            ),
+            Some([1, 1, 0, 0])
+        );
+        assert_eq!(version_in_install_path(r"C:\Users\a\AppData\Local\Keymotion\keymotion.exe"), None);
+        assert_eq!(version_in_install_path(r"C:\dev\Keymotion_1.1.0.0_x64__a\keymotion.exe"), None);
+        // Nothing is installed under a made-up family.
+        assert_eq!(installed_version("Nobody.Nothing_0000000000000"), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_versions_of_an_installed_family_can_be_read() {
+        // Windows' own Store app family on a normal install; when it is
+        // missing (a stripped image), there is simply nothing to read.
+        if installed("Microsoft.WindowsStore_8wekyb3d8bbwe") {
+            let v = installed_version("Microsoft.WindowsStore_8wekyb3d8bbwe").expect("a version");
+            assert!(v[0] > 0, "{v:?}");
+        }
     }
 
     #[test]

@@ -14,16 +14,45 @@ use crate::error::{AgentError, ErrorCode};
 /// At most this much of a rejected input is echoed back in a message.
 const ECHO_CHARS: usize = 40;
 
-/// `input` for an error message: trimmed, and cut short when long (the
-/// CLI uses it for its own messages too).
+/// `input` for an error message: trimmed, cut short when long, and with
+/// every character a terminal could act on written out ([`printable`]).
+/// The CLI uses it for its own messages too.
 pub fn shown(input: &str) -> String {
     let input = input.trim();
     if input.chars().count() <= ECHO_CHARS {
-        input.to_string()
+        printable(input)
     } else {
         let cut: String = input.chars().take(ECHO_CHARS).collect();
-        format!("{cut}…")
+        format!("{}…", printable(&cut))
     }
+}
+
+/// Characters that must not reach a terminal or a log as they are: control
+/// characters (C0, DEL and C1: an escape sequence can move the cursor,
+/// recolour or rewrite what was printed) and the invisible and
+/// direction-changing ones ([`check_text`] refuses them too).
+pub fn is_unsafe_char(c: char) -> bool {
+    c.is_control() || is_invisible(c)
+}
+
+/// `text` safe to print: each [unsafe character](is_unsafe_char) written
+/// out as `\n`, `\r`, `\t` or `\u{1B}`, the rest as it is. A backslash
+/// stays a backslash, so the result is for reading, not for parsing back.
+pub fn printable(text: &str) -> String {
+    if !text.chars().any(is_unsafe_char) {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len() + 8);
+    for c in text.chars() {
+        match c {
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if is_unsafe_char(c) => out.push_str(&format!("\\u{{{:X}}}", u32::from(c))),
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 // ---------------------------------------------------------------- colors
@@ -590,6 +619,21 @@ pub fn check_text(text: &str, max_chars: usize, max_lines: usize) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn echoed_input_cannot_drive_a_terminal() {
+        assert_eq!(printable("plain red, ünicode ok"), "plain red, ünicode ok");
+        assert_eq!(printable("\u{1b}[31mred\u{7}"), "\\u{1B}[31mred\\u{7}");
+        assert_eq!(printable("a\nb\r\tc"), "a\\nb\\r\\tc");
+        // DEL, C1 (CSI) and a direction override.
+        assert_eq!(printable("\u{7f}\u{9b}2J\u{202e}x"), "\\u{7F}\\u{9B}2J\\u{202E}x");
+        let e = Color::parse("\u{1b}[2J red").unwrap_err();
+        assert!(!e.message.chars().any(is_unsafe_char), "{:?}", e.message);
+        assert!(e.message.contains("\\u{1B}[2J red"), "{}", e.message);
+        let long = format!("{}\u{1b}", "x".repeat(39));
+        assert_eq!(shown(&long), format!("{}\\u{{1B}}", "x".repeat(39)));
+        assert!(!shown(&"\u{9b}".repeat(60)).chars().any(is_unsafe_char));
+    }
 
     #[test]
     fn colors_from_hex_and_names() {

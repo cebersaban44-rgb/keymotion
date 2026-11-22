@@ -47,6 +47,10 @@ struct Facts {
     /// keymotion-cli started it for an agent (`--background` or
     /// `keymotion://background`): no window, but not a start with Windows.
     background: bool,
+    /// The installed Store copy takes `--background`
+    /// (`kb_agent::BACKGROUND_START_SINCE`); an older one would open its
+    /// window, and has no pipe for agents.
+    store_background: bool,
     /// The GitHub copy asked this one to take over its start with Windows.
     take_startup: bool,
     /// A copy already runs.
@@ -68,7 +72,10 @@ enum Plan {
 }
 
 fn plan(f: Facts) -> Plan {
-    if f.github_copy && f.store_installed {
+    // A start for an agent stays with this copy, hidden, rather than go to
+    // a Store copy too old to start without a window.
+    let store_takes_it = !f.background || f.store_background;
+    if f.github_copy && f.store_installed && store_takes_it {
         let mut args = Vec::new();
         if f.sign_in {
             args.push(tray::ARG_HIDDEN);
@@ -104,13 +111,17 @@ pub fn before_start() -> bool {
             .zip(github_install())
             .is_some_and(|(exe, dir)| kb_winsys::copies::runs_from(&dir, &exe));
     let running = kb_winsys::copies::running(INSTANCE_LOCK);
+    let background = tray::background_start(&args);
     let facts = Facts {
         github_copy,
         store_installed: github_copy && kb_winsys::package::installed(STORE_FAMILY),
         // The startup task passes no arguments; Windows tells how it
         // started (asked only when it matters).
         sign_in: has(tray::ARG_HIDDEN) || (store_build && running && kb_winsys::package::started_at_sign_in()),
-        background: tray::background_start(&args),
+        background,
+        store_background: background
+            && kb_winsys::package::installed_version(STORE_FAMILY)
+                .is_some_and(|v| kb_agent::starts_in_background([v[0], v[1], v[2]])),
         take_startup: has(ARG_TAKE_STARTUP),
         running,
         run_entry: kb_winsys::startup::entry(tray::RUN_NAME).map(|e| !e.disabled),
@@ -221,8 +232,14 @@ mod tests {
     fn a_start_for_an_agent_stays_windowless_and_is_not_a_start_with_windows() {
         // The GitHub copy hands the start to the Store copy, still without
         // a window, and does not hand over its start with Windows.
-        let f = Facts { background: true, ..github(false, None) };
+        let f = Facts { background: true, store_background: true, ..github(false, None) };
         assert_eq!(plan(f), Plan::HandOver { args: vec![tray::ARG_BACKGROUND], drop_run_entry: false });
+        // A Store copy too old for --background would open its window: this
+        // copy starts instead, hidden, and keeps its start with Windows.
+        let old = Facts { store_background: false, run_entry: Some(true), ..f };
+        assert_eq!(plan(old), Plan::Start);
+        // An ordinary start still goes to an old Store copy.
+        assert!(matches!(plan(Facts { background: false, ..old }), Plan::HandOver { .. }));
         // With a copy already running, it goes to that copy (which shows
         // nothing), unlike a second start with Windows.
         let f = Facts { background: true, running: true, ..Facts::default() };

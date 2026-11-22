@@ -1,4 +1,5 @@
-//! Opening a web page in the user's default browser.
+//! Opening a web page in the user's default browser, and starting a
+//! program that inherits nothing from this process ([`run_alone`]).
 //!
 //! `explorer.exe <address>` takes an address with a query (`?a=b&c=d`) for a
 //! path, finds nothing and opens the Documents folder instead (the owner's
@@ -42,6 +43,20 @@ pub fn open_windows_page(page: WindowsPage) -> Result<(), String> {
     sys::open(page.address())
 }
 
+/// Start `program` (a full path) with one `argument`, handing it none of
+/// this process's handles, and wait up to `wait` for it to end.
+///
+/// `std::process::Command` always creates processes that inherit every
+/// inheritable handle, the standard handles included: a program started
+/// that way keeps a caller's output pipe open, and a caller reading to the
+/// end (an AI agent running keymotion-cli) waits for it as well.
+pub fn run_alone(program: &std::path::Path, argument: &str, wait: std::time::Duration) -> Result<(), String> {
+    if !program.is_absolute() || argument.contains(['"', '\0']) {
+        return Err("a program by its full path and a plain argument only".into());
+    }
+    sys::run_alone(program, argument, wait)
+}
+
 fn web_address(url: &str) -> bool {
     (url.starts_with("https://") || url.starts_with("http://")) && !url.chars().any(char::is_whitespace)
 }
@@ -65,12 +80,54 @@ mod sys {
             Err(format!("page not opened (Windows code {code})"))
         }
     }
+
+    pub fn run_alone(program: &std::path::Path, argument: &str, wait: std::time::Duration) -> Result<(), String> {
+        use windows::Win32::Foundation::CloseHandle;
+        use windows::Win32::System::Threading::{
+            CreateProcessW, WaitForSingleObject, PROCESS_CREATION_FLAGS, PROCESS_INFORMATION, STARTUPINFOW,
+        };
+        let program = HSTRING::from(program.as_os_str());
+        let mut line: Vec<u16> = format!("\"{program}\" \"{argument}\"").encode_utf16().chain([0]).collect();
+        let startup = STARTUPINFOW { cb: std::mem::size_of::<STARTUPINFOW>() as u32, ..Default::default() };
+        let mut process = PROCESS_INFORMATION::default();
+        // SAFETY: NUL-terminated program and a writable, NUL-terminated
+        // command line, both alive for the call; no security attributes,
+        // environment or folder of its own; `startup` and `process` are
+        // valid. Nothing is inherited (bInheritHandles FALSE).
+        unsafe {
+            CreateProcessW(
+                &program,
+                Some(windows::core::PWSTR(line.as_mut_ptr())),
+                None,
+                None,
+                false,
+                PROCESS_CREATION_FLAGS(0),
+                None,
+                PCWSTR::null(),
+                &startup,
+                &mut process,
+            )
+        }
+        .map_err(|e| format!("not started: {}", e.message()))?;
+        let ms = u32::try_from(wait.as_millis()).unwrap_or(u32::MAX);
+        // SAFETY: the handles CreateProcessW just gave, each closed once.
+        unsafe {
+            let _ = WaitForSingleObject(process.hProcess, ms);
+            let _ = CloseHandle(process.hThread);
+            let _ = CloseHandle(process.hProcess);
+        }
+        Ok(())
+    }
 }
 
 #[cfg(not(windows))]
 mod sys {
     pub fn open(_url: &str) -> Result<(), String> {
         Err("opening pages is only available on Windows".into())
+    }
+
+    pub fn run_alone(_program: &std::path::Path, _argument: &str, _wait: std::time::Duration) -> Result<(), String> {
+        Err("starting programs is only available on Windows".into())
     }
 }
 
@@ -87,5 +144,24 @@ mod tests {
         assert!(!web_address("ms-settings:"));
         assert!(!web_address("https://a.b/ x"));
         assert!(open_url("calc.exe").is_err());
+    }
+
+    #[test]
+    fn only_full_paths_and_plain_arguments_run() {
+        let wait = std::time::Duration::from_secs(1);
+        assert!(run_alone(std::path::Path::new("explorer.exe"), "x", wait).is_err());
+        assert!(run_alone(std::path::Path::new(r"C:\Windows\explorer.exe"), "a\" b", wait).is_err());
+    }
+
+    /// A program started this way holds none of the caller's handles: a
+    /// child that inherited this test's stdout would keep it open.
+    #[cfg(windows)]
+    #[test]
+    fn a_program_runs_and_ends() {
+        let cmd = std::path::PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into()))
+            .join("System32")
+            .join("cmd.exe");
+        // `"cmd.exe" "/c"` runs nothing and ends at once.
+        run_alone(&cmd, "/c", std::time::Duration::from_secs(5)).unwrap();
     }
 }
