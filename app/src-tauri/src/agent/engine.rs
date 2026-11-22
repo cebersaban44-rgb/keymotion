@@ -176,10 +176,14 @@ struct Session {
     /// when every number was taken.
     number: Option<u8>,
     last_seen: u64,
-    /// The tool calls its question waits for.
-    pending: BTreeSet<String>,
+    /// What its question waits for: one entry per tool call, each by the
+    /// keys that name it (its id, its content, its turn).
+    pending: Vec<BTreeSet<String>>,
     /// A question with no call of its own waits: any answer ends it.
     open: bool,
+    /// The keys of the turn whose failure shows: the agent going on with
+    /// that turn (Codex retrying a request) takes the failure away.
+    failed: Vec<String>,
     /// Its number key's LEDs, for this model.
     digit: Vec<(u8, Place)>,
     digit_for: Option<String>,
@@ -557,11 +561,21 @@ impl Engine {
             }
             HookEvent::Attention => self.ask(source, &hook.calls, lights, now, id_out)?,
             HookEvent::Answered => {
-                let cleared = self.answer(name, &hook.calls);
+                let mut cleared = self.answer(name, &hook.calls);
+                let retried = self
+                    .sessions
+                    .get_mut(name)
+                    .is_some_and(|s| hook.calls.iter().any(|c| s.failed.contains(c)) && !std::mem::take(&mut s.failed).is_empty());
+                if retried {
+                    cleared += self.remove(name, |l| matches!(l.kind, Kind::Signal(SignalName::Error) | Kind::UsageLimit));
+                }
                 json!({ "lit": false, "cleared": cleared, "waiting": self.waiting_calls(name) })
             }
             HookEvent::Done | HookEvent::Error => {
                 let cleared = self.answer_all(name);
+                if let Some(s) = self.sessions.get_mut(name) {
+                    s.failed = if hook.event == HookEvent::Error { hook.calls.clone() } else { Vec::new() };
+                }
                 let signal = if hook.event == HookEvent::Done { "done" } else { "error" };
                 let mut a =
                     self.signal(source, &SignalArgs { name: signal.into(), ..Default::default() }, lights, now, id_out)?;
@@ -570,6 +584,9 @@ impl Engine {
             }
             HookEvent::UsageLimit => {
                 let cleared = self.answer_all(name);
+                if let Some(s) = self.sessions.get_mut(name) {
+                    s.failed.clone_from(&hook.calls);
+                }
                 let mut a = if self.settings.usage_limit.on {
                     self.usage_limit(source, lights, now, id_out)?
                 } else {
@@ -614,8 +631,9 @@ impl Engine {
                     label: None,
                     number,
                     last_seen: now,
-                    pending: BTreeSet::new(),
+                    pending: Vec::new(),
                     open: false,
+                    failed: Vec::new(),
                     digit: Vec::new(),
                     digit_for: None,
                 },
@@ -639,14 +657,14 @@ impl Engine {
     ) -> Result<Value, AgentError> {
         let name = source.as_str();
         if let Some(s) = self.sessions.get_mut(name) {
-            if calls.is_empty() {
+            let keys: BTreeSet<String> = calls.iter().cloned().collect();
+            if keys.is_empty() {
                 s.open = true;
-            }
-            for call in calls {
+            } else if !s.pending.contains(&keys) {
                 if s.pending.len() >= MAX_PENDING {
-                    break;
+                    s.pending.remove(0);
                 }
-                s.pending.insert(call.clone());
+                s.pending.push(keys);
             }
             if let (Some(n), Ok(index)) = (s.number, lights.as_ref()) {
                 if s.digit_for.as_deref() != Some(index.model_id.as_str()) {
@@ -670,17 +688,16 @@ impl Engine {
         Ok(answer)
     }
 
-    /// The calls of `name`'s session were answered (none named: all of
-    /// them). When nothing waits any more, its question goes, if its look
-    /// stays until answered. How many lights went.
+    /// What `calls` name was answered: each waiting call one of these keys
+    /// names (none given: all of them). When nothing waits any more, the
+    /// session's question goes, if its look stays until answered. How many
+    /// lights went.
     fn answer(&mut self, name: &str, calls: &[String]) -> usize {
         let Some(s) = self.sessions.get_mut(name) else { return 0 };
         if calls.is_empty() {
             s.pending.clear();
         } else {
-            for call in calls {
-                s.pending.remove(call);
-            }
+            s.pending.retain(|keys| !calls.iter().any(|c| keys.contains(c)));
         }
         s.open = false;
         if !s.pending.is_empty() || !self.settings.signals.attention.until_answered {
@@ -695,6 +712,7 @@ impl Engine {
         if let Some(s) = self.sessions.get_mut(name) {
             s.pending.clear();
             s.open = false;
+            s.failed.clear();
         }
         self.remove(name, |l| l.kind == Kind::Signal(SignalName::Attention))
     }
@@ -2108,6 +2126,11 @@ mod tests {
         // A question with no call of its own goes with any answer.
         run(&mut e, A, hook("attention", &[]), 9_000).unwrap();
         assert_eq!(run(&mut e, A, hook("answered", &["whatever"]), 9_500).unwrap()["cleared"], 1);
+        // A call is named by any of its keys (Codex: the call or its turn).
+        run(&mut e, A, hook("attention", &["call-x", "turn-1"]), 9_600).unwrap();
+        run(&mut e, A, hook("attention", &["call-y", "turn-1"]), 9_700).unwrap();
+        assert_eq!(run(&mut e, A, hook("answered", &["call-x"]), 9_800).unwrap()["waiting"], 1);
+        assert_eq!(run(&mut e, A, hook("answered", &["turn-1"]), 9_900).unwrap()["cleared"], 1);
         // An answer naming no call answers them all.
         run(&mut e, A, hook("attention", &["c3"]), 10_000).unwrap();
         run(&mut e, A, hook("attention", &["c4"]), 10_100).unwrap();
@@ -2158,6 +2181,11 @@ mod tests {
         e.set_settings(s);
         let plain = run(&mut e, B, hook("usage_limit", &[]), 4_000).unwrap();
         assert_eq!(plain["id"], format!("{B}:error"));
+        // A failure of a turn the agent goes on with (a retried request) goes.
+        run(&mut e, B, hook("error", &["turn-7"]), 4_100).unwrap();
+        assert_eq!(run(&mut e, B, hook("answered", &["turn-6"]), 4_200).unwrap()["cleared"], 0);
+        assert_eq!(run(&mut e, B, hook("answered", &["turn-7"]), 4_300).unwrap()["cleared"], 1);
+        assert!(e.infos(4_300, true).iter().all(|i| i.source != B));
         // The session ends: its lights and its number go.
         let end = run(&mut e, A, hook("session_end", &[]), 5_000).unwrap();
         assert!(end["cleared"].as_u64().unwrap() >= 1);
