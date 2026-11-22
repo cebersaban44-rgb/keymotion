@@ -249,6 +249,9 @@ pub enum Request {
     /// The game layer is what the user asked to try ("Try on the keyboard"
     /// on the Games page): it shows even while a game wants quiet.
     SetGameTried(bool),
+    /// The agents' layer still shows while a game wants the keyboard left
+    /// alone (the user turned "hide while playing" off).
+    SetAgentInQuiet(bool),
     /// Start (`Some`, with what the keys should show) or stop the mirror.
     SetMirror(Option<MirrorExpect>),
     /// New colour calibration; re-sends the live frame at once so sliders
@@ -327,6 +330,7 @@ impl Request {
             | Self::SetLayer(..)
             | Self::SetQuiet(_)
             | Self::SetGameTried(_)
+            | Self::SetAgentInQuiet(_)
             | Self::SetMirror(_)
             | Self::SetCalibration(_)
             | Self::ConfirmFirmware(_)
@@ -393,9 +397,9 @@ pub struct LiveFrame {
 }
 
 /// Background light layers, from the bottom up (owner's decision,
-/// 2026-11-10; the game and profile layers 2026-11-16; music 2026-11-22). A
-/// live frame covers the whole keyboard, so the keyboard's own saved light
-/// only shows when no layer is set.
+/// 2026-11-10; the game and profile layers 2026-11-16; music and the
+/// agents 2026-11-22). A live frame covers the whole keyboard, so the
+/// keyboard's own saved light only shows when no layer is set.
 ///
 /// * `Profile`: the per-key design of the profile linked to the program in
 ///   front (per-app profiles), shown without writing the flash.
@@ -409,8 +413,13 @@ pub struct LiveFrame {
 ///   the gauges wait while it shows.
 /// * `Timer`: the focus timer. It uses the whole keyboard ("the light left
 ///   is the time left"), so the music and the gauges wait while it shows.
+/// * `Agent`: the AI agents' and scripts' signals (`agent`), over whichever
+///   of the five above shows. Only the keys it names: every key (an agent
+///   waiting for the user covers the keyboard) or a few. The alerts, the
+///   reminders and the nudges stay on top, so a muted microphone or a
+///   meeting's key is never hidden by an agent.
 /// * `Alerts`: only the keys it names (volume bar for a moment, the
-///   microphone key), on top of the timer or the gauges.
+///   microphone key), on top of the agents' keys, the timer or the gauges.
 /// * `Reminders`: only the keys it names (a key blinking before a meeting),
 ///   on top of those.
 /// * `Nudges`: only the keys it names (the wave of a reminder going off,
@@ -424,6 +433,7 @@ pub enum LightLayer {
     Music,
     Game,
     Timer,
+    Agent,
     Alerts,
     Reminders,
     Nudges,
@@ -441,12 +451,14 @@ pub enum Quiet {
 }
 
 /// The layers that still show while a game wants the keyboard left alone:
-/// the meetings' and reminders' when the user lets them through, and the
-/// game layer when it is the user's own try.
-fn quiet_layers(l: &Layers, quiet: Quiet, game_tried: bool) -> Layers {
+/// the meetings' and reminders' when the user lets them through, the game
+/// layer when it is the user's own try, and the agents' when the user
+/// turned their "hide while playing" off (`agent_in_quiet`).
+fn quiet_layers(l: &Layers, quiet: Quiet, game_tried: bool, agent_in_quiet: bool) -> Layers {
     let reminders = quiet == Quiet::ButReminders;
     Layers {
         game: l.game.clone().filter(|_| game_tried),
+        agent: l.agent.clone().filter(|_| agent_in_quiet),
         reminders: l.reminders.clone().filter(|_| reminders),
         nudges: l.nudges.clone().filter(|_| reminders),
         ..Layers::default()
@@ -481,6 +493,7 @@ pub struct Layers {
     pub music: Option<LiveFrame>,
     pub game: Option<LiveFrame>,
     pub timer: Option<LiveFrame>,
+    pub agent: Option<LiveFrame>,
     pub alerts: Option<LiveFrame>,
     pub reminders: Option<LiveFrame>,
     pub nudges: Option<LiveFrame>,
@@ -494,6 +507,7 @@ impl Layers {
             LightLayer::Music => &mut self.music,
             LightLayer::Game => &mut self.game,
             LightLayer::Timer => &mut self.timer,
+            LightLayer::Agent => &mut self.agent,
             LightLayer::Alerts => &mut self.alerts,
             LightLayer::Reminders => &mut self.reminders,
             LightLayer::Nudges => &mut self.nudges,
@@ -506,6 +520,7 @@ impl Layers {
             || self.music.is_some()
             || self.game.is_some()
             || self.timer.is_some()
+            || self.agent.is_some()
             || self.alerts.is_some()
             || self.reminders.is_some()
             || self.nudges.is_some()
@@ -513,9 +528,9 @@ impl Layers {
 }
 
 /// What the keys show: the preview alone, or the timer (else the game,
-/// else the music, else the gauges, else the profile) with the alerts',
-/// the reminders' and then the nudges' keys on top. `None` when nothing is
-/// set.
+/// else the music, else the gauges, else the profile) with the agents',
+/// the alerts', the reminders' and then the nudges' keys on top. `None`
+/// when nothing is set.
 pub fn compose(live: Option<&LiveFrame>, l: &Layers) -> Option<Vec<LitKey>> {
     let keys = |f: &LiveFrame| f.colors.iter().map(|&(l, c)| (l, c, f.level)).collect::<Vec<_>>();
     if let Some(live) = live {
@@ -523,7 +538,8 @@ pub fn compose(live: Option<&LiveFrame>, l: &Layers) -> Option<Vec<LitKey>> {
     }
     let base = [&l.timer, &l.game, &l.music, &l.gauges, &l.profile];
     let mut out = base.into_iter().find_map(Option::as_ref).map(keys);
-    for over in [l.alerts.as_ref(), l.reminders.as_ref(), l.nudges.as_ref()].into_iter().flatten() {
+    let over = [l.agent.as_ref(), l.alerts.as_ref(), l.reminders.as_ref(), l.nudges.as_ref()];
+    for over in over.into_iter().flatten() {
         let base = out.get_or_insert_with(Vec::new);
         for (led, c, level) in keys(over) {
             match base.iter_mut().find(|k| k.0 == led) {
@@ -570,6 +586,8 @@ pub struct Snapshot {
     /// waits on until the user says yes. Kept for a window that opens after
     /// the question went out (`firmware-unverified`).
     pub clock_waits_for: Option<String>,
+    /// Whether a game wants the keyboard left alone now.
+    pub quiet: Quiet,
 }
 
 /// One step of a screen upload, in order (uploads run one at a time). The
@@ -726,6 +744,7 @@ pub fn spawn(
         keymaps: keymaps.clone(),
         macros: macros.clone(),
         clock_waits_for: None,
+        quiet: Quiet::Off,
     }));
     let (tx, rx) = mpsc::channel();
     let shared = snapshot.clone();
@@ -806,6 +825,8 @@ struct Actor {
     quiet: Quiet,
     /// The game layer is the user's own try: it shows even while quiet.
     game_tried: bool,
+    /// The agents' layer shows even while quiet ("hide while playing" off).
+    agent_in_quiet: bool,
     next_enumerate: Instant,
     next_live: Instant,
     /// When the last live frame went out.
@@ -861,6 +882,7 @@ impl Actor {
             clock_waits: false,
             quiet: Quiet::Off,
             game_tried: false,
+            agent_in_quiet: false,
             next_enumerate: now,
             next_live: now,
             last_live: None,
@@ -1011,12 +1033,22 @@ impl Actor {
                 if self.quiet != quiet {
                     tracing::info!(?quiet, "keyboard left alone for a game");
                     self.quiet = quiet;
+                    if let Ok(mut s) = self.shared.lock() {
+                        s.quiet = quiet;
+                    }
                     self.next_live = Instant::now();
                 }
             }
             Request::SetGameTried(on) => {
                 self.game_tried = on;
                 self.next_live = Instant::now();
+            }
+            Request::SetAgentInQuiet(on) => {
+                if self.agent_in_quiet != on {
+                    tracing::debug!(on, "agent lights while a game wants quiet");
+                    self.agent_in_quiet = on;
+                    self.next_live = Instant::now();
+                }
             }
             Request::SetMirror(expect) => {
                 self.mirror = expect;
@@ -1306,10 +1338,11 @@ impl Actor {
 
     fn has_layer(&self) -> bool {
         let tried = self.game_tried && self.layers.game.is_some();
+        let agent = self.agent_in_quiet && self.layers.agent.is_some();
         match self.quiet {
             Quiet::Off => self.layers.any(),
-            Quiet::ButReminders => self.layers.reminders.is_some() || self.layers.nudges.is_some() || tried,
-            Quiet::All => tried,
+            Quiet::ButReminders => self.layers.reminders.is_some() || self.layers.nudges.is_some() || tried || agent,
+            Quiet::All => tried || agent,
         }
     }
 
@@ -1327,7 +1360,7 @@ impl Actor {
         let layers = if self.quiet == Quiet::Off {
             &self.layers
         } else {
-            heard = quiet_layers(&self.layers, self.quiet, self.game_tried);
+            heard = quiet_layers(&self.layers, self.quiet, self.game_tried, self.agent_in_quiet);
             &heard
         };
         let Some(keys) = compose(self.live.as_ref(), layers) else {
@@ -1597,6 +1630,7 @@ mod tests {
             music: None,
             game: None,
             timer: Some(timer),
+            agent: None,
             alerts: Some(alerts.clone()),
             reminders: Some(frame(&[(9, 7)], 1.0)),
             nudges: Some(frame(&[(3, 50)], 1.0)),
@@ -1737,15 +1771,18 @@ mod tests {
             ..Layers::default()
         };
         // The game's own lights wait; the meeting's key goes through.
-        assert_eq!(compose(None, &quiet_layers(&layers, Quiet::ButReminders, false)), Some(vec![(2, [7; 3], 1.0)]));
-        assert_eq!(compose(None, &quiet_layers(&layers, Quiet::All, false)), None);
+        assert_eq!(
+            compose(None, &quiet_layers(&layers, Quiet::ButReminders, false, false)),
+            Some(vec![(2, [7; 3], 1.0)])
+        );
+        assert_eq!(compose(None, &quiet_layers(&layers, Quiet::All, false, false)), None);
         // "Try on the keyboard" shows, under the meeting's key.
         assert_eq!(
-            compose(None, &quiet_layers(&layers, Quiet::ButReminders, true)),
+            compose(None, &quiet_layers(&layers, Quiet::ButReminders, true, false)),
             Some(vec![(1, [30; 3], 1.0), (2, [7; 3], 1.0)])
         );
         assert_eq!(
-            compose(None, &quiet_layers(&layers, Quiet::All, true)),
+            compose(None, &quiet_layers(&layers, Quiet::All, true, false)),
             Some(vec![(1, [30; 3], 1.0), (2, [30; 3], 1.0)])
         );
     }
@@ -1793,10 +1830,72 @@ mod tests {
         let mut layers = Layers::default();
         *layers.slot(LightLayer::Music) = Some(frame(&[(1, 40)], 1.0));
         assert_eq!(compose(None, &layers), Some(vec![(1, [40; 3], 1.0)]));
-        assert_eq!(compose(None, &quiet_layers(&layers, Quiet::All, false)), None);
-        assert_eq!(compose(None, &quiet_layers(&layers, Quiet::ButReminders, false)), None);
+        assert_eq!(compose(None, &quiet_layers(&layers, Quiet::All, false, false)), None);
+        assert_eq!(compose(None, &quiet_layers(&layers, Quiet::ButReminders, false, false)), None);
         // The user's try of the game's lights is not the music.
-        assert_eq!(compose(None, &quiet_layers(&layers, Quiet::All, true)), None);
+        assert_eq!(compose(None, &quiet_layers(&layers, Quiet::All, true, false)), None);
+    }
+
+    #[test]
+    fn the_agents_lie_over_every_base_and_under_the_alerts() {
+        let agent_all = frame(&[(1, 60), (2, 60), (3, 60)], 1.0);
+        let agent_some = frame(&[(3, 60)], 1.0);
+        // Over each base layer alone: the whole keyboard, or only its keys.
+        for base in [LightLayer::Profile, LightLayer::Gauges, LightLayer::Music, LightLayer::Game, LightLayer::Timer] {
+            let mut layers = Layers::default();
+            *layers.slot(base) = Some(frame(&[(1, 10), (2, 10), (3, 10)], 0.5));
+            *layers.slot(LightLayer::Agent) = Some(agent_all.clone());
+            assert_eq!(
+                compose(None, &layers),
+                Some(vec![(1, [60; 3], 1.0), (2, [60; 3], 1.0), (3, [60; 3], 1.0)]),
+                "{base:?}"
+            );
+            *layers.slot(LightLayer::Agent) = Some(agent_some.clone());
+            assert_eq!(
+                compose(None, &layers),
+                Some(vec![(1, [10; 3], 0.5), (2, [10; 3], 0.5), (3, [60; 3], 1.0)]),
+                "{base:?}"
+            );
+        }
+        // The muted microphone, a meeting's key and a reminder's wave stay on
+        // top of an agent that covers the keyboard.
+        let layers = Layers {
+            timer: Some(frame(&[(1, 20), (2, 20), (3, 20), (4, 20)], 0.8)),
+            agent: Some(frame(&[(1, 60), (2, 60), (3, 60), (4, 60)], 1.0)),
+            alerts: Some(frame(&[(2, 99)], 1.0)),
+            reminders: Some(frame(&[(3, 7)], 1.0)),
+            nudges: Some(frame(&[(4, 50)], 1.0)),
+            ..Layers::default()
+        };
+        assert_eq!(
+            compose(None, &layers),
+            Some(vec![(1, [60; 3], 1.0), (2, [99; 3], 1.0), (3, [7; 3], 1.0), (4, [50; 3], 1.0)])
+        );
+        // Alone it lights only its keys; the Lighting page's preview covers it.
+        let alone = Layers { agent: Some(agent_some.clone()), ..Layers::default() };
+        assert!(alone.any());
+        assert_eq!(compose(None, &alone), Some(vec![(3, [60; 3], 1.0)]));
+        assert_eq!(compose(Some(&frame(&[(5, 1)], 1.0)), &alone), Some(vec![(5, [1; 3], 1.0)]));
+    }
+
+    #[test]
+    fn a_game_that_wants_quiet_hides_the_agents_unless_the_user_lets_them_show() {
+        let layers = Layers {
+            game: Some(frame(&[(1, 30), (2, 30)], 1.0)),
+            agent: Some(frame(&[(1, 60), (2, 60)], 1.0)),
+            reminders: Some(frame(&[(2, 7)], 1.0)),
+            ..Layers::default()
+        };
+        let shown = |quiet, agent_in_quiet| compose(None, &quiet_layers(&layers, quiet, false, agent_in_quiet));
+        // "Hide while playing" on (the default): gone, the meeting's key stays.
+        assert_eq!(shown(Quiet::All, false), None);
+        assert_eq!(shown(Quiet::ButReminders, false), Some(vec![(2, [7; 3], 1.0)]));
+        // Off: the agent shows (the game's own lights still wait), under the
+        // meeting's key.
+        assert_eq!(shown(Quiet::All, true), Some(vec![(1, [60; 3], 1.0), (2, [60; 3], 1.0)]));
+        assert_eq!(shown(Quiet::ButReminders, true), Some(vec![(1, [60; 3], 1.0), (2, [7; 3], 1.0)]));
+        // Not quiet: the flag changes nothing.
+        assert_eq!(compose(None, &layers), Some(vec![(1, [60; 3], 1.0), (2, [7; 3], 1.0)]));
     }
 
     fn layer(layer: LightLayer, v: u8) -> Request {
@@ -1822,6 +1921,7 @@ mod tests {
             Request::SetLive(None) => "live=off".into(),
             Request::SetQuiet(q) => format!("quiet={q:?}"),
             Request::SetGameTried(on) => format!("tried={on}"),
+            Request::SetAgentInQuiet(on) => format!("agent-in-quiet={on}"),
             Request::SetClockAuto(on, _) => format!("clock-auto={on}"),
             Request::SyncClock(_) => "sync-clock".into(),
             Request::UploadScreen { id, .. } => format!("upload {id}"),
@@ -1917,6 +2017,7 @@ mod tests {
         layers: Layers,
         quiet: Quiet,
         tried: bool,
+        agent_in_quiet: bool,
     }
 
     impl Held {
@@ -1926,6 +2027,7 @@ mod tests {
                 Request::SetLayer(l, f) => *self.layers.slot(*l) = f.clone(),
                 Request::SetQuiet(q) => self.quiet = *q,
                 Request::SetGameTried(on) => self.tried = *on,
+                Request::SetAgentInQuiet(on) => self.agent_in_quiet = *on,
                 _ => {}
             }
         }
@@ -1935,7 +2037,7 @@ mod tests {
             if self.quiet == Quiet::Off {
                 compose(self.live.as_ref(), &self.layers)
             } else {
-                compose(self.live.as_ref(), &quiet_layers(&self.layers, self.quiet, self.tried))
+                compose(self.live.as_ref(), &quiet_layers(&self.layers, self.quiet, self.tried, self.agent_in_quiet))
             }
         }
     }
@@ -1943,7 +2045,7 @@ mod tests {
     /// A made-up stream of requests, mostly music frames (the same for the
     /// same seed).
     fn random_requests(seed: u64, count: usize) -> Vec<Request> {
-        use LightLayer::{Game, Gauges, Music, Timer};
+        use LightLayer::{Agent, Game, Gauges, Music, Timer};
         let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
         let mut next = move |n: u64| {
             x ^= x << 13;
@@ -1954,8 +2056,8 @@ mod tests {
         (0..count)
             .map(|i| {
                 let v = (i % 250) as u8;
-                let pick = [Music, Game, Gauges, Timer][next(4) as usize];
-                match next(16) {
+                let pick = [Music, Game, Gauges, Timer, Agent][next(5) as usize];
+                match next(17) {
                     0..=7 => layer(Music, v),
                     8 | 9 => layer(pick, v),
                     10 => Request::SetLayer(pick, None),
@@ -1963,6 +2065,7 @@ mod tests {
                     12 => Request::SetQuiet([Quiet::Off, Quiet::ButReminders, Quiet::All][next(3) as usize]),
                     13 => Request::SetGameTried(next(2) == 0),
                     14 => Request::SyncClock(mpsc::channel().0),
+                    15 => Request::SetAgentInQuiet(next(2) == 0),
                     _ => upload("x"),
                 }
             })
