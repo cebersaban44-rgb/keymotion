@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { ClockStatus } from "../bindings/ClockStatus";
 import { follow } from "../lib/follow";
 import { getClockStatus, onClockChanged, setClockAuto, syncClock } from "../lib/ipc";
-import { useAgo, useT } from "../lib/i18n";
+import { intlTag, useAgo, useT } from "../lib/i18n";
 import { useApp } from "../lib/store";
 import { Toggle } from "./controls";
 import { friendlyError } from "../lib/errors";
@@ -56,7 +56,7 @@ export function ClockCard({ usb }: { usb: boolean }) {
   const lastDate =
     last === null
       ? undefined
-      : new Date(last).toLocaleString(locale === "tr" ? "tr-TR" : "en-US", { dateStyle: "medium", timeStyle: "short" });
+      : new Date(last).toLocaleString(intlTag(locale), { dateStyle: "medium", timeStyle: "short" });
 
   return (
     <div className="card flex flex-wrap items-center gap-x-5 gap-y-4 p-5" data-clock>

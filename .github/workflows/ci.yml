@@ -54,6 +54,12 @@ jobs:
       - name: Text hygiene (BOM, broken characters)
         run: node tools/check-text.mjs
 
+      # Keys, placeholders and plural forms in every language; a Russian or
+      # Chinese text not translated yet is a warning here (--release makes
+      # it an error).
+      - name: Interface languages (dictionaries)
+        run: node tools/check-i18n.mjs
+
       - name: No vendor files
         run: node tools/check-vendor-files.mjs
 
@@ -61,9 +67,10 @@ jobs:
         run: node tools/check-version.mjs
 
       # The scripts the release (release.yml), site (pages.yml) and Store
-      # (store.yml) workflows use.
-      - name: Release, site and Store script tests
-        run: node --test "tools/release/*.test.mjs" "tools/site/*.test.mjs" "tools/store/*.test.mjs"
+      # (store.yml) workflows use, and the checks above (with the app's
+      # message engine they share).
+      - name: Release, site, Store and check script tests
+        run: node --test "tools/*.test.mjs" "tools/release/*.test.mjs" "tools/site/*.test.mjs" "tools/store/*.test.mjs"
 
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:

@@ -11,7 +11,7 @@ import type { CalendarEvent } from "../bindings/CalendarEvent";
 import type { CalendarProvider } from "../bindings/CalendarProvider";
 import type { CalendarSettings } from "../bindings/CalendarSettings";
 import type { CalendarState } from "../bindings/CalendarState";
-import type { MessageKey } from "./i18n";
+import { clockTime, type MessageKey } from "./i18n";
 import { inTauri, invoke, listen } from "./ipc";
 import { mockLiveHold, mockReturnAfter, submitLive, useLive } from "./live";
 import { useApp } from "./store";
@@ -76,9 +76,9 @@ export function linkProblem(url: string): { key: MessageKey; blocks: boolean } |
 const rgb = (c: readonly number[]) => `rgb(${c[0]},${c[1]},${c[2]})`;
 export const calendarColor = rgb;
 
-/** "14:00". */
+/** "14:00", in the interface language (clockTime). */
 export function hhmm(ms: number) {
-  return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return clockTime(ms);
 }
 
 // ------------------------------------------------------------------ mock

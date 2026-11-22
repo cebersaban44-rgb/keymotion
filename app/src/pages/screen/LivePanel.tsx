@@ -12,7 +12,7 @@ import type { LiveState } from "../../bindings/LiveState";
 import type { SongStop } from "../../bindings/SongStop";
 import { Segmented, Toggle } from "../../components/controls";
 import { CALENDAR_SOURCE, hhmm, useCalendar } from "../../lib/calendar";
-import { useT, type MessageKey } from "../../lib/i18n";
+import { clockTime, useT, type MessageKey } from "../../lib/i18n";
 import { NOW_PLAYING_SOURCE, fmtWait, useLive } from "../../lib/live";
 import { POMODORO_SOURCE, usePomodoro } from "../../lib/pomodoro";
 import { REMINDER_SOURCE, useReminders } from "../../lib/reminders";
@@ -622,7 +622,7 @@ function StatusLine({ s, usb }: { s: LiveState; usb: boolean }) {
           {/* After going back to the own picture the card is not on the screen any more. */}
           {s.showing ? t("sc.live.last") : t("sc.live.lastCard")}: <span className="truncate font-medium">{s.last.name}</span>
           <span className="num text-ink-3">
-            · {new Date(s.last.atMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            · {clockTime(s.last.atMs)}
           </span>
         </p>
       ) : (

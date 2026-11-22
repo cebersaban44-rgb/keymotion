@@ -349,12 +349,15 @@ pub enum WindowsPage {
 }
 
 /// The tray menu's words and the background notice, in the UI language.
-/// Templates keep their `{name}` places; the backend fills them in.
+/// Templates keep their `{name}` places and plural forms
+/// (`{n, plural, one {…} other {…}}`); the backend fills them in (i18n.rs).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct TrayTexts {
-    /// "tr" or "en": how a date further than tomorrow is written.
+    /// The UI language: "en", "tr", "ru" or "zh-CN". It picks the plural
+    /// forms, how a date further than tomorrow is written ("Nov 14",
+    /// "14.11", "11月14日") and the documentation site's folder.
     pub locale: String,
     pub open: String,
     pub no_keyboard: String,
@@ -441,7 +444,7 @@ impl Default for TrayTexts {
             round: s("Block {n}/{total}"),
             left: s("{min} min left"),
             paused: s("Paused"),
-            ready: s("Ready: {blocks} blocks, {min} min"),
+            ready: s("Ready: {blocks, plural, one {# block} other {# blocks}}, {min} min"),
             reminders: s("Reminders"),
             reminders_on: s("Reminders on"),
             reminders_off: s("Reminders off"),

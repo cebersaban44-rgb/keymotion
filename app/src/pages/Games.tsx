@@ -406,7 +406,7 @@ function GameList({
       )}
       {rest > 0 && (
         <button type="button" className="self-start text-[12px] text-signal hover:underline" onClick={() => setAll((a) => !a)}>
-          {all ? t("games.list.less") : t("games.list.all").replace("{n}", String(rest))}
+          {all ? t("games.list.less") : t("games.list.all", { n: rest })}
         </button>
       )}
     </div>

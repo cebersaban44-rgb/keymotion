@@ -8,7 +8,7 @@ import type { EffectInfo } from "../../bindings/EffectInfo";
 import type { GeometryInfo } from "../../bindings/GeometryInfo";
 import { calendarColor, hhmm, useCalendar } from "../../lib/calendar";
 import { useGauges, watchGauges } from "../../lib/gauges";
-import { useT, type MessageKey } from "../../lib/i18n";
+import { listOf, useT, type MessageKey } from "../../lib/i18n";
 import { getLightingCatalog } from "../../lib/ipc";
 import { PALETTE, useLighting, type ColorMap } from "../../lib/lighting";
 import { profileName, profileOnKeyboard, useProfiles } from "../../lib/profiles";
@@ -252,7 +252,7 @@ export function GaugesTile({ geometry, usb }: { geometry: GeometryInfo | null; u
         ...(set.mic ? [t("gauges.mic")] : []),
       ]
     : [];
-  const list = new Intl.ListFormat(locale === "tr" ? "tr-TR" : "en-US", { type: "conjunction" }).format(chosen);
+  const list = listOf(chosen, locale);
 
   return (
     <Tile

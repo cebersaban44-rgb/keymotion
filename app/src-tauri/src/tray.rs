@@ -372,8 +372,10 @@ struct View {
     tooltip: String,
 }
 
-fn fill(template: &str, pairs: &[(&str, &str)]) -> String {
-    pairs.iter().fold(template.to_string(), |s, (k, v)| s.replace(&format!("{{{k}}}"), v))
+/// A template from the UI with its places filled in, plural forms chosen by
+/// the UI's language (i18n.rs).
+fn fill(t: &TrayTexts, template: &str, pairs: &[(&str, &str)]) -> String {
+    crate::i18n::fill(&t.locale, template, pairs)
 }
 
 /// Minutes left in the phase, rounded up, at least 1 while it runs.
@@ -387,7 +389,7 @@ fn minutes_left(p: &PomodoroState, now_ms: f64) -> u32 {
 fn focus_status(t: &TrayTexts, p: &PomodoroState, now_ms: f64) -> String {
     if p.status == PomodoroStatus::Idle {
         let (blocks, min) = (p.settings.blocks.len().to_string(), p.settings.total_minutes().to_string());
-        return fill(&t.ready, &[("blocks", &blocks), ("min", &min)]);
+        return fill(t, &t.ready, &[("blocks", &blocks), ("min", &min)]);
     }
     let mut parts = Vec::new();
     if p.status == PomodoroStatus::Paused {
@@ -399,14 +401,14 @@ fn focus_status(t: &TrayTexts, p: &PomodoroState, now_ms: f64) -> String {
     });
     if p.settings.blocks.len() > 1 {
         let (n, total) = (p.block.to_string(), p.settings.blocks.len().to_string());
-        parts.push(fill(&t.round, &[("n", &n), ("total", &total)]));
+        parts.push(fill(t, &t.round, &[("n", &n), ("total", &total)]));
     }
-    parts.push(fill(&t.left, &[("min", &minutes_left(p, now_ms).to_string())]));
+    parts.push(fill(t, &t.left, &[("min", &minutes_left(p, now_ms).to_string())]));
     parts.join(" · ")
 }
 
-/// "14:30" today, "tomorrow 09:00", "14.11 09:00" (Turkish) or
-/// "Nov 14 09:00" later.
+/// "14:30" today, "tomorrow 09:00", then the date: "14.11 09:00" (Turkish,
+/// Russian), "11月14日 09:00" (Chinese) or "Nov 14 09:00" (English).
 fn when<Tz: TimeZone>(t: &TrayTexts, at_ms: f64, now_ms: f64, tz: &Tz) -> String
 where
     Tz::Offset: std::fmt::Display,
@@ -419,8 +421,11 @@ where
     match days {
         ..=0 => time,
         1 => format!("{} {time}", t.tomorrow),
-        _ if t.locale == "tr" => format!("{} {time}", at.format("%d.%m")),
-        _ => format!("{} {time}", at.format("%b %-d")),
+        _ => match t.locale.as_str() {
+            "tr" | "ru" => format!("{} {time}", at.format("%d.%m")),
+            "zh-CN" => format!("{} {time}", at.format("%-m月%-d日")),
+            _ => format!("{} {time}", at.format("%b %-d")),
+        },
     }
 }
 
@@ -441,7 +446,7 @@ where
         Some(k) => {
             let mut parts = vec![k.name.clone(), connection_word(t, k.connection).to_string()];
             if let Some(n) = k.battery.filter(|_| k.connection != Connection::Usb) {
-                parts.push(fill(&t.battery, &[("n", &n.to_string())]));
+                parts.push(fill(t, &t.battery, &[("n", &n.to_string())]));
             }
             parts.join(" · ")
         }
@@ -454,11 +459,11 @@ where
         (true, None) => t.reminders_none.clone(),
         (true, Some((at, title))) => {
             let title = if title.trim().is_empty() { "—".to_string() } else { title };
-            fill(&t.reminders_next, &[("time", &when(t, at, now_ms, tz)), ("title", &title)])
+            fill(t, &t.reminders_next, &[("time", &when(t, at, now_ms, tz)), ("title", &title)])
         }
     };
     let update = f.update.as_ref().map(|(version, ready)| {
-        fill(if *ready { &t.update_ready } else { &t.update_available }, &[("version", version)])
+        fill(t, if *ready { &t.update_ready } else { &t.update_available }, &[("version", version)])
     });
     let game = f.game.as_ref().map(|(name, started)| {
         // As on the page: "1 h 5 min", "42 min", "under 1 min".
@@ -468,11 +473,11 @@ where
         let time = if ms < 60_000.0 {
             t.game_less.clone()
         } else if total >= 60 {
-            fill(&t.game_hours, &[("h", &h), ("min", &min)])
+            fill(t, &t.game_hours, &[("h", &h), ("min", &min)])
         } else {
-            fill(&t.game_minutes, &[("min", &min)])
+            fill(t, &t.game_minutes, &[("min", &min)])
         };
-        fill(&t.game, &[("name", name), ("time", &time)])
+        fill(t, &t.game, &[("name", name), ("time", &time)])
     });
     let mut tooltip =
         if status == PomodoroStatus::Idle { "Keymotion".to_string() } else { format!("Keymotion — {focus_line}") };
@@ -1104,6 +1109,32 @@ mod tests {
         assert_eq!(view_of(&t, &f, now, &tz).game.as_deref(), Some("Playing League of Legends · 2 h 15 min"));
         f.game = Some(("League of Legends".into(), now - 20_000.0));
         assert_eq!(view_of(&t, &f, now, &tz).game.as_deref(), Some("Playing League of Legends · under 1 min"));
+    }
+
+    #[test]
+    fn dates_and_counts_in_each_language() {
+        let tz = FixedOffset::east_opt(UTC3).unwrap();
+        let now = tz.with_ymd_and_hms(2026, 11, 12, 10, 0, 0).unwrap().timestamp_millis() as f64;
+        let later = tz.with_ymd_and_hms(2026, 11, 14, 9, 0, 0).unwrap().timestamp_millis() as f64;
+        let s = |t: &str| t.to_string();
+        let texts = |locale: &str| TrayTexts { locale: s(locale), ..TrayTexts::default() };
+        assert_eq!(when(&texts("en"), later, now, &tz), "Nov 14 09:00");
+        assert_eq!(when(&texts("tr"), later, now, &tz), "14.11 09:00");
+        assert_eq!(when(&texts("ru"), later, now, &tz), "14.11 09:00");
+        assert_eq!(when(&texts("zh-CN"), later, now, &tz), "11月14日 09:00");
+
+        // The idle line counts blocks: English one/other, Russian one/few/many.
+        let mut idle = pomodoro(PomodoroStatus::Idle, PomodoroPhase::Focus, 1, 0.0);
+        let ru = TrayTexts {
+            ready: s("Готово: {blocks, plural, one {# блок} few {# блока} many {# блоков} other {# блока}}, {min} мин"),
+            ..texts("ru")
+        };
+        assert_eq!(focus_status(&ru, &idle, 0.0), "Готово: 6 блоков, 100 мин");
+        idle.settings.blocks.truncate(2);
+        assert_eq!(focus_status(&ru, &idle, 0.0), "Готово: 2 блока, 30 мин");
+        idle.settings.blocks.truncate(1);
+        assert_eq!(focus_status(&ru, &idle, 0.0), "Готово: 1 блок, 25 мин");
+        assert_eq!(focus_status(&texts("en"), &idle, 0.0), "Ready: 1 block, 25 min");
     }
 
     #[test]

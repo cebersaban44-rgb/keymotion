@@ -9,7 +9,7 @@ import type { BackupSummary } from "../bindings/BackupSummary";
 import { useCalendar } from "../lib/calendar";
 import { friendlyError } from "../lib/errors";
 import { useGauges } from "../lib/gauges";
-import { useT, type MessageKey, type Translate } from "../lib/i18n";
+import { intlTag, useT, type MessageKey, type Translate } from "../lib/i18n";
 import { cancelImport, exportBackup, importBackup, inspectBackup, logUiError, revealExport } from "../lib/ipc";
 import { stageKeymapImport } from "../lib/keymap";
 import { initLighting } from "../lib/lighting";
@@ -301,7 +301,7 @@ function ImportDialog({
   };
 
   const date = summary.createdMs
-    ? new Date(summary.createdMs).toLocaleDateString(locale === "tr" ? "tr-TR" : "en-US", { dateStyle: "long" })
+    ? new Date(summary.createdMs).toLocaleDateString(intlTag(locale), { dateStyle: "long" })
     : null;
 
   return (

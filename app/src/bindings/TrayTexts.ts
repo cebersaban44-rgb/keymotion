@@ -2,11 +2,14 @@
 
 /**
  * The tray menu's words and the background notice, in the UI language.
- * Templates keep their `{name}` places; the backend fills them in.
+ * Templates keep their `{name}` places and plural forms
+ * (`{n, plural, one {…} other {…}}`); the backend fills them in (i18n.rs).
  */
 export type TrayTexts = { 
 /**
- * "tr" or "en": how a date further than tomorrow is written.
+ * The UI language: "en", "tr", "ru" or "zh-CN". It picks the plural
+ * forms, how a date further than tomorrow is written ("Nov 14",
+ * "14.11", "11月14日") and the documentation site's folder.
  */
 locale: string, open: string, noKeyboard: string, 
 /**

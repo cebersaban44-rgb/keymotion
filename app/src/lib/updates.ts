@@ -7,7 +7,7 @@ import { create } from "zustand";
 import type { UpdateMode } from "../bindings/UpdateMode";
 import type { UpdateState } from "../bindings/UpdateState";
 import type { UpdateStatus } from "../bindings/UpdateStatus";
-import type { Locale } from "./i18n";
+import { intlTag, type Locale } from "./i18n";
 import { inTauri, invoke, listen, mockGithubCopy, mockStore } from "./ipc";
 
 const EVENT_UPDATE = "update-state";
@@ -188,20 +188,30 @@ export function startUpdates(): () => void {
 // ----------------------------------------------------------------- notes
 
 /**
- * The release notes in the UI language, as short lines. The release
- * pipeline writes them as a JSON object ({"en": "...", "tr": "..."}) of
- * Markdown lists. Null when there are none in this language (the UI then
+ * The release notes as short lines, in the first of `languages` that has
+ * some (the UI passes its own language). The release pipeline
+ * (tools/release/latest-json.mjs) writes them as a JSON object of Markdown
+ * lists keyed by language: {"en": "...", "tr": "...", "ru": "...",
+ * "zh-CN": "..."}. Null when none of `languages` has notes (the UI then
  * links to the release page instead of showing another language).
  */
-export function notesFor(notes: string | null, locale: Locale): string[] | null {
+export function notesFor(notes: string | null, languages: readonly Locale[]): string[] | null {
   if (!notes) return null;
   let text: string | undefined;
+  let byLanguage: Record<string, unknown>;
   try {
     const parsed: unknown = JSON.parse(notes);
-    if (parsed && typeof parsed === "object") text = (parsed as Record<string, unknown>)[locale] as string | undefined;
+    byLanguage = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
   } catch {
     // Plain text: written in English.
-    text = locale === "en" ? notes : undefined;
+    byLanguage = { en: notes };
+  }
+  for (const lang of languages) {
+    const found = byLanguage[lang];
+    if (typeof found === "string" && found.trim()) {
+      text = found;
+      break;
+    }
   }
   if (typeof text !== "string" || !text.trim()) return null;
   const lines: string[] = [];
@@ -220,5 +230,5 @@ export function notesFor(notes: string | null, locale: Locale): string[] | null 
 
 /** Bytes as "6,1 MB" in the UI language. */
 export function megabytes(bytes: number, locale: Locale): string {
-  return (bytes / 1e6).toLocaleString(locale === "tr" ? "tr-TR" : "en-US", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+  return (bytes / 1e6).toLocaleString(intlTag(locale), { maximumFractionDigits: 1, minimumFractionDigits: 1 });
 }
