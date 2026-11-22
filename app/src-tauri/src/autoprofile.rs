@@ -276,7 +276,7 @@ fn same_keyboard(a: &Profile, b: &Profile) -> bool {
 }
 
 fn today() -> String {
-    jiff::Zoned::now().strftime("%Y-%m-%d").to_string()
+    crate::zones::now().strftime("%Y-%m-%d").to_string()
 }
 
 /// What should be in force: a rule (or none), the program, the game.

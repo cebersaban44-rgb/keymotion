@@ -75,6 +75,11 @@ says so.
   at 03:00 (in most of Europe; elsewhere, the hour the change ends) went off
   an hour early, and a calendar event at that time with no time zone of its
   own showed an hour early.
+- **Calendar:** an event repeating at midnight no longer goes missing on
+  the day a clock change skips or repeats midnight (Chile, Cuba and a few
+  other places). A repeat on, say, the fifth-last Monday of a month now
+  shows all its dates, not just the first. A weekly repeat whose rule says
+  "the first Monday" comes on Mondays only, not every day.
 
 ## [1.1.0] - 2026-11-16
 

@@ -918,7 +918,7 @@ fn keep_up(
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
         }
-        let view = view_of(&bg.texts(), &facts(&app), crate::now_ms(), &TimeZone::system());
+        let view = view_of(&bg.texts(), &facts(&app), crate::now_ms(), &crate::zones::pc_zone());
         if let Err(e) = apply(&app, &mut items, &shown, &view) {
             tracing::warn!("tray menu not updated: {e}");
         }
@@ -937,7 +937,7 @@ fn keep_up(
 /// Put the icon in the tray and keep its menu and tooltip up to date.
 pub fn start(app: &AppHandle) -> tauri::Result<()> {
     let bg = app.state::<Arc<Background>>().inner().clone();
-    let first = view_of(&bg.texts(), &facts(app), crate::now_ms(), &TimeZone::system());
+    let first = view_of(&bg.texts(), &facts(app), crate::now_ms(), &crate::zones::pc_zone());
     let (menu, items) = build(app, &first)?;
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .tooltip(&first.tooltip)

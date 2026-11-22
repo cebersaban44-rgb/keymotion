@@ -10,20 +10,34 @@
 //!   from it, excluded dates included. INTERVAL=0 or COUNT=0 give nothing.
 //! * UNTIL is in UTC (`…Z`). Only a start in the PC's zone (a floating time
 //!   or a whole day) may also end at a wall time or a date there.
-//! * A wall time a clock change skips or repeats is that day's midnight
-//!   plus the time of day: on a spring-forward day 02:30 becomes 03:30, on
-//!   a fall-back day the first 01:30 counts.
 //! * A rule that finds nothing for 100 000 periods in a row stops.
+//!
+//! Where `rrule` strayed from RFC 5545, this follows the RFC:
+//! * A wall time a clock change skips is read with the offset before the
+//!   change (02:30 on a spring-forward day becomes 03:30); of one it
+//!   repeats, the first counts. `rrule` dropped the instance when the
+//!   change fell on midnight (Santiago, Havana).
+//! * A numbered BYDAY (`1MO`) means the n-th in the month or year only for
+//!   MONTHLY and YEARLY; with another FREQ it is the plain weekday
+//!   (python-dateutil does the same; `rrule` took every day). The number
+//!   may go to ±5 for MONTHLY and ±53 for YEARLY (`rrule`: -4 and -52).
+//!
+//! A series walks at most [`MAX_PERIODS`] periods from its start (a daily
+//! repeat for over 500 years, an hourly one for 22): a rule that would take
+//! longer, such as a secondly one started decades ago, stops there, so a
+//! hostile feed cannot keep the calendar busy.
 
 use jiff::civil::{Date, DateTime, Time};
 use jiff::tz::TimeZone;
-use jiff::{SignedDuration, Timestamp, Zoned};
+use jiff::{Timestamp, Zoned};
 use std::collections::{HashSet, VecDeque};
 use std::str::FromStr;
 
 /// Periods (or excluded dates) in a row without a result before a rule
 /// gives up.
 const MAX_EMPTY: u32 = 100_000;
+/// Periods a series walks at most from its start.
+pub const MAX_PERIODS: u32 = 200_000;
 /// Years a rule may reach.
 const YEARS: std::ops::RangeInclusive<i32> = -10_000..=10_000;
 
@@ -203,13 +217,12 @@ impl FromStr for Rule {
 }
 
 /// The bounds of the n-th weekday of a span, by frequency.
+/// (RFC 5545: up to the 5th of a month, the 53rd of a year.)
 fn nth_range(freq: Freq) -> std::ops::RangeInclusive<i16> {
-    match freq {
-        Freq::Yearly | Freq::Daily => -52..=53,
-        Freq::Monthly => -4..=5,
-        Freq::Weekly => -7..=8,
-        Freq::Hourly => -3..=4,
-        Freq::Minutely | Freq::Secondly => -8..=9,
+    if freq == Freq::Monthly {
+        -5..=5
+    } else {
+        -53..=53
     }
 }
 
@@ -220,6 +233,12 @@ impl Rule {
     /// UNTIL may be a wall time there.
     pub fn validate(mut self, start: &Zoned, floating: bool) -> Result<Series, String> {
         let wall = start.datetime();
+        // A numbered weekday means the n-th only in a month or a year.
+        if !matches!(self.freq, Freq::Monthly | Freq::Yearly) {
+            for d in &mut self.by_day {
+                d.n = 0;
+            }
+        }
         let (pos, neg): (Vec<i8>, Vec<i8>) = self.by_month_day.iter().filter(|&&d| d != 0).partition(|&&d| d > 0);
         self.by_month_day = pos;
         self.by_n_month_day.extend(neg);
@@ -754,6 +773,8 @@ struct Starts<'a> {
     times: Vec<Time>,
     ready: VecDeque<Timestamp>,
     left: Option<u32>,
+    /// Periods walked so far.
+    walked: u32,
     done: bool,
 }
 
@@ -781,6 +802,7 @@ impl<'a> Starts<'a> {
             times: Vec::new(),
             ready: VecDeque::new(),
             left: rule.count,
+            walked: 0,
             done: false,
         };
         me.rebuild();
@@ -928,18 +950,11 @@ impl<'a> Starts<'a> {
         days
     }
 
-    /// A wall time on day `i`; one a clock change skips or repeats is the
-    /// day's midnight plus the time of day.
+    /// A wall time on day `i`: one a clock change skips is read with the
+    /// offset before the change, of one it repeats the first counts.
     fn wall(&self, i: i32, time: Time) -> Option<Timestamp> {
         let date = self.year.date(i)?;
-        if let Ok(t) = self.tz.to_ambiguous_timestamp(date.to_datetime(time)).unambiguous() {
-            return Some(t);
-        }
-        let midnight = self.tz.to_ambiguous_timestamp(date.to_datetime(Time::midnight())).unambiguous().ok()?;
-        let since = SignedDuration::from_secs(
-            i64::from(time.hour()) * 3600 + i64::from(time.minute()) * 60 + i64::from(time.second()),
-        );
-        midnight.checked_add(since).ok()
+        self.tz.to_ambiguous_timestamp(date.to_datetime(time)).compatible().ok()
     }
 
     /// BYSETPOS: the chosen ones of the period's times, in order.
@@ -989,7 +1004,8 @@ impl<'a> Starts<'a> {
         let mut empty = 0;
         while self.ready.is_empty() {
             empty += 1;
-            if empty >= MAX_EMPTY {
+            self.walked += 1;
+            if empty >= MAX_EMPTY || self.walked > MAX_PERIODS {
                 return true;
             }
             let days = self.days();
@@ -1225,8 +1241,55 @@ mod tests {
             "FREQ=SECONDLY;BYSETPOS=1",
             "FREQ=DAILY;BYHOUR=1;BYSETPOS=0",
             "FREQ=DAILY;UNTIL=2026-11-30",
+            "FREQ=YEARLY;BYDAY=54MO",
         ] {
             assert!(check(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn a_clock_change_at_midnight_keeps_the_instance() {
+        // Santiago skips 00:00-01:00 on 6 September 2026: midnight reads as 01:00.
+        let s = start("America/Santiago", 2026, 9, 4, 0, 0);
+        let got = walls("FREQ=DAILY;COUNT=4", &s, 9);
+        assert_eq!(got, ["2026-09-04 00:00", "2026-09-05 00:00", "2026-09-06 01:00", "2026-09-07 00:00"]);
+        // Havana goes back from 01:00 to 00:00 on 1 November: the first 00:30 counts.
+        let s = start("America/Havana", 2026, 10, 30, 0, 30);
+        let t: Vec<Timestamp> = series("FREQ=DAILY;COUNT=4", &s).starts().collect();
+        let want = ["2026-10-30T04:30:00Z", "2026-10-31T04:30:00Z", "2026-11-01T04:30:00Z", "2026-11-02T05:30:00Z"];
+        assert_eq!(utc(&t), want);
+    }
+
+    #[test]
+    fn numbered_weekdays() {
+        // Outside MONTHLY and YEARLY a number is ignored: plain Mondays, Tuesdays.
+        let s = start(IST, 2026, 11, 2, 10, 0);
+        assert_eq!(
+            walls("FREQ=WEEKLY;BYDAY=1MO;COUNT=3", &s, 9),
+            ["2026-11-02 10:00", "2026-11-09 10:00", "2026-11-16 10:00"]
+        );
+        assert_eq!(walls("FREQ=DAILY;BYDAY=2TU;COUNT=2", &s, 9), ["2026-11-03 10:00", "2026-11-10 10:00"]);
+        // The fifth Friday of a month, the fifth Monday from the end.
+        let s = start(IST, 2026, 1, 1, 10, 0);
+        let fifth = walls("FREQ=MONTHLY;BYDAY=5FR;COUNT=3", &s, 9);
+        assert_eq!(fifth, ["2026-01-30 10:00", "2026-05-29 10:00", "2026-07-31 10:00"]);
+        assert_eq!(walls("FREQ=MONTHLY;BYDAY=-5MO;COUNT=1", &s, 9), ["2026-03-02 10:00"]);
+        // 2026 has 53 Thursdays.
+        assert_eq!(walls("FREQ=YEARLY;BYDAY=53TH;COUNT=1", &s, 9), ["2026-12-31 10:00"]);
+        assert_eq!(walls("FREQ=YEARLY;BYDAY=-53TH;COUNT=1", &s, 9), ["2026-01-01 10:00"]);
+    }
+
+    #[test]
+    fn a_series_walks_a_bounded_number_of_periods() {
+        let span = (start(IST, 2026, 11, 2, 0, 0).timestamp(), start(IST, 2026, 11, 4, 23, 0).timestamp());
+        // A daily repeat from 1970 still reaches today…
+        let daily = series("FREQ=DAILY", &start(IST, 1970, 1, 1, 9, 0));
+        assert_eq!(daily.between(&[], &[], span.0, span.1, 99).len(), 3);
+        // … a secondly one from 1970 or a minutely one from January stops long before.
+        let secondly = series("FREQ=SECONDLY", &start(IST, 1970, 1, 1, 9, 0));
+        assert!(secondly.between(&[], &[], span.0, span.1, 99).is_empty());
+        let minutely = series("FREQ=MINUTELY", &start(IST, 2026, 1, 1, 9, 0));
+        assert!(minutely.between(&[], &[], span.0, span.1, 99).is_empty());
+        assert_eq!(minutely.starts().count(), MAX_PERIODS as usize);
     }
 }

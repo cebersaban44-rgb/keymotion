@@ -32,6 +32,7 @@ mod screen_lib;
 mod settings;
 mod tray;
 mod updates;
+mod zones;
 
 use backup::{BackupExported, BackupImported, BackupSection, BackupSummary, PendingImport};
 use calendar::CalendarHandle;
@@ -1101,7 +1102,7 @@ async fn diagnostics_report(app: AppHandle, language: String, context: Option<St
             app_name: app.package_info().name.clone(),
             app_version: channel::version_line(&app.package_info().version.to_string()),
             time: {
-                let now = jiff::Zoned::now();
+                let now = crate::zones::now();
                 now.timestamp().display_with_offset(now.offset()).to_string()
             },
             windows: kb_winsys::os::windows_release()

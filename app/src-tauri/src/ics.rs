@@ -16,8 +16,8 @@
 use crate::recur::Rule;
 use icalendar::parser::{read_calendar, unfold, Component, Property};
 use jiff::civil::{Date, DateTime, Time};
-use jiff::tz::{AmbiguousOffset, TimeZone};
-use jiff::{SignedDuration, Timestamp, ToSpan, Zoned};
+use jiff::tz::TimeZone;
+use jiff::{SignedDuration, Timestamp, Zoned};
 use std::collections::{HashMap, HashSet};
 
 /// One event (or one instance of a repeating event) in the asked span.
@@ -276,14 +276,10 @@ struct When {
     floating: bool,
 }
 
-/// The first moment a wall clock in `tz` shows `t`; none when a clock
-/// change skips it.
-fn earliest(tz: &TimeZone, t: DateTime) -> Option<Zoned> {
-    let at = tz.to_ambiguous_zoned(t);
-    match at.offset() {
-        AmbiguousOffset::Gap { .. } => None,
-        _ => at.earlier().ok(),
-    }
+/// A wall time in `tz` (RFC 5545): one a clock change skips is read with
+/// the offset before the change, of one it repeats the first counts.
+fn wall(tz: &TimeZone, t: DateTime) -> Option<Zoned> {
+    tz.to_ambiguous_zoned(t).compatible().ok()
 }
 
 /// `YYYYMMDD`.
@@ -355,7 +351,7 @@ impl Zones {
     fn parse_value(&self, v: &str, tzid: Option<&str>, value: Option<&str>) -> Option<When> {
         let is_date = value.is_some_and(|t| t.eq_ignore_ascii_case("DATE")) || (v.len() == 8 && !v.contains('T'));
         if is_date {
-            let at = earliest(&self.local, parse_date(v)?.to_datetime(Time::midnight()))?;
+            let at = wall(&self.local, parse_date(v)?.to_datetime(Time::midnight()))?;
             return Some(When { at, all_day: true, floating: true });
         }
         if let Some(utc) = v.strip_suffix('Z').or_else(|| v.strip_suffix('z')) {
@@ -364,9 +360,7 @@ impl Zones {
         }
         let n = parse_date_time(v)?;
         let (tz, floating) = self.zone(tzid);
-        // A time skipped by a clock change (spring forward) moves on by
-        // the gap; one that happens twice takes the first.
-        let at = earliest(&tz, n).or_else(|| earliest(&tz, n.checked_add(1.hour()).ok()?))?;
+        let at = wall(&tz, n)?;
         Some(When { at, all_day: false, floating })
     }
 }
@@ -394,125 +388,13 @@ fn named_zone(id: &str) -> Option<TimeZone> {
     if let Ok(tz) = TimeZone::get(id) {
         return Some(tz);
     }
-    if let Some((_, iana)) = WINDOWS_ZONES.iter().find(|(w, _)| w.eq_ignore_ascii_case(id)) {
-        return TimeZone::get(iana).ok();
+    if let Some(tz) = crate::zones::windows_zone(id) {
+        return Some(tz);
     }
     // "/mozilla.org/20050126_1/Europe/Istanbul", "/softwarestudio.org/…".
     let parts: Vec<&str> = id.split('/').filter(|s| !s.is_empty()).collect();
     (1..=3.min(parts.len())).find_map(|n| TimeZone::get(&parts[parts.len() - n..].join("/")).ok())
 }
-
-/// Windows zone names (Outlook) → IANA (CLDR windowsZones, main territory).
-const WINDOWS_ZONES: &[(&str, &str)] = &[
-    ("Dateline Standard Time", "Etc/GMT+12"),
-    ("UTC-11", "Etc/GMT+11"),
-    ("Hawaiian Standard Time", "Pacific/Honolulu"),
-    ("Alaskan Standard Time", "America/Anchorage"),
-    ("Pacific Standard Time (Mexico)", "America/Tijuana"),
-    ("UTC-09", "Etc/GMT+9"),
-    ("UTC-08", "Etc/GMT+8"),
-    ("Pacific Standard Time", "America/Los_Angeles"),
-    ("US Mountain Standard Time", "America/Phoenix"),
-    ("Mountain Standard Time (Mexico)", "America/Chihuahua"),
-    ("Mountain Standard Time", "America/Denver"),
-    ("Central America Standard Time", "America/Guatemala"),
-    ("Central Standard Time (Mexico)", "America/Mexico_City"),
-    ("Canada Central Standard Time", "America/Regina"),
-    ("Central Standard Time", "America/Chicago"),
-    ("SA Pacific Standard Time", "America/Bogota"),
-    ("Eastern Standard Time", "America/New_York"),
-    ("Venezuela Standard Time", "America/Caracas"),
-    ("Paraguay Standard Time", "America/Asuncion"),
-    ("Atlantic Standard Time", "America/Halifax"),
-    ("SA Western Standard Time", "America/La_Paz"),
-    ("Pacific SA Standard Time", "America/Santiago"),
-    ("Newfoundland Standard Time", "America/St_Johns"),
-    ("E. South America Standard Time", "America/Sao_Paulo"),
-    ("Argentina Standard Time", "America/Buenos_Aires"),
-    ("SA Eastern Standard Time", "America/Cayenne"),
-    ("Greenland Standard Time", "America/Godthab"),
-    ("Montevideo Standard Time", "America/Montevideo"),
-    ("Bahia Standard Time", "America/Bahia"),
-    ("UTC-02", "Etc/GMT+2"),
-    ("Mid-Atlantic Standard Time", "Etc/GMT+2"),
-    ("Azores Standard Time", "Atlantic/Azores"),
-    ("Cape Verde Standard Time", "Atlantic/Cape_Verde"),
-    ("UTC", "Etc/UTC"),
-    ("GMT Standard Time", "Europe/London"),
-    ("Greenwich Standard Time", "Atlantic/Reykjavik"),
-    ("Morocco Standard Time", "Africa/Casablanca"),
-    ("W. Europe Standard Time", "Europe/Berlin"),
-    ("Central Europe Standard Time", "Europe/Budapest"),
-    ("Romance Standard Time", "Europe/Paris"),
-    ("Central European Standard Time", "Europe/Warsaw"),
-    ("W. Central Africa Standard Time", "Africa/Lagos"),
-    ("Jordan Standard Time", "Asia/Amman"),
-    ("GTB Standard Time", "Europe/Bucharest"),
-    ("Middle East Standard Time", "Asia/Beirut"),
-    ("Egypt Standard Time", "Africa/Cairo"),
-    ("E. Europe Standard Time", "Europe/Chisinau"),
-    ("Syria Standard Time", "Asia/Damascus"),
-    ("South Africa Standard Time", "Africa/Johannesburg"),
-    ("FLE Standard Time", "Europe/Kiev"),
-    ("Israel Standard Time", "Asia/Jerusalem"),
-    ("Kaliningrad Standard Time", "Europe/Kaliningrad"),
-    ("Sudan Standard Time", "Africa/Khartoum"),
-    ("Libya Standard Time", "Africa/Tripoli"),
-    ("Namibia Standard Time", "Africa/Windhoek"),
-    ("Turkey Standard Time", "Europe/Istanbul"),
-    ("Arabic Standard Time", "Asia/Baghdad"),
-    ("Arab Standard Time", "Asia/Riyadh"),
-    ("Belarus Standard Time", "Europe/Minsk"),
-    ("Russian Standard Time", "Europe/Moscow"),
-    ("E. Africa Standard Time", "Africa/Nairobi"),
-    ("Volgograd Standard Time", "Europe/Volgograd"),
-    ("Iran Standard Time", "Asia/Tehran"),
-    ("Arabian Standard Time", "Asia/Dubai"),
-    ("Astrakhan Standard Time", "Europe/Astrakhan"),
-    ("Azerbaijan Standard Time", "Asia/Baku"),
-    ("Russia Time Zone 3", "Europe/Samara"),
-    ("Mauritius Standard Time", "Indian/Mauritius"),
-    ("Saratov Standard Time", "Europe/Saratov"),
-    ("Georgian Standard Time", "Asia/Tbilisi"),
-    ("Caucasus Standard Time", "Asia/Yerevan"),
-    ("Afghanistan Standard Time", "Asia/Kabul"),
-    ("West Asia Standard Time", "Asia/Tashkent"),
-    ("Ekaterinburg Standard Time", "Asia/Yekaterinburg"),
-    ("Pakistan Standard Time", "Asia/Karachi"),
-    ("India Standard Time", "Asia/Kolkata"),
-    ("Sri Lanka Standard Time", "Asia/Colombo"),
-    ("Nepal Standard Time", "Asia/Kathmandu"),
-    ("Central Asia Standard Time", "Asia/Almaty"),
-    ("Bangladesh Standard Time", "Asia/Dhaka"),
-    ("Omsk Standard Time", "Asia/Omsk"),
-    ("Myanmar Standard Time", "Asia/Yangon"),
-    ("SE Asia Standard Time", "Asia/Bangkok"),
-    ("N. Central Asia Standard Time", "Asia/Novosibirsk"),
-    ("North Asia Standard Time", "Asia/Krasnoyarsk"),
-    ("China Standard Time", "Asia/Shanghai"),
-    ("North Asia East Standard Time", "Asia/Irkutsk"),
-    ("Singapore Standard Time", "Asia/Singapore"),
-    ("W. Australia Standard Time", "Australia/Perth"),
-    ("Taipei Standard Time", "Asia/Taipei"),
-    ("Ulaanbaatar Standard Time", "Asia/Ulaanbaatar"),
-    ("Tokyo Standard Time", "Asia/Tokyo"),
-    ("Korea Standard Time", "Asia/Seoul"),
-    ("Yakutsk Standard Time", "Asia/Yakutsk"),
-    ("Cen. Australia Standard Time", "Australia/Adelaide"),
-    ("AUS Central Standard Time", "Australia/Darwin"),
-    ("E. Australia Standard Time", "Australia/Brisbane"),
-    ("AUS Eastern Standard Time", "Australia/Sydney"),
-    ("Tasmania Standard Time", "Australia/Hobart"),
-    ("Vladivostok Standard Time", "Asia/Vladivostok"),
-    ("Magadan Standard Time", "Asia/Magadan"),
-    ("Central Pacific Standard Time", "Pacific/Guadalcanal"),
-    ("UTC+12", "Etc/GMT-12"),
-    ("New Zealand Standard Time", "Pacific/Auckland"),
-    ("Fiji Standard Time", "Pacific/Fiji"),
-    ("UTC+13", "Etc/GMT-13"),
-    ("Tonga Standard Time", "Pacific/Tongatapu"),
-    ("Samoa Standard Time", "Pacific/Apia"),
-];
 
 #[cfg(test)]
 mod tests {
@@ -697,5 +579,25 @@ END:VCALENDAR\r\n";
             ("03-09 02:30", "f1"),
         ];
         assert_eq!(got, want.map(|(w, u)| (w.to_string(), u)));
+    }
+
+    #[test]
+    fn a_whole_day_whose_midnight_is_skipped_still_shows() {
+        // Santiago skips 00:00-01:00 on 6 September 2026: the day starts at 01:00.
+        let santiago = TimeZone::get("America/Santiago").unwrap();
+        let feed = "BEGIN:VCALENDAR\r\n\
+BEGIN:VEVENT\r\nUID:d1\r\nDTSTART;VALUE=DATE:20260906\r\nDTEND;VALUE=DATE:20260907\r\nSUMMARY:x\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:d2\r\nDTSTART;VALUE=DATE:20260904\r\nRRULE:FREQ=DAILY;COUNT=4\r\nSUMMARY:y\r\nEND:VEVENT\r\n\
+END:VCALENDAR\r\n";
+        let o = occurrences(feed, 0.0, 4e12, &santiago).unwrap();
+        let utc = |uid: &str| -> Vec<String> {
+            let ms = o.iter().filter(|o| o.uid == uid).map(|o| o.start_ms as i64);
+            ms.map(|ms| Timestamp::from_millisecond(ms).unwrap().to_string()).collect()
+        };
+        assert_eq!(utc("d1"), ["2026-09-06T04:00:00Z"]);
+        let d1 = o.iter().find(|o| o.uid == "d1").unwrap();
+        assert_eq!(d1.end_ms - d1.start_ms, 23.0 * 3_600_000.0);
+        let days = ["2026-09-04T04:00:00Z", "2026-09-05T04:00:00Z", "2026-09-06T04:00:00Z", "2026-09-07T03:00:00Z"];
+        assert_eq!(utc("d2"), days);
     }
 }

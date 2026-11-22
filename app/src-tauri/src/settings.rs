@@ -81,7 +81,7 @@ pub(crate) fn backup_name(file: &str, time: jiff::civil::DateTime) -> String {
 /// Move `dir/file` aside under a backup name not taken yet (copy when it
 /// cannot be moved). Returns the backup's name.
 fn keep_aside(dir: &Path, file: &str) -> Option<String> {
-    let base = backup_name(file, jiff::Zoned::now().datetime());
+    let base = backup_name(file, crate::zones::now().datetime());
     let name =
         (1..100).map(|n| if n == 1 { base.clone() } else { format!("{base}-{n}") }).find(|n| !dir.join(n).exists())?;
     let (from, to) = (dir.join(file), dir.join(&name));

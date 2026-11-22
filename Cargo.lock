@@ -2100,6 +2100,7 @@ dependencies = [
  "kb-devices",
  "kb-protocol",
  "kb-transport",
+ "kb-winsys",
  "serde",
  "thiserror 2.0.21",
  "tracing",

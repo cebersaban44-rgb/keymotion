@@ -92,7 +92,7 @@ pub(crate) fn content_id(data: &[u8]) -> String {
 }
 
 fn today() -> String {
-    jiff::Zoned::now().strftime("%Y-%m-%d").to_string()
+    crate::zones::now().strftime("%Y-%m-%d").to_string()
 }
 
 fn now_ms() -> f64 {

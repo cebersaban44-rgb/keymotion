@@ -399,8 +399,8 @@ struct History {
 /// Start of today, local time, in ms since the epoch (a day ago when a
 /// clock change skips midnight).
 fn day_start(now: f64) -> f64 {
-    use jiff::tz::{AmbiguousOffset, TimeZone};
-    let tz = TimeZone::system();
+    use jiff::tz::AmbiguousOffset;
+    let tz = crate::zones::pc_zone();
     let Ok(t) = jiff::Timestamp::from_millisecond(now as i64) else { return now - DAY_MS };
     let midnight = tz.to_ambiguous_timestamp(tz.to_datetime(t).date().to_datetime(jiff::civil::Time::midnight()));
     match midnight.offset() {

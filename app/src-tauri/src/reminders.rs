@@ -377,7 +377,7 @@ impl RemindersHandle {
 
     pub fn state(&self) -> Result<ReminderState, String> {
         let inner = self.inner.lock().map_err(|_| "reminders unavailable")?;
-        Ok(Self::state_of(&inner, &TimeZone::system()))
+        Ok(Self::state_of(&inner, &crate::zones::pc_zone()))
     }
 
     fn state_of(inner: &Inner, tz: &TimeZone) -> ReminderState {
@@ -410,7 +410,7 @@ impl RemindersHandle {
 
     fn emit(&self) {
         if let Ok(mut inner) = self.inner.lock() {
-            let state = Self::state_of(&inner, &TimeZone::system());
+            let state = Self::state_of(&inner, &crate::zones::pc_zone());
             inner.last_state = Some(state.clone());
             let _ = self.app.emit(EVENT_REMINDERS, state);
         }
@@ -551,7 +551,7 @@ impl RemindersHandle {
             for r in stored.reminders.iter_mut().filter(|r| r.enabled) {
                 let last = stored.fired.get(&r.id).copied().unwrap_or(0.0);
                 let anchor = *anchors.entry(r.id.clone()).or_insert(now);
-                let (t, went_off) = match check(&r.when, &TimeZone::system(), now, last, anchor) {
+                let (t, went_off) = match check(&r.when, &crate::zones::pc_zone(), now, last, anchor) {
                     Check::Quiet => continue,
                     Check::Fire(t) => (t, true),
                     Check::Missed(t) => {
@@ -612,7 +612,7 @@ impl RemindersHandle {
                     let card = ReminderCard {
                         reminder: r.clone(),
                         at_ms: *t,
-                        next_ms: next_after(&r.when, &TimeZone::system(), *t),
+                        next_ms: next_after(&r.when, &crate::zones::pc_zone(), *t),
                     };
                     self.live.set_hold(SOURCE, true);
                     self.live.cancel_return(SOURCE);
@@ -650,7 +650,7 @@ impl RemindersHandle {
         }
         let waving = inner.wave_sent.is_some();
 
-        let state = Self::state_of(inner, &TimeZone::system());
+        let state = Self::state_of(inner, &crate::zones::pc_zone());
         if inner.last_state.as_ref() != Some(&state) {
             inner.last_state = Some(state.clone());
             let _ = self.app.emit(EVENT_REMINDERS, state);

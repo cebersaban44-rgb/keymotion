@@ -13,6 +13,7 @@ jiff.workspace = true
 kb-devices.workspace = true
 kb-protocol.workspace = true
 kb-transport.workspace = true
+kb-winsys.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
