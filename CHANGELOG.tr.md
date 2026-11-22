@@ -74,6 +74,12 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   toplantı ve hatırlatıcı uyarıları yine gelir; sessiz mod tek bir oyun için
   de açılabilir.
 - **Kullanım koşulları:** sitede bir Kullanım koşulları sayfası var.
+- **Rusça ve Basitleştirilmiş Çince:** uygulama, kullanım kılavuzu, kurulum
+  ve README artık Rusça (Русский) ve Basitleştirilmiş Çince (简体中文) de
+  var. Windows'un dili bu dördünden biriyse Keymotion o dilde başlar;
+  **Ayarlar** › **Dil** dili hemen değiştirir. Çeviriler yapay zekâ
+  yardımıyla yapıldı ve ana dili bu diller olan kişilerin incelemesini
+  bekliyor: düzeltmeler memnuniyetle karşılanır.
 
 ### Değişenler
 
