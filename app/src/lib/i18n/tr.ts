@@ -18,6 +18,7 @@ export const tr: Messages = {
   "nav.focus": "Odak zamanlayıcısı",
 
   "device.none.title": "Klavye bekleniyor",
+  "model.ajazz-ak980-pro": "AJAZZ AK980 PRO",
 
   "conn.usb": "USB kablo",
   "conn.dongle": "2.4 GHz alıcı",

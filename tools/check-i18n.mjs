@@ -84,6 +84,7 @@ export const SAME_IN_EVERY_LANGUAGE = new Set([
   "calendar.placeholder.outlook",
   "calendar.placeholder.apple",
   "calendar.placeholder.other",
+  "model.ajazz-ak980-pro",
   "games.source.steam",
   "games.source.epic",
   "games.source.gog",

@@ -9,7 +9,7 @@ import type { Feature } from "../bindings/Feature";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import { ClockCard } from "../components/ClockCard";
 import { ModeSwitch } from "../components/ModeSwitch";
-import { connectionKey, useT, type MessageKey } from "../lib/i18n";
+import { connectionKey, modelTitle, useT, type MessageKey } from "../lib/i18n";
 
 const COLUMNS: Conn[] = ["usb", "dongle", "bluetooth"];
 
@@ -54,7 +54,7 @@ export function Connection({ kb }: { kb: KeyboardInfo }) {
   const columns = COLUMNS.filter((c) => kb.modes.some((m) => m.connection === c));
 
   // The model name, not the USB product string (which names the chip maker).
-  const details: [MessageKey, string, string?][] = [["overview.mode.device", kb.modelName]];
+  const details: [MessageKey, string, string?][] = [["overview.mode.device", modelTitle(t, kb.modelId, kb.modelName)]];
   if (kb.firmware) details.push(["conn.firmware", kb.firmware, "num"]);
   if (kb.bleName) details.push(["overview.mode.btName", kb.bleName]);
   if (channel) details.push(["overview.mode.channel", `${channel} / 3`, "num"]);
