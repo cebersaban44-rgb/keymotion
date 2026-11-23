@@ -192,16 +192,18 @@ fn describe(plan: &Plan, home: &Path, connecting: bool) -> String {
     text.trim_end().to_string()
 }
 
-/// `disconnect --if-this-copy`: the agent's hooks run another
-/// keymotion-cli (the Store copy's, while the GitHub copy is uninstalled),
-/// so they stay; `None` when they run this one, or none.
+/// `disconnect --if-this-copy`: some of Keymotion's entries for the agent
+/// (a hook, the skill, the Codex rule) name another keymotion-cli (the
+/// Store copy's, while the GitHub copy is uninstalled), so all of them
+/// stay: the skill and the rule are shared; `None` when every one names
+/// this keymotion-cli, or there are none.
 pub fn another_copy(env: &Env, agent: Agent) -> Result<Option<Done>, AgentError> {
     let homes = homes(env)?;
     let me = this_cli()?;
-    let status = setup::status(agent, &homes, Some(&me));
-    let Some(runs) = status.runs.filter(|runs| !setup::runs_cli(agent, runs, &me)) else { return Ok(None) };
-    let text = format!("{}'s hooks run another keymotion-cli ({runs}); left as they are.", agent.title());
-    Ok(Some(Done::new(json!({ "agent": agent.id(), "changed": false, "runs": runs }), text)))
+    let others = setup::other_copies(agent, &homes, &me);
+    let Some(runs) = others.first().cloned() else { return Ok(None) };
+    let text = format!("{}'s Keymotion entries name another keymotion-cli ({runs}); left as they are.", agent.title());
+    Ok(Some(Done::new(json!({ "agent": agent.id(), "changed": false, "runs": runs, "others": others }), text)))
 }
 
 /// `path remove`: this keymotion-cli's folder off the user's PATH, only

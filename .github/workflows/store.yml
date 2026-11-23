@@ -133,6 +133,20 @@ jobs:
           pnpm --dir app tauri build --no-bundle
           cargo build --release -p keymotion-cli
 
+      # As in release.yml: the tool says the app's version (msix.mjs checks
+      # it again before it packs).
+      - name: keymotion-cli says the app's version
+        run: |
+          version="$(node -p "require('./app/src-tauri/tauri.conf.json').version")"
+          said="$(target/release/keymotion-cli.exe --version)"
+          case "$said" in
+            "keymotion-cli $version "*) echo "$said" ;;
+            *)
+              echo "::error::target/release/keymotion-cli.exe says '$said'; the app is $version."
+              exit 1
+              ;;
+          esac
+
       - name: Pack the MSIX
         id: pack
         env:

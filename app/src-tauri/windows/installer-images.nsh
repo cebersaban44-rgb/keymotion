@@ -39,7 +39,8 @@
   !define IMAGE_BITMAP 0
 !endif
 
-!define MUI_CUSTOMFUNCTION_GUIINIT kmImagesGUIInit
+; MUI2 calls the installer's at the end of .onGUIInit: kmSetupGUIInit
+; (installer-hooks.nsh), which calls kmImagesGUIInit below.
 !define MUI_CUSTOMFUNCTION_UNGUIINIT un.kmImagesGUIInit
 
 !macro kmImagesFunctions UN
@@ -258,8 +259,8 @@ Function kmSharpWizardImage
   Pop $1
 FunctionEnd
 
-; Called by MUI2 at the end of .onGUIInit, after it has shown the 1x header
-; and unpacked the 1x welcome image.
+; Called at the end of .onGUIInit (through kmSetupGUIInit), after MUI2 has
+; shown the 1x header and unpacked the 1x welcome image.
 Function kmImagesGUIInit
   Call kmSharpHeader
   Call kmSharpWizardImage

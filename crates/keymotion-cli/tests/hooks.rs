@@ -420,6 +420,16 @@ fn the_uninstaller_takes_away_only_the_connections_of_its_own_copy() {
     }
     assert_eq!(read(&home.join(".claude").join("settings.json")), settings);
     assert_eq!(read(&home.join(".codex").join("hooks.json")), codex);
+    // No hook left, but the shared skill names the other copy: it stays too.
+    let settings_file = home.join(".claude").join("settings.json");
+    std::fs::write(&settings_file, "{}\n").unwrap();
+    let skill = home.join(".claude").join("skills").join("keymotion").join("SKILL.md");
+    assert!(skill.exists());
+    let r = run(&github, &["disconnect", "claude-code", "--yes", "--if-this-copy", "--json"]);
+    let v: Value = serde_json::from_slice(&r.stdout).unwrap();
+    assert_eq!((r.code, v["data"]["changed"].clone()), (0, json!(false)), "{v}");
+    assert!(skill.exists(), "the other copy's skill stays");
+    std::fs::write(&settings_file, &settings).unwrap();
     // Its own copy's: they go.
     for agent in ["claude-code", "codex"] {
         let r = run(&store, &["disconnect", agent, "--yes", "--if-this-copy"]);

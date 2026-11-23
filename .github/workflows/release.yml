@@ -200,13 +200,22 @@ jobs:
       # packs: keymotion-cli must be among them, under bin\.
       - name: The installer carries keymotion-cli
         run: |
-          shopt -s nullglob
-          scripts=(target/release/nsis/x64/installer.nsi app/src-tauri/target/release/nsis/x64/installer.nsi)
-          if [ "${#scripts[@]}" -ne 1 ] || ! grep -qF '"/oname=bin\keymotion-cli.exe"' "${scripts[0]}"; then
+          script=""
+          for candidate in target/release/nsis/x64/installer.nsi app/src-tauri/target/release/nsis/x64/installer.nsi; do
+            if [ -f "$candidate" ]; then
+              script="$candidate"
+              break
+            fi
+          done
+          if [ -z "$script" ]; then
+            echo "::error::No installer.nsi under target/release/nsis/x64: did tauri build make the NSIS installer?"
+            exit 1
+          fi
+          if ! grep -qF '"/oname=bin\keymotion-cli.exe"' "$script"; then
             echo "::error::The installer does not install bin\\keymotion-cli.exe. Is tauri.bundle-cli.conf.json passed to tauri build?"
             exit 1
           fi
-          grep -n 'keymotion-cli' "${scripts[0]}"
+          grep -n 'keymotion-cli' "$script"
 
       # The repository is a Cargo workspace, so target/ is at the root; the
       # app's own folder is searched too in case that ever changes.
@@ -245,7 +254,9 @@ jobs:
       #        (signpath/github-action-submit-signing-request, pinned by SHA,
       #        with wait-for-completion-timeout-in-seconds: 3600), and put the
       #        signed files back in target/release;
-      #     2. `tauri bundle --bundles nsis`, upload the installer, sign it.
+      #     2. `tauri bundle --bundles nsis --config
+      #        src-tauri/tauri.bundle-cli.conf.json`, upload the installer,
+      #        sign it.
       # - Then the updater signature, made over the SIGNED installer, because
       #   signing changes the file's bytes and the .sig tauri wrote earlier
       #   no longer matches:

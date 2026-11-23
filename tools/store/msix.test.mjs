@@ -11,7 +11,16 @@ import { fileURLToPath } from "node:url";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
-import { checkIdentity, checkPackageVersion, fillManifest, programs, singlePackageConfig, storeVersion, TEST_IDENTITY } from "./msix.mjs";
+import {
+  checkCliVersion,
+  checkIdentity,
+  checkPackageVersion,
+  fillManifest,
+  programs,
+  singlePackageConfig,
+  storeVersion,
+  TEST_IDENTITY,
+} from "./msix.mjs";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const store = join(root, "app", "src-tauri", "store");
@@ -113,6 +122,13 @@ test("the package takes keymotion-cli.exe from beside keymotion.exe, or --cli", 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("keymotion-cli must say the app's version", () => {
+  assert.equal(checkCliVersion("keymotion-cli 1.2.0 (protocol 1)\n", "1.2.0"), "keymotion-cli 1.2.0 (protocol 1)");
+  assert.throws(() => checkCliVersion("keymotion-cli 1.1.0 (protocol 1)", "1.2.0"), /same commit/);
+  assert.throws(() => checkCliVersion("keymotion-cli 1.2.0-rc.1 (protocol 1)", "1.2.0"), /same commit/);
+  assert.throws(() => checkCliVersion("", "1.2.0"), /same commit/);
 });
 
 test("every logo the manifest names has its images", () => {

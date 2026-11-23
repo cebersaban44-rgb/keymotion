@@ -160,6 +160,16 @@ export function programs(exe, cli) {
   return { app, tool };
 }
 
+/** What `keymotion-cli --version` said is the app's version: the tool
+ *  beside the app is from the same build, never an older one left there. */
+export function checkCliVersion(said, appVersion) {
+  const line = String(said).trim();
+  if (!line.startsWith(`keymotion-cli ${appVersion} `)) {
+    throw new Error(`keymotion-cli says "${line}", the app is ${appVersion}: build both from the same commit`);
+  }
+  return line;
+}
+
 /** Run an SDK tool; its file-by-file lines are left out of the log. */
 function run(tool, list) {
   const out = execFileSync(tool, list, { stdio: ["ignore", "pipe", "inherit"], encoding: "utf8" });
@@ -186,6 +196,7 @@ function main() {
     return;
   }
   const { app, tool } = programs(opt.exe, opt.cli);
+  checkCliVersion(execFileSync(tool, ["--version"], { encoding: "utf8" }), appVersion);
 
   const out = resolve(opt.out);
   const layout = join(out, "layout");
