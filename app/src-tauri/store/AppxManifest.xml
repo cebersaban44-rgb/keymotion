@@ -54,10 +54,13 @@
     <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26200.0" />
   </Dependencies>
 
-  <!-- The Store lists the app in these languages (the app's own). -->
+  <!-- The Store lists the app in these languages (the app's own); makepri's
+       /dq in tools/store/msix.mjs names the same four. -->
   <Resources>
     <Resource Language="en-us" />
     <Resource Language="tr-tr" />
+    <Resource Language="ru-ru" />
+    <Resource Language="zh-cn" />
   </Resources>
 
   <Applications>
