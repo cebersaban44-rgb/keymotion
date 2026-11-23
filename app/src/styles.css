@@ -492,6 +492,81 @@ select option {
 }
 }
 
+/* The open list as Windows 11 draws it (Chromium's customizable select,
+   in WebView2 since 135): a flyout with 8 px corners, rows with 4 px
+   corners, the chosen one tinted with a short accent line, as in the
+   navigation pane. The closed box stays as above; elsewhere the system's
+   list opens. */
+@supports (appearance: base-select) {
+  @layer base {
+    select:not(.bare),
+    select:not(.bare)::picker(select) {
+      appearance: base-select;
+    }
+    /* The box as before: one line, centred, cut off before the arrow, and
+       as wide as the longest choice where no width is set (selectWidth.ts). */
+    select:not(.bare) {
+      width: var(--select-w, auto);
+      align-items: center;
+      white-space: nowrap;
+      overflow: clip;
+      overflow-clip-margin: content-box;
+    }
+  }
+  select:not(.bare)::picker-icon {
+    display: none;
+  }
+  select:not(.bare)::picker(select) {
+    margin-block: 4px;
+    padding: 3px 0;
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: var(--shadow-flyout);
+  }
+  select:not(.bare) option {
+    position: relative;
+    min-height: 32px;
+    margin: 2px 4px;
+    padding: 6px 12px;
+    border-radius: 4px;
+    background: transparent;
+    line-height: 20px;
+  }
+  select:not(.bare) option::checkmark {
+    display: none;
+  }
+  select:not(.bare) option:hover:not(:disabled) {
+    background: var(--subtle-hover);
+  }
+  select:not(.bare) option:checked {
+    background: var(--subtle-sel);
+  }
+  select:not(.bare) option:checked::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 3px;
+    height: 16px;
+    margin-top: -8px;
+    border-radius: 2px;
+    background: var(--signal);
+  }
+  select:not(.bare) option:disabled {
+    color: var(--ink-3);
+  }
+  /* The list opens with the chosen row focused: the ring shows on the
+     rows the arrow keys move to. */
+  select:not(.bare) option:focus-visible {
+    outline-offset: -2px;
+  }
+  select:not(.bare) option:checked:focus-visible {
+    outline: none;
+  }
+}
+
 /* Screen previews: one panel pixel per CSS block, no smoothing. */
 .pixelated {
   image-rendering: pixelated;

@@ -91,7 +91,12 @@ export const useApp = create<AppState>((set) => ({
   windowShown: true,
   profileRequest: null,
   setKeyboards: (keyboards) => set({ keyboards, loaded: true }),
-  setEnv: (env) => set({ env }),
+  setEnv: (env) => {
+    // For theme-boot.js, which marks the window translucent before the app
+    // can ask (the launch animation shows on it).
+    save("ks.mica", String(env.mica));
+    set({ env });
+  },
   setPage: (page) => set({ page }),
   setScreenTab: (screenTab) => {
     save("ks.screenTab", screenTab);

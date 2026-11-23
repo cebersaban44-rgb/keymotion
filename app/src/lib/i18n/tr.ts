@@ -260,6 +260,7 @@ export const tr: Messages = {
   "overview.spec.layout": "{layout} düzen",
   "overview.kb.live": "Klavyenizin ışığı canlı gösteriliyor",
   "overview.kb.off": "Klavyenin ışığı kapalı",
+  "overview.kb.onPress": "Klavyenizin tuşları yazdıkça yanar",
   "overview.kb.usbOnly": "Canlı görünüm yalnızca USB kablosuyla kullanılabilir",
   "overview.kb.press": "Bastığınız tuşlar burada yanar.",
   "overview.mode.device": "Aygıt",

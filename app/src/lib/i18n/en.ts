@@ -268,6 +268,7 @@ export const en = {
   "overview.spec.layout": "{layout} layout",
   "overview.kb.live": "Showing your keyboard's lighting live",
   "overview.kb.off": "Keyboard lighting is off",
+  "overview.kb.onPress": "Your keyboard lights up as you type",
   "overview.kb.usbOnly": "The live view works over the USB cable only",
   "overview.kb.press": "Keys light up here as you press them.",
   "overview.mode.device": "Device",

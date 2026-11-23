@@ -143,6 +143,8 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   adlandır** ya da **Sil**. **Görsel ya da video**, **Yazı kartı** ve
   **Slayt gösterisi** aynı çubukta; bir dosya kütüphanenin üzerine
   bırakılabiliyor. Ayarlar, pencereler ve öteki sayfalar da aynı görünüşte.
+  Listeler Windows 11'deki gibi açılıyor; seçili olan kısa turuncu bir
+  çizgiyle belli.
 - Yazmadan önce resmî yazılımı ya da SignalRGB'yi bulmak için kullanılan
   çalışan programlar listesi artık hiçbir programı açmıyor.
 - **Tanıma:** AJAZZ AK980 PRO olarak yalnızca USB adında, denenen klavyenin
@@ -185,6 +187,12 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 - AK980 PRO'nun USB kimliğini ve adını taşıyan ama içi farklı yapılmış bir
   klavye, her işlemin başarısız olduğu bir AK980 PRO gibi görünüyordu. Artık
   **Destek iste**'yi görüyor ve ona hiçbir şey gönderilmiyor.
+- **Genel bakış:** **Fırlatma** ya da **Halkalar** gibi yalnızca bastığınız
+  tuşları yakan bir efektte, hiçbir tuşa basılmadığında klavyenin altındaki
+  satır **Klavyenin ışığı kapalı** diyordu. Artık **Klavyenizin tuşları
+  yazdıkça yanar** diyor.
+- **Açılış animasyonu:** Windows 11'de artık uygulamayla aynı yarı saydam
+  pencere arka planında oynuyor; uygulama göründüğünde renkler değişmiyor.
 
 ## [1.1.0] - 2026-11-16
 

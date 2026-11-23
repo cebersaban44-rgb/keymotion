@@ -55,6 +55,7 @@ import { UpdateDialog, UpdateStrip } from "./components/Updates";
 import { useMacros } from "./lib/macros";
 import { followAutoWrites } from "./lib/profiles";
 import { useScreen } from "./lib/screen";
+import { followSelectWidths } from "./lib/selectWidth";
 import { OFFLINE_KEYBOARD } from "./lib/offline";
 import { useActiveKeyboard, useApp, type PageId } from "./lib/store";
 import { Calendar } from "./pages/Calendar";
@@ -92,12 +93,14 @@ function useBootstrap() {
       window.removeEventListener("focus", refreshLayout);
     };
   }, [setKeyboards, setEnv]);
+  // List boxes as wide as their longest choice, whatever is chosen.
+  useEffect(() => followSelectWidths(), []);
 }
 
 function useThemeSync() {
   const theme = useApp((s) => s.theme);
   const locale = useApp((s) => s.locale);
-  const mica = useApp((s) => s.env?.mica ?? false);
+  const mica = useApp((s) => s.env?.mica);
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
     const apply = () => {
@@ -110,7 +113,8 @@ function useThemeSync() {
     return () => media.removeEventListener("change", apply);
   }, [theme]);
   useEffect(() => {
-    document.documentElement.dataset.mica = String(mica);
+    // Until the backend answers, theme-boot.js's mark from the last start stays.
+    if (mica !== undefined) document.documentElement.dataset.mica = String(mica);
   }, [mica]);
   useEffect(() => {
     document.documentElement.lang = locale;

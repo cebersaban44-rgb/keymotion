@@ -13,8 +13,50 @@
       app's code, so it plays from the first frame the window shows;
       src/lib/intro.ts ends it once the app is ready, moving the logo to
       the sidebar's.
+
+      It has no background of its own: the window's (body, styles.css),
+      translucent on Windows 11, shows behind it as it does behind the app,
+      so nothing changes tone when the app takes over. The app waits
+      unseen under it.
     -->
     <style>
+      /* The window's backdrop from the first frame on. styles.css sets the
+         same (and wins once loaded); with the development server it comes a
+         moment later. Keep the two in step. */
+      :root {
+        --app-bg:
+          radial-gradient(1000px 560px at 92% -6%, rgb(255 138 61 / 0.1), transparent 62%),
+          linear-gradient(160deg, #202023, #1c1c1e 55%, #1f1f23);
+        --bg: #1f1f21;
+      }
+      :root[data-theme="light"] {
+        --app-bg:
+          radial-gradient(1000px 560px at 92% -6%, rgb(255 138 61 / 0.14), transparent 62%),
+          linear-gradient(160deg, #eceff3, #f3f3f3 55%, #edeef2);
+        --bg: #f3f3f3;
+      }
+      :root[data-mica="true"][data-theme="dark"] {
+        --app-bg:
+          radial-gradient(1000px 560px at 92% -6%, rgb(255 138 61 / 0.08), transparent 62%),
+          linear-gradient(rgb(28 28 30 / 0.5), rgb(28 28 30 / 0.5));
+      }
+      :root[data-mica="true"][data-theme="light"] {
+        --app-bg:
+          radial-gradient(1000px 560px at 92% -6%, rgb(255 138 61 / 0.1), transparent 62%),
+          linear-gradient(rgb(243 243 243 / 0.5), rgb(243 243 243 / 0.5));
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--app-bg);
+        background-color: var(--bg);
+      }
+      :root[data-mica="true"] body {
+        background-color: transparent;
+      }
       #intro {
         position: fixed;
         inset: 0;
@@ -22,13 +64,14 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #1f1f21;
         --intro-ink: #ffffff;
         --intro-signal: #ff8a3d;
         --intro-edge: #2a2d33;
       }
+      #intro ~ * {
+        opacity: 0;
+      }
       :root[data-theme="light"] #intro {
-        background: #f3f3f3;
         --intro-ink: #1b1b1b;
         --intro-signal: #c45200;
         --intro-edge: transparent;
