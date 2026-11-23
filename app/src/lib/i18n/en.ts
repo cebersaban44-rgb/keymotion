@@ -1536,6 +1536,8 @@ export const en = {
   "unsupported.body":
     "Request support to send us the keyboard's identifying details on GitHub; they're what we need most to add a new model. Nothing is written to the keyboard.",
   "unsupported.request": "Request support",
+  "unsupported.sub": "Not supported yet",
+  "unsupported.tray": "Keyboard not supported yet",
   "fw769.title": "Your keyboard has AJAZZ's new firmware",
   "fw769.body": "AJAZZ's new firmware ({version}) uses a different set of commands, which Keymotion doesn't support yet; support is planned for a later update. Until then, Keymotion sends nothing to this keyboard.",
   "fw769.body.unknown": "AJAZZ's new firmware uses a different set of commands, which Keymotion doesn't support yet; support is planned for a later update. Until then, Keymotion sends nothing to this keyboard.",
@@ -1591,6 +1593,7 @@ export const en = {
   "welcome.step2": "Set the switch on the back of the keyboard to the middle, the USB position.",
   "welcome.step3": "Keymotion finds the keyboard by itself.",
   "welcome.searching": "Looking for the keyboard…",
+  "welcome.searching.other": "A keyboard Keymotion doesn't support yet is connected; still looking for a supported one…",
   "welcome.back": "Back of the keyboard",
   "welcome.supported": "Supported keyboard",
   "welcome.other": "Have a different keyboard?",

@@ -1528,6 +1528,8 @@ export const tr: Messages = {
   "unsupported.body":
     "Destek isterseniz klavyenin kimlik bilgilerini GitHub'da bize iletirsiniz; yeni bir modeli eklemek için en çok bunlar gerekir. Klavyeye hiçbir şey yazılmaz.",
   "unsupported.request": "Destek iste",
+  "unsupported.sub": "Henüz desteklenmiyor",
+  "unsupported.tray": "Klavye henüz desteklenmiyor",
   "fw769.title": "Klavyenizde AJAZZ'ın yeni klavye yazılımı var",
   "fw769.body": "AJAZZ'ın yeni klavye yazılımı ({version}) farklı bir komut takımı kullanıyor; Keymotion bunu henüz desteklemiyor, desteğin sonraki bir güncellemede gelmesi planlanıyor. O zamana kadar Keymotion bu klavyeye hiçbir şey göndermez.",
   "fw769.body.unknown": "AJAZZ'ın yeni klavye yazılımı farklı bir komut takımı kullanıyor; Keymotion bunu henüz desteklemiyor, desteğin sonraki bir güncellemede gelmesi planlanıyor. O zamana kadar Keymotion bu klavyeye hiçbir şey göndermez.",
@@ -1583,6 +1585,7 @@ export const tr: Messages = {
   "welcome.step2": "Klavyenin arkasındaki anahtarı ortaya, USB konumuna getirin.",
   "welcome.step3": "Keymotion klavyeyi kendiliğinden bulur.",
   "welcome.searching": "Klavye aranıyor…",
+  "welcome.searching.other": "Henüz desteklenmeyen bir klavye bağlı; desteklenen bir klavye aranıyor…",
   "welcome.back": "Klavyenin arkası",
   "welcome.supported": "Desteklenen klavye",
   "welcome.other": "Başka bir klavyeniz mi var?",
