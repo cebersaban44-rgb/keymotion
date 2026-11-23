@@ -125,7 +125,8 @@ export default defineConfig({
             "Keymotion is a free, open-source Windows app (Windows 10 and 11, 64-bit) for the AJAZZ AK980 PRO mechanical keyboard. It sets per-key RGB lighting and the 19 built-in effects, remaps keys on the base and Fn layers, records macros, and puts pictures, GIFs, videos and live cards on the keyboard's 240×135 screen. It is an independent project, not made by AJAZZ.",
           details: [
             "- Settings are changed over the USB cable, with the switch on the back of the keyboard in the middle. Over Bluetooth Keymotion only reads the battery level; over the 2.4 GHz receiver it recognizes the keyboard but can't change settings yet.",
-            "- Keymotion sends only commands that were measured on this keyboard and never updates its firmware.",
+            "- Keymotion sends only commands that were measured on this keyboard and never updates its firmware. AJAZZ's newest AK980 PRO firmware, 3.01 (\"AK980 Led v2 Firmware 769\"), uses a different command set that Keymotion doesn't support yet; it sends nothing to a keyboard on that firmware.",
+            "- It also has a focus timer, reminders, calendars, system gauges, music mode (key lights that move with the sound the PC plays), game sessions with League of Legends lights, profiles that switch by program, and an AI agents page: Claude Code, Codex and scripts can light the keys through its command-line tool, keymotion-cli.",
             `- The app and this guide are in English, Turkish, Russian and Simplified Chinese. The guide in the other languages: ${SITE}/tr/ (Turkish), ${SITE}/ru/ (Russian), ${SITE}/zh-cn/ (Simplified Chinese).`,
             "- Source code, releases and issues: " + REPO + ".",
           ].join("\n"),
