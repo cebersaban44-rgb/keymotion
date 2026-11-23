@@ -423,15 +423,18 @@ function Get-AppWindow([Diagnostics.Process]$Process, [int]$TimeoutSec = 90) {
 }
 
 # The first element under $Root named one of $Names (an ARIA label or a
-# button's text), waiting for the page to draw it; -Button: buttons only.
-function Find-UiElement($Root, [string[]]$Names, [int]$TimeoutSec = 30, [switch]$Button) {
+# button's text), waiting for the page to draw it; -Pressable: only one
+# that can be pressed (a row's title text may carry its switch's name).
+function Find-UiElement($Root, [string[]]$Names, [int]$TimeoutSec = 30, [switch]$Pressable) {
     $conditions = [System.Windows.Automation.Condition[]]@($Names | ForEach-Object {
             [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, $_)
         })
     $condition = if ($conditions.Count -gt 1) { [System.Windows.Automation.OrCondition]::new($conditions) } else { $conditions[0] }
-    if ($Button) {
-        $isButton = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
-        $condition = [System.Windows.Automation.AndCondition]::new([System.Windows.Automation.Condition[]]@($condition, $isButton))
+    if ($Pressable) {
+        $invoke = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::IsInvokePatternAvailableProperty, $true)
+        $toggle = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::IsTogglePatternAvailableProperty, $true)
+        $either = [System.Windows.Automation.OrCondition]::new([System.Windows.Automation.Condition[]]@($invoke, $toggle))
+        $condition = [System.Windows.Automation.AndCondition]::new([System.Windows.Automation.Condition[]]@($condition, $either))
     }
     $clock = [Diagnostics.Stopwatch]::StartNew()
     while ($clock.Elapsed.TotalSeconds -lt $TimeoutSec) {
@@ -457,8 +460,8 @@ function Invoke-UiElement($Element) {
     throw "'$($Element.Current.Name)' can be neither invoked nor toggled"
 }
 
-function Wait-UiElement($Root, [string[]]$Names, [string]$Why, [int]$TimeoutSec = 30, [switch]$Button) {
-    $found = Find-UiElement $Root $Names $TimeoutSec -Button:$Button
+function Wait-UiElement($Root, [string[]]$Names, [string]$Why, [int]$TimeoutSec = 30, [switch]$Pressable) {
+    $found = Find-UiElement $Root $Names $TimeoutSec -Pressable:$Pressable
     if (-not $found) { throw "no '$($Names -join "' or '")' in Keymotion's window $Why (it shows: $(Get-UiNames $Root))" }
     $found
 }
@@ -475,20 +478,20 @@ function Enable-AgentAccess {
     $null = $p.Handle
     $window = Get-AppWindow $p
     $steps = [System.Collections.Generic.List[string]]::new()
-    Invoke-UiElement (Wait-UiElement $window @('AI agents') 'to open the AI agents page' 60 -Button)
+    Invoke-UiElement (Wait-UiElement $window @('AI agents') 'to open the AI agents page' 60 -Pressable)
     $steps.Add('AI agents')
-    Invoke-UiElement (Wait-UiElement $window @('Agents may use the keyboard') 'on the AI agents page')
+    Invoke-UiElement (Wait-UiElement $window @('Agents may use the keyboard') 'on the AI agents page' -Pressable)
     $steps.Add('switch')
     $dialog = Find-UiElement $window @('Turning on agent access') 10
     if (-not $dialog) {
         $steps.Add('(it was on: off) switch')
         Start-Sleep -Seconds 1
-        Invoke-UiElement (Wait-UiElement $window @('Agents may use the keyboard') 'after turning access off')
+        Invoke-UiElement (Wait-UiElement $window @('Agents may use the keyboard') 'after turning access off' -Pressable)
         $dialog = Wait-UiElement $window @('Turning on agent access') 'after the switch was pressed again'
     }
-    Invoke-UiElement (Wait-UiElement $dialog @('Connect and turn on', 'Connect') 'in the dialog' -Button)
+    Invoke-UiElement (Wait-UiElement $dialog @('Connect and turn on', 'Connect') 'in the dialog' -Pressable)
     $steps.Add('Connect and turn on')
-    $ok = Wait-UiElement $window @('OK') 'after approving' 60 -Button
+    $ok = Wait-UiElement $window @('OK') 'after approving' 60 -Pressable
     $done = [bool](Find-UiElement $window @('Agent access is on') 2)
     Invoke-UiElement $ok
     $steps.Add('OK')
