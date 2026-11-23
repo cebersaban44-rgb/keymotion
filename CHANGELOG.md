@@ -100,6 +100,14 @@ says so.
   reaches Keymotion: only what happened. `disconnect` takes it all away
   again. Agent access stays off until you turn it on; on the GitHub copy,
   turning it on also puts `keymotion-cli` on your PATH for new terminals.
+  Three more things only with their own permission, each off at first:
+  agents can start, pause or stop the focus timer (also one block of their
+  own length, without changing your settings), show a profile's lighting
+  for a while or write it to the keyboard (its lighting only, at most 10
+  times a day each), and put a card with text or a picture on the screen
+  (at most 4 an hour each; your own picture comes back after it). With
+  screen cards allowed, a coding task that took 10 minutes or more says
+  "Done · 14 min" on the screen when it ends.
 
 ### Changed
 

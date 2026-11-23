@@ -96,7 +96,15 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   kapattıysanız başlatmaz. Sizin ya da ajanın yazdığı hiçbir şey Keymotion'a
   ulaşmaz: yalnız ne olduğu. `disconnect` hepsini geri alır. Ajan erişimi
   siz açana kadar kapalı kalır; GitHub kopyasında açmak `keymotion-cli`'ı
-  yeni açılan terminaller için PATH'inize de ekler.
+  yeni açılan terminaller için PATH'inize de ekler. Üç şey daha, yalnız
+  kendi izniyle ve her biri başta kapalı: ajanlar odak zamanlayıcısını
+  başlatıp duraklatabilir ya da durdurabilir (ayarlarınızı değiştirmeden
+  kendi seçtikleri uzunlukta tek bir blok da), bir profilin ışığını bir
+  süre gösterebilir ya da klavyeye yazabilir (yalnız ışığını, her biri
+  günde en çok 10 kez) ve ekrana yazılı ya da görselli bir kart koyabilir
+  (her biri saatte en çok 4; sonra kendi görseliniz geri gelir). Ekran
+  kartlarına izin verdiyseniz 10 dakika ya da daha uzun süren bir kodlama
+  işi bitince ekranda "Bitti · 14 dk" yazar.
 
 ### Değişenler
 
