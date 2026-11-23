@@ -44,7 +44,8 @@ use calendar::CalendarHandle;
 use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request, ScreenWriteStep};
 use diagnostics::{AppFolder, LastExport};
 use dto::{
-    AgentLook, AgentSettings, AgentsState, AutoProfileSettings, AutoProfileState, BackgroundSettings, CalendarSettings,
+    AgentApp, AgentAppPlan, AgentConnectOutcome, AgentConnectPlan, AgentConnections, AgentDisconnectOutcome, AgentLook,
+    AgentSettings, AgentsState, AutoProfileSettings, AutoProfileState, BackgroundSettings, CalendarSettings,
     CalendarState, Calibration, CalibrationInfo, ClockStatus, CrashNote, EffectInfo, EffectRequest, FlashWrite,
     GamesSettings, GamesState, GaugesSettings, GaugesState, IssueKind, KeyAssignment, KeyboardInfo, KeymapCatalog,
     KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, MusicSettings,
@@ -404,6 +405,55 @@ fn agents_clear_all(agents: Agents<'_>) -> AgentsState {
 fn agents_undo(agents: Agents<'_>, seq: u32) -> Result<AgentsState, String> {
     tracing::debug!(seq, "ipc: agents_undo");
     agents.undo(seq)
+}
+
+/// Run an agents' setup step off the main thread (it reads and writes the
+/// coding apps' files, and PATH).
+async fn agents_blocking<T: Send + 'static>(
+    agents: Agents<'_>,
+    work: impl FnOnce(&AgentHandle) -> T + Send + 'static,
+) -> Result<T, String> {
+    let handle = agents.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || work(&handle)).await.map_err(|e| e.to_string())
+}
+
+/// Claude Code and Codex: on this computer, connected, waiting for approval
+/// in Codex, too old; the keymotion-cli this copy comes with; PATH.
+#[tauri::command]
+async fn agents_connections(agents: Agents<'_>) -> Result<AgentConnections, String> {
+    agents_blocking(agents, |a| a.connections()).await
+}
+
+/// What turning agent access on would add, where (`apps`: which coding
+/// apps, default every one found). Nothing is written.
+#[tauri::command]
+async fn agents_connect_plan(agents: Agents<'_>, apps: Option<Vec<AgentApp>>) -> Result<AgentConnectPlan, String> {
+    agents_blocking(agents, move |a| a.connect_plan(apps.as_deref())).await
+}
+
+/// The user approved the plan with `token`: the coding apps are connected,
+/// the GitHub copy's `bin` folder goes on PATH, agent access goes on.
+#[tauri::command]
+async fn agents_connect(
+    agents: Agents<'_>,
+    token: String,
+    apps: Option<Vec<AgentApp>>,
+) -> Result<AgentConnectOutcome, String> {
+    tracing::debug!("ipc: agents_connect");
+    agents_blocking(agents, move |a| a.connect(&token, apps.as_deref())).await?
+}
+
+/// What disconnecting a coding app would take away. Nothing is written.
+#[tauri::command]
+async fn agents_disconnect_plan(agents: Agents<'_>, app: AgentApp) -> Result<AgentAppPlan, String> {
+    agents_blocking(agents, move |a| a.disconnect_plan(app)).await
+}
+
+/// Take Keymotion's hooks, skill and rule away from a coding app.
+#[tauri::command]
+async fn agents_disconnect(agents: Agents<'_>, app: AgentApp) -> Result<AgentDisconnectOutcome, String> {
+    tracing::debug!(?app, "ipc: agents_disconnect");
+    agents_blocking(agents, move |a| a.disconnect(app)).await
 }
 
 /// The Pomodoro timer.
@@ -1884,6 +1934,11 @@ pub fn run() {
             agents_try,
             agents_clear_all,
             agents_undo,
+            agents_connections,
+            agents_connect_plan,
+            agents_connect,
+            agents_disconnect_plan,
+            agents_disconnect,
             pomodoro_state,
             pomodoro_control,
             pomodoro_configure,

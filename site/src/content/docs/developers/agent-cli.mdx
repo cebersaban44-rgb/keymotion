@@ -138,6 +138,19 @@ Two things tell an agent's user what is going on, and they do different jobs. Wh
 
 `keymotion-cli connections --json` reports, for each agent, `state`: `not_found`, `not_connected`, `connected`, `needs_approval` (Codex: hooks you have not trusted yet, read from Codex's `config.toml`, which keymotion-cli never writes), `outdated` (some of ours are missing or name another keymotion-cli) or `unreadable`; and a `warning` when the Claude Code found is too old.
 
+### The AI agents page
+
+The app does the same through `kb_hooks::setup` (`app/src-tauri/src/agent/apps.rs`), with these Tauri commands for its page under Tools › AI agents:
+
+| Command | What it does |
+|---|---|
+| `agents_connections` | Claude Code and Codex: on this computer, their state (as above, plus `tooOld` with the version found and `minVersion` 2.1.139 for Claude Code), the keymotion-cli this copy comes with and whether it is there, and for the GitHub copy whether its `bin` folder is on PATH. |
+| `agents_connect_plan { apps? }` | What turning agent access on would add, per coding app found: each file, created, changed or removed, what it is (hooks and how many, the skill, the Codex rule, Keymotion's own note), where the copy of it is kept; whether Codex will ask to trust the hooks; why an app cannot be connected (`problem`). Nothing is written. A `token` stands for what it showed. |
+| `agents_connect { token, apps? }` | The user approved: the apps are connected, the `bin` folder goes on PATH (GitHub copy), and agent access goes on. When a coding app wrote its settings in between, the plan is made again: if it still shows the same, it is written with the app's new entries kept; if not, nothing changes and the new plan comes back (`applied: false`) to show again. An app that cannot be connected does not stop the others. |
+| `agents_disconnect_plan { app }`, `agents_disconnect { app }` | What disconnecting takes away, and doing it. Agent access and PATH stay as they are. |
+
+**PATH (GitHub copy).** Turning agent access on in the app also puts the installation's `bin` folder, where `keymotion-cli.exe` is, at the end of your own PATH (`HKCU\Environment`, its type kept, nothing else in it changed or reordered), and tells open programs; terminals opened afterwards find `keymotion-cli` by its name. It never happens by itself. Turning access off leaves it; uninstalling takes it away; updates leave it alone. The Store copy needs none of it: its alias is in a folder Windows keeps on PATH.
+
 **Before uninstalling Keymotion**, remove the connections (in Keymotion, or `keymotion-cli disconnect claude-code` and `disconnect codex`). Claude Code's hooks name the program itself and cannot check that it is still there: after Keymotion is gone, Claude Code reports a failed hook on each event until they are removed. Codex's line checks first and does nothing.
 
 ### Hook mode

@@ -24,6 +24,7 @@
 //! * The app's own log gets the source, the command and the result of each
 //!   request; nothing an agent's user typed reaches the app at all.
 
+mod apps;
 mod config;
 mod effects;
 mod engine;
@@ -31,6 +32,7 @@ mod keys;
 
 use crate::device::{DeviceHandle, LightLayer, LiveFrame, Quiet, Request};
 use crate::dto::{
+    AgentApp, AgentAppPlan, AgentConnectOutcome, AgentConnectPlan, AgentConnections, AgentDisconnectOutcome,
     AgentLights, AgentLook, AgentNightMode, AgentServer, AgentSettings, AgentsState, Connection, Feature, FlashWrite,
     KeyboardInfo,
 };
@@ -836,6 +838,11 @@ fn on_start(core: Arc<Core>) {
 /// The agents (managed Tauri state).
 pub struct AgentHandle {
     core: Arc<Core>,
+    /// Where this copy's keymotion-cli and the coding apps' folders are.
+    place: apps::Place,
+    user_path: Box<dyn apps::UserPath>,
+    /// One connect or disconnect at a time.
+    setup: Mutex<()>,
 }
 
 impl AgentHandle {
@@ -854,6 +861,7 @@ impl AgentHandle {
         } else {
             Channel::Github
         };
+        let place = apps::Place::for_channel(channel);
         let info = ServerInfo { version: app.package_info().version.to_string(), channel };
         let host = Arc::new(AppHost { app, device, config_dir, started: Instant::now(), conflict: Mutex::new(None) });
         let core = Core::new(host, settings, info, true);
@@ -874,7 +882,7 @@ impl AgentHandle {
                 }
             })
             .expect("spawn agents thread");
-        Arc::new(Self { core })
+        Arc::new(Self { core, place, user_path: Box::new(apps::WindowsPath), setup: Mutex::new(()) })
     }
 
     pub fn state(&self) -> AgentsState {
@@ -900,6 +908,81 @@ impl AgentHandle {
     /// "Quit" in the tray (`true`), or the user stayed after all (`false`).
     pub fn quitting(&self, quit: bool) {
         self.core.quitting(quit);
+    }
+
+    /// Claude Code and Codex: here, connected; keymotion-cli; PATH.
+    pub fn connections(&self) -> AgentConnections {
+        apps::connections(&self.place, self.user_path.as_ref())
+    }
+
+    /// What turning agent access on would add (`apps`: which coding apps,
+    /// default both).
+    pub fn connect_plan(&self, apps: Option<&[AgentApp]>) -> AgentConnectPlan {
+        apps::plan_connect(&self.place, self.user_path.as_ref(), apps)
+    }
+
+    /// The user approved the plan of `token`: connect the coding apps, put
+    /// the `bin` folder on PATH (GitHub copy), turn agent access on. When
+    /// the plan no longer holds, nothing changes and the new one comes back.
+    pub fn connect(&self, token: &str, apps: Option<&[AgentApp]>) -> Result<AgentConnectOutcome, String> {
+        let _one = lock(&self.setup);
+        let done = match apps::connect(&self.place, self.user_path.as_ref(), token, apps) {
+            Ok(done) => done,
+            Err(plan) => {
+                tracing::info!("agents: the connect plan changed before it was approved; shown again");
+                return Ok(AgentConnectOutcome {
+                    applied: false,
+                    plan: Some(*plan),
+                    connected: Vec::new(),
+                    failed: Vec::new(),
+                    path_added: false,
+                    path_error: None,
+                    connections: self.connections(),
+                    state: self.core.state(),
+                });
+            }
+        };
+        tracing::info!(
+            connected = done.connected.len(),
+            failed = done.failed.len(),
+            path_added = done.path_added,
+            "agents: coding apps connected"
+        );
+        if let Some(e) = &done.path_error {
+            tracing::warn!("agents: keymotion-cli's folder not put on PATH: {e}");
+        }
+        let settings = AgentSettings { enabled: true, ..self.core.settings() };
+        let saved = self.core.save(settings);
+        // Newly connected apps learn whether they may start Keymotion.
+        self.core.started();
+        let state = saved?;
+        Ok(AgentConnectOutcome {
+            applied: true,
+            plan: None,
+            connected: done.connected,
+            failed: done.failed,
+            path_added: done.path_added,
+            path_error: done.path_error,
+            connections: self.connections(),
+            state,
+        })
+    }
+
+    /// What disconnecting `app` would take away.
+    pub fn disconnect_plan(&self, app: AgentApp) -> AgentAppPlan {
+        apps::plan_disconnect(&self.place, app)
+    }
+
+    /// Take Keymotion's hooks, skill and rule away from `app`. Agent access
+    /// and PATH stay as they are.
+    pub fn disconnect(&self, app: AgentApp) -> AgentDisconnectOutcome {
+        let _one = lock(&self.setup);
+        let plan = apps::disconnect(&self.place, app);
+        match &plan.problem {
+            None => tracing::info!(?app, files = plan.changes.len(), "agents: coding app disconnected"),
+            Some(p) => tracing::warn!(?app, "agents: coding app not disconnected: {}", p.message),
+        }
+        AgentDisconnectOutcome { plan, connections: self.connections() }
     }
 }
 
