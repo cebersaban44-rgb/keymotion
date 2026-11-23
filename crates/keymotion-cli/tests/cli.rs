@@ -157,6 +157,50 @@ fn fake_app(pipe: &str) -> (PipeServer, Arc<Fake>) {
                     "sent_this_hour": 4, "per_hour": 4, "screen_budget": {"live": true, "left": 0, "next_in_s": 900},
                 }))
             }
+            Command::Scene(a) => {
+                let s = a.validate()?;
+                let mut v = json!({});
+                if s.play {
+                    let id = s.id.as_ref().map_or_else(|| format!("{source}:scene"), |i| i.as_str().to_string());
+                    v = lit(id, s.duration.as_millis() as u64);
+                    v["length_ms"] = json!(s.length_ms);
+                    v["repeat"] = json!(s.repeat);
+                }
+                if let Some(name) = s.save {
+                    v["saved"] = json!(name);
+                    v["replaced_pattern"] = json!(false);
+                }
+                Ok(v)
+            }
+            Command::Pattern(a) => {
+                let p = a.validate()?;
+                let name = p.name.clone().unwrap_or_default();
+                match p.action {
+                    kb_agent::protocol::PatternAction::List => Ok(json!({
+                        "agent": "cli", "max": 32,
+                        "patterns": [{"name": "deploy", "steps": 2, "length_ms": 500, "repeat": 1}],
+                    })),
+                    kb_agent::protocol::PatternAction::Play => {
+                        let mut v = lit(format!("{source}:pattern-{name}"), 1_000);
+                        v["pattern"] = json!(name);
+                        v["length_ms"] = json!(500);
+                        v["repeat"] = json!(p.repeat.unwrap_or(1));
+                        Ok(v)
+                    }
+                    kb_agent::protocol::PatternAction::Delete => Ok(json!({"deleted": true, "pattern": name})),
+                }
+            }
+            Command::Spell(a) => {
+                let s = a.validate()?;
+                let written: String = s.text.chars().filter(char::is_ascii).collect();
+                let skipped: Vec<String> = s.text.chars().filter(|c| !c.is_ascii()).map(String::from).collect();
+                let mut v = lit(format!("{source}:spell"), 1_500);
+                v["length_ms"] = json!(1_500);
+                v["repeat"] = json!(s.times);
+                v["written"] = json!(written);
+                v["skipped"] = json!(skipped);
+                Ok(v)
+            }
             Command::Signal(a) => {
                 let s = a.validate()?;
                 Ok(lit(a.id.clone().unwrap_or_else(|| format!("{source}:{}", s.name.as_str())), 120_000))
@@ -267,6 +311,83 @@ fn focus_profiles_and_cards_reach_the_app() {
     let r = run(&pipe, &["card", "Hi", "--json"]);
     assert_eq!((r.code, r.json()["error"]["code"].clone()), (77, json!("write_flash_flag_missing")));
     for f in [picture, big, not_png] {
+        let _ = std::fs::remove_file(f);
+    }
+}
+
+#[test]
+fn scenes_patterns_and_spelling_reach_the_app() {
+    let pipe = unique_pipe();
+    let (_server, fake) = fake_app(&pipe);
+    fake.access.store(true, Ordering::SeqCst);
+    let file = |name: &str, text: &str| {
+        let path = std::env::temp_dir().join(format!("km-cli-scene-{name}-{}.json", std::process::id()));
+        std::fs::write(&path, text).unwrap();
+        path
+    };
+
+    // A list of steps; durations as text or milliseconds; kept as a pattern.
+    let steps =
+        file("steps", r#"[{"keys":"f1","color":"red","for":"300ms"},{"keys":"f2","color":"off","at":300,"for":200}]"#);
+    let r = run(&pipe, &["scene", steps.to_str().unwrap(), "--repeat", "2", "--save", "Deploy", "--json"]);
+    assert_eq!((r.code, r.json()["data"]["saved"].clone()), (0, json!("deploy")), "{r:?}");
+    let sent = fake.last().2;
+    assert_eq!(sent["steps"][0], json!({"keys": "f1", "color": "red", "for_ms": 300}));
+    assert_eq!(sent["steps"][1], json!({"keys": "f2", "color": "off", "at_ms": 300, "for_ms": 200}));
+    assert_eq!((sent["repeat"].clone(), sent["save"].clone()), (json!(2), json!("Deploy")));
+    let r = run(&pipe, &["scene", steps.to_str().unwrap()]);
+    assert!(r.stdout.starts_with("Scene cli:scene: 500ms."), "{r:?}");
+    // An object with its own repeat and length; --for wins.
+    let looped = file("looped", r#"{"steps":[{"color":"blue","effect":"pulse"}],"repeat":0,"for":"1m"}"#);
+    let r = run(&pipe, &["scene", looped.to_str().unwrap(), "--for", "30s", "--id", "glow", "--json"]);
+    assert_eq!(r.code, 0, "{r:?}");
+    assert_eq!(
+        fake.last().2,
+        json!({"steps": [{"color": "blue", "effect": "pulse"}], "repeat": 0, "for_ms": 30_000, "id": "glow"})
+    );
+    // Only kept.
+    let r = run(&pipe, &["scene", steps.to_str().unwrap(), "--save", "quiet", "--no-play"]);
+    assert_eq!((r.code, r.stdout.trim()), (0, "Pattern quiet kept: pattern play quiet plays it."), "{r:?}");
+    // What is not a scene never reaches the app.
+    let before = fake.seen.lock().unwrap().len();
+    let not_json = file("text", "f1 red");
+    let unknown = file("unknown", r#"[{"keys":"f1","color":"red","colour":"red"}]"#);
+    let not_step = file("number", "[1]");
+    let no_steps = file("nosteps", r#"{"repeat":2}"#);
+    let bad_key = file("badkey", r#"[{"keys":"f1,!","color":"red"}]"#);
+    let large = file("large", &format!("[{}]", " ".repeat(33 * 1024)));
+    for (f, code) in [(&not_json, 65), (&unknown, 65), (&not_step, 65), (&no_steps, 65), (&bad_key, 65), (&large, 65)] {
+        let r = run(&pipe, &["scene", f.to_str().unwrap(), "--json"]);
+        assert_eq!(r.code, code, "{f:?}: {r:?}");
+    }
+    let r = run(&pipe, &["scene", unknown.to_str().unwrap(), "--json"]);
+    assert!(r.json()["error"]["message"].as_str().unwrap().contains("Step 1: a step has no \"colour\""), "{r:?}");
+    assert_eq!(run(&pipe, &["scene", r"C:\no\such\scene.json"]).code, 65);
+    assert_eq!(run(&pipe, &["scene", "-"]).code, 65, "nothing on standard input");
+    assert_eq!(run(&pipe, &["scene", steps.to_str().unwrap(), "--no-play"]).code, 64, "--no-play needs --save");
+    assert_eq!(fake.seen.lock().unwrap().len(), before);
+
+    // Patterns.
+    let r = run(&pipe, &["pattern", "list"]);
+    assert_eq!((r.code, r.stdout.trim()), (0, "deploy  2 steps, 500ms"));
+    let r = run(&pipe, &["pattern", "play", "Deploy", "--repeat", "3", "--json"]);
+    assert_eq!((r.code, r.json()["data"]["pattern"].clone()), (0, json!("deploy")), "{r:?}");
+    assert_eq!(fake.last().2, json!({"action": "play", "name": "Deploy", "repeat": 3}));
+    assert_eq!(run(&pipe, &["pattern", "delete", "deploy"]).stdout.trim(), "Pattern deploy deleted.");
+    assert_eq!(run(&pipe, &["pattern", "play"]).code, 64);
+    assert_eq!(run(&pipe, &["pattern", "play", "no spaces"]).code, 65);
+
+    // Spelling.
+    let r = run(&pipe, &["spell", "Gül", "--color", "green", "--speed", "4", "--times", "2", "--json"]);
+    assert_eq!(r.code, 0, "{r:?}");
+    assert_eq!(fake.last().2, json!({"text": "Gül", "color": "green", "speed": 4, "times": 2}));
+    assert!(r.json()["warnings"].to_string().contains("Skipped (no key for them on this keyboard): ü"), "{r:?}");
+    let r = run(&pipe, &["spell", "DONE"]);
+    assert_eq!(r.stdout.trim(), "Spelling \"DONE\" (cli:spell): 1.5s.", "{r:?}");
+    assert_eq!(run(&pipe, &["spell", "OK", "--speed", "9"]).code, 65);
+    assert_eq!(run(&pipe, &["spell", ""]).code, 64);
+
+    for f in [steps, looped, not_json, unknown, not_step, no_steps, bad_key, large] {
         let _ = std::fs::remove_file(f);
     }
 }

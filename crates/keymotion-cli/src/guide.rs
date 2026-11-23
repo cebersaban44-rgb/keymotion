@@ -31,8 +31,11 @@ Your own lights (ideas, not rules)
       "tests passed": one green wave across the F row
   keymotion-cli light --keys all --color amber --effect pulse --for 30m --id ask
       a long, calm pulse while you wait for the user
-  keymotion-cli light --keys o,k --color cyan --effect blink --times 3
-      a word on its letter keys
+  keymotion-cli spell "DONE" --color green
+      a word on its keys, letter after letter (--speed 1-5, --times N)
+  keymotion-cli scene s.json --repeat 2 --save qw
+      your own timeline; s.json: [{"keys":"q","color":"red","for":"400ms"},
+      {"keys":"w","color":"blue","effect":"pulse"}]. Later: pattern play qw
   keymotion-cli progress 40 --label build
       a bar on the F row, 0 to 100; send it again as work goes on
   keymotion-cli clear --id ask      that light off; plain clear: all of yours
@@ -52,21 +55,18 @@ Values
   Colors: red green blue amber yellow orange purple pink cyan white, or #RRGGBB.
   Effects: solid pulse blink flash wave (--direction left|right|up|down);
     --speed 1-5. Blinking stays at 3 flashes a second or less.
-  Time: --times N runs the effect N times; --for 500ms|30s|5m|1h. Unless told,
-    a light lasts 60s and a bar 10m after its last update.
+  Time: --times N runs it N times; --for 500ms|30s|5m|1h (light 60s, bar 10m).
   Ids: --id keeps up to 8 lights apart; you can clear only your own lights.
 
-If your coding app is connected, "done", "waiting for you" and errors light by
-themselves: add what they cannot say. More: log, settings get|set, doctor.
-Keymotion not running? Commands start it with no window (--no-start: not).
+Connected coding apps light done, waiting and errors themselves; add the rest.
+More: log, settings get|set, doctor. Keymotion starts unseen (--no-start: not).
 
 Exit codes
-  0 done    64 bad command line    65 bad value (color, key, time)
+  0 done  1 unexpected  64 bad command line  65 bad value (color, key, time)
   69 not available: no app, no keyboard, or it needs the USB cable
   75 try again later (rate limit or timeout; see retry_after_ms)
   76 Keymotion and keymotion-cli differ: update the older one
-  77 not allowed (agent access off, a permission only the user may change):
-     tell the user, do not retry      1 unexpected
+  77 not allowed (access or a permission is off): tell the user, do not retry
 "#;
 
 pub fn data() -> serde_json::Value {
@@ -98,6 +98,8 @@ mod tests {
             let words = shell_words(command);
             let args = std::iter::once("keymotion-cli".to_string()).chain(words);
             match parse(args, &Env::default()) {
+                // A scene's file is the agent's: the JSON is checked below.
+                Parsed::Run(inv) if command.starts_with("scene ") => assert_eq!(inv.command.name(), "scene"),
                 Parsed::Run(inv) => {
                     if let Err(e) = inv.command.plan() {
                         panic!("{command}: {e:?}");
@@ -106,6 +108,11 @@ mod tests {
                 other => panic!("{command}: {other:?}"),
             }
         }
+        // The scene the guide shows, its two lines joined.
+        let at = GUIDE.find("[{").unwrap();
+        let json: String = GUIDE[at..GUIDE.find("}]").unwrap() + 2].split_whitespace().collect();
+        let scene = crate::cli::scene_from_json(&serde_json::from_str(&json).unwrap()).unwrap();
+        assert_eq!(scene.validate().unwrap().steps.len(), 2, "{json}");
     }
 
     #[test]
@@ -122,6 +129,9 @@ mod tests {
             "focus start --for 50m",
             "profile show",
             "card \"Deployed",
+            "spell \"DONE\"",
+            "scene s.json",
+            "pattern play",
         ] {
             assert!(GUIDE.contains(idea), "{idea}");
         }
