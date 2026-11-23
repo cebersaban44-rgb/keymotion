@@ -381,9 +381,10 @@ pub struct Found {
 /// IDs): a channel whose layout does not fit, or a channel of another of
 /// the model's families with that family's layout, rejects that family
 /// behind those IDs only, never another family of the same model. Each
-/// collection then goes to a family that could own it: one not rejected,
-/// with the most channels whose layout fits, the first in the model file
-/// on a tie.
+/// collection then goes to a family that could own it: a cable family when
+/// its IDs and name match one (never a receiver mode with the same IDs),
+/// not rejected, with the most channels whose layout fits, the first in
+/// the model files on a tie.
 ///
 /// `descriptor` gives a collection's report descriptor, as the OS keeps it
 /// (reading it sends nothing to the keyboard). `None` (it could not be
@@ -476,8 +477,17 @@ fn classify_among(
     let mut chosen: Vec<Option<InterfaceMatch<'static>>> = Vec::with_capacity(interfaces.len());
     let mut status: Vec<Status> = Vec::with_capacity(interfaces.len());
     for c in &candidates {
+        // A collection whose IDs and name match a cable mode belongs to a
+        // cable mode or to none: a receiver mode behind the same IDs is
+        // never the fallback for a rejected cable family.
+        let cable = c.iter().any(|m| m.mode.kind == ConnectionKind::Usb);
         // `min_by_key` keeps the first of equals: the model file's order.
-        let pick = c.iter().filter(|m| !verdict(m).rejected).min_by_key(|m| Reverse(verdict(m).fitting)).copied();
+        let pick = c
+            .iter()
+            .filter(|m| !cable || m.mode.kind == ConnectionKind::Usb)
+            .filter(|m| !verdict(m).rejected)
+            .min_by_key(|m| Reverse(verdict(m).fitting))
+            .copied();
         status.push(match (&pick, c.is_empty()) {
             (Some(_), _) => Status::Driven,
             (None, false) => Status::Rejected,
@@ -998,5 +1008,120 @@ mod tests {
         assert_eq!(found.keyboards.len(), 1);
         assert_eq!(found.keyboards[0].protocol(), Protocol::AjazzAa);
         assert!(found.unknown.is_empty());
+    }
+
+    // ---- Several modes or model files behind the same IDs and name -------
+
+    /// A test-only catalogue (leaked: tests only).
+    fn catalogue_of(models: Vec<Model>) -> &'static [Model] {
+        Box::leak(models.into_boxed_slice())
+    }
+
+    fn shipped_ak980() -> Model {
+        catalogue().unwrap().iter().find(|m| m.id == "ajazz-ak980-pro").unwrap().clone()
+    }
+
+    /// A model whose receiver mode reports the same IDs as its cable mode
+    /// and names no product (no model file does this yet).
+    const RECEIVER_SAME_IDS: &str = r#"
+        id = "test-same-ids"
+        name = "Same IDs (test)"
+        vendor = "AJAZZ"
+        protocol = "sonix-ff13"
+        layout = "98"
+        key_count = 0
+        has_knob = false
+        has_side_light = false
+
+        [[modes]]
+        kind = "usb"
+        vid = 0x0C45
+        pid = 0x8009
+        product_contains = "AK980 PRO"
+        command_usage_page = 0xFF13
+        display_usage_page = 0xFF68
+        capabilities = ["lighting", "screen"]
+        verified = false
+
+        [[modes]]
+        kind = "dongle"
+        vid = 0x0C45
+        pid = 0x8009
+        command_usage_page = 0xFF68
+        capabilities = ["lighting"]
+        verified = false
+    "#;
+
+    #[test]
+    fn a_rejected_cable_family_never_falls_back_to_the_receiver() {
+        let models = catalogue_of(vec![toml::from_str(RECEIVER_SAME_IDS).unwrap()]);
+        // An "AA" board on 0x8009: the cable mode's layout does not fit, and
+        // the receiver mode behind the same IDs must not take it instead.
+        let found = classify_among(&aa_board(0x8009), &[], models, either_family);
+        assert!(found.keyboards.is_empty(), "driven as {:?}", found.keyboards.first().map(|k| k.connection));
+        assert_eq!(found.unknown.len(), 1, "\"Request support\" instead");
+        assert_eq!(found.unknown[0].key(), "0C45:8009:usb");
+        assert_eq!(found.unknown[0].collections.len(), 5);
+        // The right layout is the cable mode, as before.
+        let found = classify_among(&ak980_pro(), &[], models, either_family);
+        assert_eq!(found.keyboards.len(), 1);
+        assert_eq!(found.keyboards[0].connection, ConnectionKind::Usb);
+        assert!(found.unknown.is_empty());
+    }
+
+    /// Another model file with the AK980 PRO's IDs and name, whose vendor
+    /// channel sits on another usage page: none of the board's channels is
+    /// its.
+    const OTHER_PAGES: &str = r#"
+        id = "test-other-pages"
+        name = "Other pages (test)"
+        vendor = "AJAZZ"
+        protocol = "sonix-ff13"
+        layout = "98"
+        key_count = 0
+        has_knob = false
+        has_side_light = false
+
+        [[modes]]
+        kind = "usb"
+        vid = 0x0C45
+        pid = 0x8009
+        product_contains = "AK980 PRO"
+        command_usage_page = 0xFF99
+        capabilities = ["lighting"]
+        verified = false
+    "#;
+
+    #[test]
+    fn the_model_file_whose_channels_fit_wins() {
+        // Listed first, the other model file would own every collection; the
+        // AK980 PRO's has two fitting channels on this board, it has none.
+        let models = catalogue_of(vec![toml::from_str(OTHER_PAGES).unwrap(), shipped_ak980()]);
+        let found = classify_among(&ak980_pro(), &[], models, descriptors(FF13, FF68));
+        assert_eq!(found.keyboards.len(), 1);
+        let k = &found.keyboards[0];
+        assert_eq!(k.model.id, "ajazz-ak980-pro");
+        assert!(k.command.is_some() && k.display.is_some());
+        assert_eq!(k.standard_collections, 1);
+        assert!(found.unknown.is_empty());
+        // Without layouts the first model file keeps them, like `detect`.
+        let found = classify_among(&ak980_pro(), &[], models, |_| None);
+        assert_eq!(found.keyboards.len(), 1);
+        assert_eq!(found.keyboards[0].model.id, "test-other-pages");
+        assert_eq!(detect_among(&ak980_pro(), &[], models)[0].model.id, "test-other-pages");
+    }
+
+    #[test]
+    fn identical_model_files_tie_to_the_first() {
+        let twin = Model { id: "test-twin".into(), ..shipped_ak980() };
+        for (models, first) in [
+            (catalogue_of(vec![twin.clone(), shipped_ak980()]), "test-twin"),
+            (catalogue_of(vec![shipped_ak980(), twin]), "ajazz-ak980-pro"),
+        ] {
+            let found = classify_among(&ak980_pro(), &[], models, descriptors(FF13, FF68));
+            assert_eq!(found.keyboards.len(), 1, "one keyboard, not one per model file");
+            assert_eq!(found.keyboards[0].model.id, first);
+            assert!(found.keyboards[0].command.is_some() && found.keyboards[0].display.is_some());
+        }
     }
 }

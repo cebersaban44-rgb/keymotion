@@ -1,6 +1,6 @@
 //! HID interface enumeration and report I/O.
 
-use crate::{Result, TransportError};
+use crate::{descriptor, Result, TransportError};
 use hidapi::{BusType, HidApi, HidDevice};
 use std::ffi::CString;
 
@@ -80,11 +80,21 @@ impl Hid {
             .collect()
     }
 
-    /// Open one collection for report I/O.
+    /// Open one collection for report I/O. Its output limit is the longest
+    /// output report its report descriptor declares
+    /// ([`descriptor::output_limit`]); when the descriptor cannot be read,
+    /// the channel writes nothing.
     pub fn open(&self, iface: &HidInterface) -> Result<HidChannel> {
         let path = CString::new(iface.path.as_bytes()).map_err(|_| TransportError::BadPath)?;
         let device = self.api.open_path(&path)?;
-        Ok(HidChannel { device, info: iface.clone(), output_limit: DEFAULT_OUTPUT_LIMIT })
+        let output_limit = match read_descriptor(&device) {
+            Ok(desc) => descriptor::output_limit(&desc),
+            Err(e) => {
+                tracing::warn!(usage_page = format_args!("{:04X}", iface.usage_page), "descriptor unreadable: {e}");
+                0
+            }
+        };
+        Ok(HidChannel { device, info: iface.clone(), output_limit })
     }
 
     /// The report descriptor of the collection at `path`, as the OS rebuilds
@@ -123,11 +133,6 @@ pub const DISPLAY_USAGE_PAGE: u16 = 0xFF68;
 /// header and 4096 bytes of image.
 pub const MAX_REPORT: usize = 4104 + 1;
 
-/// Output limit of a newly opened channel: the "04 xx" family's 4096-byte
-/// screen pages. A longer one waits until the caller has seen in the report
-/// descriptor that the collection takes it ([`HidChannel::set_output_limit`]).
-pub const DEFAULT_OUTPUT_LIMIT: usize = 4096 + 1;
-
 impl HidChannel {
     pub fn info(&self) -> &HidInterface {
         &self.info
@@ -144,9 +149,9 @@ impl HidChannel {
     }
 
     /// Change the longest output report this channel sends (report-ID byte
-    /// included), after checking in the report descriptor that the
-    /// collection declares reports that long: the "AA" family's FF67 takes
-    /// 4105 bytes. At most [`MAX_REPORT`].
+    /// included). [`Hid::open`] already sets it from the report descriptor;
+    /// a caller can only confirm it after its own check of the descriptor
+    /// or lower it. At most [`MAX_REPORT`].
     pub fn set_output_limit(&mut self, len: usize) -> Result<()> {
         check_len(len, MAX_REPORT)?;
         self.output_limit = len;
@@ -246,18 +251,17 @@ mod tests {
 
     #[test]
     fn report_limits() {
-        // "04 xx" screen pages pass the default limit; "AA" screen chunks
-        // need the caller to raise it, and nothing goes past MAX_REPORT.
-        assert_eq!(DEFAULT_OUTPUT_LIMIT, 4097);
+        // A 64-byte command channel takes 65 bytes (report ID included), the
+        // "04 xx" screen 4097 and the "AA" screen 4105 (limits from their
+        // descriptors: descriptor.rs); nothing goes past MAX_REPORT.
         assert_eq!(MAX_REPORT, 4105);
-        assert!(check_len(65, DEFAULT_OUTPUT_LIMIT).is_ok());
-        assert!(check_len(4097, DEFAULT_OUTPUT_LIMIT).is_ok());
-        assert!(matches!(
-            check_len(4105, DEFAULT_OUTPUT_LIMIT),
-            Err(TransportError::ReportTooLong { len: 4105, max: 4097 })
-        ));
+        assert!(check_len(65, 65).is_ok());
+        assert!(matches!(check_len(66, 65), Err(TransportError::ReportTooLong { len: 66, max: 65 })));
+        assert!(check_len(4097, 4097).is_ok());
+        assert!(matches!(check_len(4105, 4097), Err(TransportError::ReportTooLong { len: 4105, max: 4097 })));
         assert!(check_len(4105, MAX_REPORT).is_ok());
         assert!(matches!(check_len(4106, MAX_REPORT), Err(TransportError::ReportTooLong { len: 4106, max: 4105 })));
+        assert!(matches!(check_len(1, 0), Err(TransportError::ReportTooLong { len: 1, max: 0 })), "unknown layout");
     }
 
     #[test]
