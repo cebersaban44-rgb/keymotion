@@ -32,20 +32,19 @@
 //! the user said so in this session. The clock waits for that go-ahead too;
 //! live frames never wait ([`write_gate`]).
 
-use crate::dto::{Battery, FlashWrite, KeyboardInfo, LedColor, UnsupportedKeyboard};
+use crate::driver::{self, Driver};
+use crate::dto::{Battery, DeviceReport, FlashWrite, KeyboardInfo, LedColor, UnsupportedKeyboard};
 use crate::settings::{
     self, ClockSettings, Keymaps, MacroRecord, StoredKeymap, StoredLayer, StoredMacro, StoredMacros,
 };
 use kb_core::color::LedCalibration;
 use kb_core::conflicts::Conflict;
 use kb_core::detect::BlePeer;
-use kb_core::readback;
-use kb_core::sonix::SonixFf13;
-use kb_devices::{ConnectionKind, Model};
+use kb_devices::{ConnectionKind, ModeSpec, Model, Protocol};
 use kb_protocol::sonix::keymap::{KeyAction, Layer};
 use kb_protocol::sonix::screen::ScreenAnimation;
-use kb_protocol::sonix::{scale_to_level, EffectSettings, Rgb, MAX_LEVEL};
-use kb_transport::hid::{Hid, HidChannel};
+use kb_protocol::sonix::{EffectSettings, Rgb};
+use kb_transport::hid::Hid;
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -183,25 +182,6 @@ fn running_conflict() -> Option<Conflict> {
         tracing::warn!(program = c.id(), "write refused: another program uses the keyboard");
     }
     found
-}
-
-/// Open a vendor channel only if its report layout is the "04 xx" family's
-/// (kb_core::shape): the same IDs also belong to boards that speak another
-/// protocol, and nothing may be sent to those.
-fn open_checked(hid: &Hid, path: &str, display: bool) -> Result<HidChannel, String> {
-    let iface = hid.interfaces().into_iter().find(|i| i.path == path).ok_or("keyboard disconnected")?;
-    let channel = hid.open(&iface).map_err(|e| e.to_string())?;
-    let desc = channel.report_descriptor().map_err(|e| e.to_string())?;
-    let ok = if display { kb_core::shape::is_display_shape(&desc) } else { kb_core::shape::is_command_shape(&desc) };
-    if !ok {
-        tracing::warn!(
-            usage_page = format_args!("{:04X}", iface.usage_page),
-            shape = ?kb_core::shape::report_shape(&desc),
-            "unexpected report layout; channel not used"
-        );
-        return Err("unsupported keyboard firmware: unexpected report layout".into());
-    }
-    Ok(channel)
 }
 
 const ENUMERATE_EVERY: Duration = Duration::from_secs(2);
@@ -384,8 +364,8 @@ fn next_batch(waiting: &mut VecDeque<Request>) -> Vec<Request> {
 /// How a screen upload ended.
 #[derive(Debug, Clone)]
 pub struct ScreenUploadResult {
-    /// Model of the keyboard written to.
-    pub model_id: Option<String>,
+    /// Record id of the keyboard written to (`DetectedKeyboard::record_id`).
+    pub record_id: Option<String>,
     /// Whether the keyboard's flash was touched (the session was opened),
     /// even if the upload then failed: it counts towards wear.
     pub flash_written: bool,
@@ -612,8 +592,9 @@ pub struct Snapshot {
 /// next start.
 pub enum ScreenWriteStep<'a> {
     /// The upload session is about to open; nothing is written yet.
-    /// `label` is the request's id (a library item, or `live:<source>`).
-    Starting { label: &'a str, model_id: Option<&'a str> },
+    /// `label` is the request's id (a library item, or `live:<source>`);
+    /// `record_id` the keyboard's record id.
+    Starting { label: &'a str, record_id: Option<&'a str> },
     /// It ended: `ok` finished, else failed after (`flash_written`) or
     /// before touching the flash.
     Ended { flash_written: bool, ok: bool },
@@ -729,10 +710,10 @@ impl DeviceHandle {
     pub fn upload_screen(&self, id: String, anim: ScreenAnimation) -> ScreenUploadResult {
         let (tx, rx) = mpsc::channel();
         if let Err(e) = self.send(Request::UploadScreen { id, anim: Box::new(anim), reply: tx }) {
-            return ScreenUploadResult { model_id: None, flash_written: false, error: Some(e) };
+            return ScreenUploadResult { record_id: None, flash_written: false, error: Some(e) };
         }
         rx.recv_timeout(SCREEN_UPLOAD_TIMEOUT).unwrap_or_else(|_| ScreenUploadResult {
-            model_id: None,
+            record_id: None,
             flash_written: true,
             error: Some("keyboard did not finish the upload in time".into()),
         })
@@ -777,9 +758,29 @@ pub fn spawn(
     DeviceHandle { snapshot, flash, tx }
 }
 
+/// The open command channel of the keyboard on the cable.
 struct Command {
     path: String,
-    driver: SonixFf13<HidChannel>,
+    driver: Driver,
+    /// A live stream runs on this handle: `Driver::live_starting` went out
+    /// and `Driver::live_stopped` has not yet.
+    live: bool,
+}
+
+/// The keyboard on the cable that takes writes, as detected: its model, the
+/// model file's mode it matched (which names its command family) and the
+/// id its records are kept under.
+#[derive(Debug, Clone)]
+struct UsbKeyboard {
+    model: &'static Model,
+    mode: &'static ModeSpec,
+    record_id: String,
+}
+
+impl UsbKeyboard {
+    fn protocol(&self) -> Protocol {
+        self.model.protocol_of(self.mode)
+    }
 }
 
 struct Actor {
@@ -802,8 +803,13 @@ struct Actor {
     command_path: Option<String>,
     /// Path of its display channel (screen pages), if any.
     display_path: Option<String>,
-    /// Model of the keyboard behind `command_path`.
-    usb_model: Option<&'static Model>,
+    /// The keyboard behind `command_path`.
+    usb: Option<UsbKeyboard>,
+    /// What it last reported about itself, and when (Unix ms; families that
+    /// report, driver.rs `family::reports_device`).
+    device_report: Option<(DeviceReport, u64)>,
+    /// When it was last asked.
+    device_read: Option<Instant>,
     /// Its firmware version (USB `bcdDevice`).
     usb_firmware: Option<u16>,
     /// Keyboards on the cable, identical ones counted separately.
@@ -879,7 +885,9 @@ impl Actor {
             last_battery: config_dir.as_deref().map(settings::load_batteries).unwrap_or_default(),
             command_path: None,
             display_path: None,
-            usb_model: None,
+            usb: None,
+            device_report: None,
+            device_read: None,
             usb_firmware: None,
             wired: 0,
             firmware_confirmed: None,
@@ -919,7 +927,10 @@ impl Actor {
                 self.send_live();
                 self.last_live = Some(Instant::now());
                 self.next_live = Instant::now() + LIVE_EVERY;
-            } else if self.mirror.is_some() && !self.streaming() && now >= self.next_mirror {
+            } else if !self.streaming() {
+                self.end_live();
+            }
+            if self.mirror.is_some() && !self.streaming() && now >= self.next_mirror {
                 self.send_mirror();
                 self.next_mirror = Instant::now() + MIRROR_EVERY;
             }
@@ -1129,32 +1140,40 @@ impl Actor {
     /// Upload to the GIF page: command channel for the session, display
     /// channel (opened just for this) for the pages. Progress is emitted as
     /// `screen-upload-progress`.
+    ///
+    /// Nothing else reaches the keyboard meanwhile: the actor handles one
+    /// request at a time ([`next_batch`] gives an upload a turn of its own),
+    /// so live frames, the mirror, the clock sync and device reads wait for
+    /// it, and the progress callback gets only numbers.
     fn upload_screen(&mut self, id: &str, anim: &ScreenAnimation) -> ScreenUploadResult {
-        let model_id = self.usb_model.map(|m| m.id.clone());
-        let fail = |model_id: Option<String>, flash_written: bool, e: String| ScreenUploadResult {
-            model_id,
+        let record_id = self.usb.as_ref().map(|k| k.record_id.clone());
+        let fail = |record_id: Option<String>, flash_written: bool, e: String| ScreenUploadResult {
+            record_id,
             flash_written,
             error: Some(e),
         };
-        let Some(path) = self.display_path.clone() else { return fail(model_id, false, NO_USB.into()) };
+        let (Some(path), Some(protocol)) = (self.display_path.clone(), self.usb.as_ref().map(UsbKeyboard::protocol))
+        else {
+            return fail(record_id, false, NO_USB.into());
+        };
         if let Err(e) = self.may_write() {
-            return fail(model_id, false, e);
+            return fail(record_id, false, e);
         }
         let display = self
             .hid
             .as_ref()
             .ok_or_else(|| "HID unavailable".to_string())
-            .and_then(|hid| open_checked(hid, &path, true));
+            .and_then(|hid| driver::open_display(hid, &path, protocol));
         let mut display = match display {
             Ok(d) => d,
-            Err(e) => return fail(model_id, false, e),
+            Err(e) => return fail(record_id, false, e),
         };
         let app = self.app.clone();
         let label = id.to_string();
         let mut last = Instant::now() - SCREEN_PROGRESS_EVERY;
         let mut started = false;
         let started_at = Instant::now();
-        (self.screen_hook)(ScreenWriteStep::Starting { label: id, model_id: model_id.as_deref() });
+        (self.screen_hook)(ScreenWriteStep::Starting { label: id, record_id: record_id.as_deref() });
         let r = self.with_command(|d| {
             d.upload_screen(&mut display, anim, |done, total| {
                 started = true;
@@ -1174,17 +1193,17 @@ impl Actor {
                     commit = ?report.commit_echo,
                     "screen upload done"
                 );
-                ScreenUploadResult { model_id, flash_written: true, error: None }
+                ScreenUploadResult { record_id, flash_written: true, error: None }
             }
             // A failure after the first page left the GIF page half written.
-            Err(e) => fail(model_id, started, e),
+            Err(e) => fail(record_id, started, e),
         }
     }
 
     /// Write every macro, then record them (names included). Like the
     /// keymap, the record changes only after the keyboard confirmed the data.
     fn apply_macros(&mut self, mut slots: Vec<Option<StoredMacro>>) -> Result<StoredMacros, String> {
-        let model = self.usb_model.ok_or_else(|| NO_USB.to_string())?;
+        let record = self.usb.as_ref().map(|k| k.record_id.clone()).ok_or_else(|| NO_USB.to_string())?;
         self.may_write()?;
         while slots.last().is_some_and(Option::is_none) {
             slots.pop();
@@ -1192,9 +1211,9 @@ impl Actor {
         let mut stored = StoredMacros { slots, written_ms: None };
         let image = stored.image_slots();
         self.with_command(|d| d.write_macros(&image))?;
-        tracing::info!(slots = image.len(), model = %model.id, "macros written");
+        tracing::info!(slots = image.len(), record = %record, "macros written");
         stored.written_ms = Some(now_ms());
-        self.macros.models.insert(model.id.clone(), stored.clone());
+        self.macros.models.insert(record, stored.clone());
         if let Ok(mut s) = self.shared.lock() {
             s.macros = self.macros.clone();
         }
@@ -1211,12 +1230,12 @@ impl Actor {
     /// the keyboard confirmed the data (checksum), so it never claims a
     /// layout the keyboard did not get.
     fn apply_keymap(&mut self, layer: Layer, entries: Vec<(u8, KeyAction)>) -> Result<StoredKeymap, String> {
-        let model = self.usb_model.ok_or_else(|| NO_USB.to_string())?;
-        let map = kb_core::keymap::canonical(model, layer, entries).map_err(|e| e.to_string())?;
+        let usb = self.usb.clone().ok_or_else(|| NO_USB.to_string())?;
+        let map = kb_core::keymap::canonical(usb.model, layer, entries).map_err(|e| e.to_string())?;
         self.may_write()?;
-        self.with_command(|d| d.apply_keymap(layer, map.iter().map(|(&l, &a)| (l, a))))?;
-        tracing::info!(?layer, keys = map.len(), model = %model.id, "keymap layer written");
-        let stored = self.keymaps.models.entry(model.id.clone()).or_default();
+        self.with_command(|d| d.apply_keymap(layer, &map))?;
+        tracing::info!(?layer, keys = map.len(), record = %usb.record_id, "keymap layer written");
+        let stored = self.keymaps.models.entry(usb.record_id).or_default();
         *stored.layer_mut(layer) = StoredLayer::new(&map, now_ms());
         let result = stored.clone();
         if let Ok(mut s) = self.shared.lock() {
@@ -1289,11 +1308,12 @@ impl Actor {
         self.gate(WriteKind::Memory)
     }
 
-    /// The wired keyboard's firmware: tested, or said yes to this session.
+    /// The wired keyboard's firmware: tested in the detected mode, or said
+    /// yes to this session.
     fn firmware_check(&self) -> Option<FirmwareCheck> {
-        self.usb_model.zip(self.usb_firmware).map(|(model, release)| FirmwareCheck {
+        self.usb.as_ref().zip(self.usb_firmware).map(|(k, release)| FirmwareCheck {
             release,
-            verified: model.mode(ConnectionKind::Usb).is_some_and(|mode| mode.firmware_verified(release)),
+            verified: k.mode.firmware_verified(release),
             confirmed: self.firmware_confirmed == Some(release),
         })
     }
@@ -1325,31 +1345,36 @@ impl Actor {
         Some(block)
     }
 
-    /// Run `f` against the wired command channel, opening it on demand.
-    /// Any transport error drops the handle so the next call reopens it.
-    fn with_command<T>(
-        &mut self,
-        f: impl FnOnce(&mut SonixFf13<HidChannel>) -> kb_core::sonix::Result<T>,
-    ) -> Result<T, String> {
+    /// Run `f` against the wired command channel's driver, opening it on
+    /// demand ([`Self::with_open`]).
+    fn with_command<T>(&mut self, f: impl FnOnce(&mut Driver) -> driver::Result<T>) -> Result<T, String> {
+        self.with_open(|c| f(&mut c.driver))
+    }
+
+    /// Run `f` against the wired command channel, opening it on demand in
+    /// the detected keyboard's family. Any transport error drops the handle
+    /// so the next call reopens it.
+    fn with_open<T>(&mut self, f: impl FnOnce(&mut Command) -> driver::Result<T>) -> Result<T, String> {
         let path = self.command_path.clone().ok_or_else(|| NO_USB.to_string())?;
-        if self.command.as_ref().is_none_or(|c| c.path != path) {
+        let protocol = self.usb.as_ref().map(UsbKeyboard::protocol).ok_or_else(|| NO_USB.to_string())?;
+        if self.command.as_ref().is_none_or(|c| c.path != path || c.driver.protocol() != protocol) {
             let hid = self.hid.as_ref().ok_or("HID unavailable")?;
-            let channel = open_checked(hid, &path, false)?;
-            self.command = Some(Command { path, driver: SonixFf13::new(channel) });
+            let driver = driver::open_command(hid, &path, protocol)?;
+            self.command = Some(Command { path, driver, live: false });
         }
         let cmd = self.command.as_mut().expect("opened above");
-        match f(&mut cmd.driver) {
+        match f(cmd) {
             Ok(v) => Ok(v),
             Err(e) => {
                 // The keyboard now and then refuses one real-time frame
                 // (`FF`, about 1 in 100); the next one goes 50 ms later.
                 // `send_live` warns when they keep failing.
-                if matches!(e, kb_core::sonix::DriverError::Refused { op: 0x20, .. }) {
+                if e.is_noise() {
                     tracing::debug!("command failed: {e}");
                 } else {
                     tracing::warn!("command failed: {e}");
                 }
-                if matches!(e, kb_core::sonix::DriverError::Transport(_)) {
+                if e.is_transport() {
                     self.command = None;
                 }
                 Err(e.to_string())
@@ -1388,7 +1413,16 @@ impl Actor {
         };
         let cal = self.calibration;
         let frame: Vec<(u8, Rgb)> = keys.into_iter().map(|(l, c, level)| (l, cal.apply_dimmed(c, level))).collect();
-        match self.with_command(|d| d.realtime_frame(frame)) {
+        // The first frame on this handle starts the stream in the family's
+        // driver ("04 xx": nothing to do).
+        let sent = self.with_open(|c| {
+            if !c.live {
+                c.driver.live_starting()?;
+                c.live = true;
+            }
+            c.driver.live_frame(frame)
+        });
+        match sent {
             Ok(()) => self.live_failures = 0,
             Err(e) => {
                 self.live_failures += 1;
@@ -1401,29 +1435,29 @@ impl Actor {
         }
     }
 
+    /// The live stream ended: tell the family's driver, once, on the handle
+    /// the stream ran on ("04 xx": nothing to do). A handle dropped
+    /// meanwhile took the stream with it.
+    fn end_live(&mut self) {
+        let Some(cmd) = self.command.as_mut().filter(|c| c.live) else { return };
+        cmd.live = false;
+        if let Err(e) = cmd.driver.live_stopped() {
+            tracing::warn!("live stream end failed: {e}");
+            if e.is_transport() {
+                self.command = None;
+            }
+        }
+    }
+
     fn send_mirror(&mut self) {
         if self.command_path.is_none() {
             return;
         }
-        match self.with_command(|d| d.read_colors()) {
-            Ok(raw) => {
-                let cal = self.calibration;
-                let expect = self.mirror.clone().unwrap_or_default();
-                let level = expect.level.min(MAX_LEVEL);
-                // The LED value a UI colour is driven with at this level.
-                let driven = |c: Rgb| cal.apply(c).map(|v| scale_to_level(v, level));
-                let expected = |led: u8| {
-                    if let Some((_, c)) = self.indicators.iter().find(|(l, _)| *l == led) {
-                        return Some(*c);
-                    }
-                    match &expect.colors {
-                        Expected::Unknown => None,
-                        Expected::Uniform(c) => Some(driven(*c)),
-                        Expected::PerKey(keys) => Some(keys.get(&led).map_or([0, 0, 0], |c| driven(*c))),
-                    }
-                };
-                let peak = scale_to_level(255, if level == 0 { MAX_LEVEL } else { level });
-                let colors = readback::decode_frame(&raw, expected, peak);
+        let cal = self.calibration;
+        let expect = self.mirror.clone().unwrap_or_default();
+        let indicators = self.indicators.clone();
+        match self.with_command(|d| d.mirror_colors(&expect, cal, &indicators)) {
+            Ok(colors) => {
                 // Show what the keys look like, in monitor colours.
                 let payload: Vec<LedColor> = colors
                     .into_iter()
@@ -1436,6 +1470,26 @@ impl Actor {
             }
             Err(e) => tracing::debug!("mirror read skipped: {e}"),
         }
+    }
+
+    /// What the keyboard on the cable reports about itself, and when it was
+    /// read (Unix ms): asked again at most every [`BATTERY_REFRESH`], only
+    /// in a family that reports ([`driver::family::reports_device`]; never
+    /// "04 xx", so nothing is sent to those). Runs on the actor like every
+    /// other request, never during a screen upload.
+    fn refresh_device_report(&mut self) -> Option<(DeviceReport, u64)> {
+        let protocol = self.usb.as_ref().map(UsbKeyboard::protocol)?;
+        if !driver::family::reports_device(protocol) {
+            return None;
+        }
+        if self.device_read.is_none_or(|at| at.elapsed() >= BATTERY_REFRESH) {
+            self.device_read = Some(Instant::now());
+            match self.with_command(|d| d.device_info()) {
+                Ok(report) => self.device_report = report.map(|r| (r, now_ms())),
+                Err(e) => tracing::debug!("device report not read: {e}"),
+            }
+        }
+        self.device_report.clone()
     }
 
     fn enumerate(&mut self) {
@@ -1498,7 +1552,16 @@ impl Actor {
                 self.wait_clock(false);
             }
         }
-        self.usb_model = usb.filter(|k| k.command.is_some()).map(|k| k.model);
+        let usb_keyboard = usb.filter(|k| k.command.is_some()).map(|k| UsbKeyboard {
+            model: k.model,
+            mode: k.mode,
+            record_id: k.record_id(),
+        });
+        if usb_keyboard.as_ref().map(|k| &k.record_id) != self.usb.as_ref().map(|k| &k.record_id) {
+            self.device_report = None;
+            self.device_read = None;
+        }
+        self.usb = usb_keyboard;
         self.usb_firmware = usb.and_then(|k| k.firmware);
         let wired = kb_core::wired_count(&detected);
         if wired != self.wired && wired > 1 {
@@ -1510,6 +1573,7 @@ impl Actor {
         if self.command_path.is_none() {
             self.command = None;
         }
+        let device = self.refresh_device_report();
 
         let mut infos = Vec::with_capacity(detected.len());
         for k in &detected {
@@ -1528,7 +1592,13 @@ impl Actor {
                 _ => None,
             }
             .or_else(|| self.last_battery.get(&k.model.id).cloned());
-            infos.push(KeyboardInfo::from_detected(k, battery));
+            // The keyboard on the cable may report about itself (not "04 xx").
+            let device = device
+                .as_ref()
+                .filter(|_| k.connection == ConnectionKind::Usb)
+                .filter(|_| self.usb.as_ref().is_some_and(|u| u.record_id == k.record_id()));
+            let battery = device.and_then(|(d, at)| Some(Battery { percent: d.battery?, read_at_ms: *at })).or(battery);
+            infos.push(KeyboardInfo::from_detected(k, battery, device.map(|(d, _)| d.clone())));
         }
 
         let (changed, unsupported_changed) = {

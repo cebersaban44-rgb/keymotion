@@ -122,17 +122,20 @@ function useThemeSync() {
 }
 
 /**
- * Load the app's keymap, macro and screen records for the connected model,
- * so unsaved edits are known (and guarded) before their pages are opened.
+ * Load the app's keymap, macro and screen records for the connected
+ * keyboard (kept per record id: model and command family), so unsaved edits
+ * are known (and guarded) before their pages are opened.
  */
 function useKeyboardRecords() {
-  const modelId = useActiveKeyboard()?.modelId;
+  const kb = useActiveKeyboard();
+  const modelId = kb?.modelId;
+  const recordId = kb?.recordId;
   useEffect(() => {
-    if (!modelId) return;
-    useKeymap.getState().load(modelId).catch(console.error);
-    useMacros.getState().load(modelId).catch(console.error);
-    useScreen.getState().load(modelId).catch(console.error);
-  }, [modelId]);
+    if (!recordId) return;
+    useKeymap.getState().load(recordId).catch(console.error);
+    useMacros.getState().load(recordId).catch(console.error);
+    useScreen.getState().load(recordId).catch(console.error);
+  }, [recordId]);
   // A profile written by the per-app profiles: those records are read again.
   useEffect(() => (modelId ? followAutoWrites(modelId) : undefined), [modelId]);
 }

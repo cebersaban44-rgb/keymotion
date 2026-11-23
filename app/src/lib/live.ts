@@ -391,8 +391,8 @@ export function startLive(draw: (t: TrackInfo, cover: Blob | null) => Promise<Pr
     const at = s.last?.atMs ?? null;
     const ended = wasUploading && !s.uploading;
     if ((lastShownMs !== undefined && at !== lastShownMs) || ended) {
-      const modelId = useScreen.getState().modelId;
-      if (modelId) useScreen.getState().load(modelId).catch(console.error);
+      const recordId = useScreen.getState().recordId;
+      if (recordId) useScreen.getState().load(recordId).catch(console.error);
     }
     lastShownMs = at;
     wasUploading = !!s.uploading;

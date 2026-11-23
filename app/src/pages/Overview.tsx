@@ -67,13 +67,22 @@ const isRed = (c: string | undefined) => {
  *  is shown, so a passing red in a moving effect does not count. */
 const CHARGE_STEADY = 8;
 
+/** Charging or fully charged over USB. A keyboard of the "04 xx" family
+ *  shows it on its Fn light ([`useFnLightCharge`]); one that reports it
+ *  (`KeyboardInfo.device`, the "AA" family) says so itself. */
+function useChargeState(kb: KeyboardInfo, mirror: Record<number, string> | null): "charging" | "full" | null {
+  const ff13 = kb.protocol === "sonix-ff13";
+  const fromLight = useFnLightCharge(kb, ff13 ? mirror : null);
+  return ff13 ? fromLight : (kb.device?.charge ?? null);
+}
+
 /** Charging or fully charged, read from the Fn light over USB. The firmware
  *  lights Fn red while the battery charges and turns it off when it is full,
  *  whatever the effect (AK980 PRO: red while charging on 2026-11-10; off with
  *  a full battery on the keyboard's own screen, owner, 2026-11-11). There is
  *  no battery level over USB, but this tells the two apart. A red effect
  *  would light the keys next to Fn too, so those must not be red. */
-function useChargeState(kb: KeyboardInfo, mirror: Record<number, string> | null): "charging" | "full" | null {
+function useFnLightCharge(kb: KeyboardInfo, mirror: Record<number, string> | null): "charging" | "full" | null {
   const [state, setState] = useState<"charging" | "full" | null>(null);
   const run = useRef<{ red: boolean; n: number }>({ red: false, n: 0 });
   const led = (id: string) => kb.geometry?.keys.find((k) => k.id === id)?.led;
@@ -131,7 +140,7 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
   // known yet, so nothing here says it is connected.
   const receiver = kb.connection === "dongle";
   const live = usb && kb.hasCommandChannel && kb.features.includes("lighting");
-  const mirror = useMirror(live);
+  const mirror = useMirror(live, kb.protocol);
   const pressed = usePressedKeys(kb.geometry ?? null);
   const pressedClass = useMemo(() => Object.fromEntries([...pressed].map((l) => [l, "is-pressed"])), [pressed]);
   // Off when nothing but the indicator keys (Num Lock, Caps Lock, Fn) is lit,
@@ -176,7 +185,7 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
                 {t(charge === "charging" ? "overview.bat.charging" : "overview.bat.full")}
               </span>
             )}
-            {!usb && kb.battery && (
+            {(!usb || kb.batteryOverUsb) && kb.battery && (
               <span title={lastRead} className="flex items-center gap-1.5 text-ink" data-overview-battery>
                 <BatteryMedium size={15} className="text-ok" aria-hidden />
                 <span className="num">{t("overview.bat.level", { level: percent(kb.battery.percent) })}</span>

@@ -484,6 +484,55 @@ mod tests {
     }
 
     #[test]
+    fn records_from_1_2_1_load_under_the_ff13_keyboards_record_id() {
+        // Written by Keymotion 1.2.1, keyed by model id. A "04 xx" keyboard's
+        // record id is its model id, so they still belong to it.
+        let dir = temp_dir("records-121");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(KEYMAP_FILE),
+            r#"{"version":1,"models":{"ajazz-ak980-pro":{"base":{"entries":{},"writtenMs":null},"fn":{"entries":{"33":"02000400","34":"03e90000"},"writtenMs":1794000000000}}}}"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.join(MACROS_FILE),
+            r#"{"version":1,"models":{"ajazz-ak980-pro":{"slots":[{"name":"ok","steps":[["down",18,20],["up",18,20]]},null],"writtenMs":1794000000000}}}"#,
+        )
+        .unwrap();
+        let iface = kb_transport::hid::HidInterface {
+            vid: 0x0C45,
+            pid: 0x8009,
+            release: 0x0106,
+            usage_page: 0xFF13,
+            usage: 1,
+            interface_number: -1,
+            bus: kb_transport::hid::Bus::Usb,
+            manufacturer: None,
+            product: Some("AK980 PRO".into()),
+            serial: None,
+            path: "p".into(),
+        };
+        let found = kb_core::detect(&[iface], &[]);
+        let record = found.first().expect("the AK980 PRO on the cable").record_id();
+        assert_eq!(record, "ajazz-ak980-pro");
+
+        let keymaps = load_keymaps(&dir);
+        let layer = &keymaps.models.get(&record).expect("keymap record").fn_layer;
+        assert_eq!(layer.actions(), LayerMap::from([(33, KeyAction::key(0x04)), (34, KeyAction::Consumer(0xE9))]));
+        assert_eq!(layer.written_ms, Some(1_794_000_000_000));
+        let macros = load_macros(&dir);
+        let stored = macros.models.get(&record).expect("macro record");
+        assert_eq!(stored.slots.len(), 2);
+        assert_eq!(stored.slots[0].as_ref().map(|m| m.steps.len()), Some(2));
+        // Saved again, the files keep their shape: 1.2.1 still reads them.
+        save_keymaps(&dir, &keymaps).unwrap();
+        save_macros(&dir, &macros).unwrap();
+        assert_eq!(load_keymaps(&dir), keymaps);
+        assert_eq!(load_macros(&dir), macros);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn unknown_keymap_entries_are_skipped() {
         let layer = StoredLayer {
             entries: BTreeMap::from([

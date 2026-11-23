@@ -4,6 +4,7 @@
 
 import type { GeometryInfo } from "../bindings/GeometryInfo";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
+import type { KeyboardLimits } from "../bindings/KeyboardLimits";
 import type { Locale } from "./i18n/locales";
 // Generated from Rust by `cargo test` (dto.rs export_mock_geometry).
 import ak980Geometry from "../bindings/geometry-ajazz-ak980-pro.json";
@@ -22,6 +23,19 @@ const DOCS_FOLDER: Record<Locale, string> = { en: "", tr: "tr/", ru: "ru/", "zh-
 export const docsPage = (path: string, locale: Locale) => `${DOCS_URL}${DOCS_FOLDER[locale]}${path}`;
 
 /**
+ * The limits of a keyboard of SONiX's "04 xx" family (the backend's
+ * driver.rs `family::limits`): the stand-in keyboard's, and the browser
+ * preview's.
+ */
+export const FF13_LIMITS: KeyboardLimits = {
+  brightness: { min: 0, max: 5 },
+  speed: { min: 0, max: 5 },
+  macroBudget: "ff13",
+  screen: { maxFrames: 140, provenFrames: 135, pageMs: 145 },
+  keyActions: { disabled: true, holdMacro: true, doubleClick: true },
+};
+
+/**
  * Stand-in for the supported model while nothing is connected. No channel
  * is open and no feature is usable, so every page that gets it shows its
  * "connect the cable" state and sends nothing; the drawing and the screen
@@ -30,6 +44,10 @@ export const docsPage = (path: string, locale: Locale) => `${DOCS_URL}${DOCS_FOL
 export const OFFLINE_KEYBOARD: KeyboardInfo = {
   key: "offline",
   modelId: SUPPORTED_MODEL_ID,
+  protocol: "sonix-ff13",
+  recordId: SUPPORTED_MODEL_ID,
+  limits: FF13_LIMITS,
+  batteryOverUsb: false,
   modelName: SUPPORTED_MODEL,
   vendor: "AJAZZ",
   layout: "98",

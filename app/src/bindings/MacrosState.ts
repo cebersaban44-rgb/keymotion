@@ -14,6 +14,8 @@ slots: Array<MacroInfo | null>,
  */
 writtenMs: number | null, 
 /**
- * Memory limit: `(steps + slots) × 8` bytes may not exceed this.
+ * Memory limit of the "04 xx" family: `(steps + slots) × 8` bytes may
+ * not exceed this (`KeyboardInfo.limits.macroBudget` names the rule a
+ * keyboard counts by).
  */
 budget: number, maxSlots: number, minDelayMs: number, maxName: number, };

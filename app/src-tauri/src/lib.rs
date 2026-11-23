@@ -11,6 +11,7 @@ mod calendar;
 mod channel;
 mod device;
 mod diagnostics;
+mod driver;
 mod dto;
 mod front;
 mod games;
@@ -147,10 +148,11 @@ fn lock_library(lib: &Mutex<ScreenLibrary>) -> Result<std::sync::MutexGuard<'_, 
     lib.lock().map_err(|_| "screen library unavailable".to_string())
 }
 
-/// The screen library and what this model's GIF page shows.
+/// The screen library and what the GIF page of the keyboard with this
+/// record id (`KeyboardInfo.recordId`) shows.
 #[tauri::command]
-fn screen_state(library: Library<'_>, model_id: String) -> Result<ScreenState, String> {
-    Ok(lock_library(&library)?.state(&model_id))
+fn screen_state(library: Library<'_>, record_id: String) -> Result<ScreenState, String> {
+    Ok(lock_library(&library)?.state(&record_id))
 }
 
 /// Store an animation the UI prepared. The body is the blob (header +
@@ -208,17 +210,17 @@ fn screen_data(library: Library<'_>, id: String, frames: Option<u32>) -> Result<
 }
 
 #[tauri::command]
-fn screen_rename(library: Library<'_>, model_id: String, id: String, name: String) -> Result<ScreenState, String> {
+fn screen_rename(library: Library<'_>, record_id: String, id: String, name: String) -> Result<ScreenState, String> {
     let mut lib = lock_library(&library)?;
     lib.rename(&id, &name).map_err(|e| e.to_string())?;
-    Ok(lib.state(&model_id))
+    Ok(lib.state(&record_id))
 }
 
 #[tauri::command]
-fn screen_remove(library: Library<'_>, model_id: String, id: String) -> Result<ScreenState, String> {
+fn screen_remove(library: Library<'_>, record_id: String, id: String) -> Result<ScreenState, String> {
     let mut lib = lock_library(&library)?;
     lib.remove(&id).map_err(|e| e.to_string())?;
-    Ok(lib.state(&model_id))
+    Ok(lib.state(&record_id))
 }
 
 /// Upload a library item to the USB keyboard's GIF page (flash write, up
@@ -228,19 +230,29 @@ async fn screen_upload(
     device: Device<'_>,
     library: Library<'_>,
     live: Live<'_>,
-    model_id: String,
+    record_id: String,
     id: String,
 ) -> Result<ScreenState, String> {
     tracing::debug!(%id, "ipc: screen_upload");
-    let anim = lock_library(&library)?.animation(&id)?;
+    // The keyboard it goes to may lose its clock page with it (the first
+    // upload to an "AA" keyboard; never "04 xx"): not before the user said
+    // yes.
+    let target = usb_record(&device);
+    let anim = {
+        let lib = lock_library(&library)?;
+        if target.is_some_and(|r| lib.clock_page_at_risk(&r)) {
+            return Err(ERR_CLOCK_PAGE.into());
+        }
+        lib.animation(&id)?
+    };
     let handle = device.inner().clone();
     let (result, id) = tauri::async_runtime::spawn_blocking(move || (handle.upload_screen(id.clone(), anim), id))
         .await
         .map_err(|e| e.to_string())?;
     let mut lib = lock_library(&library)?;
-    let model = result.model_id.clone().unwrap_or(model_id.clone());
+    let record = result.record_id.clone().unwrap_or(record_id.clone());
     match &result.error {
-        None => lib.uploaded(&model, &id).map_err(|e| e.to_string())?,
+        None => lib.uploaded(&record, &id).map_err(|e| e.to_string())?,
         Some(_) if result.flash_written => {
             lib.count_upload(true);
             if let Err(e) = lib.save() {
@@ -249,7 +261,7 @@ async fn screen_upload(
         }
         Some(_) => {}
     }
-    let state = lib.state(&model_id);
+    let state = lib.state(&record_id);
     drop(lib);
     // The upload used the live budget.
     live.changed();
@@ -257,6 +269,29 @@ async fn screen_upload(
         None => Ok(state),
         Some(e) => Err(e),
     }
+}
+
+/// Refused upload: the keyboard's clock page would go, and the user was not
+/// asked (`screen_ack_clock_page`).
+const ERR_CLOCK_PAGE: &str = "screen upload would replace the keyboard's clock page; not acknowledged";
+
+/// The record id of the keyboard on the cable that takes writes: the one a
+/// screen upload goes to.
+fn usb_record(device: &DeviceHandle) -> Option<String> {
+    let snap = device.snapshot.lock().ok()?;
+    snap.keyboards
+        .iter()
+        .find(|k| k.connection == dto::Connection::Usb && k.has_command_channel)
+        .map(|k| k.record_id.clone())
+}
+
+/// The user said yes to losing the clock page of the keyboard with this
+/// record id with the next upload (`ScreenState.clockPageAtRisk`).
+#[tauri::command]
+fn screen_ack_clock_page(library: Library<'_>, record_id: String) -> Result<ScreenState, String> {
+    let mut lib = lock_library(&library)?;
+    lib.ack_clock_page(&record_id).map_err(|e| e.to_string())?;
+    Ok(lib.state(&record_id))
 }
 
 /// Whether AJAZZ's official driver left a copy of the factory animation on
@@ -275,7 +310,7 @@ async fn screen_backup_from_driver(
     found: State<'_, Arc<DriverGif>>,
     library: Library<'_>,
     live: Live<'_>,
-    model_id: String,
+    record_id: String,
 ) -> Result<ScreenState, String> {
     tracing::debug!("ipc: screen_backup_from_driver");
     let found = found.inner().clone();
@@ -290,7 +325,7 @@ async fn screen_backup_from_driver(
     let state = {
         let mut lib = lock_library(&library)?;
         lib.store_factory(&gif, &anim)?;
-        lib.state(&model_id)
+        lib.state(&record_id)
     };
     // The live mode no longer needs to ask about the factory animation.
     live.changed();
@@ -963,12 +998,13 @@ fn keymap_catalog() -> KeymapCatalog {
     KeymapCatalog::build()
 }
 
-/// What the app last wrote to this model's keymap. The keyboard cannot
-/// report its keymap; layers never written are the factory default.
+/// What the app last wrote to the keymap of the keyboards with this record
+/// id (`KeyboardInfo.recordId`). The keyboard cannot report its keymap;
+/// layers never written are the factory default.
 #[tauri::command]
-fn keymap_state(device: Device<'_>, model_id: String) -> KeymapState {
+fn keymap_state(device: Device<'_>, record_id: String) -> KeymapState {
     let snap = device.snapshot.lock();
-    snap.ok().and_then(|s| s.keymaps.models.get(&model_id).map(KeymapState::from)).unwrap_or_default()
+    snap.ok().and_then(|s| s.keymaps.models.get(&record_id).map(KeymapState::from)).unwrap_or_default()
 }
 
 /// Write one keymap layer of the USB keyboard (flash write) and record it.
@@ -990,11 +1026,12 @@ async fn apply_keymap(
     .map(|k| KeymapState::from(&k))
 }
 
-/// What the app last wrote to this model's macro memory, with the limits.
+/// What the app last wrote to the macro memory of the keyboards with this
+/// record id (`KeyboardInfo.recordId`), with the limits.
 #[tauri::command]
-fn macros_state(device: Device<'_>, model_id: String) -> MacrosState {
+fn macros_state(device: Device<'_>, record_id: String) -> MacrosState {
     let snap = device.snapshot.lock();
-    let stored = snap.ok().and_then(|s| s.macros.models.get(&model_id).cloned()).unwrap_or_default();
+    let stored = snap.ok().and_then(|s| s.macros.models.get(&record_id).cloned()).unwrap_or_default();
     MacrosState::from(&stored)
 }
 
@@ -1410,16 +1447,31 @@ fn now_ms() -> f64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_millis() as f64)
 }
 
+/// The record id of the keyboard of `model_id` the app shows (the cable
+/// first, as `useActiveKeyboard`): its records are kept per command family.
+/// The model id (the "04 xx" family's) while none is connected.
+fn record_of(keyboards: &[KeyboardInfo], model_id: &str) -> String {
+    keyboards
+        .iter()
+        .filter(|k| k.model_id == model_id)
+        .min_by_key(|k| k.focus_rank())
+        .map_or_else(|| model_id.to_string(), |k| k.record_id.clone())
+}
+
 /// What the keyboard of `model_id` has, as this computer recorded it: the
 /// keymap and macro records, the Lighting page's record, the library item
-/// on the GIF page (profiles.rs). Editors' unsaved drafts are not in it.
+/// on the GIF page (profiles.rs), under the keyboard's record id
+/// ([`record_of`]). Editors' unsaved drafts are not in it. A profile still
+/// fits by model id, so it goes to either family's keyboards.
 pub(crate) fn profile_current(app: &AppHandle, model_id: &str) -> Result<profiles::Current, String> {
-    let (keymap, macros) = {
+    let (keymap, macros, record) = {
         let device = app.state::<Arc<DeviceHandle>>();
         let snap = device.snapshot.lock().map_err(|_| "device state unavailable")?;
+        let record = record_of(&snap.keyboards, model_id);
         (
-            profiles::ProfileKeymap::from_record(snap.keymaps.models.get(model_id)),
-            snap.macros.models.get(model_id).map(|m| m.slots.clone()).unwrap_or_default(),
+            profiles::ProfileKeymap::from_record(snap.keymaps.models.get(&record)),
+            snap.macros.models.get(&record).map(|m| m.slots.clone()).unwrap_or_default(),
+            record,
         )
     };
     let lighting = app
@@ -1430,7 +1482,7 @@ pub(crate) fn profile_current(app: &AppHandle, model_id: &str) -> Result<profile
         .and_then(|state| profiles::ProfileLighting::from_record(&state));
     let screen = {
         let library = app.state::<Arc<Mutex<ScreenLibrary>>>();
-        let state = lock_library(&library)?.state(model_id);
+        let state = lock_library(&library)?.state(&record);
         let shown = state.shown.as_deref();
         state
             .items
@@ -1735,10 +1787,10 @@ fn screen_journal(library: &Arc<Mutex<ScreenLibrary>>) -> device::ScreenWriteHoo
     Box::new(move |step: ScreenWriteStep<'_>| {
         let Ok(mut lib) = library.lock() else { return };
         match step {
-            ScreenWriteStep::Starting { label, model_id } => {
+            ScreenWriteStep::Starting { label, record_id } => {
                 let retry =
                     if label.starts_with("live:") { lib.live_own().map(|o| o.id) } else { Some(label.to_string()) };
-                lib.write_starting(model_id, retry);
+                lib.write_starting(record_id, retry);
             }
             ScreenWriteStep::Ended { flash_written, ok } => lib.write_ended(flash_written, ok),
         }
@@ -1995,6 +2047,7 @@ pub fn run() {
             screen_rename,
             screen_remove,
             screen_upload,
+            screen_ack_clock_page,
             screen_find_driver_backup,
             screen_backup_from_driver,
             flash_write_state,
@@ -2080,7 +2133,44 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::percent_decode;
+    use super::{percent_decode, record_of};
+    use crate::dto::KeyboardInfo;
+    use kb_core::detect::BlePeer;
+    use kb_transport::hid::{Bus, HidInterface};
+
+    #[test]
+    fn records_go_with_the_keyboard_the_app_shows() {
+        let collection = |pid, usage_page, bus, product: Option<&str>| HidInterface {
+            vid: 0x0C45,
+            pid,
+            release: 0x0106,
+            usage_page,
+            usage: 1,
+            interface_number: -1,
+            bus,
+            manufacturer: None,
+            product: product.map(str::to_string),
+            serial: None,
+            path: format!("p-{pid:x}-{usage_page:x}"),
+        };
+        let peer = BlePeer { name: "AK980 PRO-1".into(), address: 1, address_text: "1".into(), connected: true };
+        let cable = collection(0x8009, 0xFF13, Bus::Usb, Some("AK980 PRO"));
+        let bluetooth = collection(0xFEFE, 0x0001, Bus::Bluetooth, None);
+        let keyboards: Vec<KeyboardInfo> = kb_core::detect(&[cable, bluetooth], &[peer])
+            .iter()
+            .map(|k| KeyboardInfo::from_detected(k, None, None))
+            .collect();
+        assert_eq!(keyboards.len(), 2);
+        // A "04 xx" keyboard's records are its model's, as before families.
+        assert_eq!(record_of(&keyboards, "ajazz-ak980-pro"), "ajazz-ak980-pro");
+        // Nothing connected: the model id.
+        assert_eq!(record_of(&[], "ajazz-ak980-pro"), "ajazz-ak980-pro");
+        // The cable comes first.
+        let mut aa = keyboards.clone();
+        let usb = aa.iter_mut().find(|k| k.connection == crate::dto::Connection::Usb).unwrap();
+        usb.record_id = "ajazz-ak980-pro.aa".into();
+        assert_eq!(record_of(&aa, "ajazz-ak980-pro"), "ajazz-ak980-pro.aa");
+    }
 
     #[test]
     fn decodes_names_from_the_ui() {

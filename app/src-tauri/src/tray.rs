@@ -8,7 +8,8 @@
 //! * while a new version waits, "Update available: Keymotion 1.1.0" (or,
 //!   downloaded by "update by itself", "Install now: …"), which opens the
 //!   update dialog; the icon then carries a dot (updates.rs);
-//! * the keyboard and its connection (and battery, without the cable);
+//! * the keyboard and its connection (and battery, without the cable unless
+//!   the keyboard reports it there);
 //! * Open Keymotion;
 //! * Focus timer ▸ the phase and the minutes left, start / pause / resume,
 //!   skip to the next phase, stop;
@@ -374,6 +375,10 @@ struct KeyboardLine {
     name: String,
     connection: Connection,
     battery: Option<u8>,
+    /// The keyboard reports its battery on the cable too
+    /// (`KeyboardInfo::battery_over_usb`); else a reading there is the last
+    /// Bluetooth one, and the menu leaves it out.
+    battery_over_usb: bool,
 }
 
 /// What the menu is made from.
@@ -495,7 +500,7 @@ fn view_of(t: &TrayTexts, f: &Facts, now_ms: f64, tz: &TimeZone) -> View {
             // The name the UI gives the model in its language, if any.
             let name = t.model_names.get(&k.model_id).unwrap_or(&k.name).clone();
             let mut parts = vec![name, connection_word(t, k.connection).to_string()];
-            if let Some(n) = k.battery.filter(|_| k.connection != Connection::Usb) {
+            if let Some(n) = k.battery.filter(|_| k.connection != Connection::Usb || k.battery_over_usb) {
                 parts.push(fill(t, &t.battery, &[("n", &n.to_string())]));
             }
             parts.join(" · ")
@@ -591,6 +596,7 @@ fn keyboard_line(app: &AppHandle) -> Option<KeyboardLine> {
         name,
         connection: k.connection,
         battery: k.battery.as_ref().map(|b| b.percent),
+        battery_over_usb: k.battery_over_usb,
     })
 }
 
@@ -1143,6 +1149,7 @@ mod tests {
                 name: "AJAZZ AK980 PRO".into(),
                 connection: Connection::Bluetooth,
                 battery: Some(80),
+                battery_over_usb: false,
             }),
             pomodoro: Some(pomodoro(PomodoroStatus::Running, PomodoroPhase::Focus, 1, 5.0 * 60_000.0)),
             reminders: Some((true, Some((at(12, 14, 30), "Su iç".into())))),
@@ -1177,10 +1184,19 @@ mod tests {
             name: "AJAZZ AK980 PRO".into(),
             connection: Connection::Usb,
             battery: Some(80),
+            battery_over_usb: false,
         });
         f.pomodoro = Some(pomodoro(PomodoroStatus::Idle, PomodoroPhase::Focus, 1, 0.0));
         let v = view_of(&t, &f, now, &tz);
         assert_eq!(v.keyboard, "AJAZZ AK980 PRO · USB cable");
+        // A keyboard that reports its battery on the cable: shown there too.
+        if let Some(k) = f.keyboard.as_mut() {
+            k.battery_over_usb = true;
+        }
+        assert_eq!(view_of(&t, &f, now, &tz).keyboard, "AJAZZ AK980 PRO · USB cable · battery 80%");
+        if let Some(k) = f.keyboard.as_mut() {
+            k.battery_over_usb = false;
+        }
         // The UI's name for the model, in Chinese the name it is sold under.
         let mut zh = t.clone();
         zh.model_names.insert("ajazz-ak980-pro".into(), "黑爵 AK980 V2（带屏版）".into());

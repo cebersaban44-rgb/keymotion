@@ -20,4 +20,10 @@ shown: string | null, uploadsToday: number, uploadsTotal: number, limits: Screen
  * The last upload to the GIF page stopped partway (an error, a quit, a
  * crash): the page holds part of it. `shown` is `null` meanwhile.
  */
-incomplete: ScreenIncomplete | null, };
+incomplete: ScreenIncomplete | null, 
+/**
+ * The next upload may replace this keyboard's clock page for good, and
+ * the user has not said yes yet (`screen_ack_clock_page`): the first
+ * upload to an "AA" keyboard. Always `false` in the "04 xx" family.
+ */
+clockPageAtRisk: boolean, };

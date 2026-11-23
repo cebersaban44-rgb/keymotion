@@ -17,22 +17,25 @@ export function Steps({
   value,
   onChange,
   label,
+  min = 0,
   max = 5,
   disabled,
 }: {
   value: number;
   onChange: (v: number) => void;
   label: string;
+  /** The keyboard's range (`KeyboardInfo.limits`), 0–5 by default. */
+  min?: number;
   max?: number;
   disabled?: boolean;
 }) {
-  const pct = (value / max) * 100;
+  const pct = ((value - min) / (max - min)) * 100;
   return (
     <div className="flex flex-col" data-steps>
       <input
         type="range"
         className="range"
-        min={0}
+        min={min}
         max={max}
         step={1}
         value={value}
@@ -42,7 +45,7 @@ export function Steps({
         onChange={(e) => onChange(Number(e.target.value))}
         style={{ "--pct": `calc(10px + (100% - 20px) * ${pct / 100})` } as CSSProperties}
       />
-      <Ticks count={max + 1} />
+      <Ticks count={max - min + 1} />
     </div>
   );
 }

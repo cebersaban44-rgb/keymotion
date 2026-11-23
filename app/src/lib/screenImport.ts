@@ -362,8 +362,9 @@ export function delayByte(ms: number) {
   return Math.min(254, Math.max(1, Math.round(ms / 2)));
 }
 
-/** Which source moments become frames, and for how long each shows. */
-export function plan(src: Source, t: Timing): Plan {
+/** Which source moments become frames, and for how long each shows, for a
+ *  keyboard that takes `maxFrames` (`KeyboardInfo.limits.screen`). */
+export function plan(src: Source, t: Timing, maxFrames = MAX_FRAMES): Plan {
   if (src.kind === "image") return { frames: [{ atMs: 0, delayMs: STILL_DELAY_MS }], clipped: false };
   const start = Math.max(0, Math.min(t.startMs, src.durationMs));
   const end = Math.max(start, Math.min(t.endMs, src.durationMs));
@@ -374,16 +375,16 @@ export function plan(src: Source, t: Timing): Plan {
       if (s + d > start && s < end) frames.push({ atMs: Math.max(s, start), delayMs: d });
     });
     if (frames.length === 0) frames.push({ atMs: start, delayMs: src.frameDelays[frameAt(src.frameStarts, start)]! });
-    return { frames: frames.slice(0, MAX_FRAMES), clipped: frames.length > MAX_FRAMES };
+    return { frames: frames.slice(0, maxFrames), clipped: frames.length > maxFrames };
   }
   const fps = t.fps || 10;
   const step = 1000 / fps;
   const wanted = Math.max(1, Math.floor((end - start) / step + 1e-6));
-  const n = Math.min(MAX_FRAMES, wanted);
+  const n = Math.min(maxFrames, wanted);
   const delay = Math.min(MAX_DELAY_MS, Math.max(MIN_DELAY_MS, Math.round(step)));
   return {
     frames: Array.from({ length: n }, (_, k) => ({ atMs: start + k * step, delayMs: delay })),
-    clipped: wanted > MAX_FRAMES,
+    clipped: wanted > maxFrames,
   };
 }
 
@@ -391,9 +392,10 @@ export function pagesFor(frames: number) {
   return Math.ceil((HEADER_LEN + FRAME_PIXELS * 2 * frames) / 4096);
 }
 
-/** Estimated upload time in seconds (measured ~143 ms/page + session). */
-export function uploadSeconds(frames: number) {
-  return (pagesFor(frames) * PAGE_MS) / 1000 + 0.5;
+/** Estimated upload time in seconds (measured ~143 ms/page + session), at
+ *  the keyboard's `pageMs` (`KeyboardInfo.limits.screen`). */
+export function uploadSeconds(frames: number, pageMs = PAGE_MS) {
+  return (pagesFor(frames) * pageMs) / 1000 + 0.5;
 }
 
 // --------------------------------------------------------------- converting

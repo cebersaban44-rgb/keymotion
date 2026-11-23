@@ -51,6 +51,7 @@ import type { UnsupportedKeyboard } from "../bindings/UnsupportedKeyboard";
 import ak980Geometry from "../bindings/geometry-ajazz-ak980-pro.json";
 import mockKeymapCatalog from "../bindings/keymap-catalog.json";
 import mockCatalog from "../bindings/lighting-catalog.json";
+import { FF13_LIMITS } from "./offline";
 
 export const inTauri = isTauri();
 
@@ -463,12 +464,13 @@ let mockKeymap: KeymapState = {
 };
 
 /**
- * What the app last wrote to this model's keymap. The keyboard cannot
- * report its keymap; layers never written are the factory default.
+ * What the app last wrote to the keymap of the keyboards with this record
+ * id (`KeyboardInfo.recordId`). The keyboard cannot report its keymap;
+ * layers never written are the factory default.
  */
-export function getKeymapState(modelId: string): Promise<KeymapState> {
+export function getKeymapState(recordId: string): Promise<KeymapState> {
   if (import.meta.env.DEV && !inTauri) return Promise.resolve(mockKeymap);
-  return invoke<KeymapState>("keymap_state", { modelId });
+  return invoke<KeymapState>("keymap_state", { recordId });
 }
 
 /**
@@ -498,10 +500,11 @@ let mockMacros: MacrosState = {
   maxName: 40,
 };
 
-/** What the app last wrote to this model's macros, with the keyboard's limits. */
-export function getMacrosState(modelId: string): Promise<MacrosState> {
+/** What the app last wrote to the macros of the keyboards with this record
+ *  id (`KeyboardInfo.recordId`), with the keyboard's limits. */
+export function getMacrosState(recordId: string): Promise<MacrosState> {
   if (import.meta.env.DEV && !inTauri) return Promise.resolve(mockMacros);
-  return invoke<MacrosState>("macros_state", { modelId });
+  return invoke<MacrosState>("macros_state", { recordId });
 }
 
 /**
@@ -1197,6 +1200,10 @@ function mockKeyboards(): KeyboardInfo[] {
     {
       key: `ajazz-ak980-pro:${usb ? "Usb" : dongle ? "Dongle" : "Bluetooth"}`,
       modelId: "ajazz-ak980-pro",
+      protocol: "sonix-ff13",
+      recordId: "ajazz-ak980-pro",
+      limits: FF13_LIMITS,
+      batteryOverUsb: false,
       modelName: "AJAZZ AK980 PRO",
       vendor: "AJAZZ",
       layout: "98",

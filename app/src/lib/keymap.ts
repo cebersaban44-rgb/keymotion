@@ -16,8 +16,9 @@ export const FN_USAGE = 0xaf;
 const EMPTY: Layers = { base: {}, fn: {} };
 
 export interface KeymapStore {
-  /** Model the state below belongs to. */
-  modelId: string | null;
+  /** Record id (`KeyboardInfo.recordId`) of the keyboards the state below
+   *  belongs to. */
+  recordId: string | null;
   /**
    * What the app last wrote to the keyboard (its own record: the keyboard
    * cannot report its keymap). `null` until loaded.
@@ -28,8 +29,8 @@ export interface KeymapStore {
   draft: Layers;
   layer: KeymapLayer;
   selected: number | null;
-  /** Load the record for `modelId`, keeping an unsaved draft for the same model. */
-  load: (modelId: string) => Promise<void>;
+  /** Load the record for `recordId`, keeping an unsaved draft for the same keyboards. */
+  load: (recordId: string) => Promise<void>;
   setLayer: (layer: KeymapLayer) => void;
   select: (led: number | null) => void;
   /** Assign `action` in `layer` (default: the current one); `default` removes the entry. */
@@ -45,6 +46,9 @@ export interface KeymapStore {
 const KEY = "ks.keymap.v1";
 
 interface Persisted {
+  /** The record id. Named after the model id it was until 1.2.x: the same
+   *  value for a keyboard of the "04 xx" family, so drafts saved then still
+   *  match. */
   modelId: string;
   draft: Layers;
   layer: KeymapLayer;
@@ -84,8 +88,8 @@ function layersOf(state: KeymapState): Layers {
 export const useKeymap = create<KeymapStore>((set, get) => {
   const stored = loadPersisted();
   const save = () => {
-    const { modelId, draft, layer } = get();
-    if (modelId) persist({ modelId, draft, layer });
+    const { recordId, draft, layer } = get();
+    if (recordId) persist({ modelId: recordId, draft, layer });
   };
   const update = (patch: Partial<KeymapStore>) => {
     set(patch);
@@ -96,18 +100,18 @@ export const useKeymap = create<KeymapStore>((set, get) => {
     writtenMs: { base: state.base.writtenMs, fn: state.fn.writtenMs },
   });
   return {
-    modelId: null,
+    recordId: null,
     saved: null,
     writtenMs: { base: null, fn: null },
     draft: EMPTY,
     layer: stored.layer === "fn" ? "fn" : "base",
     selected: null,
-    load: async (modelId) => {
-      const state = await getKeymapState(modelId);
+    load: async (recordId) => {
+      const state = await getKeymapState(recordId);
       const { saved, writtenMs } = record(state);
       const kept = loadPersisted();
-      const draft = kept.modelId === modelId && kept.draft ? sanitize(kept.draft) : clone(saved);
-      update({ modelId, saved, writtenMs, draft });
+      const draft = kept.modelId === recordId && kept.draft ? sanitize(kept.draft) : clone(saved);
+      update({ recordId, saved, writtenMs, draft });
     },
     setLayer: (layer) => update({ layer }),
     select: (selected) => set({ selected }),
@@ -137,34 +141,35 @@ export const useKeymap = create<KeymapStore>((set, get) => {
 });
 
 /**
- * A keymap from a backup, opened as unsaved edits for `modelId`: nothing is
- * written to the keyboard until the user saves it on the Key mapping page.
+ * A keymap from a backup, opened as unsaved edits for the keyboards of
+ * `recordId`: nothing is written to the keyboard until the user saves it on
+ * the Key mapping page.
  */
-export function stageKeymapImport(modelId: string, state: KeymapState) {
+export function stageKeymapImport(recordId: string, state: KeymapState) {
   const draft = layersOf(state);
   const store = useKeymap.getState();
-  if (store.modelId === modelId) useKeymap.setState({ draft });
-  persist({ modelId, draft, layer: store.layer });
+  if (store.recordId === recordId) useKeymap.setState({ draft });
+  persist({ modelId: recordId, draft, layer: store.layer });
 }
 
 /**
  * The record may have changed outside the editor (a profile was loaded):
  * read it again. When it did, the draft (made against the old one) goes.
  */
-export async function adoptKeymapRecord(modelId: string) {
-  const state = await getKeymapState(modelId);
+export async function adoptKeymapRecord(recordId: string) {
+  const state = await getKeymapState(recordId);
   const saved = layersOf(state);
   const store = useKeymap.getState();
-  const old = store.modelId === modelId ? store.saved : null;
+  const old = store.recordId === recordId ? store.saved : null;
   if (old && LAYERS.every((l) => sameLayer(old[l], saved[l]))) return;
-  if (store.modelId === modelId) {
+  if (store.recordId === recordId) {
     useKeymap.setState({
       saved,
       writtenMs: { base: state.base.writtenMs, fn: state.fn.writtenMs },
       draft: clone(saved),
     });
   }
-  persist({ modelId, draft: clone(saved), layer: store.layer });
+  persist({ modelId: recordId, draft: clone(saved), layer: store.layer });
 }
 
 function clone(l: Layers): Layers {

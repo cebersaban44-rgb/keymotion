@@ -11,7 +11,7 @@ import { hidFromCode } from "../lib/hidCodes";
 import { getKeymapCatalog } from "../lib/ipc";
 import { decimal, percent, useAgo, useT, type MessageKey } from "../lib/i18n";
 import { useKeymap } from "../lib/keymap";
-import { budgetUsed, dirtySlots, duration, useMacros } from "../lib/macros";
+import { budgetOf, budgetUsed, dirtySlots, duration, useMacros } from "../lib/macros";
 import { useLayoutLabel } from "../lib/layout";
 import { useApp } from "../lib/store";
 
@@ -60,9 +60,12 @@ export function Macros({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
   const usb = kb.connection === "usb" && kb.hasCommandChannel && kb.features.includes("macros");
   const catalog = useCatalog();
-  const { draft, limits, selected, select, create, modelId, saved, save, discard } = useMacros();
-  const loaded = saved !== null && modelId === kb.modelId;
-  const used = budgetUsed(draft);
+  const { draft, limits, selected, select, create, recordId, saved, save, discard } = useMacros();
+  const loaded = saved !== null && recordId === kb.recordId;
+  // The keyboard family counts macro memory its own way.
+  const rule = kb.limits.macroBudget;
+  const used = budgetUsed(draft, rule);
+  const budget = budgetOf(rule, limits.budget);
   const full = draft.filter(Boolean).length >= limits.maxSlots;
   const changed = useMacros((s) => dirtySlots(s).length);
 
@@ -73,7 +76,7 @@ export function Macros({ kb }: { kb: KeyboardInfo }) {
           <h1 className="page-title">{t("nav.macros")}</h1>
           <p className="page-desc">{t("mc.eyebrow")}</p>
         </div>
-        <Memory used={used} budget={limits.budget} />
+        <Memory used={used} budget={budget} />
       </header>
 
       {!usb && (
@@ -111,7 +114,7 @@ export function Macros({ kb }: { kb: KeyboardInfo }) {
 
       <ActionBar
         changes={changed > 0 ? t("bar.macrosChanged", { count: changed }) : null}
-        blocked={used > limits.budget ? t("mc.overBudget") : null}
+        blocked={used > budget ? t("mc.overBudget") : null}
         canSave={usb && loaded}
         onSave={save}
         onRevert={discard}

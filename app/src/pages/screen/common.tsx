@@ -18,12 +18,11 @@ import type { ScreenItem } from "../../bindings/ScreenItem";
 import { Field } from "../../components/controls";
 import { decimal, percent, tNow, useT, type MessageKey } from "../../lib/i18n";
 import { useLive } from "../../lib/live";
-import { itemData, useScreen } from "../../lib/screen";
+import { itemData, useScreen, useScreenLimits } from "../../lib/screen";
 import {
   H,
   ImportError,
   brightestFrame,
-  PROVEN_FRAMES,
   W,
   fromBlob,
   toRgba,
@@ -388,11 +387,12 @@ export function StudioFrame({
 
 export function Stats({ frames, loopMs }: { frames: number; loopMs: number }) {
   const t = useT();
+  const screen = useScreenLimits();
   return (
     <div className="num flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-ink-2">
       <span>{t("sc.frames", { count: frames })}</span>
       {frames > 1 && <span>{t("sc.loopOf", { time: fmtSeconds(loopMs / 1000) })}</span>}
-      <span>{t("sc.uploadAbout", { time: fmtSeconds(uploadSeconds(frames)) })}</span>
+      <span>{t("sc.uploadAbout", { time: fmtSeconds(uploadSeconds(frames, screen.pageMs)) })}</span>
     </div>
   );
 }
@@ -456,6 +456,7 @@ export function PreviewPanel({
 }) {
   const t = useT();
   const upload = useScreen((s) => s.upload);
+  const screen = useScreenLimits();
   const [confirm, setConfirm] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -564,7 +565,7 @@ export function PreviewPanel({
         </div>
       )}
 
-      {frames > PROVEN_FRAMES && <Hint tone="note">{t("sc.warn.unproven")}</Hint>}
+      {frames > screen.provenFrames && <Hint tone="note">{t("sc.warn.unproven")}</Hint>}
       {!usb && !uploading && <Hint tone="usb">{t("sc.needsUsbShort")}</Hint>}
       {error && <Hint tone="error">{error}</Hint>}
 
@@ -689,6 +690,7 @@ export function ConfirmUpload({
 }) {
   const t = useT();
   const state = useScreen((s) => s.state);
+  const screen = useScreenLimits();
   const factory = state?.items.some((i) => i.kind === "factory") ?? false;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -713,7 +715,7 @@ export function ConfirmUpload({
           <div className="num flex flex-col gap-0.5 text-[13px] text-ink-2">
             <span>{t("sc.frames", { count: frames })}</span>
             {frames > 1 && <span>{t("sc.loopOf", { time: fmtSeconds(loopMs / 1000) })}</span>}
-            <span>{t("sc.uploadAbout", { time: fmtSeconds(uploadSeconds(frames)) })}</span>
+            <span>{t("sc.uploadAbout", { time: fmtSeconds(uploadSeconds(frames, screen.pageMs)) })}</span>
             <span>{t("sc.confirm.todayNth", { n: (state?.uploadsToday ?? 0) + 1 })}</span>
           </div>
         </div>
