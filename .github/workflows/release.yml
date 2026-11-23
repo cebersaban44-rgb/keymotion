@@ -202,7 +202,7 @@ jobs:
         run: |
           shopt -s nullglob
           scripts=(target/release/nsis/x64/installer.nsi app/src-tauri/target/release/nsis/x64/installer.nsi)
-          if [ "${#scripts[@]}" -ne 1 ] || ! grep -q 'oname=bin\\keymotion-cli.exe' "${scripts[0]}"; then
+          if [ "${#scripts[@]}" -ne 1 ] || ! grep -qF '"/oname=bin\keymotion-cli.exe"' "${scripts[0]}"; then
             echo "::error::The installer does not install bin\\keymotion-cli.exe. Is tauri.bundle-cli.conf.json passed to tauri build?"
             exit 1
           fi
