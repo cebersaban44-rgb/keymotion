@@ -133,6 +133,9 @@ pub struct Homes {
     /// The user's skills for Codex (the open Agent Skills folder):
     /// `%USERPROFILE%\.agents\skills`.
     pub agent_skills: PathBuf,
+    /// The user's folder, `%USERPROFILE%`: where Claude Code's own
+    /// installation is found ([`claude_code_versions`]).
+    pub home: PathBuf,
 }
 
 impl Homes {
@@ -149,6 +152,7 @@ impl Homes {
             claude: claude.unwrap_or_else(|| home.join(".claude")),
             codex: codex.unwrap_or_else(|| home.join(".codex")),
             agent_skills: home.join(".agents").join("skills"),
+            home: home.to_path_buf(),
         }
     }
 
@@ -327,6 +331,8 @@ pub enum ErrorKind {
     Invalid,
     /// Reading or writing failed.
     Io,
+    /// The agent installed here is too old for our hooks: nothing written.
+    Unsupported,
     /// A file changed after the plan was made (the agent wrote its settings
     /// meanwhile): nothing was written; plan again from the file as it is.
     Changed,
@@ -768,6 +774,11 @@ pub const ALLOWED_COMMANDS: [&str; 12] = [
 /// What `connect` would change for `agent`, running `cli`.
 pub fn plan_connect(agent: Agent, homes: &Homes, cli: &Cli) -> Result<Plan, SetupError> {
     let mut warnings = Vec::new();
+    if agent == Agent::ClaudeCode {
+        if let Some(old) = claude_code_too_old(homes) {
+            return Err(SetupError { kind: ErrorKind::Unsupported, message: old });
+        }
+    }
     if cli.kind == CliKind::Dev {
         warnings.push(format!(
             "This is a development build of keymotion-cli: the hooks will run {}, and stop working when it moves.",
@@ -1058,6 +1069,9 @@ pub struct Status {
     pub hooks_file: PathBuf,
     pub skill_file: PathBuf,
     pub error: Option<String>,
+    /// Something to fix that is not an error of ours: a Claude Code too old
+    /// for the hooks.
+    pub warning: Option<String>,
 }
 
 impl Status {
@@ -1076,6 +1090,7 @@ impl Status {
             "hooks_file": self.hooks_file.display().to_string(),
             "skill_file": self.skill_file.display().to_string(),
             "error": self.error,
+            "warning": self.warning,
         })
     }
 }
@@ -1106,6 +1121,7 @@ pub fn status(agent: Agent, homes: &Homes, cli: Option<&Cli>) -> Status {
         hooks_file: hooks_file.clone(),
         skill_file,
         error: None,
+        warning: if agent == Agent::ClaudeCode { claude_code_too_old(homes) } else { None },
     };
     let text = match read_text(&hooks_file) {
         Ok(t) => t,
@@ -1156,6 +1172,55 @@ pub fn status(agent: Agent, homes: &Homes, cli: Option<&Cli>) -> Status {
         }
     }
     s
+}
+
+// ------------------------------------------------- Claude Code's version
+
+/// The first Claude Code that runs a hook's program with its `args`, no
+/// shell (its changelog, 2.1.139: "Added hook `args: string[]` field (exec
+/// form)"). An older one would run the bare path through a shell; before
+/// 2.1.101 an event name it did not know made it ignore the whole settings
+/// file.
+pub const CLAUDE_CODE_MIN: [u16; 3] = [2, 1, 139];
+
+/// The Claude Code copies found here, without starting any: the native
+/// installer's `claude.exe` (its file version) and npm's package. The
+/// desktop app's own copy is not looked at.
+pub fn claude_code_versions(homes: &Homes) -> Vec<(PathBuf, [u16; 3])> {
+    let mut found = Vec::new();
+    let native = homes.home.join(r".local\bin\claude.exe");
+    #[cfg(windows)]
+    if let Some(v) = kb_winsys::os::file_version(&native) {
+        found.push((native, [v[0], v[1], v[2]]));
+    }
+    #[cfg(not(windows))]
+    let _ = native;
+    let npm = homes.home.join(r"AppData\Roaming\npm\node_modules\@anthropic-ai\claude-code\package.json");
+    if let Ok(text) = std::fs::read_to_string(&npm) {
+        let version = serde_json::from_str::<serde_json::Value>(&text)
+            .ok()
+            .and_then(|v| v["version"].as_str().and_then(kb_agent::version_triple));
+        if let Some(v) = version {
+            found.push((npm, v));
+        }
+    }
+    found
+}
+
+/// What to say when a Claude Code older than [`CLAUDE_CODE_MIN`] is here.
+pub fn claude_code_too_old(homes: &Homes) -> Option<String> {
+    old_claude_code(&claude_code_versions(homes))
+}
+
+fn old_claude_code(found: &[(PathBuf, [u16; 3])]) -> Option<String> {
+    let dotted = |v: &[u16; 3]| v.map(|p| p.to_string()).join(".");
+    let (path, v) = found.iter().find(|(_, v)| *v < CLAUDE_CODE_MIN)?;
+    Some(format!(
+        "Claude Code {} is installed ({}); Keymotion's hooks need {} or newer. Update Claude Code (claude update), then connect again.",
+        dotted(v),
+        path.display(),
+        dotted(&CLAUDE_CODE_MIN)
+    ))
 }
 
 // ---------------------------------------------------------- Codex trust
@@ -1863,6 +1928,29 @@ mod tests {
         disconnect(Agent::ClaudeCode, &homes).unwrap();
         assert!(std::fs::symlink_metadata(&settings).unwrap().file_type().is_symlink());
         assert_eq!(read(&real), USERS_OWN);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn an_old_claude_code_is_named_and_connecting_waits_for_an_update() {
+        let p = |s: &str| PathBuf::from(s);
+        assert_eq!(old_claude_code(&[]), None);
+        assert_eq!(old_claude_code(&[(p("a"), [2, 1, 139]), (p("b"), [2, 1, 312])]), None);
+        let old = old_claude_code(&[(p("new"), [2, 1, 312]), (p(r"C:\npm\package.json"), [2, 1, 100])]).unwrap();
+        assert!(old.contains("2.1.100") && old.contains("2.1.139") && old.contains(r"C:\npm\package.json"), "{old}");
+        // An npm copy in the user's folder is found by its package.
+        let home = temp_home();
+        let homes = Homes::with(&home, None, None);
+        let npm = home.join(r"AppData\Roaming\npm\node_modules\@anthropic-ai\claude-code");
+        std::fs::create_dir_all(&npm).unwrap();
+        std::fs::write(npm.join("package.json"), r#"{"name":"@anthropic-ai/claude-code","version":"2.1.120"}"#).unwrap();
+        assert_eq!(claude_code_versions(&homes).len(), 1);
+        let e = connect(Agent::ClaudeCode, &homes, &cli(&home)).unwrap_err();
+        assert_eq!(e.kind, ErrorKind::Unsupported, "{}", e.message);
+        assert!(!home.join(".claude").exists(), "nothing written");
+        assert!(status(Agent::ClaudeCode, &homes, None).warning.is_some_and(|w| w.contains("2.1.120")));
+        std::fs::write(npm.join("package.json"), r#"{"version":"2.1.200"}"#).unwrap();
+        assert!(connect(Agent::ClaudeCode, &homes, &cli(&home)).is_ok());
         let _ = std::fs::remove_dir_all(&home);
     }
 

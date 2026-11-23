@@ -14,5 +14,8 @@ serde_json.workspace = true
 sha2 = "0.10"
 toml.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+kb-winsys.workspace = true
+
 [lints]
 workspace = true
