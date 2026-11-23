@@ -219,7 +219,7 @@ cargo test -p keymotion-cli
 
 Start the development build of the app before trying commands that need it: when no Keymotion runs, the tool starts the installed one (the Store copy, if it is new enough). `--no-start` keeps it from starting anything.
 
-Try `connect` on a test folder, never on the settings of the Claude Code or Codex you work in: `KEYMOTION_CLI_TEST_HOME=<folder>` makes `connect`, `disconnect` and `connections` work in `<folder>\.claude`, `<folder>\.codex` and `<folder>\.agents` (`CLAUDE_CONFIG_DIR` and `CODEX_HOME` count only inside it). A recorded event goes in by hand:
+Try `connect` on a test folder, never on the settings of the Claude Code or Codex you work in: `KEYMOTION_CLI_TEST_HOME=<folder>` makes `connect`, `disconnect` and `connections` work in `<folder>\.claude`, `<folder>\.codex` and `<folder>\.agents` (`CLAUDE_CONFIG_DIR` and `CODEX_HOME` count only inside it). A development build of the app reads the same variable for its AI agents page (and for the notes it leaves beside the skill), so the page can be tried without touching your own. A recorded event goes in by hand:
 
 ```powershell
 '{"hook_event_name":"Stop","session_id":"s1","cwd":"C:\\dev\\demo"}' | cargo run -p keymotion-cli -- hook claude-code

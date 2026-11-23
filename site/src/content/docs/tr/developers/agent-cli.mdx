@@ -219,7 +219,7 @@ cargo test -p keymotion-cli
 
 Uygulamayı gerektiren komutları denemeden önce uygulamanın geliştirme sürümünü başlatın: hiçbir Keymotion çalışmıyorsa araç kurulu olanı başlatır (yeterince yeniyse Store kopyasını). `--no-start` hiçbir şey başlatmamasını sağlar.
 
-`connect`'i bir deneme klasöründe deneyin, hiçbir zaman çalıştığınız Claude Code'un ya da Codex'in ayarlarında değil: `KEYMOTION_CLI_TEST_HOME=<klasör>`, `connect`, `disconnect` ve `connections`'ı `<klasör>\.claude`, `<klasör>\.codex` ve `<klasör>\.agents` içinde çalıştırır (`CLAUDE_CONFIG_DIR` ve `CODEX_HOME` yalnız onun içindeyse sayılır). Kaydedilmiş bir olay elle verilir:
+`connect`'i bir deneme klasöründe deneyin, hiçbir zaman çalıştığınız Claude Code'un ya da Codex'in ayarlarında değil: `KEYMOTION_CLI_TEST_HOME=<klasör>`, `connect`, `disconnect` ve `connections`'ı `<klasör>\.claude`, `<klasör>\.codex` ve `<klasör>\.agents` içinde çalıştırır (`CLAUDE_CONFIG_DIR` ve `CODEX_HOME` yalnız onun içindeyse sayılır). Uygulamanın geliştirme derlemesi de Yapay zekâ ajanları sayfası (ve yeteneğin yanına bıraktığı notlar) için aynı değişkeni okur; böylece sayfa sizinkilere dokunmadan denenebilir. Kaydedilmiş bir olay elle verilir:
 
 ```powershell
 '{"hook_event_name":"Stop","session_id":"s1","cwd":"C:\\dev\\demo"}' | cargo run -p keymotion-cli -- hook claude-code

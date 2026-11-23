@@ -81,7 +81,7 @@ impl Place {
             }
             _ => (exe_dir.map(|d| Cli { path: d.join("keymotion-cli.exe"), kind: CliKind::Dev }), None),
         };
-        Place { homes: Homes::from_env(), cli, bin }
+        Place { homes: super::homes(), cli, bin }
     }
 
     fn cli_info(&self) -> Option<AgentCli> {

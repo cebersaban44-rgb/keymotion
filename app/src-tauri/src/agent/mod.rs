@@ -803,7 +803,7 @@ impl Host for AppHost {
     }
 
     fn note_stopped(&self, why: Option<kb_hooks::setup::Stopped>) {
-        let Some(homes) = kb_hooks::setup::Homes::from_env() else { return };
+        let Some(homes) = homes() else { return };
         let done = match why {
             Some(why) => {
                 let logon = kb_winsys::pipe::current_logon_id().ok();
@@ -817,13 +817,33 @@ impl Host for AppHost {
     }
 }
 
+/// Development builds only: the coding apps' folders under this folder
+/// instead of the user's (`.claude`, `.codex`, `.agents`; `CLAUDE_CONFIG_DIR`
+/// and `CODEX_HOME` count only inside it), as keymotion-cli's own test
+/// variable. Trying the AI agents page then never touches the settings of
+/// the Claude Code or Codex one works in.
+pub const TEST_HOME_ENV: &str = "KEYMOTION_CLI_TEST_HOME";
+
+/// The coding apps' folders: the user's (a development build: see
+/// [`TEST_HOME_ENV`]).
+pub fn homes() -> Option<kb_hooks::setup::Homes> {
+    #[cfg(debug_assertions)]
+    if let Some(home) = std::env::var_os(TEST_HOME_ENV).filter(|v| !v.is_empty()).map(PathBuf::from) {
+        let inside = |name: &str| {
+            std::env::var_os(name).map(PathBuf::from).filter(|p| !p.as_os_str().is_empty() && p.starts_with(&home))
+        };
+        return Some(kb_hooks::setup::Homes::with(&home, inside("CLAUDE_CONFIG_DIR"), inside("CODEX_HOME")));
+    }
+    kb_hooks::setup::Homes::from_env()
+}
+
 /// At start, off the main thread: the skill (and Codex rule) Keymotion put
 /// in a connected agent's folders is brought up to this version's, if it is
 /// older (`kb_hooks::setup::refresh`: only our own files, only where they
 /// are); and the hooks learn whether they may start Keymotion.
 fn on_start(core: Arc<Core>) {
     let spawned = std::thread::Builder::new().name("agents-start".into()).spawn(move || {
-        if let Some(homes) = kb_hooks::setup::Homes::from_env() {
+        if let Some(homes) = homes() {
             for path in kb_hooks::setup::refresh(&homes) {
                 tracing::info!(file = %path.display(), "agent skill brought up to date");
             }
