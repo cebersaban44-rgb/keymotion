@@ -17,10 +17,10 @@ The scenarios run in this order, each on what the one before left:
   a  Fresh silent install, then the app turns agent access on (PATH)
   b  keymotion-cli connect, beside the user's own settings and another copy's
   c  Silent uninstall
-  d  Manual reinstall keeps the connections and PATH
+  d  Manual reinstall keeps the connections, PATH and start with Windows
   e  Update while a keymotion-cli runs
   f  Uninstall while Keymotion runs
-  g  Upgrade from the last published release
+  g  Upgrade from the last published release, start with Windows kept
   h  keymotion://background starts Keymotion without a window
   i  A setup cancelled after it replaced the installed copy leaves no hooks
      or PATH entry naming the deleted keymotion-cli
@@ -538,6 +538,57 @@ function Enable-AgentAccess {
     [pscustomobject]@{ Process = $p; On = $done; Steps = ($steps -join ' > ') }
 }
 
+# Start with Windows: the Run value the app writes (tray.rs, the app's
+# only record of the setting) and Windows' on/off switch for it.
+$RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+$ApprovedKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run'
+
+function Get-StartFacts {
+    $command = Get-RegValue $RunKey 'Keymotion'
+    $approved = Get-RegValue $ApprovedKey 'Keymotion'
+    $off = $approved -is [byte[]] -and $approved.Length -gt 0 -and ($approved[0] % 2) -eq 1
+    $right = "$command" -eq "`"$AppExe`" --hidden"
+    [pscustomobject]@{
+        Command = $command; Off = $off; Right = $right
+        On = ($null -ne $command -and -not $off)
+        Text = if ($null -eq $command) { 'no Run value' } else { "Run = $command$(if ($off) { ' (turned off in Windows)' })" }
+    }
+}
+
+# "Start Keymotion when the computer starts" on, as a user turns it on in
+# Settings (the label is the same in 1.1.0). The switch's state is not
+# readable here, so it is pressed only while the Run value is missing.
+function Enable-StartWithWindows {
+    Stop-App
+    $p = Start-Process -FilePath $AppExe -PassThru
+    $null = $p.Handle
+    $window = Get-AppWindow $p
+    $label = 'Start Keymotion when the computer starts'
+    $switch = $null
+    for ($try = 1; $try -le 4 -and -not $switch; $try++) {
+        Invoke-UiElement (Wait-UiElement $window @('Settings') 'to open Settings' 60 -Pressable)
+        $switch = Find-UiElement $window @($label) 10 -Pressable
+    }
+    if (-not $switch) { $switch = Wait-UiElement $window @($label) 'on the Settings page' 5 -Pressable }
+    # The switch waits for the settings to load: pressed again if nothing came of it.
+    for ($press = 1; $press -le 3 -and $null -eq (Get-RegValue $RunKey 'Keymotion'); $press++) {
+        Invoke-UiElement (Wait-UiElement $window @($label) 'on the Settings page' 10 -Pressable)
+        Wait-Until 8 { $null -ne (Get-RegValue $RunKey 'Keymotion') } | Out-Null
+    }
+    Stop-App
+    Get-StartFacts
+}
+
+# The app started as a user starts it, until its window shows, then closed.
+function Invoke-AppStart {
+    Stop-App
+    $p = Start-Process -FilePath $AppExe -PassThru
+    $null = $p.Handle
+    $null = Get-AppWindow $p
+    Start-Sleep -Seconds 3
+    Stop-App
+}
+
 # ------------------------------------------------- the coding agents' files
 
 $ClaudeSeed = @'
@@ -921,12 +972,15 @@ Invoke-Scenario 'c' 'Silent uninstall' {
     Save-State 'c'
 }
 
-Invoke-Scenario 'd' 'Manual reinstall keeps the connections and PATH' {
-    # Installed as a user installs it (with its window, passive here): a
-    # silent setup never saves the installer language, and the uninstaller
-    # then asks for one before anything else.
-    $code = Invoke-Setup $Installer @('/P') -TimeoutSec 180
-    Confirm-That ($code -eq 0) 'installed again (setup /P)' "exit code $code; installer language saved: $(Get-RegValue $RecordKey 'Installer Language')"
+Invoke-Scenario 'd' 'Manual reinstall keeps the connections, PATH and start with Windows' {
+    # A silent install. MUI saves the setup's language only when the install
+    # page is left, which a silent setup skips; the uninstaller then asks for
+    # a language first, and the passive reinstall below would wait on that.
+    # The setup saves it itself (NSIS_HOOK_POSTINSTALL): from none at all.
+    if (Test-Path -LiteralPath $RecordKey) { Remove-ItemProperty -LiteralPath $RecordKey -Name 'Installer Language' -ErrorAction SilentlyContinue }
+    $code = Invoke-Setup $Installer @('/S')
+    $language = Get-RegValue $RecordKey 'Installer Language'
+    Confirm-That ($code -eq 0 -and $language) 'installed again (setup /S), its language saved for the uninstaller' "exit code $code; Installer Language = $language"
     # The user turns agent access on in the app: it connects Claude Code and
     # Codex (taking Codex over from the other copy) and puts bin on PATH.
     $access = Enable-AgentAccess
@@ -934,6 +988,9 @@ Invoke-Scenario 'd' 'Manual reinstall keeps the connections and PATH' {
     Confirm-That (($access.Steps -like '*> OK') -and @(Get-BinEntries (Get-UserPath).Raw).Count -eq 1) 'the AI agents page turns access on and puts bin on PATH' "$($access.Steps); 'Agent access is on' shown: $($access.On)"
     $conn = Get-Connections
     Confirm-That ($conn['claude-code']['state'] -eq 'connected' -and ([string]$conn['codex']['runs']).IndexOf("'$CliExe'", [StringComparison]::OrdinalIgnoreCase) -ge 0) 'both run this copy now' "Claude Code $(Format-Connection $conn['claude-code']); Codex $(Format-Connection $conn['codex'])"
+    # And "Start Keymotion when the computer starts" in Settings.
+    $start = Enable-StartWithWindows
+    Confirm-That ($start.On -and $start.Right) 'Settings turns start with Windows on' $start.Text
     $snapshot = Get-ConnectionSnapshot
     $path = Get-UserPath
     $scheme = Get-SchemeCommand
@@ -954,9 +1011,12 @@ Invoke-Scenario 'd' 'Manual reinstall keeps the connections and PATH' {
     Confirm-That ($pathAfter.Raw -ceq $path.Raw -and $pathAfter.Kind -eq $path.Kind -and @(Get-BinEntries $pathAfter.Raw).Count -eq 1) 'PATH is as it was, bin on it' "$($pathAfter.Kind) $($pathAfter.Raw)"
     Confirm-That (Test-SameDir "$(Get-RegValue $UserPathRecordKey 'PathAdded')" $Bin) "Keymotion's PATH record stays (a later uninstall still takes bin off)" "PathAdded = $(Get-RegValue $UserPathRecordKey 'PathAdded')"
     Confirm-That (-not (Test-Path -LiteralPath (Join-Path $Bin 'keymotion-cli.replaced.exe'))) "the keymotion-cli the old uninstaller kept for a cancel is gone once installed" (@(Get-ChildItem -Name -LiteralPath $Bin) -join ', ')
-    $run = Get-RegValue 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 'Keymotion'
-    Add-Note "start-with-Windows Run value after the reinstall: $(if ($run) { $run } else { 'none' })"
-    $script:Headline = "setup /P ran the old uninstaller (scheme removed) yet hooks, skills, rule and PATH ($(@(Get-BinEntries $pathAfter.Raw).Count) bin entry, record kept) are unchanged"
+    $start = Get-StartFacts
+    Confirm-That ($start.On -and $start.Right) 'Keymotion still starts with Windows, the Run value naming this keymotion.exe' $start.Text
+    Invoke-AppStart
+    $start = Get-StartFacts
+    Confirm-That ($start.On -and $start.Right) "and still after the app's next start" $start.Text
+    $script:Headline = "silent install saved its language, so setup /P ran the old uninstaller (scheme removed) without waiting; hooks, skills, rule, PATH ($(@(Get-BinEntries $pathAfter.Raw).Count) bin entry, record kept) and start with Windows unchanged"
     Save-State 'd'
 }
 
@@ -965,6 +1025,7 @@ Invoke-Scenario 'e' 'Update while a keymotion-cli runs' {
     Stop-App
     $snapshot = Get-ConnectionSnapshot
     $path = Get-UserPath
+    $startBefore = Get-StartFacts
 
     # A hook waiting on its agent's event: keymotion-cli in hook mode, its
     # stdin open, held (suspended) so it keeps running from its file.
@@ -1000,6 +1061,8 @@ Invoke-Scenario 'e' 'Update while a keymotion-cli runs' {
         Confirm-That ((Get-ConnectionSnapshot) -eq $snapshot) 'the update leaves the Claude Code and Codex files alone' ''
         $pathAfter = Get-UserPath
         Confirm-That ($pathAfter.Raw -ceq $path.Raw -and $pathAfter.Kind -eq $path.Kind) 'the update leaves PATH alone' $pathAfter.Kind
+        $startAfter = Get-StartFacts
+        Confirm-That ($startAfter.Command -eq $startBefore.Command -and $startAfter.Off -eq $startBefore.Off) 'the update leaves start with Windows alone' "$($startAfter.Text) (before: $($startBefore.Text))"
         Confirm-That ((Get-InstalledVersion) -eq $Version) 'the uninstall entry says this version' (Get-InstalledVersion)
         $restarted = Wait-Until 45 { @(Get-AppProcesses).Count -gt 0 }
         Add-Note "/R started Keymotion after the update: $restarted"
@@ -1049,6 +1112,8 @@ Invoke-Scenario 'f' 'Uninstall while Keymotion runs' {
     $path = Get-UserPath
     Confirm-That ($path.Raw -ceq $PathSeed.Raw -and $path.Kind -eq $PathSeed.Kind) "PATH is exactly the user's again" "$($path.Kind) $($path.Raw)"
     Confirm-That (-not (Test-Path -LiteralPath $UserPathRecordKey)) "Keymotion's PATH record is gone" ''
+    $start = Get-StartFacts
+    Confirm-That ($null -eq $start.Command -and $null -eq (Get-RegValue $ApprovedKey 'Keymotion')) 'Keymotion no longer starts with Windows (Run value and its switch gone)' $start.Text
     $script:Headline = "Keymotion (visible window: $($windows.Count -gt 0)) closed by the uninstaller; files, hooks, skills, rule, PATH entry gone; user content kept"
     Save-State 'f'
 }
@@ -1061,10 +1126,9 @@ Invoke-Scenario 'g' 'Upgrade from the last published release' {
     Confirm-That ($code -eq 0 -and (Get-InstalledVersion) -eq $previous) "Keymotion $previous installed (setup /S)" "exit code $code, DisplayVersion $(Get-InstalledVersion)"
     $oldHash = Get-FileSha $AppExe
     Add-Note "keymotion-cli in $previous's installation: $(Test-Path -LiteralPath $CliExe)"
-    $p = Start-Process -FilePath $AppExe -PassThru
-    Wait-Until 30 { Test-Path -LiteralPath $AppData } | Out-Null
-    Start-Sleep -Seconds 5
-    Stop-App
+    # The user turns "start with Windows" on in this version's Settings.
+    $start = Enable-StartWithWindows
+    Confirm-That ($start.On -and $start.Right) "Keymotion $previous starts with Windows (its Settings switch)" $start.Text
     $marker = Join-Path $AppData 'install-test-marker.txt'
     Write-Text $marker "written while $previous was installed"
     $dataBefore = @(Get-ChildItem -Recurse -File -LiteralPath $AppData).Count
@@ -1080,10 +1144,15 @@ Invoke-Scenario 'g' 'Upgrade from the last published release' {
     Confirm-That ((Test-Path -LiteralPath $marker) -and @(Get-ChildItem -Recurse -File -LiteralPath $AppData).Count -ge $dataBefore) 'the app data folder is kept' "$AppData, $dataBefore files before"
     $pathAfter = Get-UserPath
     Confirm-That ($pathAfter.Raw -ceq $path.Raw -and @(Get-BinEntries $pathAfter.Raw).Count -eq 0) 'the update leaves PATH alone (bin goes on it when agent access is turned on)' "$($pathAfter.Kind) $($pathAfter.Raw)"
+    $startAfter = Get-StartFacts
+    Confirm-That ($startAfter.On -and $startAfter.Right -and $startAfter.Command -eq $start.Command) 'the update keeps start with Windows (the same Run value, naming this keymotion.exe)' $startAfter.Text
     $restarted = Wait-Until 45 { @(Get-AppProcesses).Count -gt 0 }
     Add-Note "/R started Keymotion after the update: $restarted"
+    if ($restarted) { Start-Sleep -Seconds 8 } else { Invoke-AppStart }
     Stop-App
-    $script:Headline = "$previous -> $Version with $($UpdaterArgs -join ' '): new keymotion.exe, bin\keymotion-cli.exe added ($cliSaid), app data kept, PATH untouched"
+    $startAfter = Get-StartFacts
+    Confirm-That ($startAfter.On -and $startAfter.Right) "and still after the new version's first start" $startAfter.Text
+    $script:Headline = "$previous -> $Version with $($UpdaterArgs -join ' '): new keymotion.exe, bin\keymotion-cli.exe added ($cliSaid), app data kept, PATH untouched, start with Windows kept"
     Save-State 'g'
 }
 
@@ -1136,6 +1205,9 @@ Invoke-Scenario 'i' 'A setup cancelled after it replaced the installed copy' {
     $claudeHooks = Get-HookFacts $Claude.Settings 'claude-code' $CliExe
     $codexHooks = Get-HookFacts $Codex.Hooks 'codex' $CliExe
     Confirm-That ($claudeHooks.Mine -gt 0 -and $codexHooks.Mine -gt 0 -and @(Get-BinEntries (Get-UserPath).Raw).Count -eq 1) 'connected to both through the app, bin on PATH' "Claude Code $($claudeHooks.Mine), Codex $($codexHooks.Mine) hooks run bin"
+    $startBefore = Get-StartFacts
+    if (-not ($startBefore.On -and $startBefore.Right)) { $startBefore = Enable-StartWithWindows }
+    Confirm-That ($startBefore.On -and $startBefore.Right) 'and it starts with Windows' $startBefore.Text
 
     # "Uninstall before installing" on the new setup's "already installed"
     # page: it runs the installed copy's uninstaller with
@@ -1150,6 +1222,8 @@ Invoke-Scenario 'i' 'A setup cancelled after it replaced the installed copy' {
     Confirm-That ($code -eq 0 -and -not (Test-Path -LiteralPath $AppExe) -and (Test-Path -LiteralPath $kept)) 'the replaced copy is gone and keeps its keymotion-cli for the new setup' "exit code $code; keymotion.exe there: $(Test-Path -LiteralPath $AppExe); $([IO.Path]::GetFileName($kept)) there: $(Test-Path -LiteralPath $kept)"
     $claudeHooks = Get-HookFacts $Claude.Settings 'claude-code' $CliExe
     Confirm-That ($claudeHooks.Mine -gt 0 -and @(Get-BinEntries (Get-UserPath).Raw).Count -eq 1) 'its connections and PATH entry wait for the new setup' "Claude Code $($claudeHooks.Mine) hooks run bin"
+    $startKept = Get-StartFacts
+    Confirm-That ($startKept.Command -eq $startBefore.Command) 'so does its start with Windows' "$($startKept.Text) (before: $($startBefore.Text))"
 
     # The user cancels the new setup (Cancel on its first page).
     $psi = [Diagnostics.ProcessStartInfo]::new($Installer)
@@ -1178,6 +1252,8 @@ Invoke-Scenario 'i' 'A setup cancelled after it replaced the installed copy' {
     Confirm-That ((Get-UserView $Claude.Settings) -ceq $script:ClaudeUser -and (Get-UserView $Codex.Hooks) -ceq $script:CodexUser) "the user's own settings stay" ''
     $path = Get-UserPath
     Confirm-That ($path.Raw -ceq $PathSeed.Raw -and $path.Kind -eq $PathSeed.Kind -and -not (Test-Path -LiteralPath $UserPathRecordKey)) "PATH is exactly the user's again, Keymotion's record gone" "$($path.Kind) $($path.Raw)"
+    $start = Get-StartFacts
+    Confirm-That ($null -eq $start.Command) 'nor a start with Windows of the deleted keymotion.exe' $start.Text
     Confirm-That (-not (Test-Path -LiteralPath $InstallDir)) 'nothing of Keymotion is left in its folder' $(if (Test-Path -LiteralPath $InstallDir) { (Get-ChildItem -Recurse -Name -LiteralPath $InstallDir) -join ', ' } else { $InstallDir })
     $script:Headline = 'the replaced copy kept its keymotion-cli; Cancel in the new setup took the hooks, skills, rule and PATH entry away and left no files'
     Save-State 'i'

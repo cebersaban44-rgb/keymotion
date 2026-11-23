@@ -48,7 +48,10 @@
 ;     keymotion-cli as bin\keymotion-cli.replaced.exe: should the setup end
 ;     without installing (cancelled on a later page, or failed), the setup
 ;     takes the connections and PATH entry away with it
-;     (kmEndWithoutInstalling); once installed, the file goes;
+;     (kmEndWithoutInstalling); once installed, the file goes. Start with
+;     Windows stays too: Tauri's uninstall removes the Run value, which is
+;     the app's only record of it (tray.rs), so it is put back afterwards,
+;     and its StartupApproved switch is left as it was;
 ;   - an uninstall run as another Windows user (another administrator, by
 ;     elevation): that account's settings are not the ones the connections
 ;     and PATH entry are in. Keymotion's own record of the installation
@@ -87,7 +90,8 @@ FunctionEnd
 ; that uninstaller left the connections and PATH entry for this setup and
 ; kept its keymotion-cli as keymotion-cli.replaced.exe (see above). With
 ; that copy gone, they go now, as its uninstaller would have taken them,
-; by that keymotion-cli at the path they name (--if-this-copy); with the
+; by that keymotion-cli at the path they name (--if-this-copy), and so does
+; the start with Windows it kept; with the
 ; copy still there (its uninstall did not finish), the file goes back. The
 ; copy's folder is Tauri's record of the installation, which this setup
 ; rewrites only once it installs (the folder page may have changed
@@ -116,6 +120,13 @@ Function kmEndWithoutInstalling
       RMDir "$R9\bin"
       RMDir "$R9"
       DeleteRegKey /ifempty HKCU "Software\Keymotion\UserPath"
+      ; The start with Windows it kept for this setup (the app's own
+      ; command line, tray.rs) would start a program that is gone.
+      ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Keymotion"
+      ${If} $0 == '"$R9\keymotion.exe" --hidden'
+        DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Keymotion"
+        DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "Keymotion"
+      ${EndIf}
     ${EndIf}
   ${EndIf}
   ClearErrors
@@ -125,6 +136,10 @@ FunctionEnd
 ; keymotion-cli renamed out of the way by this setup (below), to put back
 ; if the setup fails.
 Var kmCliMoved
+
+; Uninstaller: the Run value (start with Windows) of a copy a new setup
+; replaces, to put back once Tauri's uninstall has removed it.
+Var kmRunKept
 
 ; Earlier keymotion-cli files renamed out of the way: those no longer
 ; running go. $R8 and $R9 are kept.
@@ -187,8 +202,13 @@ Function .onInstFailed
 FunctionEnd
 
 ; Installed: the keymotion-cli a replaced copy kept is not needed any more.
+; The setup's language is saved where the uninstaller looks for it (MUI's
+; registry entry, which MUI itself writes only when the install page is
+; left, so never in a silent install): without it the uninstaller asks
+; for a language first, and a passive setup waits on that question.
 !macro NSIS_HOOK_POSTINSTALL
   Delete "$INSTDIR\bin\keymotion-cli.replaced.exe"
+  WriteRegStr ${MUI_LANGDLL_REGISTRY_ROOT} "${MUI_LANGDLL_REGISTRY_KEY}" "${MUI_LANGDLL_REGISTRY_VALUENAME}" $LANGUAGE
   ClearErrors
 !macroend
 
@@ -214,11 +234,14 @@ FunctionEnd
   !insertmacro kmDeleteOldClis
   Delete "$INSTDIR\bin\keymotion-cli.replaced.exe"
   ; A new setup takes this copy's place: its keymotion-cli stays, renamed,
-  ; until the setup has installed (kmEndWithoutInstalling).
+  ; until the setup has installed (kmEndWithoutInstalling), and so does
+  ; its start with Windows (put back in POSTUNINSTALL).
+  StrCpy $kmRunKept ""
   ${If} $UpdateMode <> 1
   ${AndIf} $R9 == "1"
   ${AndIf} $R8 == $INSTDIR
     Rename "$INSTDIR\bin\keymotion-cli.exe" "$INSTDIR\bin\keymotion-cli.replaced.exe"
+    ReadRegStr $kmRunKept HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
   ${EndIf}
   ClearErrors
   Pop $R9
@@ -227,7 +250,12 @@ FunctionEnd
 
 !macro NSIS_HOOK_POSTUNINSTALL
   ${If} $UpdateMode <> 1
-    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "${PRODUCTNAME}"
+    ${If} $kmRunKept != ""
+      ; Tauri's uninstall removed it just now; the new setup keeps it.
+      WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}" $kmRunKept
+    ${Else}
+      DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "${PRODUCTNAME}"
+    ${EndIf}
     DeleteRegKey HKCU "Software\Classes\AppUserModelId\${BUNDLEID}"
     DeleteRegKey HKCU "Software\Classes\keymotion"
     ; `path remove` took its values away; the keys, if nothing else is in
