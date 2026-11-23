@@ -11,70 +11,7 @@
 
 use kb_devices::{InterfaceRole, Protocol};
 
-/// Byte lengths of the reports a collection declares (report IDs excluded).
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct ReportShape {
-    pub input: usize,
-    pub output: usize,
-    pub feature: usize,
-    pub has_report_ids: bool,
-}
-
-/// Read the report lengths from a HID report descriptor. Unknown or long
-/// items are skipped; a truncated descriptor yields what was read so far.
-pub fn report_shape(desc: &[u8]) -> ReportShape {
-    #[derive(Clone, Copy, Default)]
-    struct Globals {
-        size: u32,
-        count: u32,
-    }
-    let (mut g, mut stack) = (Globals::default(), Vec::new());
-    let mut bits = [0u64; 3]; // input, output, feature
-    let mut has_report_ids = false;
-    let mut i = 0;
-    while i < desc.len() {
-        let prefix = desc[i];
-        if prefix == 0xFE {
-            // Long item: size byte, tag byte, data.
-            let len = desc.get(i + 1).copied().unwrap_or(0) as usize;
-            i += 3 + len;
-            continue;
-        }
-        let len = match prefix & 0x03 {
-            3 => 4,
-            n => n as usize,
-        };
-        let Some(data) = desc.get(i + 1..i + 1 + len) else { break };
-        let value = data.iter().rev().fold(0u32, |v, b| (v << 8) | u32::from(*b));
-        match (prefix >> 2) & 0x03 {
-            // Main items.
-            0 => {
-                let slot = match prefix >> 4 {
-                    0x8 => Some(0),
-                    0x9 => Some(1),
-                    0xB => Some(2),
-                    _ => None,
-                };
-                if let Some(s) = slot {
-                    bits[s] += u64::from(g.size) * u64::from(g.count);
-                }
-            }
-            // Global items.
-            1 => match prefix >> 4 {
-                0x7 => g.size = value,
-                0x8 => has_report_ids = true,
-                0x9 => g.count = value,
-                0xA => stack.push(g),
-                0xB => g = stack.pop().unwrap_or_default(),
-                _ => {}
-            },
-            _ => {}
-        }
-        i += 1 + len;
-    }
-    let bytes = |b: u64| b.div_ceil(8) as usize;
-    ReportShape { input: bytes(bits[0]), output: bytes(bits[1]), feature: bytes(bits[2]), has_report_ids }
-}
+pub use kb_transport::descriptor::{report_shape, ReportShape};
 
 /// The FF13 command collection: 64-byte feature reports, no report IDs.
 pub fn is_command_shape(desc: &[u8]) -> bool {
@@ -207,13 +144,5 @@ mod tests {
         // A 4104-byte screen with a report ID in front is another layout.
         let with_id = hex("06 67 ff 09 61 a1 01 85 01 75 08 95 40 09 64 81 02 96 08 10 09 63 91 02 c0");
         assert!(!is_aa_display_shape(&with_id));
-    }
-
-    #[test]
-    fn survives_truncated_and_push_pop_descriptors() {
-        assert_eq!(report_shape(&hex("06 13 ff 75 08 96 00")), ReportShape::default());
-        let pushed = hex("75 08 95 40 a4 75 01 95 08 81 02 b4 b1 02");
-        let s = report_shape(&pushed);
-        assert_eq!((s.input, s.feature), (1, 64));
     }
 }

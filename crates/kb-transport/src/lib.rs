@@ -2,6 +2,7 @@
 //!
 //! * [`hid`]: enumerate HID interfaces and exchange feature/output/input
 //!   reports. Used for the wired (USB) and 2.4G dongle command channels.
+//! * [`descriptor`]: report lengths from a collection's report descriptor.
 //! * [`ble`]: read-only Bluetooth LE access (battery level). The keyboard
 //!   exposes no vendor command channel over Bluetooth, and its BLE OTA
 //!   service must never be written to, so this module offers no write API
@@ -10,6 +11,7 @@
 //! This crate moves bytes. Which bytes are safe to send is decided by the
 //! protocol layer, never here.
 
+pub mod descriptor;
 pub mod hid;
 
 #[cfg(windows)]
