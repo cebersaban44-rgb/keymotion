@@ -15,7 +15,7 @@ const SITE = "https://cebersaban44-rgb.github.io/keymotion";
 // tools/screenshots/social.mjs; the same file is the repository's social preview).
 const SHARE_IMAGE = `${SITE}/images/social-preview.png`;
 const SHARE_IMAGE_ALT =
-  "Keymotion: lighting, key mapping, macros and the little screen of the AJAZZ AK980 PRO, from Windows. Beside it, the keyboard lit in rainbow colors.";
+  "Keymotion: lighting, key mapping, macros and the little screen of the AJAZZ AK980 PRO, from Windows, with music mode, game session and League of Legends lights, profiles by app and lights for AI coding agents. Beside it, Keymotion's Overview page with the keyboard lit in rainbow colors in front of it.";
 
 export default defineConfig({
   site: "https://cebersaban44-rgb.github.io",
