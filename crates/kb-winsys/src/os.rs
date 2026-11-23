@@ -137,7 +137,12 @@ mod sys {
         }
         let hi = |v: u32| (v >> 16) as u16;
         let lo = |v: u32| (v & 0xFFFF) as u16;
-        Some([hi(fixed.dwFileVersionMS), lo(fixed.dwFileVersionMS), hi(fixed.dwFileVersionLS), lo(fixed.dwFileVersionLS)])
+        Some([
+            hi(fixed.dwFileVersionMS),
+            lo(fixed.dwFileVersionMS),
+            hi(fixed.dwFileVersionLS),
+            lo(fixed.dwFileVersionLS),
+        ])
     }
 
     pub fn windows_release() -> Option<WindowsRelease> {

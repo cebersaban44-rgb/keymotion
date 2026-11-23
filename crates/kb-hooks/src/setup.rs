@@ -1004,7 +1004,8 @@ fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
 /// replaced, the link stays.
 fn write_atomic(path: &Path, text: &str) -> Result<(), SetupError> {
     let is_link = std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink());
-    let target = if is_link { std::fs::canonicalize(path).map_err(|e| SetupError::io(path, e))? } else { path.to_path_buf() };
+    let target =
+        if is_link { std::fs::canonicalize(path).map_err(|e| SetupError::io(path, e))? } else { path.to_path_buf() };
     let tmp = with_suffix(&target, &format!(".keymotion-{}.tmp", std::process::id()));
     let written = std::fs::File::create(&tmp).and_then(|mut f| {
         use std::io::Write;
@@ -1779,7 +1780,10 @@ mod tests {
         assert!(codex_command(&spaced).contains(r"& 'C:\Users\Ana María\bin\keymotion-cli.exe' hook codex }"));
         // ' ‘ ’ ‚ ‛: PowerShell ends a single-quoted string at each of them.
         for q in PS_SINGLE_QUOTES {
-            let cli = Cli { path: PathBuf::from(format!(r"C:\Users\O{q}Neil\bin\keymotion-cli.exe")), kind: CliKind::Installed };
+            let cli = Cli {
+                path: PathBuf::from(format!(r"C:\Users\O{q}Neil\bin\keymotion-cli.exe")),
+                kind: CliKind::Installed,
+            };
             let line = codex_command(&cli);
             assert!(line.contains(&format!(r"'C:\Users\O{q}{q}Neil\bin\keymotion-cli.exe'")), "{line}");
         }
@@ -1943,7 +1947,8 @@ mod tests {
         let homes = Homes::with(&home, None, None);
         let npm = home.join(r"AppData\Roaming\npm\node_modules\@anthropic-ai\claude-code");
         std::fs::create_dir_all(&npm).unwrap();
-        std::fs::write(npm.join("package.json"), r#"{"name":"@anthropic-ai/claude-code","version":"2.1.120"}"#).unwrap();
+        std::fs::write(npm.join("package.json"), r#"{"name":"@anthropic-ai/claude-code","version":"2.1.120"}"#)
+            .unwrap();
         assert_eq!(claude_code_versions(&homes).len(), 1);
         let e = connect(Agent::ClaudeCode, &homes, &cli(&home)).unwrap_err();
         assert_eq!(e.kind, ErrorKind::Unsupported, "{}", e.message);

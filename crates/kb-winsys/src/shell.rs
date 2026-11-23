@@ -67,8 +67,7 @@ pub fn run_alone(program: &std::path::Path, argument: &str, wait: std::time::Dur
 /// to start. `dir` keeps it out of the agent's project folder (a process
 /// holds its working folder open).
 pub fn spawn_detached(program: &std::path::Path, args: &[&str], dir: &std::path::Path) -> Result<(), String> {
-    if !program.is_absolute() || !dir.is_absolute() || args.iter().any(|a| a.is_empty() || a.contains(['"', '\0']))
-    {
+    if !program.is_absolute() || !dir.is_absolute() || args.iter().any(|a| a.is_empty() || a.contains(['"', '\0'])) {
         return Err("a program and a folder by their full paths, and plain arguments only".into());
     }
     sys::spawn_detached(program, args, dir)
