@@ -19,7 +19,7 @@ use crate::cli::Env;
 use crate::output::{write_stderr, Done};
 
 /// The agents' folders: the user's, or a test's ([`crate::cli::TEST_HOME_ENV`]).
-fn homes(env: &Env) -> Result<Homes, AgentError> {
+pub fn homes(env: &Env) -> Result<Homes, AgentError> {
     if let Some(home) = env.test_home.as_deref().filter(|_| crate::cli::TEST_PIPE_BUILD) {
         let home = PathBuf::from(home);
         // The agents' own variables count only inside the test's home.
@@ -44,8 +44,14 @@ fn setup_error(e: SetupError) -> AgentError {
     match e.kind {
         ErrorKind::Invalid => AgentError::new(ErrorCode::BadValue, e.message),
         ErrorKind::Io => AgentError::new(ErrorCode::Internal, e.message),
+        ErrorKind::Unsupported => AgentError::new(ErrorCode::Unsupported, e.message),
+        ErrorKind::Changed => AgentError::new(ErrorCode::Internal, e.message)
+            .with_hint("The agent kept changing its settings; run it again when the agent is idle."),
     }
 }
+
+/// How many times a file the agent changed meanwhile is planned again.
+const TRIES: usize = 3;
 
 /// `connect` or `disconnect`.
 pub fn run(
@@ -57,28 +63,13 @@ pub fn run(
     json: bool,
 ) -> Result<Done, AgentError> {
     let homes = homes(env)?;
-    let plan = if connecting {
-        let cli = this_cli()?;
-        setup::plan_connect(agent, &homes, &cli)
-    } else {
-        setup::plan_disconnect(agent, &homes)
-    }
-    .map_err(setup_error)?;
+    let cli = if connecting { Some(this_cli()?) } else { None };
     let verb = if connecting { "connect" } else { "disconnect" };
-    if plan.is_empty() {
-        let text = if connecting {
-            format!("{} is connected already; nothing to change.", agent.title())
-        } else {
-            format!("{} has nothing of Keymotion's; nothing to change.", agent.title())
-        };
-        return Ok(Done::new(result(&plan, false), text));
-    }
-    let preview = describe(&plan, homes.of(agent), connecting);
-    if dry_run {
-        return Ok(Done::new(result(&plan, false), preview).warn(plan.warnings.clone()));
-    }
-    if !yes {
-        let interactive = !json && std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
+    let interactive = !json && std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
+    let mut confirm = |plan: &Plan, preview: &str, again: bool| -> Result<bool, AgentError> {
+        if yes {
+            return Ok(true);
+        }
         if !interactive {
             return Err(AgentError::new(
                 ErrorCode::BadArgument,
@@ -86,24 +77,71 @@ pub fn run(
             )
             .with_hint(format!("Add --yes to {verb} without asking, or --dry-run to see what would change.")));
         }
+        if again {
+            write_stderr(&format!(
+                "{} changed its settings meanwhile; this is what would change now.\n",
+                agent.title()
+            ));
+        }
         write_stderr(&format!("{preview}\n"));
         for w in &plan.warnings {
             write_stderr(&format!("note: {w}\n"));
         }
-        if !ask(&format!("{} {}? [y/N] ", capitalized(verb), agent.title())) {
+        Ok(ask(&format!("{} {}? [y/N] ", capitalized(verb), agent.title())))
+    };
+    change(agent, &homes, cli.as_ref(), dry_run, &mut confirm)
+}
+
+/// Plan, ask (`confirm`, told whether it asks again), write. The files are
+/// read again right before they are written: one the agent changed since
+/// the plan was made is planned again from what it is now and asked about
+/// again, never written from the old copy.
+fn change(
+    agent: Agent,
+    homes: &Homes,
+    cli: Option<&Cli>,
+    dry_run: bool,
+    confirm: &mut dyn FnMut(&Plan, &str, bool) -> Result<bool, AgentError>,
+) -> Result<Done, AgentError> {
+    let connecting = cli.is_some();
+    let mut tries = 0;
+    loop {
+        let plan = match cli {
+            Some(cli) => setup::plan_connect(agent, homes, cli),
+            None => setup::plan_disconnect(agent, homes),
+        }
+        .map_err(setup_error)?;
+        if plan.is_empty() {
+            let text = if connecting {
+                format!("{} is connected already; nothing to change.", agent.title())
+            } else {
+                format!("{} has nothing of Keymotion's; nothing to change.", agent.title())
+            };
+            return Ok(Done::new(result(&plan, false), text));
+        }
+        let preview = describe(&plan, homes.of(agent), connecting);
+        if dry_run {
+            return Ok(Done::new(result(&plan, false), preview).warn(plan.warnings.clone()));
+        }
+        if !confirm(&plan, &preview, tries > 0)? {
             return Ok(Done::new(
                 json!({ "agent": agent.id(), "changed": false, "cancelled": true }),
                 "Nothing was changed.",
             ));
         }
+        match setup::apply(&plan) {
+            Ok(()) => {
+                let text = if connecting {
+                    format!("Connected {}.\n{preview}", agent.title())
+                } else {
+                    format!("Disconnected {}.\n{preview}", agent.title())
+                };
+                return Ok(Done::new(result(&plan, true), text).warn(plan.warnings.clone()));
+            }
+            Err(e) if e.kind == ErrorKind::Changed && tries + 1 < TRIES => tries += 1,
+            Err(e) => return Err(setup_error(e)),
+        }
     }
-    setup::apply(&plan).map_err(setup_error)?;
-    let text = if connecting {
-        format!("Connected {}.\n{preview}", agent.title())
-    } else {
-        format!("Disconnected {}.\n{preview}", agent.title())
-    };
-    Ok(Done::new(result(&plan, true), text).warn(plan.warnings.clone()))
 }
 
 fn capitalized(word: &str) -> String {
@@ -160,9 +198,7 @@ pub fn connections(env: &Env) -> Result<Done, AgentError> {
     let text = all.iter().map(status_line).collect::<Vec<_>>().join("\n");
     let mut warnings = Vec::new();
     for s in &all {
-        if let Some(e) = &s.error {
-            warnings.push(e.clone());
-        }
+        warnings.extend(s.error.iter().chain(&s.warning).cloned());
     }
     let data = json!({
         "cli": cli.as_ref().map(|c| json!({ "path": c.path_text(), "kind": format!("{:?}", c.kind).to_lowercase() })),
@@ -190,4 +226,61 @@ fn status_line(s: &Status) -> String {
         _ => "not found on this computer".to_string(),
     };
     format!("{:<12} {what}", s.agent.title())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp(name: &str) -> PathBuf {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("km-connect-{name}-{}-{nanos}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn cli(home: &Path) -> Cli {
+        Cli { path: home.join(r"bin\keymotion-cli.exe"), kind: setup::CliKind::Installed }
+    }
+
+    #[test]
+    fn a_file_the_agent_changed_while_the_user_decided_is_planned_and_asked_again() {
+        let home = temp("again");
+        let homes = Homes::with(&home, None, None);
+        let settings = home.join(r".claude\settings.json");
+        std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        std::fs::write(&settings, "{\n  \"model\": \"opus\"\n}\n").unwrap();
+        let mut asked = Vec::new();
+        let mut confirm = |_: &Plan, _: &str, again: bool| {
+            asked.push(again);
+            if !again {
+                // Claude Code writes its settings while the question waits.
+                std::fs::write(&settings, "{\n  \"model\": \"sonnet\",\n  \"theme\": \"dark\"\n}\n").unwrap();
+            }
+            Ok(true)
+        };
+        let done = change(Agent::ClaudeCode, &homes, Some(&cli(&home)), false, &mut confirm).unwrap();
+        assert_eq!(asked, [false, true]);
+        assert_eq!(done.data["changed"], true);
+        let text = std::fs::read_to_string(&settings).unwrap();
+        assert!(text.contains("\"sonnet\"") && text.contains("\"theme\"") && text.contains("hook"), "{text}");
+        // The copy kept is the file as it was just before Keymotion wrote it.
+        let kept =
+            std::fs::read_to_string(home.join(format!(r".claude\settings.json{}", setup::BACKUP_SUFFIX))).unwrap();
+        assert!(kept.contains("\"sonnet\""), "{kept}");
+
+        // An agent that never stops writing: given up after a few tries,
+        // nothing written from an old copy.
+        let mut n = 0;
+        let mut busy = |_: &Plan, _: &str, _: bool| {
+            n += 1;
+            std::fs::write(home.join(r".codex\hooks.json"), format!("{{\"hooks\": {{}}{}}}", " ".repeat(n))).unwrap();
+            Ok(true)
+        };
+        std::fs::create_dir_all(home.join(".codex")).unwrap();
+        let e = change(Agent::Codex, &homes, Some(&cli(&home)), false, &mut busy).unwrap_err();
+        assert!(e.hint.as_deref().is_some_and(|h| h.contains("idle")), "{e:?}");
+        assert_eq!(n, TRIES);
+        let _ = std::fs::remove_dir_all(&home);
+    }
 }

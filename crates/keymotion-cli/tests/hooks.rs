@@ -105,7 +105,11 @@ fn run_program(program: &Path, args: &[&str], input: &[u8], pipe: &str, home: Op
 }
 
 fn hook(agent: &str, input: &[u8], pipe: &str) -> Run {
-    let r = run_program(Path::new(EXE), &["hook", agent], input, pipe, None);
+    hook_in(agent, input, pipe, None)
+}
+
+fn hook_in(agent: &str, input: &[u8], pipe: &str, home: Option<&Path>) -> Run {
+    let r = run_program(Path::new(EXE), &["hook", agent], input, pipe, home);
     assert_eq!(r.code, 0, "hook mode exits with 0: {r:?}");
     assert!(r.stdout.is_empty(), "hook mode prints nothing: {r:?}");
     assert!(r.stderr.is_empty(), "not even on stderr, unless KEYMOTION_HOOK_LOG asks: {r:?}");
@@ -201,12 +205,13 @@ fn an_event_reaches_the_app_as_its_meaning_only() {
 #[test]
 fn without_the_app_an_event_that_lights_is_delivered_once_it_starts() {
     let pipe = unique_pipe();
-    // Nothing on the pipe: the hook does not wait for anything.
-    let r = hook("claude-code", STOP, &pipe);
-    assert!(r.took < Duration::from_secs(2), "{:?}", r.took);
     // A new prompt is not worth starting Keymotion for.
     let busy = br#"{"session_id":"s-2","cwd":"C:\\p","hook_event_name":"UserPromptSubmit","prompt":"x"}"#;
     hook("claude-code", busy, &pipe);
+    std::thread::sleep(Duration::from_millis(300));
+    // Nothing on the pipe: the hook does not wait for the app.
+    let r = hook("claude-code", STOP, &pipe);
+    assert!(r.took < Duration::from_secs(2), "{:?}", r.took);
     // The app comes up (the test pipe starts nothing; the copy waits for it).
     std::thread::sleep(Duration::from_millis(700));
     let (_server, seen) = fake_app(&pipe, true);
@@ -214,7 +219,94 @@ fn without_the_app_an_event_that_lights_is_delivered_once_it_starts() {
     assert_eq!(got.len(), 1, "{got:?}");
     assert_eq!(got[0].1["event"], json!("done"));
     std::thread::sleep(Duration::from_millis(500));
-    assert_eq!(seen.lock().unwrap().len(), 1, "busy was not delivered later");
+    assert_eq!(seen.lock().unwrap().len(), 1, "the prompt before was not delivered later");
+}
+
+/// A Claude Code event of session `s` in folder `C:\<s>` (so its label
+/// tells the sessions apart).
+fn claude(s: &str, rest: &str) -> Vec<u8> {
+    format!(r#"{{"session_id":"{s}","cwd":"C:\\{s}",{rest}}}"#).into_bytes()
+}
+
+fn events(got: &[(String, Value)]) -> Vec<String> {
+    got.iter()
+        .map(|(_, a)| format!("{} {}", a["label"].as_str().unwrap_or("?"), a["event"].as_str().unwrap()))
+        .collect()
+}
+
+#[test]
+fn while_keymotion_starts_the_hooks_queue_in_order_behind_one_copy() {
+    let pipe = unique_pipe();
+    let tool = r#""tool_name":"Bash","tool_input":{"command":"cargo test"}"#;
+    // A question answered while Keymotion starts: not lit late.
+    hook("claude-code", &claude("p3", &format!(r#""hook_event_name":"PermissionRequest",{tool}"#)), &pipe);
+    hook(
+        "claude-code",
+        &claude("p3", &format!(r#""hook_event_name":"PostToolUse",{tool},"tool_use_id":"toolu_3""#)),
+        &pipe,
+    );
+    hook("claude-code", &claude("p3", r#""hook_event_name":"Stop""#), &pipe);
+    // Two sessions at the same moment: one copy delivers both, once each.
+    let both: Vec<_> = ["p4", "p5"]
+        .into_iter()
+        .map(|s| {
+            let pipe = pipe.clone();
+            let input = claude(s, r#""hook_event_name":"Notification","notification_type":"permission_prompt""#);
+            std::thread::spawn(move || hook("claude-code", &input, &pipe))
+        })
+        .collect();
+    for t in both {
+        t.join().unwrap();
+    }
+    // Not worth starting Keymotion for, but queued while it starts.
+    hook("claude-code", &claude("p6", r#""hook_event_name":"UserPromptSubmit","prompt":"x""#), &pipe);
+    std::thread::sleep(Duration::from_millis(500));
+    let (_server, seen) = fake_app(&pipe, true);
+    let got = wait_for(&seen, 5, Duration::from_secs(12));
+    std::thread::sleep(Duration::from_millis(800));
+    let got_now = seen.lock().unwrap().clone();
+    assert_eq!(got_now.len(), got.len(), "nothing twice: {:?}", events(&got_now));
+    let list = events(&got);
+    let at = |e: &str| list.iter().position(|x| x == e).unwrap_or_else(|| panic!("{e} missing: {list:?}"));
+    assert!(!list.contains(&"p3 attention".to_string()), "{list:?}");
+    assert!(at("p3 answered") < at("p3 done"), "{list:?}");
+    assert!(at("p3 done") < at("p4 attention").min(at("p5 attention")), "{list:?}");
+    assert!(at("p4 attention").max(at("p5 attention")) < at("p6 busy"), "{list:?}");
+    assert_eq!(list.len(), 5, "{list:?}");
+    // Once it answers, hooks go to Keymotion as before.
+    hook("claude-code", &claude("p7", r#""hook_event_name":"Stop""#), &pipe);
+    assert_eq!(events(&wait_for(&seen, 6, Duration::from_secs(5))).last().unwrap(), "p7 done");
+}
+
+#[test]
+fn a_keymotion_the_user_closed_stays_closed() {
+    let home = temp_home();
+    let skill = home.join(".claude").join("skills").join("keymotion");
+    std::fs::create_dir_all(&skill).unwrap();
+    let note = skill.join("stopped.json");
+    let logon = kb_winsys::pipe::current_logon_id().unwrap();
+    let pipe = unique_pipe();
+    let ask = claude("q1", r#""hook_event_name":"Notification","notification_type":"permission_prompt""#);
+    // Quit in this sign-in, or agent access off: no start.
+    for reason in [format!(r#"{{"reason":"quit","logon":"{logon:x}"}}"#), r#"{"reason":"access_off"}"#.to_string()] {
+        std::fs::write(&note, reason).unwrap();
+        hook_in("claude-code", &ask, &pipe, Some(&home));
+    }
+    // A helper agent finishing (H) never starts it.
+    hook("claude-code", &claude("q2", r#""hook_event_name":"SubagentStop","agent_type":"Explore""#), &pipe);
+    std::thread::sleep(Duration::from_millis(1500));
+    {
+        let (_server, seen) = fake_app(&pipe, true);
+        std::thread::sleep(Duration::from_secs(2));
+        assert!(seen.lock().unwrap().is_empty(), "{:?}", events(&seen.lock().unwrap()));
+    }
+    // A quit in an earlier sign-in (Windows restarted), or no note: started.
+    std::fs::write(&note, r#"{"reason":"quit","logon":"1"}"#).unwrap();
+    hook_in("claude-code", &ask, &pipe, Some(&home));
+    std::thread::sleep(Duration::from_millis(500));
+    let (_server, seen) = fake_app(&pipe, true);
+    assert_eq!(events(&wait_for(&seen, 1, Duration::from_secs(12))), ["q1 attention"]);
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 fn read(p: &Path) -> String {
@@ -283,7 +375,7 @@ fn connect_writes_hook_lines_that_run_from_a_folder_with_spaces() {
     // Codex: one line for PowerShell.
     let hooks: Value = serde_json::from_str(&read(&home.join(".codex").join("hooks.json"))).unwrap();
     let line = hooks["hooks"]["Stop"][0]["hooks"][0]["command"].as_str().unwrap().to_string();
-    assert!(line.starts_with("& '") && line.contains("Key Motion"), "{line}");
+    assert!(line.starts_with("if (Test-Path -LiteralPath '") && line.contains("Key Motion"), "{line}");
     let codex_stop = br#"{"session_id":"thr_1","cwd":"C:\\w","hook_event_name":"Stop","turn_id":"t","model":"m"}"#;
     run_codex_line(&line, codex_stop, &pipe);
     let got = wait_for(&seen, 2, Duration::from_secs(5));
@@ -301,10 +393,10 @@ fn connect_writes_hook_lines_that_run_from_a_folder_with_spaces() {
 }
 
 #[test]
-fn a_path_without_spaces_runs_plain_in_powershell_and_cmd() {
-    // Installed where the path needs no quotes: the line is the bare path,
-    // which PowerShell and cmd.exe (Codex's shell when it knows none) both run.
-    let dir = std::env::temp_dir().join(unique("km-plain-"));
+fn the_codex_line_runs_from_any_folder_and_does_nothing_once_the_program_is_gone() {
+    // A typographic apostrophe ends a single-quoted PowerShell string as a
+    // straight one does: doubled in the line, the path still runs.
+    let dir = std::env::temp_dir().join(unique("km O\u{2019}Brien \u{2018}x\u{201A}\u{201B} "));
     let exe = installed_copy(&dir);
     let home = temp_home();
     std::fs::create_dir_all(home.join(".codex")).unwrap();
@@ -313,15 +405,43 @@ fn a_path_without_spaces_runs_plain_in_powershell_and_cmd() {
     assert_eq!(r.code, 0, "{r:?}");
     let hooks: Value = serde_json::from_str(&read(&home.join(".codex").join("hooks.json"))).unwrap();
     let line = hooks["hooks"]["Stop"][0]["hooks"][0]["command"].as_str().unwrap().to_string();
-    assert_eq!(line, format!("{} hook codex", exe.display()));
+    assert!(line.contains("O\u{2019}\u{2019}Brien"), "{line}");
     let (_server, seen) = fake_app(&pipe, true);
     let stop = br#"{"session_id":"thr_2","cwd":"C:\\w","hook_event_name":"Stop","turn_id":"t","model":"m"}"#;
     run_codex_line(&line, stop, &pipe);
-    let cmd =
-        PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into())).join(r"System32\cmd.exe");
-    let r = run_program(&cmd, &["/C", &line], stop, &pipe, None);
-    assert_eq!((r.code, r.stdout.len()), (0, 0), "{r:?}");
-    assert_eq!(wait_for(&seen, 2, Duration::from_secs(5)).len(), 2);
+    assert_eq!(wait_for(&seen, 1, Duration::from_secs(5)).len(), 1);
+
+    // Keymotion uninstalled: the line finds no program, says nothing, ends 0.
+    std::fs::remove_file(&exe).unwrap();
+    let r = run_codex_line(&line, stop, &pipe);
+    assert!(r.stderr.is_empty(), "{r:?}");
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(seen.lock().unwrap().len(), 1);
+
+    // By its name alone (the Store copy's alias, found on PATH): the same.
+    let bare = kb_hooks::setup::codex_command(&kb_hooks::setup::Cli {
+        path: PathBuf::from("keymotion-cli-test-alias.exe"),
+        kind: kb_hooks::setup::CliKind::Store,
+    });
+    let bin = dir.join("alias");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::copy(EXE, bin.join("keymotion-cli-test-alias.exe")).unwrap();
+    let path = format!("{};{}", bin.display(), std::env::var("PATH").unwrap_or_default());
+    let mut cmd = Process::new(powershell());
+    cmd.args(["-NoProfile", "-Command", &bare])
+        .env("PATH", &path)
+        .env("KEYMOTION_CLI_TEST_PIPE", &pipe)
+        .env("KEYMOTION_CLI_TEST_HOME", std::env::temp_dir().join("keymotion-no-home"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = cmd.spawn().unwrap();
+    child.stdin.take().unwrap().write_all(stop).unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert_eq!((out.status.code(), out.stdout.len()), (Some(0), 0), "{bare}: {out:?}");
+    assert_eq!(wait_for(&seen, 2, Duration::from_secs(5)).len(), 2, "{bare}");
+    let r = run_codex_line(&bare, stop, &pipe);
+    assert!(r.stderr.is_empty(), "not on PATH: nothing said: {r:?}");
     let _ = std::fs::remove_dir_all(&home);
     let _ = std::fs::remove_dir_all(&dir);
 }

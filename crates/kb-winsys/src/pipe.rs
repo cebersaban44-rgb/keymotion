@@ -57,6 +57,16 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 
+/// Someone serves the pipe `name` (whoever it is): nothing is opened, no
+/// connection taken from the server.
+pub fn exists(name: &str) -> bool {
+    let wide_name = wide(name);
+    // SAFETY: NUL-terminated name. A pipe with every instance busy is there
+    // too (the wait timed out).
+    unsafe { WaitNamedPipeW(PCWSTR(wide_name.as_ptr()), 1) }.as_bool()
+        || is(&io::Error::last_os_error(), ERROR_SEM_TIMEOUT)
+}
+
 /// The most connections a server takes at once.
 pub const MAX_INSTANCES: u32 = 4;
 /// The pipe's buffer size each way (advisory for Windows).
@@ -1179,6 +1189,20 @@ mod tests {
         let logon = current_logon_id().unwrap();
         assert_ne!(logon, 0);
         assert_eq!(current_logon_id().unwrap(), logon, "the same for the whole sign-in");
+    }
+
+    #[test]
+    fn a_served_pipe_is_seen_without_taking_a_connection() {
+        let name = unique_name();
+        assert!(!exists(&name));
+        let server = serve(&name, echo).unwrap();
+        assert!(exists(&name));
+        assert_eq!(server.connections(), 0);
+        let mut client = PipeClient::connect(&name, WAIT).unwrap();
+        assert_eq!(client.request("still", WAIT).unwrap(), "echo:still");
+        drop(client);
+        server.stop();
+        assert!(!exists(&name));
     }
 
     #[test]
