@@ -173,7 +173,7 @@ Güncellemeler: Store'dan kurulan kopyayı Microsoft Store günceller. GitHub'da
 
 ## Güvenlik
 
-Keymotion yalnızca gerçek bir klavyede ölçülmüş komutları gönderir; ürün yazılımı ve önyükleyici güncellemeleri kodda engellidir. Işıklar, tuş atamaları, makrolar ve ekran görselleri klavyenin belleğine kaydedilir ve her zaman geri dönebilirsiniz: nasıl yapılacağı [Bir şey ters giderse](https://cebersaban44-rgb.github.io/keymotion/tr/help/recovery/) sayfasında.
+Keymotion yalnızca gerçek bir klavyede ölçülmüş komutları gönderir; klavye yazılımı ve önyükleyici güncellemeleri kodda engellidir. Işıklar, tuş atamaları, makrolar ve ekran görselleri klavyenin belleğine kaydedilir ve her zaman geri dönebilirsiniz: nasıl yapılacağı [Bir şey ters giderse](https://cebersaban44-rgb.github.io/keymotion/tr/help/recovery/) sayfasında.
 
 ## Gizlilik
 

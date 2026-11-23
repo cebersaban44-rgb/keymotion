@@ -19,7 +19,7 @@ const STEPS: MessageKey[] = ["welcome.step1", "welcome.step2", "welcome.step3"];
 /** The FAQ entry about AJAZZ's firmware 769, by its heading in each language. */
 const FW769_FAQ: Record<string, string> = {
   en: "help/faq/#should-i-install-ajazzs-newest-firmware",
-  tr: "help/faq/#ajazzın-en-yeni-donanım-yazılımını-kurmalı-mıyım",
+  tr: "help/faq/#ajazzın-en-yeni-klavye-yazılımını-kurmalı-mıyım",
   ru: "help/faq/#стоит-ли-устанавливать-новейшую-прошивку-ajazz",
   "zh-CN": "help/faq/#要安装黑爵最新的固件吗",
 };
@@ -137,7 +137,9 @@ export function Welcome() {
           </ol>
           <p className="mt-1 flex items-center gap-2.5 text-[13px] text-ink-3" role="status" data-welcome-searching>
             <span className="h-2 w-2 rounded-full bg-signal motion-safe:animate-pulse" aria-hidden />
-            {t("welcome.searching")}
+            {/* A keyboard is plugged in, but not one Keymotion supports: say so,
+                and keep looking for one that is. */}
+            {t(unsupported.length ? "welcome.searching.other" : "welcome.searching")}
           </p>
         </div>
         <figure className="flex w-[190px] flex-col items-center justify-center gap-2">

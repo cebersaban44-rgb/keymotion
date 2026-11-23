@@ -185,15 +185,25 @@ export function Sidebar() {
     );
   };
 
-  // An AK980 PRO on AJAZZ's firmware 769 is there, but Keymotion can't
-  // drive it yet: say so rather than "Waiting for a keyboard".
+  // A keyboard is there that Keymotion can't drive yet (an AK980 PRO on
+  // AJAZZ's firmware 769, or another model): say so rather than "Waiting
+  // for a keyboard".
   const newFirmware = !kb && unsupported.some(isNewAk980Firmware);
+  const other = kb || newFirmware ? null : (unsupported[0] ?? null);
   const deviceTitle = kb
     ? modelTitle(t, kb.modelId, kb.modelName)
     : newFirmware
       ? modelTitle(t, SUPPORTED_MODEL_ID, SUPPORTED_MODEL)
-      : t("device.none.title");
-  const deviceSub = kb ? t(connectionKey(kb.connection)) : newFirmware ? t("fw769.sub") : t("device.none.sub");
+      : other
+        ? (other.name ?? t("unsupported.unnamed"))
+        : t("device.none.title");
+  const deviceSub = kb
+    ? t(connectionKey(kb.connection))
+    : newFirmware
+      ? t("fw769.sub")
+      : other
+        ? t("unsupported.sub")
+        : t("device.none.sub");
   // Not green for the receiver alone: whether the keyboard is on behind it
   // is not known yet.
   const connected = !!kb && kb.connection !== "dongle";
@@ -213,7 +223,7 @@ export function Sidebar() {
         onFocus={showTip(`${deviceTitle}, ${deviceSub}`)}
         onMouseLeave={hideTip}
         onBlur={hideTip}
-        data-device-status={kb ? kb.connection : newFirmware ? "new-firmware" : "none"}
+        data-device-status={kb ? kb.connection : newFirmware ? "new-firmware" : other ? "unsupported" : "none"}
       >
         <img
           src="/app-icon.svg"
