@@ -49,7 +49,7 @@
   <br>
   <sub>Klavye sahneleri yapay zekâyla üretildi; uygulamanın sayfaları ve klavyenin ekranında görünenler gerçektir.</sub>
   <br>
-  <b>36 saniyelik sesli video (İngilizce): <a href="https://youtu.be/LvGvyJFhPIE">YouTube'da</a></b>
+  <b>49 saniyelik sesli video: <a href="https://youtu.be/po3xojWn5xg">YouTube'da</a></b>
 </p>
 
 <p align="center">

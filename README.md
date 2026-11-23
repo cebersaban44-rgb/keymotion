@@ -49,7 +49,7 @@
   <br>
   <sub>Keyboard scenes rendered with AI; the app's pages and what the keyboard's screen shows are real.</sub>
   <br>
-  <b>The 36-second video with sound: <a href="https://youtu.be/LvGvyJFhPIE">on YouTube</a></b>
+  <b>The 49-second video with sound: <a href="https://youtu.be/7IcBu2ERSzA">on YouTube</a></b>
 </p>
 
 <p align="center">
