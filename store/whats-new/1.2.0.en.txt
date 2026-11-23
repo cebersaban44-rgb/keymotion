@@ -1,0 +1,9 @@
+• A new look in the style of Windows 11: the pages are listed on the left, as in Windows Settings, with your keyboard at the top. Buttons, switches and lists look like Windows' own.
+• Music mode: the key lights move with the sound your PC plays, as bars, beats, a band of loudness or waves. Nothing is recorded, and the microphone isn't used.
+• Game session: Keymotion notices when you play, puts a card on the keyboard's screen when a game starts and a summary when it ends, and can light the game's keys. If a game's anti-cheat software might mind, it can send nothing to the keyboard while you play.
+• League of Legends lights: your health, mana and the match's events on the keys.
+• Profiles by app: a program, or every game, gets its own profile while it is in front.
+• AI coding agents: Claude Code and Codex can tell you with light when they finish, wait for your approval or run into an error. Turn it on under Tools › AI agents. keymotion-cli comes with Keymotion as a command you can type in any terminal.
+• Russian and Simplified Chinese: Keymotion now speaks Русский and 简体中文 too.
+• AJAZZ's new firmware: on an AK980 PRO with firmware 769, Keymotion says so and sends nothing to the keyboard; support is planned for a later update.
+• Fixes: reminders and meetings are no longer an hour off on the night the clocks go back or in some Outlook time zones. With only the 2.4 GHz receiver plugged in, Keymotion no longer says your keyboard works.

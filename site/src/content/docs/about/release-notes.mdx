@@ -1,6 +1,6 @@
 ---
 title: Release notes
-description: Where to read what changed in each Keymotion version, with a short summary of 1.1.0, 1.0.0 and the first release, 0.1.0.
+description: Where to read what changed in each Keymotion version, with a short summary of 1.2.0, 1.1.0, 1.0.0 and the first release, 0.1.0.
 ---
 
 import Screenshot from "~/components/Screenshot.astro";
@@ -11,7 +11,7 @@ Every Keymotion version comes with release notes that say what changed.
 
 - **On GitHub.** The [Releases page](https://github.com/cebersaban44-rgb/keymotion/releases) has the notes for each version, next to its installer and the installer's SHA-256 checksum.
 - **In Keymotion.** When Keymotion finds a new version, click **What's new** in **Settings**, under **About**, or **Install now** in the strip above the page. The update window shows the notes under **What's new**, in the app's language when the release has notes in that language. Otherwise it shows a **Release notes on GitHub** link.
-- **The full history.** All versions are listed in [`CHANGELOG.md`](https://github.com/cebersaban44-rgb/keymotion/blob/main/CHANGELOG.md) on GitHub, and in Turkish in [`CHANGELOG.tr.md`](https://github.com/cebersaban44-rgb/keymotion/blob/main/CHANGELOG.tr.md).
+- **The full history.** All versions are listed in [`CHANGELOG.md`](https://github.com/cebersaban44-rgb/keymotion/blob/main/CHANGELOG.md) on GitHub, and in Turkish in [`CHANGELOG.tr.md`](https://github.com/cebersaban44-rgb/keymotion/blob/main/CHANGELOG.tr.md). From 1.2.0 on, the changes are also in Russian in [`CHANGELOG.ru.md`](https://github.com/cebersaban44-rgb/keymotion/blob/main/CHANGELOG.ru.md) and in Simplified Chinese in [`CHANGELOG.zh-CN.md`](https://github.com/cebersaban44-rgb/keymotion/blob/main/CHANGELOG.zh-CN.md).
 
 <Screenshot name="update-whats-new" alt="The update window with the notes of the new version under What's new" />
 
@@ -24,6 +24,21 @@ From 1.0.0 on, Keymotion has the same version number wherever you got it, and on
 - **When a version arrives.** A new version comes out on GitHub and in the Microsoft Store the same day: the GitHub release waits until Microsoft has reviewed the Store's copy. Only an urgent fix (a crash, a security problem) may come out on GitHub first; its notes say so.
 - **Test versions** (with "-rc" in their number) are only on GitHub.
 - **Only one Keymotion runs at a time.** If both are installed, they use the same settings. Opening the GitHub copy opens the Store's copy instead, and starting with Windows moves to the Store's copy too. Its Settings › About then shows a "GitHub copy" row with a button to Windows' Installed apps, where you can remove the GitHub copy; leave **Also delete my settings and saved data** unticked to keep your settings.
+
+## Keymotion 1.2.0
+
+Keymotion has a new look in the style of Windows 11, and new tools: music mode, the game session with League of Legends lights, profiles by app, and lights for AI coding agents such as Claude Code and Codex. It is now in Russian and Simplified Chinese too.
+
+- **A new look.** The pages are listed in a pane on the left, as in Windows Settings, with the connected keyboard at its top and a search box that narrows the list. Settings are full-width rows, and buttons, switches and lists look like Windows' own. **Overview** starts with the keyboard's glass strip, **Lighting** shows the effects as a gallery, and the **Screen** library is a grid of pictures. The keyboard drawing and its lights stay as they were.
+- **Music mode.** Under **Tools › Music mode**, the key lights move with the sound your PC plays, over the USB cable: **Bars**, **Beat**, **Level** or **Wave**, in the colors you choose. When the sound stops, the keyboard's own light comes back. Keymotion only reads how loud the sound is right now: nothing is recorded, and the microphone isn't used. See [Music mode](/keymotion/guide/music-mode/).
+- **Game session.** Under **Tools › Game session**, Keymotion notices when you play. Games come from your launchers' lists (Steam, Epic Games, GOG, Xbox, Riot Games, Xbox Game Bar) and from your own word. With the live screen on, a card goes to the keyboard's screen when a game starts and a summary when it ends, and the keys the game uses can light up. For games whose anti-cheat software might mind, **Send nothing to the keyboard while playing** leaves the keyboard on its own light. See [Game session](/keymotion/guide/game-session/).
+- **League of Legends lights.** During a match, from the data the game offers on your computer: your health on the keys, mana on F1–F12, dark red when you die, and an animation in your color for victory, defeat, level ups, kills, dragons, Baron and more. Set them up under League of Legends in the games list (**Special lights**), and see them with **Try on the keyboard**. See [League of Legends](/keymotion/guide/game-session/#league-of-legends).
+- **Profiles by app.** **Profiles › By app** links a program, or every game, to a profile, which comes on when the program is in front. By default only a per-key design's lighting changes, and nothing is saved to the keyboard; a rule can also save the key mapping and macros, at most 20 times a day. When a game ends, the keyboard goes back to what it had before, or to a profile you choose. See [By app](/keymotion/guide/profiles/#by-app).
+- **AI coding agents.** Claude Code and Codex can tell you with the keyboard's light when they finish a task, wait for your approval, run into an error or reach their usage limit. You turn it on once under **Tools › AI agents**: Keymotion first shows what it will add to Claude Code and Codex, and you choose each signal's color and effect. Agents reach Keymotion through `keymotion-cli`, a command-line tool that comes with the app. If you allow it (each of these is off at first), they can also run the focus timer, show a profile's lighting or put a card on the screen. Nothing you or the agent writes reaches Keymotion: only what happened. See [AI agents](/keymotion/guide/ai-agents/).
+- **Russian and Simplified Chinese.** The app, the user guide, the installer and the README are now also in Russian (Русский) and Simplified Chinese (简体中文). Keymotion starts in the language Windows uses when it is one of the four, and **Settings › Language** changes it at once. The translations were made with AI help and wait for a review by native speakers: corrections are welcome.
+- **AJAZZ's new firmware.** AJAZZ's firmware 769 (3.01) uses a different set of commands. On an AK980 PRO that has it, Keymotion now says so, sends nothing to the keyboard and links to the FAQ; support is planned for a later update. See [Should I install AJAZZ's newest firmware?](/keymotion/help/faq/#should-i-install-ajazzs-newest-firmware)
+- **Other changes.** Only a keyboard whose USB name includes "AK980 PRO" is taken for the AK980 PRO; another AK980, such as one without the screen, now gets **Request support**. On a firmware version that hasn't been tested with Keymotion, the keyboard clock also waits for your go-ahead. The site has a [Terms of use](/keymotion/about/terms/) page.
+- **Fixes.** On the night the clocks go back, a reminder or meeting at that hour no longer comes an hour early, and events from Outlook calendars in some time zones no longer show an hour off; some repeating events no longer go missing or come on the wrong days. With only the 2.4 GHz receiver plugged in, Keymotion no longer says your keyboard works. With **Preview on keyboard** on, closing the window no longer leaves the preview on the keys. On the keyboard's screen, a song, meeting or reminder title that ends in "…" is no longer drawn at the smallest size.
 
 ## Keymotion 1.1.0
 
