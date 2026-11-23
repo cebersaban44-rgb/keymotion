@@ -127,6 +127,7 @@ Not on the list? Plug it in anyway and [tell us about it](https://github.com/ceb
 | <img src="docs/images/features/music.webp" width="240" alt="Music mode: the key lights follow the sound as bars, a beat, a level band and waves"> | **Music mode**<br>Key lights that move with the sound your PC plays: bars from bass to treble, a pulse on each beat, a band of loudness, or waves. Nothing is recorded and the microphone isn't used. |
 | <img src="docs/images/features/game-session.webp" width="240" alt="League of Legends lights: health recedes across the keys and mana empties on the F keys"> | **Game session**<br>Notices when you play: a card on the screen when a game starts and a summary when it ends, and the game's keys lit. In League of Legends, your health, mana and the match's events show on the keys. |
 | <img src="docs/images/features/profiles.webp" width="240" alt="Linking every game and a program to their own profiles"> | **Profiles by app**<br>Keep lighting, keys and macros as profiles. Each program, or every game, switches to its own when it comes to the front. |
+| <img src="docs/images/features/ai-agents.webp" width="240" alt="An AI agent's card on the keyboard's screen: Tests, All 214 passed, Ready to merge"> | **AI coding agents**<br>Claude Code and Codex tell you with light when they finish, wait for your approval or run into an error; an agent can also write on the keys or send a card to the screen. [More below](#ai-coding-agents). |
 
 The [user guide](https://cebersaban44-rgb.github.io/keymotion/) goes through every page of the app.
 

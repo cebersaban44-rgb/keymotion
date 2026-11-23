@@ -43,6 +43,23 @@ test("says when there is nothing to guard or it cannot", () => {
   assert.equal(guard([DENY, []]), "failed");
 });
 
+test("the real app: Tauri's invoke is locked, the app's own bridge asks the guard", async () => {
+  // As in the real app: invoke neither writable nor configurable.
+  const internals = {};
+  Object.defineProperty(internals, "invoke", { value: () => Promise.resolve("ok"), writable: false, configurable: false });
+  globalThis.window = { __TAURI_INTERNALS__: internals, __ksGuardHook: true };
+  assert.equal(guard([DENY, []]), "on");
+  // What app/src/lib/ipc.ts does before each command.
+  assert.match(window.__ksGuard.check("screen_upload").message, /screenshot guard: "screen_upload"/);
+  assert.equal(window.__ksGuard.check("keyboards"), null);
+  assert.equal(guard([DENY, ["agents_connect"]]), "on");
+  assert.equal(window.__ksGuard.check("agents_connect"), null);
+  assert.deepEqual(blocked(), ["screen_upload"]);
+  // Without the bridge's word, a locked invoke cannot be guarded.
+  globalThis.window = { __TAURI_INTERNALS__: internals };
+  assert.equal(guard([DENY, []]), "failed");
+});
+
 test("every flash write in the app is on the list", () => {
   for (const cmd of ["apply_effect", "apply_per_key", "lighting_save", "apply_keymap", "apply_macros", "screen_upload", "profiles_load", "live_submit"]) {
     assert.ok(DENY.includes(cmd), cmd);

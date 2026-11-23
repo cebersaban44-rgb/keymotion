@@ -4,8 +4,11 @@ description: Claude Code ve Codex gibi kodlama ajanları iş bitince, onayınız
 ---
 
 import { Aside, Steps } from "@astrojs/starlight/components";
+import Screenshot from "~/components/Screenshot.astro";
 
 Claude Code ya da Codex gibi bir kodlama ajanı bir işi bitirince, onayınızı beklerken ya da hata verince klavyeniz ışıkla haber verebilir. Ajan tuşları kendi bildiği gibi de yakabilir: harf tuşlarında bir kelime, bir sayı, F sırasında bir ilerleme çubuğu. Erişimi yalnızca bir kez açarsınız; geri kalan her şeyin değiştirebileceğiniz hazır bir görünüşü vardır.
+
+<Screenshot name="ai-agents" alt="Erişimi açık, Claude Code ve Codex bağlı Yapay zekâ ajanları sayfası; sinyaller efektleri, ne kadar kaldıkları ve Klavyede dene düğmesiyle" />
 
 ## Açma
 
@@ -18,6 +21,8 @@ Claude Code ya da Codex gibi bir kodlama ajanı bir işi bitirince, onayınızı
 5. **Tamamlandı** neyin bağlandığını söyler. **Tamam**'a tıklayın.
 
 </Steps>
+
+<Screenshot name="ai-agents-connect" alt="Ajan erişimini açma, 1. adım: Claude Code ve Codex'e eklenecekler, altında Bağla ve aç düğmesi" />
 
 Codex bu yeni ayarları bir kez onaylamanızı ister (`/hooks` yazın ya da Codex'te Ayarlar › Kancalar'ı açın). O zamana kadar **Bağlı uygulamalar**'da **Codex'te bir kez onay bekliyor** yazar.
 
@@ -55,6 +60,8 @@ Siz kapattıysanız kapalı kalır: Keymotion'dan çıktıktan (saatin yanındak
 
 Bunlar önce kapalıdır: **Ekrana yazı ve görsel gönderme** (her gönderim klavyenin belleğine yazar, bütün ajanlar birlikte saatte en çok dört), **Odak zamanlayıcısını kullanma** ve **Profil ışığını kaydetme** (tuş atamalarına ve makrolara hiçbir zaman dokunmaz). **Oyundayken ajan ışıklarını gizle** açıktır: oyun oturumu sürerken ışıklar bekler.
 
+<Screenshot name="agent-card-text" alt="Klavyenin ekranında bir ajan kartı, üç kat büyük: Tests başlığı ve All 214 passed, Ready to merge yazısı" />
+
 ## Ek davranışlar
 
 Her satırın ayarları sağdaki okla açılır:
@@ -68,11 +75,15 @@ Her satırın ayarları sağdaki okla açılır:
 - **Gece sessizliği:** gece ajan ışıklarını kısar ya da söndürür.
 - **Yardımcı ajan bitti:** Claude Code'un yardımcı ajanlarından biri bitince F sırasında kısa bir dalga.
 
+<Screenshot name="agent-card-long-task" alt="Klavyenin ekranında Uzun iş bitti kartı, üç kat büyük: Bitti, 14 dakika ve proje klasörünün adı" />
+
 **Ajanlar bu ayarları değiştirebilsin** (önce açık) bir ajanın görünüşü ve davranışı değiştirmesine izin verir. Erişim, izinler ve bağlantılar her zaman sizdedir.
 
 ## Son işlemler
 
 Ajanların son yaptıkları saatleriyle listelenir. Bir ayar değişikliğinde **Geri al** vardır. **Bütün ajan ışıklarını söndür** bütün ajan ışıklarını bir anda söndürür. Yapılmayan bir istek nedenini de söyler; örneğin klavyenin USB kablosuyla bağlı olmadığını.
+
+<Screenshot name="ai-agents-recent" alt="Son işlemler: Claude Code'dan bir Bitti sinyali, Codex'in Geri al düğmeli bir renk değişikliği ve Keymotion'ın nedeniyle reddettiği bir istek" />
 
 Ajanlar Keymotion'ı küçük bir komut satırı aracı olan `keymotion-cli` ile kullanır. Betiklerin de kullanabileceği komutları [Ajan komut satırı](/keymotion/tr/developers/agent-cli/) sayfasındadır.
 

@@ -4,8 +4,11 @@ description: Claude Code 和 Codex 等编程智能体在完成、等待你批准
 ---
 
 import { Aside, Steps } from "@astrojs/starlight/components";
+import Screenshot from "~/components/Screenshot.astro";
 
 当 Claude Code 或 Codex 等编程智能体完成任务、等待你批准或出错时，键盘可以用灯光提醒你。智能体也可以按自己的方式点亮按键：在字母键上拼出一个词、显示一个数字，或在 F 键行上显示进度条。你只需开启一次访问；其余功能都有可以更改的预设外观。
+
+<Screenshot name="ai-agents" alt="已开启访问、已连接 Claude Code 和 Codex 的 AI 智能体页面，以及各信号的效果、持续时间和“在键盘上试用”" />
 
 ## 开启
 
@@ -18,6 +21,8 @@ import { Aside, Steps } from "@astrojs/starlight/components";
 5. **完成**会说明连接了什么。点击**确定**。
 
 </Steps>
+
+<Screenshot name="ai-agents-connect" alt="开启智能体访问的第 1 步：Claude Code 和 Codex 将获得的内容，下方是“连接并开启”按钮" />
 
 Codex 会请你确认这些新设置一次（输入 `/hooks`，或在 Codex 中打开“设置 › 钩子”）。在此之前，**已连接的应用**中会显示**等待你在 Codex 中批准一次**。
 
@@ -55,6 +60,8 @@ Codex 会请你确认这些新设置一次（输入 `/hooks`，或在 Codex 中�
 
 以下功能默认关闭：**向屏幕发送文字和图片**（每次发送都会写入键盘的存储，所有智能体合计每小时最多四次）、**使用专注计时器**和**保存配置文件的灯光**（永远不会改动按键设置和宏）。**游戏时隐藏智能体灯光**默认开启：游戏时段中灯光会暂停。
 
+<Screenshot name="agent-card-text" alt="键盘屏幕上的智能体卡片（放大三倍）：标题 Tests 和文字 All 214 passed、Ready to merge" />
+
 ## 更多信号
 
 用每一行右侧的箭头打开它的设置：
@@ -68,11 +75,15 @@ Codex 会请你确认这些新设置一次（输入 `/hooks`，或在 Codex 中�
 - **夜间安静**：夜间调暗或关闭智能体灯光。
 - **辅助智能体完成**：Claude Code 的辅助智能体完成时，F 键行上出现短暂的波浪。
 
+<Screenshot name="agent-card-long-task" alt="键盘屏幕上的“长任务完成”卡片（放大三倍）：完成、14 分钟和项目文件夹名称" />
+
 **允许智能体更改这些设置**（默认开启）允许智能体更改外观和行为。访问、权限和连接始终由你决定。
 
 ## 最近操作
 
 智能体最近的操作会连同时间一起列出。设置更改可以**撤销**。**关闭所有智能体灯光**会立即关闭所有智能体灯光。未执行的请求会说明原因，例如键盘没有通过 USB 数据线连接。
+
+<Screenshot name="ai-agents-recent" alt="最近操作：来自 Claude Code 的“完成”信号、Codex 的颜色更改（可撤销），以及 Keymotion 拒绝的请求及其原因" />
 
 智能体通过一个小型命令行工具 `keymotion-cli` 使用 Keymotion。它的命令（脚本也可以使用）见[智能体命令行](/keymotion/zh-cn/developers/agent-cli/)页面。
 
