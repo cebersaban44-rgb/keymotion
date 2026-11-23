@@ -66,6 +66,14 @@ jobs:
       - name: Versions agree
         run: node tools/check-version.mjs
 
+      # A pull request into main is a release: its CHANGELOG sections,
+      # release notes pages and Store What's new must be written, not the
+      # skeletons tools/release/prepare.mjs made (pages.yml publishes the
+      # site from main, and the tag build checks the same).
+      - name: Release text is written (pull requests into main)
+        if: github.base_ref == 'main'
+        run: node tools/release/check-release.mjs
+
       # The scripts the release (release.yml), site (pages.yml) and Store
       # (store.yml) workflows use, and the checks above (with the app's
       # message engine they share).

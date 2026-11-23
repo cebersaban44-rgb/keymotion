@@ -2,8 +2,10 @@
 # files the app's updater reads.
 #
 #   - Pushing a `v*` tag builds that version. The tag must be "v" + the
-#     version in the app's files (tools/check-version.mjs), and CHANGELOG.md
-#     must have a section for it ("## [0.2.0] - <date>").
+#     version in the app's files (tools/check-version.mjs), CHANGELOG.md
+#     must have a section for it ("## [0.2.0] - <date>"), and the rest of
+#     its text must be written (tools/release/check-release.mjs). The tag
+#     is made by tools/release/tag.mjs, after tools/release/prepare.mjs.
 #   - "Run workflow" on a branch makes a test build of the version in
 #     app/src-tauri/tauri.conf.json; when CHANGELOG.md has no section for it
 #     yet, the notes come from "## [Unreleased]". Delete such a test draft
@@ -14,9 +16,10 @@
 # source. Nothing is published: the owner reviews the draft and publishes it.
 #
 # A release tag (not a pre-release) also builds the Microsoft Store package
-# (store.yml): the draft waits until the Store submission passes
-# certification, then both are published the same day (owner's decision,
-# 2026-11-16; docs site: developers/microsoft-store).
+# and submits it for certification (store.yml): the draft waits until the
+# Store submission passes, then both are published the same day (owner's
+# decision, 2026-11-16): publish.yml publishes the draft, and "Publish now"
+# in Partner Center the Store's copy (docs site: developers/microsoft-store).
 #
 # Secrets: TAURI_SIGNING_PRIVATE_KEY (required, the updater key from
 # `pnpm --dir app tauri signer generate`) and TAURI_SIGNING_PRIVATE_KEY_PASSWORD
@@ -120,13 +123,17 @@ jobs:
           fi
 
       # A tag needs its own CHANGELOG.md section; a test build from a branch
-      # may use the Unreleased one.
+      # may use the Unreleased one. A tag also needs the rest of its text
+      # written (tools/release/check-release.mjs): the version's section in
+      # every CHANGELOG and on the site's release notes page, and the
+      # Store's What's new files, none of them still a skeleton.
       - name: Check the release notes
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             node tools/release/latest-json.mjs --check-notes --version "$VERSION"
+            node tools/release/check-release.mjs --version "$VERSION"
           else
             node tools/release/latest-json.mjs --check-notes --version "$VERSION" --allow-unreleased
           fi

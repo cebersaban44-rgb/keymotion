@@ -1,0 +1,103 @@
+#!/usr/bin/env node
+// Tags a release on main and opens the back-merge pull request (docs site:
+// developers/microsoft-store, "Making a release"). Run it on your computer,
+// on main, after the release pull request (develop → main) is merged:
+//
+//   node tools/release/tag.mjs [--dry-run]
+//
+//   1. Checks: the branch is main, the working tree is clean, HEAD is
+//      origin/main's tip, the version files agree (tools/check-version.mjs),
+//      the version's CHANGELOGs, release notes and What's new are written
+//      (tools/release/check-release.mjs), and the tag doesn't exist yet.
+//   2. Makes the annotated tag vX.Y.Z ("Keymotion X.Y.Z") and pushes it,
+//      which starts release.yml (and its Store job).
+//   3. Opens the main → develop back-merge pull request with gh. CI runs on
+//      it like on any other; merge it with a merge commit once it is green.
+//
+// Both stay on a computer: only the repository's admins may make v* tags
+// (the "Release tags" ruleset), and CI doesn't run on a pull request opened
+// by a workflow's GITHUB_TOKEN. Nothing here merges anything or uses --admin.
+
+import { execFileSync } from "node:child_process";
+import { realpathSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { parseArgs } from "node:util";
+
+import { appVersion, releaseProblems } from "./check-release.mjs";
+
+const root = fileURLToPath(new URL("../..", import.meta.url));
+
+/** What keeps `state` from being tagged: an empty list when nothing does. */
+export function tagProblems({ branch, clean, head, remoteHead, tagLocal, tagRemote, version }) {
+  const problems = [];
+  if (branch !== "main") problems.push(`the branch is ${branch}, not main (git switch main && git pull)`);
+  if (!clean) problems.push("the working tree has changes: commit or remove them first");
+  if (head !== remoteHead) problems.push(`HEAD (${head?.slice(0, 7)}) is not origin/main (${remoteHead?.slice(0, 7)}): git pull, or push what is missing through a pull request`);
+  if (tagLocal) problems.push(`tag v${version} already exists here`);
+  if (tagRemote) problems.push(`tag v${version} already exists on GitHub`);
+  return problems;
+}
+
+/** The back-merge pull request's title and body. */
+export function backMerge(version) {
+  return {
+    title: `Merge main back into develop after ${version}`,
+    body: `Back-merge after the ${version} release, with a merge commit, so \`develop\` is never behind \`main\`.`,
+  };
+}
+
+const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+const gh = (...args) => execFileSync("gh", args, { cwd: root, encoding: "utf8" }).trim();
+
+function main() {
+  const { values: opt } = parseArgs({ options: { "dry-run": { type: "boolean", default: false } } });
+  const dry = opt["dry-run"];
+
+  git("fetch", "--quiet", "--tags", "origin", "main");
+  execFileSync(process.execPath, [join(root, "tools", "check-version.mjs")], { cwd: root, stdio: "inherit" });
+  const version = appVersion(root);
+  const tag = `v${version}`;
+  const state = {
+    version,
+    branch: git("rev-parse", "--abbrev-ref", "HEAD"),
+    clean: git("status", "--porcelain") === "",
+    head: git("rev-parse", "HEAD"),
+    remoteHead: git("rev-parse", "origin/main"),
+    tagLocal: git("tag", "--list", tag) !== "",
+    tagRemote: git("ls-remote", "--tags", "origin", `refs/tags/${tag}`) !== "",
+  };
+  const problems = [...tagProblems(state), ...releaseProblems(root, version).problems];
+  if (problems.length) {
+    console.log(`Can't tag ${tag}:`);
+    for (const p of problems) console.log(`  - ${p}`);
+    process.exit(1);
+  }
+
+  const pr = backMerge(version);
+  console.log(`Ready: ${tag} on main (${state.head.slice(0, 7)}).`);
+  if (dry) {
+    console.log(`Dry run. Would run:\n  git tag -a ${tag} -m "Keymotion ${version}"\n  git push origin ${tag}`);
+    console.log(`  gh pr create --base develop --head main --title "${pr.title}"`);
+    return;
+  }
+
+  git("tag", "-a", tag, "-m", `Keymotion ${version}`);
+  execFileSync("git", ["push", "origin", tag], { cwd: root, stdio: "inherit" });
+  console.log(`Pushed ${tag}: release.yml builds the installer and the Store package (GitHub › Actions).`);
+
+  const open = gh("pr", "list", "--base", "develop", "--head", "main", "--state", "open", "--json", "url", "--jq", ".[0].url");
+  const url = open || gh("pr", "create", "--base", "develop", "--head", "main", "--title", pr.title, "--body", pr.body);
+  console.log(`Back-merge pull request: ${url}`);
+  console.log("Merge it with a merge commit (not squash) once CI is green.");
+}
+
+const isMain = process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url;
+if (isMain) {
+  try {
+    main();
+  } catch (e) {
+    console.log(e.message);
+    process.exit(1);
+  }
+}

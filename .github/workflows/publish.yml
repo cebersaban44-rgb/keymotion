@@ -1,0 +1,129 @@
+# Publishes a release once the Microsoft Store has certified it (docs site:
+# developers/microsoft-store, "Making a release").
+#
+#   Actions › Publish a release › Run workflow, with "Use workflow from" set
+#   to the release tag (Tags › v1.2.0) and the same tag typed below: the
+#   microsoft-store environment only lets v* tags use its secrets.
+#
+#   1. Reads the status of the tag's Store submission (tools/store/submit.mjs
+#      --status). Only reading: nothing in the Store changes.
+#   2. Unless "Only check" is ticked, and only when the submission has passed
+#      certification (Release, or already Publishing or Published), publishes
+#      the tag's GitHub draft release (release.yml made it).
+#   3. The Store's copy is published by selecting "Publish now" in Partner
+#      Center: the submission API has no way to do it.
+#
+# Pre-releases are only on GitHub: publish their draft on GitHub itself.
+#
+# Actions are pinned to commit SHAs (the release is in the comment next to
+# each), as in ci.yml; Dependabot proposes updates.
+name: Publish a release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, such as v1.2.0 (run the workflow from this tag)
+        required: true
+        type: string
+      check_only:
+        description: Only check the Store's status; publish nothing
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  store:
+    name: Store submission status
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: microsoft-store
+    outputs:
+      status: ${{ steps.status.outputs.status }}
+    steps:
+      - name: Run from the release tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::$TAG is not a release tag such as v1.2.0. A pre-release is only on GitHub: publish its draft there."
+            exit 1
+          fi
+          if [ "$GITHUB_REF" != "refs/tags/$TAG" ]; then
+            echo "::error::This run is from $GITHUB_REF. Run it again with \"Use workflow from\" set to Tags › $TAG."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Read the status
+        id: status
+        env:
+          TAG: ${{ inputs.tag }}
+          STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
+          STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
+          STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
+        run: node tools/store/submit.mjs --status --tag "$TAG"
+
+  github:
+    name: Publish the GitHub release
+    needs: store
+    if: ${{ !inputs.check_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          STATUS: ${{ needs.store.outputs.status }}
+        run: |
+          case "$STATUS" in
+            Release | Publishing | Published) ;;
+            *)
+              echo "::error::The Store submission of $TAG is $STATUS, not certified yet: the GitHub draft stays a draft. Run this again when the Store says it passed (status Release)."
+              exit 1
+              ;;
+          esac
+
+          if ! draft="$(gh release view "$TAG" --json isDraft --jq .isDraft)"; then
+            echo "::error::There is no GitHub release $TAG. release.yml makes its draft when the tag is pushed."
+            exit 1
+          fi
+          if [ "$draft" = true ]; then
+            gh release edit "$TAG" --draft=false --latest
+            echo "Published the GitHub release $TAG."
+          else
+            echo "The GitHub release $TAG was already published."
+          fi
+
+          url="$(gh release view "$TAG" --json url --jq .url)"
+          {
+            echo "### $TAG is published on GitHub"
+            echo
+            echo "- GitHub release: $url"
+            if [ "$STATUS" = Release ]; then
+              echo "- Microsoft Store: certified and waiting. **Now select \"Publish now\" in Partner Center › Keymotion**; the API can't."
+            else
+              echo "- Microsoft Store: $STATUS."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$STATUS" = Release ]; then
+            echo "::notice::Now select \"Publish now\" in Partner Center › Keymotion, so the Store's copy comes out too."
+          fi
