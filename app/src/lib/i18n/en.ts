@@ -1536,6 +1536,12 @@ export const en = {
   "unsupported.body":
     "Request support to send us the keyboard's identifying details on GitHub; they're what we need most to add a new model. Nothing is written to the keyboard.",
   "unsupported.request": "Request support",
+  "fw769.title": "Your keyboard has AJAZZ's new firmware",
+  "fw769.body": "AJAZZ's new firmware ({version}) uses a different set of commands, which Keymotion doesn't support yet; support is planned for a later update. Until then, Keymotion sends nothing to this keyboard.",
+  "fw769.body.unknown": "AJAZZ's new firmware uses a different set of commands, which Keymotion doesn't support yet; support is planned for a later update. Until then, Keymotion sends nothing to this keyboard.",
+  "fw769.more": "About this firmware",
+  "fw769.sub": "New firmware not supported yet",
+  "fw769.tray": "Keyboard firmware not supported yet",
   "crash.body": "Reload and try again. If it keeps happening, please report it.",
   "crash.reload": "Reload",
   "calendar.err.sealed": "This calendar's address can't be opened on this computer. Remove the calendar and add its address again.",
