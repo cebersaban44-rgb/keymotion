@@ -188,6 +188,15 @@ says so.
 - A keyboard with the AK980 PRO's USB identity and name but built
   differently inside showed up as an AK980 PRO on which every action failed.
   It now gets **Request support**, and nothing is sent to it.
+- **Calendar:** events from an Outlook calendar in the La Paz / Mazatlán or
+  Bishkek time zone showed an hour off all year, and in a few time zones
+  with summer time (Indiana, Cuba, Haiti, the Aleutian Islands, the Chatham
+  Islands, Lord Howe Island and some more) an hour off in summer. Keymotion
+  now knows every time zone name Outlook uses.
+- **Tray menu:** switching **System gauges on the keys** on or off on its
+  page now shows in the tray menu at once. Before, the menu could show the
+  old state for up to 10 minutes, and clicking it then did the opposite of
+  what it showed.
 
 ## [1.1.0] - 2026-11-16
 

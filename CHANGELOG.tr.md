@@ -185,6 +185,16 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 - AK980 PRO'nun USB kimliğini ve adını taşıyan ama içi farklı yapılmış bir
   klavye, her işlemin başarısız olduğu bir AK980 PRO gibi görünüyordu. Artık
   **Destek iste**'yi görüyor ve ona hiçbir şey gönderilmiyor.
+- **Takvim:** La Paz / Mazatlán ya da Bişkek saat dilimindeki bir Outlook
+  takviminin etkinlikleri yıl boyunca bir saat kaymış görünüyordu; yaz saati
+  uygulanan birkaç saat diliminde (Indiana, Küba, Haiti, Aleut Adaları,
+  Chatham Adaları, Lord Howe Adası ve birkaç yer daha) yazın bir saat
+  kayıyordu. Keymotion artık Outlook'un kullandığı bütün saat dilimi
+  adlarını tanıyor.
+- **Bildirim alanı menüsü:** **Tuşlarda sistem göstergeleri**'ni kendi
+  sayfasında açıp kapattığınızda menü bunu hemen gösteriyor. Önceden menü
+  10 dakikaya kadar eski durumu gösterebiliyordu; o arada tıkladığınızda da
+  gösterdiğinin tersini yapıyordu.
 
 ## [1.1.0] - 2026-11-16
 
