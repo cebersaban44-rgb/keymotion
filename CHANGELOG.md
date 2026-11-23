@@ -116,7 +116,11 @@ says so.
   or a picture on the screen (at most 4 an hour for all agents together, as
   you set it; your own picture comes back after it). With screen cards
   allowed, a coding task that took 10 minutes or more says "Done · 14 min"
-  on the screen when it ends.
+  on the screen when it ends. Agents can also write a word on the keys,
+  letter after letter (`keymotion-cli spell "DONE"`), and play little
+  animations of their own (`scene`), which they can keep under a name and
+  play again (`pattern`); all of it in the keyboard's working memory, at
+  most three flashes a second.
 
 ### Changed
 
