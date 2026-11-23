@@ -247,6 +247,15 @@ impl Background {
         self.quitting.store(false, Ordering::SeqCst);
     }
 
+    /// Tell the coding agents' hooks: a Keymotion the user quit stays closed
+    /// (the owner's decision, 2026-11-23); staying after all undoes it. Only
+    /// the tray's "Quit": Windows shutting down or signing out is no quit.
+    pub fn tell_agents(app: &AppHandle, quit: bool) {
+        if let Some(agents) = app.try_state::<Arc<crate::agent::AgentHandle>>() {
+            agents.quitting(quit);
+        }
+    }
+
     /// True once per run of the app: the first time the window is hidden
     /// (owner's decision, 2026-11-12). Started hidden with Windows, the
     /// window is not closed until the user opens it, so no notice comes then.
@@ -305,6 +314,7 @@ fn quit(app: &AppHandle) {
     let bg = app.state::<Arc<Background>>();
     bg.quitting.store(true, Ordering::SeqCst);
     tracing::info!("quit chosen in the tray");
+    Background::tell_agents(app, true);
     let Some(window) = app.get_webview_window("main") else {
         app.exit(0);
         return;

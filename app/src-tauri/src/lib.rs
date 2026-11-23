@@ -1008,8 +1008,9 @@ fn close_window(window: WebviewWindow) -> Result<(), String> {
 /// The user stayed after "Quit" in the tray asked about unsaved changes:
 /// closing hides the window again.
 #[tauri::command]
-fn quit_cancelled(background: State<'_, Arc<Background>>) {
+fn quit_cancelled(app: AppHandle, background: State<'_, Arc<Background>>) {
     background.quit_cancelled();
+    Background::tell_agents(&app, false);
 }
 
 /// Whether the window is on screen (hidden: running in the tray).
