@@ -1,6 +1,7 @@
 import { Lock } from "lucide-react";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useEffect, useState } from "react";
+import { Row } from "./components/controls";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Reporting } from "./components/Reporting";
 import { Sidebar } from "./components/Sidebar";
@@ -292,27 +293,18 @@ function DeviceLocked({ page }: { page: PageId }) {
   return (
     <div className="flex flex-col gap-6" data-locked={page}>
       {info && (
-        <header className="flex flex-col gap-2">
+        <header>
           <h1 className="page-title">{t(info.title)}</h1>
           <p className="page-desc">{t(info.desc)}</p>
         </header>
       )}
-      <section className="card flex flex-wrap items-center gap-4 p-5">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-ink-2">
-          <Lock size={18} aria-hidden />
-        </span>
-        <div className="min-w-[220px] flex-1">
-          <h2 className="eyebrow">{t("locked.title")}</h2>
-          <p className="mt-0.5 text-[13px] text-ink-2">{t("locked.body")}</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setPage("overview")}
-          className="h-9 rounded-lg border border-line px-3 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink"
-        >
-          {t("locked.steps")}
-        </button>
-      </section>
+      <div className="rows">
+        <Row icon={Lock} title={t("locked.title")} desc={t("locked.body")}>
+          <button type="button" onClick={() => setPage("overview")} className="btn-secondary">
+            {t("locked.steps")}
+          </button>
+        </Row>
+      </div>
     </div>
   );
 }
@@ -380,10 +372,10 @@ export default function App() {
   return (
     // Follows Windows' "Animation effects" setting.
     <MotionConfig reducedMotion="user">
-    <div className="flex h-full bg-bg">
+    <div className="flex h-full">
       <div className="contents" inert={guard.asking || safetyOpen || updateOpen}>
         <Sidebar />
-        <main className="relative min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+        <main className="page-layer relative min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
           <AnimatePresence mode="wait">
             <motion.div
               key={page + (kb?.key ?? "none")}
@@ -391,7 +383,7 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.18 }}
-              className="@container mx-auto min-h-full max-w-[1240px] px-6 pt-7 pb-10 min-[1200px]:px-10 min-[1200px]:pt-9"
+              className="@container mx-auto min-h-full max-w-[1240px] px-6 pt-[26px] pb-11 min-[1200px]:px-10"
             >
               {/* A new version found by the daily look (or downloading). */}
               <UpdateStrip />

@@ -109,7 +109,7 @@ function pad(n: number) {
 }
 
 /** The firmware's home page (clock), as on the owner's keyboard photo. */
-function ClockPage() {
+export function ClockPage() {
   const t = useT();
   const now = useNow();
   const mono = "JetBrains Mono Variable, monospace";

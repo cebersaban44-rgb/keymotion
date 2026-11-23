@@ -1,12 +1,14 @@
-// The bar at the bottom of every editor (lighting, key mapping, macros):
-// what is pending in one sentence, "Geri al" and "Klavyeye kaydet". It
-// stays in view while the page scrolls, and it is the only place on the
-// page that counts the changes (the sidebar dot is the other, app-wide).
+// The bar at the bottom of every editor (lighting, key mapping, macros), a
+// Windows info bar: "Not saved to the keyboard yet", what is pending in one
+// line, "Revert" and "Save to keyboard". It stays in view while the page
+// scrolls, and it is the only place on the page that counts the changes
+// (the navigation pane's dot is the other, app-wide).
 
-import { AlertTriangle, Check, Loader2 } from "lucide-react";
+import { Info, Loader2, Undo2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { friendlyError } from "../lib/errors";
 import { useT } from "../lib/i18n";
+import { InfoBar } from "./controls";
 
 type Status = { kind: "idle" } | { kind: "busy" } | { kind: "ok" } | { kind: "error"; message: string };
 
@@ -34,6 +36,7 @@ export function ActionBar({
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const busy = status.kind === "busy";
   const pending = changes !== null;
+  const notSaved = t("bar.notSaved");
 
   // A new edit replaces the last result ("saved" or the error).
   useEffect(() => {
@@ -50,60 +53,64 @@ export function ActionBar({
     }
   };
 
-  let message: ReactNode = null;
+  // The line under the title: what changed, unless it only repeats it.
+  const detail = changes && changes !== notSaved ? changes : null;
+  let tone: "info" | "warn" | "error" | "ok" = "info";
+  let title: ReactNode = null;
+  let line: ReactNode = null;
+  let icon: ReactNode | undefined;
   if (busy) {
-    message = (
-      <span className="flex items-center gap-2 text-ink-2">
-        <Loader2 size={14} className="animate-spin" aria-hidden />
-        {t("bar.saving")}
-      </span>
-    );
+    title = t("bar.saving");
+    icon = <Loader2 size={20} className="animate-spin" />;
   } else if (status.kind === "error") {
-    message = (
-      <span className="flex items-start gap-2 text-danger">
-        <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden />
-        {status.message}
-      </span>
-    );
+    tone = "error";
+    title = notSaved;
+    line = <span className="text-danger">{status.message}</span>;
   } else if (blocked && pending) {
-    message = <span className="text-danger">{blocked}</span>;
+    tone = "warn";
+    title = notSaved;
+    line = blocked;
   } else if (pending) {
-    message = <span className="num text-ink">{changes}</span>;
+    title = notSaved;
+    line = detail && <span className="num">{detail}</span>;
   } else if (status.kind === "ok") {
-    message = (
-      <span className="flex items-center gap-2 text-ok">
-        <Check size={14} aria-hidden />
-        {t("bar.saved")}
-      </span>
-    );
+    tone = "ok";
+    title = t("bar.saved");
+  } else {
+    icon = <Info size={20} strokeWidth={1.6} className="text-ink-3" />;
   }
 
   return (
-    <div
-      className="sticky bottom-4 z-20 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line-strong bg-surface px-4 py-3 shadow-[0_10px_30px_-14px_rgb(0_0_0/0.55)]"
-      data-action-bar
+    <InfoBar
+      floating
+      live
+      tone={tone}
+      icon={icon}
+      title={title}
+      data="action"
+      actions={
+        <>
+          {left && <div className="mr-2 flex min-w-0 items-center gap-3">{left}</div>}
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={!pending || !onRevert || busy}
+            onClick={() => {
+              onRevert?.();
+              setStatus({ kind: "idle" });
+            }}
+          >
+            <Undo2 size={15} strokeWidth={1.6} aria-hidden />
+            {t("bar.revert")}
+          </button>
+          <button type="button" className="btn-primary" disabled={!canSave || !pending || !!blocked || busy} onClick={save}>
+            {busy && <Loader2 size={15} className="animate-spin" aria-hidden />}
+            {t("bar.save")}
+          </button>
+        </>
+      }
     >
-      {left && <div className="flex min-w-0 items-center gap-3">{left}</div>}
-      <div role="status" className="ml-auto min-w-0 text-[13px]">
-        {message}
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          className="btn-secondary"
-          disabled={!pending || !onRevert || busy}
-          onClick={() => {
-            onRevert?.();
-            setStatus({ kind: "idle" });
-          }}
-        >
-          {t("bar.revert")}
-        </button>
-        <button type="button" className="btn-primary" disabled={!canSave || !pending || !!blocked || busy} onClick={save}>
-          {busy && <Loader2 size={15} className="animate-spin" aria-hidden />}
-          {t("bar.save")}
-        </button>
-      </div>
-    </div>
+      {line}
+    </InfoBar>
   );
 }
