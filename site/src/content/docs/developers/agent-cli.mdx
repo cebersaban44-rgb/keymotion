@@ -8,7 +8,7 @@ import { Aside } from "@astrojs/starlight/components";
 `keymotion-cli` lets a script or an AI coding agent (Claude Code, Codex and others that run shell commands) tell the user something with the keyboard's lights: a task finished, a question waits, three tests failed. The agent decides what to show and how; the ready signals are shortcuts, and keys, colors, effects and timing are free to combine.
 
 <Aside type="caution">
-The tool is being built. It is not in the installer or the Store package yet; that comes with the packaging step, together with the page that turns agent access on and connects Claude Code and Codex. Until then, build it from the repository (see [Development](#development)).
+The app's page that turns agent access on and connects Claude Code and Codex is in place (Tools › AI agents). The tool itself is not in the installer or the Store package yet; that comes with the packaging step. Until then, build it from the repository (see [Development](#development)).
 </Aside>
 
 ## How it works
@@ -96,7 +96,7 @@ Results go to stdout and diagnostics to stderr. The tool reads stdin only in hoo
 | 65 | A value: color, duration, key, effect, id, number | `bad_color`, `bad_duration`, `bad_keys`, `unknown_key`, `bad_effect`, `bad_value`, … |
 | 69 | Not available: the app is not running and could not be started, no keyboard, the USB cable is needed, a pipe that is not Keymotion's | `app_not_running`, `no_keyboard`, `needs_usb`, `unsupported`, `pipe_not_trusted` |
 | 75 | Try again later: rate limit (20 requests a second per source), timeout, the connection closed | `rate_limited`, `timeout`, `connection_lost` |
-| 76 | The tool and the app share no protocol version, or the app is older than the command | `protocol_mismatch`, `unknown_command` |
+| 76 | The tool and the app share no protocol version, the app is older than the command, or a message breaks the protocol | `protocol_mismatch`, `unknown_command`, `bad_request`, `bad_response` |
 | 77 | Not allowed: agent access is off, or a setting only the user may change | `agent_access_off`, `permission_off` |
 
 Exit code 2 is never used: Claude Code and Codex read 2 from a hook as "keep going" (and Codex also as "refuse the permission"). clap's own usage errors become 64, and `--help` and `--version` exit 0.
@@ -118,7 +118,7 @@ In the app, `--background` and `keymotion://background` mean "run with the tray 
 
 Two things tell an agent's user what is going on, and they do different jobs. While the agent waits for an approval it is frozen; when its service fails it is not running at all; and it may forget to say it finished. Only the coding app knows these moments, so it says so itself through **hooks**: it runs `keymotion-cli hook <agent>` on its events, and the model knows nothing of it and spends no context on it. When the agent itself wants to say something more (a word on the keys, a count, a progress bar), it uses the tool through a **skill**: one short file that says the tool is here and to run `keymotion-cli guide` first.
 
-`keymotion-cli connect claude-code|codex` adds both; the app's Agents page will do the same when you turn agent access on, after showing you what it adds. Nothing else of the agents' files is touched:
+`keymotion-cli connect claude-code|codex` adds both; the app's AI agents page does the same when you turn agent access on, after showing you what it adds. Nothing else of the agents' files is touched:
 
 | | Claude Code | Codex |
 |---|---|---|

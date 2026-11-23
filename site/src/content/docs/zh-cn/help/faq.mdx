@@ -118,6 +118,16 @@ Keymotion 不读取也不修改游戏的内存，不向游戏发送按键，也�
 
 不会。它不收集使用数据，没有账户，也不会发送任何关于你或你电脑的信息。它只在读取你添加的日历以及在 GitHub 上检查新版本时联网。问题报告只有在你亲自发送时才会提交到 GitHub。详情见[隐私政策](/keymotion/zh-cn/about/privacy/)。
 
+## Codex 让我批准新的钩子，要批准吗？
+
+要，前提是你在 **AI 智能体**页面连接了 Codex。Codex 会让你确认一次是否信任 Keymotion 添加的钩子：在 Codex 中输入 `/hooks`，或在 Codex 应用中打开“设置 › 钩子”，然后批准。在此之前，Keymotion 会显示**等待你在 Codex 中批准一次**，Codex 也不会在任务完成或等待你时通知 Keymotion。Keymotion 更新时钩子不会改变，所以 Codex 不会再次询问。参见 [AI 智能体](/keymotion/zh-cn/guide/ai-agents/)。
+
+## 卸载 Keymotion 之前要做什么？
+
+如果你在 **AI 智能体**页面连接了 Claude Code 或 Codex，先移除连接：打开 **AI 智能体**，点击每个应用旁的箭头，选择**移除连接**。Claude Code 会直接调用 Keymotion 的命令行工具，所以 Keymotion 卸载后，在移除连接之前，它会在每个事件上报告钩子错误。从 Microsoft Store 安装的 Keymotion 尤其要注意：Windows 卸载它时不会让它先清理自己添加的内容。
+
+如果已经卸载，可以重新安装 Keymotion 后移除连接，或者自己从 `%USERPROFILE%\.claude\settings.json` 中删除含有 `keymotion-cli` 的钩子。
+
 ## 能用于其他键盘吗？
 
 暂时不能。Keymotion 支持黑爵 AK980 V2（带屏版）。如果你连接了一款尚未支持的 SONiX 或黑爵键盘，Keymotion 会告诉你，不会向它发送任何内容，并提供**申请适配**按钮，用于在 GitHub 上申请支持这款键盘。参见[支持的键盘](/keymotion/zh-cn/help/keyboards/)。
@@ -125,6 +135,12 @@ Keymotion 不读取也不修改游戏的内存，不向游戏发送按键，也�
 ## 支持黑爵 AK980 V2 吗？
 
 支持。Keymotion 测试所用的键盘就是以 AK980 V2 的名称销售的：黑爵的店铺将它列为“AK980MAX … V2”，包装盒上写着“AK980 V2”。通过 USB 连接时，它报告的厂商是 SONiX，名称是“AK980 PRO”，Keymotion 正是根据这个名称识别它。关键在于硬件：带 240×135 屏幕和旋钮的 98 键型号。2026 款 AK980 PRO（原生双 8K）是另一款键盘，Keymotion 不支持。参见[支持的键盘](/keymotion/zh-cn/help/keyboards/)。
+
+## 更新固件后键盘无法识别
+
+更新固件（例如通过黑爵的软件）可能会改变键盘标识自己的方式。如果 Keymotion 不再识别它，就不会向键盘发送任何内容，并显示**暂不支持此键盘**和**申请适配**。点击它，再点击**在 GitHub 上报告**：键盘的信息会复制到剪贴板，并在 GitHub 上打开项目的表单。把信息粘贴到表单的详情框里（Ctrl+V）并提交；支持新固件需要的正是这些信息。不会向键盘写入任何内容。
+
+如果 Keymotion 仍能识别键盘，但提示其固件尚未测试，它会继续工作，只是在保存到键盘之前先询问你。参见[Keymotion 会损坏我的键盘吗？](#keymotion-会损坏我的键盘吗)
 
 ## Keymotion 是黑爵出品的吗？
 

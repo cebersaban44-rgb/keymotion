@@ -102,7 +102,10 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   uygulamanın durumunu gösterir; beş sinyalin rengini, efektini ve süresini
   **Klavyede dene** ile, ajanların başka neler yapabileceğini, ek
   davranışları, ajanların bu ayarları değiştirip değiştiremeyeceğini, oturum
-  numaralarını ve **Geri al**'lı son işlemleri ayarlar.
+  numaralarını ve **Geri al**'lı son işlemleri ayarlar; yapılmayan bir
+  isteğin nedenini de söyler. Gizlilik politikası ve güvenlik politikası,
+  ajanların neyi ilettiğini ve neyi hiçbir zaman değiştiremeyeceğini
+  anlatır.
 
 ### Değişenler
 

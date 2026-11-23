@@ -118,6 +118,16 @@ In **Settings**, under **About**, **Data folder** and **Log files** open them. K
 
 No. It collects no usage data, has no account and sends nothing about you or your computer. It goes online only to read the calendars you add and to check GitHub for a new version. Problem reports go to GitHub only when you send them yourself. Details are in the [privacy policy](/keymotion/about/privacy/).
 
+## Codex asks me to approve new hooks. Should I?
+
+Yes, if you connected Codex on the **AI agents** page. Codex asks once to trust the hooks Keymotion added: type `/hooks` in Codex, or open Settings › Hooks in the Codex app, and approve them. Until then, Keymotion shows **Waiting for your approval in Codex once**, and Codex doesn't tell Keymotion when a task finishes or waits for you. The hooks stay the same when Keymotion updates, so Codex doesn't ask again. See [AI agents](/keymotion/guide/ai-agents/).
+
+## What should I do before uninstalling Keymotion?
+
+If you connected Claude Code or Codex on the **AI agents** page, remove the connections first: open **AI agents**, click the arrow next to each app and choose **Remove connection**. Claude Code calls Keymotion's command-line tool directly, so once Keymotion is gone it reports a hook error on every event until the connection is removed. This matters most for Keymotion from the Microsoft Store: Windows removes it without letting it clean up after itself.
+
+If you've already uninstalled it, install Keymotion again and remove the connections, or delete the hooks that name `keymotion-cli` from `%USERPROFILE%\.claude\settings.json` yourself.
+
 ## Does it work with other keyboards?
 
 Not yet. Keymotion supports the AJAZZ AK980 PRO. If you connect a SONiX or AJAZZ keyboard that isn't supported yet, Keymotion says so, sends nothing to it, and offers **Request support** to ask for it on GitHub. See [Supported keyboards](/keymotion/help/keyboards/).
@@ -125,6 +135,12 @@ Not yet. Keymotion supports the AJAZZ AK980 PRO. If you connect a SONiX or AJAZZ
 ## Does it work with the AJAZZ AK980 V2?
 
 Yes. The keyboard Keymotion is tested with was sold as the AK980 V2: AJAZZ's store listed it as "AK980MAX … V2" and the box says "AK980 V2". Over USB it gives SONiX as its maker and "AK980 PRO" as its name, and Keymotion recognizes it by that name. What matters is the hardware: the 98-key model with the 240×135 screen and the knob. See [Supported keyboards](/keymotion/help/keyboards/).
+
+## My keyboard isn't recognized after a firmware update
+
+A firmware update, for example from AJAZZ's software, can change how the keyboard identifies itself. If Keymotion no longer recognizes it, it sends nothing to the keyboard and shows **This keyboard isn't supported yet** with **Request support**. Click it, then **Report on GitHub**: the keyboard's details go to the clipboard and the project's form opens on GitHub. Paste them into the form's details box (Ctrl+V) and send it; those details are what we need to support the new firmware. Nothing is written to the keyboard.
+
+If Keymotion still recognizes the keyboard but says its firmware hasn't been tested, it keeps working and asks you before saving to the keyboard. See [Can Keymotion break my keyboard?](#can-keymotion-break-my-keyboard)
 
 ## Is Keymotion made by AJAZZ?
 
