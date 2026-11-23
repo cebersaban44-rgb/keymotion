@@ -68,6 +68,7 @@ import { Profiles } from "./pages/Profiles";
 import { Screen, ScreenUploadToast } from "./pages/Screen";
 import { ScreenNotices } from "./pages/screen/Safety";
 import { Settings } from "./pages/Settings";
+import { Agents } from "./pages/Agents";
 import { Welcome } from "./pages/Welcome";
 import { finishIntro } from "./lib/intro";
 
@@ -353,6 +354,8 @@ export default function App() {
         return <Games kb={tool} />;
       case "screen":
         return <Screen kb={tool} />;
+      case "agents":
+        return <Agents />;
     }
     if (!kb) return page === "overview" || page === "connection" ? <Welcome /> : <DeviceLocked page={page} />;
     switch (page) {

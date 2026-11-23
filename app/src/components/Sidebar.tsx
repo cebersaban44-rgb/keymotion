@@ -7,6 +7,7 @@
 import {
   AudioLines,
   BellRing,
+  Bot,
   Cable,
   CalendarDays,
   Gamepad2,
@@ -74,6 +75,7 @@ const GROUPS: NavGroup[] = [
       { id: "reminders", label: "nav.reminders", icon: BellRing },
       { id: "calendar", label: "nav.calendar", icon: CalendarDays },
       { id: "games", label: "nav.games", icon: Gamepad2 },
+      { id: "agents", label: "nav.agents", icon: Bot },
     ],
   },
 ];
