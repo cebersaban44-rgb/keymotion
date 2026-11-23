@@ -199,6 +199,9 @@ pub struct LiveContext<'a> {
     /// the keyboard's values: its colour is the effect's when the mode and
     /// levels match what the keyboard holds.
     pub app_effect: Option<&'a dyn Fn() -> Option<AaEffect>>,
+    /// Told right before the switch to per-key mode is written: from then
+    /// on the keyboard may need its effect back when the app closes.
+    pub arming: Option<&'a dyn Fn()>,
 }
 
 impl LiveContext<'_> {
@@ -266,6 +269,12 @@ impl ArmedRecord {
 /// per-key table, the macro table), hashed: another keyboard of the same
 /// model and firmware almost surely differs. FNV-1a, which stays the same
 /// across builds (the note outlives the run that wrote it).
+///
+/// Not verified on a real 769 yet (beta checks): two boards nobody
+/// customised hash the same (their tables are the factory ones), so a note
+/// can be taken for the other board's; and if its per-key read returns the
+/// colours live frames put in RAM rather than the stored table, the hash
+/// changes while live lights run and the note would not be recognised.
 fn fingerprint(s: &AaSnapshot) -> String {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for part in [&s.keymap.0, &s.fn_keymap.0, &s.per_key.0, &s.macro_table.0] {
@@ -615,6 +624,7 @@ impl AaDriver {
         notes.retain(|n| !self.is_mine(n, Some(snap)));
         self.noted = Some(note.fingerprint.clone());
         notes.push(note);
+        cap_notes(&mut notes);
         save_armed_notes(&dir, &notes).map_err(|e| e.to_string())
     }
 
@@ -872,7 +882,11 @@ impl AaDriver {
     pub fn live_stopped(&mut self) {
         match &mut self.live {
             Live::Armed { stopped, .. } => *stopped = Some(Instant::now()),
-            Live::Off { .. } => self.live = Live::Idle,
+            // A refusal or failure keeps its retry time across streams
+            // (agents' lights start and stop often; every try is a flash
+            // write). One that waits for nothing goes with the stream.
+            Live::Off { retry_at: Some(_), .. } => {}
+            Live::Off { retry_at: None, .. } => self.live = Live::Idle,
             Live::Idle => {}
         }
     }
@@ -932,7 +946,11 @@ impl AaDriver {
             armed: levels_in_range(current.effect.per_key()),
         };
         // Noted before the switch goes: a crash, or a switch that lands and
-        // then reads back otherwise, still finds what goes back.
+        // then reads back otherwise, still finds what goes back. Whoever
+        // waits for the app to close hears it now.
+        if let Some(arming) = ctx.arming {
+            arming();
+        }
         let armed_block = restore.armed.encode().map(|b| b.to_vec()).map_err(|e| e.to_string());
         if let Err(e) = armed_block.and_then(|b| self.save_note(restore, b)) {
             self.live_off(LiveOff::Failed(format!("the switch could not be noted: {e}")), Some(now + ARM_RETRY));
@@ -963,12 +981,45 @@ impl AaDriver {
     /// tell (the gate closed), the note stays for the next connect.
     /// Otherwise the note goes and the next try waits longer.
     fn arm_failed(&mut self, restore: Restore, e: Error, now: Instant) -> Result<(), Error> {
-        let shows = self.kb.current_effect().map(|c| c.effect);
+        // A read-back that differed was seen; any other failure (no echo,
+        // no read-back, a transport error) leaves open whether the switch
+        // landed: one read tells.
+        let seen = matches!(&e, Error::Aa(AaError::Readback { .. }));
+        let shows = if seen {
+            self.kb.current_effect().map(|c| c.effect)
+        } else {
+            let read = self.kb.read_effect();
+            self.after_io();
+            match read {
+                Ok(r) => Some(r.effect),
+                Err(read_error) => {
+                    // Still unknown: the note stays, and the background
+                    // looks again and puts the effect back if the keyboard
+                    // shows per-key mode.
+                    tracing::warn!(
+                        "switch to per-key mode not confirmed ({e}); its effect may need to go back: {read_error}"
+                    );
+                    self.recover = Some((restore, Some(now + DISARM_RETRY)));
+                    self.live_off(LiveOff::Failed(e.to_string()), Some(now + self.arm_retry()));
+                    self.arm_failures += 1;
+                    return Err(e);
+                }
+            }
+        };
         match shows {
             Some(live) if live.is_live() && self.kb.is_sane() => {
                 tracing::warn!("keyboard switched to per-key mode, but it reads back otherwise: {e}");
                 let restore = Restore { armed: live, ..restore };
-                let raw = self.kb.snapshot().map(|s| s.effect.0.clone()).unwrap_or_default();
+                // The block the keyboard shows: the read-back's (kept in the
+                // snapshot) or the one just read.
+                let raw = match (seen, self.kb.snapshot()) {
+                    (true, Some(s)) => s.effect.0.clone(),
+                    _ => live
+                        .encode()
+                        .or_else(|_| levels_in_range(live).encode())
+                        .map(|b| b.to_vec())
+                        .unwrap_or_default(),
+                };
                 if let Err(e) = self.save_note(restore, raw) {
                     tracing::warn!("live note not updated: {e}");
                 }
@@ -1200,13 +1251,14 @@ impl AaDriver {
             Ok(report) => report,
             Err(e) => {
                 match &e {
+                    // Stopped part-way: the section it stopped in may be
+                    // partly written, so the backup from before stays (and
+                    // old ones are pruned, as after any restore).
                     AaError::RestoreIncomplete { report, .. } => {
                         if report.written.contains(&"effect") {
                             self.effect_replaced();
                         }
-                        if !report.written.is_empty() {
-                            backups::prune(&dir, self.target.usb, &protect);
-                        }
+                        backups::prune(&dir, self.target.usb, &protect);
                     }
                     // Refused before anything was written: the backup of
                     // the state before is not needed, and nothing else goes.
@@ -1450,6 +1502,25 @@ fn hex(bytes: &[u8]) -> String {
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct ArmedNotes {
     notes: Vec<ArmedRecord>,
+}
+
+/// Notes kept per model and USB ids: one whose keyboard changed while the
+/// app was not running (its fingerprint with it) is never recognised again,
+/// so the oldest go.
+const NOTES_KEPT: usize = 4;
+
+/// Keep the newest [`NOTES_KEPT`] notes of each model and USB ids (the list
+/// is oldest first).
+fn cap_notes(notes: &mut Vec<ArmedRecord>) {
+    let mut seen: HashMap<(String, u16, u16), usize> = HashMap::new();
+    let mut keep = vec![false; notes.len()];
+    for (i, n) in notes.iter().enumerate().rev() {
+        let count = seen.entry((n.record_id.clone(), n.pid, n.release)).or_default();
+        *count += 1;
+        keep[i] = *count <= NOTES_KEPT;
+    }
+    let mut keep = keep.into_iter();
+    notes.retain(|_| keep.next().unwrap_or(true));
 }
 
 /// Every keyboard's live note (an unreadable file is kept aside by

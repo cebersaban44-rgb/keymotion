@@ -55,12 +55,12 @@ fn untested() -> Result<(), String> {
 
 /// The Memory gate says yes.
 fn go() -> LiveContext<'static> {
-    LiveContext { gate: Some(&yes), app_effect: None }
+    LiveContext { gate: Some(&yes), app_effect: None, arming: None }
 }
 
 /// The gate says no, for this reason.
 fn no(gate: Gate<'static>) -> LiveContext<'static> {
-    LiveContext { gate: Some(gate), app_effect: None }
+    LiveContext { gate: Some(gate), app_effect: None, arming: None }
 }
 
 /// A gate that says yes and counts how often it was asked.
@@ -279,7 +279,7 @@ fn live_lights_switch_to_per_key_mode_and_back_after_the_hold() {
     let mut d = driver(&sim, Some(&dir.0));
     let gate = Counting::new();
     let ask = || gate.ask();
-    let counted = LiveContext { gate: Some(&ask), app_effect: None };
+    let counted = LiveContext { gate: Some(&ask), app_effect: None, arming: None };
     d.live_starting(&counted).unwrap();
     assert_eq!(gate.asked(), 1, "the switch is a memory write");
     assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
@@ -393,7 +393,7 @@ fn an_unknown_colour_is_never_armed() {
     let mut d = driver(&sim, Some(&dir.0));
     let gate = Counting::new();
     let ask = || gate.ask();
-    let counted = LiveContext { gate: Some(&ask), app_effect: None };
+    let counted = LiveContext { gate: Some(&ask), app_effect: None, arming: None };
     d.live_starting(&counted).unwrap();
     assert_eq!(sim.state().effect[0], 1, "not switched");
     assert!(sim.state().sent(cmd::SET_EFFECT).is_empty());
@@ -409,13 +409,13 @@ fn an_unknown_colour_is_never_armed() {
     let app = AaEffect::decode(&FACTORY_EFFECT).unwrap();
     let other = move || Some(AaEffect { brightness: 2, ..app });
     d.live_stopped();
-    d.live_starting(&LiveContext { gate: Some(&yes), app_effect: Some(&other) }).unwrap();
+    d.live_starting(&LiveContext { gate: Some(&yes), app_effect: Some(&other), arming: None }).unwrap();
     assert_eq!(sim.state().effect[0], 1);
 
     // Its record of this very effect does: the colour it stored.
     let same = move || Some(app);
     d.live_stopped();
-    d.live_starting(&LiveContext { gate: Some(&yes), app_effect: Some(&same) }).unwrap();
+    d.live_starting(&LiveContext { gate: Some(&yes), app_effect: Some(&same), arming: None }).unwrap();
     assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
     let note = armed_note(&dir.0).unwrap();
     assert_eq!(AaEffect::decode(&note.effect.0).unwrap().color_part(), app.color_part());
@@ -446,7 +446,7 @@ fn a_refused_gate_holds_live_lights_back() {
     // Not asked again right away (the question is not put again and again).
     let gate = Counting::new();
     let ask = || gate.ask();
-    d.live_frame(vec![], &LiveContext { gate: Some(&ask), app_effect: None }).unwrap();
+    d.live_frame(vec![], &LiveContext { gate: Some(&ask), app_effect: None, arming: None }).unwrap();
     assert_eq!(gate.asked(), 0);
     assert!(sim.state().sent(cmd::SET_EFFECT).is_empty());
     // The user said yes: the next frame switches.
@@ -1184,4 +1184,148 @@ fn replies_that_queue_up_on_an_idle_keyboard_still_count() {
     d.connect(None);
     assert!(d.kb.notices_reported() >= CONFLICT_THRESHOLD, "{}", d.kb.notices_reported());
     assert!(!d.status().other_program_suspected);
+}
+
+// ---------------------------------------------------------------- second check of #195
+
+/// A keyboard that, once switched to per-key mode, stops answering reads of
+/// its effect while `deaf` is set: the switch goes out and is echoed, its
+/// read-back never comes.
+struct LosesReadBack {
+    port: kb_core::aa::sim::SimPort,
+    deaf: std::sync::Arc<AtomicBool>,
+}
+
+impl OutputPort for LosesReadBack {
+    fn write(&mut self, report: &[u8]) -> kb_core::aa::Result<usize> {
+        use kb_protocol::aa::frame;
+        let data = 1 + frame::HEADER_LEN;
+        if report.len() > data && report[2] == cmd::SET_EFFECT && report[data] == aa_effect::MODE_PER_KEY {
+            self.deaf.store(true, Ordering::SeqCst);
+        }
+        self.port.write(report)
+    }
+    fn read(&mut self, timeout_ms: u32) -> kb_core::aa::Result<Option<Vec<u8>>> {
+        use kb_protocol::aa::frame;
+        let r = self.port.read(timeout_ms)?;
+        let effect_reply = r.as_ref().is_some_and(|r| {
+            let at = usize::from(r.len() == frame::WIRE_LEN && r[0] == 0);
+            r[at] == frame::REPLY && r[at + 1] == cmd::EFFECT
+        });
+        if effect_reply && self.deaf.load(Ordering::SeqCst) {
+            return Ok(None);
+        }
+        Ok(r)
+    }
+}
+
+#[test]
+fn a_switch_whose_read_back_is_lost_still_gets_its_effect_back() {
+    let dir = TempDir::new("arm-lost-readback");
+    let sim = Sim::ak980();
+    let deaf = std::sync::Arc::new(AtomicBool::new(false));
+    let port = LosesReadBack { port: sim.command(), deaf: deaf.clone() };
+    let mut d = AaDriver::new(AaPort::new(port), Sim::model(), target(Some(&dir.0))).unwrap();
+    d.connect(None);
+    d.live_starting(&go()).unwrap_err();
+    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY, "the switch landed");
+    assert!(armed_note(&dir.0).is_some(), "the note stays: the switch may have landed");
+    // The keyboard answers again: the background looks, sees per-key mode
+    // and puts the effect back.
+    deaf.store(false, Ordering::SeqCst);
+    d.read_at = None;
+    d.run_due(Instant::now() + DISARM_RETRY + Duration::from_secs(1), &go()).unwrap();
+    assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
+    assert!(armed_note(&dir.0).is_none());
+}
+
+#[test]
+fn a_failed_switch_waits_across_streams_too() {
+    let dir = TempDir::new("arm-retry-streams");
+    let sim = Sim::ak980();
+    let mut d = driver(&sim, Some(&dir.0));
+    sim.state().faults.ignore_writes = Some(cmd::SET_EFFECT);
+    d.live_starting(&go()).unwrap_err();
+    assert_eq!(effect_writes(&sim), 1);
+    // Agents' lights start and stop often.
+    for _ in 0..5 {
+        d.live_stopped();
+        d.live_starting(&go()).unwrap();
+        d.live_frame(vec![(led("esc"), [1, 1, 1])], &go()).unwrap();
+    }
+    assert_eq!(effect_writes(&sim), 1, "each new stream waits too");
+    assert!(matches!(d.status().live_lights_off, Some(LiveLightsOff::Failed { .. })));
+}
+
+#[test]
+fn whoever_waits_for_closing_hears_of_a_switch_before_it_is_written() {
+    let dir = TempDir::new("arming");
+    let sim = Sim::ak980();
+    let mut d = driver(&sim, Some(&dir.0));
+    let told = std::cell::Cell::new(None);
+    let arming = || told.set(Some(effect_writes(&sim)));
+    let ctx = LiveContext { gate: Some(&yes), app_effect: None, arming: Some(&arming) };
+    d.live_starting(&ctx).unwrap();
+    assert_eq!(told.get(), Some(0), "told before the switch was written");
+    assert_eq!(effect_writes(&sim), 1);
+    // Frames on an armed keyboard switch nothing: nobody is told.
+    told.set(None);
+    d.live_frame(vec![(led("esc"), [1, 1, 1])], &ctx).unwrap();
+    assert_eq!(told.get(), None);
+}
+
+#[test]
+fn notes_of_keyboards_never_seen_again_do_not_pile_up() {
+    let dir = TempDir::new("notes-cap");
+    let keyboards: Vec<Sim> = (0..NOTES_KEPT + 3)
+        .map(|i| {
+            let sim = Sim::ak980();
+            let usage = 0x05 + i as u8;
+            aa_keymap::set_entry(&mut sim.state().keymap, aa("a"), [aa_keymap::page::KEYBOARD, 0, usage, 0]);
+            {
+                let mut d = driver(&sim, Some(&dir.0));
+                d.live_starting(&go()).unwrap();
+                // The app ends here; this keyboard is never seen again.
+            }
+            sim
+        })
+        .collect();
+    assert_eq!(armed_notes(&dir.0).len(), NOTES_KEPT);
+    // The newest stay: the last keyboard still gets its effect back.
+    let last = keyboards.last().unwrap();
+    let mut d = driver(last, Some(&dir.0));
+    d.run_due(Instant::now(), &go()).unwrap();
+    assert_eq!(last.state().effect[..12], FACTORY_EFFECT[..12]);
+    assert_eq!(armed_notes(&dir.0).len(), NOTES_KEPT - 1);
+}
+
+#[test]
+fn restores_that_stop_part_way_do_not_pile_up_backups() {
+    let dir = TempDir::new("restore-incomplete");
+    let sim = Sim::ak980();
+    let mut d = driver(&sim, Some(&dir.0));
+    let bdir = backups::dir(&dir.0);
+    let first = names(&dir.0).remove(0);
+    let t = target(Some(&dir.0));
+    let snap = d.kb.snapshot().unwrap().clone();
+    let others: Vec<String> = (0..backups::KEPT - 1)
+        .map(|_| {
+            let b = backups::KeyboardBackup::new(&t, backups::Reason::BeforeRestore, snap.clone());
+            backups::save(&bdir, &b).unwrap()
+        })
+        .collect();
+    assert_eq!(names(&dir.0).len(), backups::KEPT);
+    // The keyboard's keymap differs from the backups', and it does not keep
+    // keymap writes: every try stops in the base layer.
+    d.apply_keymap(Layer::Base, &LayerMap::from([(led("a"), KeyAction::key(0x05))])).unwrap();
+    sim.state().faults.ignore_writes = Some(cmd::SET_KEYMAP);
+    let source = others[0].clone();
+    let restoring = backups::load(&bdir, &source).unwrap();
+    for i in 0..3 {
+        let e = d.restore(&restoring.snapshot, None, Some(&source)).unwrap_err();
+        assert!(e.to_string().starts_with("the restore stopped while writing the base layer"), "{e}");
+        let now = names(&dir.0);
+        assert_eq!(now.len(), backups::KEPT, "try {i}: {now:?}");
+        assert!(now.contains(&first) && now.contains(&source), "try {i}: {now:?}");
+    }
 }

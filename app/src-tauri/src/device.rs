@@ -900,6 +900,17 @@ impl UploadCancels {
 /// A screen upload stopped before it began.
 pub const ERR_UPLOAD_CANCELLED: &str = "screen upload cancelled before it started";
 
+/// How often background work (live frames, the mirror, device reads) opens
+/// an "AA" keyboard again after its channel failed: every open reads the
+/// whole keyboard, and a stalling one would keep the actor busy.
+const AA_REOPEN_BACKOFF: Duration = Duration::from_secs(30);
+
+/// Background work waits before opening a failed "AA" channel again.
+const ERR_AA_REOPEN_LATER: &str = "the keyboard did not answer when it was opened; it is tried again later";
+
+/// A restore found no keyboard it could read on the cable.
+pub const ERR_KEYBOARD_NOT_READ: &str = "the keyboard on the USB cable could not be read";
+
 pub struct DeviceHandle {
     pub snapshot: Arc<Mutex<Snapshot>>,
     /// The flash write in progress (close guard, shutdown hold).
@@ -1058,6 +1069,9 @@ struct Actor {
     /// The app is closing (`Request::Closing`): no live frame, mirror,
     /// clock sync or driver work any more.
     closed: bool,
+    /// An "AA" channel on this path failed: background work opens it again
+    /// only after this ([`AA_REOPEN_BACKOFF`]).
+    aa_reopen_after: Option<(String, Instant)>,
     /// The driver's own work ([`Driver::next_due`]) is not looked at again
     /// before this (it had nothing it could do).
     driver_rest_until: Option<Instant>,
@@ -1157,6 +1171,7 @@ impl Actor {
             uploads: Arc::new(UploadCancels::default()),
             aa_hold: Arc::new(AtomicBool::new(false)),
             closed: false,
+            aa_reopen_after: None,
             driver_rest_until: None,
             programs: running_conflict,
             peers: Vec::new(),
@@ -1508,9 +1523,9 @@ impl Actor {
     fn run_driver_due(&mut self) {
         let now = Instant::now();
         let (gate, app_effect) = (self.memory_gate(), self.app_effect_source());
-        let ctx = LiveContext { gate: Some(&gate), app_effect: Some(&app_effect) };
+        let ctx = LiveContext { gate: Some(&gate), app_effect: Some(&app_effect), arming: None };
         let before = self.aa_driver().map(crate::aa::AaDriver::status);
-        if let Err(e) = self.with_open(|c| c.driver.run_due(now, &ctx)) {
+        if let Err(e) = self.with_open_background(|c| c.driver.run_due(now, &ctx)) {
             tracing::debug!("driver work not done: {e}");
         }
         // Nothing it could do now: look again in a second at the soonest.
@@ -1534,7 +1549,7 @@ impl Actor {
             return;
         }
         let (gate, app_effect) = (self.memory_gate(), self.app_effect_source());
-        let ctx = LiveContext { gate: Some(&gate), app_effect: Some(&app_effect) };
+        let ctx = LiveContext { gate: Some(&gate), app_effect: Some(&app_effect), arming: None };
         if let Err(e) = self.with_open(|c| c.driver.closing(&ctx)) {
             tracing::warn!("closing: the keyboard's effect did not go back: {e}");
         }
@@ -1571,9 +1586,13 @@ impl Actor {
     fn restore_keyboard(&mut self, file: &str, color: Option<(Rgb, bool)>) -> Result<KeyboardRestoreResult, String> {
         let dir = self.config_dir.as_deref().map(backups::dir).ok_or("the app has no data folder")?;
         let backup = backups::load(&dir, file)?;
-        if self.command_path.is_some() && self.aa_driver().is_none() {
-            // Opens (and reads) the keyboard on the cable.
-            let _ = self.with_open(|_| Ok(()));
+        if self.command_path.is_none() {
+            return Err(NO_USB.into());
+        }
+        if self.aa_driver().is_none() {
+            // Opens (and reads) the keyboard on the cable; one that cannot
+            // be read says so, not that the backup is another keyboard's.
+            self.with_open(|_| Ok(())).map_err(|e| format!("{ERR_KEYBOARD_NOT_READ}: {e}"))?;
         }
         let usb = self.aa_driver().map(crate::aa::AaDriver::usb);
         if usb != Some(backup.usb()) {
@@ -1828,12 +1847,37 @@ impl Actor {
     /// Run `f` against the wired command channel, opening it on demand in
     /// the detected keyboard's family (an "AA" keyboard is read whole when
     /// it opens). Any transport error drops the handle so the next call
-    /// reopens it.
+    /// reopens it. For the user's own requests: an "AA" keyboard whose
+    /// channel failed is tried again at once.
     fn with_open<T>(&mut self, f: impl FnOnce(&mut Command) -> driver::Result<T>) -> Result<T, String> {
+        self.with_open_as(false, f)
+    }
+
+    /// [`Self::with_open`] for the actor's own work (live frames, the
+    /// mirror, device reads, the driver's due work): an "AA" keyboard whose
+    /// channel failed is opened again at most every [`AA_REOPEN_BACKOFF`].
+    fn with_open_background<T>(&mut self, f: impl FnOnce(&mut Command) -> driver::Result<T>) -> Result<T, String> {
+        self.with_open_as(true, f)
+    }
+
+    fn with_command_background<T>(&mut self, f: impl FnOnce(&mut Driver) -> driver::Result<T>) -> Result<T, String> {
+        self.with_open_background(|c| f(&mut c.driver))
+    }
+
+    fn with_open_as<T>(
+        &mut self,
+        background: bool,
+        f: impl FnOnce(&mut Command) -> driver::Result<T>,
+    ) -> Result<T, String> {
         let path = self.command_path.clone().ok_or_else(|| NO_USB.to_string())?;
         let usb = self.usb.clone().ok_or_else(|| NO_USB.to_string())?;
         let protocol = usb.protocol();
+        let aa = protocol == Protocol::AjazzAa;
         if self.command.as_ref().is_none_or(|c| c.path != path || c.driver.protocol() != protocol) {
+            let waiting = self.aa_reopen_after.as_ref().is_some_and(|(p, until)| *p == path && Instant::now() < *until);
+            if background && aa && waiting {
+                return Err(ERR_AA_REOPEN_LATER.into());
+            }
             let target = OpenTarget {
                 protocol,
                 model: usb.model,
@@ -1843,14 +1887,23 @@ impl Actor {
             };
             // A handle being replaced takes its stream with it.
             self.command = None;
-            let driver = self.ports.open_command(&path, &target)?;
+            let driver = match self.ports.open_command(&path, &target) {
+                Ok(driver) => driver,
+                Err(e) => {
+                    if aa {
+                        self.aa_reopen_after = Some((path, Instant::now() + AA_REOPEN_BACKOFF));
+                    }
+                    return Err(e);
+                }
+            };
+            self.aa_reopen_after = None;
             if let Some(d) = driver.aa() {
                 tracing::info!(record = %usb.record_id, read_only = ?d.read_only(), "\"AA\" keyboard opened");
                 // Show what the read found at once.
                 self.next_enumerate = Instant::now();
             }
             self.driver_rest_until = None;
-            self.command = Some(Command { path, driver, live: false });
+            self.command = Some(Command { path: path.clone(), driver, live: false });
         }
         let cmd = self.command.as_mut().expect("opened above");
         match f(cmd) {
@@ -1866,6 +1919,9 @@ impl Actor {
                 }
                 if e.is_transport() {
                     self.command = None;
+                    if aa {
+                        self.aa_reopen_after = Some((path, Instant::now() + AA_REOPEN_BACKOFF));
+                    }
                 }
                 Err(e.to_string())
             }
@@ -1907,11 +1963,15 @@ impl Actor {
         // What an "AA" keyboard needs to switch to per-key mode, asked only
         // when it would ("04 xx": never).
         let (gate, app_effect) = (self.memory_gate(), self.app_effect_source());
-        let ctx = LiveContext { gate: Some(&gate), app_effect: Some(&app_effect) };
+        // A switch to per-key mode about to be written: closing the app
+        // waits for it (and puts the effect back) from now on.
+        let hold = self.aa_hold.clone();
+        let arming = move || hold.store(true, Ordering::SeqCst);
+        let ctx = LiveContext { gate: Some(&gate), app_effect: Some(&app_effect), arming: Some(&arming) };
         let before = self.aa_driver().map(crate::aa::AaDriver::status);
         // The first frame on this handle starts the stream in the family's
         // driver ("04 xx": nothing to do).
-        let sent = self.with_open(|c| {
+        let sent = self.with_open_background(|c| {
             if !c.live {
                 c.driver.live_starting(&ctx)?;
                 c.live = true;
@@ -1962,7 +2022,7 @@ impl Actor {
         let cal = self.calibration;
         let expect = self.mirror.clone().unwrap_or_default();
         let indicators = self.indicators.clone();
-        match self.with_command(|d| d.mirror_colors(&expect, cal, &indicators)) {
+        match self.with_command_background(|d| d.mirror_colors(&expect, cal, &indicators)) {
             Ok(colors) => {
                 // Show what the keys look like, in monitor colours.
                 let payload: Vec<LedColor> = colors
@@ -1990,7 +2050,7 @@ impl Actor {
         }
         if self.device_read.is_none_or(|at| at.elapsed() >= BATTERY_REFRESH) {
             self.device_read = Some(Instant::now());
-            match self.with_command(|d| d.device_info()) {
+            match self.with_command_background(|d| d.device_info()) {
                 Ok(report) => self.device_report = report.map(|r| (r, now_ms())),
                 Err(e) => tracing::debug!("device report not read: {e}"),
             }
@@ -3232,6 +3292,49 @@ mod tests {
             assert!(wait_for(false), "nothing held after closing");
             drop(tx);
             running.join().unwrap();
+        }
+
+        #[test]
+        fn a_failing_aa_channel_is_not_opened_again_with_every_frame() {
+            let dir = TempDir::new("actor-reopen");
+            let (mut a, sim) = actor(&dir.0, "");
+            a.handle(Request::ConfirmFirmware("3.01".into()));
+            let first = call(&mut a, Request::KeyboardBackups).unwrap()[0].file.clone();
+            a.handle(Request::SetLayer(LightLayer::Gauges, Some(frame(&[(1, 9)], 1.0))));
+            a.send_live();
+            // The switch itself told the handle, before any later loop turn.
+            assert!(a.aa_hold.load(Ordering::SeqCst));
+            let Ports::Sim(board) = &a.ports else { unreachable!() };
+            let (dead, opened) = (board.dead.clone(), board.opened.clone());
+            // The keyboard stays listed, but its channel dies: the next frame
+            // fails, and every open after it fails in the full read.
+            dead.store(true, Ordering::SeqCst);
+            let next = sim.state().packets.len() + 1;
+            sim.state().faults.fail_write = Some(next);
+            a.send_live();
+            assert!(a.command.is_none(), "the failed handle went");
+            let opens = opened.load(Ordering::SeqCst);
+            a.handle(Request::SetMirror(Some(MirrorExpect::default())));
+            for _ in 0..10 {
+                a.send_live();
+                a.send_mirror();
+            }
+            assert_eq!(opened.load(Ordering::SeqCst), opens, "frames and the mirror wait");
+            // The user's own write tries once, and says why it failed.
+            let e = call(&mut a, |r| Request::ApplyEffect(settings(), r)).unwrap_err();
+            assert!(e.contains("the handle died"), "{e}");
+            assert_eq!(opened.load(Ordering::SeqCst), opens + 1);
+            a.send_live();
+            assert_eq!(opened.load(Ordering::SeqCst), opens + 1, "and frames wait again");
+            // A restore says no keyboard could be read, not that the backup
+            // is another keyboard's.
+            let e = call(&mut a, |reply| Request::RestoreKeyboard { file: first, color: None, reply }).unwrap_err();
+            assert!(e.starts_with(ERR_KEYBOARD_NOT_READ), "{e}");
+            // Once the wait is over, a frame opens it again.
+            let path = a.command_path.clone().unwrap();
+            a.aa_reopen_after = Some((path, Instant::now()));
+            a.send_live();
+            assert_eq!(opened.load(Ordering::SeqCst), opens + 3);
         }
     }
 }

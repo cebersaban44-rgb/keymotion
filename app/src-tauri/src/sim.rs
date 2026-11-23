@@ -47,6 +47,13 @@ fn hex(s: &str) -> Vec<u8> {
 /// A simulated keyboard on the cable.
 pub struct SimBoard {
     sim: Sim,
+    /// Tests: every command channel opened from now on fails its writes,
+    /// as a keyboard whose USB handle died while it stays listed.
+    #[cfg(test)]
+    pub dead: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Tests: command channels opened so far.
+    #[cfg(test)]
+    pub opened: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl SimBoard {
@@ -74,7 +81,13 @@ impl SimBoard {
                 }
             }
         }
-        Ok(Self { sim })
+        Ok(Self {
+            sim,
+            #[cfg(test)]
+            dead: Default::default(),
+            #[cfg(test)]
+            opened: Default::default(),
+        })
     }
 
     /// The keyboard from the environment, if it asks for one.
@@ -128,6 +141,14 @@ impl SimBoard {
     }
 
     pub fn command_port(&self, path: &str) -> Result<AaPort, String> {
+        #[cfg(test)]
+        {
+            use std::sync::atomic::Ordering;
+            self.opened.fetch_add(1, Ordering::SeqCst);
+            if path == COMMAND && self.dead.load(Ordering::SeqCst) {
+                return Ok(AaPort::new(crate::aa::tests::Dying { port: self.sim.command(), left: 0 }));
+            }
+        }
         match path {
             COMMAND => Ok(AaPort::new(self.sim.command())),
             _ => Err("keyboard disconnected".into()),
