@@ -1,14 +1,25 @@
 ---
 title: Protokol ayrıntıları
-description: AJAZZ AK980 PRO'da USB ve Bluetooth üzerinden ölçülenler, komut ve ekran kanallarının işleyişi, hangi komutların kapalı olduğu ve neden.
+description: AJAZZ AK980 PRO'nun iki komut ailesi hakkında USB ve Bluetooth üzerinden bilinenler, komut ve ekran kanallarının işleyişi, hangi komutların kapalı olduğu ve neden.
 ---
 
 import { Aside } from "@astrojs/starlight/components";
 
-Bu sayfa, klavye yazılımı 1.06 olan (USB `bcdDevice` `0x0106`) bir AJAZZ AK980 PRO'da, Kasım 2026'da, `kb` geliştirici aracıyla ve uygulamanın kendisiyle ölçülenleri listeler. Bunları uygulayan kod `crates/kb-protocol` (paketler), `crates/kb-core/src/sonix.rs` (oturumlar ve zamanlama) ve `crates/kb-devices/models/ajazz-ak980-pro.toml` (model) içindedir. AJAZZ bu protokolü yayımlamaz; Keymotion'ın da AJAZZ ile bir bağı yoktur.
+Bir AJAZZ AK980 PRO iki klavye yazılımı kuşağından birini çalıştırır ve bu kuşaklar farklı komut aileleri konuşur. Bu site her aileye, komutlarının ilk baytından gelen bir ad verir:
+
+| | "04 xx" ailesi | "AA" ailesi |
+|---|---|---|
+| Klavye yazılımı | 1.06 (USB `bcdDevice` `0x0106`) | 769, 3.01 olarak görünür (`0x0301`) |
+| Kablodaki USB kimlikleri | `0C45:8009` | `0C45:8039` |
+| Komutlar | `FF13` üzerinde, oturumlar halinde 64 baytlık feature raporları | `FF68` üzerinde, her biri bir giriş raporuyla cevaplanan 64 baytlık output raporları |
+| Ekran | `FF68` üzerinde 4096 baytlık sayfalar | `FF67` üzerinde 4104 baytlık paketler |
+| Kod | `kb_protocol::sonix`, `kb_core::sonix` | `kb_protocol::aa`, `kb_core::aa` |
+| Gerçek bir klavyede ölçüldü mü | evet | henüz değil ([açık kalanlar](#gerçek-bir-769da-henüz-doğrulanmayanlar)) |
+
+[Neler kapalı ve neden](#neler-kapalı-ve-neden) bölümüne kadarki bölümler, Kasım 2026'da tek bir klavyede `kb` geliştirici aracıyla ve uygulamanın kendisiyle ölçülen 1.06 sürümünü anlatır. Bunları uygulayan kod `crates/kb-protocol` (paketler), `crates/kb-core/src/sonix.rs` (oturumlar ve zamanlama) ve `crates/kb-devices/models/ajazz-ak980-pro.toml` (model) içindedir. ["AA" ailesi](#aa-ailesi-klavye-yazılımı-769) bölümü 769 sürümünü anlatır. AJAZZ iki protokolü de yayımlamaz; Keymotion'ın da AJAZZ ile bir bağı yoktur.
 
 <Aside type="caution" title="Başvuru kaynağı, tarif değil">
-Bu komutların birçoğu klavyenin kalıcı belleğine yazar. Onları elle göndermeyin: her değeri doğrulayan ve her paketi güvenlik denetiminden geçiren uygulamayı ya da `kb`'yi kullanın. Yalnızca 1.06 sürümü denendi; başka sürümler farklı davranabilir.
+Bu komutların birçoğu klavyenin kalıcı belleğine yazar. Onları elle göndermeyin: her değeri doğrulayan ve her paketi güvenlik denetiminden geçiren uygulamayı ya da `kb`'yi kullanın. Gerçek bir klavyede yalnızca 1.06 sürümü denendi; başka sürümler farklı davranabilir. `kb` yalnızca "04 xx" ailesini konuşur.
 </Aside>
 
 ## Kimlik ve bağlantı modları
@@ -46,7 +57,7 @@ Rapor tanımlayıcılarından (`kb descriptors`) okundu ve `crates/kb-core/src/s
 
 Windows başa `00` değerinde bir rapor kimliği baytı ekler; bu yüzden bir komut 65 bayt, bir ekran sayfası 4.097 bayt olarak gider. `FF13` ve `FFFF` koleksiyonları 20 saniye boyunca yalnızca dinlendiğinde klavye kendiliğinden hiç giriş raporu göndermedi.
 
-Uygulama kabloda bir klavye bulduğunda ve bir kanalı kullanmadan önce bu şekilleri denetler (`kb_core::shape`). Bazıları AK980 PRO'yla aynı USB kimliğini taşıyan öteki SONiX komut ailesinin klavyeleri 64 baytlık komutları `FF68`'e koyar ve bir de `FF67` koleksiyonu ekler; denetimden geçemezler, onlara hiçbir şey gönderilmez ve desteklenmeyenler arasında listelenirler.
+Uygulama kabloda bir klavye bulduğunda ve bir kanalı kullanmadan önce bu şekilleri denetler (`kb_core::shape`). Bazıları AK980 PRO'yla aynı USB kimliğini ve adı taşıyan "AA" ailesinin klavyeleri 64 baytlık komutları `FF68`'e koyar ve bir de `FF67` koleksiyonu ekler. Bu denetimden geçemezler; model dosyası onlar için bir "AA" modu listeliyorsa o ailede sürülürler ([Aileler nasıl ayırt edilir](#aileler-nasıl-ayırt-edilir)). Kanalları iki aileye de uymayan bir klavyeye hiçbir şey gönderilmez ve desteklenmeyenler arasında listelenir.
 
 ## Komut kanalı
 
@@ -208,7 +219,7 @@ Klavye Bluetooth'ta yalnızca standart HID raporları (sistem denetimleri, LED �
 
 ## Neler kapalı ve neden
 
-Bunlar, çağıran ne isterse istesin kodda reddedilir. Bayt dizileri burada bilerek verilmez.
+"04 xx" ailesinde bunlar, çağıran ne isterse istesin kodda reddedilir. Bayt dizileri burada bilerek verilmez. "AA" ailesinin kendi kuralları vardır: [Güvenlik kuralları](#güvenlik-kuralları).
 
 | Kapalı | Neden |
 |---|---|
@@ -220,9 +231,209 @@ Bunlar, çağıran ne isterse istesin kodda reddedilir. Bayt dizileri burada bil
 | 140 kareyi ya da 2.215 sayfayı aşan yüklemeler | Bir AULA F108 Pro'da sınırını aşan bir animasyon klavyenin menü görsellerinin üzerine yazdı ve bu kalıcı oldu. Burada ölçülen en büyük yükleme 135 karedir. |
 | 2.4 GHz alıcıya komut göndermek | Alıcı üzerinden burada hiçbir şey ölçülmedi. |
 
+## "AA" ailesi: klavye yazılımı 769
+
+AJAZZ'ın AK980 PRO için çıkardığı 769 klavye yazılımı (sürüm 3.01), yukarıdaki komutların yerine "AA" ailesini getirir; AJAZZ'ın web araçları ve benzer birkaç klavye (AK820 Pro, AK980 MAX, MK87 ve başkaları) da bu aileyi konuşur. Paketler ve onların güvenlik denetimi `crates/kb-protocol/src/aa/` içinde, sürücü `crates/kb-core/src/aa.rs` ve `crates/kb-core/src/aa/` içindedir.
+
+<Aside type="caution" title="769'lu bir klavyede henüz ölçülmedi">
+Bu sürücü yazılırken elde 769 yazılımlı bir klavye yoktu. Aşağıdakiler; 769'lu klavyelerin sahiplerinin paylaştıklarından (**Destek iste**'nin topladığı USB tanımlayıcıları ve bir cihaz bilgisi cevabı), AJAZZ'ın kendi araçlarından (okundu, burada hiçbir klavyeye karşı çalıştırılmadı) ve başka projelerin bu ailedeki benzer klavyelerde yaptığı ölçümlerden gelir. Sürücü, böyle davranan benzetici bir klavyeye karşı denendi. Gerçek bir 769'lu klavyedeki ilk denemeler [beta](/keymotion/tr/developers/contributing/#beta-ön-sürüm) için planlanıyor; bunlar başarıyla bitene kadar "AA" modunda denenmiş klavye yazılımı listelenmez, bu yüzden uygulama her oturumda ilk yazmadan önce sorar. Açık kalanlar [Gerçek bir 769'da henüz doğrulanmayanlar](#gerçek-bir-769da-henüz-doğrulanmayanlar) bölümünde.
+</Aside>
+
+### Kimlik ve kanallar
+
+Kabloda 769'lu bir klavye VID `0C45`, PID `8039`, `bcdDevice` `0x0301`, üretici `SONiX` ve ürün `AK980 PRO` bildirir. AJAZZ'ın araçları bu aileden bir AK980 PRO'yu, 1.06 yazılımının kimliği olan `8009` PID'iyle de tanır; bu yüzden aileyi kimlikler tek başına hiçbir zaman belirlemez.
+
+| Arayüz | Usage page / usage | Görevi |
+|---|---|---|
+| 0 | `0x0001` / `0x06` | Boot klavye |
+| 1 | 1.06'dakiyle aynı | Tüketici denetimleri (consumer), sistem denetimleri, NKRO klavye, fare ve üreticiye özel `FFFF` koleksiyonu |
+| 2 | `0xFF68` / `0x61` | Komut kanalı |
+| 3 | `0xFF67` / `0x61` | Ekran kanalı |
+
+| Koleksiyon | Giriş | Çıkış | Feature | Rapor kimliği |
+|---|---|---|---|---|
+| Komut, `FF68` | 64 bayt | 64 bayt | yok | yok |
+| Ekran, `FF67` | 64 bayt | 4104 bayt | 64 bayt, hiç kullanılmaz | yok |
+
+Windows'un başa eklediği rapor kimliği baytıyla bir istek 65 bayt, bir ekran paketi 4.105 bayt olarak gider. Her kanal, kendi rapor tanımlayıcısının bildirdiğinden uzun bir output raporu almaz (`kb_transport::descriptor`); böylece 64 baytlık komut koleksiyonuna 4 KiB'lık bir rapor asla ulaşamaz, tanımlayıcısı okunamayan bir kanal da hiçbir şey yazmaz. Feature raporları yalnızca "04 xx" ailesinin komut kanalına aittir: `kb-transport` başka her usage page'de, `FF67`'nin bildirdiği feature raporu da dahil, SET_FEATURE ve GET_FEATURE'ı reddeder.
+
+### Aileler nasıl ayırt edilir
+
+Model dosyası her aile için, kendi `protocol` değeriyle bir kablo modu listeler ([Aile nasıl seçilir](/keymotion/tr/developers/adding-a-keyboard/#aile-nasıl-seçilir)). Bir klavyenin hangisi olduğuna, Windows'un sakladığı ve klavyeye bir şey göndermeden okunabilen rapor tanımlayıcıları karar verir:
+
+| Aile | Komut kanalı | Ekran kanalı |
+|---|---|---|
+| "04 xx" | `FF13`: 64 baytlık feature ve output raporları, rapor kimliği yok | `FF68`: 4096 baytlık output raporları |
+| "AA" | `FF68`: 64 baytlık output ve giriş raporları, feature raporu yok, rapor kimliği yok | `FF67`: 4104 baytlık output ve 64 baytlık giriş raporları, rapor kimliği yok |
+
+İkisi hiçbir zaman çakışmaz. Bir "AA" kanalı açılmadan önce (`kb_core::aa::open_channel`) tanımlayıcısı yeniden uymalı ve protokolün kullandığı 65 ya da 4.105 baytı tam olarak bildirmelidir; klavye de bir ürün adı bildirmelidir: önyükleyicisindeki bir SONiX denetleyicisi klavyenin kimliklerini koruyup boş bir ad bildirebilir ve ona hiçbir şey gönderilmez.
+
+### İstekler ve cevaplar
+
+Her istek `FF68` üzerinde 64 baytlık bir **output raporudur**. Bu ailede feature raporu yoktur.
+
+| Bayt | İçerik |
+|---|---|
+| 0 | `AA` |
+| 1 | Komut |
+| 2 | LEN: bu istekteki veri baytı sayısı, 1–56 |
+| 3–4 | ADDR: verinin bloktaki başlangıç yeri, küçük uçlu |
+| 5 | 0 |
+| 6 | LAST: bir bloğun son parçasında 1, ötekilerde 0 |
+| 7 | 0 |
+| 8–63 | LEN bayt veri, gerisi 0; okuma isteği veri taşımaz |
+
+Klavye her isteğe 64 baytlık bir giriş raporuyla cevap verir: `55`, ardından yinelenen komut, LEN ve ADDR, sonra bir okumanın verisini taşıyan ya da bir yazmanın verisini geri yansıtan 56 bayt. Oturum, bayt toplamı ve komutlar arasında bekleme yoktur.
+
+- **Parçalar.** 56 bayttan uzun bir blok 56 baytlık parçalar halinde gider; bir sonraki parça, önceki cevabını aldıktan sonra gönderilir: 512 baytlık bir tablo, dokuzu 56 ve biri 8 baytlık on istek tutar. LAST son parçayı işaretler; hiçbir parçasında LAST olmadan yazılan makro tablosu bunun dışındadır.
+- **Eşleştirme.** Sürücü bir cevabı yalnızca komutu ve adresi istekle tutuyorsa alır; böylece önceki bir denemeye geç gelen cevap hiçbir zaman yanlış parçaya sayılmaz. Bir yazmanın yankısı gönderilen veriyi bayt bayt tekrarlamalıdır.
+- **Bekleme.** Çoğu cevap için yarım saniye, büyük tablo yazmaları ve her ekran paketi için bir ya da iki saniye, bir canlı karenin her parçası için 50 ms. Cevapsız kalan bir istek yeniden gönderilir; toplamda en çok üç deneme yapılır. Başarısız olan ya da olması gerekenden az bayt yazan bir yazma yeniden gönderilmez: hidapi onu askıda bırakabilir; bu yüzden kanal kapatılıp yeniden açılır ve bir şey yazılmadan önce klavye yeniden okunur.
+- **Öteki raporlar.** Beklenen cevap olmayan raporlar atlanır ve sayılır. `55 FC 05`, klavyenin sıfırlandığı anlamına gelir (örneğin bir tuş birleşimiyle): sürücünün bildiği her şey eskimiştir ve klavyeyi yeniden okuyana kadar hiçbir şey yazılmaz. Çok sayıda beklenmedik rapor, klavyeyle başka bir programın konuştuğunu gösterir; örneğin tarayıcıda açık olan ve süreç adından bulunamayan AJAZZ web aracı.
+- **Yankı kanıt değildir.** Yankı klavyenin veriyi aldığını söyler, sakladığını değil; bu yüzden her tablo yazıldıktan sonra geri okunur.
+
+### Keymotion'ın okudukları ve yazdıkları
+
+Güvenlik denetiminden (`kb_protocol::aa::guard`) yalnızca bu komutlar geçer:
+
+| Komut | Boyut | Ne için |
+|---|---|---|
+| `10` okuma | 48 bayt | Cihaz bilgisi. Her zaman ilk istek. |
+| `11` okuma | 56 bayt | Klavyenin sistem seçenekleri; yedekte tutulur. Hiç yazılmaz. |
+| `12` okuma, `22` yazma | 512 bayt | Temel tuş atama katmanı |
+| `16` okuma, `26` yazma | 512 bayt | Fn tuş atama katmanı |
+| `1C` okuma | 512 bayt | Fabrika Fn katmanı |
+| `13` okuma, `23` yazma | 16 bayt | Işık efekti |
+| `14` okuma, `24` yazma | 512 bayt | Tuş başına renk tablosu |
+| `15` okuma, `25` yazma | 400 bayt ve makrolar | Makrolar |
+| `33` okuma | 512 bayt | LED'lerin o an gösterdiği renkler |
+| `32` yazma | bir kare | Canlı kare, yalnızca RAM |
+| `34` yazma | 24 bayt | Saat |
+| `50` yazma, `FF67` üzerinde | 4104 baytlık paketler | Ekran yüklemesi |
+
+Geri kalan her komut iki kanalda da reddedilir; aralarında seçeneklerin yazılması, fabrika ayarlarına sıfırlama, klavye yazılımı güncelleme ve kalıcı belleğe ham yazma komutları, LED animasyonları, kalibrasyon ve profil değiştirme vardır. `FF67` `50`'den başka hiçbir şey almaz; `50` de başka hiçbir yere gitmez.
+
+Keymotion'ın okuduğu şekliyle cihaz bilgisi:
+
+| Baytlar | Alan |
+|---|---|
+| 2–3 | Bayt cinsinden makro belleği (769'da 3072) |
+| 4–7 | VID ve PID, küçük uçlu |
+| 8–9 | `bcdDevice`'taki gibi klavye yazılımı sürümü (769'da `01 03`, yani 3.01) |
+| 14–15 | Model kodu (769'da `0x0033`) |
+| 16 | Kabloda 0, alıcı üzerinden 2 |
+| 17 | Yüzde olarak pil düzeyi, kabloda da |
+| 18 | Şarj durumu |
+| 22–23 | Klavye yazılımının alabileceği en çok ekran karesi (0: bildirilmedi) |
+| 28 | Ekranın yönü; 255 ekran yok demektir |
+| 32 | Klavye yazılımının durumu; 1 bir güncellemeyi bekliyor demektir |
+
+Gerçek bir 769'lu klavyenin kabloda gönderdiği ilk 19 bayt `40 00 00 0C 45 0C 39 80 01 03 FF FF 01 00 33 00 00 64 02` idi: pil %100, şarj durumu 2. Şarj durumu 2'nin ne anlama geldiği bilinmiyor.
+
+### Efektler ve tuş başına renkler
+
+Efekt 16 bayttır: `MOD R G B FF 00 00 00 GÖKKUŞAĞI PARLAKLIK HIZ YÖN 00 00 AA 55`.
+
+- Modlar "04 xx" ailesindekilerdir (0 kapalı ile 19 arası); 128 (`0x80`) tuş başına renk tablosu içindir; 20 ve 21 de tuş başına renk tablosunu gösterir.
+- Bu ailede parlaklık ve hız 0–5 değil, 1–5'tir. Uygulama kendi 0–5 ölçeğini korur ve onu tek bir tabloyla çevirir: 0 ve 1, 1 olur; 2'den 5'e kadarkiler olduğu gibi kalır. 1–5 dışında hiçbir değer yazılmaz. Yön (0–3) verildiği gibi gider.
+- Benzer klavyelerde, tuşlar yazılan rengi gösterdiği halde renk yazmadan sonra `FF FF FF` olarak geri okunuyor. Bu yüzden yazmadan sonra yalnızca mod ve düzeyler karşılaştırılır; sürücü yazdığı rengi kendisi hatırlar.
+- Tuş başına renk tablosu 512 bayttır: 128 adet `i R G B` girdisi; `i` numaralı girdi, "AA" numarası `i` olan tuşa aittir (model dosyasındaki `aa`, LED numarası değil). Bir yazma, düzendeki her tuşa rengini verir (renk verilmemişse siyah), öteki her girdiyi okunduğu gibi bırakır. 126 ve 127. girdiler de buna dahildir: bu ailedeki bazı klavyeler son iki baytta `AA 55` tutar. Bir yazmanın değiştirdiği her girdi kendi numarasıyla başlamalıdır.
+- `33`, efektler dahil, LED'lerin o an gösterdiği renkleri döndürür; uygulamanın aynası bunu okur. Kırmızı eksiksiz gelir, bu yüzden "04 xx" geri okumasındaki çözümlemeye gerek kalmaz.
+- Klavye yazılımının kendi yaktığı Num Lock ve Fn ışıkları, tuşlarından çıkarıldığı üzere 29 ve 85 numaralı "AA" girdileridir.
+
+### Canlı kareler için tuş başına renk modu gerekir
+
+`32` bir kareyi RAM'den gösterir ve hiçbir şey kaydetmez: düzendeki her tuş için `i R G B`; 128 girdilik tablonun değil, model dosyasındaki tuşların sırasıyla; her biri geri yansıtılan 56 baytlık parçalar halinde. Verilmeyen tuşlar siyah gönderilir.
+
+- Kareler yalnızca efekt 20, 21 ya da 128. moddayken görünür; başka bir modda sürücü kare göndermeyi reddeder. Benzer klavyelerde kareler kesildikten yaklaşık 5 saniye sonra klavye kayıtlı ışığına döner.
+- Bu yüzden uygulama, bir canlı akışın ilk karesinden önce klavyeyi **hazırlar**: efekt zaten bu modlardan birinde değilse, öteki her şeyi koruyarak efekti 128. modda kaydeder ve yerine geçtiği efekti hatırlar. Akış bitince **eski haline getirir**: hatırladığı efekti geri yazar. İkisi de klavyenin belleğine yazmadır ve bir kaydetmeyle aynı denetimlerden geçer.
+- Bir parçadaki komşularıyla birlikte önyükleyici dizilerinden birini ([Güvenlik kuralları](#güvenlik-kuralları)) oluşturacak bir renk, tek bir kanalda bir adım değiştirilir; bu fark gözle görülmez. Numara baytları hiçbir zaman değiştirilmez.
+
+### Tuş atama katmanları
+
+Bir katman 512 bayttır: 4 baytlık 128 yuva, `SAYFA P1 P2 P3`; `i` numaralı yuva, "AA" numarası `i` olan tuşa aittir. Keymotion'ın yazdığı girdiler şunlardır:
+
+| Girdi | Anlamı |
+|---|---|
+| `00 00 00 00` | Tuşun fabrika işlevi |
+| `02 MODS KEY 00` | Değiştirici tuşlarla birlikte bir tuş; değiştirici bitleri boot klavye raporundaki gibidir. Tek başına bir değiştirici kendi usage'ıdır: `02 00 E0 00` ile `02 00 E7 00` arası. |
+| `03 LO HI 00` | Küçük uçlu bir tüketici (consumer) usage'ı |
+| `01 01 BTN 00` | Bir fare düğmesi: 1 sol, 2 sağ, 4 orta, 8 geri, 16 ileri |
+| `01 03 01 00`, `01 03 FF 00` | Tekerlek yukarı, tekerlek aşağı |
+| `06 SLOT MODE COUNT` | `SLOT` numaralı makroyu oynatır: mod 0 bir kez, mod 1 `COUNT` kez, mod 2 tuşa yeniden basılana kadar |
+
+- **Oku, değiştir, yaz.** Bir katman her zaman bütün olarak yazılır. Sürücü onu taze okur, yalnızca istenen yuvaları değiştirir, yazar, geri okur ve karşılaştırır. Değişmeyecek bir katman yazılmaz.
+- **Hiçbir zaman başka görev atanmaz:** Fn tuşuna (yuva 85) ve topuza (yuva 13–15).
+- **Klavye yazılımı işlevleri.** Fn katmanı klavye yazılımının işlevlerini tutar (sayfa `0D`, 24 bitlik bir kimlikle): parlaklık adımları ve benzer klavyelerde Fn+Space'teki fabrika ayarlarına sıfırlama gibi. Bir yazma bunlardan birini, iki işlevli bir girdiyi (`80` ve üstü sayfalar), AJAZZ'ın kendi yazılımının yürüttüğü bir girdiyi (sayfa 5) ya da bir birleşimi (sayfa 7) asla yeni eklemez: bunlar yalnızca taze okumanın onları bulduğu yuvada kalır. Klavyeyi sıfırlayan, bir deneme ya da kalibrasyon moduna sokan, USB ile kablosuz arasında ya da NKRO modları arasında geçiş yapan veya sürücüyü ya da makroları kilitleyen 23 işlev kimliği adıyla reddedilir. Her tuş atama yazması, kurulduğu okumaya karşı bütün bir tablo olarak denetlenir.
+- Sürücünün bir eylem olarak ifade edemediği bir girdi ham bayt olarak kalır ve dokunulmadan geri yazılır.
+- Bu ailede henüz sunulmayanlar: "tuş hiçbir şey yapmaz" (üreticinin kodlaması `02 00 00 00`'ı akla getiriyor ama hiçbir AJAZZ aracı bunu yazmıyor), çift tıklama ve tuş basılı tutuldukça tekrarlanan makro; bu sonuncusu bu ailede hiç yok. "04 xx" ailesinin "hiçbir şey yapmaz" girdisi `05 03 00 00` burada bir sayfa 5 girdisi olurdu ve hiçbir zaman yazılmaz.
+
+### Makro tablosu ve blokları
+
+- 0–399 adresleri, her makro yuvası için bir tane olmak üzere 100 adet küçük uçlu, 4 baytlık adres tutar (0: makro yok). 400 adresinden sonra her makro için bir blok gelir: ilk iki baytı girdi sayısının iki katını tutan 4 baytlık bir başlık, ardından 4 baytlık `DELAY_LO DELAY_HI CODE FLAG` girdileri.
+- İşaret baytı, inen ya da kalkan bir tuş için `B0` ya da `30`, bir fare düğmesi için `90` ya da `10`'dur. Bekleme, girdiden sonraki duraklamadır, 5 ile 65.535 ms arası; daha kısa beklemeler, son girdiden sonraki dışında, 5 ms'ye çıkarılır.
+- Bir yazma önce tabloyu hiçbir parçasında LAST olmadan, sonra blokları 400 adresinden başlayarak ve son parçalarında LAST ile gönderir, ardından ikisini de geri okur.
+- Bloklar en çok 512 bayt (makro başına 4, girdi başına 4) ve en çok 99 makro tutar. Klavye yazılımı 3072 baytlık makro belleği bildirse de AJAZZ'ın kendi aracı bu klavyeyi bu sınırda tutar; sınır ancak gerçek bir klavye fazlasının çalıştığını gösterince yükselir.
+- Makro adları klavyede saklanmaz.
+
+### Saati ayarlamak
+
+`34`, `5A 01 5A` ve ardından yıl eksi 2000, ay, gün, saat, dakika, saniye ve haftanın gününü (0 = Pazar) ikili sayı olarak ve yerel saatle taşır; 24 bayta sıfırlarla tamamlanır. Oturum yoktur; teslimin kanıtı yankıdır. Ekranın bir saat sayfasına geçip geçmediği klavye yazılımına bağlıdır; 769'da geçmediği bildiriliyor.
+
+### Ekran yüklemeleri
+
+- **Paketler.** `FF67` üzerinde her biri 4104 bayt: `AA 50`, paketin numarası ve paket sayısı (ikisi de küçük uçlu), `50 06`, ardından görselin 4096 baytı. Son paket sıfırlarla tamamlanır.
+- **Görsel.** "04 xx" ailesindekiyle aynı: 256 baytlık bir başlık (kare sayısı, sonuncusu dışında her karenin 2 ms birimli beklemesi, bir 0, sonra `FF`), ardından aralarında dolgu olmadan RGB565 küçük uçlu 240×135 kareler. Bir kare 16, 140 kare 2.215 paket tutar.
+- **Cevaplar.** Her paket, bir sonraki gitmeden önce `FF67`'nin `55 41 00 01` cevabını bekler. Ama `FF67` ne taşırsa taşısın her pakete böyle cevap verir: bu cevap ekranın değiştiğinin kanıtı değildir. `FF67`'ye gönderilen bir komut kanalı isteği de aynı cevabı alırdı ve etkisi bilinmezdi; oraya hiçbiri gönderilmez.
+- **Sınırlar.** En çok, klavyenin cihaz bilgisinde bildirdiği kare sınırı, hiçbir zaman 140'tan fazla; hiç bildirmezse 140. Ekranı olmadığını bildiren bir klavyeye yükleme yapılmaz. Güvenlik denetimi, ilki gönderilmeden önce her paketi denetler.
+- **Komut kanalı sessiz kalır.** Benzer bir klavyede yükleme sırasında gönderilen canlı kareler ilk paketin cevapsız kalmasına, bir pil okuması da USB bağlantısının sıfırlanmasına yol açtı. Sürücü komut kanalını yükleme boyunca elinde tutar: canlı kareler, ayna, saat ve cihaz okumaları yükleme bitene kadar bekler.
+- **Vazgeçmek** bir sonraki paketten önce durur. Ekran bir sonraki yüklemeye kadar eksik kalır.
+- **Saat sayfası.** Bildirildiğine göre 769'da bir yükleme, tarihin ve saatin göründüğü fabrika ekranının yerine geçiyor ve o ekranı yalnızca fabrika ayarlarına tam sıfırlama geri getiriyor (klavyede Fn+Space; tuşları, makroları ve ışığı da siler). Bunu tek bir kaynak bildiriyor ve doğrulanmadı. Uygulama bir "AA" klavyeye ilk yüklemeden önce bunu söyler ve kullanıcının onayını bekler.
+- Yüklemenin kalıcı bellekte mi RAM'de mi tutulduğu benzer klavyeler arasında değişiyor ve 769 için bilinmiyor. Uygulama onu kalıcı belleğe yazma sayar ve günlük yükleme sınırından düşer.
+
+### Kabloda pil
+
+Cihaz bilgisi pil düzeyini ve bir şarj durumunu kabloda da bildirir; 1.06 sürümü bildirmez. Uygulama kablo takılıyken pili gösterir.
+
+### Güvenlik kuralları
+
+Bunlar, çağıran ne isterse istesin kodda geçerlidir:
+
+1. **"AA" klavyeye feature raporu ve SET_REPORT yok.** İstekler ve ekran paketleri yalnızca output raporudur. Benzer bir klavyede önyükleyiciye geçiren denetim, denetim aktarımlarının (control transfer) işlendiği yerde duruyor; bunlar da oraya ulaşırdı.
+2. **Tek çıkış yolu.** İki kanaldaki her paket, önce güvenlik denetimini çalıştıran tek bir işlevden geçer: kanalının tam uzunluğu, 0 rapor kimliği, `AA` işareti, o kanalın listesindeki bir komut, temiz başlık baytları, okumada veri olmaması, bu ailenin aralıklarındaki efekt değerleri, saatin işareti ve paket numarası paket sayısından küçük olan, en çok 2.215 paketli ve 1–140 kareli bir ekran başlığı.
+3. **Önyükleyici dizileri.** Bir SONiX denetleyicisini önyükleyicisine geçiren iki bayt dizisi, yani AJAZZ'ın 769 güncelleyicisinin kullandığı dizi ve SONiX'in genel dizisi, her paketin her konumunda reddedilir. Bayt dizileri burada bilerek verilmez.
+4. **Önyükleyici belirtileri.** Önyükleyicisindeki bir klavye USB kimliklerini koruyup boş bir ürün adı bildirebilir. Adı olmayan bir klavye hiçbir USB moduyla eşleşmez ve onun hiçbir "AA" kanalı açılmaz.
+5. **Klavye yazılımı işlevleri** hiçbir zaman yeni bir yuvaya yazılmaz; tehlikeli olanlar adıyla reddedilir ([Tuş atama katmanları](#tuş-atama-katmanları)).
+6. **Oku, değiştir, yaz.** Tablolar taze bir okumadan kurulur ve yalnızca istenen yerlerde değişir; 126 ve 127. girdiler, Fn tuşu ve topuz okunduğu gibi kalır.
+7. **İlk yazmadan önce tam okuma.** Sürücü, klavyenin okunmasına izin verdiği her şeyi okumadan hiçbir şey yazmaz: cihaz bilgisi, seçenekler, iki katman ve fabrika Fn katmanı, efekt, tuş başına renk tablosu ve makrolar. Bu okuma, uygulamanın klavyeye ilk yazmasından önce sakladığı yedektir. Sürücü bir yedeği geri yazabilir: iki katmanı, efekti, tuş başına renk tablosunu ve makroları; seçenekleri hiçbir zaman. Fn tuşu, topuz ve tabloların son yuvaları klavyede şu an nasılsa öyle kalır; yedek de yalnızca alındığı klavyeyle aynı kimliklere ve model koduna sahip bir klavyeye yazılır. Ekran geri okunamadığı için hiçbir yedek onun görselini tutmaz.
+8. **Tutarlılık kapısı.** Yazmalar ancak bu tam okuma sürücünün tanıdığı klavyeye benziyorsa açılır: her blok kendi uzunluğunda; cihaz bilgisindeki VID `0C45`, PID ve klavye yazılımı sürümü USB'nin bildirdikleriyle aynı, klavye yazılımının durumu 0; her tuş atama girdisi bilinen bir sayfada; efektin modu bilinen bir mod, düzeyleri (kapalı değilse) 1–5 arasında, yönü 0–3; her tuş başına renk girdisi kendi numarasıyla başlıyor; her makro adresi makro belleğinin içinde ve bloğu okunabiliyor. Değilse klavye yalnızca okunur kalır; nedenler, kullanıcıdan gönderilmesi istenen rapor için saklanır. Klavyeden gelen bir sıfırlama bildirimi ya da bitmemiş bir tam okuma kapıyı yeniden kapatır.
+9. **Klavye yazılımının durumu.** Cihaz bilgisi klavyenin bir yazılım güncellemesi beklediğini söylüyorsa başka hiçbir şey okunmaz ya da yazılmaz. Keymotion klavye yazılımını hiçbir zaman güncellemez.
+10. **Yükleme sırasında komut kanalında trafik yok** ([Ekran yüklemeleri](#ekran-yüklemeleri)).
+11. **Uygulamanın yazma kapısı yine geçerlidir:** kabloda tek klavye, çakışan program yok ve denenmiş bir klavye yazılımı ya da kullanıcının bu oturum için onayı.
+
+Bir "AA" klavyeye hiçbir zaman gönderilmeyenler: "04 xx" ailesinin herhangi bir komutu (benzer bir klavyede "04 xx" ekran yükleme komutu kayıtlı görseli sildi), 2.4 GHz alıcı üzerinden herhangi bir şey ve kanalları bu ailenin şekline uymayan bir klavyeye hiçbir şey.
+
+### Benzetici klavye
+
+`sim` cargo özelliğinin arkasındaki `kb_core::aa::sim` (kb-core'un kendi testlerinde hep açık, uygulamanın sürüm derlemesinde yok), bellekte çalışan 769 yazılımlı bir AK980 PRO'dur: tek bir ortak durum üzerinde iki koleksiyon, bu bölümün anlattığı gibi cevap verir. Cihaz bilgisi yukarıdaki gerçek 769 cevabıdır; yazmaları geri yansıtır ve saklar, efekt rengi `FF FF FF` olarak geri okunur, `FF67`'si her şeye cevap verir ve canlı kareleri yalnızca 20, 21 ve 128. modlarda gösterir. İstenen hatalar onu bilerek yanlış davrandırır: kaybolan ve yersiz cevaplar, bir sıfırlama bildirimi, sessiz kalan cihaz bilgisi, bozuk okumalar, başarısız yazmalar, yanlış yankılar, saklamadığı yazmalar. Sürücüyü de denetler: güvenlik denetiminin reddettiği bir paket, bir klavye yazılımı işlevini yeni ekleyen bir tuş atama yazması, LAST taşıyan bir makro tablosu parçası ya da ekran yüklemesi sırasında komut kanalındaki trafik testi kırmızı yapar.
+
+### Gerçek bir 769'da henüz doğrulanmayanlar
+
+Bu sürücüyü henüz kimse 769 yazılımlı bir klavyede çalıştırmadı. İlk denemeler, okumadan yazmaya doğru adım adım, beta için planlanıyor. O zamana kadar şunlar açık kalıyor:
+
+- her tuşun "AA" numarasının doğru fiziksel tuş olup olmadığı (AJAZZ'ın üç tablosu 97 tuşun hepsinde aynı);
+- parlaklık ve hız aralıkları, 1. düzeyin sönük mü kapalı mı olduğu, her efektin hangi yön kodlarını kullandığı ve efektin `AA 55` kuyruğunun önemli olup olmadığı;
+- tuş başına renk modu açıkken canlı karelerin görünüp görünmediği, hangi hızda gidebildiği ve klavyenin kendi ışığına nasıl döndüğü;
+- `33`'ün 769'da renkleri bildirip bildirmediği;
+- "tuş hiçbir şey yapmaz" girdisi ve topuzun yuvalarına yazılıp yazılamayacağı;
+- 512 bayttan fazla makronun çalışıp çalışmadığı;
+- ekran: klavyenin bildirdiği kare sınırı, paket başına süre, görselin kablo çıkarılınca yerinde kalıp kalmadığı, hangi sayfada göründüğü ve saat sayfasının gerçekten yerine geçip geçmediği;
+- bir saat paketinin ekranın sayfasını değiştirip değiştirmediği;
+- şarj durumu 2'nin ne anlama geldiği;
+- 769'lu bir klavyenin 2.4 GHz alıcısı: onun üzerinden hiçbir şey gönderilmez.
+
 ## Teşekkürler
 
-Keymotion'ın protokol kodu kendisine aittir. Aşağıdaki topluluk projeleri bu klavye ailesini ilk belgeleyenlerdi ve nereye bakılacağını gösterdiler; bu sayfadaki bilgiler, yukarıda bir nedenin benzer bir klavyeden geldiği söylenen yerler dışında, sonradan bizim klavyemizde ölçüldü. Hepsine teşekkür ederiz.
+Keymotion'ın protokol kodu kendisine aittir. Aşağıdaki topluluk projeleri bu klavye ailelerini ilk belgeleyenlerdi ve nereye bakılacağını gösterdiler. Bu sayfadaki "04 xx" bilgileri, bir nedenin benzer bir klavyeden geldiği yerler dışında, sonradan bizim klavyemizde ölçüldü; "AA" bilgileri bu projelerden, AJAZZ'ın kendi araçlarından ve 769'lu klavyelerin sahiplerinin paylaştıklarından geliyor ve betadaki denemeleri bekliyor. Hepsine teşekkür ederiz.
 
 - [sonix-keyboard-studio](https://github.com/donglover69/sonix-keyboard-studio): AK980 V2 ve AULA F108 Pro
 - [ajazz-ak980-v2-linux](https://github.com/YellowHearth1/ajazz-ak980-v2-linux): Linux'ta AK980 V2
@@ -237,9 +448,14 @@ Keymotion'ın protokol kodu kendisine aittir. Aşağıdaki topluluk projeleri bu
 - [ajazz-ak820-pro-mac](https://github.com/gusleig/ajazz-ak820-pro-mac): macOS'ta AK820 Pro
 - [ajazz-ak820-pro (kabelklaus)](https://github.com/kabelklaus/ajazz-ak820-pro): tarayıcıda AK820 Pro
 - [EPOMAKER-Ajazz-AK820-Pro](https://github.com/gohv/EPOMAKER-Ajazz-AK820-Pro): komut satırında AK820 Pro
-- [ajazz-ak820-pro (fpb)](https://github.com/fpb/ajazz-ak820-pro): AK820 Pro donanımı
-- [ak820-screen](https://github.com/fromagge/ak820-screen): yeni klavye yazılımlı AK820 Pro'nun ekranı
-- [freejazz](https://github.com/fraustiz/freejazz): farklı bir komut ailesi konuşan AK980 MAX
+- [ajazz-ak820-pro (fpb)](https://github.com/fpb/ajazz-ak820-pro): AK820 Pro donanımı ve birinin önyükleyicisine nasıl girdiği
+- [ak820-screen](https://github.com/fromagge/ak820-screen): yeni klavye yazılımlı AK820 Pro'nun ekranı ve AJAZZ'ın web sürücüsünün onunla konuşurken alınmış bir kaydı
+- [freejazz](https://github.com/fraustiz/freejazz): Windows'ta ölçülen, "AA" ailesinden AK980 MAX
+- [ajazz-mk87](https://github.com/w32394045-dotcom/ajazz-mk87): aynı 240×135 ekranlı, donanımda denenmiş "AA" klavyesi MK87
+- [nutctl](https://github.com/ht4w5/nutctl): tablolarının son baytları dahil, "AA" klavyesi NUT87
+- [myfinder-device-battery](https://github.com/wushuai0802/myfinder-device-battery): 769 yazılımlı bir klavyenin cihaz bilgisi ve ekran kanalının cevapları
+- [AK980-Manager](https://github.com/j0p3s/AK980-Manager): bir yüklemenin saat sayfasına ne yaptığı dahil, 769 yazılımlı AK980 PRO
+- [OpenAula](https://github.com/cvanelteren/OpenAula): önyükleyicisinin nerede tetiklendiği dahil, AULA klavye yazılımı
 - [f108-pro](https://github.com/parsiya/f108-pro): AULA F108 Pro ve ekranının nasıl zarar gördüğünün anlatımı
 - [AULA F108 Pro destekli OpenRGB](https://github.com/hcode10/OpenRGB-With-AulaF108Pro-support): F108 Pro'da canlı ışık
 - [aks075-linux](https://github.com/aar-rafi/aks075-linux): Linux'ta AKS075
