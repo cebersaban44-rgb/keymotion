@@ -220,6 +220,8 @@ planlanıyor.
   pencereyi açınca geri geliyor.
 - **Ekran:** "…" ile biten bir şarkı, toplantı ya da hatırlatıcı adı
   artık en küçük boyutta çizilmiyor.
+- **Kurulum:** Keymotion'ı GitHub'dan yüklü kopyanın üstüne yeniden
+  kurduğunuzda **Bilgisayar açılınca Keymotion'ı başlat** artık kapanmıyor.
 
 ## [1.1.0] - 2026-11-16
 

@@ -43,6 +43,7 @@ Keymotion 换上了 Windows 11 风格的新外观，还带来了新工具：音�
 - **启动动画**：在 Windows 11 上，它现在和应用使用同样的半透明窗口背景，应用出现时颜色不再变化。
 - **灯光**：在**逐键颜色**中开启**在键盘上预览**时，关闭窗口后（Keymotion 仍在任务栏时钟旁运行），预览会留在按键上，盖住专注计时器、提醒、音乐模式和智能体灯光。现在窗口关闭时预览会暂停，打开窗口后再恢复。
 - **屏幕**：以“…”结尾的歌曲、会议或提醒标题，不再以最小字号绘制。
+- **安装程序**：从 GitHub 在已安装的副本上再次安装 Keymotion 时，不会再关闭**开机时启动 Keymotion**。
 
 [未发布]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.0...develop
 [1.2.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.0

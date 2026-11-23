@@ -221,6 +221,8 @@ planned for a later update.
   now waits while the window is closed and comes back when you open it.
 - **Screen:** a song, meeting or reminder title that ends in "…" is no
   longer drawn at the smallest size.
+- **Installer:** installing Keymotion from GitHub again over the copy you
+  have no longer turns off **Start Keymotion when the computer starts**.
 
 ## [1.1.0] - 2026-11-16
 
