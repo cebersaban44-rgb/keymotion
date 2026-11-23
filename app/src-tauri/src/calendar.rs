@@ -728,36 +728,45 @@ impl CalendarHandle {
 
         let fetched = net::fetch(&url);
         let now = now_ms();
-        if let Ok(mut inner) = self.inner.lock() {
-            inner.reading = false;
-            if let Some(read) = inner.reads.get_mut(&id) {
-                match fetched {
-                    Ok(text) => {
-                        read.text = Some(text);
-                        read.last_ok_ms = Some(now);
-                        read.error = None;
-                        read.next_ms = now + READ_EVERY_MS;
-                    }
-                    Err(e) => {
-                        tracing::info!(%id, "calendar not read: {e}");
-                        read.error = Some(e);
-                        read.next_ms = now + RETRY_MS;
-                    }
-                }
-                // Open the feed up again even when this read failed: the
-                // span moves on with time.
-                if let Some(text) = &read.text {
-                    let local = crate::zones::pc_zone();
-                    match ics::occurrences(text, now - SPAN_BACK_MS, now + SPAN_AHEAD_MS, &local) {
-                        Ok(events) => {
-                            tracing::debug!(%id, events = events.len(), "calendar read");
-                            read.events = events;
+        let text = match self.inner.lock() {
+            Ok(mut inner) => {
+                inner.reading = false;
+                inner.reads.get_mut(&id).and_then(|read| {
+                    match fetched {
+                        Ok(text) => {
+                            read.text = Some(text);
+                            read.last_ok_ms = Some(now);
+                            read.error = None;
+                            read.next_ms = now + READ_EVERY_MS;
                         }
                         Err(e) => {
-                            tracing::info!(%id, "calendar not understood: {e}");
-                            read.events.clear();
-                            read.error = Some(if e == ics::WEB_PAGE { e } else { ics::NOT_A_CALENDAR.into() });
+                            tracing::info!(%id, "calendar not read: {e}");
+                            read.error = Some(e);
+                            read.next_ms = now + RETRY_MS;
                         }
+                    }
+                    read.text.clone()
+                })
+            }
+            Err(_) => None,
+        };
+        // Open the feed up again even when this read failed: the span moves
+        // on with time. Outside the lock: a large or hostile feed takes a
+        // while, and the meeting cards and the page wait for the lock.
+        if let Some(text) = text {
+            let local = crate::zones::pc_zone();
+            let opened = ics::occurrences(&text, now - SPAN_BACK_MS, now + SPAN_AHEAD_MS, &local);
+            let mut inner = self.inner.lock();
+            if let Some(read) = inner.as_mut().ok().and_then(|inner| inner.reads.get_mut(&id)) {
+                match opened {
+                    Ok(events) => {
+                        tracing::debug!(%id, events = events.len(), "calendar read");
+                        read.events = events;
+                    }
+                    Err(e) => {
+                        tracing::info!(%id, "calendar not understood: {e}");
+                        read.events.clear();
+                        read.error = Some(if e == ics::WEB_PAGE { e } else { ics::NOT_A_CALENDAR.into() });
                     }
                 }
             }
