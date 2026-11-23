@@ -264,6 +264,7 @@ export const zhCN: Partial<Messages> = {
   "overview.spec.layout": "{layout} 配列",
   "overview.kb.live": "正在实时显示键盘灯光",
   "overview.kb.off": "键盘灯光已关闭",
+  "overview.kb.onPress": "打字时键盘按键会亮起",
   "overview.kb.usbOnly": "实时视图只在 USB 有线连接下可用",
   "overview.kb.press": "按下的按键会在这里亮起。",
   "overview.mode.device": "设备",

@@ -267,6 +267,7 @@ export const ru: Partial<Messages> = {
   "overview.spec.layout": "формат {layout}",
   "overview.kb.live": "Подсветка клавиатуры в реальном времени",
   "overview.kb.off": "Подсветка клавиатуры выключена",
+  "overview.kb.onPress": "Клавиши подсвечиваются, когда вы печатаете",
   "overview.kb.usbOnly": "Просмотр в реальном времени доступен только через USB-кабель",
   "overview.kb.press": "Здесь подсвечиваются клавиши, которые вы нажимаете.",
   "overview.mode.device": "Устройство",
