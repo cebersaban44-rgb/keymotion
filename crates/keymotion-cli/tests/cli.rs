@@ -376,7 +376,11 @@ fn scenes_patterns_and_spelling_reach_the_app() {
         "//example.invalid/share/scene.json",
         r"\\?\C:\x.json",
         r"\\.\pipe\x",
+        r"\??\UNC\example.invalid\s\x.json",
+        r"\??\C:\x.json",
+        "/??/UNC/example.invalid/s/x.json",
         "CON",
+        "CON:",
         "nul.json",
         "COM1",
         r"C:\x\LPT2.txt",
@@ -387,8 +391,10 @@ fn scenes_patterns_and_spelling_reach_the_app() {
         assert!(r.json()["error"]["message"].as_str().unwrap().contains("this computer"), "{path}: {r:?}");
         assert!(started.elapsed() < Duration::from_secs(5), "{path}: answered at once");
     }
-    let r = run(&pipe, &["card", "--image", r"\\example.invalid\share\x.png", "--write-flash", "--json"]);
-    assert_eq!(r.code, 65, "{r:?}");
+    for image in [r"\\example.invalid\share\x.png", r"\??\UNC\example.invalid\share\x.png"] {
+        let r = run(&pipe, &["card", "--image", image, "--write-flash", "--json"]);
+        assert_eq!(r.code, 65, "{image}: {r:?}");
+    }
     assert_eq!(run(&pipe, &["scene", "-"]).code, 65, "nothing on standard input");
     assert_eq!(run(&pipe, &["scene", steps.to_str().unwrap(), "--no-play"]).code, 64, "--no-play needs --save");
     assert_eq!(fake.seen.lock().unwrap().len(), before);

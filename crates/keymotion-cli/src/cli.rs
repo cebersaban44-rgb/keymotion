@@ -822,9 +822,17 @@ fn start(v: &Value, key: &str) -> Result<u64, String> {
 
 /// A file named on the command line, as keymotion-cli reads it: on this
 /// computer only. The Codex rule runs keymotion-cli outside the sandbox,
-/// so a network path (`\\host\share\…`, which would open a connection and
-/// pass the user's sign-in), a `\\?\` or `\\.\` path, a device name (`CON`,
-/// `NUL`, `COM1`, which can hang a read) or a link is refused.
+/// so before anything is opened or even looked at, these are refused:
+/// * a network or device path in any spelling Windows takes: a separator
+///   followed by another one or by `?` (`\\host\share\…`, `//host/…`,
+///   `\/…`, `\\?\…`, `\\.\…`, the NT `\??\UNC\host\…` and `\??\C:\…`,
+///   `/??/…`), which would open a connection and pass the user's sign-in;
+/// * a path that is not on a drive once made whole (a working folder on a
+///   network share, a name Windows turns into `\\.\…`);
+/// * a device name (`CON`, `NUL`, `COM1`, also as `CON:`), which can hang
+///   a read;
+/// * a link, the file itself or any folder on the way to it (one could
+///   lead to a network share).
 pub fn local_file(path: &std::path::Path, what: &str) -> Result<(), AgentError> {
     let text = path.as_os_str().to_string_lossy();
     let refuse = |why: &str| {
@@ -837,11 +845,14 @@ pub fn local_file(path: &std::path::Path, what: &str) -> Result<(), AgentError> 
         )
         .with_hint("Give the path of a file on this computer, e.g. C:\\Users\\you\\scene.json or .\\scene.json."))
     };
-    if text.starts_with("\\\\") || text.starts_with("//") || text.starts_with("\\/") || text.starts_with("/\\") {
+    let separator = |c: char| c == '\\' || c == '/';
+    let mut start = text.chars();
+    if start.next().is_some_and(separator) && start.next().is_some_and(|c| separator(c) || c == '?') {
         return refuse("a network or device path");
     }
     let last = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    let stem = last.split('.').next().unwrap_or_default().trim_end_matches([' ', '.']).to_ascii_uppercase();
+    // Windows reads `CON.txt`, `CON:` and `CON ` as the device too.
+    let stem = last.split(['.', ':']).next().unwrap_or_default().trim_end_matches([' ', '.']).to_ascii_uppercase();
     let numbered = |prefix: &str| {
         stem.strip_prefix(prefix).is_some_and(|n| {
             let n: Vec<char> = n.chars().collect();
@@ -854,8 +865,30 @@ pub fn local_file(path: &std::path::Path, what: &str) -> Result<(), AgentError> 
     if device || (last.is_empty() && text.ends_with(':')) {
         return refuse("a device");
     }
-    if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
-        return refuse("a link");
+    // Made whole from the working folder (no file is touched for it).
+    let Ok(full) = std::path::absolute(path) else { return refuse("not a path Windows can read") };
+    #[cfg(windows)]
+    {
+        use std::path::{Component, Prefix};
+        let on_a_drive =
+            matches!(full.components().next(), Some(Component::Prefix(p)) if matches!(p.kind(), Prefix::Disk(_)));
+        if !on_a_drive {
+            return refuse("a network or device path");
+        }
+    }
+    // Each folder from the drive down, then the file: a link is never
+    // followed (a folder after one is not looked at at all).
+    let mut chain: Vec<&std::path::Path> = full.ancestors().collect();
+    chain.reverse();
+    for (i, step) in chain.iter().enumerate().skip(1) {
+        match std::fs::symlink_metadata(step) {
+            Ok(m) if m.file_type().is_symlink() => {
+                return refuse(if i + 1 == chain.len() { "a link" } else { "in a folder that is a link" });
+            }
+            Ok(_) => {}
+            // Not there: nothing below it is either (the read says so).
+            Err(_) => break,
+        }
     }
     Ok(())
 }
@@ -1206,6 +1239,65 @@ mod tests {
         // After `--`, --json is a value, not the option.
         let env = Env { output: Some("JSON".into()), ..Env::default() };
         assert!(matches!(parse(["keymotion-cli", "nope"], &env), Parsed::Usage { json: true, .. }));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn only_files_on_this_computer_are_read() {
+        use std::path::Path;
+        let refused = |p: &str| match local_file(Path::new(p), "scene") {
+            Err(e) => e.code == ErrorCode::BadValue && e.message.contains("this computer"),
+            Ok(()) => false,
+        };
+        // Every spelling of a network, NT or device path, refused from its
+        // text alone (nothing is opened, no name is looked up).
+        for path in [
+            r"\\example.invalid\share\scene.json",
+            "//example.invalid/share/scene.json",
+            r"\/example.invalid/share/scene.json",
+            r"/\example.invalid\share\scene.json",
+            r"\\?\C:\x.json",
+            r"\\?\UNC\example.invalid\share\x.json",
+            r"\\?\GLOBALROOT\Device\Mup\example.invalid\share\x.json",
+            r"\\.\C:\x.json",
+            r"\\.\UNC\example.invalid\share\x.json",
+            r"\\.\pipe\x",
+            r"\??\UNC\example.invalid\s\x.json",
+            r"\??\C:\x.json",
+            r"\??/UNC/example.invalid/s/x.json",
+            "/??/UNC/example.invalid/s/x.json",
+            r"/?\C:\x.json",
+        ] {
+            assert!(refused(path), "{path}");
+        }
+        // Devices, also with a colon, spaces or a file type.
+        for path in ["CON", "CON:", "con :", "COM1:", "nul.json", "NUL:x", "CONIN$", r"C:\x\LPT2.txt", "COM\u{B9}"] {
+            assert!(refused(path), "{path}");
+        }
+        // A file here, by its full or its relative path, or one that is not
+        // there yet (the read says so).
+        let dir = std::env::temp_dir().join(format!("keymotion-cli-local-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("real")).unwrap();
+        let file = dir.join("real").join("scene.json");
+        std::fs::write(&file, "[]").unwrap();
+        assert!(local_file(&file, "scene").is_ok());
+        assert!(local_file(Path::new("no-such-scene.json"), "scene").is_ok());
+        assert!(local_file(Path::new(r"C:\no\such\scene.json"), "scene").is_ok());
+        // A folder on the way that is a link (a junction needs no rights).
+        let junction = dir.join("link");
+        let made = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&junction)
+            .arg(dir.join("real"))
+            .output()
+            .is_ok_and(|o| o.status.success());
+        if made {
+            let e = local_file(&junction.join("scene.json"), "scene").unwrap_err();
+            assert!(e.message.contains("in a folder that is a link"), "{e:?}");
+            assert!(local_file(&junction, "scene").unwrap_err().message.contains("is a link"));
+        }
+        let _ = std::fs::remove_dir(&junction);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
