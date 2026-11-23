@@ -132,6 +132,13 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   bildirdiği gibi "AK980 PRO" geçen klavye sayılıyor. Aynı USB kimliğini
   taşıyan başka bir AK980, örneğin ekransız olanı, artık **Destek iste**'yi
   görüyor.
+- **AJAZZ'ın yeni klavye yazılımı:** AJAZZ'ın farklı bir komut takımı
+  kullanan 769 (3.01) yazılımındaki bir AK980 PRO artık yalnızca henüz
+  desteklenmeyen bir klavye olarak görünmüyor. Karşılama sayfası, soldaki
+  bölme ve saatin yanındaki simgenin menüsü, klavyede AJAZZ'ın yeni yazılımı
+  olduğunu, Keymotion'ın ona hiçbir şey göndermediğini ve desteğin sonraki
+  bir güncellemede gelmesinin planlandığını söyler; SSS'ye bir bağlantı da
+  vardır. **Destek iste** yerinde kalır.
 - **Denenmemiş klavye yazılımı:** Keymotion'la denenmemiş bir yazılım
   sürümünde klavyenin saati de onayınızı bekliyor; hem bağlanınca eşitleme
   hem **Şimdi eşitle**. Keymotion kaydetmeden önceki soruyu soruyor,

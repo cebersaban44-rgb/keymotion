@@ -22,6 +22,7 @@ import {
   setWindowTheme,
 } from "./lib/ipc";
 import { follow } from "./lib/follow";
+import { isNewAk980Firmware, useUnsupportedKeyboards } from "./lib/report";
 import { useUnsaved } from "./lib/unsaved";
 import { connectionKey, modelNames, tNow, useT, type MessageKey } from "./lib/i18n";
 import { useKeymap } from "./lib/keymap";
@@ -184,12 +185,14 @@ function useTray() {
   const locale = useApp((s) => s.locale);
   const setWindowShown = useApp((s) => s.setWindowShown);
   const requestProfile = useApp((s) => s.requestProfile);
+  // An AK980 PRO on AJAZZ's firmware 769: the menu says why no keyboard shows.
+  const newFirmware = useUnsupportedKeyboards().some(isNewAk980Firmware);
   useEffect(() => {
     // Templates go as they are: the backend fills in {min}, {n}, ….
     setTrayTexts({
       locale,
       open: tNow("tray.open"),
-      noKeyboard: tNow("tray.noKeyboard"),
+      noKeyboard: tNow(newFirmware ? "fw769.tray" : "tray.noKeyboard"),
       battery: tNow("tray.battery"),
       connUsb: tNow(connectionKey("usb")),
       connDongle: tNow(connectionKey("dongle")),
@@ -236,7 +239,7 @@ function useTray() {
       noticeWhatsNew: tNow("update.whatsNew"),
       modelNames: modelNames(),
     }).catch(console.error);
-  }, [locale]);
+  }, [locale, newFirmware]);
   useEffect(() => {
     let alive = true;
     const offs: (() => void)[] = [];

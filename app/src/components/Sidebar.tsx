@@ -29,6 +29,8 @@ import { useEffect, useRef, useState, type KeyboardEvent, type SyntheticEvent } 
 import type { Feature } from "../bindings/Feature";
 import { connectionKey, modelTitle, percent, useT, type MessageKey } from "../lib/i18n";
 import { fmtClock, phaseColor, remainingNow, usePomodoro } from "../lib/pomodoro";
+import { SUPPORTED_MODEL, SUPPORTED_MODEL_ID } from "../lib/offline";
+import { isNewAk980Firmware, useUnsupportedKeyboards } from "../lib/report";
 import { useActiveKeyboard, useApp, useNarrowWindow, type PageId } from "../lib/store";
 import { useUnsaved } from "../lib/unsaved";
 import { useUpdates } from "../lib/updates";
@@ -91,6 +93,7 @@ export function Sidebar() {
   const page = useApp((s) => s.page);
   const setPage = useApp((s) => s.setPage);
   const kb = useActiveKeyboard();
+  const unsupported = useUnsupportedKeyboards();
   const unsavedPages = new Set(useUnsaved().filter((i) => !i.background).map((i) => i.page));
   // A new version waits: a dot on Settings, where the update is.
   const updateKind = useUpdates((s) => s.state?.status.kind);
@@ -182,8 +185,15 @@ export function Sidebar() {
     );
   };
 
-  const deviceTitle = kb ? modelTitle(t, kb.modelId, kb.modelName) : t("device.none.title");
-  const deviceSub = kb ? t(connectionKey(kb.connection)) : t("device.none.sub");
+  // An AK980 PRO on AJAZZ's firmware 769 is there, but Keymotion can't
+  // drive it yet: say so rather than "Waiting for a keyboard".
+  const newFirmware = !kb && unsupported.some(isNewAk980Firmware);
+  const deviceTitle = kb
+    ? modelTitle(t, kb.modelId, kb.modelName)
+    : newFirmware
+      ? modelTitle(t, SUPPORTED_MODEL_ID, SUPPORTED_MODEL)
+      : t("device.none.title");
+  const deviceSub = kb ? t(connectionKey(kb.connection)) : newFirmware ? t("fw769.sub") : t("device.none.sub");
   // Not green for the receiver alone: whether the keyboard is on behind it
   // is not known yet.
   const connected = !!kb && kb.connection !== "dongle";
@@ -203,7 +213,7 @@ export function Sidebar() {
         onFocus={showTip(`${deviceTitle}, ${deviceSub}`)}
         onMouseLeave={hideTip}
         onBlur={hideTip}
-        data-device-status={kb ? kb.connection : "none"}
+        data-device-status={kb ? kb.connection : newFirmware ? "new-firmware" : "none"}
       >
         <img
           src="/app-icon.svg"

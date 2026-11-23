@@ -1528,6 +1528,12 @@ export const tr: Messages = {
   "unsupported.body":
     "Destek isterseniz klavyenin kimlik bilgilerini GitHub'da bize iletirsiniz; yeni bir modeli eklemek için en çok bunlar gerekir. Klavyeye hiçbir şey yazılmaz.",
   "unsupported.request": "Destek iste",
+  "fw769.title": "Klavyenizde AJAZZ'ın yeni klavye yazılımı var",
+  "fw769.body": "AJAZZ'ın yeni klavye yazılımı ({version}) farklı bir komut takımı kullanıyor; Keymotion bunu henüz desteklemiyor, desteğin sonraki bir güncellemede gelmesi planlanıyor. O zamana kadar Keymotion bu klavyeye hiçbir şey göndermez.",
+  "fw769.body.unknown": "AJAZZ'ın yeni klavye yazılımı farklı bir komut takımı kullanıyor; Keymotion bunu henüz desteklemiyor, desteğin sonraki bir güncellemede gelmesi planlanıyor. O zamana kadar Keymotion bu klavyeye hiçbir şey göndermez.",
+  "fw769.more": "Bu klavye yazılımı hakkında",
+  "fw769.sub": "Yeni yazılımı henüz desteklenmiyor",
+  "fw769.tray": "Klavye yazılımı henüz desteklenmiyor",
   "crash.body": "Yeniden yükleyip tekrar deneyin. Sorun sürerse bize bildirin.",
   "crash.reload": "Yeniden yükle",
   "calendar.err.sealed": "Bu takvimin adresi bu bilgisayarda açılamıyor. Takvimi kaldırıp adresini yeniden ekleyin.",
