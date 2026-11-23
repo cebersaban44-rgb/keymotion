@@ -92,7 +92,8 @@ says so.
   connect claude-code` or `connect codex` adds a few hooks and a short skill
   to that app's settings (showing what changes first, keeping a copy, never
   touching anything else); then the keyboard lights by itself when the agent
-  finishes, waits for your approval (until you answer or touch a key),
+  finishes, waits for your approval (until you answer or touch a key;
+  not when the agent decides by itself, as in Claude Code's auto mode),
   fails, or stops at its usage limit (slow purple), and with two or more
   sessions the waiting one's number lights on the number row. When
   Keymotion is not running, such an event starts it, unless you quit it

@@ -199,6 +199,14 @@ fn an_event_reaches_the_app_as_its_meaning_only() {
     assert_eq!((got[1].1["event"].clone(), got[2].1["event"].clone()), (json!("attention"), json!("answered")));
     assert!(asked.iter().all(|k| answered.contains(k)), "{asked:?} {answered:?}");
 
+    // Auto mode: Claude Code's classifier decides, no one is asked, so
+    // nothing reaches the app; in the default mode it lights as above.
+    let auto = br#"{"session_id":"s-1","cwd":"C:\\p","permission_mode":"auto","hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"cargo build"}}"#;
+    let r = hook("claude-code", auto, &pipe);
+    assert_eq!((r.code, r.stdout.len()), (0, 0), "{r:?}");
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(seen.lock().unwrap().len(), 3, "{:?}", seen.lock().unwrap());
+
     // Codex too; and agent access off is as silent as anything.
     let (_off, refused) = fake_app(&format!("{pipe}-off"), false);
     let codex_stop = br#"{"session_id":"thr_1","cwd":"/w","hook_event_name":"Stop","turn_id":"t","model":"m"}"#;

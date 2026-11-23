@@ -89,7 +89,8 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   uygulamanın ayarlarına birkaç kanca ve kısa bir yetenek ekler (önce neyin
   değişeceğini gösterir, bir kopya saklar, başka hiçbir şeye dokunmaz);
   ardından klavye ajan bitirince, onayınızı beklerken (siz cevap verene ya
-  da bir tuşa dokunana kadar), hata verince ya da kullanım sınırına
+  da bir tuşa dokunana kadar; Claude Code'un otomatik kipinde olduğu gibi
+  ajan kendisi karar verdiğinde değil), hata verince ya da kullanım sınırına
   takılınca (yavaş mor) kendiliğinden yanar; iki ya da daha çok oturum
   varken bekleyenin numarası rakam sırasında yanar. Keymotion çalışmıyorsa
   böyle bir olay onu başlatır; siz kapattıysanız ya da ajan erişimini

@@ -216,7 +216,7 @@ agent ──runs──▶ keymotion-cli ──named pipe──▶ Keymotion (age
 | 会话开始：获得编号 | `SessionStart` | `SessionStart` |
 | 工作中：该会话之前的灯光熄灭 | `UserPromptSubmit` | `UserPromptSubmit` |
 | 你停止了这一轮：它的问题和“工作中”灯光熄灭，之前的内容保留 | | `Interrupt` |
-| 等待你（`attention`） | `PermissionRequest`；`AskUserQuestion` 和 `ExitPlanMode` 的 `PreToolUse`；`Elicitation`；`Notification` 的 `permission_prompt`、`elicitation_dialog`、`elicitation_url_dialog`、`agent_needs_input` | `PermissionRequest` |
+| 等待你（`attention`） | 在会询问你的模式下的 `PermissionRequest`（`default`；`acceptEdits` 中文件编辑除外；见英文页面）；`AskUserQuestion` 和 `ExitPlanMode` 的 `PreToolUse`；`Elicitation`；`Notification` 的 `permission_prompt`、`elicitation_dialog`、`elicitation_url_dialog`、`agent_needs_input` | `PermissionRequest`，审批策略 `never` 时除外 |
 | 已回答 | `PostToolUse`、`PostToolUseFailure`、`PermissionDenied`（该调用）；`PostToolBatch`、`ElicitationResult`、`Notification` 的 `elicitation_complete`、`elicitation_response`（该会话的全部） | `PostToolUse`（该调用）、`PreModelRequest`（该轮的全部） |
 | 完成 | `Stop` | `Stop` |
 | 失败 | `StopFailure` | 带 `status: failed` 的 `PostModelRequest` |
