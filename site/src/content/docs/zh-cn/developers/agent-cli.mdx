@@ -49,8 +49,6 @@ agent ──runs──▶ keymotion-cli ──named pipe──▶ Keymotion (age
 | `connections` | 每个智能体是否已安装、是否已连接；对 Codex 还会说明你是否已经信任这些钩子。 | 否 |
 | `hook claude-code\|codex` | 智能体在钩子事件上运行的命令：从 stdin 读取事件，不输出任何内容，始终以 0 退出（[钩子模式](#钩子模式)）。 | 事件需要亮灯时 |
 
-场景、保存的图案以及在按键上拼出单词，会在之后的一个步骤中加入。
-
 ### 屏幕卡片
 
 页面绘制智能体卡片的方式与绘制专注计时器或会议卡片相同（同样的字体和抖动处理），其余由应用完成：
@@ -63,6 +61,10 @@ agent ──runs──▶ keymotion-cli ──named pipe──▶ Keymotion (age
 **图片**（`--image`）：PNG、JPEG、GIF 或 WebP，按文件开头的字节区分；最大 40 KiB，这样图片能放进一行协议消息；边长 8 到 2048 像素；页面会把它适配到 240×135。卡片是静态的：动图只显示第一帧。GIF 的各帧必须位于它自己声明的画面尺寸之内（渲染器会把画布扩大到帧的大小）。一帧就是屏幕最小的一次上传（16 个 4 KiB 的页），而且每张卡片在换回用户自己的图片时还要再上传一次，所以卡片适合用来通知新消息，每小时几张。keymotion-cli 在发送任何内容之前都会检查文件（不合适的图片返回 65），应用还会再检查一次。
 
 **长任务完成（F）。** 当用户允许智能体使用屏幕并保持“长任务完成”开启时（默认开启：10 分钟，卡片显示 5 分钟），编程应用中耗时至少这么久的一轮会在结束时显示一张卡片：`longTask`，带分钟数和项目文件夹名称；页面会用用户的语言写出它（“完成 · 14 分钟”）。它计入所有智能体合计的每小时张数，当这一小时的额度已满或页面无法绘制时会被跳过。开启或关闭只能由用户决定；智能体只能把“长任务”设得比 10 分钟更长。
+
+{/* Docs pass: the agent CLI's step 9 (the scene, pattern and spell
+commands and the "Scenes, patterns and spelling" section) is described in
+the English and Turkish pages and still needs translating here. */}
 
 ### 通用选项
 

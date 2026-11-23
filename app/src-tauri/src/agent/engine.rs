@@ -170,6 +170,58 @@ pub struct Lamp {
     /// A picture of its own: one colour per LED of `leds`, in the same
     /// order (a profile's per-key design); `look.color` otherwise.
     paint: Option<Vec<Rgb>>,
+    /// A timed animation of the agent's own (a scene, a pattern, a word
+    /// spelled): what it shows comes from its steps.
+    script: Option<Script>,
+}
+
+/// A scene's step, worked out for the keyboard in use.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScriptStep {
+    /// From and to, in ms from the start of a run.
+    pub at: u64,
+    pub end: u64,
+    pub keys: KeySpec,
+    pub leds: Vec<(u8, Place)>,
+    pub color: Rgb,
+    pub motion: Motion,
+}
+
+/// A timed animation: its steps over one run of `length` ms, run `repeat`
+/// times (0: again and again until the light's time is up).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Script {
+    pub steps: Vec<ScriptStep>,
+    pub length: u64,
+    pub repeat: u32,
+}
+
+impl Script {
+    /// The keys it lights `t` ms after it began, in their colours: a later
+    /// step over an earlier one on the same key. Keys no step names now are
+    /// left to the lights under it.
+    fn pixels(&self, t: u64) -> Vec<(u8, Rgb)> {
+        if self.length == 0 || (self.repeat > 0 && t >= self.length.saturating_mul(u64::from(self.repeat))) {
+            return Vec::new();
+        }
+        let t = t % self.length;
+        let mut taken = HashSet::new();
+        let mut out = Vec::new();
+        for s in self.steps.iter().rev().filter(|s| s.at <= t && t < s.end) {
+            for &(led, place) in &s.leds {
+                if taken.insert(led) {
+                    out.push((led, scale(s.color, s.motion.level(t - s.at, place))));
+                }
+            }
+        }
+        out
+    }
+
+    /// Every key some step names, once.
+    fn leds(&self) -> Vec<(u8, Place)> {
+        let mut seen = HashSet::new();
+        self.steps.iter().flat_map(|s| s.leds.iter().copied()).filter(|(led, _)| seen.insert(*led)).collect()
+    }
 }
 
 impl Lamp {
@@ -1072,6 +1124,7 @@ impl Engine {
             leds: Vec::new(),
             leds_for: None,
             paint: None,
+            script: None,
         }
     }
 
@@ -1156,11 +1209,19 @@ impl Engine {
     /// `card`) changes anything: access is on, and the source is within its
     /// rate.
     pub fn gate(&mut self, source: &SourceName, now: Now) -> Result<(), AgentError> {
-        if !self.settings.enabled {
-            return Err(AgentError::new(ErrorCode::AgentAccessOff, "Agent access is off in Keymotion.")
-                .with_hint("The user can turn it on in Keymotion › Tools › AI agents."));
-        }
+        self.allowed()?;
         self.admit(source.as_str(), None, now.mono).map(|_| ())
+    }
+
+    /// Agent access is on (a request whose light counts itself in the rate:
+    /// a scene, a pattern, a word spelled, a profile shown).
+    pub fn allowed(&self) -> Result<(), AgentError> {
+        if self.settings.enabled {
+            Ok(())
+        } else {
+            Err(AgentError::new(ErrorCode::AgentAccessOff, "Agent access is off in Keymotion.")
+                .with_hint("The user can turn it on in Keymotion › Tools › AI agents."))
+        }
     }
 
     /// Log such a request, as `command` logs the others: a refusal at most
@@ -1211,6 +1272,51 @@ impl Engine {
         lamp.paint = Some(keys.iter().map(|k| k.2).collect());
         lamp.leds_for = Some(model.to_string());
         Ok(self.put(lamp, admit, now.mono))
+    }
+
+    /// A timed animation of the source's own on the keys of `index` (a
+    /// scene, a saved pattern, a word spelled), as its light `id`.
+    pub fn scene(
+        &mut self,
+        source: &SourceName,
+        id: &str,
+        scene: &kb_agent::protocol::Scene,
+        index: &KeyIndex,
+        now: Now,
+    ) -> Result<Value, AgentError> {
+        let admit = self.admit(source.as_str(), Some(id), now.mono)?;
+        let mut steps = Vec::with_capacity(scene.steps.len());
+        for s in &scene.steps {
+            steps.push(ScriptStep {
+                at: s.at_ms,
+                end: s.at_ms + s.for_ms,
+                keys: s.keys.clone(),
+                leds: index.resolve(&s.keys)?,
+                color: rgb(s.color),
+                motion: Motion::of(&s.effect),
+            });
+        }
+        let script = Script { steps, length: scene.length_ms, repeat: scene.repeat };
+        let color = script.steps.first().map_or([255, 255, 255], |s| s.color);
+        let for_ms = duration_ms(scene.duration).max(1);
+        let look = Look::plain(color, Motion::Solid);
+        // The keys it names, for the page: each step's, once.
+        let mut named: Vec<String> = Vec::new();
+        for s in &script.steps {
+            let text = s.keys.to_string();
+            if !named.contains(&text) {
+                named.push(text);
+            }
+        }
+        let keys = KeySpec::parse(&named.join(",")).unwrap_or_default();
+        let mut lamp = self.lamp(source.as_str(), id, Kind::Light, look, keys, now.mono, for_ms);
+        lamp.leds = script.leds();
+        lamp.leds_for = Some(index.model_id.clone());
+        lamp.script = Some(script);
+        let mut answer = self.put(lamp, admit, now.mono);
+        answer["length_ms"] = json!(scene.length_ms);
+        answer["repeat"] = json!(scene.repeat);
+        Ok(answer)
     }
 
     // ------------------------------------------------------------ settings
@@ -1587,6 +1693,11 @@ impl Engine {
                     // A picture made for another keyboard's LEDs.
                     lamp.leds.clear();
                     lamp.paint = Some(Vec::new());
+                } else if let Some(script) = lamp.script.as_mut() {
+                    for step in &mut script.steps {
+                        step.leds = index.resolve_lenient(&step.keys);
+                    }
+                    lamp.leds = script.leds();
                 } else {
                     lamp.leds = index.resolve_lenient(&lamp.keys);
                 }
@@ -1656,6 +1767,14 @@ impl Engine {
         for lamp in &ranked[tries..] {
             let dim = if lamp.kind == Kind::Try { 1.0 } else { night };
             if dim <= 0.0 {
+                continue;
+            }
+            if let Some(script) = &lamp.script {
+                for (led, color) in script.pixels(now.saturating_sub(lamp.since)) {
+                    if taken.insert(led) {
+                        out.push((led, scale(color, dim)));
+                    }
+                }
                 continue;
             }
             for (i, &(led, place)) in lamp.leds.iter().enumerate() {
@@ -2675,6 +2794,82 @@ mod tests {
         e.paint(&src("tests"), "tests:profile", keys, "another-model", 5_000, at(6_000)).unwrap();
         e.refresh_keys(&index);
         assert_eq!(key_at(&e, "esc", 6_010), None);
+    }
+
+    fn scene_of(steps: &[(&str, &str, Option<u64>, u64)], repeat: u32) -> kb_agent::protocol::Scene {
+        kb_agent::protocol::SceneArgs {
+            steps: steps
+                .iter()
+                .map(|(keys, color, at, ms)| kb_agent::protocol::SceneStepArgs {
+                    keys: Some(keys.to_string()),
+                    color: color.to_string(),
+                    at_ms: *at,
+                    for_ms: Some(*ms),
+                    ..Default::default()
+                })
+                .collect(),
+            repeat: Some(repeat),
+            ..Default::default()
+        }
+        .validate()
+        .unwrap()
+    }
+
+    #[test]
+    fn a_scene_plays_its_steps_in_time_and_ends() {
+        let mut e = on();
+        let index = index();
+        // F1 red, then F2 green; Esc blue under both the whole time; twice.
+        let scene =
+            scene_of(&[("esc", "blue", Some(0), 600), ("f1", "red", Some(0), 300), ("f2", "green", None, 300)], 2);
+        let answer = e.scene(&src("tests"), "tests:scene", &scene, &index, at(0)).unwrap();
+        assert_eq!((answer["length_ms"].clone(), answer["expires_in_ms"].clone()), (json!(600), json!(1200)));
+        assert_eq!(key_at(&e, "f1", 100), Some([255, 0, 0]));
+        assert_eq!(key_at(&e, "f2", 100), None, "not yet: the layers under it show");
+        assert_eq!(key_at(&e, "esc", 100), Some([0, 0, 255]));
+        assert_eq!(key_at(&e, "f1", 400), None);
+        assert_eq!(key_at(&e, "f2", 400), Some([0, 255, 0]));
+        assert_eq!(key_at(&e, "f1", 700), Some([255, 0, 0]), "the second run");
+        assert_eq!(key_at(&e, "esc", 1_200), None, "both runs done");
+        // A later step wins a key both name; `off` is dark, over what is under.
+        let cover = scene_of(&[("all", "red", Some(0), 500), ("esc", "off", Some(0), 500)], 1);
+        e.scene(&src("tests"), "tests:cover", &cover, &index, at(2_000)).unwrap();
+        assert_eq!(key_at(&e, "esc", 2_100), Some([0, 0, 0]));
+        assert_eq!(key_at(&e, "f1", 2_100), Some([255, 0, 0]));
+        // A loop until its time.
+        let looped = kb_agent::protocol::SceneArgs {
+            repeat: Some(0),
+            for_ms: Some(5_000),
+            ..kb_agent::protocol::SceneArgs {
+                steps: vec![
+                    kb_agent::protocol::SceneStepArgs {
+                        keys: Some("f5".into()),
+                        color: "white".into(),
+                        for_ms: Some(200),
+                        ..Default::default()
+                    },
+                    kb_agent::protocol::SceneStepArgs {
+                        keys: Some("f6".into()),
+                        color: "white".into(),
+                        for_ms: Some(200),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }
+        }
+        .validate()
+        .unwrap();
+        e.scene(&src("tests"), "tests:loop", &looped, &index, at(10_000)).unwrap();
+        assert!(key_at(&e, "f5", 14_850).is_some() && key_at(&e, "f6", 14_850).is_none());
+        assert!(key_at(&e, "f6", 14_780).is_some() && key_at(&e, "f5", 14_780).is_none());
+        assert_eq!(key_at(&e, "f5", 15_000), None, "its time is up");
+        // Unknown keys are refused with the step's name.
+        let far = scene_of(&[("f24", "red", None, 100)], 1);
+        assert_eq!(
+            e.scene(&src("tests"), "tests:x", &far, &index, at(20_000)).unwrap_err().code,
+            ErrorCode::UnknownKey
+        );
     }
 
     #[test]

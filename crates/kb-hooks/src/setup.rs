@@ -41,11 +41,11 @@ use crate::event::Agent;
 use crate::json::Json;
 
 /// The skill's version: [`refresh`] rewrites an older copy.
-pub const SKILL_VERSION: u32 = 2;
+pub const SKILL_VERSION: u32 = 3;
 /// The marker in our skill file, with its version after it.
 pub const SKILL_MARKER: &str = "keymotion-skill:";
 /// The Codex rule's version, and its marker.
-pub const RULES_VERSION: u32 = 2;
+pub const RULES_VERSION: u32 = 3;
 pub const RULES_MARKER: &str = "keymotion-rules:";
 /// The folder of our skill, under each agent's skills folder.
 pub const SKILL_DIR: &str = "keymotion";
@@ -702,7 +702,10 @@ and end by themselves.
   \"waiting for you\" and errors by itself, from the coding app's own events;
   the ready signals (`keymotion-cli signal done`) are optional shortcuts. You
   may as well choose keys, colors, effects and timing yourself: a word on its
-  letter keys, a count on the number keys, a progress bar on the F row.
+  letter keys, a count on the number keys, a progress bar on the F row, a
+  timed scene of your own.
+- You can write on the keyboard: `keymotion-cli spell \"DONE\"` lights the
+  letters one after another.
 - Put the command right after `keymotion-cli` (`keymotion-cli status --json`,
   not `keymotion-cli --json status`): Codex lets only that form reach the app.
 - Exit code 77 means the user has not allowed it in Keymotion (agent access, or
@@ -774,9 +777,9 @@ fn starlark_string(text: &str) -> String {
 /// the focus timer, profiles, screen cards, status and help (each still
 /// needs the user's permission in Keymotion). Later steps add theirs here
 /// (and [`RULES_VERSION`]; version 2 added focus, profile and card).
-pub const ALLOWED_COMMANDS: [&str; 15] = [
-    "status", "keys", "signal", "light", "progress", "clear", "log", "settings", "focus", "profile", "card", "version",
-    "guide", "doctor", "start",
+pub const ALLOWED_COMMANDS: [&str; 18] = [
+    "status", "keys", "signal", "light", "progress", "clear", "log", "settings", "focus", "profile", "card", "scene",
+    "pattern", "spell", "version", "guide", "doctor", "start",
 ];
 
 // ------------------------------------------------------------- planning

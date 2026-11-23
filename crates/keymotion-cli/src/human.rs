@@ -233,6 +233,86 @@ pub fn lit_warnings(data: &Value) -> Vec<String> {
     out
 }
 
+/// `scene` and `spell`.
+pub fn scene(command: &str, data: &Value) -> String {
+    let id = text(data, "id");
+    let what = match command {
+        "spell" => format!("Spelling \"{}\" ({id})", printable(data["written"].as_str().unwrap_or_default())),
+        _ => format!("Scene {id}"),
+    };
+    let mut line = match (data["length_ms"].as_u64(), data["expires_in_ms"].as_u64()) {
+        (Some(run), Some(all)) => match data["repeat"].as_u64() {
+            Some(0) => format!("{what}: {} a run, again and again for {}.", duration(run), duration(all)),
+            Some(1) | None => format!("{what}: {}.", duration(run)),
+            Some(n) => format!("{what}: {} a run, {n} runs, {} in all.", duration(run), duration(all)),
+        },
+        _ => String::new(),
+    };
+    if let Some(name) = data["saved"].as_str() {
+        let kept = if flag(data, "replaced_pattern") { "replaced" } else { "kept" };
+        let saved = format!("Pattern {} {kept}: pattern play {} plays it.", printable(name), printable(name));
+        line = if line.is_empty() { saved } else { format!("{line} {saved}") };
+    }
+    line
+}
+
+/// What `spell` could not write.
+pub fn spell_warnings(data: &Value) -> Vec<String> {
+    let mut out = Vec::new();
+    let skipped = texts(data, "skipped");
+    if !skipped.is_empty() {
+        out.push(format!("Skipped (no key for them on this keyboard): {}", skipped.join(" ")));
+    }
+    let plain: Vec<String> = data["plain"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|p| format!("{} as {}", text(p, "from"), text(p, "to")))
+        .collect();
+    if !plain.is_empty() {
+        out.push(format!("Written plain: {}", plain.join(", ")));
+    }
+    out
+}
+
+/// `pattern list|play|delete`.
+pub fn pattern(data: &Value) -> String {
+    if let Some(list) = data["patterns"].as_array() {
+        if list.is_empty() {
+            return "No patterns yet: scene FILE --save NAME keeps one.".to_string();
+        }
+        return list
+            .iter()
+            .map(|p| {
+                let runs = match p["repeat"].as_u64() {
+                    Some(0) => ", loops".to_string(),
+                    Some(1) | None => String::new(),
+                    Some(n) => format!(", {n} runs"),
+                };
+                format!(
+                    "{}  {} steps, {}{runs}",
+                    text(p, "name"),
+                    p["steps"].as_u64().unwrap_or(0),
+                    duration(p["length_ms"].as_u64().unwrap_or(0))
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+    }
+    if let Some(deleted) = data["deleted"].as_bool() {
+        let name = text(data, "pattern");
+        return if deleted { format!("Pattern {name} deleted.") } else { format!("There was no pattern {name}.") };
+    }
+    let name = text(data, "pattern");
+    match (data["length_ms"].as_u64(), data["expires_in_ms"].as_u64()) {
+        (Some(run), Some(all)) if run != all => {
+            format!("Pattern {name} ({}): {} a run, {} in all.", text(data, "id"), duration(run), duration(all))
+        }
+        (Some(run), _) => format!("Pattern {name} ({}): {}.", text(data, "id"), duration(run)),
+        _ => format!("Pattern {name}."),
+    }
+}
+
 pub fn clear(data: &Value) -> String {
     match data["cleared"].as_u64().unwrap_or(0) {
         0 => "Nothing to clear.".to_string(),
