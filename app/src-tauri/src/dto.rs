@@ -1687,6 +1687,12 @@ pub struct PomodoroState {
     pub last: Option<PomodoroSummary>,
     /// "Klavyede dene" is showing a short run on the keys.
     pub trying: bool,
+    /// An agent started this series as one focus block of this many
+    /// minutes (`keymotion-cli focus start --for 50m`), without changing
+    /// `settings`: the series is that block alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub once: Option<u16>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
@@ -3702,4 +3708,63 @@ pub struct AgentDisconnectOutcome {
     /// What was taken away (its `problem` set when it could not be).
     pub plan: AgentAppPlan,
     pub connections: AgentConnections,
+}
+
+// ------------------------------------------------------ agents: the screen
+
+/// What an agent's screen card says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentCardKind {
+    /// The agent's own: `title`, `text` and/or `image`, `color`.
+    Text,
+    /// F: a long task finished ("Done · 14 min"): `minutes` and the
+    /// project folder's name (`label`); the words are the page's, in the
+    /// user's language.
+    LongTask,
+}
+
+/// A picture for a card: a PNG, JPEG, GIF or WebP of at most 40 KiB, sides
+/// 8 to 2048 pixels (checked). Drawn as a still: an animated one shows its
+/// first frame.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentCardImage {
+    /// `image/png`, `image/jpeg`, `image/gif`, `image/webp`.
+    pub mime: String,
+    /// The file, base64.
+    pub data: String,
+    pub width: u32,
+    pub height: u32,
+    pub animated: bool,
+}
+
+/// An agent's card for the keyboard's screen (`agent-card` event): the page
+/// draws it like the other live cards and hands it back with
+/// `agents_card_drawn` (header `x-card: <id>`, the picture as the body,
+/// like `live_submit`), or says why it could not with `agents_card_failed`.
+/// It must be drawn within 15 seconds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentCard {
+    pub id: String,
+    pub kind: AgentCardKind,
+    /// Who asked (`claude-code`, `cli`): for the page's log, not the card.
+    pub agent: String,
+    /// At most 24 characters, one line.
+    pub title: Option<String>,
+    /// At most 60 characters on at most 2 lines (`\n` between them).
+    pub text: Option<String>,
+    pub image: Option<AgentCardImage>,
+    /// An accent colour (sRGB) the agent chose.
+    pub color: Option<[u8; 3]>,
+    /// `longTask`: how long the task took, in whole minutes.
+    pub minutes: Option<u32>,
+    /// `longTask`: the project folder's name.
+    pub label: Option<String>,
+    /// How long the card stays before the user's own picture comes back.
+    pub show_s: u32,
 }

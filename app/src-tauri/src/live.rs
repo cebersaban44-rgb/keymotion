@@ -160,9 +160,13 @@ impl Default for LiveStored {
 }
 
 /// Uploads a source's card leaves for the sources above it: the focus
-/// timer, a game and the song keep one for a reminder or a meeting.
+/// timer, a game, the song and agents keep one for a reminder or a meeting.
 fn keep_for(source: &str) -> f64 {
-    if source == crate::pomodoro::SOURCE || source == crate::games::SOURCE || source == crate::now_playing::SOURCE {
+    if source == crate::pomodoro::SOURCE
+        || source == crate::games::SOURCE
+        || source == crate::now_playing::SOURCE
+        || source == crate::agent::CARD_SOURCE
+    {
         1.0
     } else {
         0.0

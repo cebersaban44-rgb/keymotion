@@ -22,6 +22,10 @@ use kb_winsys::pipe::PipeServer;
 use serde_json::{json, Value};
 
 const EXE: &str = env!("CARGO_BIN_EXE_keymotion-cli");
+/// A hook that waited for Keymotion to start would take the start's 15
+/// seconds; one that does not wait ends well within this, even on a busy
+/// CI runner (a 2-second bound flaked under load at 2.4 s).
+const NO_WAIT: Duration = Duration::from_secs(10);
 
 fn unique(prefix: &str) -> String {
     static COUNT: AtomicU32 = AtomicU32::new(0);
@@ -149,7 +153,7 @@ fn every_kind_of_input_ends_with_0_and_no_output() {
         ("", STOP),
     ] {
         let r = hook(agent, input, &pipe);
-        assert!(r.took < Duration::from_secs(5), "{agent}: {:?}", r.took);
+        assert!(r.took < NO_WAIT, "{agent}: {:?}", r.took);
     }
     assert!(seen.lock().unwrap().is_empty(), "none of these was an event: {:?}", seen.lock().unwrap());
 
@@ -173,7 +177,7 @@ fn an_event_reaches_the_app_as_its_meaning_only() {
     let pipe = unique_pipe();
     let (_server, seen) = fake_app(&pipe, true);
     let r = hook("claude-code", STOP, &pipe);
-    assert!(r.took < Duration::from_secs(2), "{:?}", r.took);
+    assert!(r.took < NO_WAIT, "{:?}", r.took);
     let got = seen.lock().unwrap().clone();
     assert_eq!(got.len(), 1, "{got:?}");
     let (source, args) = &got[0];
@@ -211,7 +215,7 @@ fn without_the_app_an_event_that_lights_is_delivered_once_it_starts() {
     std::thread::sleep(Duration::from_millis(300));
     // Nothing on the pipe: the hook does not wait for the app.
     let r = hook("claude-code", STOP, &pipe);
-    assert!(r.took < Duration::from_secs(2), "{:?}", r.took);
+    assert!(r.took < NO_WAIT, "{:?}", r.took);
     // The app comes up (the test pipe starts nothing; the copy waits for it).
     std::thread::sleep(Duration::from_millis(700));
     let (_server, seen) = fake_app(&pipe, true);

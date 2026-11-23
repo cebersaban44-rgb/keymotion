@@ -12,6 +12,8 @@
 //!   and source names, text limits. The CLI checks them before sending; the
 //!   app checks them again and never trusts the client. Blinking stays at
 //!   or below three flashes a second (WCAG 2.3.1).
+//! * [`image`]: the pictures a screen card takes (format, size, sides),
+//!   read from their headers.
 //! * [`error`]: stable string codes and exit codes. Exit code 2 is never
 //!   used: Claude Code and Codex read 2 from a hook as "keep going" or
 //!   "block".
@@ -22,6 +24,7 @@
 //! tokio (`tests/dependencies.rs` checks it).
 
 pub mod error;
+pub mod image;
 pub mod keys;
 pub mod protocol;
 #[cfg(windows)]

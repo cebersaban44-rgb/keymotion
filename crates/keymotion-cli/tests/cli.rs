@@ -117,8 +117,46 @@ fn fake_app(pipe: &str) -> (PipeServer, Arc<Fake>) {
                 a.validate()?;
                 Ok(json!({"settings": {"signals.done.color": "#00ff00"}, "agents_may_edit": true, "user_only": ["enabled"]}))
             }
+            Command::Focus(a) if a.action == "status" => {
+                a.validate()?;
+                Ok(json!({"focus": null}))
+            }
+            Command::Profile(a) if a.action == "list" => {
+                a.validate()?;
+                Ok(json!({"profiles": [{"id": "default", "name": "Default", "built_in": true, "parts": ["lighting"], "lighting": "effect", "fits": true, "lighting_on_keyboard": true}], "model": "ajazz-ak980-pro"}))
+            }
             _ if !access => Err(AgentError::new(ErrorCode::AgentAccessOff, "Agent access is off in Keymotion.")
                 .with_hint("The user can turn it on in Keymotion › Tools › AI agents.")),
+            Command::Focus(a) => {
+                let f = a.validate()?;
+                Ok(json!({
+                    "action": f.action.as_str(), "already_running": false, "resumed": false, "minutes": f.minutes,
+                    "focus": {"phase": "focus", "status": "running", "remaining_s": 3000, "once": f.minutes},
+                }))
+            }
+            Command::Profile(a) => {
+                let p = a.validate()?;
+                if p.action == kb_agent::protocol::ProfileAction::Apply {
+                    if !p.write_flash {
+                        return Err(AgentError::new(ErrorCode::WriteFlashFlagMissing, "This command writes the keyboard's memory."));
+                    }
+                    return Ok(json!({"id": "profile:p1", "profile": "Night Owl", "changed": true, "writes_today": 1, "writes_per_day": 10}));
+                }
+                let mut v = lit(format!("{source}:profile"), 60_000);
+                v["profile"] = json!("Night Owl");
+                Ok(v)
+            }
+            Command::Card(a) => {
+                let c = a.validate()?;
+                if !c.write_flash {
+                    return Err(AgentError::new(ErrorCode::WriteFlashFlagMissing, "This card writes the keyboard's memory."));
+                }
+                let state = if c.wait.is_some() { "shown" } else { "drawing" };
+                Ok(json!({
+                    "id": "card-1", "state": state, "shown": state == "shown", "queued": state != "shown",
+                    "sent_this_hour": 4, "per_hour": 4, "screen_budget": {"live": true, "left": 0, "next_in_s": 900},
+                }))
+            }
             Command::Signal(a) => {
                 let s = a.validate()?;
                 Ok(lit(a.id.clone().unwrap_or_else(|| format!("{source}:{}", s.name.as_str())), 120_000))
@@ -154,6 +192,80 @@ fn fake_app(pipe: &str) -> (PipeServer, Arc<Fake>) {
     })
     .expect("the fake app serves its pipe");
     (server, fake)
+}
+
+/// A small real PNG (16x16 header, as the screen card checks it).
+fn png_file(name: &str, extra: usize) -> std::path::PathBuf {
+    let mut png: Vec<u8> = vec![
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00,
+        0x00, 0x10, 0x00, 0x00, 0x00, 0x10, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x91, 0x68, 0x36, 0x00, 0x00, 0x00,
+        0x00, 0x49, 0x44, 0x41, 0x54, 0xAE, 0x42, 0x60, 0x82,
+    ];
+    png.resize(png.len() + extra, 0);
+    let path = std::env::temp_dir().join(format!("km-cli-{name}-{}.png", std::process::id()));
+    std::fs::write(&path, png).unwrap();
+    path
+}
+
+#[test]
+fn focus_profiles_and_cards_reach_the_app() {
+    let pipe = unique_pipe();
+    let (_server, fake) = fake_app(&pipe);
+    // Reading needs no access.
+    assert_eq!(run(&pipe, &["focus", "status", "--json"]).code, 0);
+    let r = run(&pipe, &["profile", "list", "--json"]);
+    assert_eq!((r.code, r.json()["data"]["profiles"][0]["name"].clone()), (0, json!("Default")), "{r:?}");
+    assert!(run(&pipe, &["profile", "list"]).stdout.contains("lighting: effect"));
+    fake.access.store(true, Ordering::SeqCst);
+
+    let r = run(&pipe, &["focus", "start", "--for", "50m", "--json"]);
+    assert_eq!((r.code, r.json()["data"]["minutes"].clone()), (0, json!(50)), "{r:?}");
+    assert_eq!(fake.last().2, json!({"action": "start", "for_ms": 3_000_000}));
+    assert!(run(&pipe, &["focus", "start", "--for", "50m"]).stdout.contains("one block of 50m"));
+    let r = run(&pipe, &["focus", "start", "--for", "90s", "--json"]);
+    assert_eq!((r.code, r.json()["error"]["code"].clone()), (65, json!("bad_duration")), "whole minutes");
+    assert_eq!(run(&pipe, &["focus", "pause", "--for", "5m"]).code, 64, "only start takes a duration");
+
+    let r = run(&pipe, &["profile", "show", "Night Owl", "--for", "30s", "--json"]);
+    assert_eq!((r.code, r.json()["data"]["profile"].clone()), (0, json!("Night Owl")));
+    assert_eq!(fake.last().2, json!({"action": "show", "name": "Night Owl", "for_ms": 30_000}));
+    let r = run(&pipe, &["profile", "apply", "Night Owl", "--json"]);
+    assert_eq!((r.code, r.json()["error"]["code"].clone()), (77, json!("write_flash_flag_missing")));
+    let r = run(&pipe, &["profile", "apply", "Night Owl", "--write-flash"]);
+    assert_eq!((r.code, r.stdout.trim()), (0, "Wrote the lighting of Night Owl to the keyboard."));
+
+    // A card: its text (with \n for the second line), a picture as base64.
+    let picture = png_file("ok", 0);
+    let r =
+        run(&pipe, &["card", "Build passed\\n4 min", "--image", picture.to_str().unwrap(), "--write-flash", "--json"]);
+    assert_eq!((r.code, r.json()["data"]["state"].clone()), (0, json!("drawing")), "{r:?}");
+    let sent = fake.last().2;
+    assert_eq!(sent["text"], json!("Build passed\n4 min"));
+    assert_eq!(sent["write_flash"], json!(true));
+    assert!(sent["image"].as_str().is_some_and(|b| b.starts_with("iVBORw0KGgo")), "{sent}");
+    let warned = r.json()["warnings"].clone();
+    assert!(warned.to_string().contains("last of 4 cards"), "{warned}");
+    // --wait: the answer waits; the default timeout grows with it.
+    let r = run(&pipe, &["card", "Deployed", "--wait", "20s", "--write-flash", "--json"]);
+    assert_eq!((r.code, r.json()["data"]["shown"].clone()), (0, json!(true)));
+    assert_eq!(fake.last().2["wait_ms"], json!(20_000));
+    // Pictures that are not fit never leave keymotion-cli.
+    let before = fake.seen.lock().unwrap().len();
+    let big = png_file("big", 41 * 1024);
+    let r = run(&pipe, &["card", "--image", big.to_str().unwrap(), "--write-flash", "--json"]);
+    assert_eq!((r.code, r.json()["error"]["code"].clone()), (65, json!("too_large")));
+    let r = run(&pipe, &["card", "--image", r"C:\no\such\picture.png", "--write-flash", "--json"]);
+    assert_eq!(r.code, 65, "{r:?}");
+    let not_png = std::env::temp_dir().join(format!("km-cli-text-{}.png", std::process::id()));
+    std::fs::write(&not_png, "just text").unwrap();
+    assert_eq!(run(&pipe, &["card", "--image", not_png.to_str().unwrap(), "--write-flash"]).code, 65);
+    assert_eq!(run(&pipe, &["card", "--write-flash"]).code, 64, "nothing to show");
+    assert_eq!(fake.seen.lock().unwrap().len(), before);
+    let r = run(&pipe, &["card", "Hi", "--json"]);
+    assert_eq!((r.code, r.json()["error"]["code"].clone()), (77, json!("write_flash_flag_missing")));
+    for f in [picture, big, not_png] {
+        let _ = std::fs::remove_file(f);
+    }
 }
 
 #[test]

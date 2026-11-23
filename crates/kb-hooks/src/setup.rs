@@ -44,7 +44,7 @@ pub const SKILL_VERSION: u32 = 1;
 /// The marker in our skill file, with its version after it.
 pub const SKILL_MARKER: &str = "keymotion-skill:";
 /// The Codex rule's version, and its marker.
-pub const RULES_VERSION: u32 = 1;
+pub const RULES_VERSION: u32 = 2;
 pub const RULES_MARKER: &str = "keymotion-rules:";
 /// The folder of our skill, under each agent's skills folder.
 pub const SKILL_DIR: &str = "keymotion";
@@ -767,9 +767,12 @@ fn starlark_string(text: &str) -> String {
 }
 
 /// keymotion-cli's commands the Codex rule lets out of the sandbox: lights,
-/// status and help. Later steps add theirs here (and [`RULES_VERSION`]).
-pub const ALLOWED_COMMANDS: [&str; 12] = [
-    "status", "keys", "signal", "light", "progress", "clear", "log", "settings", "version", "guide", "doctor", "start",
+/// the focus timer, profiles, screen cards, status and help (each still
+/// needs the user's permission in Keymotion). Later steps add theirs here
+/// (and [`RULES_VERSION`]; version 2 added focus, profile and card).
+pub const ALLOWED_COMMANDS: [&str; 15] = [
+    "status", "keys", "signal", "light", "progress", "clear", "log", "settings", "focus", "profile", "card", "version",
+    "guide", "doctor", "start",
 ];
 
 // ------------------------------------------------------------- planning
