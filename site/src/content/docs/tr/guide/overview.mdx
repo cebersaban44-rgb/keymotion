@@ -1,51 +1,54 @@
 ---
 title: Genel bakış
-description: Klavye bağlıyken açılan ilk sayfa; klavyenin şu anki ışığı, ekranındaki görsel ve her araç için bir kutu.
+description: Klavye bağlıyken açılan ilk sayfa; klavyenin cam şeridi, şu anki ışığı ve her araç için bir satır.
 ---
 
 import Screenshot from "~/components/Screenshot.astro";
 import { Aside } from "@astrojs/starlight/components";
 
-**Genel bakış**, klavyeniz bağlıyken açılan ilk sayfadır. Klavyenin şu an nasıl yandığını, ekranında ne olduğunu ve her aracın ne durumda olduğunu tek bakışta gösterir. Her kutu kendi sayfasına götürür.
+**Genel bakış**, klavyeniz bağlıyken açılan ilk sayfadır. Klavyenin ekranını, şu an nasıl yandığını ve her aracın ne durumda olduğunu tek bakışta gösterir. Her satır kendi sayfasına götürür.
 
-<Screenshot name="overview" alt="USB kablosuyla Genel bakış: klavye çizimi; ekran, ışık, odak zamanlayıcısı, hatırlatıcılar, takvim, sistem göstergeleri ve profil kutuları" />
+<Screenshot name="overview" alt="USB kablosuyla Genel bakış: ekranı ve döner düğmesiyle klavyenin cam şeridi, klavye çizimi; ışık, odak zamanlayıcısı, takvim, hatırlatıcılar, sistem göstergeleri, ekran ve profil satırları" />
 
-## Sayfanın üstü
+## Cam şerit
 
-Başlıkta klavyenin modeli yazar. Altında kısa bir tanım durur, örneğin *%98 düzen, 97 tuş, 240×135 ekran ve döner düğme.*; klavye bildiriyorsa ardından klavye yazılımının sürümü gelir.
+Sayfa, AK980 PRO'dakine benzer biçimde çizilmiş cam şeritle başlar: solda ekran, ortada cama basılı dağ resmi, sağda döner düğme.
 
-Sağda bağlantı (örneğin **USB kablo**) ve pil görünür:
+- **Ekranda** Keymotion'ın klavyenin GIF sayfasına koyduğu görsel görünür. Keymotion oraya henüz bir görsel koymadıysa klavyenin saat sayfası şu anki saatle görünür.
+- **Döner düğmenin** çevresinde her parlaklık düzeyi için bir parça olmak üzere beş parçalı turuncu bir halka vardır; Keymotion'ın ışıkla birlikte en son kaydettiği parlaklığa kadar yanar.
 
-- **USB kablosuyla** klavye pil düzeyini bildirmez. Keymotion bunun yerine klavyenin şarj olup olmadığını gösterir: **Şarj oluyor** ya da **Şarj tamamlandı**. Klavye şarj olurken Fn tuşunu kırmızı yakar, Keymotion da bu ışığı okur; ışık yaklaşık iki saniye aynı kalınca durum görünür. Üstüne gelince, varsa son Bluetooth okuması çıkar.
-- **Bluetooth'la** pil düzeyi görünür, örneğin **Pil %94**. Üstüne gelince ne zaman okunduğu çıkar.
+Şeridin altında tek bir satır vardır: klavyenin adı, **USB kablo** gibi bağlantı, klavye bildiriyorsa klavye yazılımının sürümü, düzen ve tuş sayısı. Sağda pil ve **Döner düğme: parlaklık 5/5** yazar:
+
+- **USB kablosuyla** klavye pil düzeyini bildirmez. Keymotion bunun yerine şarj durumunu gösterir: **Şarj oluyor** ya da **Şarj tamamlandı**. Klavye şarj olurken Fn tuşunu kırmızı yakar, Keymotion da bu ışığı okur; ışık yaklaşık iki saniye aynı kalınca durum görünür. Üstüne gelince varsa Bluetooth'la son okunan değeri görürsünüz.
+- **Bluetooth'la** pil düzeyi görünür, örneğin **Pil %94**. Üstüne gelince ne zaman okunduğunu görürsünüz.
 
 ## Klavye çizimi
 
-USB kablosuyla bağlıyken çizim, klavyenizin gerçek ışığını canlı gösterir: Keymotion ışığı saniyede yaklaşık dört kez okur. Çizimin altında **Klavyenizin ışığı canlı gösteriliyor** ya da **Klavyenin ışığı kapalı** yazar.
+USB kablosuyla çizim, klavyenizin gerçek ışığını canlı gösterir: Keymotion onu saniyede yaklaşık dört kez okur. Çizimin altında **Klavyenizin ışığı canlı gösteriliyor** ya da **Klavyenin ışığı kapalı** yazar.
 
-Keymotion penceresi öndeyken bastığınız tuşlar çizimde de yanar (**Bastığınız tuşlar burada yanar.**). Fn ve Windows'un kendine ayırdığı birkaç tuş, örneğin Windows tuşu ve Print Screen, çizimde yanmaz. Tuşların üstündeki harfler Windows'taki klavye düzeninize göre yazılır.
+Keymotion'ın penceresi öndeyken bastığınız tuşlar da çizimde yanar (**Bastığınız tuşlar burada yanar.**). Fn ve Windows'un kendine ayırdığı birkaç tuş, örneğin Windows tuşu ve Print Screen, yanmaz. Tuşlardaki harfler Windows klavye düzeninizi izler.
 
 2.4 GHz alıcıyla ya da Bluetooth'la çizim canlı değildir ve altında **Canlı görünüm yalnızca USB kablosuyla kullanılabilir** yazar.
 
-## Kutular
+## Durum
 
-Çizimin altındaki her kutu, aracının şu an ne yaptığını söyler ve kendi sayfasına bağlantı verir. Odak zamanlayıcısının **Başlat** düğmesi dışında buradan hiçbir şey değiştirilmez.
+**Durum** başlığının altında her araç için bir satır, aracın şu an ne yaptığını söyler; satıra tıklayınca sayfası açılır. Odak zamanlayıcısının **Başlat** düğmesi ile hatırlatıcıların ve sistem göstergelerinin anahtarları dışında buradan hiçbir şey değişmez.
 
-- **Klavye ekranında şimdi**, klavyenin GIF sayfasındaki görseli ve adını gösterir. Canlı ekran açıksa **Canlı ekran açık** ve kalan yükleme hakkı, kapalıysa **Canlı ekran kapalı** yazar. Günlük yükleme sınırını bekleyen bir kart varsa adı **Sırada:** satırında görünür. **Ekrana git** [Ekran](/keymotion/tr/guide/screen/) sayfasını açar.
-- **Işık**, Keymotion'ın klavyeye en son kaydettiği efekti ya da **Tuş başına renk** tasarımını; renklerini ve beş basamak üzerinden parlaklığını gösterir. Keymotion henüz ışık kaydetmediyse **Uygulamadan henüz kaydedilmedi** yazar. Sistem göstergeleri açıkken tuşlarda ışık yerine göstergeler görünür ve kutu bunu söyler. Işığı [Işıklar](/keymotion/tr/guide/lighting/) sayfasında değiştirip kaydedersiniz; **Işıklara git** oraya götürür.
-- **Odak zamanlayıcısı** çalışmıyorken sıranızı özetler (kaç blok, toplam kaç dakika) ve bir **Başlat** düğmesi sunar. Çalışırken odakta mı molada mı olduğunuzu, kaçıncı blokta olduğunuzu, kalan süreyi ve bir çubuğu gösterir. **Zamanlayıcıya git** [Odak zamanlayıcısı](/keymotion/tr/guide/focus-timer/) sayfasını açar.
-- **Hatırlatıcılar** köşesinde kaç hatırlatıcının açık olduğunu ya da **Kapalı** yazar; altında sıradaki hatırlatmayı, saatini ve ne kadar sonra olduğunu gösterir. Sırada bir şey yoksa bunu söyler; örneğin **Yaklaşan hatırlatma yok.**, **Hatırlatmalar kapalı.** ya da **Henüz hatırlatma yok.** **Hatırlatıcılara git** [Hatırlatıcılar](/keymotion/tr/guide/reminders/) sayfasını açar.
-- **Takvim** sıradaki toplantıyı, saatini ve ne kadar sonra başlayacağını gösterir; toplantı sürüyorsa **Şu an sürüyor** yazar. Takvim yoksa **Henüz takvim eklenmedi.**, yaklaşan toplantı yoksa **Önümüzdeki 24 saatte toplantı yok.** yazar. **Takvime git** [Takvim](/keymotion/tr/guide/calendar/) sayfasını açar.
-- **Sistem göstergeleri** köşesinde **Açık** ya da **Kapalı** yazar. Açıkken tuşlarda gösterilen **İşlemci**, **Bellek** ve **Ekran kartı** yükleri canlı çubuklarla görünür. Kapalıyken **Tuşlarda gösterilmiyor.** yazar ve seçtiğiniz göstergeleri sıralar. **Göstergelere git** [Sistem göstergeleri](/keymotion/tr/guide/system-gauges/) sayfasını açar.
-- **Profil**, klavyedekilerle eşleşen kayıtlı profilin adını ya da **Kaydedilmiş profille eşleşmiyor** yazar. **Profillere git** [Profiller](/keymotion/tr/guide/profiles/) sayfasını açar.
+- **Işık**, Keymotion'ın klavyeye en son kaydettiği efekti ya da **Tuş başına renk**'i, rengini ve beş üzerinden parlaklığını gösterir; renkler sağdadır. Keymotion henüz ışık kaydetmediyse **Uygulamadan henüz kaydedilmedi** yazar. Sistem göstergeleri açıkken tuşlar onları gösterir, satır da bunu söyler. Işığı [Işıklar](/keymotion/tr/guide/lighting/) sayfasında değiştirip kaydedersiniz.
+- **Odak zamanlayıcısı** çalışmıyorken sıranızı özetler (kaç blok, toplam kaç dakika) ve bir **Başlat** düğmesi gösterir. Çalışırken odak ya da mola, kaçıncı blokta olduğunuz, bir çubuk ve kalan süre görünür. Satır [Odak zamanlayıcısı](/keymotion/tr/guide/focus-timer/) sayfasını açar.
+- **Takvim** sıradaki toplantıyı, saatini ve başlamasına ne kadar kaldığını ya da **Şu an sürüyor**'u gösterir. Takvim yoksa **Henüz takvim eklenmedi.**, önde toplantı yoksa **Önümüzdeki 24 saatte toplantı yok.** yazar. Satır [Takvim](/keymotion/tr/guide/calendar/) sayfasını açar.
+- **Hatırlatıcılar** sıradaki hatırlatmayı, saatini ve ne kadar kaldığını, sağda da kaç hatırlatmanın açık olduğunu ve bütün hatırlatmaları açıp kapatan anahtarı gösterir. Yaklaşan bir şey yoksa bunu söyler, örneğin **Yaklaşan hatırlatma yok.**, **Hatırlatmalar kapalı.** ya da **Henüz hatırlatma yok.** Satır [Hatırlatıcılar](/keymotion/tr/guide/reminders/) sayfasını açar.
+- **Sistem göstergeleri** satırında göstergeleri açıp kapatan bir anahtar vardır. Açıkken tuşların gösterdiği **İşlemci**, **Bellek** ve **Ekran kartı** yüklerini gösterir. Kapalıyken **Tuşlarda gösterilmiyor.** yazar ve seçtiğiniz göstergeleri sayar. Satır [Sistem göstergeleri](/keymotion/tr/guide/system-gauges/) sayfasını açar.
+- **Klavye ekranında şimdi**, klavyenin GIF sayfasındaki görselin adını söyler. Canlı ekran açıksa **Canlı ekran açık** ve kalan yükleme hakkı, değilse **Canlı ekran kapalı** yazar. Günlük yükleme sınırını bekleyen bir kart **Sırada:** ile adlandırılır. Satır [Ekran](/keymotion/tr/guide/screen/) sayfasını açar.
+- **Profil**, klavyedekiyle eşleşen kaydedilmiş profilin adını gösterir ya da **Kaydedilmiş profille eşleşmiyor** der. Satır [Profiller](/keymotion/tr/guide/profiles/) sayfasını açar.
 
 ## Alıcıyla ya da Bluetooth'la
 
-Klavye Bluetooth'la bağlıyken sayfanın altında **Tüm özellikler USB kablosuyla açılır** kartı çıkar: ışıklar, tuş atama, makrolar ve ekran yalnızca USB kablosuyla ayarlanabilir. Kabloyu takıp arkadaki anahtarı ortaya aldığınızda sayfa kendiliğinden güncellenir.
+Klavye Bluetooth'la bağlıyken klavyenin altında **Tüm özellikler USB kablosuyla açılır** çubuğu çıkar: ışıklar, tuş atama, makrolar ve ekran yalnızca USB kablosuyla ayarlanabilir. Kabloyu takıp arkadaki anahtarı ortaya aldığınızda sayfa kendiliğinden güncellenir.
 
-Yalnızca 2.4 GHz alıcı takılıysa kartta bunun yerine **2.4 GHz alıcı takılı** yazar: Keymotion klavyenizin açık ve alıcıya bağlı olup olmadığını henüz anlayamaz; ayarlar burada da USB kablosu ister. Aynı nedenle üstteki **2.4 GHz alıcı** yazısının yanındaki nokta yeşil değil, gridir.
+Yalnızca 2.4 GHz alıcı takılıysa çubukta bunun yerine **2.4 GHz alıcı takılı** yazar: Keymotion klavyenizin açık ve alıcıya bağlı olup olmadığını henüz anlayamaz; ayarlar burada da USB kablosu ister. Aynı nedenle cam şeridin altındaki **2.4 GHz alıcı** yazısının yanındaki nokta yeşil değil, gridir.
 
-<Screenshot name="overview-bluetooth" alt="Bluetooth'la Genel bakış: üstte pil düzeyi, canlı renkleri olmayan çizim ve tüm özelliklerin USB kablosuyla açıldığını söyleyen kart" />
+<Screenshot name="overview-bluetooth" alt="Bluetooth'la Genel bakış: cam şeridin altında pil düzeyi, canlı renkleri olmayan çizim ve tüm özelliklerin USB kablosuyla açıldığını söyleyen çubuk" />
 
 <Aside type="note">
 Klavye bağlı değilken burada hoş geldiniz sayfası görünür; [İlk açılış](/keymotion/tr/guide/first-launch/) sayfasına bakın. Bağlantı ayrıntıları ve klavye saati [Bağlantı](/keymotion/tr/guide/connection/) sayfasındadır.

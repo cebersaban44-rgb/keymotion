@@ -99,6 +99,16 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 
 ### Değişenler
 
+- **Windows 11 biçiminde yeni görünüş:** sayfalar Windows Ayarlar'daki
+  gibi soldaki bir bölmede; bölmenin başında bağlı klavye (adı ve nasıl
+  bağlandığı ya da "Klavye bekleniyor"), listeyi daraltan bir arama kutusu,
+  en altta Ayarlar. Ayarlar tam genişlikte satırlar, anahtar, liste ya da
+  düğme sağda; düğmeler, anahtarlar, kaydırıcılar, sekmeler, pencereler ve
+  kaydet çubuğu Windows'unkiler gibi, turuncu yalnızca vurgu rengi. Klavye
+  çizimi ve ışıkları olduğu gibi kalıyor. **Genel bakış** klavyenin cam
+  şeridiyle başlıyor (ekranı, camdaki resim ve son ayarlanan parlaklığıyla
+  döner düğme), sonra klavye, sonra Keymotion'ın yaptığı her iş için bir
+  satır; hatırlatıcılar ve sistem göstergeleri orada açılıp kapanabiliyor.
 - Yazmadan önce resmî yazılımı ya da SignalRGB'yi bulmak için kullanılan
   çalışan programlar listesi artık hiçbir programı açmıyor.
 - **Tanıma:** AJAZZ AK980 PRO olarak yalnızca USB adında, denenen klavyenin

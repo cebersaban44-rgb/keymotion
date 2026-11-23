@@ -102,6 +102,18 @@ says so.
 
 ### Changed
 
+- **A new look, in the style of Windows 11:** the pages are listed in a
+  pane on the left as in Windows Settings, with the connected keyboard at
+  its top (its name and how it is connected, or "Waiting for a keyboard"),
+  a search box that narrows the list, and Settings at the bottom. Settings
+  are full-width rows with the switch, list or button on the right;
+  buttons, switches, sliders, tabs, dialogs and the save bar look like
+  Windows' own, and orange stays only as the accent color. The keyboard
+  drawing and its lights stay as they were. **Overview** starts with the
+  keyboard's glass strip (its screen, the picture on the glass and the
+  knob with the brightness it was last set to), then the keyboard, then
+  one row for each thing Keymotion does; reminders and the system gauges
+  can be switched on and off right there.
 - The list of running programs, used to find the official software or
   SignalRGB before a write, no longer opens any program.
 - **Recognition:** only a keyboard whose USB name includes "AK980 PRO", as

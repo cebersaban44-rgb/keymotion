@@ -16,6 +16,10 @@ export const tr: Messages = {
   "nav.section.app": "Uygulama",
   "nav.section.tools": "Araçlar",
   "nav.focus": "Odak zamanlayıcısı",
+  "nav.keyboard": "Bağlı klavye",
+  "nav.search": "Ara",
+  "nav.search.clear": "Aramayı temizle",
+  "nav.search.none": "Sayfa bulunamadı",
 
   "device.none.title": "Klavye bekleniyor",
   "model.ajazz-ak980-pro": "AJAZZ AK980 PRO",
@@ -1353,6 +1357,7 @@ export const tr: Messages = {
   "color.violet": "Mor",
   "color.magenta": "Fuşya",
   "color.pink": "Pembe",
+  "color.custom": "Özel renk",
 
   // shell and content
   "nav.calendar": "Takvim",
@@ -1384,6 +1389,11 @@ export const tr: Messages = {
   "overview.spec.screen": "{size} ekran",
   "overview.spec.knob": "döner düğme",
   "overview.firmware": "Klavye yazılımı {version}.",
+  "overview.firmware.short": "Klavye yazılımı {version}",
+  "overview.knob": "Döner düğme: parlaklık {level}/5",
+  "overview.glass": "Klavyenin cam şeridi: ekranı, camdaki resim ve döner düğme",
+  "overview.status": "Durum",
+  "overview.light.level": "Parlaklık {level}/5",
   "overview.bat.level": "Pil {level}",
   "overview.light": "Işık",
   "overview.light.go": "Işıklara git",
