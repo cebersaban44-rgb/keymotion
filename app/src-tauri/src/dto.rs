@@ -3258,7 +3258,7 @@ pub struct AgentSettings {
     pub agents_may_edit: bool,
     /// The agents' lights wait while a game wants the keyboard left alone.
     pub hide_in_game: bool,
-    /// Screen cards each agent may show in an hour (1–20).
+    /// Screen cards all agents together may show in an hour (1–20).
     pub screen_per_hour: u8,
     pub signals: AgentSignalLooks,
     pub usage_limit: AgentUsageLimit,

@@ -32,7 +32,8 @@ interface AppState {
   screenTab: ScreenTab;
   theme: ThemePreference;
   locale: Locale;
-  /** The window is on screen (false while the app runs in the tray). */
+  /** The window is on screen (false while the app runs in the tray or the
+   *  window is minimized). */
   windowShown: boolean;
   /** A profile chosen in the tray menu: the Profiles page asks to load it. */
   profileRequest: string | null;
@@ -91,7 +92,12 @@ export const useApp = create<AppState>((set) => ({
   windowShown: true,
   profileRequest: null,
   setKeyboards: (keyboards) => set({ keyboards, loaded: true }),
-  setEnv: (env) => set({ env }),
+  setEnv: (env) => {
+    // For theme-boot.js, which marks the window translucent before the app
+    // can ask (the launch animation shows on it).
+    save("ks.mica", String(env.mica));
+    set({ env });
+  },
   setPage: (page) => set({ page }),
   setScreenTab: (screenTab) => {
     save("ks.screenTab", screenTab);

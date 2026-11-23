@@ -143,6 +143,8 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   adlandır** ya da **Sil**. **Görsel ya da video**, **Yazı kartı** ve
   **Slayt gösterisi** aynı çubukta; bir dosya kütüphanenin üzerine
   bırakılabiliyor. Ayarlar, pencereler ve öteki sayfalar da aynı görünüşte.
+  Listeler Windows 11'deki gibi açılıyor; seçili olan kısa turuncu bir
+  çizgiyle belli.
 - Yazmadan önce resmî yazılımı ya da SignalRGB'yi bulmak için kullanılan
   çalışan programlar listesi artık hiçbir programı açmıyor.
 - **Tanıma:** AJAZZ AK980 PRO olarak yalnızca USB adında, denenen klavyenin
@@ -185,6 +187,29 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 - AK980 PRO'nun USB kimliğini ve adını taşıyan ama içi farklı yapılmış bir
   klavye, her işlemin başarısız olduğu bir AK980 PRO gibi görünüyordu. Artık
   **Destek iste**'yi görüyor ve ona hiçbir şey gönderilmiyor.
+- **Takvim:** La Paz / Mazatlán ya da Bişkek saat dilimindeki bir Outlook
+  takviminin etkinlikleri yıl boyunca bir saat kaymış görünüyordu; yaz saati
+  uygulanan birkaç saat diliminde (Indiana, Küba, Haiti, Aleut Adaları,
+  Chatham Adaları, Lord Howe Adası ve birkaç yer daha) yazın bir saat
+  kayıyordu. Keymotion artık Outlook'un kullandığı bütün saat dilimi
+  adlarını tanıyor.
+- **Bildirim alanı menüsü:** **Tuşlarda sistem göstergeleri**'ni kendi
+  sayfasında açıp kapattığınızda menü bunu hemen gösteriyor. Önceden menü
+  10 dakikaya kadar eski durumu gösterebiliyordu; o arada tıkladığınızda da
+  gösterdiğinin tersini yapıyordu.
+- **Genel bakış:** **Fırlatma** ya da **Halkalar** gibi yalnızca bastığınız
+  tuşları yakan bir efektte, hiçbir tuşa basılmadığında klavyenin altındaki
+  satır **Klavyenin ışığı kapalı** diyordu. Artık **Klavyenizin tuşları
+  yazdıkça yanar** diyor.
+- **Açılış animasyonu:** Windows 11'de artık uygulamayla aynı yarı saydam
+  pencere arka planında oynuyor; uygulama göründüğünde renkler değişmiyor.
+- **Işıklar:** **Tuş başına renk** sekmesinde **Klavyede önizle** açıkken
+  pencereyi kapattığınızda, Keymotion saatin yanında çalışırken önizleme
+  tuşlarda kalıyor; odak zamanlayıcısını, hatırlatıcıları, müzik modunu ve
+  ajan ışıklarını örtüyordu. Önizleme artık pencere kapalıyken bekliyor,
+  pencereyi açınca geri geliyor.
+- **Ekran:** "…" ile biten bir şarkı, toplantı ya da hatırlatıcı adı
+  artık en küçük boyutta çizilmiyor.
 
 ## [1.1.0] - 2026-11-16
 

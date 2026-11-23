@@ -44,7 +44,7 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
     return () => window.clearTimeout(id);
   }, [draft]);
   // Readings for the page only while the window is on screen (closed to
-  // the tray, the page stays mounted but nobody looks).
+  // the tray or minimized, the page stays mounted but nobody looks).
   const windowShown = useApp((x) => x.windowShown);
   useEffect(() => (windowShown ? watchGauges(kb.geometry ?? null) : undefined), [kb.geometry, windowShown]);
   const geometry = kb.geometry;

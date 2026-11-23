@@ -11,8 +11,10 @@
 //!   live mode keeps only the newest.
 //! * How many go is counted elsewhere ([`super::limits`]: the user's hourly
 //!   number, all agents together); a card that never reached the screen
-//!   (not drawn in time, the user dropped it) is said here
-//!   ([`Due::failed`]) so its count is given back.
+//!   (not drawn in time, the user dropped it, a newer card took its place
+//!   before it went up) is said here ([`Due::failed`],
+//!   [`CardBook::start`], [`CardBook::orphan_dropped`]) so its count is
+//!   given back.
 //! * The same card again is not sent while the first is on its way or on
 //!   the screen: nothing to upload.
 //! * An agent's card on the screen that no card here will take back (one
@@ -89,6 +91,9 @@ pub struct OnScreen {
     pub waiting: bool,
     /// The user's own picture is planned to come back (or coming back).
     pub back_planned: bool,
+    /// An agent's card waiting there was put aside for another source's
+    /// card (a meeting's, the focus timer's) since the last look.
+    pub dropped: bool,
 }
 
 /// What the worker should do after a look ([`CardBook::tick`]).
@@ -103,6 +108,14 @@ pub struct Due {
     pub failed: Vec<String>,
 }
 
+/// A card replaced while the live mode had it: it may still go up.
+#[derive(Debug, Clone)]
+struct Orphan {
+    id: String,
+    /// How long it stays once on the screen.
+    show_ms: u64,
+}
+
 #[derive(Debug, Default)]
 pub struct CardBook {
     next: u64,
@@ -110,9 +123,7 @@ pub struct CardBook {
     /// Settled cards' ids and stages, newest last, for a `--wait` that asks
     /// after.
     last: VecDeque<(String, Stage)>,
-    /// A card replaced while the live mode had it: it may still go up, and
-    /// then stays for this long.
-    orphan_ms: Option<u64>,
+    orphan: Option<Orphan>,
 }
 
 /// The agent a source belongs to: its name before `:`.
@@ -137,15 +148,19 @@ impl CardBook {
             .map(|c| c.id.clone())
     }
 
-    /// A new card (counted by the caller): it takes the place
-    /// of the one on its way. Its id.
-    pub fn start(&mut self, content: u64, show_ms: u64, name: &str, now: u64) -> String {
+    /// A new card (counted by the caller): it takes the place of the one on
+    /// its way. Its id, and the id of a card it replaced before the page
+    /// drew it: that one is never written, so its count goes back.
+    pub fn start(&mut self, content: u64, show_ms: u64, name: &str, now: u64) -> (String, Option<String>) {
         self.next += 1;
         let id = format!("card-{}", self.next);
+        let mut never_written = None;
         if let Some(old) = self.current.take() {
-            if old.stage == Stage::Live {
+            match old.stage {
                 // The live mode has it: it may still reach the screen.
-                self.orphan_ms = Some(old.show_ms);
+                Stage::Live => self.orphan = Some(Orphan { id: old.id.clone(), show_ms: old.show_ms }),
+                Stage::Drawing => never_written = Some(old.id.clone()),
+                _ => {}
             }
             let stage = if old.stage.settled() { old.stage } else { Stage::Replaced };
             self.settle(old.id, stage);
@@ -160,7 +175,14 @@ impl CardBook {
             drawn_at: None,
             shown_at: None,
         });
-        id
+        (id, never_written)
+    }
+
+    /// The card on its way went to the live mode in the place of an agent's
+    /// card still waiting there ("the newest card wins"): the card replaced
+    /// before it, which now never goes up. Its id (its count goes back).
+    pub fn orphan_dropped(&mut self) -> Option<String> {
+        self.orphan.take().map(|o| o.id)
     }
 
     /// The page drew card `id`: it goes to the live mode, under the name
@@ -196,6 +218,16 @@ impl CardBook {
     /// The worker's look, with what the live mode says now.
     pub fn tick(&mut self, now: u64, screen: OnScreen) -> Due {
         let mut due = Due::default();
+        // An agent's card waiting in the live mode was put aside for another
+        // source's card. While ours on its way has not gone there yet, that
+        // was the card replaced before it: it never goes up. (Ours, once
+        // there, is the one waiting; if it goes, it fails below.)
+        if screen.dropped && !self.current.as_ref().is_some_and(|c| c.stage == Stage::Live) {
+            if let Some(o) = self.orphan.take() {
+                due.failed.push(o.id);
+                due.changed = true;
+            }
+        }
         if let Some(c) = self.current.as_ref() {
             match c.stage {
                 Stage::Drawing if now.saturating_sub(c.since) >= DRAW_WAIT_MS => {
@@ -211,7 +243,7 @@ impl CardBook {
                         c.shown_at = Some(now);
                     }
                     // Its own return covers a card replaced before it.
-                    self.orphan_ms = None;
+                    self.orphan = None;
                     due.return_after_ms = Some(show);
                     due.changed = true;
                 }
@@ -245,9 +277,15 @@ impl CardBook {
         // it, or fail and come here).
         if self.current.is_none() && !screen.waiting {
             if screen.shown && !screen.back_planned {
-                due.return_after_ms = Some(self.orphan_ms.take().unwrap_or(LEFT_BEHIND_MS));
+                due.return_after_ms = Some(self.orphan.take().map_or(LEFT_BEHIND_MS, |o| o.show_ms));
             } else if !screen.shown {
-                self.orphan_ms = None;
+                // Nothing of the agents' waits or shows: the card replaced
+                // while the live mode had it never went up (another card
+                // took its place there, or the live screen went off).
+                if let Some(o) = self.orphan.take() {
+                    due.failed.push(o.id);
+                    due.changed = true;
+                }
             }
         }
         due
@@ -256,7 +294,7 @@ impl CardBook {
     /// A card is on its way or on the screen, or one replaced on its way
     /// may still go up: the worker keeps looking.
     pub fn busy(&self) -> bool {
-        self.current.is_some() || self.orphan_ms.is_some()
+        self.current.is_some() || self.orphan.is_some()
     }
 }
 
@@ -275,16 +313,16 @@ pub fn content_id(parts: &[&[u8]]) -> u64 {
 mod tests {
     use super::*;
 
-    const SHOWN: OnScreen = OnScreen { shown: true, waiting: false, back_planned: false };
-    const SHOWN_BACK: OnScreen = OnScreen { shown: true, waiting: false, back_planned: true };
-    const WAITING: OnScreen = OnScreen { shown: false, waiting: true, back_planned: false };
-    const NONE: OnScreen = OnScreen { shown: false, waiting: false, back_planned: false };
+    const SHOWN: OnScreen = OnScreen { shown: true, waiting: false, back_planned: false, dropped: false };
+    const SHOWN_BACK: OnScreen = OnScreen { shown: true, waiting: false, back_planned: true, dropped: false };
+    const WAITING: OnScreen = OnScreen { shown: false, waiting: true, back_planned: false, dropped: false };
+    const NONE: OnScreen = OnScreen { shown: false, waiting: false, back_planned: false, dropped: false };
 
     #[test]
     fn a_card_never_drawn_fails_and_says_so_for_its_count() {
         assert_eq!(agent_of("claude-code:3f9a"), "claude-code");
         let mut b = CardBook::default();
-        let id = b.start(1, 60_000, "card", 0);
+        let id = b.start(1, 60_000, "card", 0).0;
         assert_eq!(id, "card-1");
         assert!(b.tick(DRAW_WAIT_MS - 1, NONE) == Due::default());
         let due = b.tick(DRAW_WAIT_MS, NONE);
@@ -297,7 +335,7 @@ mod tests {
     #[test]
     fn a_card_goes_drawing_waiting_shown_and_then_back() {
         let mut b = CardBook::default();
-        let id = b.start(7, 60_000, "card", 0);
+        let id = b.start(7, 60_000, "card", 0).0;
         assert_eq!(b.same(7), Some(id.clone()), "the same card again is not sent");
         assert_eq!(b.same(8), None);
         b.drawn(&id, 100).unwrap();
@@ -317,9 +355,11 @@ mod tests {
     #[test]
     fn a_newer_card_replaces_one_on_its_way_and_a_dropped_one_fails() {
         let mut b = CardBook::default();
-        let first = b.start(1, 60_000, "card", 0);
-        let second = b.start(2, 60_000, "card", 10);
+        let first = b.start(1, 60_000, "card", 0).0;
+        let (second, never_written) = b.start(2, 60_000, "card", 10);
         assert_eq!(b.stage(&first), Some(Stage::Replaced));
+        assert_eq!(never_written, Some(first.clone()), "not drawn yet: it never goes up, its count goes back");
+        assert!(b.drawn(&first, 15).is_err(), "the page's late drawing is not sent");
         b.drawn(&second, 20).unwrap();
         b.tick(500, NONE);
         assert_eq!(b.stage(&second), Some(Stage::Live), "a moment's grace");
@@ -334,10 +374,11 @@ mod tests {
         // Card 1 is with the live mode (uploading); card 2 replaces it and
         // then fails; card 1 reaches the screen all the same.
         let mut b = CardBook::default();
-        let first = b.start(1, 90_000, "card", 0);
+        let first = b.start(1, 90_000, "card", 0).0;
         b.drawn(&first, 10).unwrap();
-        let second = b.start(2, 60_000, "card", 20);
+        let (second, never_written) = b.start(2, 60_000, "card", 20);
         assert_eq!(b.stage(&first), Some(Stage::Replaced));
+        assert_eq!(never_written, None, "the live mode has it: it may still go up");
         assert!(b.failed(&second, "broken picture"));
         assert_eq!(b.tick(30, WAITING), Due::default(), "card 1 still uploading");
         assert!(b.busy());
@@ -346,6 +387,46 @@ mod tests {
         assert!(!b.busy());
         // Planned: not again.
         assert_eq!(b.tick(5_100, SHOWN_BACK).return_after_ms, None);
+    }
+
+    #[test]
+    fn a_card_replaced_while_waiting_that_never_goes_up_gives_its_count_back() {
+        // Card 1 waits for the budget; card 2 takes its place there.
+        let mut b = CardBook::default();
+        let first = b.start(1, 60_000, "card", 0).0;
+        b.drawn(&first, 10).unwrap();
+        let second = b.start(2, 60_000, "card", 20).0;
+        b.drawn(&second, 30).unwrap();
+        assert_eq!(b.orphan_dropped(), Some(first.clone()), "the live mode said it took card 1's place");
+        assert_eq!(b.orphan_dropped(), None, "once");
+        // Card 1 waits; card 2 fails; then the live screen is turned off:
+        // nothing of the agents waits or shows, card 1 never went up.
+        let mut b = CardBook::default();
+        let first = b.start(1, 60_000, "card", 0).0;
+        b.drawn(&first, 10).unwrap();
+        let second = b.start(2, 60_000, "card", 20).0;
+        b.failed(&second, "broken picture");
+        assert!(b.tick(30, WAITING).failed.is_empty(), "card 1 still waiting");
+        let due = b.tick(40, NONE);
+        assert_eq!(due.failed, [first]);
+        assert!(!b.busy());
+        // Card 1 waits; while card 2 is drawn, a meeting's card takes card
+        // 1's place in the live mode: card 1 never goes up.
+        let dropped = OnScreen { dropped: true, ..WAITING };
+        let mut b = CardBook::default();
+        let first = b.start(1, 60_000, "card", 0).0;
+        b.drawn(&first, 10).unwrap();
+        b.start(2, 60_000, "card", 20);
+        assert_eq!(b.tick(30, dropped).failed, [first]);
+        // Card 2 already with the live mode: the card put aside was card 2
+        // (it fails when it is not there any more), not card 1.
+        let mut b = CardBook::default();
+        let first = b.start(1, 60_000, "card", 0).0;
+        b.drawn(&first, 10).unwrap();
+        let second = b.start(2, 60_000, "card", 20).0;
+        b.drawn(&second, 30).unwrap();
+        assert!(b.tick(40, dropped).failed.is_empty());
+        assert!(b.busy());
     }
 
     #[test]
@@ -362,7 +443,7 @@ mod tests {
     #[test]
     fn a_wait_finds_a_card_settled_a_while_ago() {
         let mut b = CardBook::default();
-        let first = b.start(1, 60_000, "card", 0);
+        let first = b.start(1, 60_000, "card", 0).0;
         for i in 0..HISTORY as u64 {
             b.start(10 + i, 60_000, "card", 10 + i);
         }

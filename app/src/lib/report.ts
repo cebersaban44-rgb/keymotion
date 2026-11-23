@@ -74,6 +74,7 @@ export function crashTitle(note: string): string {
  *  plugged in (lib/newFirmware.ts). */
 const useDetails = create<{ byId: Record<string, KeyboardDetails | null> }>(() => ({ byId: {} }));
 const asked = new Set<string>();
+const NONE: UnsupportedKeyboard[] = [];
 
 /** Read the details of the keyboards that may run AJAZZ's new firmware; a
  *  keyboard that went away is read again when it comes back (its firmware
@@ -106,9 +107,15 @@ export interface UnsupportedView {
 /** Keyboards that look like SONiX or AJAZZ ones but aren't supported yet,
  *  with the AK980 PROs on AJAZZ's new firmware told apart. */
 export function useUnsupported(): UnsupportedView {
-  const [list, setList] = useState<UnsupportedKeyboard[]>([]);
+  // Nothing known until the first answer: a page opened later (Welcome)
+  // must not take its empty start for "every keyboard went away" and drop
+  // the details the sidebar and the tray still use.
+  const [known, setList] = useState<UnsupportedKeyboard[] | null>(null);
   useEffect(() => follow(getUnsupportedKeyboards, onUnsupportedChanged, setList), []);
-  useEffect(() => readDetails(list), [list]);
+  useEffect(() => {
+    if (known) readDetails(known);
+  }, [known]);
+  const list = known ?? NONE;
   const byId = useDetails((s) => s.byId);
   const fresh = list.filter((k) => isNewAk980Firmware(k, byId[k.id]));
   return {
