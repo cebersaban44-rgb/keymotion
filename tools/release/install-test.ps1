@@ -465,8 +465,12 @@ function Start-AppWithCdp {
     Set-ItemProperty -LiteralPath $WebView2ArgsKey -Name 'keymotion.exe' -Value $arg
     $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $arg
     try {
-        $p = Start-Process -FilePath $AppExe -PassThru
-        $null = $p.Handle
+        # With its own environment block, not through the shell.
+        $psi = [Diagnostics.ProcessStartInfo]::new($AppExe)
+        $psi.UseShellExecute = $false
+        $psi.WorkingDirectory = $InstallDir
+        $psi.Environment['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'] = $arg
+        $p = [Diagnostics.Process]::Start($psi)
         $lastError = 'no answer yet'
         $clock = [Diagnostics.Stopwatch]::StartNew()
         $ready = $false
