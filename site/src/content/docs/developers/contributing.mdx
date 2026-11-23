@@ -67,6 +67,7 @@ Commands that write the keyboard's permanent memory refuse to run without `--yes
 |---|---|
 | `main` | The released code; the default branch on GitHub. Every merge into `main` is a release, tagged `vX.Y.Z`. |
 | `develop` | Where work lands. It always builds and passes its tests. |
+| `beta/X.Y.Z-beta.N` | A beta: a pre-release cut from `develop`, tagged `vX.Y.Z-beta.N` and never merged ([below](#beta-pre-release)). |
 
 - Work on a short-lived branch from `develop`, named in lowercase English with hyphens: `feature/keymap-editor`, `fix/mirror-gamma`, `docs/…`, `chore/…`.
 - Open the pull request against **`develop`**: GitHub offers `main`, the default branch, so change the base. Keep it to one change. It is squash-merged once CI is green.
@@ -76,11 +77,44 @@ Commands that write the keyboard's permanent memory refuse to run without `--yes
 - Commit messages are in English. The first line is in the imperative and at most 72 characters; the body says why.
 - Never commit personal data: Bluetooth addresses, local paths with your user name, calendar addresses, keys.
 
-Releases are made by the maintainer, with the scripts in `tools/release/` ([Making a release](/keymotion/developers/microsoft-store/#making-a-release) has the steps). The version number lives in `Cargo.toml`, `app/package.json` and `app/src-tauri/tauri.conf.json`, and `tools/check-version.mjs` checks that they agree; `tools/release/prepare.mjs` raises it and turns the **Unreleased** sections of the changelogs into the new version. A release pull request merges `develop` into `main`; `tools/release/tag.mjs` then tags `main`, which starts the release workflow (`.github/workflows/release.yml`). It builds the installer, drafts a GitHub release and submits the same version to the Microsoft Store; once the Store has certified it, the maintainer publishes both. Release files are only ever built by that workflow, from a tag on `main` and without build caches. After a release, `main` is merged back into `develop` with a merge commit (`tag.mjs` opens that pull request), so `develop` is never behind `main`.
+Releases are made by the maintainer, with the scripts in `tools/release/` ([Making a release](/keymotion/developers/microsoft-store/#making-a-release) has the steps). The version number lives in `Cargo.toml`, `app/package.json` and `app/src-tauri/tauri.conf.json`, and `tools/check-version.mjs` checks that they agree; `tools/release/prepare.mjs` raises it and turns the **Unreleased** sections of the changelogs into the new version. A release pull request merges `develop` into `main`; `tools/release/tag.mjs` then tags `main`, which starts the release workflow (`.github/workflows/release.yml`). It builds the installer, drafts a GitHub release and submits the same version to the Microsoft Store; once the Store has certified it, the maintainer publishes both. Release files are only ever built by that workflow, from a tag on `main` (for a beta, on its `beta/*` branch) and without build caches. After a release, `main` is merged back into `develop` with a merge commit (`tag.mjs` opens that pull request), so `develop` is never behind `main`.
+
+### Beta (pre-release)
+
+A beta lets people try the next version early. It is only on GitHub, marked as a pre-release: the updater of a normal install reads GitHub's latest release, which is never a pre-release, so only people who install a beta by hand get it. The Microsoft Store never gets one, and the site, published from `main`, doesn't change.
+
+<Steps>
+
+1. Cut the branch from `develop` and prepare the version:
+
+   ```bash
+   git switch -c beta/1.3.0-beta.1 develop
+   node tools/release/prepare.mjs 1.3.0-beta.1 --dry-run
+   node tools/release/prepare.mjs 1.3.0-beta.1
+   ```
+
+   It raises the version and adds `## [1.3.0-beta.1] - <date>` to every changelog as a copy of **Unreleased**, which stays as it is: the release after the beta lists everything again. A beta has no release notes page section and no "What's new".
+
+2. Commit and push the branch. CI runs on every push to a `beta/*` branch; there is no pull request.
+
+3. Once CI is green, tag it on the branch:
+
+   ```bash
+   node tools/release/tag.mjs --dry-run
+   node tools/release/tag.mjs
+   ```
+
+   It checks that the branch is pushed, that it has everything already released (`origin/main` is in it), that since `develop` it changes only what `prepare.mjs` changed (the version and the changelogs), and that CI's **Build and test** job passed on it. Then it pushes the tag `v1.3.0-beta.1`. It opens no back-merge pull request.
+
+4. `release.yml` checks the tag's commit the same way (`tools/release/check-beta.mjs`), builds the installer and drafts a GitHub pre-release, without a Store package. Publish the draft with GitHub › Actions › **Publish a release**, run from the tag (Tags › `v1.3.0-beta.1`) with **Only check** unticked: it publishes it as a pre-release, never as the latest release, and fails if GitHub's latest release is not a normal one afterwards.
+
+</Steps>
+
+The beta branch is never merged; CI fails a pull request from it into `main`. Fixes go to `develop` as usual, and the next beta is cut from it again (`beta/1.3.0-beta.2`). The release itself (`1.3.0`) is made the usual way from `develop`, whose **Unreleased** still lists everything. A beta install finds the next beta and the release by itself. A beta and the Store copy don't run side by side: with the Store copy installed, the beta steps aside and opens it, so trying a beta means removing the Store copy first.
 
 ## The checks
 
-CI (`.github/workflows/ci.yml`) runs on every pull request to `develop` or `main` and on every merge into them. It has two jobs.
+CI (`.github/workflows/ci.yml`) runs on every pull request to `develop` or `main`, on every merge into them and on every push to a `beta/*` branch. It has two jobs.
 
 **Build and test** runs on Windows. It must pass before a pull request can be merged.
 
@@ -90,7 +124,7 @@ CI (`.github/workflows/ci.yml`) runs on every pull request to `develop` or `main
 | No vendor files (see [below](#vendor-files)) | `node tools/check-vendor-files.mjs` |
 | The version number agrees in all three files | `node tools/check-version.mjs` |
 | Tests of the release scripts | `node --test "tools/release/*.test.mjs"` |
-| A pull request into `main` with a version that has no tag yet has its release text written: changelogs, release notes, the Store's "What's new" | `node tools/release/check-release.mjs` |
+| A pull request into `main` with a version that has no tag yet has its release text written: changelogs, release notes, the Store's "What's new" (on a `beta/*` branch: the beta's changelog sections) | `node tools/release/check-release.mjs` |
 | TypeScript type check and the interface build | `pnpm --dir app build` |
 | ESLint, where a single warning fails | `pnpm --dir app lint` |
 | rustfmt | `cargo fmt --all -- --check` |

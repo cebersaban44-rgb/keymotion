@@ -176,7 +176,20 @@ test("releaseBody: download button, notes, how to install, the SHA-256 line and 
     /<sub>Windows 10 and 11, 64-bit · no administrator rights<\/sub>/);
   assert.throws(() => releaseBody({ notes: "x", fileName: "s.exe", sha256: "ABC" }), /SHA-256/);
   // A pre-release is only on GitHub: no Store badge, no Store lines.
-  assert.doesNotMatch(body, /microsoft/i);
+  assert.doesNotMatch(body, /microsoft store copy|Prefer the Microsoft Store|apps\.microsoft\.com|get\.microsoft\.com/i);
+});
+
+test("releaseBody: a pre-release says normal installs don't update to it", () => {
+  const body = releaseBody({ notes: "x", fileName: "s.exe", sha256: SHA, repository: "o/r", version: "1.3.0-beta.1" });
+  assert.match(body, /This is a pre-release, for trying the next version early\. Keymotion from a normal release never updates to it by itself/);
+  assert.match(body, /Once installed, it finds the next pre-release and the next release by itself/);
+  // Next to the Store copy, the GitHub copy steps aside (handoff.rs).
+  assert.match(body, /If Keymotion from the Microsoft Store is installed, this copy steps aside for it/);
+  assert.doesNotMatch(body, /Already using Keymotion\? It finds the new version by itself/);
+  // A release keeps its own line.
+  const release = releaseBody({ notes: "x", fileName: "s.exe", sha256: SHA, repository: "o/r", version: "1.3.0" });
+  assert.match(release, /Already using Keymotion\? It finds the new version by itself/);
+  assert.doesNotMatch(release, /pre-release/);
 });
 
 test("releaseBody: a release also offers the same version in the Microsoft Store", () => {

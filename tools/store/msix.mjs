@@ -13,6 +13,8 @@
 //   node tools/store/msix.mjs --exe … --out … --test
 //       A package for trying on this computer, with its own made-up
 //       identity ("Keymotion (test)"), so it never mixes with the Store's.
+//       A pre-release app version (1.3.0-beta.1) packs as its three
+//       numbers (1.3.0.0); a Store package refuses it.
 //   --version 1.2.3.0   another package version than the app's: test
 //                       packages only. A Store package always carries the
 //                       app's own version, so GitHub and the Store never
@@ -45,12 +47,14 @@ export const TEST_IDENTITY = {
 /**
  * The Store's version for an app version: "1.2.3" → "1.2.3.0". The Store
  * keeps the fourth part and wants the first above 0; it has no room for a
- * test version's "-rc.1".
+ * test version's "-rc.1". A test package (`allowPrerelease`) of a test
+ * version takes its three numbers: 1.3.0-beta.1 → 1.3.0.0, so CI packs one
+ * on a beta branch too.
  */
-export function storeVersion(appVersion, { allowZero = false } = {}) {
+export function storeVersion(appVersion, { allowZero = false, allowPrerelease = false } = {}) {
   const m = /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/.exec(appVersion);
   if (!m) throw new Error(`"${appVersion}" is not a version like 1.2.3`);
-  if (m[4]) throw new Error(`${appVersion} is a test version; the Store takes released versions only`);
+  if (m[4] && !allowPrerelease) throw new Error(`${appVersion} is a test version; the Store takes released versions only`);
   const parts = m.slice(1, 4).map(Number);
   if (parts.some((p) => p > 65535)) throw new Error(`${appVersion}: each part must be 65535 or less`);
   if (parts[0] === 0 && !allowZero) {
@@ -190,7 +194,7 @@ function main() {
   const appVersion = JSON.parse(readFileSync(TAURI_CONF, "utf8")).version;
   const version = opt.version
     ? checkPackageVersion(opt.version, { allowZero: opt.test })
-    : storeVersion(appVersion, { allowZero: opt.test });
+    : storeVersion(appVersion, { allowZero: opt.test, allowPrerelease: opt.test });
   if (opt.check) {
     console.log(`Keymotion ${appVersion} → package ${version} (${id.IdentityName}): ready to pack`);
     return;

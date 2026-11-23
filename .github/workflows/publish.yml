@@ -13,7 +13,12 @@
 #   3. The Store's copy is published by selecting "Publish now" in Partner
 #      Center: the submission API has no way to do it.
 #
-# Pre-releases are only on GitHub: publish their draft on GitHub itself.
+# A pre-release (v1.3.0-beta.1; docs site: developers/contributing, "Beta
+# (pre-release)") is only on GitHub: the Store is not asked, and its draft is
+# published as a pre-release, never as GitHub's latest release. The app's
+# updater on normal installs reads the latest release only, so the run then
+# checks that GitHub's latest release is still a normal one, and fails
+# loudly if it is not.
 #
 # Actions are pinned to commit SHAs (the release is in the comment next to
 # each), as in ci.yml; Dependabot proposes updates.
@@ -23,11 +28,11 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag, such as v1.2.0 (run the workflow from this tag)
+        description: Release tag, such as v1.2.0 or v1.3.0-beta.1 (run the workflow from this tag)
         required: true
         type: string
       check_only:
-        description: Only check the Store's status; publish nothing
+        description: Only check (the Store's status; for a pre-release, its draft); publish nothing
         required: false
         type: boolean
         default: true
@@ -40,27 +45,42 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  store:
-    name: Store submission status
+  tag:
+    name: Release tag
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment: microsoft-store
+    timeout-minutes: 5
     outputs:
-      status: ${{ steps.status.outputs.status }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
     steps:
       - name: Run from the release tag
+        id: tag
         env:
           TAG: ${{ inputs.tag }}
         run: |
-          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::$TAG is not a release tag such as v1.2.0. A pre-release is only on GitHub: publish its draft there."
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            prerelease=false
+          elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$ ]]; then
+            prerelease=true
+          else
+            echo "::error::$TAG is not a release tag such as v1.2.0, or a pre-release tag such as v1.3.0-beta.1."
             exit 1
           fi
           if [ "$GITHUB_REF" != "refs/tags/$TAG" ]; then
             echo "::error::This run is from $GITHUB_REF. Run it again with \"Use workflow from\" set to Tags › $TAG."
             exit 1
           fi
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
 
+  store:
+    name: Store submission status
+    needs: tag
+    if: needs.tag.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: microsoft-store
+    outputs:
+      status: ${{ steps.status.outputs.status }}
+    steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -127,3 +147,68 @@ jobs:
           if [ "$STATUS" = Release ]; then
             echo "::notice::Now select \"Publish now\" in Partner Center › Keymotion, so the Store's copy comes out too."
           fi
+
+  # A pre-release: no Store, and never GitHub's latest release. "Only check"
+  # publishes nothing and only runs the check of the latest release.
+  prerelease:
+    name: Publish the GitHub pre-release
+    needs: tag
+    if: needs.tag.outputs.prerelease == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the draft as a pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          CHECK_ONLY: ${{ inputs.check_only }}
+        run: |
+          if ! draft="$(gh release view "$TAG" --json isDraft --jq .isDraft)"; then
+            echo "::error::There is no GitHub release $TAG. release.yml makes its draft when the tag is pushed."
+            exit 1
+          fi
+          if [ "$CHECK_ONLY" = true ]; then
+            echo "Only check: $TAG is $([ "$draft" = true ] && echo "a draft" || echo "published"); nothing was changed."
+          elif [ "$draft" = true ]; then
+            # One change: published, a pre-release, and not the latest release.
+            gh release edit "$TAG" --draft=false --prerelease --latest=false
+            echo "Published the GitHub pre-release $TAG."
+          else
+            echo "The GitHub release $TAG was already published."
+          fi
+
+          prerelease="$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease)"
+          if [ "$prerelease" != true ]; then
+            echo "::error::GitHub release $TAG is not marked as a pre-release, so normal installs may update to it. Mark it now: gh release edit $TAG --prerelease --latest=false"
+            exit 1
+          fi
+
+      # The app's updater on normal installs reads the latest release's
+      # latest.json: it must still be a normal release, never this one.
+      - name: GitHub's latest release is still a normal release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! latest="$(gh release view --json tagName,isPrerelease --jq '"\(.tagName) \(.isPrerelease)"')"; then
+            echo "::error::GitHub has no latest release: normal installs find no update. Mark the newest normal release as the latest: gh release edit <tag> --latest"
+            exit 1
+          fi
+          read -r latest_tag latest_prerelease <<< "$latest"
+          if [ "$latest_tag" = "$TAG" ] || [ "$latest_prerelease" != false ] || ! [[ "$latest_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::GitHub's latest release is $latest_tag (pre-release: $latest_prerelease), not a normal release: normal installs would update to it. Mark $TAG as a pre-release (gh release edit $TAG --prerelease --latest=false) and the newest normal release as the latest (gh release edit <tag> --latest)."
+            exit 1
+          fi
+          url="$(gh release view "$TAG" --json url --jq .url)"
+          {
+            echo "### Pre-release $TAG"
+            echo
+            echo "- GitHub release: $url"
+            echo "- GitHub's latest release, which normal installs update to, is still $latest_tag."
+            echo "- Microsoft Store: pre-releases are not sent there."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "GitHub's latest release is still $latest_tag."
