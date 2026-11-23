@@ -13,7 +13,9 @@
 //!
 //! Sources, checked 2026-11-22: Claude Code, <https://code.claude.com/docs/en/hooks>;
 //! Codex, <https://learn.chatgpt.com/docs/hooks> and `codex-rs/hooks` (the
-//! generated input schemas).
+//! generated input schemas). Permission modes, 2026-11-23:
+//! <https://code.claude.com/docs/en/permission-modes>, Codex's
+//! `hook_runtime.rs` and `tools/approvals.rs`.
 
 use kb_agent::protocol::{HookArgs, HookEvent, MAX_HOOK_LABEL_CHARS};
 use serde::Deserialize;
@@ -63,6 +65,9 @@ struct Payload {
     tool_input: Option<Value>,
     tool_use_id: Option<String>,
     turn_id: Option<String>,
+    /// Both agents' `PermissionRequest`: whether anyone will ask the user
+    /// ([`asks_the_user`]).
+    permission_mode: Option<String>,
     /// Claude Code's `Notification`.
     notification_type: Option<String>,
     /// Claude Code's `StopFailure` (a string there).
@@ -119,7 +124,10 @@ fn claude_code(p: &Payload, session: Option<&str>) -> Option<(HookEvent, Vec<Str
     Some(match p.hook_event_name.as_str() {
         "SessionStart" => (HookEvent::SessionStart, vec![]),
         "UserPromptSubmit" => (HookEvent::Busy, vec![]),
-        // Asked before the dialog shows; it carries no tool_use_id.
+        // Asked before the dialog shows; it carries no tool_use_id. In a
+        // mode that decides by itself, nothing: the notification below says
+        // it if the user is asked after all.
+        "PermissionRequest" if !asks_the_user(Agent::ClaudeCode, p) => return None,
         "PermissionRequest" => (HookEvent::Attention, calls(&[content_key(session, p)])),
         // The tools that wait for the user without a permission dialog.
         "PreToolUse" if ASKING_TOOLS.contains(&tool()) => {
@@ -165,6 +173,44 @@ fn claude_code(p: &Payload, session: Option<&str>) -> Option<(HookEvent, Vec<Str
 /// permission (`PreToolUse` with this matcher).
 pub const ASKING_TOOLS: [&str; 2] = ["AskUserQuestion", "ExitPlanMode"];
 
+/// Claude Code's file-editing tools, which `acceptEdits` approves by itself.
+pub const EDIT_TOOLS: [&str; 4] = ["Edit", "Write", "MultiEdit", "NotebookEdit"];
+
+/// Whether a `PermissionRequest` means the user is asked now, by its
+/// `permission_mode`. Both agents run the hook before anyone decides, also
+/// when no one will ask the user: it would light "waiting for you" until
+/// the call ends (measured 2026-11-23 in Claude Code's auto mode: no
+/// prompt, the light up for 49 s).
+///
+/// - Claude Code: `default` (also the mode shown as Manual) asks.
+///   `acceptEdits` approves file edits by itself and asks for the rest.
+///   `auto` hands the call to its classifier; `plan` does the same with
+///   commands when auto mode is available; `dontAsk` denies;
+///   `bypassPermissions` allows. Where one of these shows a prompt after
+///   all (an `ask` rule, auto mode paused after repeated blocks, a
+///   dangerous `rm` in a terminal), `Notification` `permission_prompt`
+///   says so about 6 s later, and `AskUserQuestion` and `ExitPlanMode`
+///   light from `PreToolUse` in every mode.
+///   A mode not known here: not asked, since a prompt that shows is backed
+///   up and a false "waiting for you" is not.
+/// - Codex (`codex-rs/core/src/hook_runtime.rs`): `default` for its
+///   approval policies that ask (whoever reviews: with auto-review on,
+///   Codex's reviewer answers and the hook cannot tell), `bypassPermissions`
+///   for `never`, which asks no one. Codex has no notification to back a
+///   prompt up: any other mode counts as asked.
+///
+/// No mode (an older version): asked, as before.
+fn asks_the_user(agent: Agent, p: &Payload) -> bool {
+    let mode = p.permission_mode.as_deref().map(str::trim).unwrap_or_default();
+    match (agent, mode) {
+        (_, "" | "default") => true,
+        (_, "dontAsk" | "bypassPermissions") => false,
+        (Agent::ClaudeCode, "acceptEdits") => !p.tool_name.as_deref().is_some_and(|t| EDIT_TOOLS.contains(&t)),
+        (Agent::ClaudeCode, _) => false,
+        (Agent::Codex, _) => true,
+    }
+}
+
 /// Claude Code's `StopFailure` kinds that mean "come back later", not
 /// "something is wrong": behaviour A. An overloaded service (HTTP 529)
 /// comes as `server_error`.
@@ -176,6 +222,8 @@ fn codex(p: &Payload, session: Option<&str>) -> Option<(HookEvent, Vec<String>)>
         "SessionStart" => (HookEvent::SessionStart, vec![]),
         "UserPromptSubmit" => (HookEvent::Busy, vec![]),
         // No tool_use_id here: the call and its turn name the question.
+        // Approval policy `never`: no one is asked ([`asks_the_user`]).
+        "PermissionRequest" if !asks_the_user(Agent::Codex, p) => return None,
         "PermissionRequest" => (HookEvent::Attention, calls(&[content_key(session, p), turn_key(session, p)])),
         "PostToolUse" => (HookEvent::Answered, calls(&[use_key(session, p), content_key(session, p)])),
         // The next model request of a turn comes after every call of the
@@ -432,6 +480,108 @@ mod tests {
             let name = payload["hook_event_name"].as_str().unwrap().to_string();
             assert_eq!(cc(payload).map(|e| e.0), expected, "{name}");
         }
+    }
+
+    /// Claude Code's `PermissionRequest` as its hooks reference shows it, in
+    /// `mode` (`None`: an older version without the field).
+    fn claude_permission_request(mode: Option<&str>, tool: &str, input: Value) -> Value {
+        let mut v = with(
+            base("PermissionRequest"),
+            json!({"tool_name": tool, "tool_input": input, "permission_suggestions": [{"type": "setMode", "mode": "acceptEdits", "destination": "session"}]}),
+        );
+        match mode {
+            Some(m) => v["permission_mode"] = json!(m),
+            None => {
+                v.as_object_mut().unwrap().remove("permission_mode");
+            }
+        }
+        v
+    }
+
+    #[test]
+    fn claude_codes_permission_request_lights_only_when_the_user_is_asked() {
+        let bash = || json!({"command": "cargo build", "description": "Build"});
+        let edit = || json!({"file_path": "C:\\p\\src\\main.rs", "old_string": "a", "new_string": "b"});
+        let attention = Some(HookEvent::Attention);
+        let cases = [
+            // As measured on the owner's keyboard: a prompt, lit at once.
+            (Some("default"), "Bash", bash(), attention),
+            (None, "Bash", bash(), attention),
+            (Some("acceptEdits"), "Bash", bash(), attention),
+            (Some("acceptEdits"), "WebFetch", json!({"url": "https://example.com", "prompt": "x"}), attention),
+            // acceptEdits approves edits by itself.
+            (Some("acceptEdits"), "Edit", edit(), None),
+            (Some("acceptEdits"), "Write", json!({"file_path": "C:\\p\\a.txt", "content": "x"}), None),
+            (Some("acceptEdits"), "MultiEdit", edit(), None),
+            (Some("acceptEdits"), "NotebookEdit", json!({"notebook_path": "C:\\p\\n.ipynb", "new_source": "x"}), None),
+            // Edits ask in the modes that ask.
+            (Some("default"), "Edit", edit(), attention),
+            // The classifier, a denial or an approval decides: no one is
+            // asked (auto measured 2026-11-23: no prompt, 49 s of light).
+            (Some("auto"), "Bash", bash(), None),
+            (Some("auto"), "Edit", edit(), None),
+            (Some("plan"), "Bash", bash(), None),
+            (Some("dontAsk"), "Bash", bash(), None),
+            (Some("bypassPermissions"), "Bash", json!({"command": "rm -rf ~"}), None),
+            (Some("someModeFromLater"), "Bash", bash(), None),
+            (Some(" default "), "Bash", bash(), attention),
+        ];
+        for (mode, tool, input, expected) in cases {
+            let got = cc(claude_permission_request(mode, tool, input)).map(|e| e.0);
+            assert_eq!(got, expected, "{mode:?} {tool}");
+        }
+        // Whatever the mode, a prompt that shows says so, and the tools
+        // that wait for the user's answer still light.
+        for mode in ["auto", "plan", "dontAsk", "bypassPermissions", "acceptEdits", "default"] {
+            let notification = with(
+                base("Notification"),
+                json!({"permission_mode": mode, "message": "Claude needs your permission to use Bash", "notification_type": "permission_prompt"}),
+            );
+            assert_eq!(cc(notification).map(|e| e.0), attention, "{mode}");
+            for tool in ASKING_TOOLS {
+                let pre = with(
+                    base("PreToolUse"),
+                    json!({"permission_mode": mode, "tool_name": tool, "tool_input": {}, "tool_use_id": "toolu_7"}),
+                );
+                assert_eq!(cc(pre).map(|e| e.0), attention, "{mode} {tool}");
+            }
+            let denied = with(
+                base("PermissionDenied"),
+                json!({"permission_mode": mode, "tool_name": "Bash", "tool_input": bash(), "tool_use_id": "toolu_8", "reason": "x"}),
+            );
+            assert_eq!(cc(denied).map(|e| e.0), Some(HookEvent::Answered), "{mode}");
+        }
+        // The mode never reaches the app.
+        let r =
+            read(Agent::ClaudeCode, claude_permission_request(Some("default"), "Bash", bash()).to_string().as_bytes());
+        assert!(!serde_json::to_string(&r.unwrap().args).unwrap().contains("default"));
+    }
+
+    #[test]
+    fn codexs_permission_request_lights_unless_its_policy_asks_no_one() {
+        // `permission-request.command.input` (codex-rs/hooks, generated).
+        let request = |mode: Option<&str>| {
+            let mut v = json!({
+                "session_id": "thr_1", "turn_id": "turn_1", "transcript_path": null, "cwd": "C:\\w",
+                "hook_event_name": "PermissionRequest", "model": "gpt-x",
+                "tool_name": "Bash", "tool_input": {"command": "cargo build", "description": null},
+            });
+            if let Some(m) = mode {
+                v["permission_mode"] = json!(m);
+            }
+            event(Agent::Codex, v).map(|e| e.0)
+        };
+        let attention = Some(HookEvent::Attention);
+        // `default`: approval policy untrusted, on-request or granular.
+        assert_eq!(request(Some("default")), attention);
+        assert_eq!(request(None), attention);
+        // `bypassPermissions`: approval policy `never`.
+        assert_eq!(request(Some("bypassPermissions")), None);
+        assert_eq!(request(Some("dontAsk")), None);
+        // Modes Codex does not send yet: no notification would back a
+        // prompt up, so they light.
+        assert_eq!(request(Some("plan")), attention);
+        assert_eq!(request(Some("acceptEdits")), attention);
     }
 
     #[test]

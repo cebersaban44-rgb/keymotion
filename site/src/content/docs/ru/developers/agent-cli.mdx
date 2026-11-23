@@ -216,7 +216,7 @@ agent ──runs──▶ keymotion-cli ──named pipe──▶ Keymotion (age
 | Начинается сеанс: он получает свой номер | `SessionStart` | `SessionStart` |
 | Работает: прежняя подсветка сеанса гаснет | `UserPromptSubmit` | `UserPromptSubmit` |
 | Вы остановили ход: его вопрос и подсветка «работает» гаснут, то, что было до него, остаётся | | `Interrupt` |
-| Ждёт вашего подтверждения (`attention`) | `PermissionRequest`; `PreToolUse` для `AskUserQuestion` и `ExitPlanMode`; `Elicitation`; `Notification` `permission_prompt`, `elicitation_dialog`, `elicitation_url_dialog`, `agent_needs_input` | `PermissionRequest` |
+| Ждёт вашего подтверждения (`attention`) | `PermissionRequest` в режиме, который спрашивает вас (`default`; в `acceptEdits` — кроме правки файлов; см. английскую страницу); `PreToolUse` для `AskUserQuestion` и `ExitPlanMode`; `Elicitation`; `Notification` `permission_prompt`, `elicitation_dialog`, `elicitation_url_dialog`, `agent_needs_input` | `PermissionRequest`, кроме политики одобрения `never` |
 | Ответ получен | `PostToolUse`, `PostToolUseFailure`, `PermissionDenied` (этот вызов); `PostToolBatch`, `ElicitationResult`, `Notification` `elicitation_complete`, `elicitation_response` (все вызовы сеанса) | `PostToolUse` (этот вызов), `PreModelRequest` (все вызовы этого хода) |
 | Готово | `Stop` | `Stop` |
 | Ошибка | `StopFailure` | `PostModelRequest` с `status: failed` |
