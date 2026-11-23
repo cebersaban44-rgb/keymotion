@@ -57,19 +57,27 @@ pub fn run_alone(program: &std::path::Path, argument: &str, wait: std::time::Dur
     sys::run_alone(program, argument, wait)
 }
 
-/// Start `program` (a full path) with `args` and leave it running on its
-/// own: none of this process's handles, no console window, outside this
-/// process's job when the job allows it (a hook runner that ends its job
-/// would end it too). Returns once it started.
+/// Start `program` (a full path) with `args` in the folder `dir` and leave
+/// it running on its own: none of this process's handles, no console
+/// window, outside this process's job when the job allows it (a hook runner
+/// that ends its job would end it too). Returns once it started.
 ///
 /// keymotion-cli's hook mode hands an event to such a copy of itself when
 /// Keymotion is not running, so the coding agent does not wait for the app
-/// to start.
-pub fn spawn_detached(program: &std::path::Path, args: &[&str]) -> Result<(), String> {
-    if !program.is_absolute() || args.iter().any(|a| a.is_empty() || a.contains(['"', '\0'])) {
-        return Err("a program by its full path and plain arguments only".into());
+/// to start. `dir` keeps it out of the agent's project folder (a process
+/// holds its working folder open).
+pub fn spawn_detached(program: &std::path::Path, args: &[&str], dir: &std::path::Path) -> Result<(), String> {
+    if !program.is_absolute() || !dir.is_absolute() || args.iter().any(|a| a.is_empty() || a.contains(['"', '\0']))
+    {
+        return Err("a program and a folder by their full paths, and plain arguments only".into());
     }
-    sys::spawn_detached(program, args)
+    sys::spawn_detached(program, args, dir)
+}
+
+/// A working folder that belongs to no project: Windows' own folder.
+pub fn neutral_dir() -> std::path::PathBuf {
+    let root = std::env::var_os("SystemRoot").or_else(|| std::env::var_os("windir"));
+    root.map_or_else(|| std::path::PathBuf::from(r"C:\Windows"), std::path::PathBuf::from)
 }
 
 fn web_address(url: &str) -> bool {
@@ -134,13 +142,14 @@ mod sys {
         Ok(())
     }
 
-    pub fn spawn_detached(program: &std::path::Path, args: &[&str]) -> Result<(), String> {
+    pub fn spawn_detached(program: &std::path::Path, args: &[&str], dir: &std::path::Path) -> Result<(), String> {
         use windows::Win32::Foundation::CloseHandle;
         use windows::Win32::System::Threading::{
             CreateProcessW, CREATE_BREAKAWAY_FROM_JOB, CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW,
             PROCESS_CREATION_FLAGS, PROCESS_INFORMATION, STARTUPINFOW,
         };
         let program = HSTRING::from(program.as_os_str());
+        let dir = HSTRING::from(dir.as_os_str());
         let mut text = format!("\"{program}\"");
         for a in args {
             text.push_str(&format!(" \"{a}\""));
@@ -162,7 +171,7 @@ mod sys {
                     false,
                     flags,
                     None,
-                    PCWSTR::null(),
+                    &dir,
                     &startup,
                     &mut process,
                 )?;
@@ -190,7 +199,7 @@ mod sys {
         Err("starting programs is only available on Windows".into())
     }
 
-    pub fn spawn_detached(_program: &std::path::Path, _args: &[&str]) -> Result<(), String> {
+    pub fn spawn_detached(_program: &std::path::Path, _args: &[&str], _dir: &std::path::Path) -> Result<(), String> {
         Err("starting programs is only available on Windows".into())
     }
 }
@@ -215,9 +224,12 @@ mod tests {
         let wait = std::time::Duration::from_secs(1);
         assert!(run_alone(std::path::Path::new("explorer.exe"), "x", wait).is_err());
         assert!(run_alone(std::path::Path::new(r"C:\Windows\explorer.exe"), "a\" b", wait).is_err());
-        assert!(spawn_detached(std::path::Path::new("cmd.exe"), &["/c"]).is_err());
-        assert!(spawn_detached(std::path::Path::new(r"C:\Windows\System32\cmd.exe"), &["a\"b"]).is_err());
-        assert!(spawn_detached(std::path::Path::new(r"C:\Windows\System32\cmd.exe"), &[""]).is_err());
+        let dir = neutral_dir();
+        assert!(spawn_detached(std::path::Path::new("cmd.exe"), &["/c"], &dir).is_err());
+        assert!(spawn_detached(std::path::Path::new(r"C:\Windows\System32\cmd.exe"), &["a\"b"], &dir).is_err());
+        assert!(spawn_detached(std::path::Path::new(r"C:\Windows\System32\cmd.exe"), &[""], &dir).is_err());
+        let relative = std::path::Path::new("Windows");
+        assert!(spawn_detached(std::path::Path::new(r"C:\Windows\System32\cmd.exe"), &["/c"], relative).is_err());
     }
 
     /// A detached program runs on its own: here one that writes a file.
@@ -229,13 +241,17 @@ mod tests {
                 .join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
         let target = std::env::temp_dir().join(format!("kb-winsys detached {}.txt", std::process::id()));
         let _ = std::fs::remove_file(&target);
-        let script = format!("Set-Content -LiteralPath '{}' -Value ok", target.display());
-        spawn_detached(&powershell, &["-NoProfile", "-Command", &script]).unwrap();
+        // It writes where it runs: in the folder it was given.
+        let script = format!("Set-Content -LiteralPath '{}' -Value (Get-Location).Path", target.display());
+        spawn_detached(&powershell, &["-NoProfile", "-Command", &script], &neutral_dir()).unwrap();
         let started = std::time::Instant::now();
         while !target.exists() && started.elapsed() < std::time::Duration::from_secs(10) {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         assert!(target.exists(), "the detached program ran");
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let ran_in = std::fs::read_to_string(&target).unwrap_or_default();
+        assert!(ran_in.trim().eq_ignore_ascii_case(&neutral_dir().display().to_string()), "{ran_in}");
         let _ = std::fs::remove_file(&target);
     }
 
