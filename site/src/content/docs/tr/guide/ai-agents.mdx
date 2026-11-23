@@ -1,0 +1,69 @@
+---
+title: Yapay zekâ ajanları
+description: Claude Code ve Codex gibi kodlama ajanları iş bitince, onayınızı beklerken ya da hata verince klavyenin ışığıyla haber verir.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Claude Code ya da Codex gibi bir kodlama ajanı bir işi bitirince, onayınızı beklerken ya da hata verince klavyeniz ışıkla haber verebilir. Ajan tuşları kendi bildiği gibi de yakabilir: harf tuşlarında bir kelime, bir sayı, F sırasında bir ilerleme çubuğu. Erişimi yalnızca bir kez açarsınız; geri kalan her şeyin değiştirebileceğiniz hazır bir görünüşü vardır.
+
+## Açma
+
+<Steps>
+
+1. Kenar çubuğunda **Araçlar** altından **Yapay zekâ ajanları**'nı açın.
+2. **Ajanlar klavyeyi kullanabilsin**'i açın.
+3. **Bağlanacaklar** adımında Keymotion bu bilgisayardaki her kodlama uygulamasına ne ekleneceğini söyler: Claude Code ve Codex bir iş bitince, onayınızı beklerken ya da hata verince Keymotion'a haber verir ve ajana klavyeyi nasıl kullanacağını anlatan kısa bir not (yetenek) alır; Codex ayrıca ajanın klavye komutlarını korumalı alanının dışında çalıştırmasına izin verir. **Ayrıntılar** dosyaları, her birine kaç kanca eklendiğini ve değişen her dosyanın kopyasının nerede saklandığını gösterir.
+4. **Bağla ve aç**'a tıklayın. Burada durmak için **Vazgeç**'e tıklayın: hiçbir şey yazılmaz, erişim kapalı kalır.
+5. **Tamamlandı** neyin bağlandığını söyler. **Tamam**'a tıklayın.
+
+</Steps>
+
+Codex bu yeni ayarları bir kez onaylamanızı ister (`/hooks` yazın ya da Codex'te Ayarlar › Kancalar'ı açın). O zamana kadar **Bağlı uygulamalar**'da **Codex'te bir kez onay bekliyor** yazar.
+
+Adımlar açıkken bir kodlama uygulaması ayarlarını yazarsa Keymotion şimdi neyin değişeceğini gösterir ve yeniden sorar.
+
+**Ajanlar klavyeyi kullanabilsin**'i kapatmak bütün ajanları hemen durdurur; bağlantılar kalır, yeniden açmak adım istemez.
+
+## Bağlı uygulamalar
+
+Her uygulama ne durumda olduğunu gösterir: **Bağlı**, **Codex'te bir kez onay bekliyor**, **Bağlı değil**, **Bu bilgisayarda yok** ya da Claude Code'un `claude update` ile güncellenmesi gerektiğinde **Çok eski**. Sağdaki ok klasörünü ve dosyalarını, bir de yalnızca Keymotion'ın eklediklerini kaldıran **Bağlantıyı kaldır**'ı gösterir.
+
+## Klavye nasıl haber versin
+
+| Sinyal | İlk görünüşü | Ne kadar sürer |
+|---|---|---|
+| **Bitti** | Yeşil, dalga, sonra sabit | 2 dakika |
+| **Onayınızı bekliyor** | Turuncu, selektör, sonra yavaş nabız | Cevap gelene kadar (en çok 30 dakika) |
+| **Hata** | Kırmızı, iki kez yanıp sönme, sonra sabit | 10 dakika |
+| **Çalışıyor** | Kapalı | – |
+| **Bilgi** | Mavi dalga | 10 saniye |
+
+Bir sinyalin rengini değiştirmek için noktaya tıklayın; listeler efekti ve ne kadar süreceğini değiştirir. **Klavyede dene** birkaç saniye gösterir. Işıklar saniyede üç kezden hızlı yanıp sönmez.
+
+## Ajanlar başka neler yapabilsin
+
+Bunlar önce kapalıdır: **Ekrana yazı ve görsel gönderme** (her gönderim klavyenin belleğine yazar, ajan başına saatte en çok dört), **Odak zamanlayıcısını kullanma** ve **Profil ışığını kaydetme** (tuş atamalarına ve makrolara hiçbir zaman dokunmaz). **Oyundayken ajan ışıklarını gizle** açıktır: oyun oturumu sürerken ışıklar bekler.
+
+## Ek davranışlar
+
+Her satırın ayarları sağdaki okla açılır:
+
+- **Kullanım sınırı doldu:** hatadan ayrı, kendi rengi ve efektiyle.
+- **Hangi oturum bekliyor:** iki ya da daha çok oturumda bekleyenin numarası rakam sırasında yanar. **Oturum numaraları** hangi numaranın hangi proje klasörü olduğunu sayar.
+- **Siz yokken:** siz yokken biten ya da beklemeye başlayan iş, döndüğünüzde bir kez yanıp söner.
+- **Cevapsız kalırsa:** cevaplanmayan soru bir süre birkaç dakikada bir yeniden yanıp söner.
+- **İlerleme çubuğu:** ajanın ilerleme çubuğunun kullandığı tuşlar (F sırası ya da rakam sırası) ve rengi.
+- **Uzun iş bitti:** uzun bir iş bitince ekranda bir kart (ekran izni gerekir).
+- **Gece sessizliği:** gece ajan ışıklarını kısar ya da söndürür.
+- **Yardımcı ajan bitti:** Claude Code'un yardımcı ajanlarından biri bitince F sırasında kısa bir dalga.
+
+**Ajanlar bu ayarları değiştirebilsin** (önce açık) bir ajanın görünüşü ve davranışı değiştirmesine izin verir. Erişim, izinler ve bağlantılar her zaman sizdedir.
+
+## Son işlemler
+
+Ajanların son yaptıkları saatleriyle listelenir. Bir ayar değişikliğinde **Geri al** vardır. **Bütün ajan ışıklarını söndür** bütün ajan ışıklarını bir anda söndürür.
+
+<Aside type="note">
+Ajan ışıkları USB kablosuyla görünür. Odak zamanlayıcısının, göstergelerin, müzik modunun ve profil ışığının üstünde, sessiz mikrofon uyarısının ve toplantı hatırlatmalarının altında dururlar.
+</Aside>

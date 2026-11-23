@@ -96,7 +96,13 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   kapattıysanız başlatmaz. Sizin ya da ajanın yazdığı hiçbir şey Keymotion'a
   ulaşmaz: yalnız ne olduğu. `disconnect` hepsini geri alır. Ajan erişimi
   siz açana kadar kapalı kalır; GitHub kopyasında açmak `keymotion-cli`'ı
-  yeni açılan terminaller için PATH'inize de ekler. Üç şey daha, yalnız
+  yeni açılan terminaller için PATH'inize de ekler.
+  Araçlar › **Yapay zekâ ajanları** onu iki adımda açar (Claude Code'a ve
+  Codex'e ne ekleneceği, sonra ne yapıldığı; ilkinde Vazgeç), her
+  uygulamanın durumunu gösterir; beş sinyalin rengini, efektini ve süresini
+  **Klavyede dene** ile, ajanların başka neler yapabileceğini, ek
+  davranışları, ajanların bu ayarları değiştirip değiştiremeyeceğini, oturum
+  numaralarını ve **Geri al**'lı son işlemleri ayarlar. Üç şey daha, yalnız
   kendi izniyle ve her biri başta kapalı: ajanlar odak zamanlayıcısını
   başlatıp duraklatabilir ya da durdurabilir (ayarlarınızı değiştirmeden
   kendi seçtikleri uzunlukta tek bir blok da), bir profilin ışığını bir

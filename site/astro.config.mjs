@@ -86,6 +86,7 @@ export default defineConfig({
             "guide/reminders",
             "guide/calendar",
             "guide/game-session",
+            "guide/ai-agents",
             "guide/connection",
             "guide/settings",
           ],
