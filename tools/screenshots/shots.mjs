@@ -843,11 +843,14 @@ export const CLIPS = [
     // Your picture on the GIF page; the song's card replaces it; a meeting's
     // card goes before the song once the calendar's cards are on.
     fps: 12,
+    // The GIF page large, with the line under it that names the live card
+    // (the clock page beside it and its notes stay out: they would make the
+    // card too small at 480 px).
     clip: async (page) => {
-      const card = await page.locator("main section.card").first().boundingBox();
-      const gif = await page.locator("main").getByText(await t(page, "sc.page.gif"), { exact: true }).first().boundingBox();
-      // Both screen pages; the notes on the right don't change.
-      return { x: card.x, y: card.y, width: gif.x - card.x + 330, height: gif.y + gif.height - card.y + 16 };
+      const screen = await page.locator("main [data-screen-pages] canvas").first().boundingBox();
+      const label = await page.locator("main [data-screen-pages]").getByText(await t(page, "sc.page.gif"), { exact: true }).first().boundingBox();
+      const pad = 20;
+      return { x: screen.x - pad, y: screen.y - pad, width: screen.width + 2 * pad, height: label.y + label.height + 12 - (screen.y - pad) };
     },
     steps: async (page) => {
       await makeCard(page, "sc.tx.t.name", "upload");
