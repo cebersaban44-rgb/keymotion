@@ -6,7 +6,8 @@
 
 <p align="center">
   AJAZZ AK980 PRO klavye (AK980 V2 adıyla da satılıyor) için ücretsiz, açık kaynak Windows uygulaması:<br>
-  ışıklar, tuş atama, makrolar ve küçük ekranına kendi GIF'leriniz. AJAZZ'ın yazılımı gerekmez.
+  ışıklar, tuş atama, makrolar ve küçük ekranına kendi GIF'leriniz. AJAZZ'ın yazılımı gerekmez.<br>
+  Ayrıca müzik modu, League of Legends ışıklarıyla oyun oturumu, uygulamaya göre profiller ve yapay zekâ kodlama ajanları için ışıklar.
 </p>
 
 <p align="center">

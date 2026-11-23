@@ -6,7 +6,8 @@
 
 <p align="center">
   A free, open-source Windows app for the AJAZZ AK980 PRO keyboard (also sold as AK980 V2):<br>
-  lighting, key mapping, macros and your own GIFs on its little screen. No AJAZZ software needed.
+  lighting, key mapping, macros and your own GIFs on its little screen. No AJAZZ software needed.<br>
+  Plus music mode, game sessions with League of Legends lights, profiles by app and lights for AI coding agents.
 </p>
 
 <p align="center">
