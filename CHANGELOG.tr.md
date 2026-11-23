@@ -150,7 +150,9 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   bölme ve saatin yanındaki simgenin menüsü, klavyede AJAZZ'ın yeni yazılımı
   olduğunu, Keymotion'ın ona hiçbir şey göndermediğini ve desteğin sonraki
   bir güncellemede gelmesinin planlandığını söyler; SSS'ye bir bağlantı da
-  vardır. **Destek iste** yerinde kalır.
+  vardır. **Destek iste** yerinde kalır. Henüz desteklenmeyen başka bir
+  klavye de artık soldaki bölmede "Klavye bekleniyor" yerine kendi adıyla
+  görünür; karşılama sayfası da böyle bir klavyenin takılı olduğunu söyler.
 - **Denenmemiş klavye yazılımı:** Keymotion'la denenmemiş bir yazılım
   sürümünde klavyenin saati de onayınızı bekliyor; hem bağlanınca eşitleme
   hem **Şimdi eşitle**. Keymotion kaydetmeden önceki soruyu soruyor,

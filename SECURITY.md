@@ -2,7 +2,7 @@
 
 Keymotion runs on your computer, talks to your keyboard over USB and Bluetooth, reads the calendar addresses you give it, and takes requests from the AI coding agents you connect. If you find a way to misuse any of that, please tell us privately first, so it can be fixed before it's public.
 
-*Türkçe: güvenlik sorunlarını aşağıdaki gizli yolla bildirin; Türkçe yazabilirsiniz.*
+*Türkçe: güvenlik sorunlarını aşağıdaki gizli yolla bildirin; Türkçe yazabilirsiniz. Можно писать по-русски. 可以用中文填写。*
 
 ## How to report
 

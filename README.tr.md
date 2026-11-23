@@ -67,6 +67,9 @@ Keymotion AJAZZ AK980 PRO'da denendi. Aynı altyapıyla yapılmış başka klavy
 
 Ayarlar USB kablosundan gider; klavye böyle yapılmış.
 
+> [!NOTE]
+> AJAZZ'ın AK980 PRO için en yeni klavye yazılımı 3.01 ("AK980 Led v2 Firmware 769") farklı bir komut takımı kullanıyor; Keymotion bunu henüz desteklemiyor ve AJAZZ eski yazılıma dönmenin bir yolunu sunmuyor. Keymotion'ı şimdi kullanmaya devam etmek istiyorsanız güncellemeden önce bekleyin. [SSS'de ayrıntılar](https://cebersaban44-rgb.github.io/keymotion/tr/help/faq/#ajazzın-en-yeni-klavye-yazılımını-kurmalı-mıyım).
+
 ### Aynı altyapı, henüz denenmedi
 
 Bu klavyeleri gerçek klavyelerde ölçen başka açık kaynak projelere göre, hepsi AK980 PRO ile aynı komutları kullanıyor görünüyor. Keymotion henüz bunlarla çalışmıyor: bir klavye ancak biri onu denedikten sonra eklenir, çünkü klavyeyi güvende tutan sınırlar modelden modele değişiyor.
