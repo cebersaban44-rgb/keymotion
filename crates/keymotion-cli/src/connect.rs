@@ -47,6 +47,8 @@ fn setup_error(e: SetupError) -> AgentError {
         ErrorKind::Unsupported => AgentError::new(ErrorCode::Unsupported, e.message),
         ErrorKind::Changed => AgentError::new(ErrorCode::Internal, e.message)
             .with_hint("The agent kept changing its settings; run it again when the agent is idle."),
+        ErrorKind::Partial => AgentError::new(ErrorCode::Internal, e.message)
+            .with_hint("Run keymotion-cli disconnect for this agent to take what stayed away, then connect again."),
     }
 }
 

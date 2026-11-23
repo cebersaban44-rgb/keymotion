@@ -336,6 +336,9 @@ pub enum ErrorKind {
     /// A file changed after the plan was made (the agent wrote its settings
     /// meanwhile): nothing was written; plan again from the file as it is.
     Changed,
+    /// Writing failed part way and what was written could not all be put
+    /// back: some of our entries stayed (disconnecting removes them).
+    Partial,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -959,36 +962,87 @@ pub fn plan_disconnect(agent: Agent, homes: &Homes) -> Result<Plan, SetupError> 
 /// changed file is written whole through a temporary file beside it (a
 /// fresh copy of another program's file kept first, `<file>.before-
 /// keymotion`), removed files are removed, then our emptied folders.
+///
+/// All or nothing: when a file cannot be written, the files written before
+/// it are put back as they were (ours removed again), so an agent is never
+/// left half connected. Should putting back fail too, the error is
+/// [`ErrorKind::Partial`]: some of ours stayed, and disconnecting removes
+/// them (it finds our entries without the note of what connecting made).
 pub fn apply(plan: &Plan) -> Result<(), SetupError> {
     for edit in plan.changes() {
         if read_text(&edit.path)? != edit.before {
             return Err(SetupError::changed(&edit.path));
         }
     }
+    let mut done: Vec<&Edit> = Vec::new();
     for edit in plan.changes() {
-        match &edit.after {
-            Some(text) => {
-                if let Some(dir) = edit.path.parent() {
-                    std::fs::create_dir_all(dir).map_err(|e| SetupError::io(dir, e))?;
-                }
-                if let (true, Some(before)) = (edit.backup, &edit.before) {
-                    let backup = with_suffix(&edit.path, BACKUP_SUFFIX);
-                    write_atomic(&backup, before)?;
-                }
-                write_atomic(&edit.path, text)?;
+        if let Err(e) = apply_one(edit) {
+            let stuck = roll_back(&done);
+            if stuck.is_empty() {
+                return Err(e);
             }
-            None => match std::fs::remove_file(&edit.path) {
-                Ok(()) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => return Err(SetupError::io(&edit.path, e)),
-            },
+            let names: Vec<String> = stuck.iter().map(|p| p.display().to_string()).collect();
+            return Err(SetupError {
+                kind: ErrorKind::Partial,
+                message: format!(
+                    "{} Some of Keymotion's entries stayed in {}; disconnecting removes them.",
+                    e.message,
+                    names.join(", ")
+                ),
+            });
         }
+        done.push(edit);
     }
     for dir in &plan.remove_dirs {
         // Only when empty: a file the user put there stays, and its folder.
         let _ = std::fs::remove_dir(dir);
     }
     Ok(())
+}
+
+fn apply_one(edit: &Edit) -> Result<(), SetupError> {
+    match &edit.after {
+        Some(text) => {
+            if let Some(dir) = edit.path.parent() {
+                std::fs::create_dir_all(dir).map_err(|e| SetupError::io(dir, e))?;
+            }
+            if let (true, Some(before)) = (edit.backup, &edit.before) {
+                let backup = with_suffix(&edit.path, BACKUP_SUFFIX);
+                write_atomic(&backup, before)?;
+            }
+            write_atomic(&edit.path, text)
+        }
+        None => match std::fs::remove_file(&edit.path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(SetupError::io(&edit.path, e)),
+        },
+    }
+}
+
+/// Put `done` back as it was, newest first: a file that was there gets its
+/// old text, one we made goes (and its folder, when that leaves it empty).
+/// The files that could not be put back.
+fn roll_back(done: &[&Edit]) -> Vec<PathBuf> {
+    let mut stuck = Vec::new();
+    for edit in done.iter().rev() {
+        let back = match &edit.before {
+            Some(text) => write_atomic(&edit.path, text).is_ok(),
+            None => match std::fs::remove_file(&edit.path) {
+                Ok(()) => {
+                    if let Some(dir) = edit.path.parent() {
+                        let _ = std::fs::remove_dir(dir);
+                    }
+                    true
+                }
+                Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+            },
+        };
+        if !back {
+            stuck.push(edit.path.clone());
+        }
+    }
+    stuck
 }
 
 fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
@@ -1534,6 +1588,34 @@ mod tests {
     }
 }
 "#;
+
+    #[test]
+    fn a_write_that_fails_part_way_puts_back_what_was_written() {
+        let home = temp_home();
+        let homes = Homes::with(&home, None, None);
+        let settings = homes.hooks_file(Agent::ClaudeCode);
+        std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        std::fs::write(&settings, USERS_OWN).unwrap();
+        // The skill's folder cannot be made: a file stands where it goes.
+        std::fs::create_dir_all(homes.claude.join("skills")).unwrap();
+        std::fs::write(homes.skill_dir(Agent::ClaudeCode), "in the way").unwrap();
+        let plan = plan_connect(Agent::ClaudeCode, &homes, &cli(&home)).unwrap();
+        let e = apply(&plan).unwrap_err();
+        assert_eq!(e.kind, ErrorKind::Io, "{e:?}");
+        assert_eq!(read(&settings), USERS_OWN, "the hooks went again with the rest");
+        assert_eq!(status(Agent::ClaudeCode, &homes, None).hooks, 0);
+
+        // Codex: the hooks file it made goes again too.
+        let hooks = homes.hooks_file(Agent::Codex);
+        std::fs::create_dir_all(homes.codex.join("rules")).unwrap();
+        std::fs::create_dir_all(&homes.agent_skills).unwrap();
+        std::fs::write(homes.skill_dir(Agent::Codex), "in the way").unwrap();
+        let plan = plan_connect(Agent::Codex, &homes, &cli(&home)).unwrap();
+        assert!(apply(&plan).is_err());
+        assert!(!hooks.exists(), "made by the failed connect, gone again");
+        assert!(!homes.rules_file().exists());
+        let _ = std::fs::remove_dir_all(&home);
+    }
 
     #[test]
     fn claude_code_connects_beside_the_users_own_hooks_and_disconnects_cleanly() {

@@ -98,7 +98,8 @@ says so.
   Keymotion is not running, such an event starts it, unless you quit it
   yourself or turned agent access off. Nothing you or the agent writes
   reaches Keymotion: only what happened. `disconnect` takes it all away
-  again. Agent access stays off until you turn it on.
+  again. Agent access stays off until you turn it on; on the GitHub copy,
+  turning it on also puts `keymotion-cli` on your PATH for new terminals.
   Tools › **AI agents** turns it on in two steps (what will be added to
   Claude Code and Codex, then what was done, with Cancel on the first),
   shows how each app stands, and sets the five signals' color, effect and

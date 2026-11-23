@@ -3433,3 +3433,273 @@ pub struct AgentsState {
     pub server: AgentServer,
     pub lights: AgentLights,
 }
+
+// ------------------------------------------------- agents: coding apps
+
+/// A coding app Keymotion connects to: its hooks tell the keyboard when
+/// the agent finished, waits or failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentApp {
+    ClaudeCode,
+    Codex,
+}
+
+/// How a coding app stands with Keymotion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentAppState {
+    /// Not on this computer (for this Windows user).
+    NotFound,
+    /// There, without Keymotion's hooks.
+    NotConnected,
+    Connected,
+    /// Codex: connected, but the user has not trusted Keymotion's hooks in
+    /// Codex yet (`/hooks`, or Settings > Hooks in the app).
+    NeedsApproval,
+    /// Some of Keymotion's hooks are missing or name another keymotion-cli:
+    /// connecting again brings them up to date.
+    Outdated,
+    /// Its settings file does not read (`error` says why): left alone.
+    Unreadable,
+}
+
+/// A coding app, as the AI agents page shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentAppStatus {
+    pub app: AgentApp,
+    /// "Claude Code", "Codex".
+    pub name: String,
+    /// Its settings folder is there.
+    pub found: bool,
+    pub state: AgentAppState,
+    /// Keymotion's hooks in its settings, of how many.
+    pub hooks: u32,
+    pub hooks_wanted: u32,
+    /// Codex: of Keymotion's hooks, how many the user trusted.
+    pub trusted: Option<u32>,
+    /// Claude Code: the oldest copy found here (`2.1.140`).
+    pub version: Option<String>,
+    /// Claude Code is older than `min_version`: Keymotion cannot connect it
+    /// until it is updated (`claude update`).
+    pub too_old: bool,
+    /// Claude Code: the oldest version the hooks work with (`2.1.139`).
+    pub min_version: Option<String>,
+    /// Its settings folder (`C:\Users\…\.claude`).
+    pub home: String,
+    pub hooks_file: String,
+    pub skill_file: String,
+    /// The keymotion-cli its hooks run.
+    pub runs: Option<String>,
+    /// Why its settings could not be read, in the backend's words.
+    pub error: Option<String>,
+}
+
+/// Which keymotion-cli this copy of Keymotion comes with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentCliKind {
+    /// The Microsoft Store copy's alias, on PATH by itself.
+    Store,
+    /// The GitHub copy's, in its installation's `bin` folder.
+    Installed,
+    /// A development build's, beside it.
+    Dev,
+}
+
+/// The keymotion-cli the hooks run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentCli {
+    pub path: String,
+    pub kind: AgentCliKind,
+    /// The file is there (a development build may not have built it).
+    pub present: bool,
+}
+
+/// The GitHub copy's `bin` folder and the user's PATH.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentPathInfo {
+    pub dir: String,
+    /// It is on the user's PATH: terminals started from now on find
+    /// keymotion-cli by its name.
+    pub on_path: bool,
+    /// The PATH could not be read (it is not text, access was refused):
+    /// nothing will be written to it. In the backend's words.
+    pub error: Option<String>,
+}
+
+/// The coding apps and the command line tool (`agents_connections`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentConnections {
+    /// Claude Code, then Codex.
+    pub apps: Vec<AgentAppStatus>,
+    pub cli: Option<AgentCli>,
+    /// The GitHub copy only (the Store copy's alias is on PATH already).
+    pub path: Option<AgentPathInfo>,
+}
+
+/// What a file is, for a short line on the page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentFileKind {
+    /// The app's settings file, with Keymotion's hooks (`hooks` of them).
+    Hooks,
+    /// The keymotion skill: "keymotion-cli is here; run its guide first".
+    Skill,
+    /// Codex: a rule that lets the agent's own keymotion-cli calls out of
+    /// its sandbox.
+    Rule,
+    /// Keymotion's own notes beside the skill (what it made, for taking it
+    /// away); "Details" only.
+    Note,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentFileAction {
+    Create,
+    Update,
+    Remove,
+}
+
+/// One file connecting or disconnecting changes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentFileChange {
+    pub kind: AgentFileKind,
+    pub action: AgentFileAction,
+    pub path: String,
+    /// For people, in English ("add 16 hooks that run keymotion-cli").
+    pub summary: String,
+    /// `hooks`: how many of Keymotion's hooks the file holds afterwards
+    /// (connecting) or loses (disconnecting).
+    pub hooks: Option<u32>,
+    /// Where a copy of the file as it was is kept first (another program's
+    /// file).
+    pub backup: Option<String>,
+}
+
+/// Why a coding app could not be connected or disconnected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentProblemKind {
+    /// Its settings file is not valid JSON (or not what it should be):
+    /// left alone; the user fixes it.
+    Invalid,
+    /// Reading or writing failed.
+    Io,
+    /// Claude Code is too old for the hooks: update it first.
+    Unsupported,
+    /// It kept writing its settings while Keymotion tried: try again.
+    Changed,
+    /// keymotion-cli is not where it should be (a development build that
+    /// did not build it).
+    NoCli,
+    /// Writing failed part way and not all of it could be put back: some
+    /// of Keymotion's entries stayed; disconnecting removes them.
+    Partial,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentProblem {
+    pub kind: AgentProblemKind,
+    /// In the backend's words (English).
+    pub message: String,
+}
+
+/// What connecting (or disconnecting) changes for one coding app.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentAppPlan {
+    pub app: AgentApp,
+    pub name: String,
+    /// Its settings folder.
+    pub home: String,
+    /// Empty: nothing to change (connected already, or nothing of
+    /// Keymotion's to take away).
+    pub changes: Vec<AgentFileChange>,
+    /// The line every hook runs, as people read it.
+    pub command_line: Option<String>,
+    /// Codex: the user trusts the new hooks once in Codex afterwards.
+    pub needs_approval: bool,
+    /// Notes in English (a development build's path).
+    pub warnings: Vec<String>,
+    /// It cannot be done: why. Nothing is written for this app.
+    pub problem: Option<AgentProblem>,
+}
+
+/// What turning agent access on would add (`agents_connect_plan`), shown
+/// before the user approves it once.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentConnectPlan {
+    /// Hand it back to `agents_connect`: what is written is what was shown.
+    pub token: String,
+    /// The coding apps found (and asked for), Claude Code first.
+    pub apps: Vec<AgentAppPlan>,
+    /// The coding apps not on this computer.
+    pub not_found: Vec<AgentApp>,
+    /// The GitHub copy: this folder goes on the user's PATH (absent when it
+    /// is there already, and for the Store copy).
+    pub path: Option<AgentPathInfo>,
+    pub cli: Option<AgentCli>,
+    /// Nothing to write: approving only turns access on.
+    pub empty: bool,
+}
+
+/// What came of `agents_connect`.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentConnectOutcome {
+    /// Written as shown, and agent access is on. `false`: a file changed
+    /// since the plan was shown (a coding app wrote its settings); nothing
+    /// was written, access is as it was, and `plan` is what would change
+    /// now, to show again.
+    pub applied: bool,
+    pub plan: Option<AgentConnectPlan>,
+    /// The coding apps connected now.
+    pub connected: Vec<AgentApp>,
+    /// The coding apps that could not be, and why (the others went ahead).
+    pub failed: Vec<AgentAppPlan>,
+    /// The `bin` folder went on the user's PATH.
+    pub path_added: bool,
+    /// Why it did not, in the backend's words.
+    pub path_error: Option<String>,
+    /// Agent access could not be saved as on (the files above were
+    /// written all the same), in the backend's words.
+    pub save_error: Option<String>,
+    pub connections: AgentConnections,
+    /// `settings.enabled`: on when at least one coding app connected, or
+    /// none had anything to connect; off when every one failed.
+    pub state: AgentsState,
+}
+
+/// What came of `agents_disconnect`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentDisconnectOutcome {
+    /// What was taken away (its `problem` set when it could not be).
+    pub plan: AgentAppPlan,
+    pub connections: AgentConnections,
+}

@@ -33,6 +33,8 @@
 //! * The named pipe `keymotion-cli` talks to the app through: only this
 //!   user, only this computer, created with an explicit security
 //!   descriptor (`pipe`, Windows only).
+//! * The user's own PATH, for the GitHub copy's `keymotion-cli` folder
+//!   ([`user_path`]): read, added to, taken from, nothing else changed.
 //!
 //! Types holding COM or PDH handles are not `Send`: make them on the thread
 //! that uses them.
@@ -56,6 +58,7 @@ pub mod shell;
 pub mod startup;
 pub mod thermal;
 pub mod time;
+pub mod user_path;
 
 use std::collections::HashMap;
 
