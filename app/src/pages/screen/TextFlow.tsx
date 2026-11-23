@@ -29,7 +29,7 @@ import {
   type TemplateId,
 } from "../../lib/screenText";
 import { useApp } from "../../lib/store";
-import { EditFooter, Hint, PreviewPanel, StudioFrame, type Done, type Step } from "./common";
+import { EditFooter, Hint, PreviewPanel, StudioFrame, UnprovenHint, type Done, type Step } from "./common";
 import { friendlyError } from "../../lib/errors";
 
 type T = (k: MessageKey) => string;
@@ -342,7 +342,7 @@ export function TextFlow({
             {t("sc.tx.speedRaised", { speed: t("sc.tx.pxs", { speed: layout!.speed! }) })}
           </Hint>
         )}
-        {frames > screen.provenFrames && <Hint tone="note">{t("sc.warn.unproven")}</Hint>}
+        <UnprovenHint frames={frames} />
         {error && <Hint tone="error">{error}</Hint>}
       </div>
 

@@ -11,6 +11,8 @@ import type { ProfileInfo } from "../bindings/ProfileInfo";
 import type { ProfilePart } from "../bindings/ProfilePart";
 import type { ProfileParts } from "../bindings/ProfileParts";
 import type { ProfilesState } from "../bindings/ProfilesState";
+import { KeyboardNotices, LiveLightsNotice } from "../components/KeyboardNotices";
+import { writeBlock } from "../lib/aa";
 import { friendlyError } from "../lib/errors";
 import { percent, useT, type Locale, type Translate } from "../lib/i18n";
 import {
@@ -87,6 +89,10 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
   const canWrite = kb.connection === "usb" && kb.hasCommandChannel;
   const state = useProfiles((s) => (s.modelId === modelId ? s.state : null));
   const uploading = useScreen((s) => s.upload !== null);
+  // An "AA" keyboard whose clock page the picture may replace: loading a
+  // profile with a picture asks first (lib/screen.ts `ackClockPage`).
+  const clockAtRisk = useScreen((s) => s.recordId === kb.recordId && !!s.state?.clockPageAtRisk);
+  const readOnly = writeBlock(kb, t);
   const { pageMs } = useScreenLimits();
   const hasDrafts = useDrafts();
   const [flow, setFlow] = useState<Flow | null>(null);
@@ -268,7 +274,7 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
 
   // ---------------------------------------------------------------- view
 
-  const usbReason = !canWrite ? t("sc.needsUsbShort") : uploading ? t("prof.load.uploadBusy") : null;
+  const usbReason = !canWrite ? t("sc.needsUsbShort") : (readOnly ?? (uploading ? t("prof.load.uploadBusy") : null));
 
   const rowProps = (p: ProfileInfo) => ({
     p,
@@ -304,9 +310,11 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
             />
           );
         }
+        const clock = clockAtRisk && p.toWrite.includes("screen");
         const sentences = [
           t("prof.load.confirm", { list: listOf(p.toWrite.map((w) => t(PART_NOUN[w])), locale) }),
           !p.screen ? t("prof.load.noScreen") : !p.screen.inLibrary ? t("prof.load.missingScreen") : null,
+          clock ? t("prof.load.clock") : null,
           hasDrafts(p.toWrite) ? t("prof.load.drafts") : null,
           t("prof.load.time", { time: fmtDuration(loadSeconds(p, pageMs), t) }),
         ];
@@ -318,7 +326,13 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
             action={t("prof.load")}
             disabled={!!usbReason}
             onCancel={cancel}
-            onConfirm={() => void doLoad(p)}
+            onConfirm={() =>
+              void (async () => {
+                // Saying yes here is the clock page question's answer.
+                if (clock) await useScreen.getState().ackClockPage();
+                await doLoad(p);
+              })().catch((e) => finish({ ok: false, text: friendlyError(e, t) }))
+            }
           />
         );
       }
@@ -417,6 +431,9 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
           </button>
         </div>
       </header>
+
+      <KeyboardNotices kb={kb} />
+      <LiveLightsNotice />
 
       {notice && (
         <div

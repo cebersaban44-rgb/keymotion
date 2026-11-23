@@ -37,7 +37,28 @@ const mock = {
   today: 0,
   total: 0,
   incomplete: null as ScreenIncomplete | null,
+  /** `?mock=aa769&aa=clock`: the stand-in "AA" keyboard's clock page is at
+   *  risk until the user says yes. */
+  clockAck: false,
+  /** The upload being cancelled (`screen_upload_cancel`). */
+  cancel: null as string | null,
+  /** `&aa=cut`: the next upload meets the quiet time after a stopped one. */
+  cut: import.meta.env.DEV && typeof location !== "undefined" && /[?&]aa=[^&]*\bcut\b/.test(location.search),
 };
+
+/** Browser preview: the stand-in keyboard is an "AA" one whose clock page
+ *  an upload may replace (`?mock=aa769&aa=clock`). */
+export function mockClockAtRisk(): boolean {
+  if (!import.meta.env.DEV || typeof location === "undefined") return false;
+  const q = new URLSearchParams(location.search);
+  const aa = (q.get("aa") ?? "").split(",");
+  return q.get("mock") === "aa769" && aa.includes("clock") && !mock.clockAck && mock.shown === null;
+}
+
+/** Browser preview: the user said yes to losing the clock page. */
+export function mockAckClock() {
+  mock.clockAck = true;
+}
 
 /** Browser preview: `?mock=usb&driver` pretends AJAZZ's official driver is
  *  installed, so its factory animation can be backed up. */
@@ -64,8 +85,8 @@ function mockState(): ScreenState {
       ...mock.incomplete,
       id: mock.items.some((i) => i.id === mock.incomplete?.id) ? mock.incomplete.id : null,
     },
-    // The stand-in keyboard is a "04 xx" one: its clock page is never at risk.
-    clockPageAtRisk: false,
+    // A "04 xx" stand-in keyboard's clock page is never at risk.
+    clockPageAtRisk: mockClockAtRisk(),
   };
 }
 
@@ -193,10 +214,22 @@ function uploadItem(recordId: string, id: string, onProgress: (p: ScreenProgress
 
 async function uploadOnce(recordId: string, id: string, onProgress: (p: ScreenProgress) => void): Promise<ScreenState> {
   if (import.meta.env.DEV && !inTauri) {
+    if (mockClockAtRisk()) throw new Error("screen upload would replace the keyboard's clock page; not acknowledged");
+    if (mock.cut) {
+      mock.cut = false;
+      throw new Error("a screen upload stopped part-way; no commands for another 3400 ms");
+    }
     const item = mock.items.find((i) => i.id === id);
     const total = item?.pages ?? 16;
+    // Slower for an "AA" stand-in, so its Cancel can be tried.
+    const step = /[?&]mock=aa769/.test(location.search) ? 120 : 40;
     for (let done = 1; done <= total; done += Math.max(1, Math.floor(total / 40))) {
-      await new Promise((r) => setTimeout(r, 40));
+      await new Promise((r) => setTimeout(r, step));
+      if (mock.cancel === id) {
+        mock.cancel = null;
+        mock.incomplete = { id, atMs: Date.now() };
+        throw new Error(`screen upload cancelled after ${done} of ${total} parts`);
+      }
       onProgress({ id, done, total });
     }
     onProgress({ id, done: total, total });
@@ -219,10 +252,26 @@ async function uploadOnce(recordId: string, id: string, onProgress: (p: ScreenPr
 
 /** The user said yes to losing the keyboard's clock page with its next
  *  upload (`ScreenState.clockPageAtRisk`: the first upload to a keyboard of
- *  AJAZZ's "AA" family; never a "04 xx" one). */
+ *  AJAZZ's "AA" family; never a "04 xx" one). It also lets a live card that
+ *  waited for the answer go (`LiveState.clockAckNeeded`). */
 export async function ackClockPage(recordId: string): Promise<ScreenState> {
-  if (import.meta.env.DEV && !inTauri) return mockState();
+  if (import.meta.env.DEV && !inTauri) {
+    mockAckClock();
+    return mockState();
+  }
   return invoke<ScreenState>("screen_ack_clock_page", { recordId });
+}
+
+/** Stop the upload of library item `id` (an "AA" keyboard's; a "04 xx"
+ *  upload can't be stopped). Its `uploadToKeyboard` then fails with "screen
+ *  upload cancelled after N of M parts" ("… before it started" when it was
+ *  still waiting its turn). False when no such upload runs. */
+export async function cancelUpload(id: string): Promise<boolean> {
+  if (import.meta.env.DEV && !inTauri) {
+    mock.cancel = id;
+    return true;
+  }
+  return invoke<boolean>("screen_upload_cancel", { id });
 }
 
 /** The "04 xx" family's screen limits, while no keyboard says otherwise. */
@@ -279,6 +328,8 @@ interface ScreenStore {
   /** Keep the official driver's copy as the factory backup. */
   backupFromDriver: () => Promise<void>;
   load: (recordId: string) => Promise<void>;
+  /** The user said yes to losing the clock page (`clockPageAtRisk`). */
+  ackClockPage: () => Promise<void>;
   add: (p: Prepared) => Promise<ScreenItem>;
   uploadToKeyboard: (item: ScreenItem, origin: Upload["origin"]) => Promise<void>;
   rename: (id: string, name: string) => Promise<void>;
@@ -329,6 +380,10 @@ export const useScreen = create<ScreenStore>((set, get) => ({
     const state = await getScreenState(recordId);
     set({ recordId, state });
     if (!state.items.some((i) => i.kind === "keymotion")) void addKeymotion();
+  },
+  ackClockPage: async () => {
+    const recordId = get().recordId;
+    if (recordId) set({ state: await ackClockPage(recordId) });
   },
   add: async (p) => {
     const item = await addToLibrary(p);

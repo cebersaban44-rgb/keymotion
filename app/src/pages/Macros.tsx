@@ -7,6 +7,8 @@ import type { MacroInfo } from "../bindings/MacroInfo";
 import type { MacroStepInfo } from "../bindings/MacroStepInfo";
 import { ActionBar } from "../components/ActionBar";
 import { InfoBar, Segmented } from "../components/controls";
+import { KeyboardNotices } from "../components/KeyboardNotices";
+import { useWriteBlock } from "../lib/aa";
 import { hidFromCode } from "../lib/hidCodes";
 import { getKeymapCatalog } from "../lib/ipc";
 import { decimal, percent, useAgo, useT, type MessageKey } from "../lib/i18n";
@@ -68,6 +70,7 @@ export function Macros({ kb }: { kb: KeyboardInfo }) {
   const budget = budgetOf(rule, limits.budget);
   const full = draft.filter(Boolean).length >= limits.maxSlots;
   const changed = useMacros((s) => dirtySlots(s).length);
+  const readOnly = useWriteBlock(kb);
 
   return (
     <div className="@container flex flex-col gap-6">
@@ -82,6 +85,7 @@ export function Macros({ kb }: { kb: KeyboardInfo }) {
       {!usb && (
         <InfoBar tone="warn" icon={<Usb size={20} strokeWidth={1.6} />} title={t("mc.needsUsb")} data="usb" />
       )}
+      <KeyboardNotices kb={kb} />
 
       <div className="grid grid-cols-[240px_minmax(0,1fr)] items-start gap-5 @3xl:grid-cols-[280px_minmax(0,1fr)]">
         <div className="sticky top-4 flex flex-col gap-5">
@@ -114,7 +118,7 @@ export function Macros({ kb }: { kb: KeyboardInfo }) {
 
       <ActionBar
         changes={changed > 0 ? t("bar.macrosChanged", { count: changed }) : null}
-        blocked={used > budget ? t("mc.overBudget") : null}
+        blocked={readOnly ?? (used > budget ? t("mc.overBudget") : null)}
         canSave={usb && loaded}
         onSave={save}
         onRevert={discard}

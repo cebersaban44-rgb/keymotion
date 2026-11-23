@@ -3,7 +3,7 @@
 // Browser mock (development only): outside Tauri, `pnpm dev` in a browser
 // uses stand-ins for the backend so the UI can be designed and tested
 // (`?mock=usb|bluetooth|dongle|none`, `?fw=`, `?clock=wait`, `?reset=`, `?failPart=`,
-// `?unsupported`, `?mock=fw769|fw769-8009|old-8009`, `?crash`, `mock-close-requested`; lib/screen.ts, live.ts, pomodoro.ts, calendar.ts,
+// `?unsupported`, `?mock=newfw|old-8009`, `?mock=aa769&aa=…`, `?crash`, `mock-close-requested`; lib/screen.ts, live.ts, pomodoro.ts, calendar.ts,
 // reminders.ts and gauges.ts have their own). Every mock branch is guarded
 // by `import.meta.env.DEV`, written out at the guard itself: Vite replaces
 // it with `false` in a production build, so the mock code and its switches
@@ -47,6 +47,7 @@ import type { TrayTexts } from "../bindings/TrayTexts";
 import type { CrashNote } from "../bindings/CrashNote";
 import type { IssueKind } from "../bindings/IssueKind";
 import type { UnsupportedKeyboard } from "../bindings/UnsupportedKeyboard";
+import type { AaStatus } from "../bindings/AaStatus";
 // Generated from Rust by `cargo test` (dto.rs export_mock_geometry).
 import ak980Geometry from "../bindings/geometry-ajazz-ak980-pro.json";
 import mockKeymapCatalog from "../bindings/keymap-catalog.json";
@@ -669,13 +670,13 @@ export async function crashSeen(name: string): Promise<void> {
 
 const MOCK_UNSUPPORTED: UnsupportedKeyboard[] = [{ id: "0C45:8009:usb", name: "SONiX AK820 PRO" }];
 /** An AK980 PRO the backend doesn't take, and no supported keyboard:
- *  `?mock=fw769` on AJAZZ's firmware 769 (3.01) as 0C45:8039,
- *  `?mock=fw769-8009` on the same firmware as 0C45:8009 (its screen channel,
- *  usage page 0xFF67, tells it apart), `?mock=old-8009` on the old firmware
- *  but not taken (no 0xFF67: the generic card). */
+ *  `?mock=newfw` on an AJAZZ firmware Keymotion doesn't know yet, as
+ *  0C45:8029 with the new firmware's screen channel (usage page 0xFF67);
+ *  `?mock=old-8009` on the old firmware but not taken (no 0xFF67: the
+ *  generic card). Firmware 769 (3.01) is a supported keyboard now:
+ *  `?mock=aa769`. */
 const MOCK_AK980: Record<string, { id: string; release: string; pages: string[] }> = {
-  fw769: { id: "0C45:8039:usb", release: "0301", pages: ["0001", "000C", "FF67"] },
-  "fw769-8009": { id: "0C45:8009:usb", release: "0301", pages: ["0001", "000C", "FF67"] },
+  newfw: { id: "0C45:8029:usb", release: "0302", pages: ["0001", "000C", "FF67", "FF68"] },
   "old-8009": { id: "0C45:8009:usb", release: "0106", pages: ["0001", "000C", "FF13"] },
 };
 const mockAk980 = () => MOCK_AK980[new URLSearchParams(location.search).get("mock") ?? ""];
@@ -1193,6 +1194,7 @@ const mockDelay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 function mockKeyboards(): KeyboardInfo[] {
   const mode = new URLSearchParams(location.search).get("mock") ?? "bluetooth";
   if (mode === "none" || mode in MOCK_AK980) return [];
+  if (mode === "aa769") return [mockAaKeyboard()];
   const usb = mode === "usb";
   const dongle = mode === "dongle";
   const usbFeatures: KeyboardInfo["features"] = ["lighting", "per-key-rgb", "keymap", "macros", "screen", "clock"];
@@ -1230,4 +1232,95 @@ function mockKeyboards(): KeyboardInfo[] {
       geometry: ak980Geometry as GeometryInfo,
     },
   ];
+}
+
+/** The limits of a keyboard of AJAZZ's "AA" family (driver.rs
+ *  `family::limits`): 140 frames as its own report says, none proven, no
+ *  "Disabled", "While held" or double click. */
+const AA_LIMITS: KeyboardInfo["limits"] = {
+  brightness: { min: 0, max: 5 },
+  speed: { min: 0, max: 5 },
+  macroBudget: "aa512",
+  screen: { maxFrames: 140, provenFrames: 0, pageMs: 145 },
+  keyActions: { disabled: false, holdMacro: false, doubleClick: false },
+};
+
+/**
+ * `?mock=aa769`: an AK980 PRO on AJAZZ's firmware 3.01 ("769") on the cable,
+ * the "AA" family, as the simulator reports it. `&aa=` adds states, comma
+ * separated: `insane`, `update`, `nobackup` (why nothing is written);
+ * `color`, `untested`, `blocked`, `failed`, `armed` (live lights); `other`
+ * (another program talks to it); `charging`; `clock` (its clock page is at
+ * risk: lib/screen.ts and live.ts); `nocolor` (a backup that doesn't know
+ * its colour: lib/aa.ts); `cut` (the quiet time after a stopped upload:
+ * lib/screen.ts).
+ */
+function mockAaKeyboard(): KeyboardInfo {
+  const flags = new Set((new URLSearchParams(location.search).get("aa") ?? "").split(",").filter(Boolean));
+  const features: KeyboardInfo["features"] = ["lighting", "per-key-rgb", "keymap", "macros", "screen", "clock", "battery"];
+  const readOnly: AaStatus["readOnly"] = flags.has("insane")
+    ? { kind: "not-sane", reasons: ["keymap page 0x0E at slot 12 is not one this app knows"] }
+    : flags.has("update")
+      ? { kind: "update-pending" }
+      : flags.has("nobackup")
+        ? { kind: "no-backup", error: "Access is denied. (os error 5)" }
+        : null;
+  const live = ["color", "untested", "blocked", "failed"].some((f) => flags.has(f));
+  const liveLightsOff: AaStatus["liveLightsOff"] =
+    readOnly && live
+      ? { kind: "read-only" }
+      : flags.has("color")
+        ? { kind: "color-unknown" }
+        : flags.has("untested")
+          ? { kind: "blocked", reason: "untested keyboard firmware 3.01" }
+          : flags.has("blocked")
+            ? { kind: "blocked", reason: "another program is using the keyboard (ajazz-driver)" }
+            : flags.has("failed")
+              ? { kind: "failed", error: "no answer to command 0x13" }
+              : null;
+  return {
+    key: "ajazz-ak980-pro.aa:Usb",
+    modelId: "ajazz-ak980-pro",
+    protocol: "ajazz-aa",
+    recordId: "ajazz-ak980-pro.aa",
+    limits: AA_LIMITS,
+    batteryOverUsb: true,
+    device: {
+      battery: 100,
+      charge: flags.has("charging") ? "charging" : null,
+      screenMaxFrames: 140,
+      updatePending: flags.has("update"),
+    },
+    aaStatus: {
+      readOnly,
+      liveLightsOff,
+      liveArmed: !liveLightsOff && flags.has("armed"),
+      otherProgramSuspected: flags.has("other"),
+      backup: readOnly?.kind === "no-backup" ? null : "aa-8039-0301-1763500000000.json",
+      effectColorKnown: !flags.has("color"),
+    },
+    modelName: "AJAZZ AK980 PRO",
+    vendor: "AJAZZ",
+    layout: "98",
+    keyCount: 97,
+    hasKnob: true,
+    hasSideLight: true,
+    screen: { width: 240, height: 135, verified: true },
+    connection: "usb",
+    product: "AK980 PRO",
+    firmware: "3.01",
+    features,
+    modes: [
+      { connection: "usb", features, verified: false },
+      { connection: "dongle", features: [], verified: false },
+      { connection: "bluetooth", features: ["battery"], verified: true },
+    ],
+    hasCommandChannel: true,
+    hasDisplayChannel: true,
+    bleName: null,
+    bleAddress: null,
+    bleConnected: false,
+    battery: { percent: 100, readAtMs: Date.now() - 20_000 },
+    geometry: ak980Geometry as GeometryInfo,
+  };
 }

@@ -27,6 +27,7 @@ import {
   PreviewPanel,
   StudioFrame,
   Thumb,
+  UnprovenHint,
   loadFrames,
   pickThumb,
   useItemName,
@@ -381,7 +382,7 @@ export function SlideFlow({
 
         {slides.length === 1 && <Hint tone="note">{t("sc.sl.needTwo")}</Hint>}
         {!plan.fits && <Hint tone="warn">{t("sc.sl.over")}</Hint>}
-        {plan.fits && plan.frames > screen.provenFrames && <Hint tone="note">{t("sc.warn.unproven")}</Hint>}
+        {plan.fits && <UnprovenHint frames={plan.frames} />}
         {full && <Hint tone="note">{t("sc.sl.full")}</Hint>}
         {failed.length > 0 && (
           <Hint tone="error">

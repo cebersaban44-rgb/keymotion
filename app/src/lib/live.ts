@@ -8,7 +8,7 @@ import type { LiveState } from "../bindings/LiveState";
 import type { SongStop } from "../bindings/SongStop";
 import type { TrackInfo } from "../bindings/TrackInfo";
 import { inTauri, invoke, listen } from "./ipc";
-import { mockFactoryAtRisk, mockLiveUploaded, mockRestored, mockShown, useScreen } from "./screen";
+import { mockClockAtRisk, mockFactoryAtRisk, mockLiveUploaded, mockRestored, mockShown, useScreen } from "./screen";
 import { toBlob, type Prepared } from "./screenImport";
 import { useApp } from "./store";
 
@@ -75,6 +75,7 @@ function mockEmit() {
   mock.state.restore = shown === "live" && !mock.state.uploading ? mock.before : null;
   mock.state.showing = shown === "live" ? (mock.state.last?.source ?? null) : null;
   mock.state.factoryAckNeeded = !mock.factoryAck && mockFactoryAtRisk();
+  mock.state.clockAckNeeded = mockClockAtRisk();
   mock.emit?.({ ...mock.state });
 }
 
@@ -186,6 +187,7 @@ async function mockTrackLoop() {
 export function getLiveState(): Promise<LiveState> {
   if (import.meta.env.DEV && !inTauri) {
     mock.state.factoryAckNeeded = !mock.factoryAck && mockFactoryAtRisk();
+    mock.state.clockAckNeeded = mockClockAtRisk();
     return Promise.resolve({ ...mock.state });
   }
   return invoke<LiveState>("live_state");
@@ -278,6 +280,8 @@ export async function submitLive(p: Prepared, source: string): Promise<LiveState
     s.pending = { source, name: p.name };
     mock.pendingBlob = blob;
     mockEmit();
+    // Like the backend: no card goes before the clock page question.
+    if (mockClockAtRisk()) return { ...s };
     if (s.tokens < 1) {
       s.nextTokenMs = ((1 - s.tokens) / (s.perDay / 24)) * 3_600_000;
       s.pendingWaitMs = s.nextTokenMs;
@@ -340,6 +344,9 @@ interface LiveStore {
   sendNow: () => Promise<void>;
   /** "Gönderme": forget the waiting card. */
   dropWaiting: () => Promise<void>;
+  /** The user said yes to losing an "AA" keyboard's clock page
+   *  (`clockAckNeeded`): the waiting card may go. */
+  ackClock: () => Promise<void>;
 }
 
 export const useLive = create<LiveStore>((set, get) => ({
@@ -371,6 +378,14 @@ export const useLive = create<LiveStore>((set, get) => ({
   },
   sendNow: async () => set({ state: await sendLiveNow() }),
   dropWaiting: async () => set({ state: await dropLiveWaiting() }),
+  ackClock: async () => {
+    await useScreen.getState().ackClockPage();
+    if (import.meta.env.DEV && !inTauri && mock.state.pending && mock.state.tokens >= 1) {
+      void mockUploadPending();
+      return;
+    }
+    set({ state: await getLiveState() });
+  },
 }));
 
 /**

@@ -20,6 +20,7 @@ import { useApp } from "../../lib/store";
 import { useScreenLimits } from "../../lib/screen";
 import { uploadSeconds } from "../../lib/screenImport";
 import { calendarStatus } from "./CalendarPanel";
+import { useClockAsk } from "./Safety";
 import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useItemName, useNow } from "./common";
 import { friendlyError } from "../../lib/errors";
 
@@ -85,6 +86,17 @@ export function LivePanel({ usb }: { usb: boolean }) {
       </div>
 
       <StatusLine s={s} usb={usb} />
+      {s.enabled && s.clockAckNeeded && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warn/40 bg-warn/10 px-4 py-3" data-live-clock-waiting>
+          <span className="flex gap-2 text-[13px] text-ink">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" aria-hidden />
+            {t("sc.live.clock.waiting")}
+          </span>
+          <button type="button" onClick={() => useClockAsk.setState({ later: false, open: true })} className="btn-secondary" data-live-clock-answer>
+            {t("sc.live.clock.answer")}
+          </button>
+        </div>
+      )}
       {!s.enabled && s.restore && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line px-4 py-3" data-live-leftover>
           <span className="text-[13px] text-ink-2">

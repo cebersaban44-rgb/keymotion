@@ -72,6 +72,12 @@ function askFirmware(version: string, fromUser: boolean): Promise<boolean> {
   return pending;
 }
 
+/** The untested firmware question again, asked by the user (live lights on
+ *  an "AA" keyboard wait on it after a no). Resolves `true` on a yes. */
+export function askFirmwareAgain(version: string): Promise<boolean> {
+  return askFirmware(version, true);
+}
+
 /** Start answering the backend. Call once from the app; returns the cleanup. */
 export function startSafety(): () => void {
   setFirmwareGate(askFirmware);

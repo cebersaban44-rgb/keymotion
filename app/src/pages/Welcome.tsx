@@ -2,8 +2,9 @@
 // to connect it, and what works without it. Shown in place of Genel bakış
 // and Bağlantı until a keyboard is found (the app looks every 2 seconds).
 // A SONiX or AJAZZ keyboard the app doesn't support yet gets a card on top
-// with "Request support" (lib/report.ts). An AK980 PRO on AJAZZ's firmware
-// 769 gets its own card: what that firmware is, calmly, and the FAQ.
+// with "Request support" (lib/report.ts). An AK980 PRO on an AJAZZ firmware
+// Keymotion doesn't know yet gets its own card: what it is, calmly. (Firmware
+// 769, 3.01, is supported in beta: such a keyboard opens the app as usual.)
 
 import { ArrowUpRight, BellRing, Images, Keyboard, Timer, type LucideIcon } from "lucide-react";
 import type { UnsupportedKeyboard } from "../bindings/UnsupportedKeyboard";
@@ -16,20 +17,11 @@ import { useApp } from "../lib/store";
 
 const STEPS: MessageKey[] = ["welcome.step1", "welcome.step2", "welcome.step3"];
 
-/** The FAQ entry about AJAZZ's firmware 769, by its heading in each language. */
-const FW769_FAQ: Record<string, string> = {
-  en: "help/faq/#should-i-install-ajazzs-newest-firmware",
-  tr: "help/faq/#ajazzın-en-yeni-klavye-yazılımını-kurmalı-mıyım",
-  ru: "help/faq/#стоит-ли-устанавливать-новейшую-прошивку-ajazz",
-  "zh-CN": "help/faq/#要安装黑爵最新的固件吗",
-};
-
-/** An AK980 PRO on AJAZZ's firmware 769 (3.01): what it is, without alarm,
- *  that nothing is sent to it, and where to read more. "Request support"
- *  stays: its details help add the new commands. */
+/** An AK980 PRO on an AJAZZ firmware Keymotion doesn't know yet: what it
+ *  is, without alarm, and that nothing is sent to it. "Request support"
+ *  sends its details, which help add it. */
 function NewFirmwareCard({ k, version }: { k: UnsupportedKeyboard; version: string | null }) {
   const t = useT();
-  const locale = useApp((s) => s.locale);
   const openReport = useReport((s) => s.openReport);
   return (
     <section className="card flex flex-col gap-4 p-5" data-unsupported={k.id} data-new-firmware>
@@ -39,8 +31,8 @@ function NewFirmwareCard({ k, version }: { k: UnsupportedKeyboard; version: stri
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="text-[12px] text-ink-3">{modelTitle(t, SUPPORTED_MODEL_ID, SUPPORTED_MODEL)}</span>
-          <span className="text-[15px] font-semibold">{t("fw769.title")}</span>
-          <p className="text-[13px] text-ink-2">{version ? t("fw769.body", { version }) : t("fw769.body.unknown")}</p>
+          <span className="text-[15px] font-semibold">{t("newfw.title")}</span>
+          <p className="text-[13px] text-ink-2">{version ? t("newfw.body", { version }) : t("newfw.body.unknown")}</p>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pl-15">
@@ -54,18 +46,9 @@ function NewFirmwareCard({ k, version }: { k: UnsupportedKeyboard; version: stri
               model: k.name ?? undefined,
             })
           }
-          className="btn-secondary"
+          className="btn-primary"
         >
           {t("unsupported.request")}
-        </button>
-        <button
-          type="button"
-          onClick={() => openLink(docsPage(FW769_FAQ[locale] ?? FW769_FAQ.en!, locale)).catch(console.error)}
-          className="flex items-center gap-1 rounded-md text-[13px] text-signal hover:underline"
-          data-fw769-faq
-        >
-          {t("fw769.more")}
-          <ArrowUpRight size={14} aria-hidden />
         </button>
       </div>
     </section>

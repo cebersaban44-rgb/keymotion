@@ -20,6 +20,7 @@ import { SENSITIVITY_MAX, SENSITIVITY_MIN, useMusic, watchMusic } from "../lib/m
 import { usePomodoro } from "../lib/pomodoro";
 import { fromHex, toHex } from "../lib/pomodoroLights";
 import { useApp } from "../lib/store";
+import { LiveLightsNotice } from "../components/KeyboardNotices";
 
 const MODE_HINT: Record<MusicMode, MessageKey> = {
   bars: "music.mode.bars.hint",
@@ -91,6 +92,7 @@ export function Music({ kb }: { kb: KeyboardInfo }) {
       {!usb && (
         <InfoBar tone="warn" icon={<Usb size={20} strokeWidth={1.6} />} title={t("music.noUsb")} data="usb" />
       )}
+      <LiveLightsNotice />
 
       <section className="card flex flex-col">
         {/* On or off, and what the keys show. */}

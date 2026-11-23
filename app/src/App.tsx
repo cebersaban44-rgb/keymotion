@@ -196,8 +196,8 @@ function useTray() {
   const locale = useApp((s) => s.locale);
   const setWindowShown = useApp((s) => s.setWindowShown);
   const requestProfile = useApp((s) => s.requestProfile);
-  // A keyboard Keymotion can't drive yet (an AK980 PRO on AJAZZ's firmware
-  // 769, or another model): the menu says why no keyboard shows.
+  // A keyboard Keymotion can't drive yet (an AK980 PRO on an AJAZZ firmware
+  // it doesn't know, or another model): the menu says why no keyboard shows.
   const unsupported = useUnsupported();
   const newFirmware = unsupported.newFirmware.length > 0;
   const otherKeyboard = unsupported.list.length > 0;
@@ -206,7 +206,7 @@ function useTray() {
     setTrayTexts({
       locale,
       open: tNow("tray.open"),
-      noKeyboard: tNow(newFirmware ? "fw769.tray" : otherKeyboard ? "unsupported.tray" : "tray.noKeyboard"),
+      noKeyboard: tNow(newFirmware ? "newfw.tray" : otherKeyboard ? "unsupported.tray" : "tray.noKeyboard"),
       battery: tNow("tray.battery"),
       connUsb: tNow(connectionKey("usb")),
       connDongle: tNow(connectionKey("dongle")),

@@ -41,6 +41,7 @@ import { useApp } from "../lib/store";
 import { LolLights, hasSpecialLights } from "./GamesLol";
 import { Row, Switch } from "./gamesRows";
 import { FramePlayer } from "./screen/common";
+import { LiveLightsNotice } from "../components/KeyboardNotices";
 
 const SOURCE_KEY: Record<GameSource, MessageKey> = {
   steam: "games.source.steam",
@@ -103,6 +104,7 @@ export function Games({ kb }: { kb: KeyboardInfo }) {
         <h1 className="page-title">{t("nav.games")}</h1>
         <p className="page-desc">{t("games.body")}</p>
       </header>
+      <LiveLightsNotice />
 
       <section className="card flex flex-col">
         <div className="flex flex-col gap-5 p-5">

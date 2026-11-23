@@ -9,6 +9,7 @@ import { InfoBar } from "../components/controls";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import { useT } from "../lib/i18n";
 import { PomodoroPanel } from "./screen/PomodoroPanel";
+import { LiveLightsNotice } from "../components/KeyboardNotices";
 
 export function Focus({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
@@ -22,6 +23,7 @@ export function Focus({ kb }: { kb: KeyboardInfo }) {
       {!usb && (
         <InfoBar tone="warn" icon={<Usb size={20} strokeWidth={1.6} />} title={t("pomo.noUsb")} data="usb" />
       )}
+      <LiveLightsNotice />
       <PomodoroPanel kb={kb} usb={usb} />
     </div>
   );

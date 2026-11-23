@@ -9,6 +9,7 @@ import { useT } from "../lib/i18n";
 import { useLive } from "../lib/live";
 import { useApp } from "../lib/store";
 import { CalendarBody, calendarStatus } from "./screen/CalendarPanel";
+import { LiveLightsNotice } from "../components/KeyboardNotices";
 
 export function Calendar() {
   const t = useT();
@@ -26,6 +27,7 @@ export function Calendar() {
         <h1 className="page-title">{t("nav.calendar")}</h1>
         <p className="page-desc">{t("calendar.desc")}</p>
       </header>
+      <LiveLightsNotice />
 
       <section className="card flex flex-col gap-5 p-5">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line pb-4">

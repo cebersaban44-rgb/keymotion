@@ -10,6 +10,8 @@ import type { KeymapLayer } from "../bindings/KeymapLayer";
 import { ActionBar } from "../components/ActionBar";
 import { InfoBar, Segmented, Tabs } from "../components/controls";
 import { KeyboardView, type Legend } from "../components/KeyboardView";
+import { KeyboardNotices } from "../components/KeyboardNotices";
+import { useWriteBlock } from "../lib/aa";
 import { getKeymapCatalog } from "../lib/ipc";
 import { useAgo, useT, type MessageKey } from "../lib/i18n";
 import { FN_USAGE, normalize, sameAction, usageAction, useKeymap, type LayerMap } from "../lib/keymap";
@@ -53,6 +55,7 @@ export function Keymap({ kb }: { kb: KeyboardInfo }) {
   const keys = kb.geometry?.keys ?? [];
   const selectedKey = keys.find((k) => k.led === selected) ?? null;
   const changed = useKeymap((s) => countChanges(s.draft, s.saved));
+  const blocked = useWriteBlock(kb);
 
   return (
     <div className="@container flex flex-col gap-5">
@@ -74,6 +77,7 @@ export function Keymap({ kb }: { kb: KeyboardInfo }) {
       {!usb && (
         <InfoBar tone="warn" icon={<Usb size={20} strokeWidth={1.6} />} title={t("km.needsUsb")} data="usb" />
       )}
+      <KeyboardNotices kb={kb} />
 
       <Plate kb={kb} layer={layer} catalog={catalog} onSelect={select} selected={selected} />
 
@@ -95,6 +99,7 @@ export function Keymap({ kb }: { kb: KeyboardInfo }) {
 
       <ActionBar
         changes={changed > 0 ? t("bar.keysChanged", { count: changed }) : null}
+        blocked={blocked}
         canSave={usb && loaded}
         onSave={save}
         onRevert={discard}

@@ -4,11 +4,35 @@
 // and to the app's log, so "Copy diagnostics" can carry it. An unexpected
 // one is also offered for reporting, once a session (lib/report.ts).
 
-import type { MessageKey } from "./i18n";
+import { uploadCancelledAt, uploadWaitSeconds } from "./aaText";
+import type { MessageKey, MessageVars } from "./i18n";
 import { logUiError } from "./ipc";
 import { offerProblem } from "./report";
 
-const RULES: [RegExp, MessageKey][] = [
+/** A pattern, its message, and the numbers the message takes from the
+ *  original text. */
+type Rule = [RegExp, MessageKey, ((raw: string) => MessageVars | undefined)?];
+
+const RULES: Rule[] = [
+  // A keyboard of AJAZZ's "AA" family (aa.rs, kb_core::aa): first, since
+  // their texts carry the driver's own errors after a colon.
+  [/the restore stopped while writing/i, "err.aa.restoreStopped"],
+  [/the keyboard on the usb cable could not be read/i, "err.aa.notRead"],
+  [/did not answer when it was opened; it is tried again later/i, "err.aa.reopenLater"],
+  [/could not be backed up first, so nothing was restored/i, "err.aa.restoreNoBackup"],
+  [/backup is not of the keyboard on the usb cable|backup is from another keyboard/i, "err.aa.otherKeyboard"],
+  [/not a keyboard backup|backup not read|backup format \d+ is not known|backup damaged:/i, "err.aa.badBackup"],
+  [/does not look as expected, so nothing is written/i, "err.aa.notSane"],
+  [/waiting for a firmware update; nothing is read or written/i, "err.aa.updatePending"],
+  [/no backup of the keyboard could be saved/i, "err.aa.noBackup"],
+  [/does not report its effect colou?r/i, "err.aa.color"],
+  [/screen upload cancelled after \d+ of \d+ parts/i, "err.aa.cancelled", (raw) => uploadCancelledAt(raw) ?? undefined],
+  [/screen upload cancelled before it started/i, "err.aa.cancelledBefore"],
+  [/screen upload stopped part-way; no commands for another/i, "err.aa.wait", (raw) => ({ seconds: uploadWaitSeconds(raw) ?? 5 })],
+  [/cannot repeat while the key is held/i, "err.aa.holdMacro"],
+  [/not supported on this keyboard/i, "err.aa.unsupported"],
+  [/would replace the keyboard's clock page; not acknowledged/i, "err.clockPage"],
+  [/not with the keyboard simulator/i, "err.sim.start"],
   // Writes refused before anything was sent (device.rs `WriteBlock`).
   [/more than one keyboard on the usb cable/i, "err.several"],
   [/another program is using the keyboard \(ajazz-driver\)/i, "err.conflict.ajazz"],
@@ -29,7 +53,7 @@ const RULES: [RegExp, MessageKey][] = [
   [/profile name empty/i, "err.profile.name"],
   [/profile limit reached/i, "err.profile.full"],
   [/nothing to put in the profile/i, "err.profile.nothing"],
-  [/blocked by safety guard/i, "err.guard"],
+  [/blocked by (the )?safety guard/i, "err.guard"],
   [/screen upload stopped/i, "err.uploadStopped"],
   [/live mode is off/i, "err.liveOff"],
   [/fn key cannot be reassigned/i, "err.fn"],
@@ -49,6 +73,18 @@ const RULES: [RegExp, MessageKey][] = [
  *  taken, a wrong file): the log records them as warnings ("action
  *  refused"), so real errors stand out in the diagnostics. */
 const EXPECTED: ReadonlySet<MessageKey> = new Set<MessageKey>([
+  "err.aa.reopenLater",
+  "err.aa.otherKeyboard",
+  "err.aa.notSane",
+  "err.aa.updatePending",
+  "err.aa.color",
+  "err.aa.cancelled",
+  "err.aa.cancelledBefore",
+  "err.aa.wait",
+  "err.aa.holdMacro",
+  "err.aa.unsupported",
+  "err.clockPage",
+  "err.sim.start",
   "err.several",
   "err.conflict.ajazz",
   "err.conflict.signalrgb",
@@ -77,7 +113,7 @@ const EXPECTED: ReadonlySet<MessageKey> = new Set<MessageKey>([
 ]);
 
 /** A short, translated message for an error from the backend. */
-export function friendlyError(e: unknown, t: (key: MessageKey) => string, quiet = false): string {
+export function friendlyError(e: unknown, t: (key: MessageKey, vars?: MessageVars) => string, quiet = false): string {
   const raw = e instanceof Error ? e.message : String(e);
   const hit = RULES.find(([re]) => re.test(raw));
   const key = hit ? hit[1] : "err.generic";
@@ -87,5 +123,6 @@ export function friendlyError(e: unknown, t: (key: MessageKey) => string, quiet 
     void logUiError(`${expected ? "action refused" : "action failed"}: ${raw}`);
     if (!expected) offerProblem(raw);
   }
-  return t(key);
+  const vars = hit?.[2]?.(raw);
+  return vars ? t(key, vars) : t(key);
 }
