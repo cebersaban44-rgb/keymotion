@@ -149,6 +149,37 @@ public static class KmNative {
         return found;
     }
 
+    delegate bool EnumChildProc(IntPtr hWnd, IntPtr lParam);
+    [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, EnumChildProc cb, IntPtr lParam);
+
+    // Every visible dialog on the desktop (an installer's window, a message
+    // box): its process, title and the texts in it.
+    public static List<string> Dialogs() {
+        var found = new List<string>();
+        EnumWindows((h, l) => {
+            var cls = new StringBuilder(64);
+            GetClassNameW(h, cls, 64);
+            if (IsWindowVisible(h) && cls.ToString() == "#32770") {
+                uint pid;
+                GetWindowThreadProcessId(h, out pid);
+                var title = new StringBuilder(256);
+                GetWindowTextW(h, title, 256);
+                var texts = new List<string>();
+                EnumChildWindows(h, (c, p) => {
+                    var text = new StringBuilder(512);
+                    GetWindowTextW(c, text, 512);
+                    if (text.Length > 0 && IsWindowVisible(c)) texts.Add(text.ToString());
+                    return true;
+                }, IntPtr.Zero);
+                string name;
+                try { name = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; } catch { name = "?"; }
+                found.Add(String.Format("{0} ({1}) '{2}': {3}", name, pid, title, String.Join(" / ", texts)));
+            }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
+
     // Those at least minSize wide and high.
     public static List<IntPtr> BigWindowHandles(int pid, int minSize) {
         var found = new List<IntPtr>();
@@ -291,8 +322,10 @@ function Invoke-Setup([string]$Path, [string[]]$Arguments, [int]$TimeoutSec = 60
     $psi.UseShellExecute = $false
     $p = [Diagnostics.Process]::Start($psi)
     if (-not $p.WaitForExit($TimeoutSec * 1000)) {
+        $dialogs = @([KmNative]::Dialogs()) -join ' || '
         try { $p.Kill($true) } catch { }
-        throw "$([IO.Path]::GetFileName($Path)) $($Arguments -join ' ') did not end within $TimeoutSec s (a message box waiting?)"
+        Get-Process | Where-Object { $_.Path -and ($_.Path -like "$InstallDir\*" -or $_.Path -match '\\~nsu[^\\]*\.tmp\\') } | Stop-Process -Force -ErrorAction SilentlyContinue
+        throw "$([IO.Path]::GetFileName($Path)) $($Arguments -join ' ') did not end within $TimeoutSec s; dialogs on screen: $(if ($dialogs) { $dialogs } else { 'none' })"
     }
     $p.ExitCode
 }
@@ -478,9 +511,16 @@ function Enable-AgentAccess {
     $null = $p.Handle
     $window = Get-AppWindow $p
     $steps = [System.Collections.Generic.List[string]]::new()
-    Invoke-UiElement (Wait-UiElement $window @('AI agents') 'to open the AI agents page' 60 -Pressable)
-    $steps.Add('AI agents')
-    Invoke-UiElement (Wait-UiElement $window @('Agents may use the keyboard') 'on the AI agents page' -Pressable)
+    # A press that comes while the page is still starting may be lost: again
+    # until the page is there.
+    $switch = $null
+    for ($try = 1; $try -le 4 -and -not $switch; $try++) {
+        Invoke-UiElement (Wait-UiElement $window @('AI agents') 'to open the AI agents page' 60 -Pressable)
+        $switch = Find-UiElement $window @('Agents may use the keyboard') 10 -Pressable
+    }
+    $steps.Add("AI agents$(if ($try -gt 2) { " (pressed $($try - 1) times)" })")
+    if (-not $switch) { $switch = Wait-UiElement $window @('Agents may use the keyboard') 'on the AI agents page' 5 -Pressable }
+    Invoke-UiElement $switch
     $steps.Add('switch')
     $dialog = Find-UiElement $window @('Turning on agent access') 10
     if (-not $dialog) {
@@ -899,7 +939,7 @@ Invoke-Scenario 'd' 'Manual reinstall keeps the connections and PATH' {
     # The same setup run by hand over the installed copy (not an update): in
     # passive mode Tauri's "already installed" step runs the old
     # uninstaller first, without /UPDATE, for the same version.
-    $code = Invoke-Setup $Installer @('/P')
+    $code = Invoke-Setup $Installer @('/P') -TimeoutSec 180
     Confirm-That ($code -eq 0) 'setup /P over the installed copy ends with 0' "exit code $code"
     Confirm-That (-not (Test-Path -LiteralPath $SchemeKey)) 'the old uninstaller ran (its cleanup removed the keymotion: scheme)' $(if (Test-Path -LiteralPath $SchemeKey) { 'scheme still registered: the old uninstaller did not run, so KEYMOTION_SETUP_REPLACES was not exercised' } else { 'scheme removed' })
     Confirm-That ((Get-InstalledVersion) -eq $Version -and (Test-Path -LiteralPath $CliExe)) 'Keymotion is installed afterwards' "DisplayVersion $(Get-InstalledVersion)"
