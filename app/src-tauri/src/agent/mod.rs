@@ -30,6 +30,11 @@
 //!   (`card`: its own permission, `--write-flash`, an hourly number per
 //!   agent, the live mode's budget; [`cards`]). Agents never turn these
 //!   permissions on: only the page does.
+//! * An agent's own animations (§12.1 last row, §12.5): `scene` plays a
+//!   timeline of steps (keys, colour, effect, when, how long) and may keep
+//!   it under a name, `pattern` lists, plays and forgets those, and `spell`
+//!   writes a word on its letter keys. RAM only, like every light; the
+//!   patterns are kept in `agent-patterns.json`, per agent.
 
 mod apps;
 mod cards;
@@ -51,7 +56,10 @@ use crate::settings;
 use cards::{agent_of, CardBook, OnScreen, Stage};
 use effects::FlashGuard;
 use engine::{in_night, Engine, Now};
-use kb_agent::protocol::{CardArgs, FocusAction, FocusArgs, ProfileAction, ProfileArgs};
+use kb_agent::protocol::{
+    CardArgs, FocusAction, FocusArgs, PatternAction, PatternArgs, ProfileAction, ProfileArgs, Scene, SceneArgs,
+    SceneStep, SpellArgs,
+};
 use kb_agent::{AgentError, Call, Channel, Command, ErrorCode, KeySpec, ServerInfo, SourceName};
 use kb_protocol::sonix::level_factor;
 use kb_protocol::sonix::screen::ScreenAnimation;
@@ -144,6 +152,98 @@ pub struct ScreenNow {
 
 /// Agents' profile writes a day, each.
 pub const PROFILE_WRITES_PER_DAY: u32 = 10;
+/// Patterns one agent keeps.
+pub const MAX_PATTERNS: usize = 32;
+/// Agents with patterns.
+const MAX_PATTERN_AGENTS: usize = 32;
+const PATTERNS_FILE: &str = "agent-patterns.json";
+
+/// The agents' saved scenes: agent → name → scene.
+type Patterns = std::collections::BTreeMap<String, std::collections::BTreeMap<String, SceneArgs>>;
+
+/// `spell`'s timing at each speed (1–5): how long a letter shows.
+const SPELL_LETTER_MS: [u64; 5] = [900, 700, 500, 380, 280];
+/// The dark gap when the same key comes twice in a row.
+const SPELL_GAP_MS: u64 = 200;
+
+/// The key a character is written on, by the model files' ids.
+fn spell_key(c: char) -> Option<String> {
+    if c.is_ascii_alphanumeric() {
+        return Some(c.to_ascii_lowercase().to_string());
+    }
+    let id = match c {
+        '-' => "minus",
+        '=' => "equal",
+        ',' => "comma",
+        '.' => "period",
+        '/' => "slash",
+        ';' => "semicolon",
+        '\'' => "quote",
+        '[' => "lbracket",
+        ']' => "rbracket",
+        '\\' => "backslash",
+        '`' => "grave",
+        _ => return None,
+    };
+    Some(id.to_string())
+}
+
+/// A word as a scene: each character on its key, one after another; a
+/// space a short pause; the same key twice in a row dark in between; the
+/// word again after a pause, `times` times. The characters written and
+/// those this keyboard has no key for.
+fn spell_scene(
+    spell: &kb_agent::protocol::Spell,
+    has: impl Fn(&str) -> bool,
+) -> Result<(Scene, String, Vec<String>), AgentError> {
+    let on = SPELL_LETTER_MS[(spell.speed.clamp(1, 5) - 1) as usize];
+    let mut steps = Vec::new();
+    let mut written = String::new();
+    let mut skipped: Vec<String> = Vec::new();
+    let mut t = 0u64;
+    let mut last: Option<String> = None;
+    for c in spell.text.chars() {
+        if c.is_whitespace() {
+            t += on;
+            last = None;
+            written.push(' ');
+            continue;
+        }
+        let Some(id) = spell_key(c).filter(|id| has(id)) else {
+            if !skipped.contains(&c.to_string()) {
+                skipped.push(c.to_string());
+            }
+            continue;
+        };
+        if last.as_deref() == Some(id.as_str()) {
+            t += SPELL_GAP_MS;
+        }
+        let keys = KeySpec::parse(&id)?;
+        steps.push(SceneStep { keys, color: spell.color, effect: kb_agent::Effect::solid(), at_ms: t, for_ms: on });
+        written.push(c);
+        t += on;
+        last = Some(id);
+    }
+    if steps.is_empty() {
+        return Err(AgentError::new(ErrorCode::BadValue, "None of these characters has a key on this keyboard.")
+            .with_hint("Letters a-z, digits and - = , . / ; ' [ ] \\ ` can be written."));
+    }
+    // Written again after a pause of two letters; the light ends with the
+    // last letter.
+    let pause = if spell.times > 1 { 2 * on } else { 0 };
+    let length = t + pause;
+    let total = (length * u64::from(spell.times) - pause).min(kb_agent::values::MAX_SIGNAL_DURATION.as_millis() as u64);
+    let scene = Scene {
+        steps,
+        length_ms: length,
+        repeat: spell.times,
+        duration: Duration::from_millis(total),
+        id: spell.id.clone(),
+        save: None,
+        play: true,
+    };
+    Ok((scene, written.trim().to_string(), skipped))
+}
 
 /// The screen's upload budget, for `status`.
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -178,6 +278,9 @@ pub trait Host: Send + Sync {
     /// (`kb_hooks::setup::mark_stopped`): `Some` when the user quit it or
     /// turned agent access off, `None` when they may again.
     fn note_stopped(&self, why: Option<kb_hooks::setup::Stopped>);
+    /// The agents' saved patterns, as they were last saved.
+    fn load_patterns(&self) -> Option<Value>;
+    fn save_patterns(&self, patterns: &Value) -> Result<(), String>;
     /// The focus timer, for an agent: `action`, and on `start` one block
     /// of `minutes` instead of the user's sequence.
     fn focus_control(&self, action: FocusAction, minutes: Option<u16>) -> Result<FocusDone, String>;
@@ -242,6 +345,8 @@ pub struct Core {
     cards_moved: Condvar,
     /// Profile writes per agent: the day (local) and how many.
     writes: Mutex<HashMap<String, (i64, u32)>>,
+    /// The agents' saved scenes.
+    patterns: Mutex<Patterns>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -297,7 +402,18 @@ impl Core {
             cards: Mutex::new(CardBook::default()),
             cards_moved: Condvar::new(),
             writes: Mutex::new(HashMap::new()),
+            patterns: Mutex::new(Patterns::new()),
         })
+        .with_patterns()
+    }
+
+    /// The saved patterns, from the host.
+    fn with_patterns(self: Arc<Self>) -> Arc<Self> {
+        let loaded = self.host.load_patterns().and_then(|v| serde_json::from_value::<Patterns>(v).ok());
+        if let Some(p) = loaded {
+            *lock(&self.patterns) = p;
+        }
+        self
     }
 
     fn now(&self) -> Now {
@@ -375,6 +491,9 @@ impl Core {
             Command::Focus(args) => self.focus(call, &args),
             Command::Profile(args) => self.profile(call, &args),
             Command::Card(args) => self.card(call, &args),
+            Command::Scene(args) => self.scene(call, &args),
+            Command::Pattern(args) => self.pattern(call, &args),
+            Command::Spell(args) => self.spell(call, &args),
             other => self.change(call, other).inspect(|data| {
                 // F: a long task done puts a card up, when the user lets it.
                 if let Some(ms) = data.get("turn_ms").and_then(Value::as_u64) {
@@ -430,8 +549,27 @@ impl Core {
         name: &'static str,
         work: impl FnOnce() -> Result<Value, AgentError>,
     ) -> Result<Value, AgentError> {
+        self.carried_as(call, name, true, work)
+    }
+
+    /// [`Self::carried`]; `count: false` when `work` counts the request
+    /// itself (a light the engine puts up).
+    fn carried_as(
+        &self,
+        call: Call<'_>,
+        name: &'static str,
+        count: bool,
+        work: impl FnOnce() -> Result<Value, AgentError>,
+    ) -> Result<Value, AgentError> {
         let now = self.now();
-        let gate = lock(&self.engine).gate(call.source, now);
+        let gate = {
+            let mut e = lock(&self.engine);
+            if count {
+                e.gate(call.source, now)
+            } else {
+                e.allowed()
+            }
+        };
         let result = gate.and_then(|()| work());
         let id = result.as_ref().ok().and_then(|d| d.get("id")).and_then(Value::as_str).map(str::to_string);
         lock(&self.engine).note(call.source, name, result.as_ref().err().map(|e| e.code), id, now);
@@ -532,7 +670,7 @@ impl Core {
                     .collect();
                 Ok(json!({ "profiles": list, "model": model }))
             }
-            ProfileAction::Show => self.carried(call, "profile", || {
+            ProfileAction::Show => self.carried_as(call, "profile", false, || {
                 let name = p.name.as_deref().unwrap_or_default();
                 let profile = Self::find_profile(&all.profiles, name)?;
                 let index = self.lights()?;
@@ -621,6 +759,147 @@ impl Core {
     fn day(&self) -> i64 {
         let minutes = (self.host.wall_ms() / 60_000.0).floor() as i64 - i64::from(self.host.minute_of_day());
         minutes.div_euclid(24 * 60)
+    }
+
+    // ------------------------------------------- scenes, patterns, spelling
+
+    /// What a light just put up is hidden by, as `light` says it.
+    fn hidden(&self) -> Value {
+        match self.lights_now(&self.settings()) {
+            AgentLights::Game => json!("game"),
+            AgentLights::NightOff => json!("night"),
+            _ => Value::Null,
+        }
+    }
+
+    /// Play `scene` as the source's light `id`.
+    fn play(&self, call: Call<'_>, scene: &Scene, id: &str) -> Result<Value, AgentError> {
+        let index = self.lights()?;
+        let now = self.now();
+        let idle = self.host.idle_ms();
+        let visible = self.shows(&self.settings());
+        let mut answer = {
+            let mut e = lock(&self.engine);
+            e.set_visible(visible, now.mono);
+            e.observe_idle(idle, now.mono);
+            e.prune(now.mono);
+            e.scene(call.source, id, scene, &index, now)?
+        };
+        answer["hidden"] = self.hidden();
+        Ok(answer)
+    }
+
+    /// Keep `args` as `agent`'s pattern `name`.
+    fn keep_pattern(&self, agent: &str, name: &str, args: &SceneArgs) -> Result<bool, AgentError> {
+        let snapshot = {
+            let mut all = lock(&self.patterns);
+            if !all.contains_key(agent) && all.len() >= MAX_PATTERN_AGENTS {
+                return Err(AgentError::new(ErrorCode::RateLimited, "Too many agents keep patterns already."));
+            }
+            let mine = all.entry(agent.to_string()).or_default();
+            if !mine.contains_key(name) && mine.len() >= MAX_PATTERNS {
+                return Err(AgentError::new(
+                    ErrorCode::BadArgument,
+                    format!("{agent} keeps {MAX_PATTERNS} patterns already; delete one first."),
+                )
+                .with_hint("keymotion-cli pattern list, then pattern delete NAME."));
+            }
+            let replaced = mine.insert(name.to_string(), args.to_pattern()).is_some();
+            (serde_json::to_value(&*all), replaced)
+        };
+        let (value, replaced) = snapshot;
+        let value = value.map_err(|e| AgentError::new(ErrorCode::Internal, format!("Patterns not written: {e}")))?;
+        self.host.save_patterns(&value).map_err(|e| AgentError::new(ErrorCode::Internal, format!("Patterns not saved: {e}")))?;
+        Ok(replaced)
+    }
+
+    /// `scene`: play the agent's timeline; with `save`, keep it.
+    fn scene(&self, call: Call<'_>, args: &SceneArgs) -> Result<Value, AgentError> {
+        let scene = args.validate()?;
+        self.carried_as(call, "scene", !scene.play, || {
+            let agent = agent_of(call.source.as_str()).to_string();
+            let mut answer = if scene.play {
+                let id = scene.id.as_ref().map_or_else(|| format!("{}:scene", call.source.as_str()), |i| i.as_str().to_string());
+                self.play(call, &scene, &id)?
+            } else {
+                json!({})
+            };
+            if let Some(name) = &scene.save {
+                let replaced = self.keep_pattern(&agent, name, args)?;
+                answer["saved"] = json!(name);
+                answer["replaced_pattern"] = json!(replaced);
+            }
+            Ok(answer)
+        })
+    }
+
+    /// `pattern list|play|delete`: the agent's saved scenes.
+    fn pattern(&self, call: Call<'_>, args: &PatternArgs) -> Result<Value, AgentError> {
+        let p = args.validate()?;
+        let agent = agent_of(call.source.as_str()).to_string();
+        let name = p.name.clone().unwrap_or_default();
+        match p.action {
+            PatternAction::List => {
+                let all = lock(&self.patterns);
+                let list: Vec<Value> = all
+                    .get(&agent)
+                    .into_iter()
+                    .flatten()
+                    .map(|(name, a)| {
+                        let length = a.validate().map(|s| s.length_ms).unwrap_or(0);
+                        json!({ "name": name, "steps": a.steps.len(), "length_ms": length, "repeat": a.repeat.unwrap_or(1) })
+                    })
+                    .collect();
+                Ok(json!({ "agent": agent, "patterns": list, "max": MAX_PATTERNS }))
+            }
+            PatternAction::Play => self.carried_as(call, "pattern", false, || {
+                let saved = lock(&self.patterns).get(&agent).and_then(|m| m.get(&name)).cloned().ok_or_else(|| {
+                    AgentError::new(ErrorCode::BadValue, format!("{agent} has no pattern '{name}'."))
+                        .with_hint("keymotion-cli pattern list shows yours; scene FILE --save NAME keeps one.")
+                })?;
+                let args = SceneArgs {
+                    repeat: p.repeat.or(saved.repeat),
+                    for_ms: p.for_ms.or(if p.repeat.is_some() { None } else { saved.for_ms }),
+                    ..saved
+                };
+                let scene = args.validate()?;
+                let id = p.id.as_ref().map_or_else(|| format!("{}:pattern-{name}", call.source.as_str()), |i| i.as_str().to_string());
+                let mut answer = self.play(call, &scene, &id)?;
+                answer["pattern"] = json!(name);
+                Ok(answer)
+            }),
+            PatternAction::Delete => self.carried(call, "pattern", || {
+                let value = {
+                    let mut all = lock(&self.patterns);
+                    let gone = all.get_mut(&agent).and_then(|m| m.remove(&name)).is_some();
+                    if !gone {
+                        return Ok(json!({ "deleted": false, "pattern": name }));
+                    }
+                    all.retain(|_, m| !m.is_empty());
+                    serde_json::to_value(&*all)
+                };
+                let value = value.map_err(|e| AgentError::new(ErrorCode::Internal, format!("Patterns not written: {e}")))?;
+                self.host
+                    .save_patterns(&value)
+                    .map_err(|e| AgentError::new(ErrorCode::Internal, format!("Patterns not saved: {e}")))?;
+                Ok(json!({ "deleted": true, "pattern": name }))
+            }),
+        }
+    }
+
+    /// `spell`: a word on its letter keys.
+    fn spell(&self, call: Call<'_>, args: &SpellArgs) -> Result<Value, AgentError> {
+        let spell = args.validate()?;
+        self.carried_as(call, "spell", false, || {
+            let index = self.lights()?;
+            let (scene, written, skipped) =
+                spell_scene(&spell, |id| KeySpec::parse(id).is_ok_and(|k| index.resolve(&k).is_ok()))?;
+            let id = spell.id.as_ref().map_or_else(|| format!("{}:spell", call.source.as_str()), |i| i.as_str().to_string());
+            let mut answer = self.play(call, &scene, &id)?;
+            answer["written"] = json!(written);
+            answer["skipped"] = json!(skipped);
+            Ok(answer)
+        })
     }
 
     /// The live mode's name for a card: its title, else its first words.
@@ -1341,6 +1620,18 @@ impl Host for AppHost {
         }
     }
 
+    fn load_patterns(&self) -> Option<Value> {
+        let dir = self.config_dir.as_deref()?;
+        settings::load::<Value>(dir, PATTERNS_FILE, VERSION)
+    }
+
+    fn save_patterns(&self, patterns: &Value) -> Result<(), String> {
+        match &self.config_dir {
+            Some(dir) => settings::save(dir, PATTERNS_FILE, VERSION, patterns).map_err(|e| e.to_string()),
+            None => Ok(()),
+        }
+    }
+
     fn focus_control(&self, action: FocusAction, minutes: Option<u16>) -> Result<FocusDone, String> {
         use crate::pomodoro::{PomodoroAction, PomodoroHandle};
         use tauri::Manager;
@@ -1683,6 +1974,7 @@ mod tests {
         submitted: Mutex<Vec<String>>,
         on_screen: Mutex<OnScreen>,
         returns: Mutex<Vec<u64>>,
+        patterns: Mutex<Option<Value>>,
     }
 
     /// A per-key profile for the keyboard on the cable: Esc red, F1 blue.
@@ -1738,6 +2030,7 @@ mod tests {
                 submitted: Mutex::new(Vec::new()),
                 on_screen: Mutex::new(OnScreen::default()),
                 returns: Mutex::new(Vec::new()),
+                patterns: Mutex::new(None),
             })
         }
 
@@ -1804,6 +2097,13 @@ mod tests {
         }
         fn note_stopped(&self, why: Option<kb_hooks::setup::Stopped>) {
             lock(&self.stopped).push(why);
+        }
+        fn load_patterns(&self) -> Option<Value> {
+            lock(&self.patterns).clone()
+        }
+        fn save_patterns(&self, patterns: &Value) -> Result<(), String> {
+            *lock(&self.patterns) = Some(patterns.clone());
+            Ok(())
         }
         fn focus_control(&self, action: FocusAction, minutes: Option<u16>) -> Result<FocusDone, String> {
             lock(&self.focus_calls).push((action, minutes));
@@ -2333,6 +2633,103 @@ mod tests {
             (AgentCardKind::LongTask, Some(14), Some("klavye"), 300)
         );
         assert_eq!(lock(&core.cards).sent_this_hour("claude-code", fake.mono_ms()), 1, "it counts for the hour");
+    }
+
+    fn frame_has(fake: &Fake, key: &str) -> Option<kb_protocol::sonix::Rgb> {
+        let led = KeyIndex::for_model("ajazz-ak980-pro").unwrap().keys().iter().find(|k| k.id == key).unwrap().led;
+        fake.last_frame().and_then(|f| f.colors.iter().find(|c| c.0 == led).map(|c| c.1))
+    }
+
+    #[test]
+    fn a_word_is_spelled_key_after_key_and_what_is_missing_is_said() {
+        let fake = Fake::new();
+        let core = core_with(&fake, AgentSettings { enabled: true, ..AgentSettings::default() });
+        let spell = |text: &str| Command::Spell(SpellArgs { text: text.into(), color: Some("green".into()), ..Default::default() });
+        let answer = call(&core, "tests", spell("Gül 2")).unwrap();
+        assert_eq!(answer["written"], "Gl 2");
+        assert_eq!(answer["skipped"], json!(["ü"]));
+        // G, then L, a pause for the space, then 2: half a second each.
+        assert_eq!(answer["length_ms"], 2_000);
+        let mut w = Worker::default();
+        core.tick(&mut w);
+        assert_eq!(frame_has(&fake, "g"), Some([0, 255, 0]));
+        assert_eq!(frame_has(&fake, "l"), None);
+        fake.advance(600);
+        core.tick(&mut w);
+        assert_eq!((frame_has(&fake, "g"), frame_has(&fake, "l")), (None, Some([0, 255, 0])));
+        fake.advance(1_000);
+        core.tick(&mut w);
+        assert_eq!(frame_has(&fake, "2"), Some([0, 255, 0]));
+        assert_eq!(call(&core, "tests", spell("çğü")).unwrap_err().code, ErrorCode::BadValue);
+    }
+
+    #[test]
+    fn the_same_key_twice_goes_dark_in_between() {
+        let s = kb_agent::protocol::SpellArgs { text: "OO".into(), speed: Some(3), ..Default::default() }.validate().unwrap();
+        let (scene, written, skipped) = spell_scene(&s, |_| true).unwrap();
+        let times: Vec<(u64, u64)> = scene.steps.iter().map(|x| (x.at_ms, x.for_ms)).collect();
+        assert_eq!(times, [(0, 500), (500 + SPELL_GAP_MS, 500)]);
+        assert_eq!((written.as_str(), skipped.len()), ("OO", 0));
+        // Twice: a pause of two letters between the words.
+        let twice = kb_agent::protocol::SpellArgs { text: "OK".into(), times: Some(2), speed: Some(5), ..Default::default() }
+            .validate()
+            .unwrap();
+        let (scene, _, _) = spell_scene(&twice, |_| true).unwrap();
+        assert_eq!((scene.length_ms, scene.repeat), (2 * 280 + 2 * 280, 2));
+        assert_eq!(scene.duration, Duration::from_millis(2 * 1_120 - 560), "it ends with the last letter");
+    }
+
+    fn scene_args(save: Option<&str>, play: bool) -> SceneArgs {
+        SceneArgs {
+            steps: vec![
+                kb_agent::protocol::SceneStepArgs { keys: Some("f1".into()), color: "red".into(), ..Default::default() },
+                kb_agent::protocol::SceneStepArgs { keys: Some("f2".into()), color: "blue".into(), ..Default::default() },
+            ],
+            save: save.map(str::to_string),
+            play: Some(play),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn an_agent_saves_its_own_patterns_and_plays_them_by_name() {
+        let fake = Fake::new();
+        let core = core_with(&fake, AgentSettings { enabled: true, ..AgentSettings::default() });
+        let pattern = |action: &str, name: Option<&str>| {
+            Command::Pattern(PatternArgs { action: action.into(), name: name.map(str::to_string), ..Default::default() })
+        };
+        // Played and kept under a name.
+        let played = call(&core, "claude-code:s1", Command::Scene(scene_args(Some("Deploy"), true))).unwrap();
+        assert_eq!((played["saved"].clone(), played["length_ms"].clone()), (json!("deploy"), json!(1000)));
+        // Only kept.
+        call(&core, "claude-code:s1", Command::Scene(scene_args(Some("quiet"), false))).unwrap();
+        let list = call(&core, "claude-code:s2", pattern("list", None)).unwrap();
+        let names: Vec<&str> = list["patterns"].as_array().unwrap().iter().map(|p| p["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["deploy", "quiet"], "every session of the agent sees them");
+        assert_eq!(call(&core, "codex:x", pattern("list", None)).unwrap()["patterns"], json!([]), "not another agent's");
+        // Played by name, from another session.
+        let again = call(&core, "claude-code:s2", pattern("play", Some("deploy"))).unwrap();
+        assert_eq!((again["pattern"].clone(), again["id"].clone()), (json!("deploy"), json!("claude-code:s2:pattern-deploy")));
+        let mut w = Worker::default();
+        core.tick(&mut w);
+        assert_eq!(frame_has(&fake, "f1"), Some([255, 0, 0]));
+        assert_eq!(call(&core, "codex:x", pattern("play", Some("deploy"))).unwrap_err().code, ErrorCode::BadValue);
+        // Kept across a restart: the host has them.
+        let core2 = core_with(&fake, AgentSettings { enabled: true, ..AgentSettings::default() });
+        assert_eq!(call(&core2, "claude-code:s3", pattern("list", None)).unwrap()["patterns"].as_array().unwrap().len(), 2);
+        assert_eq!(call(&core2, "claude-code:s3", pattern("delete", Some("quiet"))).unwrap()["deleted"], true);
+        assert_eq!(call(&core2, "claude-code:s3", pattern("delete", Some("quiet"))).unwrap()["deleted"], false);
+        // At most 32 each.
+        for i in 0..31 {
+            call(&core2, "cli", Command::Scene(scene_args(Some(&format!("p{i}")), false))).unwrap();
+        }
+        call(&core2, "cli", Command::Scene(scene_args(Some("p31"), false))).unwrap();
+        let e = call(&core2, "cli", Command::Scene(scene_args(Some("p32"), false))).unwrap_err();
+        assert_eq!(e.code, ErrorCode::BadArgument);
+        assert!(call(&core2, "cli", Command::Scene(scene_args(Some("p31"), false))).is_ok(), "replacing one is fine");
+        // Access off: nothing plays, nothing is kept.
+        core2.save(AgentSettings::default()).unwrap();
+        assert_eq!(call(&core2, "cli", Command::Scene(scene_args(None, true))).unwrap_err().code, ErrorCode::AgentAccessOff);
     }
 
     #[test]
