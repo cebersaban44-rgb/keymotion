@@ -1,7 +1,8 @@
 // Agents' cards for the keyboard screen (step 7): the backend asks for one
 // (`agent-card`), the page draws it like the other live cards and hands it
 // back (`agents_card_drawn`, the picture as `live_submit` takes it), or
-// says why it could not (`agents_card_failed`). The backend waits 15 s.
+// says why it could not (`agents_card_failed`). The backend waits 15 s,
+// and asks only while the page says it listens (`agents_card_drawer_ready`).
 //
 // Browser preview: `?agentCard=text|image|picture|longTask` (with
 // `?mock=usb`) draws a sample card once the app has started, and
@@ -80,12 +81,19 @@ export function startAgentCards(draw: (c: AgentCard) => Promise<Prepared>): () =
     };
   }
   const off = listen<AgentCard>("agent-card", (e) => onCard(e.payload));
-  // Tell the app the drawer listens, so it sends cards only while it does
-  // (an app without the command just goes on without it).
-  off
-    .then(() => invoke("agents_card_drawer_ready"))
-    .catch((e) => console.warn("agents_card_drawer_ready", e));
+  // The app asks for cards only while a drawer listens: say so once the
+  // listener is live, and say it stops when it goes away (the app also
+  // forgets it when the page loads again or the window closes).
+  let stopped = false;
+  off.then(() => (stopped ? undefined : invoke("agents_card_drawer_ready"))).catch(console.error);
+  const gone = () => {
+    invoke("agents_card_drawer_ready", { ready: false }).catch(() => {});
+  };
+  window.addEventListener("pagehide", gone);
   return () => {
+    stopped = true;
+    window.removeEventListener("pagehide", gone);
+    gone();
     off.then((f) => f()).catch(console.error);
   };
 }
