@@ -11,5 +11,6 @@ pub mod shape;
 pub mod sonix;
 
 pub use detect::{
-    app_capabilities, classify, detect, unknown_keyboards, wired_count, DetectedKeyboard, Found, UnknownKeyboard,
+    app_capabilities, classify, detect, mode_capabilities, unknown_keyboards, wired_count, DetectedKeyboard, Found,
+    UnknownKeyboard,
 };
