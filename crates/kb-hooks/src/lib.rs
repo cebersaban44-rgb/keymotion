@@ -11,9 +11,9 @@
 //!   are kept as they are, in their order.
 //! * [`json`]: JSON that keeps the order of an object's keys.
 //!
-//! keymotion-cli uses all of it; the app's Agents page will call [`setup`]
-//! directly, and refreshes the skill file at startup
-//! ([`setup::refresh`]).
+//! keymotion-cli uses all of it; the app's AI agents page calls [`setup`]
+//! directly (`app/src-tauri/src/agent/apps.rs`), and the app refreshes the
+//! skill file at startup ([`setup::refresh`]).
 
 pub mod event;
 pub mod json;

@@ -24,6 +24,7 @@
 //! * The app's own log gets the source, the command and the result of each
 //!   request; nothing an agent's user typed reaches the app at all.
 
+mod apps;
 mod config;
 mod effects;
 mod engine;
@@ -31,6 +32,7 @@ mod keys;
 
 use crate::device::{DeviceHandle, LightLayer, LiveFrame, Quiet, Request};
 use crate::dto::{
+    AgentApp, AgentAppPlan, AgentConnectOutcome, AgentConnectPlan, AgentConnections, AgentDisconnectOutcome,
     AgentLights, AgentLook, AgentNightMode, AgentServer, AgentSettings, AgentsState, Connection, Feature, FlashWrite,
     KeyboardInfo,
 };
@@ -524,9 +526,23 @@ impl Core {
     /// The page saved its settings (any of them). They are written first
     /// and only then used: a save that fails changes nothing.
     pub fn save(&self, settings: AgentSettings) -> Result<AgentsState, String> {
-        let settings = settings.sanitized();
+        self.save_with(|_| settings)
+    }
+
+    /// Turn agent access on or off, and nothing else: read and written
+    /// while no other save runs, so a setting the page or an agent changed
+    /// meanwhile is never put back.
+    pub fn set_enabled(&self, on: bool) -> Result<AgentsState, String> {
+        self.save_with(|now| AgentSettings { enabled: on, ..now })
+    }
+
+    /// Save what `change` makes of the settings in force, under the save
+    /// lock. Written first and only then used: a save that fails changes
+    /// nothing.
+    fn save_with(&self, change: impl FnOnce(AgentSettings) -> AgentSettings) -> Result<AgentsState, String> {
         let written = {
             let _saving = lock(&self.saving);
+            let settings = change(self.settings()).sanitized();
             self.host.save(&settings).map(|()| {
                 let mut e = lock(&self.engine);
                 let toggled = e.settings().enabled != settings.enabled;
@@ -534,11 +550,11 @@ impl Core {
                     tracing::info!(on = settings.enabled, "agent access");
                 }
                 e.set_settings(settings);
-                toggled
+                (toggled, settings.enabled)
             })
         };
-        if let Ok(true) = written {
-            self.host.note_stopped((!settings.enabled).then_some(kb_hooks::setup::Stopped::AccessOff));
+        if let Ok((true, enabled)) = written {
+            self.host.note_stopped((!enabled).then_some(kb_hooks::setup::Stopped::AccessOff));
         }
         self.wake();
         written.map(|_| self.state())
@@ -801,7 +817,7 @@ impl Host for AppHost {
     }
 
     fn note_stopped(&self, why: Option<kb_hooks::setup::Stopped>) {
-        let Some(homes) = kb_hooks::setup::Homes::from_env() else { return };
+        let Some(homes) = homes() else { return };
         let done = match why {
             Some(why) => {
                 let logon = kb_winsys::pipe::current_logon_id().ok();
@@ -815,13 +831,43 @@ impl Host for AppHost {
     }
 }
 
+/// Development builds only: the coding apps' folders under this folder
+/// instead of the user's (`.claude`, `.codex`, `.agents`; `CLAUDE_CONFIG_DIR`
+/// and `CODEX_HOME` count only inside it), as keymotion-cli's own test
+/// variable. Trying the AI agents page then never touches the settings of
+/// the Claude Code or Codex one works in.
+pub const TEST_HOME_ENV: &str = "KEYMOTION_CLI_TEST_HOME";
+
+/// [`TEST_HOME_ENV`], read only by a development build run against the
+/// dev server (`tauri dev`, or the debug program with `cargo build`): never
+/// by an installed copy, a `tauri build --debug` one included, which could
+/// otherwise write the real PATH beside a test folder's settings.
+pub fn test_home() -> Option<PathBuf> {
+    if !(cfg!(debug_assertions) && tauri::is_dev()) {
+        return None;
+    }
+    std::env::var_os(TEST_HOME_ENV).filter(|v| !v.is_empty()).map(PathBuf::from)
+}
+
+/// The coding apps' folders: the user's (a development build: see
+/// [`test_home`]).
+pub fn homes() -> Option<kb_hooks::setup::Homes> {
+    if let Some(home) = test_home() {
+        let inside = |name: &str| {
+            std::env::var_os(name).map(PathBuf::from).filter(|p| !p.as_os_str().is_empty() && p.starts_with(&home))
+        };
+        return Some(kb_hooks::setup::Homes::with(&home, inside("CLAUDE_CONFIG_DIR"), inside("CODEX_HOME")));
+    }
+    kb_hooks::setup::Homes::from_env()
+}
+
 /// At start, off the main thread: the skill (and Codex rule) Keymotion put
 /// in a connected agent's folders is brought up to this version's, if it is
 /// older (`kb_hooks::setup::refresh`: only our own files, only where they
 /// are); and the hooks learn whether they may start Keymotion.
 fn on_start(core: Arc<Core>) {
     let spawned = std::thread::Builder::new().name("agents-start".into()).spawn(move || {
-        if let Some(homes) = kb_hooks::setup::Homes::from_env() {
+        if let Some(homes) = homes() {
             for path in kb_hooks::setup::refresh(&homes) {
                 tracing::info!(file = %path.display(), "agent skill brought up to date");
             }
@@ -836,6 +882,11 @@ fn on_start(core: Arc<Core>) {
 /// The agents (managed Tauri state).
 pub struct AgentHandle {
     core: Arc<Core>,
+    /// Where this copy's keymotion-cli and the coding apps' folders are.
+    place: apps::Place,
+    user_path: Box<dyn apps::UserPath>,
+    /// One connect or disconnect at a time.
+    setup: Mutex<()>,
 }
 
 impl AgentHandle {
@@ -854,6 +905,7 @@ impl AgentHandle {
         } else {
             Channel::Github
         };
+        let place = apps::Place::for_channel(channel);
         let info = ServerInfo { version: app.package_info().version.to_string(), channel };
         let host = Arc::new(AppHost { app, device, config_dir, started: Instant::now(), conflict: Mutex::new(None) });
         let core = Core::new(host, settings, info, true);
@@ -874,7 +926,7 @@ impl AgentHandle {
                 }
             })
             .expect("spawn agents thread");
-        Arc::new(Self { core })
+        Arc::new(Self { core, place, user_path: Box::new(apps::WindowsPath), setup: Mutex::new(()) })
     }
 
     pub fn state(&self) -> AgentsState {
@@ -900,6 +952,91 @@ impl AgentHandle {
     /// "Quit" in the tray (`true`), or the user stayed after all (`false`).
     pub fn quitting(&self, quit: bool) {
         self.core.quitting(quit);
+    }
+
+    /// Claude Code and Codex: here, connected; keymotion-cli; PATH.
+    pub fn connections(&self) -> AgentConnections {
+        apps::connections(&self.place, self.user_path.as_ref())
+    }
+
+    /// What turning agent access on would add (`apps`: which coding apps,
+    /// default both).
+    pub fn connect_plan(&self, apps: Option<&[AgentApp]>) -> AgentConnectPlan {
+        apps::plan_connect(&self.place, self.user_path.as_ref(), apps)
+    }
+
+    /// The user approved the plan of `token`: connect the coding apps, put
+    /// the `bin` folder on PATH (GitHub copy), turn agent access on. When
+    /// the plan no longer holds, nothing changes and the new one comes back.
+    pub fn connect(&self, token: &str, apps: Option<&[AgentApp]>) -> AgentConnectOutcome {
+        let done = {
+            let _one = lock(&self.setup);
+            apps::connect(&self.place, self.user_path.as_ref(), token, apps)
+        };
+        let done = match done {
+            Ok(done) => done,
+            Err(plan) => {
+                tracing::info!("agents: the connect plan changed before it was approved; shown again");
+                return AgentConnectOutcome {
+                    applied: false,
+                    plan: Some(*plan),
+                    connected: Vec::new(),
+                    failed: Vec::new(),
+                    path_added: false,
+                    path_error: None,
+                    save_error: None,
+                    connections: self.connections(),
+                    state: self.core.state(),
+                };
+            }
+        };
+        tracing::info!(
+            connected = done.connected.len(),
+            failed = done.failed.len(),
+            path_added = done.path_added,
+            "agents: coding apps connected"
+        );
+        if done.path_added {
+            self.user_path.announce();
+        }
+        if let Some(e) = &done.path_error {
+            tracing::warn!("agents: keymotion-cli's folder not put on PATH: {e}");
+        }
+        // Every coding app failed: access stays as it was, the page says why.
+        let save_error = if apps::access_follows(&done) { self.core.set_enabled(true).err() } else { None };
+        if let Some(e) = &save_error {
+            tracing::warn!("agents: access not saved as on: {e}");
+        }
+        // Newly connected apps learn whether they may start Keymotion.
+        self.core.started();
+        AgentConnectOutcome {
+            applied: true,
+            plan: None,
+            connected: done.connected,
+            failed: done.failed,
+            path_added: done.path_added,
+            path_error: done.path_error,
+            save_error,
+            connections: self.connections(),
+            state: self.core.state(),
+        }
+    }
+
+    /// What disconnecting `app` would take away.
+    pub fn disconnect_plan(&self, app: AgentApp) -> AgentAppPlan {
+        apps::plan_disconnect(&self.place, app)
+    }
+
+    /// Take Keymotion's hooks, skill and rule away from `app`. Agent access
+    /// and PATH stay as they are.
+    pub fn disconnect(&self, app: AgentApp) -> AgentDisconnectOutcome {
+        let _one = lock(&self.setup);
+        let plan = apps::disconnect(&self.place, app);
+        match &plan.problem {
+            None => tracing::info!(?app, files = plan.changes.len(), "agents: coding app disconnected"),
+            Some(p) => tracing::warn!(?app, "agents: coding app not disconnected: {}", p.message),
+        }
+        AgentDisconnectOutcome { plan, connections: self.connections() }
     }
 }
 
@@ -1264,6 +1401,24 @@ mod tests {
         core.tick(&mut w);
         assert!(core.state().signals.is_empty());
         assert_eq!(fake.last_frame(), None);
+    }
+
+    #[test]
+    fn turning_access_on_changes_nothing_else() {
+        let fake = Fake::new();
+        let info = ServerInfo { version: "1.2.0".into(), channel: Channel::Dev };
+        let core = Core::new(fake.clone(), AgentSettings::default(), info, false);
+        // The page (or an agent) changed a look just before.
+        let mut s = core.state().settings;
+        s.helper.color = [1, 2, 3];
+        core.save(s).unwrap();
+        let state = core.set_enabled(true).unwrap();
+        assert!(state.settings.enabled);
+        assert_eq!(state.settings.helper.color, [1, 2, 3], "kept, not put back");
+        assert_eq!(*lock(&fake.stopped), [None], "the hooks may start Keymotion again");
+        fake.save_fails.store(true, Ordering::SeqCst);
+        assert!(core.set_enabled(false).is_err());
+        assert!(core.state().settings.enabled, "a save that fails changes nothing");
     }
 
     #[test]

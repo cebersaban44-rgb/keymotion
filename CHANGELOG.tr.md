@@ -95,7 +95,8 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   böyle bir olay onu başlatır; siz kapattıysanız ya da ajan erişimini
   kapattıysanız başlatmaz. Sizin ya da ajanın yazdığı hiçbir şey Keymotion'a
   ulaşmaz: yalnız ne olduğu. `disconnect` hepsini geri alır. Ajan erişimi
-  siz açana kadar kapalı kalır.
+  siz açana kadar kapalı kalır; GitHub kopyasında açmak `keymotion-cli`'ı
+  yeni açılan terminaller için PATH'inize de ekler.
 
 ### Değişenler
 
