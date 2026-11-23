@@ -1166,6 +1166,9 @@ impl GamesHandle {
                 tracing::info!(source = ?r.game.source, "game session started");
                 let today = played_between(&inner.history, Some(r.started), day_start(now), now);
                 if s.start_card && live_on && !quiet_for(&s, &r.game.key) && !self.higher_holds() {
+                    // A return planned for an older game card (one left from
+                    // before the start) would take this one off.
+                    self.live.cancel_return(SOURCE);
                     let _ = self.app.emit(EVENT_GAME_CARD, Self::start_card(&r, today));
                 }
             }
