@@ -448,6 +448,41 @@ mod tests {
     }
 
     #[test]
+    fn the_ak980_pro_lists_its_aa_modes() {
+        let m = models().iter().find(|m| m.id == "ajazz-ak980-pro").unwrap();
+        let usb: Vec<&ModeSpec> = m.modes_of(ConnectionKind::Usb).collect();
+        let seen: Vec<(Protocol, u16)> = usb.iter().map(|mode| (m.protocol_of(mode), mode.pid)).collect();
+        // The "04 xx" mode stays first: it is what `mode(Usb)` means.
+        assert_eq!(seen, [(Protocol::SonixFf13, 0x8009), (Protocol::AjazzAa, 0x8039), (Protocol::AjazzAa, 0x8009)]);
+        for aa in &usb[1..] {
+            assert_eq!((aa.command_usage_page, aa.display_usage_page), (Some(0xFF68), Some(0xFF67)));
+            assert_eq!(aa.product_contains.as_deref(), Some("AK980 PRO"));
+            assert!(!aa.verified && aa.verified_firmware.is_empty(), "nothing tried on a keyboard yet");
+            assert!(!aa.capabilities.contains(&Capability::Options), "options are not written (plan K-16)");
+            assert!(aa.capabilities.contains(&Capability::Battery));
+        }
+        let probe = |pid, usage_page| InterfaceProbe {
+            vid: 0x0C45,
+            pid,
+            usage_page,
+            product: Some("AK980 PRO"),
+            bus: Bus::Usb,
+        };
+        // Firmware 769's own id: only the "AA" mode.
+        let ff68 = match_interface(models(), &probe(0x8039, 0xFF68)).unwrap();
+        assert_eq!((ff68.protocol, ff68.role), (Protocol::AjazzAa, InterfaceRole::Command));
+        let ff67 = match_interface(models(), &probe(0x8039, 0xFF67)).unwrap();
+        assert_eq!((ff67.protocol, ff67.role), (Protocol::AjazzAa, InterfaceRole::Display));
+        // The old id: the "04 xx" mode first, the "AA" one next (the report
+        // layout decides, kb_core::classify).
+        let first = match_interface(models(), &probe(0x8009, 0xFF68)).unwrap();
+        assert_eq!((first.protocol, first.role), (Protocol::SonixFf13, InterfaceRole::Display));
+        let all: Vec<_> =
+            match_interfaces(models(), &probe(0x8009, 0xFF68)).iter().map(|m| (m.protocol, m.role)).collect();
+        assert_eq!(all, [(Protocol::SonixFf13, InterfaceRole::Display), (Protocol::AjazzAa, InterfaceRole::Command)]);
+    }
+
+    #[test]
     fn dongle_and_bluetooth_split_by_bus() {
         let base = InterfaceProbe { vid: 0x0C45, pid: 0xFEFE, usage_page: 0xFF60, product: None, bus: Bus::Usb };
         let dongle = match_interface(models(), &base).unwrap();
@@ -514,7 +549,7 @@ mod tests {
     }
 
     /// A board with both command families behind the same IDs and name (a
-    /// test model: no model file lists an "AA" mode yet).
+    /// test model, smaller than the AK980 PRO's file).
     const TWO_FAMILIES: &str = r#"
         id = "test-two-families"
         name = "Test"

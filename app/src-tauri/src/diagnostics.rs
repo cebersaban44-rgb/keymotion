@@ -44,6 +44,9 @@ pub struct Facts {
     /// What happened, for a problem report (an error, a crash note).
     pub context: Option<String>,
     pub keyboards: Vec<String>,
+    /// About the "AA" keyboard on the cable, when there was one (aa.rs
+    /// `AaDriver::diagnostics`): no keymap, macro or colour content.
+    pub aa: Vec<String>,
     pub data_files: Vec<(String, u64)>,
     pub log_lines: Vec<String>,
 }
@@ -123,6 +126,12 @@ pub fn report(f: &Facts) -> String {
     }
     for k in &f.keyboards {
         s.push_str(&format!("  {k}\n"));
+    }
+    if !f.aa.is_empty() {
+        s.push_str("\n\"AA\" keyboard:\n");
+        for line in &f.aa {
+            s.push_str(&format!("  {}\n", crate::logging::redact(line)));
+        }
     }
     s.push_str("\nData files:\n");
     if f.data_files.is_empty() {
@@ -253,6 +262,7 @@ mod tests {
             ui_language: "tr".into(),
             context: None,
             keyboards: vec!["AJAZZ AK980 PRO (ajazz-ak980-pro), usb, firmware unknown".into()],
+            aa: vec![],
             data_files: vec![("calendar.json".into(), 2048), ("keymap.json".into(), 12)],
             log_lines: vec![
                 "INFO calendar added host=calendar.google.com".into(),
@@ -268,6 +278,28 @@ mod tests {
         }
         assert!(r.contains("Last 2 log lines"));
         assert!(!r.contains("private-abc") && !r.contains("someone"), "{r}");
+        assert!(!r.contains("\"AA\" keyboard"), "no section without one");
+    }
+
+    #[test]
+    fn an_aa_keyboard_gets_its_section() {
+        let f = Facts {
+            app_name: "Keymotion".into(),
+            app_version: "1.3.0".into(),
+            time: "t".into(),
+            windows: "w".into(),
+            webview: "v".into(),
+            ui_language: "en".into(),
+            context: None,
+            keyboards: vec!["AJAZZ AK980 PRO (ajazz-ak980-pro), usb, firmware 3.01".into()],
+            aa: vec!["ajazz-ak980-pro.aa on USB 8039, firmware 3.01".into(), "writes: allowed".into()],
+            data_files: vec![],
+            log_lines: vec![],
+        };
+        let r = report(&f);
+        let at = r.find("\"AA\" keyboard:\n  ajazz-ak980-pro.aa on USB 8039").expect("section");
+        assert!(at > r.find("Keyboards:").unwrap() && at < r.find("Data files:").unwrap(), "{r}");
+        assert!(r.contains("\n  writes: allowed\n"), "{r}");
     }
 
     #[test]
@@ -281,6 +313,7 @@ mod tests {
             ui_language: "en".into(),
             context: None,
             keyboards: vec![],
+            aa: vec![],
             data_files: vec![],
             log_lines: vec![],
         };
@@ -303,6 +336,7 @@ second line"
                     .into(),
             ),
             keyboards: vec![],
+            aa: vec![],
             data_files: vec![],
             log_lines: vec![],
         };

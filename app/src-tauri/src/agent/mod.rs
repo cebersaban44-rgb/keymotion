@@ -1543,7 +1543,11 @@ impl Core {
             };
             // Its connections end (a few seconds at most) outside the lock.
             drop(stopped);
-            let started = kb_agent::transport::current_pipe_name().and_then(|name| self.serve(&name));
+            // With the keyboard simulator the pipe has a name of its own:
+            // the agents keep talking to the installed copy.
+            let started = kb_agent::transport::current_pipe_name()
+                .map(|name| if crate::simulated() { format!("{name}-sim") } else { name })
+                .and_then(|name| self.serve(&name));
             let mut slot = lock(&self.server);
             match started {
                 Ok(pipe) => {
@@ -2065,6 +2069,12 @@ pub fn homes() -> Option<kb_hooks::setup::Homes> {
             std::env::var_os(name).map(PathBuf::from).filter(|p| !p.as_os_str().is_empty() && p.starts_with(&home))
         };
         return Some(kb_hooks::setup::Homes::with(&home, inside("CLAUDE_CONFIG_DIR"), inside("CODEX_HOME")));
+    }
+    // With the keyboard simulator the user's own coding apps belong to the
+    // installed copy: their folders are not touched (no skill refresh, no
+    // "may hooks start Keymotion" note).
+    if crate::simulated() {
+        return None;
     }
     kb_hooks::setup::Homes::from_env()
 }

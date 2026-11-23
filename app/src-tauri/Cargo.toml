@@ -36,8 +36,16 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 ts-rs = "12"
 
+[features]
+# A simulated AK980 PRO on firmware 769 (`KEYMOTION_SIM=aa769`, sim.rs), for
+# developing the "AA" family without one. Debug builds only: a release build
+# with it does not compile (lib.rs), and no release script turns it on.
+sim = ["kb-core/sim"]
+
 [dev-dependencies]
 gif.workspace = true
+# The app's tests drive the "AA" arm against the simulated keyboard.
+kb-core = { workspace = true, features = ["sim"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, features = [

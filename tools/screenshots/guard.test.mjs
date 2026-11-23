@@ -61,7 +61,7 @@ test("the real app: Tauri's invoke is locked, the app's own bridge asks the guar
 });
 
 test("every flash write in the app is on the list", () => {
-  for (const cmd of ["apply_effect", "apply_per_key", "lighting_save", "apply_keymap", "apply_macros", "screen_upload", "profiles_load", "live_submit"]) {
+  for (const cmd of ["apply_effect", "apply_per_key", "lighting_save", "apply_keymap", "apply_macros", "screen_upload", "profiles_load", "live_submit", "keyboard_backup_restore", "screen_ack_clock_page"]) {
     assert.ok(DENY.includes(cmd), cmd);
   }
 });

@@ -3,30 +3,41 @@
 //! The device actor (device.rs) talks to a keyboard only through [`Driver`]
 //! and asks [`family`] what the app knows about a family without talking
 //! to the keyboard (its limits, whether it reports its battery on the
-//! cable). Today there is one family, SONiX's "04 xx" one
-//! ([`Protocol::SonixFf13`], `kb_core::sonix`). AJAZZ's "AA" family
-//! ([`Protocol::AjazzAa`], AK980 PRO firmware 769) gets its arm here once
-//! its driver exists; until then nothing is ever opened on an "AA" board
-//! ([`open_command`], [`open_display`]).
+//! cable). Two families:
 //!
-//! Every operation is the family driver's own; the hooks around them
-//! ([`Driver::live_starting`], [`Driver::live_stopped`],
-//! [`Driver::device_info`]) do nothing in the "04 xx" family, so its
-//! keyboards get exactly the packets they got before this layer existed.
+//! * SONiX's "04 xx" ([`Protocol::SonixFf13`], `kb_core::sonix`): every
+//!   operation is its driver's own, and the hooks around them
+//!   ([`Driver::live_starting`], [`Driver::live_stopped`],
+//!   [`Driver::device_info`]) do nothing, so its keyboards get exactly the
+//!   packets they got before families existed.
+//! * AJAZZ's "AA" ([`Protocol::AjazzAa`], AK980 PRO firmware 769,
+//!   `kb_core::aa`): its arm is [`crate::aa::AaDriver`], which reads the
+//!   keyboard when the channel opens, keeps it read-only when it does not
+//!   look as expected, switches it to per-key mode for live lights and back,
+//!   and keeps its backups.
+//!
+//! [`Ports`] is where channels come from: the HID subsystem, or in debug
+//! builds a simulated "AA" keyboard (`KEYMOTION_SIM`, sim.rs), in which
+//! case no HID device is enumerated or opened at all.
 
+use crate::aa::{AaDriver, AaPort, AaTarget, LiveContext};
 use crate::device::{Expected, MirrorExpect};
 use crate::dto::DeviceReport;
+use kb_core::aa::{AaEffect, AaError, EffectColor, RestoreReport, UsbIdentity};
 use kb_core::color::LedCalibration;
 use kb_core::keymap::LayerMap;
 use kb_core::readback;
 use kb_core::sonix::{DisplayPort, FeaturePort, SonixFf13};
-use kb_devices::{InterfaceRole, Protocol};
+use kb_devices::{InterfaceRole, Model, Protocol};
 use kb_protocol::sonix::keymap::Layer;
 use kb_protocol::sonix::macros::MacroStep;
 use kb_protocol::sonix::screen::ScreenAnimation;
 use kb_protocol::sonix::{scale_to_level, ClockTime, EffectSettings, Rgb, MAX_LEVEL};
-use kb_transport::hid::{Hid, HidChannel};
+use kb_transport::hid::{Hid, HidChannel, HidInterface};
 use std::fmt;
+use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::time::Instant;
 
 /// Why a channel was not opened: its report layout is not the family's.
 /// lib/errors.ts maps it to "this firmware is not supported".
@@ -34,16 +45,28 @@ pub const UNEXPECTED_LAYOUT: &str = "unsupported keyboard firmware: unexpected r
 
 /// What a family's driver reports when an operation fails. Its text is the
 /// family driver's own, unchanged: lib/errors.ts maps the "04 xx" texts
-/// ("keyboard refused 0x13 …", "no valid echo …") to messages.
+/// ("keyboard refused 0x13 …", "no valid echo …") and the "AA" ones to
+/// messages.
 #[derive(Debug)]
 pub enum Error {
     Ff13(kb_core::sonix::DriverError),
+    /// The "AA" driver's error.
+    Aa(AaError),
+    /// The "AA" screen channel failed. It is dropped with the upload; the
+    /// command channel, and the quiet time after a cut upload it keeps,
+    /// stay.
+    AaScreen(AaError),
+    /// Refused by the app before anything went to the keyboard (a
+    /// read-only "AA" keyboard, a backup that could not be saved).
+    Refused(String),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Ff13(e) => e.fmt(f),
+            Self::Aa(e) | Self::AaScreen(e) => e.fmt(f),
+            Self::Refused(why) => f.write_str(why),
         }
     }
 }
@@ -57,20 +80,27 @@ impl From<kb_core::sonix::DriverError> for Error {
 }
 
 impl Error {
-    /// The channel itself failed (unplugged, a write that timed out): the
-    /// handle is dropped and the next operation opens it again.
+    /// The command channel itself failed (unplugged, a write that timed
+    /// out): the handle is dropped and the next operation opens it again
+    /// ("AA": [`AaError::needs_reopen`], and reads everything again).
     pub fn is_transport(&self) -> bool {
         match self {
             Self::Ff13(e) => matches!(e, kb_core::sonix::DriverError::Transport(_)),
+            Self::Aa(e) => e.needs_reopen(),
+            Self::AaScreen(_) | Self::Refused(_) => false,
         }
     }
 
     /// A refusal that happens now and then and needs no warning: the "04 xx"
     /// keyboard refuses about one real-time frame in 100 (`FF` to `04 20`),
-    /// and the next one goes 50 ms later.
+    /// and the next one goes 50 ms later; an "AA" keyboard takes no command
+    /// for a few seconds after a cut screen upload, and the frames, mirror
+    /// reads and device reads of that time are skipped.
     pub fn is_noise(&self) -> bool {
         match self {
             Self::Ff13(e) => matches!(e, kb_core::sonix::DriverError::Refused { op: 0x20, .. }),
+            Self::Aa(e) => matches!(e, AaError::UploadInterrupted { .. }),
+            Self::AaScreen(_) | Self::Refused(_) => false,
         }
     }
 }
@@ -82,15 +112,26 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct ScreenUploaded {
     /// Pages (or parts) sent.
     pub pages: usize,
-    /// The first bytes of the keyboard's answer to the end of the upload.
+    /// The first bytes of the keyboard's answer to the end of the upload
+    /// ("04 xx"; the "AA" family has none).
     pub commit_echo: Vec<u8>,
 }
 
 /// An open command channel of one keyboard, in its family. `C` is the
-/// channel (a HID handle; a fake in tests).
+/// "04 xx" channel (a HID handle; a fake in tests).
 pub enum Driver<C: FeaturePort = HidChannel> {
     /// SONiX "04 xx": 64-byte feature reports on FF13.
     Ff13(SonixFf13<C>),
+    /// AJAZZ "AA": 64-byte output and input reports on FF68.
+    Aa(Box<AaDriver>),
+}
+
+/// An open screen channel, in its family.
+pub enum Display<D: DisplayPort = HidChannel> {
+    /// "04 xx": 4 KiB pages on FF68.
+    Ff13(D),
+    /// "AA": 4104-byte packets on FF67.
+    Aa(AaPort),
 }
 
 impl<C: FeaturePort> Driver<C> {
@@ -98,6 +139,22 @@ impl<C: FeaturePort> Driver<C> {
     pub fn protocol(&self) -> Protocol {
         match self {
             Self::Ff13(_) => Protocol::SonixFf13,
+            Self::Aa(_) => Protocol::AjazzAa,
+        }
+    }
+
+    /// The "AA" arm, for what only that family has.
+    pub fn aa(&self) -> Option<&AaDriver> {
+        match self {
+            Self::Aa(d) => Some(d),
+            Self::Ff13(_) => None,
+        }
+    }
+
+    pub fn aa_mut(&mut self) -> Option<&mut AaDriver> {
+        match self {
+            Self::Aa(d) => Some(d),
+            Self::Ff13(_) => None,
         }
     }
 
@@ -105,6 +162,7 @@ impl<C: FeaturePort> Driver<C> {
     pub fn apply_effect(&mut self, settings: &EffectSettings) -> Result<()> {
         match self {
             Self::Ff13(d) => Ok(d.apply_effect(settings)?),
+            Self::Aa(d) => d.apply_effect(settings),
         }
     }
 
@@ -113,14 +171,18 @@ impl<C: FeaturePort> Driver<C> {
     pub fn apply_per_key(&mut self, colors: Vec<(u8, Rgb)>, brightness: u8) -> Result<()> {
         match self {
             Self::Ff13(d) => Ok(d.apply_per_key(colors, brightness)?),
+            Self::Aa(d) => d.apply_per_key(colors, brightness),
         }
     }
 
-    /// Store one keymap layer, keys by the app's key ids (the "04 xx" LED
-    /// numbers); keys not in `map` go back to the default. **Writes memory.**
+    /// Make one keymap layer what `map` says, keys by the app's key ids
+    /// (the "04 xx" LED numbers); keys not in `map` go back to the default.
+    /// "04 xx" writes the whole layer; "AA" changes only the keys that
+    /// differ from a fresh read. **Writes memory.**
     pub fn apply_keymap(&mut self, layer: Layer, map: &LayerMap) -> Result<()> {
         match self {
             Self::Ff13(d) => Ok(d.apply_keymap(layer, map.iter().map(|(&l, &a)| (l, a)))?),
+            Self::Aa(d) => d.apply_keymap(layer, map),
         }
     }
 
@@ -129,6 +191,7 @@ impl<C: FeaturePort> Driver<C> {
     pub fn write_macros(&mut self, slots: &[Vec<MacroStep>]) -> Result<()> {
         match self {
             Self::Ff13(d) => Ok(d.write_macros(slots)?),
+            Self::Aa(d) => d.write_macros(slots),
         }
     }
 
@@ -136,25 +199,29 @@ impl<C: FeaturePort> Driver<C> {
     pub fn set_clock(&mut self, time: &ClockTime) -> Result<()> {
         match self {
             Self::Ff13(d) => Ok(d.set_clock(time)?),
+            Self::Aa(d) => d.set_clock(time),
         }
     }
 
     /// Before the first frame of a live stream on this handle (the actor
     /// calls it once, right before that frame; again only after
     /// [`Self::live_stopped`]). "04 xx": nothing, its real-time frames
-    /// show over any effect. ("AA" shows them only in the per-key modes:
-    /// it switches the keyboard to one here, plan K-4.)
-    pub fn live_starting(&mut self) -> Result<()> {
+    /// show over any effect. "AA" shows them only in the per-key modes: it
+    /// switches the keyboard to one here (plan K-4), if `ctx` allows.
+    pub fn live_starting(&mut self, ctx: &LiveContext<'_>) -> Result<()> {
         match self {
             Self::Ff13(_) => Ok(()),
+            Self::Aa(d) => d.live_starting(ctx),
         }
     }
 
     /// One live frame (LED colours, calibrated and dimmed): RAM only, gone
-    /// once the stream stops.
-    pub fn live_frame(&mut self, frame: Vec<(u8, Rgb)>) -> Result<()> {
+    /// once the stream stops. "AA": dropped while the keyboard may not be
+    /// switched to per-key mode (the UI says why).
+    pub fn live_frame(&mut self, frame: Vec<(u8, Rgb)>, ctx: &LiveContext<'_>) -> Result<()> {
         match self {
             Self::Ff13(d) => Ok(d.realtime_frame(frame)?),
+            Self::Aa(d) => d.live_frame(frame, ctx),
         }
     }
 
@@ -163,19 +230,50 @@ impl<C: FeaturePort> Driver<C> {
     /// or a game asked for quiet). Called once per stream, on the same
     /// handle; not called when the handle was dropped meanwhile (the cable
     /// went, a transport error). "04 xx": nothing, the keyboard goes back
-    /// to its saved effect by itself. ("AA" puts the user's effect back,
-    /// plan K-4.)
+    /// to its saved effect by itself. "AA": the user's effect goes back
+    /// after a hold ([`crate::aa::LIVE_HOLD`], [`Self::run_due`]).
     pub fn live_stopped(&mut self) -> Result<()> {
         match self {
             Self::Ff13(_) => Ok(()),
+            Self::Aa(d) => {
+                d.live_stopped();
+                Ok(())
+            }
+        }
+    }
+
+    /// When the driver has something to do on its own ("AA": put the
+    /// user's effect back, read the keyboard again); "04 xx": never.
+    pub fn next_due(&self) -> Option<Instant> {
+        match self {
+            Self::Ff13(_) => None,
+            Self::Aa(d) => d.next_due(),
+        }
+    }
+
+    /// Do what [`Self::next_due`] said.
+    pub fn run_due(&mut self, now: Instant, ctx: &LiveContext<'_>) -> Result<()> {
+        match self {
+            Self::Ff13(_) => Ok(()),
+            Self::Aa(d) => d.run_due(now, ctx),
+        }
+    }
+
+    /// The app is closing: put the user's effect back now if live lights
+    /// hold the keyboard in per-key mode ("AA"; the hold is not waited).
+    pub fn closing(&mut self, ctx: &LiveContext<'_>) -> Result<()> {
+        match self {
+            Self::Ff13(_) => Ok(()),
+            Self::Aa(d) => d.closing(ctx),
         }
     }
 
     /// The colours the keys show now, as LED values (calibrated; the
-    /// caller turns them back into UI colours). `expect` is what the app
-    /// last saved, `indicators` the firmware's status lights (LED, colour
-    /// when lit): the "04 xx" read-back (`04 F5`) reports red ambiguously
-    /// and they resolve it ([`ff13_mirror`]).
+    /// caller turns them back into UI colours). "04 xx": `expect` is what
+    /// the app last saved, `indicators` the firmware's status lights (LED,
+    /// colour when lit): the read-back (`04 F5`) reports red ambiguously
+    /// and they resolve it ([`ff13_mirror`]). "AA" reports the colours
+    /// themselves (`33`): nothing to resolve.
     pub fn mirror_colors(
         &mut self,
         expect: &MirrorExpect,
@@ -187,6 +285,7 @@ impl<C: FeaturePort> Driver<C> {
                 let raw = d.read_colors()?;
                 Ok(ff13_mirror(&raw, expect, calibration, indicators))
             }
+            Self::Aa(d) => d.mirror_colors(),
         }
     }
 
@@ -197,12 +296,23 @@ impl<C: FeaturePort> Driver<C> {
     pub fn device_info(&mut self) -> Result<Option<DeviceReport>> {
         match self {
             Self::Ff13(_) => Ok(None),
+            Self::Aa(d) => d.device_info().map(Some),
         }
     }
 
-    /// Upload an animation to the screen's picture page over `display` (the
-    /// family's screen channel, [`open_display`]). **Writes the keyboard's
-    /// memory**; `progress(done, total)` after each page.
+    /// Write an "AA" backup back ([`crate::aa::AaDriver::restore`]).
+    pub fn restore(&mut self, backup: &kb_core::aa::AaSnapshot, color: Option<EffectColor>) -> Result<RestoreReport> {
+        match self {
+            Self::Ff13(_) => Err(Error::Refused("this keyboard has no backup to restore".into())),
+            Self::Aa(d) => d.restore(backup, color),
+        }
+    }
+
+    /// Upload an animation to the screen over `display` (the family's
+    /// screen channel, [`Ports::open_display`]). **Writes the keyboard's
+    /// memory**; `progress(done, total)` after each page or part. `cancel`
+    /// stops an "AA" upload before its next part ("04 xx" has no way to
+    /// stop and goes on).
     ///
     /// Nothing else reaches the keyboard meanwhile: the driver is borrowed
     /// for the whole upload, and `progress` gets only numbers. (The actor
@@ -210,15 +320,21 @@ impl<C: FeaturePort> Driver<C> {
     /// and device reads wait until it returns.)
     pub fn upload_screen<D: DisplayPort>(
         &mut self,
-        display: &mut D,
+        display: &mut Display<D>,
         anim: &ScreenAnimation,
         progress: impl FnMut(usize, usize),
+        cancel: &AtomicBool,
     ) -> Result<ScreenUploaded> {
-        match self {
-            Self::Ff13(d) => {
+        match (self, display) {
+            (Self::Ff13(d), Display::Ff13(display)) => {
                 let r = d.upload_screen(display, anim, progress)?;
                 Ok(ScreenUploaded { pages: r.pages, commit_echo: r.commit_echo })
             }
+            (Self::Aa(d), Display::Aa(display)) => {
+                let pages = d.upload_screen(display, anim, progress, cancel)?;
+                Ok(ScreenUploaded { pages, commit_echo: Vec::new() })
+            }
+            _ => Err(Error::Refused("the screen channel is another family's".into())),
         }
     }
 }
@@ -249,22 +365,131 @@ pub fn ff13_mirror(
     readback::decode_frame(raw, expected, peak)
 }
 
-/// Open the command channel at `path` for a keyboard of `protocol`.
-pub fn open_command(hid: &Hid, path: &str, protocol: Protocol) -> std::result::Result<Driver, String> {
-    match protocol {
-        Protocol::SonixFf13 => {
-            Ok(Driver::Ff13(SonixFf13::new(open_checked(hid, path, InterfaceRole::Command, protocol)?)))
+/// What opening a command channel needs to know about the keyboard.
+pub struct OpenTarget<'a> {
+    pub protocol: Protocol,
+    pub model: &'a Model,
+    /// Its record id (`DetectedKeyboard::record_id`).
+    pub record_id: String,
+    /// The app's data folder ("AA": backups and the live note).
+    pub data_dir: Option<PathBuf>,
+    /// The effect the app last stored, in the "AA" keyboard's values (its
+    /// colour goes into the backup when the keyboard does not report one).
+    pub app_effect: Option<AaEffect>,
+}
+
+/// Where keyboards and their channels come from.
+pub enum Ports {
+    /// The HID subsystem (`None`: it could not be started).
+    Hid(Option<Hid>),
+    /// A simulated "AA" keyboard and nothing else: no HID device is listed
+    /// or opened, no radio is scanned (debug builds, `KEYMOTION_SIM`).
+    #[cfg(any(test, feature = "sim"))]
+    Sim(crate::sim::SimBoard),
+}
+
+impl Ports {
+    /// The real HID subsystem.
+    pub fn hid() -> Self {
+        Self::Hid(Hid::new().map_err(|e| tracing::error!("HID init failed: {e}")).ok())
+    }
+
+    /// No real device is reached: Bluetooth is not scanned either.
+    pub fn simulated(&self) -> bool {
+        match self {
+            Self::Hid(_) => false,
+            #[cfg(any(test, feature = "sim"))]
+            Self::Sim(_) => true,
         }
-        // No "AA" driver yet: nothing is opened, nothing is sent.
-        Protocol::AjazzAa => Err(UNEXPECTED_LAYOUT.into()),
+    }
+
+    /// Every HID collection there is now (listed again).
+    pub fn interfaces(&mut self) -> Vec<HidInterface> {
+        match self {
+            Self::Hid(Some(h)) => {
+                if let Err(e) = h.refresh() {
+                    tracing::warn!("HID refresh failed: {e}");
+                }
+                h.interfaces()
+            }
+            Self::Hid(None) => Vec::new(),
+            #[cfg(any(test, feature = "sim"))]
+            Self::Sim(s) => s.interfaces(),
+        }
+    }
+
+    /// A collection's report descriptor, as the OS keeps it (nothing is
+    /// sent to the keyboard).
+    pub fn report_descriptor_at(&self, path: &str) -> std::result::Result<Vec<u8>, String> {
+        match self {
+            Self::Hid(Some(h)) => h.report_descriptor_at(path).map_err(|e| e.to_string()),
+            Self::Hid(None) => Err("HID unavailable".into()),
+            #[cfg(any(test, feature = "sim"))]
+            Self::Sim(s) => s.report_descriptor_at(path),
+        }
+    }
+
+    /// Open the command channel at `path` in the keyboard's family. An "AA"
+    /// keyboard is read whole before this returns (its driver's connect).
+    pub fn open_command(&self, path: &str, target: &OpenTarget<'_>) -> std::result::Result<Driver, String> {
+        match (self, target.protocol) {
+            (Self::Hid(Some(hid)), Protocol::SonixFf13) => {
+                Ok(Driver::Ff13(SonixFf13::new(open_checked(hid, path, InterfaceRole::Command, Protocol::SonixFf13)?)))
+            }
+            (Self::Hid(Some(hid)), Protocol::AjazzAa) => {
+                let (channel, usb) = open_aa(hid, path, InterfaceRole::Command)?;
+                connect_aa(AaPort::new(channel), usb, target)
+            }
+            (Self::Hid(None), _) => Err("HID unavailable".into()),
+            #[cfg(any(test, feature = "sim"))]
+            (Self::Sim(s), Protocol::AjazzAa) => {
+                let port = s.command_port(path)?;
+                connect_aa(port, s.usb(), target)
+            }
+            #[cfg(any(test, feature = "sim"))]
+            (Self::Sim(_), Protocol::SonixFf13) => Err(UNEXPECTED_LAYOUT.into()),
+        }
+    }
+
+    /// Open the screen channel at `path` for a keyboard of `protocol`.
+    pub fn open_display(&self, path: &str, protocol: Protocol) -> std::result::Result<Display, String> {
+        match (self, protocol) {
+            (Self::Hid(Some(hid)), Protocol::SonixFf13) => {
+                open_checked(hid, path, InterfaceRole::Display, protocol).map(Display::Ff13)
+            }
+            (Self::Hid(Some(hid)), Protocol::AjazzAa) => {
+                open_aa(hid, path, InterfaceRole::Display).map(|(channel, _)| Display::Aa(AaPort::new(channel)))
+            }
+            (Self::Hid(None), _) => Err("HID unavailable".into()),
+            #[cfg(any(test, feature = "sim"))]
+            (Self::Sim(s), Protocol::AjazzAa) => s.display_port(path).map(Display::Aa),
+            #[cfg(any(test, feature = "sim"))]
+            (Self::Sim(_), Protocol::SonixFf13) => Err(UNEXPECTED_LAYOUT.into()),
+        }
     }
 }
 
-/// Open the screen channel at `path` for a keyboard of `protocol`.
-pub fn open_display(hid: &Hid, path: &str, protocol: Protocol) -> std::result::Result<HidChannel, String> {
-    match protocol {
-        Protocol::SonixFf13 => open_checked(hid, path, InterfaceRole::Display, protocol),
-        Protocol::AjazzAa => Err(UNEXPECTED_LAYOUT.into()),
+/// The "AA" driver on `port`, after its first full read.
+fn connect_aa(port: AaPort, usb: UsbIdentity, target: &OpenTarget<'_>) -> std::result::Result<Driver, String> {
+    let aa = AaTarget { record_id: target.record_id.clone(), usb, data_dir: target.data_dir.clone() };
+    let mut d = AaDriver::new(port, target.model, aa)?;
+    d.connect(target.app_effect);
+    Ok(Driver::Aa(Box::new(d)))
+}
+
+/// Open an "AA" collection through `kb_core::aa::open_channel`, which checks
+/// its name, layout and report sizes before anything is sent; with the USB
+/// ids it reports.
+fn open_aa(hid: &Hid, path: &str, role: InterfaceRole) -> std::result::Result<(HidChannel, UsbIdentity), String> {
+    let iface = hid.interfaces().into_iter().find(|i| i.path == path).ok_or("keyboard disconnected")?;
+    let usb = UsbIdentity { pid: iface.pid, release: iface.release };
+    match kb_core::aa::open_channel(hid, &iface, role) {
+        Ok(channel) => Ok((channel, usb)),
+        Err(AaError::Channel(why)) => {
+            tracing::warn!(usage_page = format_args!("{:04X}", iface.usage_page), "{why}; channel not used");
+            Err(UNEXPECTED_LAYOUT.into())
+        }
+        Err(e) => Err(e.to_string()),
     }
 }
 
@@ -349,7 +574,9 @@ pub mod family {
     }
 
     /// The keyboard reports its battery on the cable too ("AA": device
-    /// information `0x10`); "04 xx" only over Bluetooth.
+    /// information `0x10`); "04 xx" only over Bluetooth. On the cable, such
+    /// a keyboard's battery is its own report only, never an older
+    /// Bluetooth reading.
     pub fn battery_over_usb(protocol: Protocol) -> bool {
         protocol == Protocol::AjazzAa
     }
@@ -501,7 +728,7 @@ mod tests {
     ) -> (Vec<[u8; REPORT_LEN]>, Vec<[u8; REPORT_LEN]>) {
         let mut d = Driver::Ff13(SonixFf13::new(Fake::default()));
         via_driver(&mut d).unwrap();
-        let Driver::Ff13(d) = d;
+        let Driver::Ff13(d) = d else { unreachable!("an \"04 xx\" driver") };
         let mut s = SonixFf13::new(Fake::default());
         direct(&mut s).unwrap();
         (d.into_inner().writes, s.into_inner().writes)
@@ -531,7 +758,8 @@ mod tests {
         assert_eq!(a, b, "clock");
 
         let frame = vec![(1, [255, 0, 0]), (2, [0, 0, 255])];
-        let (a, b) = both(|d| d.live_frame(frame.clone()), |s| s.realtime_frame(frame.clone()));
+        let (a, b) =
+            both(|d| d.live_frame(frame.clone(), &LiveContext::default()), |s| s.realtime_frame(frame.clone()));
         assert_eq!(a, b, "live frame");
     }
 
@@ -539,10 +767,10 @@ mod tests {
     fn the_ff13_hooks_send_nothing() {
         let mut d = Driver::Ff13(SonixFf13::new(Fake::default()));
         assert_eq!(d.protocol(), Protocol::SonixFf13);
-        d.live_starting().unwrap();
+        d.live_starting(&LiveContext::default()).unwrap();
         d.live_stopped().unwrap();
         assert!(d.device_info().unwrap().is_none(), "no device report");
-        let Driver::Ff13(d) = d;
+        let Driver::Ff13(d) = d else { unreachable!("an \"04 xx\" driver") };
         assert!(d.into_inner().writes.is_empty(), "no packet for the hooks");
     }
 
@@ -550,12 +778,14 @@ mod tests {
     fn the_screen_upload_goes_through_unchanged() {
         let anim = ScreenAnimation::still(screen::test_pattern());
         let mut d = Driver::Ff13(SonixFf13::new(Fake::default()));
-        let mut display = FakeDisplay::default();
+        let mut display = Display::Ff13(FakeDisplay::default());
         let mut seen = Vec::new();
-        let done = d.upload_screen(&mut display, &anim, |n, total| seen.push((n, total))).unwrap();
+        let cancel = AtomicBool::new(false);
+        let done = d.upload_screen(&mut display, &anim, |n, total| seen.push((n, total)), &cancel).unwrap();
+        let Display::Ff13(display) = display else { unreachable!("an \"04 xx\" screen channel") };
         assert_eq!((done.pages, display.pages), (16, 16));
         assert_eq!(seen.last(), Some(&(16, 16)));
-        let Driver::Ff13(d) = d;
+        let Driver::Ff13(d) = d else { unreachable!("an \"04 xx\" driver") };
         let w = d.into_inner().writes;
         // START, 04 72, COMMIT on the command channel and nothing else:
         // no live frame, read or clock packet in between.
@@ -590,7 +820,7 @@ mod tests {
 
         // A refused real-time frame is noise; it comes back as before.
         let mut d = Driver::Ff13(SonixFf13::new(Fake { refuse_live: true, ..Fake::default() }));
-        let e = d.live_frame(vec![(1, [1, 2, 3])]).unwrap_err();
+        let e = d.live_frame(vec![(1, [1, 2, 3])], &LiveContext::default()).unwrap_err();
         assert!(e.is_noise(), "{e}");
         assert_eq!(e.to_string(), "keyboard refused 0x20 (status 0xFF)");
 
@@ -653,7 +883,7 @@ mod tests {
             assert_eq!((sg, sb), (g, b), "LED {led}");
             assert!(kb_protocol::sonix::readback_red_candidates(r).contains(&sr), "LED {led}: {sr}");
         }
-        let Driver::Ff13(d) = d;
+        let Driver::Ff13(d) = d else { unreachable!("an \"04 xx\" driver") };
         let ops: Vec<u8> = d.into_inner().writes.iter().map(|r| r[2]).collect();
         assert_eq!(ops, vec![0xF5, 0x02], "read, then close the session");
     }
@@ -691,8 +921,10 @@ mod tests {
         assert!(family::known_record("ajazz-ak980-pro"));
         assert_eq!(family::protocol_of_record("ajazz-ak980-pro"), Some(Protocol::SonixFf13));
         assert!(!family::known_record("unknown-model"));
-        // No "AA" mode in the model file yet: no "AA" record either.
-        assert!(!family::known_record("ajazz-ak980-pro.aa"));
+        // The model file's "AA" modes give it an "AA" record.
+        assert!(family::known_record("ajazz-ak980-pro.aa"));
+        assert_eq!(family::protocol_of_record("ajazz-ak980-pro.aa"), Some(Protocol::AjazzAa));
+        assert!(!family::known_record("unknown-model.aa"));
         // The same rule kb_core detects keyboards with.
         let iface = kb_transport::hid::HidInterface {
             vid: 0x0C45,

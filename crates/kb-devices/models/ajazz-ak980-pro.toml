@@ -40,6 +40,42 @@ verified = true
 # user once per session before the first write.
 verified_firmware = [0x0106]
 
+# Firmware 769 (bcdDevice 0x0301): AJAZZ's "AA" command family, with 64-byte
+# commands on FF68 and the screen on FF67. IDs, product string and both
+# collections' report descriptors from a "Request support" report (issue
+# #154); the device information reply (`0C45:8039`, firmware 0x0301,
+# battery on the cable) matches a published one (protocol notes,
+# research/protokol-aa.md). Nothing here was tried on a keyboard by this
+# project: `verified = false`, and every write asks once per session.
+[[modes]]
+kind = "usb"
+protocol = "ajazz-aa"
+vid = 0x0C45
+pid = 0x8039
+product_contains = "AK980 PRO"
+command_usage_page = 0xFF68
+display_usage_page = 0xFF67
+capabilities = ["lighting", "per-key-rgb", "keymap", "macros", "screen", "clock", "battery"]
+verified = false
+verified_firmware = []
+
+# "AA" firmware behind the old product id: AJAZZ's own tools list this PID
+# for both families, though no such board was seen yet. The report layout
+# tells the two apart (kb_core::classify): a board whose FF13 and FF68 have
+# the "04 xx" layout stays the mode above, one whose FF68 and FF67 have the
+# "AA" layout is this one.
+[[modes]]
+kind = "usb"
+protocol = "ajazz-aa"
+vid = 0x0C45
+pid = 0x8009
+product_contains = "AK980 PRO"
+command_usage_page = 0xFF68
+display_usage_page = 0xFF67
+capabilities = ["lighting", "per-key-rgb", "keymap", "macros", "screen", "clock", "battery"]
+verified = false
+verified_firmware = []
+
 [[modes]]
 kind = "dongle"
 vid = 0x0C45
