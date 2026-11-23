@@ -104,13 +104,34 @@ If the keys show bars instead of your lighting, system gauges are on. The Lighti
 
 On an AK980 PRO with AJAZZ's firmware 3.01, Keymotion saves a backup of the keyboard's settings the first time it connects, before it can write anything: the key mapping on both layers, the lighting effect, the per-key colors and the macros. The screen picture isn't in it.
 
-The **Connection** page lists the backups. Only a backup of the keyboard on the cable can be put back. Before Keymotion writes it, it backs up the keyboard as it is now, so you can go back again. If it doesn't know the color of the backup's lighting, it asks you for it. When it's done, it says what it put back and which keys it left as they were. Keymotion keeps each keyboard's first backup and its four newest, in the `keyboard-backups` folder of its data folder (**Settings**, under **About**, **Data folder**).
+To put a backup back:
 
-When Keymotion writes nothing to a keyboard on this firmware, it says why:
+<Screenshot name="aa-connection-backups" alt="The Connection page for a keyboard on firmware 3.01: the Keyboard clock card and Keyboard backups, with a backup of this keyboard and its Restore button, and one marked Another keyboard or firmware" />
 
-- **What the keyboard reports doesn't look as expected.** Please [send a report](#where-to-ask-for-help), so we can find out why.
-- **A firmware update was left unfinished.** Finish it with AJAZZ's keyboard tool first.
-- **The backup couldn't be saved.** Without it, Keymotion writes nothing.
+<Steps>
+
+1. Connect the cable and open **Connection**. **Keyboard backups** lists the backups, newest first, with the date, why each was saved and the firmware. One marked **Another keyboard or firmware** can't be put back.
+2. Click **Restore** next to the backup. **What comes back** lists what Keymotion writes; the picture on the screen and macros beyond what the keyboard can hold don't come back, and the Fn key and the knob stay as they are. Click **Restore**, or **Cancel** to stop here.
+3. If the backup doesn't say which color the lighting effect had, Keymotion asks for it under **Lighting color**.
+4. Keep the cable plugged in. Keymotion first backs up the keyboard as it is now, so you can go back again, then writes the backup. **Done** lists what was put back and the keys left as they were. Click **OK**.
+
+</Steps>
+
+<Screenshot name="aa-restore-check" alt="The What comes back step: the key mapping on both layers, the lighting effect, the per-key colors and the macros, what isn't put back, and the Cancel and Restore buttons" />
+
+The **Lighting**, **Key mapping** and **Macros** pages then still show what you last saved in Keymotion, not what the backup put back.
+
+Keymotion keeps each keyboard's first backup and its four newest, in the `keyboard-backups` folder of its data folder (**Settings**, under **About**, **Data folder**).
+
+### When Keymotion writes nothing to the keyboard
+
+On firmware 3.01, a notice at the top of the Overview, Connection, Lighting, Key mapping, Macros, Screen and Profiles pages says why Keymotion writes nothing to the keyboard, and the buttons that would write are off:
+
+- **Keymotion only reads this keyboard**: what the keyboard reports doesn't look as expected. Click **Report a problem** in the notice. It opens the report window with what Keymotion read from the keyboard, so we can find out why.
+- **A firmware update was left unfinished**: finish the update with AJAZZ's keyboard tool first.
+- **The keyboard's backup couldn't be saved**: check that the disk has free space, then unplug the cable and plug it back in.
+
+<Screenshot name="aa-read-only" alt="The Lighting page with the notice Keymotion only reads this keyboard and its Report a problem button; Save to keyboard is off" />
 
 ## An upload was cut short
 
