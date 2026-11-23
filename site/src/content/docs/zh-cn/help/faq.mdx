@@ -126,6 +126,8 @@ Keymotion 不读取也不修改游戏的内存，不向游戏发送按键，也�
 
 如果你在 **AI 智能体**页面连接了 Claude Code 或 Codex，先移除连接：打开 **AI 智能体**，点击每个应用旁的箭头，选择**移除连接**。Claude Code 会直接调用 Keymotion 的命令行工具，所以 Keymotion 卸载后，在移除连接之前，它会在每个事件上报告钩子错误。从 Microsoft Store 安装的 Keymotion 尤其要注意：Windows 卸载它时不会让它先清理自己添加的内容。
 
+从 GitHub 安装的 Keymotion 在你用自己的 Windows 帐户卸载时，会自己移除连接。如果用另一个 Windows 帐户卸载（在 Windows 的提示中输入管理员的用户名和密码），连接会留下：请先移除它们。
+
 如果已经卸载，可以重新安装 Keymotion 后移除连接，或者自己从 `%USERPROFILE%\.claude\settings.json` 中删除含有 `keymotion-cli` 的钩子。
 
 ## 能用于其他键盘吗？

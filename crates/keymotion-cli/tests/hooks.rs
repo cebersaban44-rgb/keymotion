@@ -397,6 +397,57 @@ fn connect_writes_hook_lines_that_run_from_a_folder_with_spaces() {
 }
 
 #[test]
+fn the_uninstaller_takes_away_only_the_connections_of_its_own_copy() {
+    let home = temp_home();
+    let store = installed_copy(&home.join("Store"));
+    let github = installed_copy(&home.join("GitHub copy"));
+    std::fs::create_dir_all(home.join(".claude")).unwrap();
+    std::fs::create_dir_all(home.join(".codex")).unwrap();
+    let pipe = unique_pipe();
+    let run = |exe: &Path, args: &[&str]| run_program(exe, args, b"", &pipe, Some(&home));
+    for agent in ["claude-code", "codex"] {
+        assert_eq!(run(&store, &["connect", agent, "--yes"]).code, 0);
+    }
+    let settings = read(&home.join(".claude").join("settings.json"));
+    let codex = read(&home.join(".codex").join("hooks.json"));
+    // The other copy's uninstaller: the hooks run another keymotion-cli.
+    for agent in ["claude-code", "codex"] {
+        let r = run(&github, &["disconnect", agent, "--yes", "--if-this-copy", "--json"]);
+        assert_eq!(r.code, 0, "{r:?}");
+        let v: Value = serde_json::from_slice(&r.stdout).unwrap();
+        assert_eq!(v["data"]["changed"], json!(false), "{v}");
+        assert!(v["data"]["runs"].as_str().unwrap().contains("Store"), "{v}");
+    }
+    assert_eq!(read(&home.join(".claude").join("settings.json")), settings);
+    assert_eq!(read(&home.join(".codex").join("hooks.json")), codex);
+    // No hook left, but the shared skill names the other copy: it stays too.
+    let settings_file = home.join(".claude").join("settings.json");
+    std::fs::write(&settings_file, "{}\n").unwrap();
+    let skill = home.join(".claude").join("skills").join("keymotion").join("SKILL.md");
+    assert!(skill.exists());
+    let r = run(&github, &["disconnect", "claude-code", "--yes", "--if-this-copy", "--json"]);
+    let v: Value = serde_json::from_slice(&r.stdout).unwrap();
+    assert_eq!((r.code, v["data"]["changed"].clone()), (0, json!(false)), "{v}");
+    assert!(skill.exists(), "the other copy's skill stays");
+    std::fs::write(&settings_file, &settings).unwrap();
+    // Its own copy's: they go.
+    for agent in ["claude-code", "codex"] {
+        let r = run(&store, &["disconnect", agent, "--yes", "--if-this-copy"]);
+        assert_eq!(r.code, 0, "{r:?}");
+    }
+    assert!(!home.join(".codex").join("hooks.json").exists());
+    assert!(!home.join(".claude").join("skills").join("keymotion").exists());
+    // Nothing connected: nothing to do, still 0.
+    assert_eq!(run(&github, &["disconnect", "codex", "--yes", "--if-this-copy"]).code, 0);
+    // PATH: a folder Keymotion never put there is left alone (read only).
+    let r = run(&github, &["path", "remove", "--json"]);
+    assert_eq!(r.code, 0, "{r:?}");
+    let v: Value = serde_json::from_slice(&r.stdout).unwrap();
+    assert_eq!(v["data"]["removed"], json!(false), "{v}");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
 fn the_codex_line_runs_from_any_folder_and_does_nothing_once_the_program_is_gone() {
     // A typographic apostrophe ends a single-quoted PowerShell string as a
     // straight one does: doubled in the line, the path still runs.

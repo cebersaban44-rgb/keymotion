@@ -124,10 +124,28 @@ jobs:
           rustup toolchain install "$channel" --profile minimal --no-self-update
           rustc --version
 
-      # The program only: the package is made below, and the updater's
-      # files belong to the GitHub release.
-      - name: Build keymotion.exe
-        run: pnpm --dir app tauri build --no-bundle
+      # The programs only: the package is made below, and the updater's
+      # files belong to the GitHub release. keymotion-cli (the agents'
+      # command-line tool) is built from the same commit; msix.mjs packs it
+      # beside keymotion.exe, with its app execution alias.
+      - name: Build keymotion.exe and keymotion-cli.exe
+        run: |
+          pnpm --dir app tauri build --no-bundle
+          cargo build --release -p keymotion-cli
+
+      # As in release.yml: the tool says the app's version (msix.mjs checks
+      # it again before it packs).
+      - name: keymotion-cli says the app's version
+        run: |
+          version="$(node -p "require('./app/src-tauri/tauri.conf.json').version")"
+          said="$(target/release/keymotion-cli.exe --version)"
+          case "$said" in
+            "keymotion-cli $version "*) echo "$said" ;;
+            *)
+              echo "::error::target/release/keymotion-cli.exe says '$said'; the app is $version."
+              exit 1
+              ;;
+          esac
 
       - name: Pack the MSIX
         id: pack

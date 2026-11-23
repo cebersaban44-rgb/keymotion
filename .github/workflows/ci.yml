@@ -125,7 +125,7 @@ jobs:
       # would refuse, on every change.
       - name: Microsoft Store package packs
         run: |
-          cargo build -p keymotion
+          cargo build -p keymotion -p keymotion-cli
           node tools/store/msix.mjs --exe target/debug/keymotion.exe --out target/store-check --test
 
   # Licences, security advisories, duplicate crates and crate sources

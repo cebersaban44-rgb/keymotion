@@ -29,7 +29,7 @@ Codex 会请你确认这些新设置一次（输入 `/hooks`，或在 Codex 中�
 
 每个应用都会显示自己的状态：**已连接**、**等待你在 Codex 中批准一次**、**未连接**、**这台电脑上没有**，或者在 Claude Code 低于 2.1.139 版、需要用 `claude update` 更新时显示**版本太旧**。右侧的箭头会显示它的文件夹和文件，以及只移除 Keymotion 所添加内容的**移除连接**。
 
-卸载 Keymotion 之前，先对每个已连接的应用点击**移除连接**。Claude Code 会直接调用 Keymotion 的命令行工具：Keymotion 卸载后，在移除连接之前，它会在每个事件上报告钩子错误。Codex 会先检查，不会报错。
+从 GitHub 安装的 Keymotion 在卸载时会自行移除它的连接。卸载 Microsoft Store 版之前，请先对每个已连接的应用点击**移除连接**：Windows 卸载 Store 应用时不会让它们先做清理，而 Claude Code 会直接调用 Keymotion 的命令行工具，所以 Keymotion 卸载后，在移除连接之前，它会在每个事件上报告钩子错误。Codex 会先检查，不会报错。
 
 ## 键盘如何提醒你
 

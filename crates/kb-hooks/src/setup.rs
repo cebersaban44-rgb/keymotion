@@ -304,6 +304,79 @@ pub fn command_line(agent: Agent, cli: &Cli) -> String {
     }
 }
 
+/// Our entries for `agent` that name another keymotion-cli than `cli`:
+/// each of our hooks (its `command`), in every event; the skill, whose
+/// full-path line names its keymotion-cli; the Codex rule, whose
+/// `host_executable` does. Empty when all of them name `cli`, or there are
+/// none. A file that cannot be read counts as naming another (it is left
+/// alone); a skill or rule that names no keymotion-cli does not.
+pub fn other_copies(agent: Agent, homes: &Homes, cli: &Cli) -> Vec<String> {
+    let mut out = Vec::new();
+    let path = cli.path_text().to_lowercase();
+    let names_other = |named: Option<PathBuf>| named.is_some_and(|p| p.to_string_lossy().to_lowercase() != path);
+    let hooks_file = homes.hooks_file(agent);
+    match read_text(&hooks_file).and_then(|t| t.map(|t| parse_object(&hooks_file, Some(&t))).transpose()) {
+        Ok(Some(root)) => {
+            let groups = root.get("hooks").and_then(Json::as_object).into_iter().flatten();
+            for (_, list) in groups {
+                for group in list.as_array().into_iter().flatten() {
+                    for handler in group.get("hooks").and_then(Json::as_array).into_iter().flatten() {
+                        if !is_ours(agent, handler) {
+                            continue;
+                        }
+                        let command = handler.get("command").and_then(Json::as_str).unwrap_or_default();
+                        if !runs_cli(agent, command, cli) && !out.iter().any(|o| o == command) {
+                            out.push(command.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        Ok(None) => {}
+        Err(_) => out.push(hooks_file.display().to_string()),
+    }
+    let skill_file = homes.skill_file(agent);
+    match std::fs::read_to_string(&skill_file) {
+        Ok(text) if skill_version(&text).is_some() && names_other(skill_cli_path(&text)) => {
+            out.push(skill_file.display().to_string());
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => out.push(skill_file.display().to_string()),
+    }
+    if agent == Agent::Codex {
+        let rules_file = homes.rules_file();
+        match std::fs::read_to_string(&rules_file) {
+            Ok(text) if marker_version(&text, RULES_MARKER).is_some() && names_other(rules_cli_path(&text)) => {
+                out.push(rules_file.display().to_string());
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => out.push(rules_file.display().to_string()),
+        }
+    }
+    out
+}
+
+/// Whether our hooks' program ([`Status::runs`]: a handler's `command`) is
+/// `cli`: its path (Claude Code), or the line we write for it (Codex).
+pub fn runs_cli(agent: Agent, runs: &str, cli: &Cli) -> bool {
+    let runs = runs.trim();
+    let path = cli.path_text();
+    match agent {
+        Agent::ClaudeCode => {
+            // `<path>` with `args`, or an older `"<path>" hook claude-code`.
+            let line = runs.to_lowercase();
+            let line = line.strip_suffix(" hook claude-code").unwrap_or(&line);
+            line.trim().trim_matches('"') == path.to_lowercase()
+        }
+        Agent::Codex => {
+            runs.to_lowercase() == codex_command(cli).to_lowercase()
+                || runs.to_lowercase().contains(&format!("'{}'", path.to_lowercase()))
+        }
+    }
+}
+
 /// Whether a hook handler is ours: keymotion-cli's hook mode for `agent`,
 /// whichever copy it names.
 pub fn is_ours(agent: Agent, handler: &Json) -> bool {
@@ -1600,6 +1673,35 @@ mod tests {
 "#;
 
     #[test]
+    fn the_program_our_hooks_run_is_told_apart_from_another_copy() {
+        let mine = Cli {
+            path: PathBuf::from(r"C:\Users\A B\AppData\Local\Keymotion\bin\keymotion-cli.exe"),
+            kind: CliKind::Installed,
+        };
+        let store = Cli {
+            path: PathBuf::from(r"C:\Users\A B\AppData\Local\Microsoft\WindowsApps\keymotion-cli.exe"),
+            kind: CliKind::Store,
+        };
+        for agent in Agent::ALL {
+            let line = |cli: &Cli| match agent {
+                Agent::ClaudeCode => cli.path_text(),
+                Agent::Codex => codex_command(cli),
+            };
+            assert!(runs_cli(agent, &line(&mine), &mine), "{agent:?}");
+            assert!(runs_cli(agent, &line(&mine).to_uppercase(), &mine), "{agent:?}: case");
+            assert!(!runs_cli(agent, &line(&store), &mine), "{agent:?}");
+        }
+        // An older Claude Code line, the program and its arguments in one.
+        assert!(runs_cli(Agent::ClaudeCode, &format!("\"{}\" hook claude-code", mine.path_text()), &mine));
+        // A folder whose name only starts the same.
+        let longer = Cli {
+            path: PathBuf::from(r"C:\Users\A B\AppData\Local\Keymotion\bin2\keymotion-cli.exe"),
+            kind: CliKind::Dev,
+        };
+        assert!(!runs_cli(Agent::Codex, &codex_command(&longer), &mine));
+    }
+
+    #[test]
     fn a_write_that_fails_part_way_puts_back_what_was_written() {
         let home = temp_home();
         let homes = Homes::with(&home, None, None);
@@ -1923,6 +2025,39 @@ mod tests {
         let exe = dir.join("bin").join("keymotion-cli.exe");
         assert_eq!(Cli::for_exe(&exe, false, Some(&local)).kind, CliKind::Installed);
         assert_eq!(Cli::for_exe(Path::new(r"C:\dev\target\debug\keymotion-cli.exe"), false, None).kind, CliKind::Dev);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn other_copies_looks_at_every_hook_the_skill_and_the_rule() {
+        let home = temp_home();
+        let homes = Homes::with(&home, None, None);
+        let mine = cli(&home);
+        let other = Cli { path: home.join("Other").join("bin").join("keymotion-cli.exe"), kind: CliKind::Installed };
+        for agent in [Agent::ClaudeCode, Agent::Codex] {
+            assert!(other_copies(agent, &homes, &mine).is_empty(), "nothing connected");
+            connect(agent, &homes, &mine).unwrap();
+            assert!(other_copies(agent, &homes, &mine).is_empty(), "all mine");
+            // The same path in other letter case: still mine.
+            let upper = Cli { path: PathBuf::from(mine.path_text().to_uppercase()), kind: CliKind::Installed };
+            assert!(other_copies(agent, &homes, &upper).is_empty());
+            assert!(!other_copies(agent, &homes, &other).is_empty());
+        }
+        // No hooks left: the skill (both agents) and the rule (Codex) still
+        // name `mine`.
+        std::fs::write(homes.hooks_file(Agent::ClaudeCode), "{}\n").unwrap();
+        std::fs::write(homes.hooks_file(Agent::Codex), "{}\n").unwrap();
+        let skill = |agent| homes.skill_file(agent).display().to_string();
+        assert_eq!(other_copies(Agent::ClaudeCode, &homes, &other), [skill(Agent::ClaudeCode)]);
+        let rules = homes.rules_file().display().to_string();
+        assert_eq!(other_copies(Agent::Codex, &homes, &other), [skill(Agent::Codex), rules]);
+        // One hook among ours names the other copy: it counts.
+        connect(Agent::ClaudeCode, &homes, &mine).unwrap();
+        let settings = homes.hooks_file(Agent::ClaudeCode);
+        let json_text = |s: String| serde_json::to_string(&s).unwrap().trim_matches('"').to_string();
+        let swapped = read(&settings).replacen(&json_text(mine.path_text()), &json_text(other.path_text()), 1);
+        std::fs::write(&settings, swapped).unwrap();
+        assert_eq!(other_copies(Agent::ClaudeCode, &homes, &mine), [other.path_text()]);
         let _ = std::fs::remove_dir_all(&home);
     }
 

@@ -192,6 +192,39 @@ fn describe(plan: &Plan, home: &Path, connecting: bool) -> String {
     text.trim_end().to_string()
 }
 
+/// `disconnect --if-this-copy`: some of Keymotion's entries for the agent
+/// (a hook, the skill, the Codex rule) name another keymotion-cli (the
+/// Store copy's, while the GitHub copy is uninstalled), so all of them
+/// stay: the skill and the rule are shared; `None` when every one names
+/// this keymotion-cli, or there are none.
+pub fn another_copy(env: &Env, agent: Agent) -> Result<Option<Done>, AgentError> {
+    let homes = homes(env)?;
+    let me = this_cli()?;
+    let others = setup::other_copies(agent, &homes, &me);
+    let Some(runs) = others.first().cloned() else { return Ok(None) };
+    let text = format!("{}'s Keymotion entries name another keymotion-cli ({runs}); left as they are.", agent.title());
+    Ok(Some(Done::new(json!({ "agent": agent.id(), "changed": false, "runs": runs, "others": others }), text)))
+}
+
+/// `path remove`: this keymotion-cli's folder off the user's PATH, only
+/// when Keymotion put it there (its record names the folder); the record
+/// goes too. The GitHub copy's uninstaller runs it.
+pub fn path_remove() -> Result<Done, AgentError> {
+    let exe = std::env::current_exe()
+        .map_err(|e| AgentError::new(ErrorCode::Internal, format!("keymotion-cli cannot find itself: {e}")))?;
+    let dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
+    let shown = dir.display().to_string();
+    let removed = kb_winsys::user_path::remove(&dir)
+        .map_err(|e| AgentError::new(ErrorCode::Internal, format!("Your PATH was not changed: {e}")))?;
+    let text = if removed {
+        kb_winsys::user_path::announce();
+        format!("Took {shown} off your PATH; new terminals no longer find keymotion-cli there.")
+    } else {
+        format!("Keymotion did not put {shown} on your PATH; nothing changed.")
+    };
+    Ok(Done::new(json!({ "dir": shown, "removed": removed }), text))
+}
+
 /// `connections`: both agents.
 pub fn connections(env: &Env) -> Result<Done, AgentError> {
     let homes = homes(env)?;

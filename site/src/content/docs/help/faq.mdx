@@ -126,6 +126,8 @@ Yes, if you connected Codex on the **AI agents** page. Codex asks once to trust 
 
 If you connected Claude Code or Codex on the **AI agents** page, remove the connections first: open **AI agents**, click the arrow next to each app and choose **Remove connection**. Claude Code calls Keymotion's command-line tool directly, so once Keymotion is gone it reports a hook error on every event until the connection is removed. This matters most for Keymotion from the Microsoft Store: Windows removes it without letting it clean up after itself.
 
+Keymotion from GitHub removes its connections itself when you uninstall it from your own Windows account. If you uninstall it with another Windows account (an administrator's name and password typed into Windows' prompt), it leaves them: remove them first.
+
 If you've already uninstalled it, install Keymotion again and remove the connections, or delete the hooks that name `keymotion-cli` from `%USERPROFILE%\.claude\settings.json` yourself.
 
 ## Does it work with other keyboards?

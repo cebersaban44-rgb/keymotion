@@ -7,9 +7,12 @@ import { Aside } from "@astrojs/starlight/components";
 
 `keymotion-cli` 让脚本或 AI 编程智能体（Claude Code、Codex 以及其他能运行 shell 命令的智能体）用键盘的灯光告诉用户一些事情：任务完成了、有问题在等待回答、三个测试失败了。显示什么、怎么显示由智能体决定；预设信号只是快捷方式，按键、颜色、效果和时间都可以自由组合。
 
-<Aside type="caution">
-应用中开启智能体访问并连接 Claude Code 和 Codex 的页面已经就绪（工具 › AI 智能体）。工具本身还没有包含在安装程序和 Store 软件包中，会在打包这一步加入。在此之前，请从代码仓库构建它（见[开发](#开发)）。
+<Aside>
+`keymotion-cli` 随 Keymotion 一起提供：GitHub 版把它放在安装目录的 `bin` 文件夹中，开启智能体访问后加入 PATH；Microsoft Store 版提供 `keymotion-cli` 命令。从代码仓库构建的方法见[开发](#开发)。
 </Aside>
+
+{/* Docs pass: the "Where it is installed" section and the uninstalling
+paragraph of the English and Turkish pages still need translating here. */}
 
 ## 工作原理
 

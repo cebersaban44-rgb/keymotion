@@ -26,8 +26,16 @@ pub fn run(inv: Invocation, env: &Env) -> u8 {
         // Needs nothing, so a wrong KEYMOTION_SOURCE does not hide it.
         Plan::Guide => Ok(Done::new(guide::data(), guide::GUIDE)),
         Plan::Connect { agent, yes, dry_run } => connect::run(env, agent, true, yes, dry_run, json),
-        Plan::Disconnect { agent, yes, dry_run } => connect::run(env, agent, false, yes, dry_run, json),
+        Plan::Disconnect { agent, yes, dry_run, if_this_copy } => {
+            if if_this_copy {
+                if let Some(left) = connect::another_copy(env, agent)? {
+                    return Ok(left);
+                }
+            }
+            connect::run(env, agent, false, yes, dry_run, json)
+        }
         Plan::Connections => connect::connections(env),
+        Plan::PathRemove => connect::path_remove(),
         plan => {
             let mut ctx = Ctx::new(&inv.global, env, log)?;
             // `card --wait`: the answer may take that long, unless the agent
@@ -51,7 +59,7 @@ fn execute(ctx: &Ctx, plan: Plan) -> Result<Done, AgentError> {
         Plan::Guide => Ok(Done::new(guide::data(), guide::GUIDE)),
         Plan::Doctor => Ok(doctor::run(ctx)),
         Plan::Start => start(ctx),
-        Plan::Hook { .. } | Plan::Connect { .. } | Plan::Disconnect { .. } | Plan::Connections => {
+        Plan::Hook { .. } | Plan::Connect { .. } | Plan::Disconnect { .. } | Plan::Connections | Plan::PathRemove => {
             Err(AgentError::new(ErrorCode::Internal, "This command is run elsewhere."))
         }
     }

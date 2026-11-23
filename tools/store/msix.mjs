@@ -2,7 +2,9 @@
 // Packs keymotion.exe as the Microsoft Store's MSIX (docs site:
 // developers/microsoft-store). The program is the one `tauri build` makes
 // for GitHub; at run time it sees its package and lets the Store update it
-// (app/src-tauri/src/channel.rs).
+// (app/src-tauri/src/channel.rs). keymotion-cli.exe, the agents'
+// command-line tool, goes beside it (the manifest's second application,
+// with its app execution alias): the one next to keymotion.exe, or --cli.
 //
 //   node tools/store/msix.mjs --exe target/release/keymotion.exe --out target/store
 //       The Store package. Its identity comes from Partner Center › the app ›
@@ -25,7 +27,7 @@
 
 import { execFileSync } from "node:child_process";
 import { appendFileSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
@@ -119,13 +121,15 @@ function args(argv) {
     const a = argv[i];
     if (a === "--test") out.test = true;
     else if (a === "--check") out.check = true;
-    else if (["--exe", "--out", "--version"].includes(a)) out[a.slice(2)] = argv[++i];
+    else if (["--exe", "--cli", "--out", "--version"].includes(a)) out[a.slice(2)] = argv[++i];
     else throw new Error(`unknown argument ${a}`);
   }
   if (out.version && !out.test) {
     throw new Error("--version is for test packages only: a Store package carries the app's own version");
   }
-  if (!out.check && (!out.exe || !out.out)) throw new Error("usage: msix.mjs --exe <keymotion.exe> --out <folder> [--test] [--version 1.2.3.0] | --check [--test]");
+  if (!out.check && (!out.exe || !out.out)) {
+    throw new Error("usage: msix.mjs --exe <keymotion.exe> [--cli <keymotion-cli.exe>] --out <folder> [--test] [--version 1.2.3.0] | --check [--test]");
+  }
   return out;
 }
 
@@ -142,6 +146,28 @@ function identity(test) {
     PublisherDisplayName: env.STORE_PUBLISHER_DISPLAY_NAME,
     DisplayName: "Keymotion",
   });
+}
+
+/** The package's programs: keymotion.exe, and keymotion-cli.exe from
+ *  `cli` or beside it. Each must be there, under its own name. */
+export function programs(exe, cli) {
+  const app = resolve(exe);
+  if (basename(app).toLowerCase() !== "keymotion.exe" || !existsSync(app)) throw new Error(`${app}: not a keymotion.exe`);
+  const tool = resolve(cli ?? join(dirname(app), "keymotion-cli.exe"));
+  if (basename(tool).toLowerCase() !== "keymotion-cli.exe" || !existsSync(tool)) {
+    throw new Error(`${tool}: not a keymotion-cli.exe (build it: cargo build -p keymotion-cli, with --release for a release)`);
+  }
+  return { app, tool };
+}
+
+/** What `keymotion-cli --version` said is the app's version: the tool
+ *  beside the app is from the same build, never an older one left there. */
+export function checkCliVersion(said, appVersion) {
+  const line = String(said).trim();
+  if (!line.startsWith(`keymotion-cli ${appVersion} `)) {
+    throw new Error(`keymotion-cli says "${line}", the app is ${appVersion}: build both from the same commit`);
+  }
+  return line;
 }
 
 /** Run an SDK tool; its file-by-file lines are left out of the log. */
@@ -169,14 +195,15 @@ function main() {
     console.log(`Keymotion ${appVersion} → package ${version} (${id.IdentityName}): ready to pack`);
     return;
   }
-  const exe = resolve(opt.exe);
-  if (basename(exe).toLowerCase() !== "keymotion.exe" || !existsSync(exe)) throw new Error(`${exe}: not a keymotion.exe`);
+  const { app, tool } = programs(opt.exe, opt.cli);
+  checkCliVersion(execFileSync(tool, ["--version"], { encoding: "utf8" }), appVersion);
 
   const out = resolve(opt.out);
   const layout = join(out, "layout");
   rmSync(layout, { recursive: true, force: true });
   mkdirSync(layout, { recursive: true });
-  copyFileSync(exe, join(layout, "keymotion.exe"));
+  copyFileSync(app, join(layout, "keymotion.exe"));
+  copyFileSync(tool, join(layout, "keymotion-cli.exe"));
   cpSync(join(STORE_DIR, "Assets"), join(layout, "Assets"), { recursive: true });
   const template = readFileSync(join(STORE_DIR, "AppxManifest.xml"), "utf8");
   writeFileSync(join(layout, "AppxManifest.xml"), fillManifest(template, { ...id, Version: version }));

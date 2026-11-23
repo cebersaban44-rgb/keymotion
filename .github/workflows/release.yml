@@ -167,6 +167,24 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: github.ref_type != 'tag'
 
+      # keymotion-cli, the command-line tool AI coding agents and scripts use,
+      # goes in the installer as bin\keymotion-cli.exe (the resource that
+      # tauri.bundle-cli.conf.json adds). It is built first, here, from the
+      # same commit as the app, and says the same version.
+      - name: Build keymotion-cli
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cargo build --release -p keymotion-cli
+          said="$(target/release/keymotion-cli.exe --version)"
+          case "$said" in
+            "keymotion-cli $VERSION "*) echo "$said" ;;
+            *)
+              echo "::error::target/release/keymotion-cli.exe says '$said'; this release is $VERSION."
+              exit 1
+              ;;
+          esac
+
       # With bundle.createUpdaterArtifacts, tauri build also signs the setup
       # .exe for the updater (<setup>.exe.sig) with the key below. Old bundles
       # are removed first, so the next step finds only this build's files.
@@ -176,7 +194,28 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           rm -rf target/release/bundle app/src-tauri/target/release/bundle
-          pnpm --dir app tauri build --bundles nsis
+          pnpm --dir app tauri build --bundles nsis --config src-tauri/tauri.bundle-cli.conf.json
+
+      # The script tauri generated for the installer names every file it
+      # packs: keymotion-cli must be among them, under bin\.
+      - name: The installer carries keymotion-cli
+        run: |
+          script=""
+          for candidate in target/release/nsis/x64/installer.nsi app/src-tauri/target/release/nsis/x64/installer.nsi; do
+            if [ -f "$candidate" ]; then
+              script="$candidate"
+              break
+            fi
+          done
+          if [ -z "$script" ]; then
+            echo "::error::No installer.nsi under target/release/nsis/x64: did tauri build make the NSIS installer?"
+            exit 1
+          fi
+          if ! grep -qF '"/oname=bin\keymotion-cli.exe"' "$script"; then
+            echo "::error::The installer does not install bin\\keymotion-cli.exe. Is tauri.bundle-cli.conf.json passed to tauri build?"
+            exit 1
+          fi
+          grep -n 'keymotion-cli' "$script"
 
       # The repository is a Cargo workspace, so target/ is at the root; the
       # app's own folder is searched too in case that ever changes.
@@ -209,11 +248,15 @@ jobs:
       #   a test version.
       # - SignPath can't open NSIS installers, so there are two requests, each
       #   approved by the owner in SignPath:
-      #     1. `tauri build --no-bundle`, upload `keymotion.exe`, sign it
+      #     1. `tauri build --no-bundle` (with tauri.bundle-cli.conf.json,
+      #        after "Build keymotion-cli"), upload `keymotion.exe` and
+      #        `keymotion-cli.exe`, sign them
       #        (signpath/github-action-submit-signing-request, pinned by SHA,
       #        with wait-for-completion-timeout-in-seconds: 3600), and put the
-      #        signed file back in target/release;
-      #     2. `tauri bundle --bundles nsis`, upload the installer, sign it.
+      #        signed files back in target/release;
+      #     2. `tauri bundle --bundles nsis --config
+      #        src-tauri/tauri.bundle-cli.conf.json`, upload the installer,
+      #        sign it.
       # - Then the updater signature, made over the SIGNED installer, because
       #   signing changes the file's bytes and the .sig tauri wrote earlier
       #   no longer matches:
