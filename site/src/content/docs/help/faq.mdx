@@ -136,9 +136,15 @@ Not yet. Keymotion supports the AJAZZ AK980 PRO. If you connect a SONiX or AJAZZ
 
 Yes. The keyboard Keymotion is tested with was sold as the AK980 V2: AJAZZ's store listed it as "AK980MAX … V2" and the box says "AK980 V2". Over USB it gives SONiX as its maker and "AK980 PRO" as its name, and Keymotion recognizes it by that name. What matters is the hardware: the 98-key model with the 240×135 screen and the knob. See [Supported keyboards](/keymotion/help/keyboards/).
 
-## My keyboard isn't recognized after a firmware update
+## Should I install AJAZZ's newest firmware?
 
-A firmware update, for example from AJAZZ's software, can change how the keyboard identifies itself. If Keymotion no longer recognizes it, it sends nothing to the keyboard and shows **This keyboard isn't supported yet** with **Request support**. Click it, then **Report on GitHub**: the keyboard's details go to the clipboard and the project's form opens on GitHub. Paste them into the form's details box (Ctrl+V) and send it; those details are what we need to support the new firmware. Nothing is written to the keyboard.
+AJAZZ's newest firmware for the AK980 PRO, "AK980 Led v2 Firmware 769" (version 3.01), switches the keyboard to a different command set; afterwards the keyboard shows up with the USB ID 0C45:8039. AJAZZ's keyboard tool on its website offers it to older AK980 PRO keyboards too. Keymotion doesn't support this firmware yet and sends nothing to a keyboard that runs it; support is planned for a later update. AJAZZ offers no way back to the older firmware.
+
+The choice is yours: if you want to keep using Keymotion now, wait before updating. Keyboards on the older firmware work as before.
+
+## My keyboard isn't recognized any more
+
+If Keymotion no longer recognizes a keyboard, after a firmware update for example, it sends nothing to it and shows **This keyboard isn't supported yet** with **Request support**. Click it, then **Report on GitHub**: the keyboard's details go to the clipboard and the project's form opens on GitHub. Paste them into the form's details box (Ctrl+V) and send it; those details are what we need to support it. Nothing is written to the keyboard.
 
 If Keymotion still recognizes the keyboard but says its firmware hasn't been tested, it keeps working and asks you before saving to the keyboard. See [Can Keymotion break my keyboard?](#can-keymotion-break-my-keyboard)
 
