@@ -90,9 +90,14 @@ pub(crate) fn flash_busy(app: &AppHandle) -> bool {
     app.try_state::<Arc<DeviceHandle>>().is_some_and(|d| d.flash.current().is_some())
 }
 
+/// The UI holds changes that are not on the keyboard yet.
+pub(crate) fn unsaved_changes(app: &AppHandle) -> bool {
+    app.try_state::<CloseGuard>().is_some_and(|g| g.unsaved.load(Ordering::SeqCst))
+}
+
 /// Closing would ask first: changes not on the keyboard, or a flash write.
 fn close_needs_asking(app: &AppHandle) -> bool {
-    app.try_state::<CloseGuard>().is_some_and(|g| g.unsaved.load(Ordering::SeqCst)) || flash_busy(app)
+    unsaved_changes(app) || flash_busy(app)
 }
 
 /// "Update by itself" waits: closing would ask first, the focus timer
@@ -623,9 +628,12 @@ fn gauges_state(gauges: Gauges<'_>) -> Result<GaugesState, String> {
 
 /// New system gauges settings (saved).
 #[tauri::command]
-fn gauges_configure(gauges: Gauges<'_>, settings: GaugesSettings) -> Result<GaugesState, String> {
+fn gauges_configure(app: AppHandle, gauges: Gauges<'_>, settings: GaugesSettings) -> Result<GaugesState, String> {
     tracing::debug!(?settings, "ipc: gauges_configure");
-    gauges.configure(settings)
+    let state = gauges.configure(settings)?;
+    // The tray menu's tick follows.
+    tray::refresh(&app);
+    Ok(state)
 }
 
 /// The gauges page opened or closed: it gets readings (`gauges` events)
@@ -643,9 +651,12 @@ fn music_state(music: Music<'_>) -> Result<MusicState, String> {
 
 /// New music mode settings (saved).
 #[tauri::command]
-fn music_configure(music: Music<'_>, settings: MusicSettings) -> Result<MusicState, String> {
+fn music_configure(app: AppHandle, music: Music<'_>, settings: MusicSettings) -> Result<MusicState, String> {
     tracing::debug!(?settings, "ipc: music_configure");
-    music.configure(settings)
+    let state = music.configure(settings)?;
+    // The tray menu's tick follows.
+    tray::refresh(&app);
+    Ok(state)
 }
 
 /// The music page opened or closed: it gets frames (`music` events) while
@@ -1095,6 +1106,8 @@ fn ack_close_request(guard: State<'_, CloseGuard>) {
 /// skips the close-requested hook, so the dialog does not come back.
 #[tauri::command]
 fn close_window(window: WebviewWindow) -> Result<(), String> {
+    // A quit, as the close request that asked first said already.
+    Background::tell_agents(window.app_handle(), true);
     window.destroy().map_err(|e| e.to_string())
 }
 
@@ -1106,10 +1119,11 @@ fn quit_cancelled(app: AppHandle, background: State<'_, Arc<Background>>) {
     Background::tell_agents(&app, false);
 }
 
-/// Whether the window is on screen (hidden: running in the tray).
+/// Whether the window is on screen (hidden: running in the tray; or
+/// minimized).
 #[tauri::command]
 fn window_shown(window: WebviewWindow) -> bool {
-    window.is_visible().unwrap_or(true)
+    window.is_visible().unwrap_or(true) && !window.is_minimized().unwrap_or(false)
 }
 
 // Off the main thread: the Store build asks Windows for its startup task
@@ -1801,9 +1815,16 @@ pub fn run() {
             }
         })
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                agents_drawer_gone(window.app_handle());
-                return;
+            match event {
+                tauri::WindowEvent::Destroyed => {
+                    agents_drawer_gone(window.app_handle());
+                    return;
+                }
+                tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Focused(_) => {
+                    tray::follow_minimized(window);
+                    return;
+                }
+                _ => {}
             }
             let tauri::WindowEvent::CloseRequested { api, .. } = event else { return };
             // Kept in the tray: hiding loses nothing, so nothing to ask.
@@ -1811,6 +1832,10 @@ pub fn run() {
                 api.prevent_close();
                 return;
             }
+            // Not kept in the tray: closing quits Keymotion, and the agents'
+            // hooks leave it closed. Staying at the unsaved-changes question
+            // undoes it (`quit_cancelled`).
+            Background::tell_agents(window.app_handle(), true);
             let guard = window.state::<CloseGuard>();
             // A flash write (a live card, going back to the own picture)
             // asks too, even if the UI has not heard of it yet.

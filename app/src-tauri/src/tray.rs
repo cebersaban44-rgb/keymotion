@@ -68,7 +68,8 @@ const VERSION: u32 = 1;
 
 /// The UI opens the Profiles page on this profile's confirmation.
 pub const EVENT_TRAY_PROFILE: &str = "tray-profile";
-/// The window was shown (`true`) or hidden (`false`).
+/// The window was shown (`true`) or hidden (`false`): hidden in the tray,
+/// or minimized.
 pub const EVENT_WINDOW_SHOWN: &str = "window-shown";
 
 const PROFILE_PREFIX: &str = "profile:";
@@ -106,6 +107,8 @@ pub struct Background {
     notice_given: AtomicBool,
     /// The UI has sent its words (until then they are English).
     texts_received: AtomicBool,
+    /// The window was minimized when last looked at.
+    minimized: AtomicBool,
     refresh: Mutex<Option<Sender<()>>>,
 }
 
@@ -119,6 +122,7 @@ impl Background {
             quitting: AtomicBool::new(false),
             notice_given: AtomicBool::new(false),
             texts_received: AtomicBool::new(false),
+            minimized: AtomicBool::new(false),
             refresh: Mutex::new(None),
         })
     }
@@ -248,8 +252,10 @@ impl Background {
     }
 
     /// Tell the coding agents' hooks: a Keymotion the user quit stays closed
-    /// (the owner's decision, 2026-11-23); staying after all undoes it. Only
-    /// the tray's "Quit": Windows shutting down or signing out is no quit.
+    /// (the owner's decision, 2026-11-23); staying after all undoes it. The
+    /// tray's "Quit", and closing the window when it is not kept in the tray:
+    /// Windows shutting down or signing out is no quit (it closes no window
+    /// through its close button).
     pub fn tell_agents(app: &AppHandle, quit: bool) {
         if let Some(agents) = app.try_state::<Arc<crate::agent::AgentHandle>>() {
             agents.quitting(quit);
@@ -261,6 +267,12 @@ impl Background {
     /// window is not closed until the user opens it, so no notice comes then.
     fn take_notice(&self) -> bool {
         !self.notice_given.swap(true, Ordering::SeqCst)
+    }
+
+    /// The window is `minimized` now: whether that changed since the last
+    /// look.
+    fn minimized_changed(&self, minimized: bool) -> bool {
+        self.minimized.swap(minimized, Ordering::SeqCst) != minimized
     }
 }
 
@@ -279,6 +291,21 @@ pub fn show_main(app: &AppHandle) {
     let _ = window.show();
     let _ = window.set_focus();
     let _ = app.emit(EVENT_WINDOW_SHOWN, true);
+}
+
+/// The window was resized or gained or lost the focus: when it was just
+/// minimized or restored, tell the UI as for hiding it in the tray, so the
+/// pages that read the sound or the gauges for the window stop while nobody
+/// sees it. A window hidden in the tray was told already.
+pub fn follow_minimized(window: &tauri::Window) {
+    let app = window.app_handle();
+    let Some(bg) = app.try_state::<Arc<Background>>() else { return };
+    let minimized = window.is_minimized().unwrap_or(false);
+    if !bg.minimized_changed(minimized) || !window.is_visible().unwrap_or(true) {
+        return;
+    }
+    tracing::debug!(minimized, "window minimized or restored");
+    let _ = app.emit(EVENT_WINDOW_SHOWN, !minimized);
 }
 
 /// The window's close button (or Alt+F4): hide the window instead, when the
@@ -1250,5 +1277,16 @@ mod tests {
         assert!(!bg.take_notice());
         // A new run of the app (a new Background) shows it again.
         assert!(Background::open(None).take_notice());
+    }
+
+    #[test]
+    fn minimizing_and_restoring_are_told_once_each() {
+        let bg = Background::open(None);
+        // Resized and focus events while it stays as it was: nothing new.
+        assert!(!bg.minimized_changed(false));
+        assert!(bg.minimized_changed(true));
+        assert!(!bg.minimized_changed(true), "the focus going after the minimize");
+        assert!(bg.minimized_changed(false));
+        assert!(!bg.minimized_changed(false));
     }
 }
