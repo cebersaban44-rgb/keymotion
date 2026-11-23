@@ -96,6 +96,12 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   kapattıysanız başlatmaz. Sizin ya da ajanın yazdığı hiçbir şey Keymotion'a
   ulaşmaz: yalnız ne olduğu. `disconnect` hepsini geri alır. Ajan erişimi
   siz açana kadar kapalı kalır.
+  Araçlar › **Yapay zekâ ajanları** onu iki adımda açar (Claude Code'a ve
+  Codex'e ne ekleneceği, sonra ne yapıldığı; ilkinde Vazgeç), her
+  uygulamanın durumunu gösterir; beş sinyalin rengini, efektini ve süresini
+  **Klavyede dene** ile, ajanların başka neler yapabileceğini, ek
+  davranışları, ajanların bu ayarları değiştirip değiştiremeyeceğini, oturum
+  numaralarını ve **Geri al**'lı son işlemleri ayarlar.
 
 ### Değişenler
 

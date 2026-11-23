@@ -1,0 +1,69 @@
+---
+title: AI agents
+description: Coding agents such as Claude Code and Codex tell you with the keyboard's light when they finish, wait for your approval or run into an error.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+When a coding agent such as Claude Code or Codex finishes a task, waits for your approval or runs into an error, your keyboard can tell you with light. The agent may also light keys in its own way: a word spelled on the letter keys, a number, a progress bar on the F row. You only turn access on once; everything else has a ready-made look you can change.
+
+## Turn it on
+
+<Steps>
+
+1. Open **AI agents** under **Tools** in the sidebar.
+2. Turn on **Agents may use the keyboard**.
+3. Under **Things to connect**, Keymotion lists what it adds to the coding apps on this computer: for Claude Code its hooks and the keymotion skill, for Codex its hooks, the skill and a rule that lets keymotion-cli run outside Codex's sandbox. **Details** shows the files and where a copy of each changed file is kept.
+4. Click **Connect and turn on**. To stop here, click **Cancel**: nothing is written and access stays off.
+5. **Done** says what was connected. Click **OK**.
+
+</Steps>
+
+Codex asks you once to trust the new hooks (type `/hooks`, or open Settings › Hooks in Codex). Until then **Connected apps** says **Waiting for your approval in Codex once**.
+
+If a coding app writes its settings while the steps are open, Keymotion shows what would change now and asks again.
+
+Turning **Agents may use the keyboard** off stops every agent at once; the connections stay, so turning it on again needs no steps.
+
+## Connected apps
+
+Each app shows how it stands: **Connected**, **Waiting for your approval in Codex once**, **Not connected**, **Not on this computer**, or **Too old** when Claude Code needs `claude update`. The arrow on the right shows its folder and files, and **Remove connection**, which takes away only what Keymotion added.
+
+## How the keyboard tells you
+
+| Signal | Looks at first | How long |
+|---|---|---|
+| **Done** | Green, a wave, then steady | 2 minutes |
+| **Waiting for your approval** | Orange, quick flashes, then a slow pulse | Until you answer (at most 30 minutes) |
+| **Error** | Red, blinks twice, then steady | 10 minutes |
+| **Working** | Off | – |
+| **Info** | Blue wave | 10 seconds |
+
+Click the dot to change a signal's color; the lists change the effect and how long it stays. **Try on the keyboard** shows it for a few seconds. Lights never flash more than three times a second.
+
+## What else agents may do
+
+These are off at first: **Send text and pictures to the screen** (each one is written to the keyboard's memory, at most four an hour for each agent), **Use the focus timer** and **Save a profile's lighting** (key mapping and macros are never touched). **Hide agent lights while playing** is on: during a game session the lights wait.
+
+## More signals
+
+Each row opens its settings with the arrow on the right:
+
+- **Usage limit reached:** told apart from an error, in its own color and effect.
+- **Which session is waiting:** with two or more sessions, the waiting one's number lights on the number row. **Session numbers** lists which number is which project folder.
+- **While you were away:** what finished or started waiting while you were away flashes once when you're back.
+- **If nobody answers:** a question nobody answered flashes again, every few minutes for a while.
+- **Progress bar:** the keys an agent's progress bar uses, the F row or the number row, and its color.
+- **Long task finished:** a card on the screen when a long task ends (needs the screen permission).
+- **Night quiet:** dims or turns off the agents' lights at night.
+- **Helper agent finished:** a short wave on the F row when one of Claude Code's helper agents finishes.
+
+**Agents may change these settings** (on at first) lets an agent change looks and behavior. Access, the permissions and the connections are always yours.
+
+## Recent actions
+
+The last things agents did are listed with their time. A settings change has **Undo**. **Turn off all agent lights** turns every agent light off at once.
+
+<Aside type="note">
+The agents' lights show over the USB cable. They sit above the focus timer, the gauges, music mode and the profile's light, and under the muted-microphone warning and meeting reminders.
+</Aside>

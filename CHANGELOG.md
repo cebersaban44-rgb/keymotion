@@ -99,6 +99,12 @@ says so.
   yourself or turned agent access off. Nothing you or the agent writes
   reaches Keymotion: only what happened. `disconnect` takes it all away
   again. Agent access stays off until you turn it on.
+  Tools › **AI agents** turns it on in two steps (what will be added to
+  Claude Code and Codex, then what was done, with Cancel on the first),
+  shows how each app stands, and sets the five signals' color, effect and
+  length with **Try on the keyboard**, what else agents may do, the extra
+  signals, whether agents may change these settings, the session numbers
+  and the recent actions with **Undo**.
 
 ### Changed
 
