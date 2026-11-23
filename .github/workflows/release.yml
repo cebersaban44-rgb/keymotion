@@ -30,6 +30,13 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      # A test build that leaves no draft behind: off, the installer is only
+      # built, kept as the run's artifact and tried in install-test.
+      draft:
+        description: Draft a GitHub release with the build
+        type: boolean
+        default: true
 
 # actions: read lets a job read its own run's artifacts and details, which
 # SignPath's action needs when signing is turned on (stage 9).
@@ -306,8 +313,10 @@ jobs:
           overwrite: true
 
       # Creates the draft, or refreshes it when this is a re-run. A release
-      # that is already published is never touched.
+      # that is already published is never touched. A tag always drafts;
+      # "Run workflow" only when its draft box is ticked.
       - name: Draft the GitHub release
+        if: github.event_name != 'workflow_dispatch' || inputs.draft
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -363,3 +372,67 @@ jobs:
     uses: ./.github/workflows/store.yml
     with:
       tag: ${{ github.ref_name }}
+
+  # The installer this run built, tried on a clean Windows machine: a fresh
+  # install, connecting Claude Code and Codex, a manual reinstall, an update
+  # while keymotion-cli runs, uninstalling (also while Keymotion runs), the
+  # upgrade from the last published release and keymotion://background
+  # (tools/release/install-test.ps1). The runner is thrown away afterwards,
+  # so the test may change its user's PATH, registry and settings; the
+  # script refuses to run anywhere else.
+  install-test:
+    name: Install test on a clean Windows
+    needs: release
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/release
+
+      # This run's installer (the release job's artifact), and the last
+      # published release's setup for the upgrade.
+      - name: Get the installers
+        id: setups
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $new = Join-Path $env:RUNNER_TEMP 'setup-new'
+          gh run download $env:GITHUB_RUN_ID --pattern 'keymotion-*-windows-x64' --dir $new
+          if ($LASTEXITCODE) { throw 'This run has no installer artifact.' }
+          $setup = @(Get-ChildItem -Recurse -File -Path $new -Filter '*-setup.exe')
+          if ($setup.Count -ne 1) { throw "Expected one setup in the artifact, found $($setup.Count)." }
+          "installer=$($setup[0].FullName)" >> $env:GITHUB_OUTPUT
+
+          $previous = ''
+          $tag = gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // empty'
+          if ($LASTEXITCODE -eq 0 -and $tag) {
+            $old = Join-Path $env:RUNNER_TEMP 'setup-previous'
+            gh release download $tag --pattern '*-setup.exe' --dir $old
+            if ($LASTEXITCODE -eq 0) { $previous = @(Get-ChildItem -File -Path $old -Filter '*-setup.exe')[0].FullName }
+          }
+          if (-not $previous) { Write-Host '::warning::No published release setup found: the upgrade scenario is skipped.' }
+          "previous=$previous" >> $env:GITHUB_OUTPUT
+          Write-Host "Installer: $($setup[0].FullName); last published release ($tag): $previous"
+          exit 0
+
+      - name: Install test
+        env:
+          INSTALLER: ${{ steps.setups.outputs.installer }}
+          PREVIOUS: ${{ steps.setups.outputs.previous }}
+        run: ./tools/release/install-test.ps1 -Installer $env:INSTALLER -PreviousInstaller $env:PREVIOUS -OutDir (Join-Path $env:RUNNER_TEMP 'install-test')
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: install-test-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/install-test
+          if-no-files-found: ignore
