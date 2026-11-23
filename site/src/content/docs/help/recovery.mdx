@@ -14,7 +14,7 @@ Everything on this page that changes the keyboard works only over the USB cable,
 
 ## Put the factory screen animation back
 
-The keyboard's screen has two pages. The **Clock page** never changes. The **GIF page** shows the animation the keyboard came with, until you upload something else: every upload replaces it. Press Fn+Home on the keyboard to switch between the two.
+The keyboard's screen has two pages. The **Clock page** never changes. The **GIF page** shows the animation the keyboard came with, until you upload something else: every upload replaces it. Press Fn+Home on the keyboard to switch between the two. On AJAZZ's firmware 3.01, an upload may replace the clock page too; see [Screen](/keymotion/guide/screen/#the-keyboards-two-pages).
 
 Keymotion doesn't come with AJAZZ's animation, but it can keep a copy of it in your library. With that copy, you can put the animation back at any time.
 
@@ -100,6 +100,18 @@ With the **Off** effect saved, Fn+X on the keyboard may not turn the light back 
 
 If the keys show bars instead of your lighting, system gauges are on. The Lighting page says so. Click **Go to gauges** and turn off **Show on keys**.
 
+## The keyboard's backup on firmware 3.01
+
+On an AK980 PRO with AJAZZ's firmware 3.01, Keymotion saves a backup of the keyboard's settings the first time it connects, before it can write anything: the key mapping on both layers, the lighting effect, the per-key colors and the macros. The screen picture isn't in it.
+
+The **Connection** page lists the backups. Only a backup of the keyboard on the cable can be put back. Before Keymotion writes it, it backs up the keyboard as it is now, so you can go back again. If it doesn't know the color of the backup's lighting, it asks you for it. When it's done, it says what it put back and which keys it left as they were. Keymotion keeps each keyboard's first backup and its four newest, in the `keyboard-backups` folder of its data folder (**Settings**, under **About**, **Data folder**).
+
+When Keymotion writes nothing to a keyboard on this firmware, it says why:
+
+- **What the keyboard reports doesn't look as expected.** Please [send a report](#where-to-ask-for-help), so we can find out why.
+- **A firmware update was left unfinished.** Finish it with AJAZZ's keyboard tool first.
+- **The backup couldn't be saved.** Without it, Keymotion writes nothing.
+
 ## An upload was cut short
 
 During an upload to the screen, keep the cable plugged in. If the cable comes out, or Keymotion closes before the upload finishes, the GIF page holds only part of the picture and may look broken. The Clock page isn't affected.
@@ -133,6 +145,8 @@ The keyboard follows one program's commands at a time. When two programs send co
 Close that program completely, then click **Save to keyboard** again. Nothing was written, and your edits are still in Keymotion.
 
 When more than one keyboard is connected by USB, Keymotion doesn't save either: "More than one keyboard is connected by USB. Leave only one connected to save."
+
+On AJAZZ's firmware 3.01, AJAZZ's keyboard tool works from your browser, where Keymotion can't see it. Close it while Keymotion runs. If the keyboard sends answers that Keymotion didn't ask for, Keymotion says that another program seems to be talking to it; nothing is blocked.
 
 ## Keymotion doesn't find the keyboard
 

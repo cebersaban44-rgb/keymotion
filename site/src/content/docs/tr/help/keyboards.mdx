@@ -21,9 +21,31 @@ Keymotion **AJAZZ AK980 PRO** ile çalışır. Pek çok klavye aynı altyapıyla
 
 Bu klavye birden çok adla satılıyor. Keymotion'ın denendiği klavye AJAZZ'ın kendi mağazasından alındı; mağaza onu "AK980MAX … V2" adıyla listeliyordu, kutusunda **AK980 V2** yazıyor. USB'de üretici olarak SONiX'i, ad olarak "AK980 PRO"yu bildirir; Keymotion onu bu addan tanır. Yani ekranlı **AJAZZ AK980 V2** de çalışır. Başka AK980 sürümleri, örneğin ekransız olanlar, içeride farklı olabilir. Keymotion bir klavyeyi ancak bu adı bildiriyorsa ve bağlandığında yaptığı denetimde içi aynı çıkarsa bu model sayar. Öyle değilse ona hiçbir şey göndermez, **Destek iste**'yi sunar.
 
-Keymotion, klavyenin 1.06 sürümlü klavye yazılımıyla denendi; başka bir sürümde klavyeye bir şey kaydetmeden önce size sorar. AJAZZ'ın AK980 PRO için en yeni klavye yazılımı 3.01 ("AK980 Led v2 Firmware 769") farklı bir komut takımı kullanıyor ve Keymotion bunu henüz desteklemiyor: bu yazılımdaki bir klavyeye hiçbir şey göndermez; AJAZZ da eski yazılıma dönmenin bir yolunu sunmuyor. [AJAZZ'ın en yeni klavye yazılımını kurmalı mıyım?](/keymotion/tr/help/faq/#ajazzın-en-yeni-klavye-yazılımını-kurmalı-mıyım) sorusuna bakın.
+Keymotion, klavyenin 1.06 sürümlü klavye yazılımıyla denendi; başka bir sürümde klavyeye bir şey kaydetmeden önce size sorar. AJAZZ'ın en yeni klavye yazılımı 3.01 farklı bir komut takımı kullanıyor; Keymotion onu [aşağıda](#301-klavye-yazılımındaki-ak980-pro-deneme-aşamasında) anlatıldığı gibi, deneme aşamasında destekliyor.
 
 Ayarlar USB kablosundan gider; klavye böyle yapılmış. Üç bağlantıyı [Klavyeyi bağlama](/keymotion/tr/guide/connecting/) sayfası anlatır.
+
+## 3.01 klavye yazılımındaki AK980 PRO (deneme aşamasında)
+
+AJAZZ'ın AK980 PRO için en yeni klavye yazılımı 3.01 ("AK980 Led v2 Firmware 769"), klavyeyi farklı bir komut takımına geçirir. Keymotion bu yazılımı USB kablosunda, deneme aşamasında destekliyor. Klavyenizde hangi yazılımın olduğunu görmek için kabloyu takıp **Bağlantı** sayfasını açın: klavyenin bilgilerinde **Klavye yazılımı** satırında yazar.
+
+| Bağlantı | 3.01 klavye yazılımında Keymotion ne yapar |
+|---|---|
+| USB kablo | Işık efektleri ve tuş başına renk, canlı ışıklar, iki katmanda tuş atama, makrolar, ekrana resim, saat ve pil düzeyi |
+| 2.4 GHz alıcı | Yeni bir şey yok: eski yazılımda olduğu gibi alıcı üzerinden hiçbir şey göndermez |
+| Bluetooth | Eskisi gibi: pil düzeyini okur |
+
+Deneme aşaması, bu desteğin yeni olduğu anlamına gelir: sanal bir klavyede denendi, henüz gerçek bir klavyede denenmedi. Bu yüzden Keymotion bu yazılımda daha da dikkatlidir:
+
+- Bir şey yazabilmeden önce klavyenin ayarlarının yedeğini alır; bu yedeği sonra geri yükleyebilir.
+- Klavyeye ilk kez yazmadan önce, Keymotion'la denenmemiş her klavye yazılımında olduğu gibi size sorar.
+- Klavyenin bildirdikleri beklendiği gibi görünmüyorsa ya da bir klavye yazılımı güncellemesi yarım kaldıysa Keymotion klavyeye hiçbir şey yazmaz.
+
+Bu yazılımda birkaç şey farklı çalışır: canlı ışıklar klavyeyi bir süreliğine tuş başına renk moduna geçirir, ekrana yükleme klavyenin saat sayfasının yerini alabilir, pil düzeyi kabloda da görünür ve birkaç tuş seçeneği sunulmaz. Bunların her biri [AJAZZ'ın en yeni klavye yazılımını kurmalı mıyım?](/keymotion/tr/help/faq/#ajazzın-en-yeni-klavye-yazılımını-kurmalı-mıyım) sorusunda anlatılıyor.
+
+Denediniz mi? [Nasıl çalıştığını bize anlatın](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK980+PRO+firmware+3.01&model=AJAZZ+AK980+PRO+firmware+3.01). Bir şey ters giderse **Ayarlar**'dan bir bildirim gönderin: **Hakkında** bölümünde, **Geri bildirim** satırında **Sorun bildir**'e tıklayın. Bildirimde Keymotion'ın klavyeden okudukları vardır, ama tuşlarınız, makrolarınız ve renkleriniz yoktur.
+
+Keymotion'ın henüz tanımadığı başka bir AJAZZ klavye yazılımındaki AK980 PRO'ya hiçbir şey gönderilmez; Keymotion onun yerine **Destek iste**'yi sunar.
 
 ## Aynı altyapı, henüz denenmedi
 

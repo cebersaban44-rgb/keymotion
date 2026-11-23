@@ -14,7 +14,7 @@ Bu sayfada klavyeyi değiştiren her adım yalnızca USB kablosuyla çalışır.
 
 ## Fabrika ekran animasyonunu geri getirme
 
-Klavyenin ekranında iki sayfa vardır. **Saat sayfası** hiç değişmez. **GIF sayfası** ise siz başka bir şey yükleyene kadar klavyeyle gelen animasyonu gösterir; her yükleme onun yerini alır. İki sayfa arasında klavyede Fn+Home ile geçersiniz.
+Klavyenin ekranında iki sayfa vardır. **Saat sayfası** hiç değişmez. **GIF sayfası** ise siz başka bir şey yükleyene kadar klavyeyle gelen animasyonu gösterir; her yükleme onun yerini alır. İki sayfa arasında klavyede Fn+Home ile geçersiniz. AJAZZ'ın 3.01 klavye yazılımında yükleme saat sayfasının da yerini alabilir; bkz. [Ekran](/keymotion/tr/guide/screen/#klavyenin-iki-sayfası).
 
 AJAZZ'ın animasyonu Keymotion'la birlikte gelmez, ama Keymotion onun bir kopyasını kütüphanenizde saklayabilir. Bu kopya varsa animasyonu istediğiniz zaman geri yükleyebilirsiniz.
 
@@ -100,6 +100,18 @@ Bir efekti kaydetmek, klavyedeki tuş başına renk tasarımının yerini alır.
 
 Tuşlarda ışık tasarımınız yerine çubuklar görünüyorsa sistem göstergeleri açıktır. Işıklar sayfası da bunu söyler. **Göstergelere git**'e tıklayıp **Tuşlarda göster**'i kapatın.
 
+## 3.01 klavye yazılımında klavyenin yedeği
+
+AJAZZ'ın 3.01 klavye yazılımındaki bir AK980 PRO'ya ilk bağlandığında Keymotion, bir şey yazabilmeden önce klavyenin ayarlarının yedeğini alır: iki katmandaki tuş atamaları, ışık efekti, tuş başına renkler ve makrolar. Ekrandaki görsel yedekte yoktur.
+
+Yedekler **Bağlantı** sayfasında listelenir. Yalnızca kablodaki klavyenin yedeği geri yüklenebilir. Keymotion yedeği yazmadan önce klavyenin o anki hâlinin de yedeğini alır; böylece yeniden geri dönebilirsiniz. Yedekteki ışığın rengini bilmiyorsa onu size sorar. İş bitince neyi geri yüklediğini ve hangi tuşları olduğu gibi bıraktığını söyler. Keymotion her klavyenin ilk yedeğini ve en yeni dört yedeğini, veri klasöründeki `keyboard-backups` klasöründe saklar (**Ayarlar**'da, **Hakkında** bölümünde **Veri klasörü**).
+
+Keymotion bu yazılımdaki bir klavyeye hiçbir şey yazmadığında nedenini söyler:
+
+- **Klavyenin bildirdikleri beklendiği gibi görünmüyor.** Nedenini bulabilmemiz için lütfen [bir bildirim gönderin](#nereye-danışabilirsiniz).
+- **Bir klavye yazılımı güncellemesi yarım kaldı.** Önce güncellemeyi AJAZZ'ın klavye aracıyla bitirin.
+- **Yedek alınamadı.** Yedek olmadan Keymotion hiçbir şey yazmaz.
+
 ## Yükleme yarıda kaldıysa
 
 Ekrana yükleme sürerken kabloyu çıkarmayın. Kablo çıkarsa ya da Keymotion yükleme bitmeden kapanırsa GIF sayfasında görselin yalnızca bir kısmı kalır ve bozuk görünebilir. Saat sayfası bundan etkilenmez.
@@ -133,6 +145,8 @@ Klavye aynı anda tek bir programın komutlarını izler. İki program birlikte 
 O programı tamamen kapatın, sonra yeniden **Klavyeye kaydet**'e tıklayın. Klavyeye hiçbir şey yazılmamıştır; düzenlemeleriniz Keymotion'da durur.
 
 USB'ye birden fazla klavye bağlıyken de Keymotion kaydetmez: "Birden fazla klavye USB'ye bağlı. Kaydetmek için yalnızca birini bağlı bırakın."
+
+AJAZZ'ın 3.01 klavye yazılımında AJAZZ'ın klavye aracı tarayıcınızda çalışır; Keymotion onu orada göremez. Keymotion çalışırken onu kapatın. Klavye, Keymotion'ın sormadığı cevaplar gönderirse Keymotion başka bir programın klavyeyle konuşuyor gibi göründüğünü söyler; hiçbir şey engellenmez.
 
 ## Keymotion klavyeyi bulamıyorsa
 

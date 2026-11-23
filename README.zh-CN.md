@@ -75,7 +75,7 @@ Keymotion 已在黑爵 AK980 V2（带屏版）上测试。基于同一平台的�
 外观或名称相近的 2026 款 AK980 PRO（原生双 8K）和 AK980 MAX（磁轴）是不同的键盘，Keymotion 不支持。
 
 > [!NOTE]
-> 黑爵为 AK980 PRO 推出的最新固件 3.01（“AK980 Led v2 Firmware 769”）使用另一套命令，Keymotion 暂不支持，黑爵也没有提供退回旧固件的方法。如果你想现在继续使用 Keymotion，可以先暂缓更新。[详见常见问题](https://cebersaban44-rgb.github.io/keymotion/zh-cn/help/faq/#要安装黑爵最新的固件吗)。
+> 黑爵为 AK980 PRO 推出的最新固件 3.01（“AK980 Led v2 Firmware 769”）使用另一套命令。Keymotion 以测试版形式支持它，需通过 USB 数据线连接：这项支持是新的，还没有在真实键盘上试过。黑爵没有提供退回旧固件的方法，所以不要只为了 Keymotion 而安装它。[详见常见问题](https://cebersaban44-rgb.github.io/keymotion/zh-cn/help/faq/#要安装黑爵最新的固件吗)。
 
 ### 同一平台，尚未测试
 
