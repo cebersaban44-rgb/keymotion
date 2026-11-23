@@ -8,8 +8,8 @@
 //! this build has.
 
 pub const GUIDE: &str = r#"keymotion-cli: light the keys of the user's keyboard through the Keymotion app.
-Lights live in the keyboard's working memory only: nothing is saved, and each
-light ends by itself (2h at most), or when you clear it.
+Lights live in the keyboard's working memory only (the keyboard keeps none),
+and each light ends by itself (2h at most), or when you clear it.
 
 You decide how to tell the user things. The ready signals below are optional
 shortcuts; you may as well pick keys, colors, effects and timing yourself, with

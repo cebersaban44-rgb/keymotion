@@ -1248,7 +1248,7 @@ impl SceneArgs {
                 )));
             }
             let at_ms = a.at_ms.unwrap_or(next);
-            if at_ms + for_ms > MAX_SCENE_MS {
+            if at_ms > MAX_SCENE_MS || at_ms + for_ms > MAX_SCENE_MS {
                 return Err(at(AgentError::new(
                     ErrorCode::BadDuration,
                     format!("one run of a scene ends within {} minutes.", MAX_SCENE_MS / 60_000),
@@ -1271,7 +1271,10 @@ impl SceneArgs {
                 return Err(AgentError::new(ErrorCode::BadArgument, "A scene that loops (repeat 0) needs a duration.")
                     .with_hint("e.g. --for 2m"))
             }
-            (_, Some(ms)) => signal_duration_ms(ms)?.as_millis() as u64,
+            // Runs that end sooner end it sooner: no light is held after
+            // its last step.
+            (0, Some(ms)) => signal_duration_ms(ms)?.as_millis() as u64,
+            (n, Some(ms)) => (signal_duration_ms(ms)?.as_millis() as u64).min(length_ms * u64::from(n)),
             (n, None) => (length_ms * u64::from(n)).min(max),
         };
         let id = self.id.as_deref().map(SignalId::parse).transpose()?;
@@ -1283,10 +1286,31 @@ impl SceneArgs {
         Ok(Scene { steps, length_ms, repeat, duration: Duration::from_millis(total), id, save, play })
     }
 
-    /// The scene as it is kept under a name: its steps and how it runs,
-    /// without what this one call asked (`id`, `save`, `play`).
-    pub fn to_pattern(&self) -> SceneArgs {
-        SceneArgs { steps: self.steps.clone(), repeat: self.repeat, for_ms: self.for_ms, ..SceneArgs::default() }
+    /// The scene as it is kept under a name: its steps as checked (keys,
+    /// colours and effects in their plain form, every start and length
+    /// written out) and how it runs, without what this one call asked
+    /// (`id`, `save`, `play`). Its size has a bound: 64 short steps.
+    pub fn to_pattern(&self) -> Result<SceneArgs, AgentError> {
+        let scene = self.validate()?;
+        let steps = scene.steps.iter().map(SceneStep::to_args).collect();
+        Ok(SceneArgs { steps, repeat: self.repeat, for_ms: self.for_ms, ..SceneArgs::default() })
+    }
+}
+
+impl SceneStep {
+    /// The step as typed, in its plain form.
+    pub fn to_args(&self) -> SceneStepArgs {
+        let kind = self.effect.kind();
+        let moves = kind != crate::values::EffectKind::Solid;
+        SceneStepArgs {
+            keys: Some(self.keys.to_string()),
+            color: self.color.hex(),
+            effect: moves.then(|| kind.as_str().to_string()),
+            direction: self.effect.direction().map(|d| d.as_str().to_string()),
+            speed: moves.then(|| self.effect.speed()),
+            at_ms: Some(self.at_ms),
+            for_ms: Some(self.for_ms),
+        }
     }
 }
 
@@ -1407,7 +1431,23 @@ impl SpellArgs {
         if text.is_empty() {
             return Err(AgentError::new(ErrorCode::BadArgument, "Give a word to spell, e.g. spell \"DONE\"."));
         }
-        check_text(text, MAX_SPELL_CHARS, 1)?;
+        if text.contains('\n') {
+            return Err(AgentError::new(ErrorCode::TextTooLong, "A word to spell is one line."));
+        }
+        // Emoji, joiners and marks are fine: what has no key is skipped.
+        if let Some(c) = text.chars().find(|c| c.is_control()) {
+            return Err(AgentError::new(
+                ErrorCode::BadText,
+                format!("The text has a control character (U+{:04X}).", u32::from(c)),
+            ));
+        }
+        let shown = crate::letters::clusters(text).len();
+        if shown > MAX_SPELL_CHARS {
+            return Err(AgentError::new(
+                ErrorCode::TextTooLong,
+                format!("The text has {shown} characters; at most {MAX_SPELL_CHARS} are spelled."),
+            ));
+        }
         let color = self.color.as_deref().map(Color::parse).transpose()?.unwrap_or(Color::rgb(255, 255, 255));
         let speed = self.speed.unwrap_or(3);
         if !(1..=5).contains(&speed) {
@@ -2242,7 +2282,44 @@ mod tests {
         let saved = SceneArgs { save: Some(" Deploy-Done ".into()), play: Some(false), ..twice.clone() };
         let v = saved.validate().unwrap();
         assert_eq!((v.save.as_deref(), v.play), (Some("deploy-done"), false));
-        assert_eq!(saved.to_pattern(), SceneArgs { steps: twice.steps.clone(), repeat: Some(3), ..Default::default() });
+        // Kept in its plain form, every value written out.
+        let kept = saved.to_pattern().unwrap();
+        assert_eq!(
+            kept,
+            SceneArgs {
+                steps: vec![SceneStepArgs {
+                    keys: Some("esc".into()),
+                    color: "#0000ff".into(),
+                    at_ms: Some(0),
+                    for_ms: Some(1000),
+                    ..Default::default()
+                }],
+                repeat: Some(3),
+                ..Default::default()
+            }
+        );
+        assert_eq!(kept.validate().unwrap().steps, saved.validate().unwrap().steps, "it plays the same");
+        let wave = SceneArgs {
+            steps: vec![SceneStepArgs {
+                effect: Some("Wave".into()),
+                speed: Some(4),
+                ..step("f1-f4", "off", None, None)
+            }],
+            ..Default::default()
+        };
+        let w = &wave.to_pattern().unwrap().steps[0];
+        assert_eq!(
+            (w.keys.as_deref(), w.color.as_str(), w.effect.as_deref(), w.direction.as_deref(), w.speed),
+            (Some("f1-f4"), "#000000", Some("wave"), Some("right"), Some(4))
+        );
+        // --for longer than the runs: the light ends with its last step.
+        let long_for = SceneArgs { for_ms: Some(600_000), ..twice.clone() };
+        assert_eq!(long_for.validate().unwrap().duration, Duration::from_secs(3));
+        let short_for = SceneArgs { for_ms: Some(1_500), ..twice.clone() };
+        assert_eq!(short_for.validate().unwrap().duration, Duration::from_millis(1_500));
+        // A start past the end cannot overflow.
+        let far = SceneArgs { steps: vec![step("f1", "red", Some(u64::MAX - 10), Some(60_000))], ..Default::default() };
+        assert_eq!(far.validate().unwrap_err().code, ErrorCode::BadDuration);
         // Two hours at most, however it runs.
         let long = SceneArgs {
             steps: vec![step("f1", "red", Some(540_000), Some(60_000))],
@@ -2323,6 +2400,13 @@ mod tests {
         assert_eq!(spell("").validate().unwrap_err().code, ErrorCode::BadArgument);
         assert_eq!(spell(&"A".repeat(33)).validate().unwrap_err().code, ErrorCode::TextTooLong);
         assert_eq!(spell("A\nB").validate().unwrap_err().code, ErrorCode::TextTooLong);
+        // Emoji with joiners and marks are taken (skipped when spelled); a
+        // control character is not.
+        assert!(spell("OK \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}").validate().is_ok());
+        assert!(spell("Gu\u{0308}l").validate().is_ok());
+        assert_eq!(spell("O\u{7}K").validate().unwrap_err().code, ErrorCode::BadText);
+        // 32 characters as a reader counts them, marks and all.
+        assert!(spell(&"u\u{0308}".repeat(32)).validate().is_ok());
         assert_eq!(SpellArgs { speed: Some(6), ..spell("OK") }.validate().unwrap_err().code, ErrorCode::BadValue);
         assert_eq!(SpellArgs { times: Some(11), ..spell("OK") }.validate().unwrap_err().code, ErrorCode::BadValue);
     }

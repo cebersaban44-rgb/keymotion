@@ -258,12 +258,21 @@ pub fn scene(command: &str, data: &Value) -> String {
 
 /// What `spell` could not write.
 pub fn spell_warnings(data: &Value) -> Vec<String> {
+    let mut out = Vec::new();
     let skipped = texts(data, "skipped");
-    if skipped.is_empty() {
-        Vec::new()
-    } else {
-        vec![format!("Skipped (no key for them on this keyboard): {}", skipped.join(" "))]
+    if !skipped.is_empty() {
+        out.push(format!("Skipped (no key for them on this keyboard): {}", skipped.join(" ")));
     }
+    let plain: Vec<String> = data["plain"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|p| format!("{} as {}", text(p, "from"), text(p, "to")))
+        .collect();
+    if !plain.is_empty() {
+        out.push(format!("Written plain: {}", plain.join(", ")));
+    }
+    out
 }
 
 /// `pattern list|play|delete`.

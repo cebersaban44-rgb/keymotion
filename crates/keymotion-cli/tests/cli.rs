@@ -195,6 +195,7 @@ fn fake_app(pipe: &str) -> (PipeServer, Arc<Fake>) {
                 let written: String = s.text.chars().filter(char::is_ascii).collect();
                 let skipped: Vec<String> = s.text.chars().filter(|c| !c.is_ascii()).map(String::from).collect();
                 let mut v = lit(format!("{source}:spell"), 1_500);
+                v["plain"] = json!([]);
                 v["length_ms"] = json!(1_500);
                 v["repeat"] = json!(s.times);
                 v["written"] = json!(written);
@@ -345,6 +346,11 @@ fn scenes_patterns_and_spelling_reach_the_app() {
         fake.last().2,
         json!({"steps": [{"color": "blue", "effect": "pulse"}], "repeat": 0, "for_ms": 30_000, "id": "glow"})
     );
+    // A step may start at 0, as the help's example does.
+    let at_zero = file("zero", r#"[{"keys":"f1-f4","color":"red","effect":"pulse","at":"0ms","for":"500ms"}]"#);
+    let r = run(&pipe, &["scene", at_zero.to_str().unwrap(), "--json"]);
+    assert_eq!(r.code, 0, "{r:?}");
+    assert_eq!(fake.last().2["steps"][0]["at_ms"], json!(0));
     // Only kept.
     let r = run(&pipe, &["scene", steps.to_str().unwrap(), "--save", "quiet", "--no-play"]);
     assert_eq!((r.code, r.stdout.trim()), (0, "Pattern quiet kept: pattern play quiet plays it."), "{r:?}");
@@ -363,6 +369,26 @@ fn scenes_patterns_and_spelling_reach_the_app() {
     let r = run(&pipe, &["scene", unknown.to_str().unwrap(), "--json"]);
     assert!(r.json()["error"]["message"].as_str().unwrap().contains("Step 1: a step has no \"colour\""), "{r:?}");
     assert_eq!(run(&pipe, &["scene", r"C:\no\such\scene.json"]).code, 65);
+    // Files on this computer only: no network path (no connection is made),
+    // no device that would hang the read.
+    for path in [
+        r"\\example.invalid\share\scene.json",
+        "//example.invalid/share/scene.json",
+        r"\\?\C:\x.json",
+        r"\\.\pipe\x",
+        "CON",
+        "nul.json",
+        "COM1",
+        r"C:\x\LPT2.txt",
+    ] {
+        let started = std::time::Instant::now();
+        let r = run(&pipe, &["scene", path, "--json"]);
+        assert_eq!(r.code, 65, "{path}: {r:?}");
+        assert!(r.json()["error"]["message"].as_str().unwrap().contains("this computer"), "{path}: {r:?}");
+        assert!(started.elapsed() < Duration::from_secs(5), "{path}: answered at once");
+    }
+    let r = run(&pipe, &["card", "--image", r"\\example.invalid\share\x.png", "--write-flash", "--json"]);
+    assert_eq!(r.code, 65, "{r:?}");
     assert_eq!(run(&pipe, &["scene", "-"]).code, 65, "nothing on standard input");
     assert_eq!(run(&pipe, &["scene", steps.to_str().unwrap(), "--no-play"]).code, 64, "--no-play needs --save");
     assert_eq!(fake.seen.lock().unwrap().len(), before);
@@ -387,7 +413,7 @@ fn scenes_patterns_and_spelling_reach_the_app() {
     assert_eq!(run(&pipe, &["spell", "OK", "--speed", "9"]).code, 65);
     assert_eq!(run(&pipe, &["spell", ""]).code, 64);
 
-    for f in [steps, looped, not_json, unknown, not_step, no_steps, bad_key, large] {
+    for f in [steps, looped, at_zero, not_json, unknown, not_step, no_steps, bad_key, large] {
         let _ = std::fs::remove_file(f);
     }
 }

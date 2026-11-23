@@ -711,6 +711,7 @@ pub fn read_scene(file: &str) -> Result<SceneArgs, AgentError> {
     let read = if file == "-" {
         std::io::stdin().take(MAX_SCENE_FILE_BYTES + 1).read_to_end(&mut bytes)
     } else {
+        local_file(std::path::Path::new(file), "scene")?;
         std::fs::File::open(file).and_then(|f| f.take(MAX_SCENE_FILE_BYTES + 1).read_to_end(&mut bytes))
     };
     read.map_err(|e| bad(format!("The scene {} cannot be read: {e}.", kb_agent::values::shown(file))))?;
@@ -754,7 +755,7 @@ pub fn scene_from_json(value: &Value) -> Result<SceneArgs, String> {
                 "effect" => s.effect = Some(text()?),
                 "direction" => s.direction = Some(text()?),
                 "speed" => s.speed = Some(whole(v, "speed").map_err(at)?),
-                "at" | "at_ms" => s.at_ms = Some(millis(v, key).map_err(at)?),
+                "at" | "at_ms" => s.at_ms = Some(start(v, key).map_err(at)?),
                 "for" | "for_ms" => s.for_ms = Some(millis(v, key).map_err(at)?),
                 other => {
                     return Err(at(format!(
@@ -771,6 +772,57 @@ pub fn scene_from_json(value: &Value) -> Result<SceneArgs, String> {
 /// A whole number from JSON.
 fn whole(v: &Value, key: &str) -> Result<u32, String> {
     v.as_u64().and_then(|n| u32::try_from(n).ok()).ok_or_else(|| format!("\"{key}\" is a whole number."))
+}
+
+/// A step's start: as [`millis`], and zero too (`0`, `"0ms"`, `"0s"`).
+fn start(v: &Value, key: &str) -> Result<u64, String> {
+    if let Value::String(t) = v {
+        let number = t.trim().trim_end_matches(|c: char| c.is_ascii_alphabetic()).trim();
+        if !number.is_empty() && number.parse::<f64>().is_ok_and(|n| n == 0.0) {
+            return Ok(0);
+        }
+    }
+    millis(v, key)
+}
+
+/// A file named on the command line, as keymotion-cli reads it: on this
+/// computer only. The Codex rule runs keymotion-cli outside the sandbox,
+/// so a network path (`\\host\share\…`, which would open a connection and
+/// pass the user's sign-in), a `\\?\` or `\\.\` path, a device name (`CON`,
+/// `NUL`, `COM1`, which can hang a read) or a link is refused.
+pub fn local_file(path: &std::path::Path, what: &str) -> Result<(), AgentError> {
+    let text = path.as_os_str().to_string_lossy();
+    let refuse = |why: &str| {
+        Err(AgentError::new(
+            ErrorCode::BadValue,
+            format!(
+                "The {what} {} is {why}; keymotion-cli reads files on this computer only.",
+                kb_agent::values::shown(&text)
+            ),
+        )
+        .with_hint("Give the path of a file on this computer, e.g. C:\\Users\\you\\scene.json or .\\scene.json."))
+    };
+    if text.starts_with("\\\\") || text.starts_with("//") || text.starts_with("\\/") || text.starts_with("/\\") {
+        return refuse("a network or device path");
+    }
+    let last = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let stem = last.split('.').next().unwrap_or_default().trim_end_matches([' ', '.']).to_ascii_uppercase();
+    let numbered = |prefix: &str| {
+        stem.strip_prefix(prefix).is_some_and(|n| {
+            let n: Vec<char> = n.chars().collect();
+            n.len() == 1 && (n[0].is_ascii_digit() || matches!(n[0], '\u{B9}' | '\u{B2}' | '\u{B3}'))
+        })
+    };
+    let device = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$" | "CLOCK$")
+        || numbered("COM")
+        || numbered("LPT");
+    if device || (last.is_empty() && text.ends_with(':')) {
+        return refuse("a device");
+    }
+    if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+        return refuse("a link");
+    }
+    Ok(())
 }
 
 /// Milliseconds from JSON: a number, or a duration as text.
@@ -792,6 +844,7 @@ fn unescape_lines(text: &str) -> String {
 /// as base64. Only its first 40 KiB and one byte are read.
 fn read_image(path: &std::path::Path) -> Result<String, AgentError> {
     use std::io::Read;
+    local_file(path, "picture")?;
     let shown = path.display().to_string();
     let file = std::fs::File::open(path).map_err(|e| {
         AgentError::new(
