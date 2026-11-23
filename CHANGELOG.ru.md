@@ -17,6 +17,18 @@
 
 ## [Не выпущено]
 
+## [1.2.1] - 2026-11-23
+
+Keymotion 1.2.1 приносит 1.2.0 в Microsoft Store. Для копии с GitHub
+ничего не меняется.
+
+### Исправлено
+
+- **Microsoft Store:** пакет Store теперь приносит `keymotion-cli` как
+  команду самого Keymotion, в том виде, который принимает Store, поэтому
+  новое из 1.2.0 доходит и до копии из Store. Для копии с GitHub ничего не
+  меняется.
+
 ## [1.2.0] - 2026-11-23
 
 У Keymotion новый вид в стиле Windows 11 и новые инструменты: музыкальный
@@ -256,5 +268,6 @@ AK980 PRO стоит новая прошивка AJAZZ 769, Keymotion тепер
   установленной копии больше не выключает **Запускать Keymotion при
   включении компьютера**.
 
-[Не выпущено]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.0...develop
+[Не выпущено]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.1...develop
+[1.2.1]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.1
 [1.2.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.0

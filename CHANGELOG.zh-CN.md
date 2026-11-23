@@ -8,6 +8,14 @@
 
 ## [未发布]
 
+## [1.2.1] - 2026-11-23
+
+Keymotion 1.2.1 把 1.2.0 带到 Microsoft Store。从 GitHub 安装的版本没有任何变化。
+
+### 修复
+
+- **Microsoft Store**：Store 安装包现在以 Store 接受的方式，把 `keymotion-cli` 作为 Keymotion 本身的命令提供，因此 1.2.0 的新功能也会来到 Store 版。从 GitHub 安装的版本没有任何变化。
+
 ## [1.2.0] - 2026-11-23
 
 Keymotion 换上了 Windows 11 风格的新外观，还带来了新工具：音乐模式、带英雄联盟灯光的游戏时段、按应用切换配置文件，以及为 Claude Code、Codex 等 AI 编程智能体提供的灯光提示。应用现在也有俄语和简体中文版本。如果你的黑爵 AK980 V2（带屏版）装有黑爵的新固件 769，Keymotion 现在会明确说明，并且不会向键盘发送任何内容；计划在之后的更新中支持。
@@ -45,5 +53,6 @@ Keymotion 换上了 Windows 11 风格的新外观，还带来了新工具：音�
 - **屏幕**：以“…”结尾的歌曲、会议或提醒标题，不再以最小字号绘制。
 - **安装程序**：从 GitHub 在已安装的副本上再次安装 Keymotion 时，不会再关闭**开机时启动 Keymotion**。
 
-[未发布]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.0...develop
+[未发布]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.1...develop
+[1.2.1]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.1
 [1.2.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.0

@@ -2078,7 +2078,7 @@ dependencies = [
 
 [[package]]
 name = "kb-agent"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "base64 0.23.1",
  "kb-winsys",
@@ -2089,7 +2089,7 @@ dependencies = [
 
 [[package]]
 name = "kb-cli"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2104,7 +2104,7 @@ dependencies = [
 
 [[package]]
 name = "kb-core"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "gif",
  "jiff",
@@ -2119,7 +2119,7 @@ dependencies = [
 
 [[package]]
 name = "kb-devices"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -2128,7 +2128,7 @@ dependencies = [
 
 [[package]]
 name = "kb-hooks"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "kb-agent",
  "kb-winsys",
@@ -2140,14 +2140,14 @@ dependencies = [
 
 [[package]]
 name = "kb-protocol"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "kb-transport"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "hidapi",
  "thiserror 2.0.21",
@@ -2157,7 +2157,7 @@ dependencies = [
 
 [[package]]
 name = "kb-winsys"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "serde_json",
  "tracing",
@@ -2176,7 +2176,7 @@ dependencies = [
 
 [[package]]
 name = "keymotion"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "base64 0.23.1",
  "gif",
@@ -2206,7 +2206,7 @@ dependencies = [
 
 [[package]]
 name = "keymotion-cli"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "clap",
  "kb-agent",

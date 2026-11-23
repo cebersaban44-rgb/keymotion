@@ -64,7 +64,7 @@
   </Resources>
 
   <Applications>
-    <Application Id="Keymotion" Executable="keymotion.exe" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="Keymotion" Executable="keymotion.exe" EntryPoint="Windows.FullTrustApplication" desktop4:SupportsMultipleInstances="true">
       <uap:VisualElements
         DisplayName="{{DisplayName}}"
         Description="Lighting, keys and screen for your keyboard"
@@ -82,20 +82,15 @@
           uap10:Parameters="--hidden">
           <desktop:StartupTask TaskId="KeymotionStartup" Enabled="false" DisplayName="Keymotion" />
         </desktop:Extension>
-      </Extensions>
-    </Application>
-    <!-- keymotion-cli: a console tool, run by its alias from a terminal or
-         a coding agent's hook, many at once; no tile, nothing in the Start
-         menu. -->
-    <Application Id="Cli" Executable="keymotion-cli.exe" EntryPoint="Windows.FullTrustApplication" desktop4:Subsystem="console" desktop4:SupportsMultipleInstances="true">
-      <uap:VisualElements
-        DisplayName="Keymotion command line"
-        Description="Keymotion for scripts and AI agents"
-        BackgroundColor="transparent"
-        AppListEntry="none"
-        Square150x150Logo="Assets\Square150x150Logo.png"
-        Square44x44Logo="Assets\Square44x44Logo.png" />
-      <Extensions>
+        <!-- keymotion-cli, the console tool for terminals and coding agents'
+             hooks: an app execution alias of this application that runs
+             keymotion-cli.exe (as Windows Terminal's wt.exe). A second
+             application without a Start menu entry would be a "headless
+             app", which the Store accepts only with a waiver. A console
+             alias needs desktop4:SupportsMultipleInstances on its
+             application (makeappx refuses it otherwise); keymotion.exe keeps
+             to one copy by itself, as the GitHub build does.
+             -->
         <uap5:Extension Category="windows.appExecutionAlias" Executable="keymotion-cli.exe" EntryPoint="Windows.FullTrustApplication">
           <uap5:AppExecutionAlias desktop4:Subsystem="console">
             <uap5:ExecutionAlias Alias="keymotion-cli.exe" />
