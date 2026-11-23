@@ -827,12 +827,16 @@ fn start(v: &Value, key: &str) -> Result<u64, String> {
 ///   followed by another one or by `?` (`\\host\share\…`, `//host/…`,
 ///   `\/…`, `\\?\…`, `\\.\…`, the NT `\??\UNC\host\…` and `\??\C:\…`,
 ///   `/??/…`), which would open a connection and pass the user's sign-in;
-/// * a path that is not on a drive once made whole (a working folder on a
-///   network share, a name Windows turns into `\\.\…`);
 /// * a device name (`CON`, `NUL`, `COM1`, also as `CON:`), which can hang
 ///   a read;
-/// * a link, the file itself or any folder on the way to it (one could
-///   lead to a network share).
+/// * a path that is not on a drive once made whole (a working folder on a
+///   network share, a name Windows turns into `\\.\…`), or on a network
+///   drive (a letter mapped to a share, a remote desktop's drive);
+/// * a symbolic link, the file itself or any folder on the way to it (one
+///   could lead to a share). A junction or a volume mounted in a folder is
+///   followed (Windows lets those lead only to this computer), and where it
+///   leads is checked the same way; so is the folder a `subst` letter
+///   stands for.
 pub fn local_file(path: &std::path::Path, what: &str) -> Result<(), AgentError> {
     let text = path.as_os_str().to_string_lossy();
     let refuse = |why: &str| {
@@ -868,29 +872,76 @@ pub fn local_file(path: &std::path::Path, what: &str) -> Result<(), AgentError> 
     // Made whole from the working folder (no file is touched for it).
     let Ok(full) = std::path::absolute(path) else { return refuse("not a path Windows can read") };
     #[cfg(windows)]
-    {
-        use std::path::{Component, Prefix};
-        let on_a_drive =
-            matches!(full.components().next(), Some(Component::Prefix(p)) if matches!(p.kind(), Prefix::Disk(_)));
-        if !on_a_drive {
-            return refuse("a network or device path");
-        }
+    if let Err(why) = stays_here(full) {
+        return refuse(why);
     }
-    // Each folder from the drive down, then the file: a link is never
-    // followed (a folder after one is not looked at at all).
-    let mut chain: Vec<&std::path::Path> = full.ancestors().collect();
-    chain.reverse();
-    for (i, step) in chain.iter().enumerate().skip(1) {
-        match std::fs::symlink_metadata(step) {
-            Ok(m) if m.file_type().is_symlink() => {
-                return refuse(if i + 1 == chain.len() { "a link" } else { "in a folder that is a link" });
-            }
-            Ok(_) => {}
-            // Not there: nothing below it is either (the read says so).
-            Err(_) => break,
-        }
+    #[cfg(not(windows))]
+    if std::fs::symlink_metadata(&full).is_ok_and(|m| m.file_type().is_symlink()) {
+        return refuse("a link");
     }
     Ok(())
+}
+
+/// [`local_file`]'s walk: the drive, then each folder from it down and the
+/// file, none of them followed; a junction is followed to where it leads,
+/// and that is walked the same way, as is the folder of a `subst` letter.
+/// Why the path does not stay on this computer, if it does not.
+#[cfg(windows)]
+fn stays_here(mut at: std::path::PathBuf) -> Result<(), &'static str> {
+    use kb_winsys::local::{drive, entry, Drive, Entry};
+    use std::path::{Component, Path, PathBuf, Prefix};
+    // Junctions and `subst` letters followed at most this often (a loop of
+    // them ends here).
+    const MAX_HOPS: u32 = 32;
+    let mut hops = 0;
+    'path: loop {
+        let mut parts = at.components();
+        let Some(Component::Prefix(prefix)) = parts.next() else { return Err("a network or device path") };
+        match prefix.kind() {
+            Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => match drive(char::from(letter)) {
+                Drive::Local | Drive::Missing => {}
+                Drive::Remote => return Err("on a network drive"),
+                Drive::Folder(folder) => {
+                    hops += 1;
+                    if hops > MAX_HOPS {
+                        return Err("a network or device path");
+                    }
+                    let rest: PathBuf = parts.filter(|c| !matches!(c, Component::RootDir)).collect();
+                    at = PathBuf::from(folder).join(rest);
+                    continue 'path;
+                }
+            },
+            // A volume of this computer by its name: where a junction to a
+            // volume mounted in a folder leads.
+            Prefix::Verbatim(name) if name.to_string_lossy().to_ascii_lowercase().starts_with("volume{") => {}
+            _ => return Err("a network or device path"),
+        }
+        let mut chain: Vec<PathBuf> = at.ancestors().map(Path::to_path_buf).collect();
+        chain.reverse();
+        let last = chain.len() - 1;
+        for (i, step) in chain.iter().enumerate().skip(1) {
+            match entry(step) {
+                Entry::Plain => {}
+                // Not there: nothing below it is either (the read says so).
+                Entry::Missing => return Ok(()),
+                Entry::Unknown => return Err("in a folder keymotion-cli cannot check"),
+                Entry::Symlink | Entry::OtherLink => {
+                    return Err(if i == last { "a link" } else { "in a folder that is a link" });
+                }
+                Entry::MountPoint => {
+                    hops += 1;
+                    let target = std::fs::read_link(step).map_err(|_| "in a folder that is a link")?;
+                    if hops > MAX_HOPS || !target.is_absolute() {
+                        return Err("in a folder that is a link");
+                    }
+                    let rest = at.strip_prefix(step).map(Path::to_path_buf).unwrap_or_default();
+                    at = target.join(rest);
+                    continue 'path;
+                }
+            }
+        }
+        return Ok(());
+    }
 }
 
 /// Milliseconds from JSON: a number, or a duration as text.
@@ -1283,18 +1334,39 @@ mod tests {
         assert!(local_file(&file, "scene").is_ok());
         assert!(local_file(Path::new("no-such-scene.json"), "scene").is_ok());
         assert!(local_file(Path::new(r"C:\no\such\scene.json"), "scene").is_ok());
-        // A folder on the way that is a link (a junction needs no rights).
-        let junction = dir.join("link");
-        let made = std::process::Command::new("cmd")
-            .args(["/C", "mklink", "/J"])
-            .arg(&junction)
-            .arg(dir.join("real"))
-            .output()
-            .is_ok_and(|o| o.status.success());
-        if made {
-            let e = local_file(&junction.join("scene.json"), "scene").unwrap_err();
+        // A junction on the way (as `C:\Documents and Settings`, or a folder
+        // moved with mklink /J) leads only to this computer: followed, and
+        // where it leads is checked the same way.
+        let junction = dir.join("moved");
+        let mklink = |kind: &str, link: &Path, target: &Path| {
+            std::process::Command::new("cmd")
+                .args(["/C", "mklink", kind])
+                .arg(link)
+                .arg(target)
+                .output()
+                .is_ok_and(|o| o.status.success())
+        };
+        if mklink("/J", &junction, &dir.join("real")) {
+            assert!(local_file(&junction.join("scene.json"), "scene").is_ok());
+            let again = dir.join("again");
+            if mklink("/J", &again, &junction) {
+                assert!(local_file(&again.join("scene.json"), "scene").is_ok(), "a junction to a junction");
+            }
+            let _ = std::fs::remove_dir(&again);
+        }
+        // A symbolic link (it needs Developer Mode or an administrator) is
+        // refused, the file itself or a folder on the way: it could lead to
+        // a share.
+        let linked = dir.join("linked");
+        if std::os::windows::fs::symlink_dir(dir.join("real"), &linked).is_ok() {
+            let e = local_file(&linked.join("scene.json"), "scene").unwrap_err();
             assert!(e.message.contains("in a folder that is a link"), "{e:?}");
-            assert!(local_file(&junction, "scene").unwrap_err().message.contains("is a link"));
+            let _ = std::fs::remove_dir(&linked);
+        }
+        let linked_file = dir.join("scene-link.json");
+        if std::os::windows::fs::symlink_file(&file, &linked_file).is_ok() {
+            assert!(local_file(&linked_file, "scene").unwrap_err().message.contains("is a link"));
+            let _ = std::fs::remove_file(&linked_file);
         }
         let _ = std::fs::remove_dir(&junction);
         let _ = std::fs::remove_dir_all(&dir);
