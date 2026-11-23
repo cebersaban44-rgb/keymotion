@@ -1,0 +1,94 @@
+---
+title: Yapay zekâ ajanları
+description: Claude Code ve Codex gibi kodlama ajanları iş bitince, onayınızı beklerken ya da hata verince klavyenin ışığıyla haber verir.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+import Screenshot from "~/components/Screenshot.astro";
+
+Claude Code ya da Codex gibi bir kodlama ajanı bir işi bitirince, onayınızı beklerken ya da hata verince klavyeniz ışıkla haber verebilir. Ajan tuşları kendi bildiği gibi de yakabilir: harf tuşlarında bir kelime, bir sayı, F sırasında bir ilerleme çubuğu. Erişimi yalnızca bir kez açarsınız; geri kalan her şeyin değiştirebileceğiniz hazır bir görünüşü vardır.
+
+<Screenshot name="ai-agents" alt="Erişimi açık, Claude Code ve Codex bağlı Yapay zekâ ajanları sayfası; sinyaller efektleri, ne kadar kaldıkları ve Klavyede dene düğmesiyle" />
+
+## Açma
+
+<Steps>
+
+1. Kenar çubuğunda **Araçlar** altından **Yapay zekâ ajanları**'nı açın.
+2. **Ajanlar klavyeyi kullanabilsin**'i açın.
+3. **Bağlanacaklar** adımında Keymotion bu bilgisayardaki her kodlama uygulamasına ne ekleneceğini söyler: Claude Code ve Codex bir iş bitince, onayınızı beklerken ya da hata verince Keymotion'a haber verir ve ajana klavyeyi nasıl kullanacağını anlatan kısa bir not (yetenek) alır; Codex ayrıca ajanın klavye komutlarını korumalı alanının dışında çalıştırmasına izin verir. GitHub'dan kurulan Keymotion'da terminaller `keymotion-cli`'ı adıyla da bulur. **Ayrıntılar** dosyaları, her birine kaç kanca eklendiğini ve değişen her dosyanın kopyasının nerede saklandığını gösterir.
+4. **Bağla ve aç**'a tıklayın. Burada durmak için **Vazgeç**'e tıklayın: hiçbir şey yazılmaz, erişim kapalı kalır.
+5. **Tamamlandı** neyin bağlandığını söyler. **Tamam**'a tıklayın.
+
+</Steps>
+
+<Screenshot name="ai-agents-connect" alt="Ajan erişimini açma, 1. adım: Claude Code ve Codex'e eklenecekler, altında Bağla ve aç düğmesi" />
+
+Codex bu yeni ayarları bir kez onaylamanızı ister (`/hooks` yazın ya da Codex'te Ayarlar › Kancalar'ı açın). O zamana kadar **Bağlı uygulamalar**'da **Codex'te bir kez onay bekliyor** yazar.
+
+Adımlar açıkken bir kodlama uygulaması ayarlarını yazarsa Keymotion şimdi neyin değişeceğini gösterir ve yeniden sorar.
+
+**Ajanlar klavyeyi kullanabilsin**'i kapatmak bütün ajanları hemen durdurur; bağlantılar kalır, yeniden açmak adım istemez.
+
+## Bağlı uygulamalar
+
+Her uygulama ne durumda olduğunu gösterir: **Bağlı**, **Codex'te bir kez onay bekliyor**, **Bağlı değil**, **Bu bilgisayarda yok** ya da Claude Code 2.1.139 sürümünden eskiyse ve `claude update` ile güncellenmesi gerekiyorsa **Çok eski**. Sağdaki ok klasörünü ve dosyalarını, bir de yalnızca Keymotion'ın eklediklerini kaldıran **Bağlantıyı kaldır**'ı gösterir.
+
+GitHub'dan kurulan Keymotion, kaldırılırken bağlantılarını kendisi siler. Microsoft Store kopyasını kaldırmadan önce bağlı her uygulama için **Bağlantıyı kaldır**'a tıklayın: Windows Store uygulamalarını onlara toparlanma fırsatı vermeden kaldırır, Claude Code da Keymotion'ın komut satırı aracını doğrudan çağırır; Keymotion kaldırıldıktan sonra, bağlantı kaldırılana kadar her olayda bir kanca hatası bildirir. Codex önce bakar ve sessiz kalır.
+
+## Klavye nasıl haber versin
+
+| Sinyal | İlk görünüşü | Ne kadar sürer |
+|---|---|---|
+| **Bitti** | Yeşil, dalga, sonra sabit | 2 dakika |
+| **Onayınızı bekliyor** | Turuncu, selektör, sonra yavaş nabız | Cevap gelene kadar (en çok 30 dakika) |
+| **Hata** | Kırmızı, iki kez yanıp sönme, sonra sabit | 10 dakika |
+| **Çalışıyor** | Kapalı | – |
+| **Bilgi** | Mavi dalga | 10 saniye |
+
+Bir sinyalin rengini değiştirmek için noktaya tıklayın; listeler efekti ve ne kadar süreceğini değiştirir. **Klavyede dene** birkaç saniye gösterir. Işıklar saniyede üç kezden hızlı yanıp sönmez.
+
+**Onayınızı bekliyor** ajana cevap verince söner. Işık göründükten sonra klavyeye ya da fareye ilk dokunuşunuzda da söner, çünkü onu gördünüz. İki ya da daha çok oturum varken bekleyen oturumun numara tuşu siz cevap verene kadar yanık kalır.
+
+Yalnız ajan size sorduğunda yanar. Claude Code kendisi karar verdiğinde (otomatik kip ya da hiç sormayan bir kip) hiçbir şey yanmaz; yine de size sorarsa ışık birkaç saniye sonra gelir. Codex'in **Approve for me** seçeneği size sorulan bir sorudan ayırt edilemez: orada ışık incelenen adım bitene kadar kalır.
+
+## Keymotion çalışmıyorken
+
+Keymotion çalışmıyorken bir ajan işini bitirir ya da size ihtiyaç duyarsa Keymotion penceresini açmadan, yalnızca saatin yanındaki simgesiyle kendiliğinden başlar ve ışığı gösterir.
+
+Siz kapattıysanız kapalı kalır: Keymotion'dan çıktıktan (saatin yanındaki simgesine sağ tıklayıp **Çık**'ı seçtikten) ya da **Ajanlar klavyeyi kullanabilsin**'i kapattıktan sonra ajanların olayları onu başlatmaz; siz kendiniz açana, Windows yeniden başlayana ya da yeniden oturum açana kadar. Bir ajanın bilerek çalıştırdığı bir komut onu yine başlatabilir.
+
+## Ajanlar başka neler yapabilsin
+
+Bunlar önce kapalıdır: **Ekrana yazı ve görsel gönderme** (her gönderim klavyenin belleğine yazar; bütün ajanlar birlikte saatte en çok dört, bu sayıyı yanındaki listeden 1 ile 20 arasında değiştirebilirsiniz), **Odak zamanlayıcısını kullanma** ve **Profil ışığını kaydetme** (tuş atamalarına ve makrolara hiçbir zaman dokunmaz). **Oyundayken ajan ışıklarını gizle** açıktır: oyun oturumu sürerken ışıklar bekler.
+
+<Screenshot name="agent-card-text" alt="Klavyenin ekranında bir ajan kartı, üç kat büyük: Tests başlığı ve All 214 passed, Ready to merge yazısı" />
+
+## Ek davranışlar
+
+Her satırın ayarları sağdaki okla açılır:
+
+- **Kullanım sınırı doldu:** hatadan ayrı, kendi rengi ve efektiyle.
+- **Hangi oturum bekliyor:** iki ya da daha çok oturumda bekleyenin numarası rakam sırasında yanar. **Oturum numaraları** hangi numaranın hangi proje klasörü olduğunu sayar.
+- **Siz yokken:** siz yokken biten ya da beklemeye başlayan iş, döndüğünüzde bir kez yanıp söner.
+- **Cevapsız kalırsa:** cevaplanmayan soru bir süre birkaç dakikada bir yeniden yanıp söner.
+- **İlerleme çubuğu:** ajanın ilerleme çubuğunun kullandığı tuşlar (F sırası ya da rakam sırası) ve rengi.
+- **Uzun iş bitti:** uzun bir iş bitince ekranda bir kart (ekran izni gerekir).
+- **Gece sessizliği:** gece ajan ışıklarını kısar ya da söndürür.
+- **Yardımcı ajan bitti:** Claude Code'un yardımcı ajanlarından biri bitince F sırasında kısa bir dalga.
+
+<Screenshot name="agent-card-long-task" alt="Klavyenin ekranında Uzun iş bitti kartı, üç kat büyük: Bitti, 14 dakika ve proje klasörünün adı" />
+
+**Ajanlar bu ayarları değiştirebilsin** (önce açık) bir ajanın görünüşü ve davranışı değiştirmesine izin verir. Erişim, izinler ve bağlantılar her zaman sizdedir.
+
+## Son işlemler
+
+Ajanların son yaptıkları saatleriyle listelenir. Bir ayar değişikliğinde **Geri al** vardır. **Bütün ajan ışıklarını söndür** bütün ajan ışıklarını bir anda söndürür. Yapılmayan bir istek nedenini de söyler; örneğin klavyenin USB kablosuyla bağlı olmadığını.
+
+<Screenshot name="ai-agents-recent" alt="Son işlemler: Claude Code'dan bir Bitti sinyali, Codex'in Geri al düğmeli bir renk değişikliği ve Keymotion'ın nedeniyle reddettiği bir istek" />
+
+Ajanlar Keymotion'ı küçük bir komut satırı aracı olan `keymotion-cli` ile kullanır. Betiklerin de kullanabileceği komutları [Ajan komut satırı](/keymotion/tr/developers/agent-cli/) sayfasındadır.
+
+<Aside type="note">
+Ajan ışıkları USB kablosuyla görünür. Odak zamanlayıcısının, göstergelerin, müzik modunun ve profil ışığının üstünde, sessiz mikrofon uyarısının ve toplantı hatırlatmalarının altında dururlar.
+</Aside>

@@ -37,4 +37,10 @@ last: PomodoroSummary | null,
 /**
  * "Klavyede dene" is showing a short run on the keys.
  */
-trying: boolean, };
+trying: boolean, 
+/**
+ * An agent started this series as one focus block of this many
+ * minutes (`keymotion-cli focus start --for 50m`), without changing
+ * `settings`: the series is that block alone.
+ */
+once?: number, };

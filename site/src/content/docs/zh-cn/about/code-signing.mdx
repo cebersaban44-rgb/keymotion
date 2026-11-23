@@ -1,0 +1,67 @@
+---
+title: 代码签名政策（Code signing policy）
+description: "Keymotion 的代码签名政策：发布版本如何构建和检查、更新如何验证，以及由谁批准发布。"
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+代码签名可以让 Windows 显示程序的发布者，并表明程序发布后没有被任何人修改过。本页说明 Keymotion 的发布版本如何构建、签名和检查。
+
+## 当前状态
+
+Keymotion 有两种获取方式。[Microsoft Store](https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full) 版由 Microsoft 签名，因此安装时不会出现警告。GitHub 上的安装程序还没有代码签名，因此运行时 Windows 可能会发出警告；[安装 Keymotion](/keymotion/zh-cn/guide/install/)说明了如何继续。
+
+2026 年 11 月 15 日，项目向 SignPath Foundation 提交了申请，该基金会为开源项目免费提供代码签名。由于项目还很新，SignPath 暂时拒绝了申请，并邀请项目在知名度提高后再次申请。项目会再次申请。
+
+在 Microsoft Store 中，Microsoft 会在发布每个软件包之前对它进行检查并签名。Microsoft Store 的软件包与 GitHub 上的安装程序包含相同的程序，都由 GitHub Actions 从同一个版本标签构建。
+
+## 发布版本如何构建
+
+- 每个发布版本都由 GitHub Actions 根据其版本标签的源代码构建，使用的是 [`.github/workflows/release.yml`](https://github.com/cebersaban44-rgb/keymotion/blob/main/.github/workflows/release.yml) 中的工作流。发布文件从不在个人电脑上构建，也从不从个人电脑上传。
+- 工作流会把发布版本以草稿形式放到 GitHub 上。维护者审查后再正式发布。
+- [发布页面](https://github.com/cebersaban44-rgb/keymotion/releases)列出了安装程序的 SHA-256 校验值，你可以据此确认下载的文件就是发布的文件。
+
+核对校验值的方法：
+
+<Steps>
+
+1. 打开保存安装程序的文件夹，例如**下载**文件夹。
+2. 右键单击文件夹中的空白处，选择**在终端中打开**。
+3. 输入 `Get-FileHash`，后面加上安装程序的文件名，例如 `Get-FileHash .\Keymotion_0.1.0_x64-setup.exe`，然后按 Enter 键。
+4. 将显示的长代码与发布页面上的 SHA-256 进行比较。两者必须完全相同。
+
+</Steps>
+
+## 杀毒软件扫描
+
+2026 年 11 月 15 日，Keymotion 0.1.0 的安装程序在 VirusTotal 上进行了扫描。71 个杀毒引擎中有 70 个没有发现任何问题，其中包括 Microsoft Defender。
+
+只有一个引擎 Trapmine 根据机器学习评分（“Malicious.high.ml.score”）标记了它，并且用同一个模型给安装程序中的应用打了较低的分数。这是该引擎对新的、未签名文件的推测，并不是与已知恶意软件相匹配。我们已于 2026 年 11 月 15 日将其作为误报报告给 Trapmine。有了签名的发布版本后，这类推测应该会减少。
+
+- [安装程序的 VirusTotal 报告](https://www.virustotal.com/gui/file/f2a1208007ba947c5ec082835328b8dbb0240baa22839d8ea439d1423f897531)
+
+## 更新如何验证
+
+每个安装程序还会另外用 Keymotion 自己的更新签名签一次。这套签名使用一对私钥和公钥：
+
+- 私钥由项目秘密保管，发布工作流用它为每个安装程序签名；
+- 公钥内置在 Keymotion 中。
+
+Keymotion 下载更新时，会用公钥验证下载的文件。如果签名不匹配，它不会安装这个更新，并会提示“无法验证下载的文件，因此没有安装。”所以，Keymotion 只会安装用项目私钥签名的更新。
+
+<Aside type="note" title="与 Windows 代码签名不同">
+这套更新签名保护的是从 Keymotion 内部安装的更新。它不会改变你运行自己下载的安装程序时 Windows 可能显示的警告。
+</Aside>
+
+## 团队角色
+
+- 提交者和审阅者：[@cebersaban44-rgb](https://github.com/cebersaban44-rgb)
+- 批准者：[@cebersaban44-rgb](https://github.com/cebersaban44-rgb)
+
+## 签名请求
+
+签名设置完成后，每个签名请求都会在签名之前由一位批准者手动批准。
+
+## 隐私
+
+Keymotion 不收集使用数据。它只在读取你添加的日历以及在 GitHub 上检查新版本时联网。参见[隐私政策](/keymotion/zh-cn/about/privacy/)。

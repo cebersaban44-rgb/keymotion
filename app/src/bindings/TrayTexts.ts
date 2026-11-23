@@ -2,11 +2,14 @@
 
 /**
  * The tray menu's words and the background notice, in the UI language.
- * Templates keep their `{name}` places; the backend fills them in.
+ * Templates keep their `{name}` places and plural forms
+ * (`{n, plural, one {…} other {…}}`); the backend fills them in (i18n.rs).
  */
 export type TrayTexts = { 
 /**
- * "tr" or "en": how a date further than tomorrow is written.
+ * The UI language: "en", "tr", "ru" or "zh-CN". It picks the plural
+ * forms, how a date further than tomorrow is written ("Nov 14",
+ * "14.11", "11月14日") and the documentation site's folder.
  */
 locale: string, open: string, noKeyboard: string, 
 /**
@@ -28,7 +31,11 @@ ready: string, reminders: string, remindersOn: string, remindersOff: string,
 /**
  * `{time}`, `{title}`.
  */
-remindersNext: string, remindersNone: string, tomorrow: string, gauges: string, profiles: string, defaultProfile: string, quit: string, hiddenTitle: string, hiddenBody: string, 
+remindersNext: string, remindersNone: string, tomorrow: string, gauges: string, 
+/**
+ * Music mode's switch.
+ */
+music: string, profiles: string, defaultProfile: string, quit: string, hiddenTitle: string, hiddenBody: string, 
 /**
  * The menu's first line while a new version waits. `{version}`.
  */
@@ -42,6 +49,18 @@ updateReady: string,
  */
 updateTooltip: string, 
 /**
+ * The line while a game session runs. `{name}`, `{time}`.
+ */
+game: string, 
+/**
+ * The play time in it: `{h}` and `{min}`, `{min}`, under a minute.
+ */
+gameHours: string, gameMinutes: string, gameLess: string, 
+/**
+ * Profiles ▸ the per-app profiles' switch.
+ */
+autoProfile: string, 
+/**
  * The notification that a new version is ready. `{version}`.
  */
 noticeReadyTitle: string, noticeReadyBody: string, noticeInstall: string, noticeLater: string, 
@@ -52,4 +71,10 @@ noticeInstalledTitle: string,
 /**
  * Its line when the app installed the update by itself.
  */
-noticeInstalledAuto: string, noticeWhatsNew: string, };
+noticeInstalledAuto: string, noticeWhatsNew: string, 
+/**
+ * Keyboard models' names in the UI language, by model id, for the
+ * models sold under another name there (Chinese: 黑爵 AK980 V2（带屏版）).
+ * A model not listed keeps its model file's name.
+ */
+modelNames: Record<string, string>, };

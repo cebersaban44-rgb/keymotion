@@ -15,12 +15,29 @@
 //!   default microphone's mute (only the Windows mute: a mute button inside
 //!   a call app does not reach Windows). The caller looks the default
 //!   devices up again now and then, so a switch of device is followed.
+//! * The sound playing, for the music lights: Windows' loopback capture of
+//!   the default speakers, opened only while something plays
+//!   ([`loopback`]). No microphone; nothing is recorded or kept.
 //! * Running programs: a Toolhelp snapshot, with each program's path where
 //!   Windows gives it, so the app can refuse to write to the keyboard while
-//!   another program talks to it.
+//!   another program talks to it. No program is opened for it.
+//! * The program in front, for the game session and the per-app profiles
+//!   ([`foreground`]), without opening any program.
+//! * Program icons for the lists and a card's colour, read from the
+//!   program's file ([`icon`]), without opening any program.
 //! * Shutdown: while the app writes the keyboard's flash, Windows is told
 //!   why shutting down now is a bad idea (`ShutdownBlockReasonCreate`).
 //! * Web pages: opened in the default browser (`ShellExecuteW`, [`shell`]).
+//! * The taskbar clock's date and time and the time zone setting, asked
+//!   afresh each time ([`time`]).
+//! * The named pipe `keymotion-cli` talks to the app through: only this
+//!   user, only this computer, created with an explicit security
+//!   descriptor (`pipe`, Windows only).
+//! * The user's own PATH, for the GitHub copy's `keymotion-cli` folder
+//!   ([`user_path`]): read, added to, taken from, nothing else changed.
+//! * Whether a file `keymotion-cli` is asked to read stays on this computer
+//!   ([`local`]): what a drive letter stands for, what kind of link a
+//!   folder is, without following it or reaching the network.
 //!
 //! Types holding COM or PDH handles are not `Send`: make them on the thread
 //! that uses them.
@@ -29,12 +46,23 @@
 
 pub mod appid;
 pub mod copies;
+pub mod foreground;
+pub mod games;
+pub mod icon;
+pub mod local;
+pub mod loopback;
 pub mod os;
 pub mod package;
+#[cfg(windows)]
+pub mod pipe;
 pub mod protocol;
+pub mod registry;
 pub mod secret;
 pub mod shell;
 pub mod startup;
+pub mod thermal;
+pub mod time;
+pub mod user_path;
 
 use std::collections::HashMap;
 
@@ -209,55 +237,13 @@ mod sys {
     use windows::Win32::System::Threading::GetSystemTimes;
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
 
+    /// Paths come without opening any program: some run under anti-cheat
+    /// software (`foreground`).
     pub fn running_programs() -> Vec<super::RunningProgram> {
-        use windows::core::PWSTR;
-        use windows::Win32::Foundation::CloseHandle;
-        use windows::Win32::System::Diagnostics::ToolHelp::{
-            CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
-        };
-        use windows::Win32::System::Threading::{
-            OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
-        };
-
-        fn text(wide: &[u16]) -> String {
-            let end = wide.iter().position(|&c| c == 0).unwrap_or(wide.len());
-            String::from_utf16_lossy(&wide[..end])
-        }
-
-        fn path_of(pid: u32) -> Option<String> {
-            // SAFETY: plain call; the handle is closed below.
-            let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;
-            let mut buf = [0u16; 1024];
-            let mut len = buf.len() as u32;
-            // SAFETY: `buf` holds `len` UTF-16 units; the call writes at most that many.
-            let read =
-                unsafe { QueryFullProcessImageNameW(process, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len) };
-            // SAFETY: the handle came from OpenProcess above and is closed once.
-            let _ = unsafe { CloseHandle(process) };
-            read.ok()?;
-            Some(String::from_utf16_lossy(&buf[..(len as usize).min(buf.len())]))
-        }
-
-        // SAFETY: plain call; the snapshot handle is closed below.
-        let Ok(snapshot) = (unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }) else {
-            return Vec::new();
-        };
-        let mut out = Vec::new();
-        let mut entry = PROCESSENTRY32W { dwSize: size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
-        // SAFETY: a valid snapshot handle and an entry with its size set, as the API asks.
-        let mut more = unsafe { Process32FirstW(snapshot, &mut entry) }.is_ok();
-        while more {
-            let pid = entry.th32ProcessID;
-            // Process 0 is the idle process: no executable behind it.
-            if pid != 0 {
-                out.push(super::RunningProgram { pid, name: text(&entry.szExeFile), path: path_of(pid) });
-            }
-            // SAFETY: as above.
-            more = unsafe { Process32NextW(snapshot, &mut entry) }.is_ok();
-        }
-        // SAFETY: the handle came from CreateToolhelp32Snapshot and is closed once.
-        let _ = unsafe { CloseHandle(snapshot) };
-        out
+        crate::foreground::processes_with_paths()
+            .into_iter()
+            .map(|(pid, name, path)| super::RunningProgram { pid, name, path })
+            .collect()
     }
 
     // Declared here rather than through the `windows` crate: its
@@ -399,7 +385,17 @@ mod sys {
     }
 
     /// Undoes `CoInitializeEx` when the thread's audio reader goes away.
-    struct Com(bool);
+    pub(crate) struct Com(bool);
+
+    impl Com {
+        /// Start COM on this thread (multithreaded). S_FALSE (already
+        /// started) also needs its CoUninitialize; a thread already in
+        /// another mode can still use COM.
+        pub(crate) fn start() -> Self {
+            // SAFETY: plain COM start-up for this thread.
+            Self(unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }.is_ok())
+        }
+    }
 
     impl Drop for Com {
         fn drop(&mut self) {
@@ -421,10 +417,7 @@ mod sys {
 
     impl Audio {
         pub fn new() -> Option<Self> {
-            // S_FALSE (already started) also needs its CoUninitialize; a
-            // thread already in another mode can still use COM.
-            // SAFETY: plain COM start-up for this thread.
-            let com = Com(unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }.is_ok());
+            let com = Com::start();
             // SAFETY: COM is started on this thread.
             let enumerator: IMMDeviceEnumerator =
                 unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) }.ok()?;

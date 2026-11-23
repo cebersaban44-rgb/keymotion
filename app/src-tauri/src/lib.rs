@@ -4,45 +4,60 @@
 //! the `kb-*` crates. All keyboard logic lives in those crates, and all
 //! hardware access goes through the single device actor.
 
+mod agent;
+mod autoprofile;
 mod backup;
 mod calendar;
 mod channel;
 mod device;
 mod diagnostics;
 mod dto;
+mod front;
+mod games;
 mod gauges;
 mod handoff;
+mod i18n;
 mod ics;
 mod lighting;
 mod live;
 mod logging;
+mod lol;
 pub mod migrate;
+mod music;
 mod notify;
 mod now_playing;
 mod official_driver;
 mod pomodoro;
 mod profiles;
+mod recur;
 mod reminders;
 mod screen_lib;
 mod settings;
+mod spectrum;
 mod tray;
 mod updates;
+mod zones;
 
+use agent::AgentHandle;
 use backup::{BackupExported, BackupImported, BackupSection, BackupSummary, PendingImport};
 use calendar::CalendarHandle;
 use device::{DeviceHandle, Expected, LiveFrame, MirrorExpect, Request, ScreenWriteStep};
 use diagnostics::{AppFolder, LastExport};
 use dto::{
-    BackgroundSettings, CalendarSettings, CalendarState, Calibration, CalibrationInfo, ClockStatus, CrashNote,
-    EffectInfo, EffectRequest, FlashWrite, GaugesSettings, GaugesState, IssueKind, KeyAssignment, KeyboardInfo,
-    KeymapCatalog, KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint,
-    PomodoroSettings, PomodoroState, Reminder, ReminderSettings, ReminderState, ScreenItem, ScreenItemKind,
+    AgentApp, AgentAppPlan, AgentConnectOutcome, AgentConnectPlan, AgentConnections, AgentDisconnectOutcome, AgentLook,
+    AgentSettings, AgentsState, AutoProfileSettings, AutoProfileState, BackgroundSettings, CalendarSettings,
+    CalendarState, Calibration, CalibrationInfo, ClockStatus, CrashNote, EffectInfo, EffectRequest, FlashWrite,
+    GamesSettings, GamesState, GaugesSettings, GaugesState, IssueKind, KeyAssignment, KeyboardInfo, KeymapCatalog,
+    KeymapLayer, KeymapState, LedColor, LivePlan, LiveState, MacroInfo, MacrosState, MirrorHint, MusicSettings,
+    MusicState, PomodoroSettings, PomodoroState, Reminder, ReminderSettings, ReminderState, ScreenItem, ScreenItemKind,
     ScreenState, SettingsReset, SongStop, ThemePreference, TrayTexts, UiEnvironment, UnsupportedKeyboard, UpdateMode,
     UpdateState, WindowsPage,
 };
+use games::GamesHandle;
 use gauges::GaugesHandle;
 use kb_core::color::{LedCalibration, GAMMA_MAX, GAMMA_MIN};
 use live::LiveHandle;
+use music::MusicHandle;
 use now_playing::NowPlaying;
 use pomodoro::{PomodoroAction, PomodoroHandle};
 use profiles::{PartLoaded, ProfilePart, ProfileParts, ProfileSaved, ProfileStore, ProfilesState};
@@ -75,19 +90,26 @@ pub(crate) fn flash_busy(app: &AppHandle) -> bool {
     app.try_state::<Arc<DeviceHandle>>().is_some_and(|d| d.flash.current().is_some())
 }
 
-/// Closing would ask first: changes not on the keyboard, or a flash write.
-fn close_needs_asking(app: &AppHandle) -> bool {
-    app.try_state::<CloseGuard>().is_some_and(|g| g.unsaved.load(Ordering::SeqCst)) || flash_busy(app)
+/// The UI holds changes that are not on the keyboard yet.
+pub(crate) fn unsaved_changes(app: &AppHandle) -> bool {
+    app.try_state::<CloseGuard>().is_some_and(|g| g.unsaved.load(Ordering::SeqCst))
 }
 
-/// "Update by itself" waits: closing would ask first, or the focus timer
-/// runs or is paused (its place in the sequence is not kept over a restart).
+/// Closing would ask first: changes not on the keyboard, or a flash write.
+fn close_needs_asking(app: &AppHandle) -> bool {
+    unsaved_changes(app) || flash_busy(app)
+}
+
+/// "Update by itself" waits: closing would ask first, the focus timer
+/// runs or is paused (its place in the sequence is not kept over a
+/// restart), or a game session runs.
 pub(crate) fn busy_for_update(app: &AppHandle) -> bool {
     close_needs_asking(app)
         || app
             .try_state::<Arc<PomodoroHandle>>()
             .and_then(|p| p.state().ok())
             .is_some_and(|s| s.status != dto::PomodoroStatus::Idle)
+        || app.try_state::<Arc<GamesHandle>>().is_some_and(|g| g.in_session())
 }
 
 /// The official driver's copy of the factory animation: searched once per
@@ -115,9 +137,11 @@ type Library<'a> = State<'a, Arc<Mutex<ScreenLibrary>>>;
 type Live<'a> = State<'a, Arc<LiveHandle>>;
 type Pomodoro<'a> = State<'a, Arc<PomodoroHandle>>;
 type Gauges<'a> = State<'a, Arc<GaugesHandle>>;
+type Music<'a> = State<'a, Arc<MusicHandle>>;
 type Calendar<'a> = State<'a, Arc<CalendarHandle>>;
 type Reminders<'a> = State<'a, Arc<RemindersHandle>>;
 type Profiles<'a> = State<'a, Arc<Mutex<ProfileStore>>>;
+type Agents<'a> = State<'a, Arc<AgentHandle>>;
 
 fn lock_library(lib: &Mutex<ScreenLibrary>) -> Result<std::sync::MutexGuard<'_, ScreenLibrary>, String> {
     lib.lock().map_err(|_| "screen library unavailable".to_string())
@@ -353,6 +377,133 @@ fn now_playing_cover(now_playing: State<'_, Arc<NowPlaying>>) -> Result<tauri::i
     now_playing.cover().map(tauri::ipc::Response::new).ok_or_else(|| "no cover".to_string())
 }
 
+/// The AI agents: their settings, lights, log and the pipe.
+#[tauri::command]
+fn agents_state(agents: Agents<'_>) -> AgentsState {
+    agents.state()
+}
+
+/// New agent settings from the page (saved). Unlike agents, the page may
+/// change any of them.
+#[tauri::command]
+fn agents_save(agents: Agents<'_>, settings: AgentSettings) -> Result<AgentsState, String> {
+    tracing::debug!(access = settings.enabled, "ipc: agents_save");
+    agents.save(settings)
+}
+
+/// "Try on the keyboard": one look for a few seconds (works with access off).
+#[tauri::command]
+fn agents_try(agents: Agents<'_>, look: AgentLook, keys: Option<String>) -> Result<AgentsState, String> {
+    tracing::debug!(effect = ?look.effect, "ipc: agents_try");
+    agents.try_look(look, keys)
+}
+
+/// "Turn off every agent light".
+#[tauri::command]
+fn agents_clear_all(agents: Agents<'_>) -> AgentsState {
+    tracing::debug!("ipc: agents_clear_all");
+    agents.clear_all()
+}
+
+/// "Undo" on an entry of the agents' log: the settings it changed go back.
+#[tauri::command]
+fn agents_undo(agents: Agents<'_>, seq: u32) -> Result<AgentsState, String> {
+    tracing::debug!(seq, "ipc: agents_undo");
+    agents.undo(seq)
+}
+
+/// An agent's screen card, drawn by the page (`agent-card` event): the
+/// picture as the body (validated here), header `x-card` its id. It goes to
+/// the live mode like any card.
+#[tauri::command]
+fn agents_card_drawn(
+    agents: Agents<'_>,
+    live: Live<'_>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<LiveState, String> {
+    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
+        return Err("expected binary data".into());
+    };
+    let anim = kb_protocol::sonix::screen::from_blob(data).map_err(|e| e.to_string())?;
+    let id = request.headers().get("x-card").and_then(|v| v.to_str().ok()).unwrap_or("");
+    agents.card_drawn(id, anim)?;
+    live.state()
+}
+
+/// The page could not draw an agent's card (`error`, for the agent).
+#[tauri::command]
+fn agents_card_failed(agents: Agents<'_>, id: String, error: String) {
+    tracing::debug!(%id, "ipc: agents_card_failed");
+    agents.card_failed(&id, &error);
+}
+
+/// The page listens for `agent-card` and can draw agents' cards (`ready`
+/// left out or `true`), or stops (`false`). Until it says so, `card` is
+/// refused (`unsupported`, "open Keymotion's window once") and a long
+/// task puts no card up; a page that reloads or whose window closes is not
+/// ready until it says so again.
+#[tauri::command]
+fn agents_card_drawer_ready(agents: Agents<'_>, ready: Option<bool>) {
+    tracing::debug!(?ready, "ipc: agents_card_drawer_ready");
+    agents.card_drawer(ready.unwrap_or(true));
+}
+
+/// The page that drew agents' cards is gone (a reload, its window closed).
+fn agents_drawer_gone(app: &AppHandle) {
+    if let Some(agents) = app.try_state::<Arc<AgentHandle>>() {
+        agents.card_drawer(false);
+    }
+}
+
+/// Run an agents' setup step off the main thread (it reads and writes the
+/// coding apps' files, and PATH).
+async fn agents_blocking<T: Send + 'static>(
+    agents: Agents<'_>,
+    work: impl FnOnce(&AgentHandle) -> T + Send + 'static,
+) -> Result<T, String> {
+    let handle = agents.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || work(&handle)).await.map_err(|e| e.to_string())
+}
+
+/// Claude Code and Codex: on this computer, connected, waiting for approval
+/// in Codex, too old; the keymotion-cli this copy comes with; PATH.
+#[tauri::command]
+async fn agents_connections(agents: Agents<'_>) -> Result<AgentConnections, String> {
+    agents_blocking(agents, |a| a.connections()).await
+}
+
+/// What turning agent access on would add, where (`apps`: which coding
+/// apps, default every one found). Nothing is written.
+#[tauri::command]
+async fn agents_connect_plan(agents: Agents<'_>, apps: Option<Vec<AgentApp>>) -> Result<AgentConnectPlan, String> {
+    agents_blocking(agents, move |a| a.connect_plan(apps.as_deref())).await
+}
+
+/// The user approved the plan with `token`: the coding apps are connected,
+/// the GitHub copy's `bin` folder goes on PATH, agent access goes on.
+#[tauri::command]
+async fn agents_connect(
+    agents: Agents<'_>,
+    token: String,
+    apps: Option<Vec<AgentApp>>,
+) -> Result<AgentConnectOutcome, String> {
+    tracing::debug!("ipc: agents_connect");
+    agents_blocking(agents, move |a| a.connect(&token, apps.as_deref())).await
+}
+
+/// What disconnecting a coding app would take away. Nothing is written.
+#[tauri::command]
+async fn agents_disconnect_plan(agents: Agents<'_>, app: AgentApp) -> Result<AgentAppPlan, String> {
+    agents_blocking(agents, move |a| a.disconnect_plan(app)).await
+}
+
+/// Take Keymotion's hooks, skill and rule away from a coding app.
+#[tauri::command]
+async fn agents_disconnect(agents: Agents<'_>, app: AgentApp) -> Result<AgentDisconnectOutcome, String> {
+    tracing::debug!(?app, "ipc: agents_disconnect");
+    agents_blocking(agents, move |a| a.disconnect(app)).await
+}
+
 /// The Pomodoro timer.
 #[tauri::command]
 fn pomodoro_state(pomodoro: Pomodoro<'_>) -> Result<PomodoroState, String> {
@@ -477,9 +628,12 @@ fn gauges_state(gauges: Gauges<'_>) -> Result<GaugesState, String> {
 
 /// New system gauges settings (saved).
 #[tauri::command]
-fn gauges_configure(gauges: Gauges<'_>, settings: GaugesSettings) -> Result<GaugesState, String> {
+fn gauges_configure(app: AppHandle, gauges: Gauges<'_>, settings: GaugesSettings) -> Result<GaugesState, String> {
     tracing::debug!(?settings, "ipc: gauges_configure");
-    gauges.configure(settings)
+    let state = gauges.configure(settings)?;
+    // The tray menu's tick follows.
+    tray::refresh(&app);
+    Ok(state)
 }
 
 /// The gauges page opened or closed: it gets readings (`gauges` events)
@@ -487,6 +641,214 @@ fn gauges_configure(gauges: Gauges<'_>, settings: GaugesSettings) -> Result<Gaug
 #[tauri::command]
 fn gauges_watch(gauges: Gauges<'_>, on: bool) {
     gauges.watch(on);
+}
+
+/// Music mode.
+#[tauri::command]
+fn music_state(music: Music<'_>) -> Result<MusicState, String> {
+    music.state()
+}
+
+/// New music mode settings (saved).
+#[tauri::command]
+fn music_configure(app: AppHandle, music: Music<'_>, settings: MusicSettings) -> Result<MusicState, String> {
+    tracing::debug!(?settings, "ipc: music_configure");
+    let state = music.configure(settings)?;
+    // The tray menu's tick follows.
+    tray::refresh(&app);
+    Ok(state)
+}
+
+/// The music page opened or closed: it gets frames (`music` events) while
+/// open, even with music mode off (the sound is read meanwhile).
+#[tauri::command]
+fn music_watch(music: Music<'_>, on: bool) {
+    music.watch(on);
+}
+
+type Games<'a> = State<'a, Arc<GamesHandle>>;
+
+/// The keyboard on the USB cable (the only connection that takes settings
+/// and live frames).
+pub(crate) fn usb_model(app: &AppHandle) -> Option<String> {
+    let device = app.try_state::<Arc<DeviceHandle>>()?;
+    let snap = device.snapshot.lock().ok()?;
+    snap.keyboards
+        .iter()
+        .find(|k| k.connection == dto::Connection::Usb && k.has_command_channel)
+        .map(|k| k.model_id.clone())
+}
+
+/// What the per-app profiles need from the rest of the app.
+struct AutoHost {
+    app: AppHandle,
+}
+
+impl autoprofile::Host for AutoHost {
+    fn profile(&self, id: &str) -> Option<profiles::Profile> {
+        let store = self.app.try_state::<Arc<Mutex<ProfileStore>>>()?;
+        let profile = lock_profiles(&store).ok()?.get(id)?;
+        Some(profile)
+    }
+
+    fn keyboard(&self) -> Option<profiles::Profile> {
+        let model = usb_model(&self.app)?;
+        let current = profile_current(&self.app, &model).ok()?;
+        Some(profiles::Profile {
+            id: String::new(),
+            name: String::new(),
+            created_ms: 0.0,
+            updated_ms: 0.0,
+            model_id: current.model_id,
+            lighting: current.lighting,
+            keymap: Some(current.keymap),
+            macros: Some(current.macros),
+            screen: None,
+        })
+    }
+
+    fn per_key(&self, id: &str) -> Option<(Vec<profiles::LitKey>, u8)> {
+        let model = usb_model(&self.app)?;
+        let profile = self.profile(id)?;
+        profile.fits(&model).then(|| profile.lighting.as_ref()?.per_key()).flatten()
+    }
+
+    fn leds(&self) -> Option<Vec<u8>> {
+        let model = usb_model(&self.app)?;
+        let m = kb_devices::catalogue().ok()?.iter().find(|m| m.id == model)?;
+        Some(m.geometry.as_ref()?.keys.iter().map(|k| k.led).collect())
+    }
+
+    fn may_write(&self) -> bool {
+        usb_model(&self.app).is_some() && !close_needs_asking(&self.app)
+    }
+
+    fn write(&self, profile: &profiles::Profile) -> Result<u32, String> {
+        let model = usb_model(&self.app).ok_or("no keyboard on the USB cable")?;
+        let device = self.app.state::<Arc<DeviceHandle>>().inner().clone();
+        let mut writer = DeviceWriter { device: &device, config_dir: self.app.path().app_config_dir().ok() };
+        let mut written = 0;
+        // Never the screen: that is a library upload, on the live budget.
+        for part in [ProfilePart::Lighting, ProfilePart::Keymap, ProfilePart::Macros] {
+            if !profile.has(part) {
+                continue;
+            }
+            let current = profile_current(&self.app, &model)?;
+            if profiles::load_part(profile, part, &current, &mut writer)? == PartLoaded::Written {
+                written += 1;
+            }
+        }
+        tray::refresh(&self.app);
+        Ok(written)
+    }
+
+    fn game(&self, front: &kb_winsys::foreground::Front) -> Option<String> {
+        self.app.try_state::<Arc<GamesHandle>>()?.game_of(front)
+    }
+
+    fn session(&self) -> Option<String> {
+        self.app.try_state::<Arc<GamesHandle>>()?.session_key()
+    }
+
+    fn quiet(&self) -> bool {
+        self.app.try_state::<Arc<GamesHandle>>().is_some_and(|g| g.quiet_now())
+    }
+
+    fn quiet_game(&self, game: &str) -> bool {
+        self.app.try_state::<Arc<GamesHandle>>().is_some_and(|g| g.quiet_game(game))
+    }
+}
+
+type Auto<'a> = State<'a, Arc<autoprofile::AutoProfiles>>;
+
+/// Per-app profiles: the rules and what is in force.
+#[tauri::command]
+fn autoprofile_state(auto: Auto<'_>) -> Result<AutoProfileState, String> {
+    auto.state()
+}
+
+#[tauri::command]
+fn autoprofile_configure(auto: Auto<'_>, settings: AutoProfileSettings) -> Result<AutoProfileState, String> {
+    tracing::debug!("ipc: autoprofile_configure");
+    auto.configure(settings)
+}
+
+/// The game session: settings, the session that runs, games, history.
+#[tauri::command]
+fn games_state(games: Games<'_>) -> Result<GamesState, String> {
+    games.state()
+}
+
+#[tauri::command]
+fn games_configure(games: Games<'_>, settings: GamesSettings) -> Result<GamesState, String> {
+    tracing::debug!("ipc: games_configure");
+    games.configure(settings)
+}
+
+/// The user's word on a program: a game, not a game, or forget it (`null`).
+#[tauri::command]
+fn games_mark(games: Games<'_>, path: String, name: String, game: Option<bool>) -> Result<GamesState, String> {
+    games.mark(path, name, game)
+}
+
+#[tauri::command]
+fn games_clear_history(games: Games<'_>) -> Result<GamesState, String> {
+    games.clear_history()
+}
+
+/// Show the game lights on the keyboard for a moment.
+#[tauri::command]
+fn games_try_lights(games: Games<'_>) -> Result<(), String> {
+    games.try_lights()
+}
+
+/// Read the launchers' lists of games again.
+#[tauri::command]
+fn games_rescan(games: Games<'_>) {
+    games.rescan();
+}
+
+/// Steam's picture of a game (JPEG bytes), for the start card.
+#[tauri::command]
+fn games_cover(app_id: u32) -> Result<tauri::ipc::Response, String> {
+    GamesHandle::cover(app_id).map(tauri::ipc::Response::new).ok_or_else(|| "no cover".to_string())
+}
+
+/// League of Legends lights for the page's drawing: every frame of a scene
+/// (`lol::PREVIEW_STEP_MS` apart) on keyboard model `model_id`.
+#[tauri::command]
+fn games_lol_preview(
+    model_id: String,
+    settings: GamesSettings,
+    scene: dto::LolScene,
+) -> Result<Vec<lol::Keys>, String> {
+    GamesHandle::lol_preview(&model_id, &settings.sanitized(), scene)
+}
+
+/// Play a League of Legends scene on the keyboard for a moment (RAM only).
+#[tauri::command]
+fn games_try_lol(games: Games<'_>, scene: dto::LolScene) -> Result<(), String> {
+    games.try_lol(scene)
+}
+
+/// A program's icon, `size`×`size` RGBA, read from its file (the program
+/// isn't opened): lists of games and programs, a start card without a cover.
+/// Only a program (`.exe`) on this computer: a shortcut's or a link's icon
+/// could be fetched from elsewhere, and a network share can keep the call
+/// waiting (`exe_icon` turns those away too).
+#[tauri::command]
+async fn program_icon(path: String, size: u32) -> Result<tauri::ipc::Response, String> {
+    if !(16..=64).contains(&size) {
+        return Err("icon size out of range".into());
+    }
+    if !kb_winsys::icon::is_local_program(&path) {
+        return Err("not a program on this computer".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || kb_winsys::icon::exe_icon(&path, size))
+        .await
+        .map_err(|e| e.to_string())?
+        .map(tauri::ipc::Response::new)
+        .ok_or_else(|| "no icon".to_string())
 }
 
 #[tauri::command]
@@ -532,6 +894,14 @@ fn refresh_keyboards(device: Device<'_>) -> Result<(), String> {
 fn confirm_firmware(device: Device<'_>, firmware: String) -> Result<(), String> {
     tracing::debug!(%firmware, "ipc: confirm_firmware");
     device.send(Request::ConfirmFirmware(firmware))
+}
+
+/// The untested firmware version the clock sync on connect waits on, if
+/// any: the window may open after the question (`firmware-unverified`)
+/// went out.
+#[tauri::command]
+fn firmware_question(device: Device<'_>) -> Option<String> {
+    device.snapshot.lock().ok().and_then(|s| s.clock_waits_for.clone())
 }
 
 /// Settings files that could not be read at start-up and went back to
@@ -736,20 +1106,24 @@ fn ack_close_request(guard: State<'_, CloseGuard>) {
 /// skips the close-requested hook, so the dialog does not come back.
 #[tauri::command]
 fn close_window(window: WebviewWindow) -> Result<(), String> {
+    // A quit, as the close request that asked first said already.
+    Background::tell_agents(window.app_handle(), true);
     window.destroy().map_err(|e| e.to_string())
 }
 
 /// The user stayed after "Quit" in the tray asked about unsaved changes:
 /// closing hides the window again.
 #[tauri::command]
-fn quit_cancelled(background: State<'_, Arc<Background>>) {
+fn quit_cancelled(app: AppHandle, background: State<'_, Arc<Background>>) {
     background.quit_cancelled();
+    Background::tell_agents(&app, false);
 }
 
-/// Whether the window is on screen (hidden: running in the tray).
+/// Whether the window is on screen (hidden: running in the tray; or
+/// minimized).
 #[tauri::command]
 fn window_shown(window: WebviewWindow) -> bool {
-    window.is_visible().unwrap_or(true)
+    window.is_visible().unwrap_or(true) && !window.is_minimized().unwrap_or(false)
 }
 
 // Off the main thread: the Store build asks Windows for its startup task
@@ -907,7 +1281,10 @@ async fn diagnostics_report(app: AppHandle, language: String, context: Option<St
         let facts = diagnostics::Facts {
             app_name: app.package_info().name.clone(),
             app_version: channel::version_line(&app.package_info().version.to_string()),
-            time: chrono::Local::now().to_rfc3339(),
+            time: {
+                let now = crate::zones::now();
+                now.timestamp().display_with_offset(now.offset()).to_string()
+            },
             windows: kb_winsys::os::windows_release()
                 .map_or_else(|| format!("unknown (build {})", os_build()), |r| r.describe()),
             webview: tauri::webview_version().unwrap_or_else(|e| format!("unknown ({e})")),
@@ -1025,7 +1402,7 @@ fn backup_cancel(pending: State<'_, PendingImport>) {
 
 // ----------------------------------------------------------------- profiles
 
-fn lock_profiles(p: &Mutex<ProfileStore>) -> Result<std::sync::MutexGuard<'_, ProfileStore>, String> {
+pub(crate) fn lock_profiles(p: &Mutex<ProfileStore>) -> Result<std::sync::MutexGuard<'_, ProfileStore>, String> {
     p.lock().map_err(|_| "profiles unavailable".to_string())
 }
 
@@ -1036,7 +1413,7 @@ fn now_ms() -> f64 {
 /// What the keyboard of `model_id` has, as this computer recorded it: the
 /// keymap and macro records, the Lighting page's record, the library item
 /// on the GIF page (profiles.rs). Editors' unsaved drafts are not in it.
-fn profile_current(app: &AppHandle, model_id: &str) -> Result<profiles::Current, String> {
+pub(crate) fn profile_current(app: &AppHandle, model_id: &str) -> Result<profiles::Current, String> {
     let (keymap, macros) = {
         let device = app.state::<Arc<DeviceHandle>>();
         let snap = device.snapshot.lock().map_err(|_| "device state unavailable")?;
@@ -1240,9 +1617,9 @@ async fn profiles_import(app: AppHandle, request: tauri::ipc::Request<'_>) -> Re
 /// Writes of a profile load, through the device actor's requests: every
 /// check before a write applies (several keyboards, other programs,
 /// untested firmware) and each is announced as a flash write.
-struct DeviceWriter<'a> {
-    device: &'a DeviceHandle,
-    config_dir: Option<PathBuf>,
+pub(crate) struct DeviceWriter<'a> {
+    pub(crate) device: &'a DeviceHandle,
+    pub(crate) config_dir: Option<PathBuf>,
 }
 
 impl profiles::Writer for DeviceWriter<'_> {
@@ -1371,8 +1748,15 @@ fn screen_journal(library: &Arc<Mutex<ScreenLibrary>>) -> device::ScreenWriteHoo
 /// The GitHub copy handed its start with Windows over (handoff.rs). Off the
 /// UI thread: turning the startup task on waits for Windows.
 /// A `keymotion:` address from a notification's button or its click
-/// (updates.rs). Every address but a valid "Update now" opens the window.
+/// (updates.rs), or keymotion-cli's `keymotion://background`. Every address
+/// but a valid "Update now" and that one opens the window.
 fn open_app_link(app: &AppHandle, link: updates::Link) {
+    if link == updates::Link::Background {
+        // keymotion-cli asked for the app, which already runs (perhaps
+        // still starting).
+        tracing::debug!("asked to run in the background: already running");
+        return;
+    }
     let Some(updates) = app.try_state::<Arc<updates::Updates>>() else {
         tray::show_main(app);
         return;
@@ -1381,6 +1765,7 @@ fn open_app_link(app: &AppHandle, link: updates::Link) {
         updates::Link::Open => tray::show_main(app),
         updates::Link::Update => updates.open_dialog(),
         updates::Link::Install { token } => updates.install_from_notice(&token),
+        updates::Link::Background => {}
     }
 }
 
@@ -1403,7 +1788,8 @@ pub fn run() {
     tauri::Builder::default()
         // One app at a time: two would send commands to the keyboard at
         // once. A second launch brings the open window forward instead,
-        // unless Windows started it (it stays in the tray).
+        // unless Windows started it (it stays in the tray) or keymotion-cli
+        // did (nothing changes).
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // A notification's button or click: Windows started a second
             // copy with the app's own address.
@@ -1414,7 +1800,7 @@ pub fn run() {
             if args.iter().any(|a| a == handoff::ARG_TAKE_STARTUP) {
                 take_startup(app);
             }
-            if !args.iter().any(|a| a == tray::ARG_HIDDEN) {
+            if !args.iter().any(|a| a == tray::ARG_HIDDEN) && !tray::background_start(&args) {
                 tray::show_main(app);
             }
         }))
@@ -1423,13 +1809,33 @@ pub fn run() {
         .manage(Arc::new(DriverGif::default()))
         .manage(PendingImport::default())
         .manage(LastExport::default())
+        .on_page_load(|webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Started {
+                agents_drawer_gone(webview.app_handle());
+            }
+        })
         .on_window_event(|window, event| {
+            match event {
+                tauri::WindowEvent::Destroyed => {
+                    agents_drawer_gone(window.app_handle());
+                    return;
+                }
+                tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Focused(_) => {
+                    tray::follow_minimized(window);
+                    return;
+                }
+                _ => {}
+            }
             let tauri::WindowEvent::CloseRequested { api, .. } = event else { return };
             // Kept in the tray: hiding loses nothing, so nothing to ask.
             if tray::hide_on_close(window) {
                 api.prevent_close();
                 return;
             }
+            // Not kept in the tray: closing quits Keymotion, and the agents'
+            // hooks leave it closed. Staying at the unsaved-changes question
+            // undoes it (`quit_cancelled`).
+            Background::tell_agents(window.app_handle(), true);
             let guard = window.state::<CloseGuard>();
             // A flash write (a live card, going back to the own picture)
             // asks too, even if the UI has not heard of it yet.
@@ -1493,7 +1899,27 @@ pub fn run() {
             let updates = updates::Updates::spawn(app.handle().clone(), config_dir.clone());
             let after_update = updates.start_hidden();
             app.manage(updates);
-            app.manage(RemindersHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir));
+            app.manage(RemindersHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir.clone()));
+            let front = front::FrontHub::new();
+            let games = GamesHandle::spawn(
+                app.handle().clone(),
+                live.clone(),
+                device.clone(),
+                front.clone(),
+                config_dir.clone(),
+            );
+            app.manage(MusicHandle::spawn(app.handle().clone(), device.clone(), games.clone(), config_dir.clone()));
+            app.manage(games);
+            app.manage(AgentHandle::spawn(app.handle().clone(), device.clone(), config_dir.clone()));
+            let host: Arc<dyn autoprofile::Host> = Arc::new(AutoHost { app: app.handle().clone() });
+            app.manage(autoprofile::AutoProfiles::spawn(
+                app.handle().clone(),
+                device.clone(),
+                front.clone(),
+                host,
+                config_dir,
+            ));
+            app.manage(front);
             app.manage(library);
             app.manage(device);
             app.manage(live);
@@ -1506,8 +1932,13 @@ pub fn run() {
             // startup task passes nothing, Windows tells how it started.
             let at_sign_in = std::env::args().any(|a| a == tray::ARG_HIDDEN)
                 || (channel::store() && kb_winsys::package::started_at_sign_in());
+            // keymotion-cli started it for an agent: the tray icon only, and
+            // not a start with Windows.
+            let args: Vec<String> = std::env::args().collect();
+            if tray::background_start(&args) {
+                tracing::info!("started in the background for an agent, in the tray");
             // Just updated: the window as the last version left it.
-            if after_update.unwrap_or(at_sign_in) {
+            } else if after_update.unwrap_or(at_sign_in) {
                 tracing::info!(after_update = after_update.is_some(), "started hidden, in the tray");
             } else {
                 window.show()?;
@@ -1518,6 +1949,7 @@ pub fn run() {
             keyboards,
             refresh_keyboards,
             confirm_firmware,
+            firmware_question,
             settings_resets,
             dismiss_settings_resets,
             lighting_catalog,
@@ -1574,12 +2006,40 @@ pub fn run() {
             live_send_now,
             live_drop_waiting,
             now_playing_cover,
+            agents_state,
+            agents_save,
+            agents_try,
+            agents_clear_all,
+            agents_undo,
+            agents_connections,
+            agents_connect_plan,
+            agents_connect,
+            agents_disconnect_plan,
+            agents_disconnect,
+            agents_card_drawn,
+            agents_card_failed,
+            agents_card_drawer_ready,
             pomodoro_state,
             pomodoro_control,
             pomodoro_configure,
             gauges_state,
             gauges_configure,
             gauges_watch,
+            music_state,
+            music_configure,
+            music_watch,
+            games_state,
+            games_configure,
+            games_mark,
+            games_clear_history,
+            games_try_lights,
+            games_rescan,
+            games_cover,
+            program_icon,
+            games_lol_preview,
+            games_try_lol,
+            autoprofile_state,
+            autoprofile_configure,
             calendar_state,
             calendar_configure,
             calendar_add,

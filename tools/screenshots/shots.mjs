@@ -17,31 +17,31 @@ export const L = (lang, en, tr) => (lang === "tr" ? tr : en);
 /** The app's text for `key` in the current language. */
 export const t = (page, key, vars) => page.evaluate(([k, v]) => window.__keymotionT(k, v ?? undefined), [key, vars ?? null]);
 
-const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+export const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** An element by its role and the app's text for `key`. `start` matches
  *  names that begin with the text (a card with a second line, say). */
-async function find(page, role, key, { vars, start = false, within } = {}) {
+export async function find(page, role, key, { vars, start = false, within } = {}) {
   const text = await t(page, key, vars);
   const name = start ? new RegExp(`^\\s*${escape(text)}`) : text;
   return (within ?? page).getByRole(role, { name, exact: !start }).first();
 }
-const button = (page, key, opts) => find(page, "button", key, opts);
-async function click(page, key, opts = {}) {
+export const button = (page, key, opts) => find(page, "button", key, opts);
+export async function click(page, key, opts = {}) {
   const el = await find(page, opts.role ?? "button", key, opts);
   await el.click();
   await page.waitForTimeout(opts.wait ?? 350);
 }
 
 /** Open a page of the app as the sidebar does. */
-async function go(page, id, wait = 800) {
+export async function go(page, id, wait = 800) {
   await page.evaluate((p) => {
     window.__keymotionStore.getState().setPage(p);
     document.querySelector("main").scrollTo({ top: 0, behavior: "instant" });
   }, id);
   await page.waitForTimeout(wait);
 }
-async function openScreen(page, tab, wait = 900) {
+export async function openScreen(page, tab, wait = 900) {
   await page.evaluate((p) => {
     window.__keymotionStore.getState().openScreen(p);
     document.querySelector("main").scrollTo({ top: 0, behavior: "instant" });
@@ -50,7 +50,7 @@ async function openScreen(page, tab, wait = 900) {
 }
 
 /** Scroll the page so `locator` sits `offset` px below the top of the window. */
-async function scrollTo(page, locator, offset = 28) {
+export async function scrollTo(page, locator, offset = 28) {
   await locator.evaluate((el, off) => {
     const main = document.querySelector("main");
     const top = el.getBoundingClientRect().top - main.getBoundingClientRect().top + main.scrollTop - off;
@@ -58,7 +58,7 @@ async function scrollTo(page, locator, offset = 28) {
   }, offset);
   await page.waitForTimeout(350);
 }
-async function scrollToBottom(page) {
+export async function scrollToBottom(page) {
   await page.evaluate(() => {
     const main = document.querySelector("main");
     main.scrollTo({ top: main.scrollHeight, behavior: "instant" });
@@ -67,7 +67,7 @@ async function scrollToBottom(page) {
 }
 
 /** The open dialog with a margin of the dimmed page around it. */
-const dialogClip =
+export const dialogClip =
   (pad = 40, selector = "[role=dialog]") =>
   async (page) => {
     const box = await page.locator(selector).first().boundingBox();
@@ -83,7 +83,7 @@ const dialogClip =
   };
 
 /** Wait until an element with this text shows. */
-async function waitText(page, key, opts = {}) {
+export async function waitText(page, key, opts = {}) {
   const text = await t(page, key, opts.vars);
   await page.getByText(text, { exact: opts.exact ?? false }).first().waitFor({ timeout: opts.timeout ?? 10_000 });
 }
@@ -100,7 +100,7 @@ async function saveEffect(page, effect = "fx.8") {
 }
 
 /** Reminders › Add reminder › `template`, an optional new title, Next, Save. */
-async function addReminder(page, template, title) {
+export async function addReminder(page, template, title) {
   await go(page, "reminders");
   await click(page, "reminder.add");
   await click(page, template, { start: true, wait: 500 });
@@ -121,10 +121,20 @@ async function addCalendar(page) {
 }
 
 /** System gauges › Show on keys. */
-async function gaugesOn(page) {
+export async function gaugesOn(page) {
   await go(page, "gauges");
   await click(page, "gauges.on", { role: "switch", wait: 600 });
 }
+
+/** Music mode › Show on keys. */
+export async function musicOn(page) {
+  await go(page, "music");
+  await click(page, "music.on", { role: "switch", wait: 600 });
+}
+
+/** The made-up song's frame the music shots show (50 ms each from its
+ *  start): 1.55 s, just after a snare. */
+const MUSIC_FRAME = 31;
 
 /** The Overview of a keyboard in use: a reminder, a calendar, the gauges
  *  and a saved effect. */
@@ -142,6 +152,8 @@ async function busyOverview(page, { lang }) {
 export const SHOTS = [
   // Getting started and basics
   { name: "welcome", mock: "none", page: "overview" },
+  // An AK980 PRO on AJAZZ's firmware 769.
+  { name: "welcome-new-firmware", mock: "fw769", page: "overview" },
   // Every tile: the window as tall as the page.
   {
     name: "overview",
@@ -292,7 +304,8 @@ export const SHOTS = [
     page: "screen",
     screenTab: "visuals",
     steps: async (page) => {
-      await click(page, "sc.src.textGo", { wait: 900 });
+      await page.locator('[data-tile="text"]').click();
+      await page.waitForTimeout(900);
       await click(page, "sc.tx.t.name", { role: "radio", wait: 700 });
       await scrollTo(page, await studioSteps(page), 44);
     },
@@ -313,11 +326,14 @@ export const SHOTS = [
     name: "screen-match-lights",
     page: "screen",
     screenTab: "visuals",
-    clip: dialogClip(28, "[role=dialog] > .card"),
+    clip: dialogClip(28, "[role=dialog] .dlg"),
     steps: async (page) => {
       await makeCard(page, "sc.tx.t.mountain", "save", "sc.tx.pal.sunset");
-      const row = page.locator("[data-library-item]", { hasText: await t(page, "sc.tx.sample.mountain.t") }).first();
-      await click(page, "sc.lm.action", { within: row, wait: 900 });
+      // A card just saved is chosen already; Match lights is in the command bar.
+      const item = page.locator("[data-library-item]", { hasText: await t(page, "sc.tx.sample.mountain.t") }).first();
+      const pick = item.locator("button").first();
+      if ((await pick.getAttribute("aria-pressed")) !== "true") await pick.click();
+      await click(page, "sc.lm.action", { within: page.locator("[data-library-bar]"), wait: 900 });
       await click(page, "sc.lm.gradient", { role: "radio", start: true, wait: 900 });
     },
   },
@@ -410,6 +426,111 @@ export const SHOTS = [
       await fitHeight(page);
     },
   },
+  // Games and profiles by app
+  // A game being played, the profile each game gets, and the start card on
+  // the keyboard's screen: the top of the page down to the games list.
+  {
+    name: "game-session",
+    page: "games",
+    viewport: { height: 1000 },
+    clip: async (page) => {
+      const list = await page.locator("[data-games-list]").boundingBox();
+      return { x: 0, y: 0, width: page.viewportSize().width, height: Math.min(page.viewportSize().height, list.y + list.height + 16) };
+    },
+    steps: async (page, km) => {
+      await byApp(page, km);
+      await liveOn(page);
+      await gamesOn(page);
+      await page.evaluate(() => window.__ksMockGame(true));
+      await page.waitForTimeout(1500);
+    },
+  },
+  {
+    name: "game-session-lights",
+    page: "games",
+    viewport: { height: 1000 },
+    clip: async (page) => padded(await lightsRow(page).boundingBox(), 0),
+    steps: async (page) => {
+      await gamesOn(page);
+      await click(page, "games.lights.keys", { role: "radio", wait: 500 });
+      await click(page, "games.keys.moba", { wait: 600 });
+      await scrollTo(page, lightsRow(page), 20);
+    },
+  },
+  {
+    name: "game-session-lol",
+    page: "games",
+    // The panel from its title to the end of the health settings.
+    viewport: { height: 1200 },
+    clip: async (page) => {
+      const panel = await page.locator("[data-lol]").boundingBox();
+      const bars = await page.locator("[data-lol-bars]").boundingBox();
+      return { x: panel.x - 12, y: panel.y - 12, width: panel.width + 24, height: bars.y + bars.height - panel.y + 16 };
+    },
+    steps: async (page) => {
+      await gamesOn(page);
+      await page.locator("[data-game='League of Legends'] [data-game-special]").click();
+      await page.waitForTimeout(900);
+      await scrollTo(page, page.locator("[data-lol]"), 24);
+    },
+  },
+  {
+    name: "game-session-lol-events",
+    page: "games",
+    viewport: { height: 1200 },
+    // The animations from their switch down to the Riot notice.
+    clip: async (page) => {
+      const panel = await page.locator("[data-lol]").boundingBox();
+      const title = await page.locator("[data-lol]").getByText(await t(page, "games.lol.events"), { exact: true }).first().boundingBox();
+      return { x: panel.x - 12, y: title.y - 9, width: panel.width + 24, height: panel.y + panel.height - title.y + 21 };
+    },
+    steps: async (page) => {
+      await gamesOn(page);
+      await page.locator("[data-game='League of Legends'] [data-game-special]").click();
+      await page.waitForTimeout(900);
+      await scrollTo(page, await find(page, "switch", "games.lol.events"), 40);
+    },
+  },
+  {
+    name: "profiles-by-app",
+    page: "profiles",
+    viewport: { height: 1000 },
+    clip: async (page) => padded(await page.locator("[data-auto-profiles]").boundingBox(), 16),
+    steps: async (page, km) => {
+      await gamesOn(page);
+      await byApp(page, km);
+      await scrollTo(page, page.locator("[data-auto-profiles]"), 30);
+    },
+  },
+  // Music mode
+  // The page with Bars on the keys, at the same moment of the made-up song
+  // every time (just after a snare, so bass and middle stand tall).
+  {
+    name: "music",
+    page: "music",
+    steps: async (page) => {
+      await musicOn(page);
+      await page.evaluate((n) => window.__ksMockMusicStep(n, true), MUSIC_FRAME);
+      await page.waitForTimeout(300);
+    },
+  },
+  {
+    // The mode and appearance settings.
+    name: "music-modes",
+    page: "music",
+    viewport: { height: 1000 },
+    clip: async (page) => {
+      const rows = page.locator("[data-music-settings] > div");
+      const first = await rows.nth(0).boundingBox();
+      const second = await rows.nth(1).boundingBox();
+      return { x: first.x, y: first.y, width: first.width, height: second.y + second.height - first.y };
+    },
+    steps: async (page) => {
+      await musicOn(page);
+      await page.evaluate((n) => window.__ksMockMusicStep(n, true), MUSIC_FRAME);
+      await scrollTo(page, page.locator("[data-music-settings]"), 20);
+    },
+  },
   {
     name: "calendar-add-google",
     page: "calendar",
@@ -422,13 +543,13 @@ export const SHOTS = [
 ];
 
 /** The Screen page's library card. */
-const libraryCard = (page) => page.locator("section", { has: page.locator("[data-library]") }).last();
+export const libraryCard = (page) => page.locator("section", { has: page.locator("[data-library]") }).last();
 
 /** The Screen page's studio, by its first step's name ("Source"). */
-const studioSteps = async (page) => page.locator("main").getByText(await t(page, "sc.step.source"), { exact: true }).first();
+export const studioSteps = async (page) => page.locator("main").getByText(await t(page, "sc.step.source"), { exact: true }).first();
 
 /** Make the window as tall as the page, so all of it shows (up to `max`). */
-async function fitHeight(page, max = 1600) {
+export async function fitHeight(page, max = 1600) {
   const height = await page.evaluate(() => {
     const main = document.querySelector("main");
     return main.scrollHeight;
@@ -438,7 +559,7 @@ async function fitHeight(page, max = 1600) {
 }
 
 /** Screen › Live screen › on (and its one-time warning about the factory animation). */
-async function liveOn(page) {
+export async function liveOn(page) {
   await openScreen(page, "live");
   await click(page, "sc.live.mode", { role: "switch", wait: 700 });
   const ack = await button(page, "sc.live.ack.go");
@@ -448,9 +569,10 @@ async function liveOn(page) {
 
 /** Screen › Images › Make a card, `template`, Preview, then save it to the
  *  library or upload it. */
-async function makeCard(page, template, then, palette) {
+export async function makeCard(page, template, then, palette) {
   await openScreen(page, "visuals");
-  await click(page, "sc.src.textGo", { wait: 900 });
+  await page.locator('[data-tile="text"]').click();
+  await page.waitForTimeout(900);
   await click(page, template, { role: "radio", wait: 600 });
   // The colour themes' names follow a small "Aa" sample.
   if (palette) {
@@ -471,17 +593,17 @@ async function makeCard(page, template, then, palette) {
 }
 
 /** The plate around the big keyboard picture (Key mapping). */
-const keyboardCard = (page) => page.locator("section", { has: page.locator('[data-key="esc"]') }).last();
+export const keyboardCard = (page) => page.locator("section", { has: page.locator('[data-key="esc"]') }).last();
 
 /** Grow a rectangle by `pad` on every side. */
-const padded = (box, pad) => ({ x: box.x - pad, y: box.y - pad, width: box.width + 2 * pad, height: box.height + 2 * pad });
+export const padded = (box, pad) => ({ x: box.x - pad, y: box.y - pad, width: box.width + 2 * pad, height: box.height + 2 * pad });
 
 /** Settings › Color calibration, the card. */
-const calibrationCard = async (page) =>
+export const calibrationCard = async (page) =>
   page.locator("section").filter({ has: page.getByText(await t(page, "cal.title"), { exact: true }) }).first();
 
 /** Key mapping › Base layer: the number pad's "/" becomes Volume up. */
-async function volumeUpOnSlash(page) {
+export async function volumeUpOnSlash(page) {
   await page.locator('[data-key="kp-slash"]').first().click();
   await page.waitForTimeout(300);
   await click(page, "km.cat.media", { role: "radio", wait: 400 });
@@ -489,7 +611,7 @@ async function volumeUpOnSlash(page) {
 }
 
 /** Macros › Add, renamed, recorded: Shift+H, I, then a left click. */
-async function recordGreeting(page, { lang }) {
+export async function recordGreeting(page, { lang }) {
   await click(page, "mc.new", { wait: 500 });
   await page.getByLabel(await t(page, "mc.name"), { exact: true }).fill(L(lang, "Greeting", "Selamlama"));
   await click(page, "mc.record", { wait: 400 });
@@ -523,6 +645,46 @@ async function twoProfiles(page, { lang }) {
   await create(L(lang, "Gaming", "Oyun"));
 }
 
+/** Game session › Notice games. */
+export async function gamesOn(page) {
+  await go(page, "games");
+  await click(page, "games.on", { role: "switch", wait: 700 });
+}
+
+/** Game session's "Lights while playing" row. */
+export const lightsRow = (page) => page.locator("[data-games] div.border-t > div").filter({ has: page.getByRole("radiogroup") }).first();
+
+/** Lighting › Per-key color › `preset`, saved, then a profile `name` from it. */
+async function perKeyProfile(page, preset, name) {
+  await go(page, "lighting");
+  await click(page, "light.tab.perKey", { role: "tab", wait: 700 });
+  await click(page, preset, { wait: 600 });
+  await click(page, "bar.save", { wait: 300 });
+  await waitText(page, "bar.saved");
+  await go(page, "profiles");
+  await click(page, "prof.create", { wait: 500 });
+  await page.getByLabel(await t(page, "prof.create.name"), { exact: true }).fill(name);
+  await click(page, "prof.create.button", { wait: 1200 });
+}
+
+/** Profiles › By app: every game gets "Gaming", the code editor "Work". */
+async function byApp(page, { lang }) {
+  const work = L(lang, "Work", "İş");
+  const gaming = L(lang, "Gaming", "Oyun");
+  await perKeyProfile(page, "light.preset.home", work);
+  await perKeyProfile(page, "light.preset.wasd", gaming);
+  await go(page, "profiles");
+  await click(page, "auto.title", { role: "switch", wait: 600 });
+  const add = async (program, profile) => {
+    await page.getByRole("combobox", { name: await t(page, "auto.add"), exact: true }).selectOption({ label: program });
+    await click(page, "auto.add", { wait: 500 });
+    await page.getByRole("combobox", { name: await t(page, "auto.profile"), exact: true }).last().selectOption({ label: profile });
+    await page.waitForTimeout(400);
+  };
+  await add(await t(page, "auto.allGames"), gaming);
+  await add("Code", work);
+}
+
 /** The README's main picture: the Overview page of a keyboard in use. */
 export const HERO = { name: "hero", page: "overview", steps: busyOverview };
 
@@ -541,6 +703,20 @@ async function boxOf(locator, pad = 12, height) {
 }
 
 const LIGHTING_TOUR = ["fx.11", "fx.12", "fx.9", "fx.16", "fx.4"];
+/** The "music" clip's modes, each shown this many frames (70 ms apiece). */
+const MUSIC_MODES = ["music.mode.bars", "music.mode.beat", "music.mode.level", "music.mode.wave"];
+const MUSIC_MODE_FRAMES = 14;
+/** Health and mana, in percent, for each frame of the "game-session" clip. */
+const LOL_TOUR = [
+  [100, 90],
+  [86, 78],
+  [72, 66],
+  [58, 52],
+  [44, 40],
+  [32, 30],
+  [20, 18],
+  [9, 8],
+];
 const tours = new WeakMap();
 
 /** Short animations for the README's feature table (docs/images/features).
@@ -556,14 +732,15 @@ export const CLIPS = [
     motion: true,
     viewport: { height: 1300 },
     fps: 12,
-    // The list down to the row with Flow (the last one chosen).
+    quality: 75,
+    // The gallery down to the row with Flow (the last one chosen).
     clip: async (page) => {
-      const card = await page.locator("main section.card").filter({ has: page.getByText(await t(page, "light.effects"), { exact: true }) }).first().boundingBox();
-      const flow = await (await find(page, "button", "fx.16", { start: true })).boundingBox();
-      return { x: card.x - 10, y: card.y - 10, width: card.width + 20, height: flow.y + flow.height - card.y + 26 };
+      const gallery = await page.locator("[data-effects]").boundingBox();
+      const flow = await page.locator('[data-effects] [data-effect="16"]').boundingBox();
+      return { x: gallery.x - 12, y: gallery.y - 8, width: gallery.width + 24, height: flow.y + flow.height - gallery.y + 20 };
     },
     steps: async (page) => {
-      await scrollTo(page, page.locator("main").getByText(await t(page, "light.effects"), { exact: true }).first(), 60);
+      await scrollTo(page, page.locator("[data-effects]"), 60);
       // Looked up before recording: the page is slow while 20 previews move.
       tours.set(page, await Promise.all(LIGHTING_TOUR.map((fx) => find(page, "button", fx, { start: true }))));
     },
@@ -633,19 +810,23 @@ export const CLIPS = [
     name: "screen",
     page: "screen",
     screenTab: "visuals",
+    viewport: { height: 1200 },
     frames: 5,
-    delay: [900, 900, 900, 900, 1800],
+    delay: [1100, 900, 900, 900, 1800],
+    // The library, then the text card's steps in its place.
     clip: async (page) => {
-      const source = page.getByText(await t(page, "sc.step.source"), { exact: true });
-      const card = await page.locator("main section.card").filter({ has: source }).last().boundingBox();
-      return { x: card.x, y: card.y, width: card.width, height: 520 };
+      const studio = await page.locator("[data-studio]").boundingBox();
+      return { x: studio.x - 12, y: studio.y - 8, width: studio.width + 24, height: 520 };
     },
     steps: async (page) => {
-      await scrollTo(page, await studioSteps(page), 44);
+      await scrollTo(page, page.locator("[data-studio]"), 44);
     },
-    // Source, Name card, Mountains, Sunset colors, then the preview.
+    // The library's bar, Text card, Mountains, Sunset colors, the preview.
     frame: async (page, i) => {
-      if (i === 1) await press(page, "button", "sc.src.textGo", { wait: 700 });
+      if (i === 1) {
+        await page.locator('[data-library-bar] [data-tile="text"]').dispatchEvent("click");
+        await page.waitForTimeout(700);
+      }
       if (i === 2) await press(page, "radio", "sc.tx.t.mountain", { wait: 600 });
       if (i === 3) {
         const name = new RegExp(`${escape(await t(page, "sc.tx.pal.sunset"))}$`);
@@ -726,4 +907,100 @@ export const CLIPS = [
       await page.waitForTimeout(4300);
     },
   },
+  {
+    // League of Legends lights' drawing: health recedes right to left and
+    // turns amber, then red, while mana empties on F1–F12.
+    name: "game-session",
+    page: "games",
+    viewport: { height: 1000 },
+    frames: LOL_TOUR.length,
+    delay: (i) => (i === 0 ? 1100 : 550),
+    hold: 1500,
+    clip: async (page) => boxOf(page.locator("[data-lol-preview]"), 12),
+    steps: async (page) => {
+      await gamesOn(page);
+      await page.locator("[data-game='League of Legends'] [data-game-special]").click();
+      await page.waitForTimeout(900);
+      await scrollTo(page, page.locator("[data-lol-preview]"), 40);
+    },
+    frame: async (page, i) => {
+      const [health, mana] = LOL_TOUR[i];
+      await setRange(page, await t(page, "games.lol.preview.health"), health);
+      await setRange(page, await t(page, "games.lol.preview.mana"), mana);
+      await page.waitForTimeout(450);
+    },
+  },
+  {
+    // Music mode: the keys follow the made-up song, a second of each mode
+    // (Bars, Beat, Level, Wave). Stepped frame by frame, so every run is the
+    // same. A narrower window, so the keys stay readable at 480 px.
+    name: "music",
+    page: "music",
+    viewport: { width: 980, height: 900 },
+    frames: MUSIC_MODES.length * MUSIC_MODE_FRAMES,
+    delay: 70,
+    quality: 75,
+    clip: async (page) => {
+      const card = await page.locator("[data-music] section.card").first().boundingBox();
+      const modes = await page.locator("[data-music-settings] [role=radiogroup]").first().boundingBox();
+      return { x: card.x, y: card.y, width: card.width, height: modes.y + modes.height + 16 - card.y };
+    },
+    steps: async (page) => {
+      await musicOn(page);
+      await page.evaluate(() => document.querySelector("main").scrollTo({ top: 0, behavior: "instant" }));
+      await page.evaluate(() => window.__ksMockMusicStep(20, true));
+      await page.waitForTimeout(300);
+    },
+    frame: async (page, i) => {
+      if (i % MUSIC_MODE_FRAMES === 0) {
+        await press(page, "radio", MUSIC_MODES[i / MUSIC_MODE_FRAMES]);
+      }
+      await page.evaluate(() => window.__ksMockMusicStep(1));
+      await page.mouse.move(1, 1);
+      await page.waitForTimeout(80);
+    },
+  },
+  {
+    // Profiles › By app: every game gets "Gaming", then the code editor
+    // "Work". A narrower window, so the card's text stays readable at 480 px.
+    name: "profiles",
+    page: "profiles",
+    viewport: { width: 980, height: 1000 },
+    frames: 6,
+    delay: [1000, 800, 900, 1000, 800, 900],
+    hold: 2200,
+    clip: async (page) => {
+      const card = await page.locator("[data-auto-profiles]").boundingBox();
+      return { x: card.x - 8, y: card.y - 8, width: card.width + 16, height: 560 };
+    },
+    steps: async (page, { lang }) => {
+      // The name the fourth frame picks.
+      tours.set(page, L(lang, "Gaming", "Oyun"));
+      await gamesOn(page);
+      await perKeyProfile(page, "light.preset.home", L(lang, "Work", "İş"));
+      await perKeyProfile(page, "light.preset.wasd", L(lang, "Gaming", "Oyun"));
+      await go(page, "profiles");
+      await click(page, "auto.title", { role: "switch", wait: 600 });
+      await scrollTo(page, page.locator("[data-auto-profiles]"), 30);
+    },
+    frame: async (page, i) => {
+      const program = page.getByRole("combobox", { name: await t(page, "auto.add"), exact: true });
+      const profile = page.getByRole("combobox", { name: await t(page, "auto.profile"), exact: true });
+      if (i === 1) await program.selectOption({ label: await t(page, "auto.allGames") });
+      if (i === 2) await press(page, "button", "auto.add");
+      if (i === 3) await profile.last().selectOption({ label: tours.get(page) });
+      if (i === 4) await program.selectOption({ label: "Code" });
+      if (i === 5) await press(page, "button", "auto.add");
+      await page.mouse.move(1, 1);
+      await page.waitForTimeout(450);
+    },
+  },
 ];
+
+/** Set a range input (found by its label) as if dragged. */
+async function setRange(page, label, value) {
+  await page.getByLabel(label, { exact: true }).evaluate((el, v) => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, String(v));
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }, value);
+}

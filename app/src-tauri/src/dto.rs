@@ -223,6 +223,8 @@ pub struct KeyboardInfo {
     pub has_display_channel: bool,
     pub ble_name: Option<String>,
     pub ble_address: Option<String>,
+    /// Bluetooth only: the paired keyboard says it is connected right now.
+    pub ble_connected: bool,
     pub battery: Option<Battery>,
     pub geometry: Option<GeometryInfo>,
 }
@@ -257,15 +259,78 @@ impl KeyboardInfo {
             has_display_channel: k.display.is_some(),
             ble_name: k.ble.as_ref().map(|b| b.name.clone()),
             ble_address: k.ble.as_ref().map(|b| b.address_text.clone()),
+            ble_connected: k.connection == ConnectionKind::Bluetooth && k.ble.as_ref().is_some_and(|b| b.connected),
             battery,
             geometry: m.geometry.as_ref().map(GeometryInfo::from_model),
+        }
+    }
+
+    /// Which entry the app shows when it sees the keyboard more than one
+    /// way, lowest first: the cable; Bluetooth while the keyboard says it
+    /// is connected; the 2.4 GHz receiver, which shows up whether or not a
+    /// keyboard is on behind it (nothing is sent to it yet, so nothing
+    /// tells); Bluetooth not known to be connected. The tray follows it, and
+    /// the UI's `useActiveKeyboard` (lib/store.ts) does the same.
+    pub fn focus_rank(&self) -> u8 {
+        match (self.connection, self.ble_connected) {
+            (Connection::Usb, _) => 0,
+            (Connection::Bluetooth, true) => 1,
+            (Connection::Dongle, _) => 2,
+            (Connection::Bluetooth, false) => 3,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{EffectInfo, GeometryInfo, KeymapCatalog};
+    use super::{Connection, EffectInfo, GeometryInfo, KeyboardInfo, KeymapCatalog};
+    use kb_core::detect::BlePeer;
+    use kb_transport::hid::{Bus, HidInterface};
+
+    fn collection(pid: u16, usage_page: u16, bus: Bus) -> HidInterface {
+        HidInterface {
+            vid: 0x0C45,
+            pid,
+            release: 0x0138,
+            usage_page,
+            usage: 1,
+            interface_number: -1,
+            bus,
+            manufacturer: None,
+            product: None,
+            serial: None,
+            path: format!("path-{pid:x}-{usage_page:x}"),
+        }
+    }
+
+    /// The entry the tray and the UI show, out of what the app sees.
+    fn shown(interfaces: &[HidInterface], ble: &[BlePeer]) -> Connection {
+        let infos: Vec<KeyboardInfo> =
+            kb_core::detect(interfaces, ble).iter().map(|k| KeyboardInfo::from_detected(k, None)).collect();
+        infos.iter().min_by_key(|k| k.focus_rank()).expect("a keyboard").connection
+    }
+
+    #[test]
+    fn a_receiver_does_not_hide_a_connected_bluetooth_keyboard() {
+        let receiver = collection(0xFEFE, 0xFF60, Bus::Usb);
+        let bluetooth = collection(0xFEFE, 0x0001, Bus::Bluetooth);
+        let peer = |connected| BlePeer {
+            name: "AK980 PRO-1".into(),
+            address: 1,
+            address_text: "00:00:00:00:00:01".into(),
+            connected,
+        };
+        // The keyboard is on Bluetooth and the receiver is still plugged in:
+        // whether a keyboard answers behind the receiver is not known.
+        assert_eq!(shown(&[receiver.clone(), bluetooth.clone()], &[peer(true)]), Connection::Bluetooth);
+        // Bluetooth paired but not connected: the keyboard may well be on
+        // the receiver.
+        assert_eq!(shown(&[receiver.clone(), bluetooth.clone()], &[peer(false)]), Connection::Dongle);
+        assert_eq!(shown(&[receiver.clone(), bluetooth], &[]), Connection::Dongle);
+        // The cable comes first, whatever else is there.
+        let cable = HidInterface { product: Some("AK980 PRO".into()), ..collection(0x8009, 0xFF13, Bus::Usb) };
+        assert_eq!(shown(&[receiver, cable], &[peer(true)]), Connection::Usb);
+    }
 
     /// Writes each model's geometry and the effect catalog for the UI's
     /// browser-only mock backend, so the mock never drifts from Rust.
@@ -349,12 +414,15 @@ pub enum WindowsPage {
 }
 
 /// The tray menu's words and the background notice, in the UI language.
-/// Templates keep their `{name}` places; the backend fills them in.
+/// Templates keep their `{name}` places and plural forms
+/// (`{n, plural, one {…} other {…}}`); the backend fills them in (i18n.rs).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct TrayTexts {
-    /// "tr" or "en": how a date further than tomorrow is written.
+    /// The UI language: "en", "tr", "ru" or "zh-CN". It picks the plural
+    /// forms, how a date further than tomorrow is written ("Nov 14",
+    /// "14.11", "11月14日") and the documentation site's folder.
     pub locale: String,
     pub open: String,
     pub no_keyboard: String,
@@ -386,6 +454,8 @@ pub struct TrayTexts {
     pub reminders_none: String,
     pub tomorrow: String,
     pub gauges: String,
+    /// Music mode's switch.
+    pub music: String,
     pub profiles: String,
     pub default_profile: String,
     pub quit: String,
@@ -397,6 +467,14 @@ pub struct TrayTexts {
     pub update_ready: String,
     /// Added to the icon's tooltip while a new version waits.
     pub update_tooltip: String,
+    /// The line while a game session runs. `{name}`, `{time}`.
+    pub game: String,
+    /// The play time in it: `{h}` and `{min}`, `{min}`, under a minute.
+    pub game_hours: String,
+    pub game_minutes: String,
+    pub game_less: String,
+    /// Profiles ▸ the per-app profiles' switch.
+    pub auto_profile: String,
     /// The notification that a new version is ready. `{version}`.
     pub notice_ready_title: String,
     pub notice_ready_body: String,
@@ -407,6 +485,12 @@ pub struct TrayTexts {
     /// Its line when the app installed the update by itself.
     pub notice_installed_auto: String,
     pub notice_whats_new: String,
+    /// Keyboard models' names in the UI language, by model id, for the
+    /// models sold under another name there (Chinese: 黑爵 AK980 V2（带屏版）).
+    /// A model not listed keeps its model file's name.
+    #[serde(default)]
+    #[ts(type = "Record<string, string>")]
+    pub model_names: std::collections::BTreeMap<String, String>,
 }
 
 /// Until the UI has sent its words (a start with Windows, before the page
@@ -433,7 +517,7 @@ impl Default for TrayTexts {
             round: s("Block {n}/{total}"),
             left: s("{min} min left"),
             paused: s("Paused"),
-            ready: s("Ready: {blocks} blocks, {min} min"),
+            ready: s("Ready: {blocks, plural, one {# block} other {# blocks}}, {min} min"),
             reminders: s("Reminders"),
             reminders_on: s("Reminders on"),
             reminders_off: s("Reminders off"),
@@ -441,6 +525,7 @@ impl Default for TrayTexts {
             reminders_none: s("No reminders coming up"),
             tomorrow: s("tomorrow"),
             gauges: s("System gauges on the keys"),
+            music: s("Music mode"),
             profiles: s("Profiles"),
             default_profile: s("Default"),
             quit: s("Quit"),
@@ -449,6 +534,11 @@ impl Default for TrayTexts {
             update_available: s("Update available: Keymotion {version}"),
             update_ready: s("Install now: Keymotion {version}"),
             update_tooltip: s("update available"),
+            game: s("Playing {name} · {time}"),
+            game_hours: s("{h} h {min} min"),
+            game_minutes: s("{min} min"),
+            game_less: s("under 1 min"),
+            auto_profile: s("Switch by app"),
             notice_ready_title: s("Keymotion {version} is ready"),
             notice_ready_body: s("Installing it closes the app and opens it again in a few seconds."),
             notice_install: s("Update now"),
@@ -456,6 +546,7 @@ impl Default for TrayTexts {
             notice_installed_title: s("Keymotion {version} installed"),
             notice_installed_auto: s("It updated by itself while the computer wasn't in use."),
             notice_whats_new: s("What's new"),
+            model_names: Default::default(),
         }
     }
 }
@@ -1596,6 +1687,12 @@ pub struct PomodoroState {
     pub last: Option<PomodoroSummary>,
     /// "Klavyede dene" is showing a short run on the keys.
     pub trying: bool,
+    /// An agent started this series as one focus block of this many
+    /// minutes (`keymotion-cli focus start --for 50m`), without changing
+    /// `settings`: the series is that block alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub once: Option<u16>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
@@ -1752,6 +1849,156 @@ pub struct GaugesState {
     pub frame: Vec<LedColor>,
     /// The volume bar shows (for a moment after a change).
     pub volume_showing: bool,
+}
+
+// -------------------------------------------------------------- music mode
+
+/// How the music lights move (owner's choice of all four, 2026-11-22).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum MusicMode {
+    /// Columns from left (bass) to right (treble), each filling from the
+    /// bottom row up, with a mark at its peak for a moment.
+    #[default]
+    Bars,
+    /// The whole keyboard in one colour, pulsing on each beat, a ring
+    /// spreading from the middle on a strong beat.
+    Beat,
+    /// How loud it is, as a band opening from the middle to both sides.
+    Level,
+    /// Each bass beat sends a wave of light across the keys.
+    Wave,
+}
+
+/// The music lights' colours.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum MusicPalette {
+    /// Green, yellow, red: from the bottom row up (bars), from the middle
+    /// out (level).
+    #[default]
+    Heat,
+    Rainbow,
+    /// `MusicSettings::color`.
+    One,
+    /// From `color` to `color2`.
+    Two,
+}
+
+/// The keys the music does not light.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum MusicRest {
+    #[default]
+    Dark,
+    /// Faintly in the palette's colour.
+    Dim,
+}
+
+/// What the keys show once it has been quiet for a few seconds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum MusicSilence {
+    /// The music lights step aside: the keyboard's own light (or the layer
+    /// under them, such as the gauges) shows.
+    #[default]
+    Saved,
+    /// Every key faintly lit.
+    Dim,
+    /// Every key off.
+    Dark,
+}
+
+/// Music mode settings (persisted in `music.json`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct MusicSettings {
+    /// The music lights are on the keys (RAM only, no flash write).
+    pub enabled: bool,
+    pub mode: MusicMode,
+    pub palette: MusicPalette,
+    /// The colours of `One` and `Two` (UI colours, sRGB).
+    pub color: [u8; 3],
+    pub color2: [u8; 3],
+    /// Bars and Wave start in the middle: bass in the middle, treble at
+    /// both ends.
+    pub center: bool,
+    /// How strongly the lights react, in percent (50–200).
+    pub sensitivity: u16,
+    pub rest: MusicRest,
+    pub silence: MusicSilence,
+    /// The music lights wait while a game is in front.
+    pub pause_in_games: bool,
+    /// Light brightness in the keyboard's own steps, 1–5.
+    pub brightness: u8,
+}
+
+impl Default for MusicSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: MusicMode::default(),
+            palette: MusicPalette::default(),
+            color: [0, 200, 255],
+            color2: [255, 45, 149],
+            center: false,
+            sensitivity: 100,
+            rest: MusicRest::default(),
+            silence: MusicSilence::default(),
+            pause_in_games: true,
+            brightness: 4,
+        }
+    }
+}
+
+impl MusicSettings {
+    pub fn sanitized(self) -> Self {
+        Self { sensitivity: self.sensitivity.clamp(50, 200), brightness: self.brightness.clamp(1, 5), ..self }
+    }
+}
+
+/// Where the music lights stand.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum MusicStatus {
+    /// Music mode is off.
+    Off,
+    /// No keyboard on the USB cable (the only connection that takes the
+    /// lights).
+    NoUsb,
+    /// Windows' sound system could not be started.
+    Unavailable,
+    /// No speakers or headphones.
+    NoOutput,
+    /// A game is in front (and the lights wait for games), or a game wants
+    /// the keyboard left alone.
+    Game,
+    /// Nothing plays.
+    Waiting,
+    /// The lights move with the sound.
+    Playing,
+}
+
+/// Music mode state (`music` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct MusicState {
+    pub settings: MusicSettings,
+    pub status: MusicStatus,
+    /// The music lights are on the keys now (while sound plays, and while
+    /// it's quiet with "Dim color" or "Dark"): the layers under them wait.
+    pub covers: bool,
+    /// What the music lights put on the keys now (UI colours, before
+    /// brightness); on the catalogue's model without a keyboard. Empty
+    /// when they show nothing.
+    pub frame: Vec<LedColor>,
 }
 
 // ---------------------------------------------------------------- calendar
@@ -2143,4 +2390,1384 @@ pub enum UpdateFailure {
     /// A write to the keyboard did not finish in time.
     KeyboardBusy,
     Other,
+}
+
+// ------------------------------------------------------------ game session
+
+/// How the keys look while a game session runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum GameLights {
+    /// The keyboard's own saved light: nothing is sent.
+    #[default]
+    Own,
+    /// The chosen keys in one colour, the others dark or dim (RAM only).
+    Keys,
+    /// A profile's per-key design (RAM only).
+    Profile,
+}
+
+/// The keys not chosen, with `GameLights::Keys`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum GameRest {
+    Dark,
+    #[default]
+    Dim,
+}
+
+/// A program the user said is a game, or is not.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GameMark {
+    /// Full path of the program.
+    pub path: String,
+    pub name: String,
+    pub game: bool,
+}
+
+/// Game session settings (persisted in `games.json`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct GamesSettings {
+    /// Game sessions are noticed (the program in front is watched).
+    pub enabled: bool,
+    /// The launchers' own lists (Steam, Epic, GOG, Xbox, Riot, Game Bar)
+    /// tell which programs are games.
+    pub launchers: bool,
+    /// A card on the keyboard's screen when a session starts (live screen).
+    pub start_card: bool,
+    /// A summary card when a session of 5 minutes or more ends.
+    pub summary_card: bool,
+    pub lights: GameLights,
+    /// The profile whose per-key design shows with `GameLights::Profile`.
+    pub lights_profile: Option<String>,
+    /// Keys lit with `GameLights::Keys` (ids of the model's geometry).
+    pub keys: Vec<String>,
+    /// Their colour (UI colour, sRGB).
+    pub color: [u8; 3],
+    pub rest: GameRest,
+    /// Light brightness in the keyboard's own steps, 1–5.
+    pub brightness: u8,
+    /// While a game runs, nothing is sent to the keyboard: no lights, no
+    /// cards. For a game whose anti-cheat software might mind.
+    pub quiet: bool,
+    /// … but the meetings' and reminders' lights and cards still come.
+    pub quiet_reminders: bool,
+    /// Games (their keys) that always get the quiet mode.
+    pub quiet_games: Vec<String>,
+    /// The user's own word on programs.
+    pub marks: Vec<GameMark>,
+    /// League of Legends: lights from the game's own data.
+    pub lol: LolSettings,
+}
+
+/// League of Legends lights (Riot's Live Client Data API, read on this
+/// computer while a match runs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct LolSettings {
+    /// League of Legends' match lights instead of the plain game lights.
+    pub enabled: bool,
+    /// Health, and mana (or energy) on the F row.
+    pub bars: bool,
+    /// Dead: the keys go dark red, the light comes back as respawn nears.
+    pub death: bool,
+    /// Short animations: level up, kills, an ace, dragons, Baron, Herald,
+    /// the end.
+    pub events: bool,
+    /// Where health shows.
+    pub layout: LolLayout,
+    /// How the whole keyboard's light recedes as health drops.
+    pub motion: PomodoroMotion,
+    /// One colour for health; `None`: green, amber, red by how much is left.
+    pub health_color: Option<[u8; 3]>,
+    /// Mana (energy, fury) on the F row.
+    pub mana: bool,
+    /// Mana's colour (energy stays yellow, fury red).
+    pub mana_color: [u8; 3],
+    /// Each event's animation and colour.
+    pub lights: LolEventLights,
+    /// Dragons in their kind's colour, not `lights.dragon.color`.
+    pub dragon_kind_color: bool,
+    /// Dragons, Herald and Baron only when the player's team takes them.
+    pub team_only: bool,
+}
+
+impl Default for LolSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            bars: true,
+            death: true,
+            events: true,
+            layout: LolLayout::default(),
+            motion: PomodoroMotion::default(),
+            health_color: None,
+            mana: true,
+            mana_color: [61, 139, 255],
+            lights: LolEventLights::default(),
+            dragon_kind_color: true,
+            team_only: true,
+        }
+    }
+}
+
+/// Where League of Legends shows health.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum LolLayout {
+    /// The whole keyboard: the light recedes as health drops.
+    #[default]
+    Keyboard,
+    /// A bar on the number row (1 … 0).
+    Row,
+}
+
+/// A short animation for a match event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum LolAnim {
+    /// A band crossing from left to right.
+    #[default]
+    Wave,
+    /// The whole keyboard flashes twice.
+    Flash,
+    /// The whole keyboard breathes twice.
+    Pulse,
+    /// Keys twinkle here and there.
+    Sparkle,
+    /// A ring spreading from the middle.
+    Ring,
+    /// The keyboard lights up, then goes dark from the top row down.
+    Drain,
+}
+
+/// The events that get a light.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum LolEvent {
+    Win,
+    Lose,
+    LevelUp,
+    Kill,
+    Ace,
+    Dragon,
+    Baron,
+    Herald,
+}
+
+/// One event's light.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct LolEventLight {
+    pub on: bool,
+    pub anim: LolAnim,
+    /// UI colour, sRGB.
+    pub color: [u8; 3],
+}
+
+impl Default for LolEventLight {
+    fn default() -> Self {
+        Self { on: true, anim: LolAnim::Wave, color: LOL_GOLD }
+    }
+}
+
+const LOL_GOLD: [u8; 3] = [240, 199, 94];
+
+/// Every event's light.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct LolEventLights {
+    pub win: LolEventLight,
+    pub lose: LolEventLight,
+    pub level_up: LolEventLight,
+    pub kill: LolEventLight,
+    pub ace: LolEventLight,
+    pub dragon: LolEventLight,
+    pub baron: LolEventLight,
+    pub herald: LolEventLight,
+}
+
+impl Default for LolEventLights {
+    fn default() -> Self {
+        let l = |anim, color| LolEventLight { on: true, anim, color };
+        Self {
+            win: l(LolAnim::Sparkle, [52, 199, 89]),
+            lose: l(LolAnim::Drain, [255, 59, 48]),
+            level_up: l(LolAnim::Wave, LOL_GOLD),
+            kill: l(LolAnim::Flash, LOL_GOLD),
+            ace: l(LolAnim::Ring, LOL_GOLD),
+            dragon: l(LolAnim::Flash, [255, 90, 30]),
+            baron: l(LolAnim::Pulse, [155, 93, 229]),
+            herald: l(LolAnim::Wave, [196, 120, 255]),
+        }
+    }
+}
+
+impl LolEventLights {
+    pub fn get(&self, e: LolEvent) -> LolEventLight {
+        match e {
+            LolEvent::Win => self.win,
+            LolEvent::Lose => self.lose,
+            LolEvent::LevelUp => self.level_up,
+            LolEvent::Kill => self.kill,
+            LolEvent::Ace => self.ace,
+            LolEvent::Dragon => self.dragon,
+            LolEvent::Baron => self.baron,
+            LolEvent::Herald => self.herald,
+        }
+    }
+}
+
+/// What the League of Legends preview (and "Try on the keyboard") shows.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(export)]
+pub enum LolScene {
+    /// Health and mana, 0–1.
+    Bars { health: f32, mana: f32 },
+    /// Dead, until respawn.
+    Death,
+    /// An event's animation, over full health.
+    Event { event: LolEvent },
+}
+
+/// How a League of Legends match went (summary card, history).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LolResult {
+    /// `None` when the end was not seen (left early, the client closed).
+    pub win: Option<bool>,
+    pub kills: u32,
+    pub deaths: u32,
+    pub assists: u32,
+    pub cs: u32,
+    pub champion: String,
+    /// The game's own name of the mode (CLASSIC, ARAM, …).
+    pub mode: String,
+}
+
+/// Keys lit by default: movement and the keys next to it.
+pub const GAME_KEYS_DEFAULT: [&str; 7] = ["w", "a", "s", "d", "lshift", "lctrl", "space"];
+
+impl Default for GamesSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            launchers: true,
+            start_card: true,
+            summary_card: true,
+            lights: GameLights::default(),
+            lights_profile: None,
+            keys: GAME_KEYS_DEFAULT.iter().map(|k| (*k).to_string()).collect(),
+            color: [255, 138, 61],
+            rest: GameRest::default(),
+            brightness: 4,
+            quiet: false,
+            quiet_reminders: true,
+            quiet_games: Vec::new(),
+            marks: Vec::new(),
+            lol: LolSettings::default(),
+        }
+    }
+}
+
+impl GamesSettings {
+    pub const MAX_MARKS: usize = 500;
+    pub const NAME_MAX: usize = 80;
+
+    pub fn sanitized(mut self) -> Self {
+        let key_ok =
+            |k: &String| !k.is_empty() && k.len() <= 32 && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+        self.keys.retain(key_ok);
+        self.keys.dedup();
+        self.keys.truncate(128);
+        self.brightness = self.brightness.clamp(1, 5);
+        self.marks.retain(|m| !m.path.trim().is_empty() && m.path.len() <= 1024);
+        for m in &mut self.marks {
+            m.name = m.name.trim().chars().take(Self::NAME_MAX).collect();
+        }
+        let mut seen = std::collections::HashSet::new();
+        self.marks.retain(|m| seen.insert(m.path.to_lowercase()));
+        if self.marks.len() > Self::MAX_MARKS {
+            let drop = self.marks.len() - Self::MAX_MARKS;
+            self.marks.drain(..drop);
+        }
+        self.quiet_games.retain(|k| !k.trim().is_empty() && k.len() <= 1024);
+        let mut seen = std::collections::HashSet::new();
+        self.quiet_games.retain(|k| seen.insert(k.to_lowercase()));
+        self.quiet_games.truncate(Self::MAX_MARKS);
+        self
+    }
+}
+
+/// Where a game was found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum GameSource {
+    Steam,
+    Epic,
+    Gog,
+    Xbox,
+    Riot,
+    /// Xbox Game Bar remembers it as a game.
+    Windows,
+    /// The user said so.
+    Mine,
+}
+
+/// A game on the Game session page.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GameEntry {
+    /// Stable id: the program's path, or the install folder.
+    pub key: String,
+    pub name: String,
+    pub source: GameSource,
+    /// Played in total (from the history), ms.
+    pub total_ms: f64,
+    /// Last played (end of the last session).
+    pub last_ms: Option<f64>,
+    /// Played at least once: a game from a launcher's list that was never
+    /// played is listed only on request.
+    pub played: bool,
+    /// Its program file, for its icon (`program_icon`), when known.
+    pub exe: Option<String>,
+}
+
+/// A program that looked like a game: "Is this a game?".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GameSuggestion {
+    pub path: String,
+    pub name: String,
+}
+
+/// The session that runs now.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GameSessionInfo {
+    pub key: String,
+    pub name: String,
+    pub source: GameSource,
+    pub started_ms: f64,
+    pub gpu_avg: Option<f32>,
+    pub gpu_peak: Option<f32>,
+    pub cpu_avg: Option<f32>,
+    pub cpu_peak: Option<f32>,
+    pub temp_peak: Option<f32>,
+    /// Quiet mode is on for this session (for every game, or this one).
+    pub quiet: bool,
+    /// Its start card on the keyboard's screen.
+    pub card: GameCardStatus,
+}
+
+/// Where the running session's start card is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum GameCardStatus {
+    /// No start card: turned off, or the live screen is off.
+    Off,
+    /// Quiet mode: nothing goes to the keyboard.
+    Quiet,
+    /// Waiting for the screen (its upload allowance, or another upload).
+    Waiting,
+    /// On the keyboard's screen.
+    Shown,
+    /// Something else is on the screen now (a meeting's card, the song).
+    Other,
+}
+
+/// A finished session (history, `game-history.json`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GameRecord {
+    pub key: String,
+    pub name: String,
+    pub source: GameSource,
+    pub start_ms: f64,
+    pub end_ms: f64,
+    #[serde(default)]
+    pub gpu_avg: Option<f32>,
+    #[serde(default)]
+    pub gpu_peak: Option<f32>,
+    #[serde(default)]
+    pub cpu_avg: Option<f32>,
+    #[serde(default)]
+    pub cpu_peak: Option<f32>,
+    #[serde(default)]
+    pub temp_peak: Option<f32>,
+    /// A League of Legends match: how it went.
+    #[serde(default)]
+    pub lol: Option<LolResult>,
+}
+
+/// Game session, settings and history (`games` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GamesState {
+    /// Counts up with every state made: the UI drops one older than what it
+    /// has (an event and a reply can cross).
+    pub rev: u32,
+    pub settings: GamesSettings,
+    pub session: Option<GameSessionInfo>,
+    pub games: Vec<GameEntry>,
+    pub suggestions: Vec<GameSuggestion>,
+    /// Played today and in the last 7 days (the session that runs included).
+    pub today_ms: f64,
+    pub week_ms: f64,
+    /// The latest sessions, newest first.
+    pub recent: Vec<GameRecord>,
+    /// The graphics card reports its temperature on this computer.
+    pub temperature: bool,
+    /// Programs lately in front that aren't games: one can be added as a
+    /// game by hand. Newest first.
+    pub programs: Vec<GameSuggestion>,
+}
+
+/// What a game card is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum GameCardKind {
+    Start,
+    Summary,
+}
+
+/// A card the UI draws for the live screen (`game-card` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GameCard {
+    pub kind: GameCardKind,
+    pub name: String,
+    /// Steam's id: its cover can be asked for (`games_cover`).
+    pub steam_app: Option<u32>,
+    /// The game's program file: its icon when there's no cover
+    /// (`program_icon`).
+    pub exe: Option<String>,
+    pub started_ms: f64,
+    pub ended_ms: Option<f64>,
+    pub gpu_avg: Option<f32>,
+    pub gpu_peak: Option<f32>,
+    pub cpu_avg: Option<f32>,
+    pub cpu_peak: Option<f32>,
+    pub temp_peak: Option<f32>,
+    /// Played today, this session included.
+    pub today_ms: f64,
+    /// A League of Legends match: how it went (summary card).
+    pub lol: Option<LolResult>,
+}
+
+// ------------------------------------------------------- per-app profiles
+
+/// The rule that stands for every game (game session's list).
+pub const AUTO_RULE_GAMES: &str = "games";
+
+/// A program (or every game) and the profile it gets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AutoRule {
+    /// Full path of the program, or `games` for every game.
+    pub path: String,
+    pub name: String,
+    /// Profile id.
+    pub profile: String,
+    /// Also the key mapping and macros, and an effect's lighting: written
+    /// to the keyboard (flash), after the program has been in front 10 s,
+    /// a limited number of times a day. Off: only a per-key design's
+    /// lighting changes, in RAM.
+    pub writes: bool,
+}
+
+/// Per-app profiles settings (persisted in `auto-profiles.json`).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AutoProfileSettings {
+    pub enabled: bool,
+    /// Turned off for now from the tray menu; the rules stay.
+    pub paused: bool,
+    pub rules: Vec<AutoRule>,
+    /// What goes back on the keyboard after a written switch, once its game
+    /// ends or a program without a written rule comes in front.
+    pub back: AutoBack,
+    /// The profile for `AutoBack::Profile`.
+    pub base: Option<String>,
+}
+
+/// After a written switch (per-app profiles).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum AutoBack {
+    /// What the keyboard had before the first written switch.
+    #[default]
+    Previous,
+    /// The profile in `base`.
+    Profile,
+    /// The written parts stay.
+    Stay,
+}
+
+impl AutoProfileSettings {
+    pub const MAX_RULES: usize = 100;
+
+    pub fn sanitized(mut self) -> Self {
+        self.rules.retain(|r| !r.path.trim().is_empty() && r.path.len() <= 1024 && !r.profile.is_empty());
+        for r in &mut self.rules {
+            r.name = r.name.trim().chars().take(GamesSettings::NAME_MAX).collect();
+        }
+        let mut seen = std::collections::HashSet::new();
+        self.rules.retain(|r| seen.insert(r.path.to_lowercase()));
+        self.rules.truncate(Self::MAX_RULES);
+        self
+    }
+}
+
+/// The program in front, offered on the page to add a rule.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AutoProgram {
+    pub path: String,
+    pub name: String,
+}
+
+/// What the per-app profiles do now (`auto-profile` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AutoProfileState {
+    /// Counts up with every state made: the UI drops one older than what it
+    /// has (an event and a reply can cross).
+    pub rev: u32,
+    pub settings: AutoProfileSettings,
+    /// The rule in force: its path (or `games`) and profile.
+    pub active: Option<AutoRule>,
+    /// The program that brought it in front (its name).
+    pub because: Option<String>,
+    /// Profile switches written to the keyboard today, and the limit.
+    pub writes_today: u32,
+    pub writes_max: u32,
+    /// The last error of a written switch, in the backend's words.
+    pub last_error: Option<String>,
+    /// Programs used lately (newest first), to add a rule for.
+    pub recent: Vec<AutoProgram>,
+}
+
+// ------------------------------------------------------------------ agents
+
+/// How an agent's signal moves: the look the user picks for each signal
+/// (agents may override it per call with one of the five simple ones).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentEffect {
+    #[default]
+    Solid,
+    Pulse,
+    Blink,
+    Wave,
+    /// Quick flashes, like a car's headlights (never more than three a
+    /// second).
+    Flash,
+    /// One wave, then steady.
+    WaveThenSolid,
+    /// Three quick flashes, then a slow pulse.
+    FlashThenPulse,
+    /// Two blinks, then steady.
+    BlinkTwiceThenSolid,
+    /// No light.
+    Off,
+}
+
+/// How one signal looks on the keys.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentLook {
+    /// UI colour (sRGB).
+    pub color: [u8; 3],
+    pub effect: AgentEffect,
+    /// 1 (slow) to 5 (fast).
+    pub speed: u8,
+    /// How long it stays, in seconds (1 s to 2 h).
+    pub duration_s: u32,
+    /// It stays until the user answers (the agent takes it away), at most
+    /// `duration_s`.
+    pub until_answered: bool,
+}
+
+impl Default for AgentLook {
+    fn default() -> Self {
+        Self::new([255, 255, 255], AgentEffect::Solid, 3, 60)
+    }
+}
+
+impl AgentLook {
+    pub const fn new(color: [u8; 3], effect: AgentEffect, speed: u8, duration_s: u32) -> Self {
+        Self { color, effect, speed, duration_s, until_answered: false }
+    }
+
+    pub fn sanitized(self) -> Self {
+        Self { speed: self.speed.clamp(1, 5), duration_s: self.duration_s.clamp(1, 2 * 60 * 60), ..self }
+    }
+}
+
+/// The ready-made signals' looks (owner's defaults, 2026-11-22).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentSignalLooks {
+    /// Green, a wave then steady, 2 minutes.
+    pub done: AgentLook,
+    /// Orange, three quick flashes then a slow pulse, until the user
+    /// answers (at most 30 minutes).
+    pub attention: AgentLook,
+    /// Red, two blinks then steady, 10 minutes.
+    pub error: AgentLook,
+    /// No light: only takes the agent's earlier signals away.
+    pub busy: AgentLook,
+    /// A blue wave, 10 seconds.
+    pub info: AgentLook,
+}
+
+impl Default for AgentSignalLooks {
+    fn default() -> Self {
+        Self {
+            done: AgentLook::new([0, 255, 0], AgentEffect::WaveThenSolid, 3, 2 * 60),
+            attention: AgentLook {
+                until_answered: true,
+                ..AgentLook::new([255, 128, 0], AgentEffect::FlashThenPulse, 2, 30 * 60)
+            },
+            error: AgentLook::new([255, 0, 0], AgentEffect::BlinkTwiceThenSolid, 3, 10 * 60),
+            busy: AgentLook::new([0, 160, 255], AgentEffect::Off, 3, 60),
+            info: AgentLook::new([0, 0, 255], AgentEffect::Wave, 3, 10),
+        }
+    }
+}
+
+impl AgentSignalLooks {
+    pub fn sanitized(self) -> Self {
+        Self {
+            done: self.done.sanitized(),
+            attention: self.attention.sanitized(),
+            error: self.error.sanitized(),
+            busy: self.busy.sanitized(),
+            info: self.info.sanitized(),
+        }
+    }
+}
+
+/// A: the agent ran into its usage limit (told apart from an error). The
+/// hook events that say so come with the command line tool's hooks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentUsageLimit {
+    pub on: bool,
+    pub look: AgentLook,
+}
+
+impl Default for AgentUsageLimit {
+    fn default() -> Self {
+        Self { on: true, look: AgentLook::new([128, 0, 255], AgentEffect::Pulse, 1, 30 * 60) }
+    }
+}
+
+/// B: with two or more agent sessions, the waiting one's number lights on
+/// the number row (1–9). Comes with the hooks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentSessions {
+    pub on: bool,
+    pub color: [u8; 3],
+}
+
+impl Default for AgentSessions {
+    fn default() -> Self {
+        Self { on: true, color: [255, 255, 255] }
+    }
+}
+
+/// C: what finished or started waiting while nobody was at the computer
+/// flashes once when the user is back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentAway {
+    pub on: bool,
+    /// No input this long is "away", in seconds (1–60 minutes).
+    pub after_s: u32,
+}
+
+impl Default for AgentAway {
+    fn default() -> Self {
+        Self { on: true, after_s: 5 * 60 }
+    }
+}
+
+/// D: an agent's question nobody answered flashes again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentUnanswered {
+    pub on: bool,
+    /// Every this many seconds (1–30 minutes)…
+    pub every_s: u32,
+    /// …for at most this long after it came (1 minute to 2 hours).
+    pub up_to_s: u32,
+}
+
+impl Default for AgentUnanswered {
+    fn default() -> Self {
+        Self { on: true, every_s: 5 * 60, up_to_s: 30 * 60 }
+    }
+}
+
+/// The row a progress bar uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentProgressKeys {
+    #[default]
+    FRow,
+    Numbers,
+}
+
+/// E: a progress bar an agent asks for (`progress`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentProgress {
+    pub keys: AgentProgressKeys,
+    pub color: [u8; 3],
+}
+
+impl Default for AgentProgress {
+    fn default() -> Self {
+        Self { keys: AgentProgressKeys::FRow, color: [0, 200, 255] }
+    }
+}
+
+/// F: a card on the screen when a long task finishes ("Done · 14 min").
+/// Needs the screen permission; the card itself comes in a later step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentLongTask {
+    pub on: bool,
+    /// A task this long or longer counts, in seconds (1 minute to 4 hours).
+    pub after_s: u32,
+    /// The card stays this long, in seconds (10 s to 30 minutes).
+    pub show_s: u32,
+}
+
+impl Default for AgentLongTask {
+    fn default() -> Self {
+        Self { on: true, after_s: 10 * 60, show_s: 5 * 60 }
+    }
+}
+
+/// What the agents' lights do at night.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentNightMode {
+    /// Faint.
+    #[default]
+    Dim,
+    /// None at all.
+    Off,
+}
+
+/// G: night quiet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentNight {
+    pub on: bool,
+    /// From and to, in minutes after midnight (local time); `from` after
+    /// `to` runs over midnight.
+    pub from_min: u16,
+    pub to_min: u16,
+    pub mode: AgentNightMode,
+}
+
+impl Default for AgentNight {
+    fn default() -> Self {
+        Self { on: false, from_min: 23 * 60, to_min: 8 * 60, mode: AgentNightMode::Dim }
+    }
+}
+
+/// H: a helper agent (Claude Code's subagent) finished: a short wave on
+/// the F row. Comes with the hooks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentHelper {
+    pub on: bool,
+    pub color: [u8; 3],
+}
+
+impl Default for AgentHelper {
+    fn default() -> Self {
+        Self { on: false, color: [0, 0, 255] }
+    }
+}
+
+/// The agents' settings (persisted in `agents.json`). Access, the
+/// permissions, "agents may change these settings", "hide while playing"
+/// and the screen's hourly limit are the user's alone; agents may change
+/// the looks and the behaviour (`settings_set`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentSettings {
+    /// Agent access: off until the user turns it on.
+    pub enabled: bool,
+    /// Agents may put cards on the screen (a later step).
+    pub screen: bool,
+    /// Agents may use the focus timer (a later step).
+    pub focus: bool,
+    /// Agents may save a profile's lighting (a later step).
+    pub profiles: bool,
+    /// Agents may change the looks and the behaviour below.
+    pub agents_may_edit: bool,
+    /// The agents' lights wait while a game wants the keyboard left alone.
+    pub hide_in_game: bool,
+    /// Screen cards all agents together may show in an hour (1–20).
+    pub screen_per_hour: u8,
+    pub signals: AgentSignalLooks,
+    pub usage_limit: AgentUsageLimit,
+    pub sessions: AgentSessions,
+    pub away: AgentAway,
+    pub unanswered: AgentUnanswered,
+    pub progress: AgentProgress,
+    pub long_task: AgentLongTask,
+    pub night: AgentNight,
+    pub helper: AgentHelper,
+}
+
+impl Default for AgentSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            screen: false,
+            focus: false,
+            profiles: false,
+            agents_may_edit: true,
+            hide_in_game: true,
+            screen_per_hour: 4,
+            signals: AgentSignalLooks::default(),
+            usage_limit: AgentUsageLimit::default(),
+            sessions: AgentSessions::default(),
+            away: AgentAway::default(),
+            unanswered: AgentUnanswered::default(),
+            progress: AgentProgress::default(),
+            long_task: AgentLongTask::default(),
+            night: AgentNight::default(),
+            helper: AgentHelper::default(),
+        }
+    }
+}
+
+impl AgentSettings {
+    pub fn sanitized(self) -> Self {
+        const MIN: u32 = 60;
+        let n = self.night;
+        Self {
+            screen_per_hour: self.screen_per_hour.clamp(1, 20),
+            signals: self.signals.sanitized(),
+            usage_limit: AgentUsageLimit { look: self.usage_limit.look.sanitized(), ..self.usage_limit },
+            away: AgentAway { after_s: self.away.after_s.clamp(MIN, 60 * MIN), ..self.away },
+            unanswered: AgentUnanswered {
+                every_s: self.unanswered.every_s.clamp(MIN, 30 * MIN),
+                up_to_s: self.unanswered.up_to_s.clamp(MIN, 120 * MIN),
+                ..self.unanswered
+            },
+            long_task: AgentLongTask {
+                after_s: self.long_task.after_s.clamp(MIN, 240 * MIN),
+                show_s: self.long_task.show_s.clamp(10, 30 * MIN),
+                ..self.long_task
+            },
+            night: AgentNight { from_min: n.from_min.min(24 * 60 - 1), to_min: n.to_min.min(24 * 60 - 1), ..n },
+            ..self
+        }
+    }
+}
+
+/// An agent's light, as the page lists it.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentSignalInfo {
+    /// Who sent it (`claude-code:3f9a`, `cli`).
+    pub source: String,
+    pub id: String,
+    /// `done`, `attention`, `error`, `busy`, `info`, `light`, `progress`
+    /// or `try` (the page's "Try on the keyboard").
+    pub kind: String,
+    pub color: [u8; 3],
+    /// The keys, as the agent named them (`all`, `f1-f12`).
+    pub keys: String,
+    /// It shows on at least one key now (a light of higher rank may cover
+    /// it).
+    pub shown: bool,
+    pub expires_in_ms: f64,
+    /// A progress bar's percent and label.
+    pub percent: Option<f64>,
+    pub label: Option<String>,
+}
+
+/// A setting an agent changed, as text (`#00ff00`, `2m`, `true`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentSettingChange {
+    pub key: String,
+    pub before: String,
+    pub after: String,
+}
+
+/// One agent request that changed (or tried to change) something. Never
+/// what the agent's user typed.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentLogEntry {
+    /// Counts up; `agents_undo` names an entry by it.
+    pub seq: u32,
+    pub at_ms: f64,
+    pub source: String,
+    pub command: String,
+    /// `None` when it went through, else the error code (`rate_limited`).
+    pub error: Option<String>,
+    /// The light it named, if any.
+    pub id: Option<String>,
+    /// Settings it changed (`settings_set`): "Undo" puts `before` back.
+    pub changes: Vec<AgentSettingChange>,
+    pub undone: bool,
+    /// Keys "Undo" left as they were: they had changed again since.
+    pub kept: Vec<String>,
+}
+
+/// Whether the agents' lights show as they are now, and why not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentLights {
+    /// They show.
+    Shown,
+    /// No keyboard is connected.
+    NoKeyboard,
+    /// The keyboard is not on the USB cable (lights need it).
+    NeedsUsb,
+    /// A game wants the keyboard left alone and "hide while playing" is on.
+    Game,
+    /// Night quiet, faint.
+    NightDim,
+    /// Night quiet, none.
+    NightOff,
+}
+
+/// The pipe the command line tool talks to the app over.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentServer {
+    pub running: bool,
+    /// Why it is not running (another program holds its name), in the
+    /// backend's words.
+    pub error: Option<String>,
+    pub connections: u32,
+}
+
+/// A coding agent's session, known from its hooks (B: its number lights
+/// on the number row while it waits, with two or more sessions).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentSessionInfo {
+    /// 1 to 9, in the order the sessions first reached Keymotion; `None`
+    /// when all nine were taken.
+    pub number: Option<u8>,
+    /// Its source, e.g. `claude-code:3f9a0c1d`.
+    pub source: String,
+    /// `claude-code` or `codex`.
+    pub agent: Option<String>,
+    /// The project folder's name.
+    pub label: Option<String>,
+    /// It waits for the user now.
+    pub waiting: bool,
+}
+
+/// The agents page's state (`agents` event payload).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentsState {
+    pub settings: AgentSettings,
+    /// Every agent's lights now, highest rank first.
+    pub signals: Vec<AgentSignalInfo>,
+    /// The coding agents' sessions, by number.
+    pub sessions: Vec<AgentSessionInfo>,
+    /// The last agent requests, newest first.
+    pub log: Vec<AgentLogEntry>,
+    pub server: AgentServer,
+    pub lights: AgentLights,
+}
+
+// ------------------------------------------------- agents: coding apps
+
+/// A coding app Keymotion connects to: its hooks tell the keyboard when
+/// the agent finished, waits or failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentApp {
+    ClaudeCode,
+    Codex,
+}
+
+/// How a coding app stands with Keymotion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentAppState {
+    /// Not on this computer (for this Windows user).
+    NotFound,
+    /// There, without Keymotion's hooks.
+    NotConnected,
+    Connected,
+    /// Codex: connected, but the user has not trusted Keymotion's hooks in
+    /// Codex yet (`/hooks`, or Settings > Hooks in the app).
+    NeedsApproval,
+    /// Some of Keymotion's hooks are missing or name another keymotion-cli:
+    /// connecting again brings them up to date.
+    Outdated,
+    /// Its settings file does not read (`error` says why): left alone.
+    Unreadable,
+}
+
+/// A coding app, as the AI agents page shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentAppStatus {
+    pub app: AgentApp,
+    /// "Claude Code", "Codex".
+    pub name: String,
+    /// Its settings folder is there.
+    pub found: bool,
+    pub state: AgentAppState,
+    /// Keymotion's hooks in its settings, of how many.
+    pub hooks: u32,
+    pub hooks_wanted: u32,
+    /// Codex: of Keymotion's hooks, how many the user trusted.
+    pub trusted: Option<u32>,
+    /// Claude Code: the oldest copy found here (`2.1.140`).
+    pub version: Option<String>,
+    /// Claude Code is older than `min_version`: Keymotion cannot connect it
+    /// until it is updated (`claude update`).
+    pub too_old: bool,
+    /// Claude Code: the oldest version the hooks work with (`2.1.139`).
+    pub min_version: Option<String>,
+    /// Its settings folder (`C:\Users\…\.claude`).
+    pub home: String,
+    pub hooks_file: String,
+    pub skill_file: String,
+    /// The keymotion-cli its hooks run.
+    pub runs: Option<String>,
+    /// Why its settings could not be read, in the backend's words.
+    pub error: Option<String>,
+}
+
+/// Which keymotion-cli this copy of Keymotion comes with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentCliKind {
+    /// The Microsoft Store copy's alias, on PATH by itself.
+    Store,
+    /// The GitHub copy's, in its installation's `bin` folder.
+    Installed,
+    /// A development build's, beside it.
+    Dev,
+}
+
+/// The keymotion-cli the hooks run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentCli {
+    pub path: String,
+    pub kind: AgentCliKind,
+    /// The file is there (a development build may not have built it).
+    pub present: bool,
+}
+
+/// The GitHub copy's `bin` folder and the user's PATH.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentPathInfo {
+    pub dir: String,
+    /// It is on the user's PATH: terminals started from now on find
+    /// keymotion-cli by its name.
+    pub on_path: bool,
+    /// The PATH could not be read (it is not text, access was refused):
+    /// nothing will be written to it. In the backend's words.
+    pub error: Option<String>,
+}
+
+/// The coding apps and the command line tool (`agents_connections`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentConnections {
+    /// Claude Code, then Codex.
+    pub apps: Vec<AgentAppStatus>,
+    pub cli: Option<AgentCli>,
+    /// The GitHub copy only (the Store copy's alias is on PATH already).
+    pub path: Option<AgentPathInfo>,
+}
+
+/// What a file is, for a short line on the page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentFileKind {
+    /// The app's settings file, with Keymotion's hooks (`hooks` of them).
+    Hooks,
+    /// The keymotion skill: "keymotion-cli is here; run its guide first".
+    Skill,
+    /// Codex: a rule that lets the agent's own keymotion-cli calls out of
+    /// its sandbox.
+    Rule,
+    /// Keymotion's own notes beside the skill (what it made, for taking it
+    /// away); "Details" only.
+    Note,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentFileAction {
+    Create,
+    Update,
+    Remove,
+}
+
+/// One file connecting or disconnecting changes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentFileChange {
+    pub kind: AgentFileKind,
+    pub action: AgentFileAction,
+    pub path: String,
+    /// For people, in English ("add 16 hooks that run keymotion-cli").
+    pub summary: String,
+    /// `hooks`: how many of Keymotion's hooks the file holds afterwards
+    /// (connecting) or loses (disconnecting).
+    pub hooks: Option<u32>,
+    /// Where a copy of the file as it was is kept first (another program's
+    /// file).
+    pub backup: Option<String>,
+}
+
+/// Why a coding app could not be connected or disconnected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentProblemKind {
+    /// Its settings file is not valid JSON (or not what it should be):
+    /// left alone; the user fixes it.
+    Invalid,
+    /// Reading or writing failed.
+    Io,
+    /// Claude Code is too old for the hooks: update it first.
+    Unsupported,
+    /// It kept writing its settings while Keymotion tried: try again.
+    Changed,
+    /// keymotion-cli is not where it should be (a development build that
+    /// did not build it).
+    NoCli,
+    /// Writing failed part way and not all of it could be put back: some
+    /// of Keymotion's entries stayed; disconnecting removes them.
+    Partial,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentProblem {
+    pub kind: AgentProblemKind,
+    /// In the backend's words (English).
+    pub message: String,
+}
+
+/// What connecting (or disconnecting) changes for one coding app.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentAppPlan {
+    pub app: AgentApp,
+    pub name: String,
+    /// Its settings folder.
+    pub home: String,
+    /// Empty: nothing to change (connected already, or nothing of
+    /// Keymotion's to take away).
+    pub changes: Vec<AgentFileChange>,
+    /// The line every hook runs, as people read it.
+    pub command_line: Option<String>,
+    /// Codex: the user trusts the new hooks once in Codex afterwards.
+    pub needs_approval: bool,
+    /// Notes in English (a development build's path).
+    pub warnings: Vec<String>,
+    /// It cannot be done: why. Nothing is written for this app.
+    pub problem: Option<AgentProblem>,
+}
+
+/// What turning agent access on would add (`agents_connect_plan`), shown
+/// before the user approves it once.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentConnectPlan {
+    /// Hand it back to `agents_connect`: what is written is what was shown.
+    pub token: String,
+    /// The coding apps found (and asked for), Claude Code first.
+    pub apps: Vec<AgentAppPlan>,
+    /// The coding apps not on this computer.
+    pub not_found: Vec<AgentApp>,
+    /// The GitHub copy: this folder goes on the user's PATH (absent when it
+    /// is there already, and for the Store copy).
+    pub path: Option<AgentPathInfo>,
+    pub cli: Option<AgentCli>,
+    /// Nothing to write: approving only turns access on.
+    pub empty: bool,
+}
+
+/// What came of `agents_connect`.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentConnectOutcome {
+    /// Written as shown, and agent access is on. `false`: a file changed
+    /// since the plan was shown (a coding app wrote its settings); nothing
+    /// was written, access is as it was, and `plan` is what would change
+    /// now, to show again.
+    pub applied: bool,
+    pub plan: Option<AgentConnectPlan>,
+    /// The coding apps connected now.
+    pub connected: Vec<AgentApp>,
+    /// The coding apps that could not be, and why (the others went ahead).
+    pub failed: Vec<AgentAppPlan>,
+    /// The `bin` folder went on the user's PATH.
+    pub path_added: bool,
+    /// Why it did not, in the backend's words.
+    pub path_error: Option<String>,
+    /// Agent access could not be saved as on (the files above were
+    /// written all the same), in the backend's words.
+    pub save_error: Option<String>,
+    pub connections: AgentConnections,
+    /// `settings.enabled`: on when at least one coding app connected, or
+    /// none had anything to connect; off when every one failed.
+    pub state: AgentsState,
+}
+
+/// What came of `agents_disconnect`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentDisconnectOutcome {
+    /// What was taken away (its `problem` set when it could not be).
+    pub plan: AgentAppPlan,
+    pub connections: AgentConnections,
+}
+
+// ------------------------------------------------------ agents: the screen
+
+/// What an agent's screen card says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AgentCardKind {
+    /// The agent's own: `title`, `text` and/or `image`, `color`.
+    Text,
+    /// F: a long task finished ("Done · 14 min"): `minutes` and the
+    /// project folder's name (`label`); the words are the page's, in the
+    /// user's language.
+    LongTask,
+}
+
+/// A picture for a card: a PNG, JPEG, GIF or WebP of at most 40 KiB, sides
+/// 8 to 2048 pixels (checked). Drawn as a still: an animated one shows its
+/// first frame.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentCardImage {
+    /// `image/png`, `image/jpeg`, `image/gif`, `image/webp`.
+    pub mime: String,
+    /// The file, base64.
+    pub data: String,
+    pub width: u32,
+    pub height: u32,
+    pub animated: bool,
+}
+
+/// An agent's card for the keyboard's screen (`agent-card` event): the page
+/// draws it like the other live cards and hands it back with
+/// `agents_card_drawn` (header `x-card: <id>`, the picture as the body,
+/// like `live_submit`), or says why it could not with `agents_card_failed`.
+/// It must be drawn within 15 seconds. The page first says it listens:
+/// `agents_card_drawer_ready` (no argument, or `{ ready: false }` when it
+/// stops); until then agents get no card (a reload or a closed window
+/// resets it).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentCard {
+    pub id: String,
+    pub kind: AgentCardKind,
+    /// Who asked (`claude-code`, `cli`): for the page's log, not the card.
+    pub agent: String,
+    /// At most 24 characters, one line.
+    pub title: Option<String>,
+    /// At most 60 characters on at most 2 lines (`\n` between them).
+    pub text: Option<String>,
+    pub image: Option<AgentCardImage>,
+    /// An accent colour (sRGB) the agent chose.
+    pub color: Option<[u8; 3]>,
+    /// `longTask`: how long the task took, in whole minutes.
+    pub minutes: Option<u32>,
+    /// `longTask`: the project folder's name.
+    pub label: Option<String>,
+    /// How long the card stays before the user's own picture comes back.
+    pub show_s: u32,
 }

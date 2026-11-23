@@ -54,16 +54,41 @@ jobs:
       - name: Text hygiene (BOM, broken characters)
         run: node tools/check-text.mjs
 
+      # Keys, placeholders and plural forms in every language; a Russian or
+      # Chinese text not translated yet is a warning here (--release makes
+      # it an error).
+      - name: Interface languages (dictionaries)
+        run: node tools/check-i18n.mjs
+
       - name: No vendor files
         run: node tools/check-vendor-files.mjs
 
       - name: Versions agree
         run: node tools/check-version.mjs
 
+      # A pull request into main with a new version is a release: its
+      # CHANGELOG sections, release notes pages and Store What's new must be
+      # written, not the skeletons tools/release/prepare.mjs made (pages.yml
+      # publishes the site from main, and the tag build checks the same). A
+      # version whose tag is already on GitHub was released before (a fix to
+      # the guide, say): there is nothing new to check.
+      - name: Release text is written (pull requests into main)
+        if: github.base_ref == 'main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(node -p "require('./app/src-tauri/tauri.conf.json').version")"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$version" --silent 2>/dev/null; then
+            echo "v$version is already released: this pull request makes no new release, so there is no release text to check."
+          else
+            node tools/release/check-release.mjs
+          fi
+
       # The scripts the release (release.yml), site (pages.yml) and Store
-      # (store.yml) workflows use.
-      - name: Release, site and Store script tests
-        run: node --test "tools/release/*.test.mjs" "tools/site/*.test.mjs" "tools/store/*.test.mjs"
+      # (store.yml) workflows use, and the checks above (with the app's
+      # message engine they share).
+      - name: Release, site, Store and check script tests
+        run: node --test "tools/*.test.mjs" "tools/release/*.test.mjs" "tools/site/*.test.mjs" "tools/store/*.test.mjs" "tools/screenshots/guard.test.mjs"
 
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
@@ -118,7 +143,7 @@ jobs:
       # would refuse, on every change.
       - name: Microsoft Store package packs
         run: |
-          cargo build -p keymotion
+          cargo build -p keymotion -p keymotion-cli
           node tools/store/msix.mjs --exe target/debug/keymotion.exe --out target/store-check --test
 
   # Licences, security advisories, duplicate crates and crate sources
@@ -138,7 +163,7 @@ jobs:
           channel="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
           rustup toolchain install "$channel" --profile minimal -c rustfmt -c clippy --no-self-update
 
-      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
           tool: cargo-deny@0.20.2
 

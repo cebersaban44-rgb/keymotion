@@ -2,8 +2,10 @@
 # files the app's updater reads.
 #
 #   - Pushing a `v*` tag builds that version. The tag must be "v" + the
-#     version in the app's files (tools/check-version.mjs), and CHANGELOG.md
-#     must have a section for it ("## [0.2.0] - <date>").
+#     version in the app's files (tools/check-version.mjs), CHANGELOG.md
+#     must have a section for it ("## [0.2.0] - <date>"), and the rest of
+#     its text must be written (tools/release/check-release.mjs). The tag
+#     is made by tools/release/tag.mjs, after tools/release/prepare.mjs.
 #   - "Run workflow" on a branch makes a test build of the version in
 #     app/src-tauri/tauri.conf.json; when CHANGELOG.md has no section for it
 #     yet, the notes come from "## [Unreleased]". Delete such a test draft
@@ -14,9 +16,10 @@
 # source. Nothing is published: the owner reviews the draft and publishes it.
 #
 # A release tag (not a pre-release) also builds the Microsoft Store package
-# (store.yml): the draft waits until the Store submission passes
-# certification, then both are published the same day (owner's decision,
-# 2026-11-16; docs site: developers/microsoft-store).
+# and submits it for certification (store.yml): the draft waits until the
+# Store submission passes, then both are published the same day (owner's
+# decision, 2026-11-16): publish.yml publishes the draft, and "Publish now"
+# in Partner Center the Store's copy (docs site: developers/microsoft-store).
 #
 # Secrets: TAURI_SIGNING_PRIVATE_KEY (required, the updater key from
 # `pnpm --dir app tauri signer generate`) and TAURI_SIGNING_PRIVATE_KEY_PASSWORD
@@ -30,6 +33,13 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      # A test build that leaves no draft behind: off, the installer is only
+      # built, kept as the run's artifact and tried in install-test.
+      draft:
+        description: Draft a GitHub release with the build
+        type: boolean
+        default: true
 
 # actions: read lets a job read its own run's artifacts and details, which
 # SignPath's action needs when signing is turned on (stage 9).
@@ -120,13 +130,17 @@ jobs:
           fi
 
       # A tag needs its own CHANGELOG.md section; a test build from a branch
-      # may use the Unreleased one.
+      # may use the Unreleased one. A tag also needs the rest of its text
+      # written (tools/release/check-release.mjs): the version's section in
+      # every CHANGELOG and on the site's release notes page, and the
+      # Store's What's new files, none of them still a skeleton.
       - name: Check the release notes
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             node tools/release/latest-json.mjs --check-notes --version "$VERSION"
+            node tools/release/check-release.mjs --version "$VERSION"
           else
             node tools/release/latest-json.mjs --check-notes --version "$VERSION" --allow-unreleased
           fi
@@ -167,6 +181,24 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: github.ref_type != 'tag'
 
+      # keymotion-cli, the command-line tool AI coding agents and scripts use,
+      # goes in the installer as bin\keymotion-cli.exe (the resource that
+      # tauri.bundle-cli.conf.json adds). It is built first, here, from the
+      # same commit as the app, and says the same version.
+      - name: Build keymotion-cli
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cargo build --release -p keymotion-cli
+          said="$(target/release/keymotion-cli.exe --version)"
+          case "$said" in
+            "keymotion-cli $VERSION "*) echo "$said" ;;
+            *)
+              echo "::error::target/release/keymotion-cli.exe says '$said'; this release is $VERSION."
+              exit 1
+              ;;
+          esac
+
       # With bundle.createUpdaterArtifacts, tauri build also signs the setup
       # .exe for the updater (<setup>.exe.sig) with the key below. Old bundles
       # are removed first, so the next step finds only this build's files.
@@ -176,7 +208,28 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           rm -rf target/release/bundle app/src-tauri/target/release/bundle
-          pnpm --dir app tauri build --bundles nsis
+          pnpm --dir app tauri build --bundles nsis --config src-tauri/tauri.bundle-cli.conf.json
+
+      # The script tauri generated for the installer names every file it
+      # packs: keymotion-cli must be among them, under bin\.
+      - name: The installer carries keymotion-cli
+        run: |
+          script=""
+          for candidate in target/release/nsis/x64/installer.nsi app/src-tauri/target/release/nsis/x64/installer.nsi; do
+            if [ -f "$candidate" ]; then
+              script="$candidate"
+              break
+            fi
+          done
+          if [ -z "$script" ]; then
+            echo "::error::No installer.nsi under target/release/nsis/x64: did tauri build make the NSIS installer?"
+            exit 1
+          fi
+          if ! grep -qF '"/oname=bin\keymotion-cli.exe"' "$script"; then
+            echo "::error::The installer does not install bin\\keymotion-cli.exe. Is tauri.bundle-cli.conf.json passed to tauri build?"
+            exit 1
+          fi
+          grep -n 'keymotion-cli' "$script"
 
       # The repository is a Cargo workspace, so target/ is at the root; the
       # app's own folder is searched too in case that ever changes.
@@ -209,11 +262,15 @@ jobs:
       #   a test version.
       # - SignPath can't open NSIS installers, so there are two requests, each
       #   approved by the owner in SignPath:
-      #     1. `tauri build --no-bundle`, upload `keymotion.exe`, sign it
+      #     1. `tauri build --no-bundle` (with tauri.bundle-cli.conf.json,
+      #        after "Build keymotion-cli"), upload `keymotion.exe` and
+      #        `keymotion-cli.exe`, sign them
       #        (signpath/github-action-submit-signing-request, pinned by SHA,
       #        with wait-for-completion-timeout-in-seconds: 3600), and put the
-      #        signed file back in target/release;
-      #     2. `tauri bundle --bundles nsis`, upload the installer, sign it.
+      #        signed files back in target/release;
+      #     2. `tauri bundle --bundles nsis --config
+      #        src-tauri/tauri.bundle-cli.conf.json`, upload the installer,
+      #        sign it.
       # - Then the updater signature, made over the SIGNED installer, because
       #   signing changes the file's bytes and the .sig tauri wrote earlier
       #   no longer matches:
@@ -263,8 +320,10 @@ jobs:
           overwrite: true
 
       # Creates the draft, or refreshes it when this is a re-run. A release
-      # that is already published is never touched.
+      # that is already published is never touched. A tag always drafts;
+      # "Run workflow" only when its draft box is ticked.
       - name: Draft the GitHub release
+        if: github.event_name != 'workflow_dispatch' || inputs.draft
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -320,3 +379,67 @@ jobs:
     uses: ./.github/workflows/store.yml
     with:
       tag: ${{ github.ref_name }}
+
+  # The installer this run built, tried on a clean Windows machine: a fresh
+  # install, connecting Claude Code and Codex, a manual reinstall, an update
+  # while keymotion-cli runs, uninstalling (also while Keymotion runs), the
+  # upgrade from the last published release and keymotion://background
+  # (tools/release/install-test.ps1). The runner is thrown away afterwards,
+  # so the test may change its user's PATH, registry and settings; the
+  # script refuses to run anywhere else.
+  install-test:
+    name: Install test on a clean Windows
+    needs: release
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/release
+
+      # This run's installer (the release job's artifact), and the last
+      # published release's setup for the upgrade.
+      - name: Get the installers
+        id: setups
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $new = Join-Path $env:RUNNER_TEMP 'setup-new'
+          gh run download $env:GITHUB_RUN_ID --pattern 'keymotion-*-windows-x64' --dir $new
+          if ($LASTEXITCODE) { throw 'This run has no installer artifact.' }
+          $setup = @(Get-ChildItem -Recurse -File -Path $new -Filter '*-setup.exe')
+          if ($setup.Count -ne 1) { throw "Expected one setup in the artifact, found $($setup.Count)." }
+          "installer=$($setup[0].FullName)" >> $env:GITHUB_OUTPUT
+
+          $previous = ''
+          $tag = gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // empty'
+          if ($LASTEXITCODE -eq 0 -and $tag) {
+            $old = Join-Path $env:RUNNER_TEMP 'setup-previous'
+            gh release download $tag --pattern '*-setup.exe' --dir $old
+            if ($LASTEXITCODE -eq 0) { $previous = @(Get-ChildItem -File -Path $old -Filter '*-setup.exe')[0].FullName }
+          }
+          if (-not $previous) { Write-Host '::warning::No published release setup found: the upgrade scenario is skipped.' }
+          "previous=$previous" >> $env:GITHUB_OUTPUT
+          Write-Host "Installer: $($setup[0].FullName); last published release ($tag): $previous"
+          exit 0
+
+      - name: Install test
+        env:
+          INSTALLER: ${{ steps.setups.outputs.installer }}
+          PREVIOUS: ${{ steps.setups.outputs.previous }}
+        run: ./tools/release/install-test.ps1 -Installer $env:INSTALLER -PreviousInstaller $env:PREVIOUS -OutDir (Join-Path $env:RUNNER_TEMP 'install-test')
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: install-test-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/install-test
+          if-no-files-found: ignore

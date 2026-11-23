@@ -22,6 +22,7 @@ Uygulama hangi yoldan kurulduğunu çalışırken anlar. Windows, MSIX'ten kurul
 | Windows açılınca başlatma | Kullanıcının `Run` anahtarında bir değer, `--hidden` ile | Paketin başlangıç görevi (`KeymotionStartup`), yine `--hidden` ile. Kullanıcı bunu Windows ayarlarından kapatırsa yalnızca kendisi oradan yeniden açabilir; Ayarlar › Kapatma ve açılış o sayfaya bağlantı verir. |
 | Bildirimlerdeki ad ve logo | Açılışta `dev.keymotion` uygulama kimliğiyle kaydedilir | Paketin kendisinden gelir |
 | Veri klasörleri | `%APPDATA%\dev.keymotion`, `%LOCALAPPDATA%\dev.keymotion` | Uygulamanın gördüğü yollar aynıdır. Klasörler önceden yoksa Windows onları paketin kendi klasöründe tutar (`%LOCALAPPDATA%\Packages\<paket ailesi>\LocalCache\…`) ve uygulamayla birlikte siler; "Klasörü aç" o klasörü açar. |
+| `keymotion-cli` (ajanların komut satırı aracı) | Kurulumda `bin\keymotion-cli.exe`; ajan erişimi açılınca PATH'te; kaldırma programı ajan bağlantılarını ve bu PATH girdisini siler | Paketin ikinci uygulaması; `keymotion-cli` diğer adıyla çalışır ([Ajan komut satırı](/keymotion/tr/developers/agent-cli/#nereye-kurulur)) |
 | Ayarlar'daki gizlilik metni | GitHub'daki güncelleme denetiminden söz eder | Güncellemeleri Store'un getirdiğini söyler |
 
 İki sürümün ortak bir kuralı var: nasıl kurulmuş olursa olsun aynı anda yalnızca bir Keymotion çalışır. İkisi birden çalışsa klavyeye aynı anda komut gönderirlerdi.
@@ -43,10 +44,13 @@ Bu değişiklikten eski GitHub kopyaları (1.0.0) yol vermez; bir sonraki günce
 
 | Dosya | Ne işe yarar |
 |---|---|
-| `app/src-tauri/store/AppxManifest.xml` | Paket bildirimi; kimlik ve sürüm için boş yerler içerir. Tam güven (`runFullTrust`): program, kurulum dosyasından kurulduğundaki gibi kullanıcının olağan yetkileriyle çalışır. HID, göstergeler ve saatin yanındaki simge bunu gerektirir. |
+| `app/src-tauri/store/AppxManifest.xml` | Paket bildirimi; kimlik ve sürüm için boş yerler içerir. Tam güven (`runFullTrust`): program, kurulum dosyasından kurulduğundaki gibi kullanıcının olağan yetkileriyle çalışır. HID, göstergeler ve saatin yanındaki simge bunu gerektirir. İki uygulama: `Keymotion` ve `keymotion-cli.exe` için `Cli`; ikincisi `keymotion-cli.exe` uygulama yürütme diğer adı olan, Başlat menüsünde yeri olmayan bir konsol programıdır. |
 | `app/src-tauri/store/Assets/` | Windows'un istediği her boyutta logolar. `tools/store/make-assets.py`, `app/src-tauri/icons/icon.png` dosyasından çizer. Simge değişince yeniden çalıştırın. |
-| `tools/store/msix.mjs` | Bildirimi doldurur, logoları dizinler (`makepri`) ve MSIX'i paketler (`makeappx`). Windows SDK gerekir. Testler: `node --test "tools/store/*.test.mjs"`. |
-| `.github/workflows/store.yml` | Yayımlanmış bir sürümün paketini oluşturur. |
+| `tools/store/msix.mjs` | Bildirimi doldurur, logoları dizinler (`makepri`) ve MSIX'i `keymotion.exe` ve yanındaki `keymotion-cli.exe` (ya da `--cli`) ile paketler (`makeappx`). Windows SDK gerekir. Testler: `node --test "tools/store/*.test.mjs"`. |
+| `.github/workflows/store.yml` | Yayımlanmış bir sürümün paketini oluşturur; **Submit** işi paketi sertifikasyona gönderir. |
+| `tools/store/submit.mjs` | Paketi Store'un gönderim API'siyle gönderir: eski paketin yerine yenisini, her mağaza sayfası dilinde "Yenilikler" metnini koyar ve yayımlamayı **Publish now**'a kadar bekletir. `--status` yalnızca bir sürümün gönderim durumunu okur. Testler (Store'un yerine geçen sahte bir sunucuyla): `node --test "tools/store/*.test.mjs"`. |
+| `store/whats-new/` | Her sürüm için Store'un "Yenilikler" metni: mağaza sayfasının her dili için bir düz metin dosyası (`1.2.0.en.txt`, `1.2.0.tr.txt`), her biri en çok 1500 karakter. Diller `tools/store/whats-new.mjs` dosyasında listelenir. |
+| `.github/workflows/publish.yml` | Store aynı sürümü sertifikasyondan geçirince GitHub taslağını yayımlar. |
 
 Paket imzalanmaz: Store, sertifikasyondan geçen paketi kendisi imzalar. CI her değişiklikte bir deneme paketi oluşturur. Böylece Windows araçlarının reddedeceği bir bildirim ya da logo sürümden önce fark edilir.
 
@@ -71,6 +75,7 @@ Windows'un geliştirici modu açıksa (Ayarlar › Sistem › Geliştiriciler i�
 
    ```bash
    pnpm --dir app tauri build --no-bundle
+   cargo build --release -p keymotion-cli
    node tools/store/msix.mjs --exe target/release/keymotion.exe --out target/store-test --test
    ```
 
@@ -96,18 +101,59 @@ Bir sürüm GitHub'da ve Microsoft Store'da aynı gün çıkar; böylece bir num
 
 <Steps>
 
-1. Sürümü her zamanki gibi `main` üzerinde etiketleyin. `release.yml` kurulum dosyasını derler ve GitHub sürümünü taslak olarak hazırlar; **Microsoft Store package** işi (`store.yml`) aynı etiketten `.msix` dosyasını derler ve çalıştırmanın çıktısı olarak saklar. Deneme sürümlerinde bu iş atlanır.
+1. **Sürümü hazırlayın:** `develop`'tan açılan bir dalda (`release/1.2.0`). Önce neyin değişeceğine bakın, sonra betiğe değiştirtin:
 
-2. GitHub taslağını yayımlamayın. Partner Center'da Keymotion için yeni bir gönderim başlatın: Paketler bölümüne `.msix` dosyasını yükleyin ve öncekini kaldırın; "Yenilikler" alanını değişiklik listesinden doldurun; Gönderim seçenekleri'nde "Don't publish this submission until I select Publish now" seçeneğini seçin. Gönderin.
+   ```bash
+   node tools/release/prepare.mjs minor --dry-run
+   node tools/release/prepare.mjs minor
+   ```
 
-3. Sertifikasyondan geçince (Microsoft en çok üç iş günü öngörür) GitHub taslağını yayımlayın ve Partner Center'da **Publish now** düğmesine basın; ikisini birlikte.
+   `minor` ve `patch` geçerli sürümden sayar; `2.0.0` gibi bir numara da verilebilir. Numara verilmezse betik bir öneride bulunur: **Unreleased** bölümünde Fixed ve Security dışında bir şey varsa minor, yalnız bunlar varsa patch. Betik sürümü üç dosyada ve `Cargo.lock`'ta yükseltir; her değişiklik listesinin (`CHANGELOG.md` ve çevirileri) **Unreleased** bölümünü bağlantılarıyla birlikte `## [1.2.0] - <tarih>` bölümüne çevirir; her dilin sürüm notları sayfasına ve Store mağaza sayfasının her dili için bir "Yenilikler" dosyasına `TODO(release)` işaretli bir iskelet koyar. Değişiklik listelerinden birinin **Unreleased** bölümü boşsa durur ve hiçbir şeyi değiştirmez.
+
+2. **Metinleri yazın:** iskeletlerin olduğu yerlere. Her dilde sürüm notları sayfasındaki sürüm bölümü ve sayfanın `description` satırı; ayrıca `store/whats-new/1.2.0.<dil>.txt`: en çok 1500 karakterlik düz metin, Store kopyasına gelenler hakkında (GitHub kopyasının kendi güncelleme seçeneklerini yazmayın). Yazılacak bir şey kalmayınca `node tools/release/check-release.mjs` geçer. PR'ı `develop`'a açın.
+
+3. **`develop`'u `main`'e birleştirin:** sürüm PR'ıyla. CI, `main`'e açılan ve sürümünün henüz etiketi olmayan her PR'da `check-release.mjs`'i çalıştırır; böylece bir iskelet siteye ulaşamaz.
+
+4. **`main`'i etiketleyin:** kendi bilgisayarınızda, `git switch main` ve `git pull`'dan sonra:
+
+   ```bash
+   node tools/release/tag.mjs --dry-run
+   node tools/release/tag.mjs
+   ```
+
+   Betik `main`'in ucunda ve temiz bir çalışma alanında olduğunu; sürüm numarasının, değişiklik listelerinin, sürüm notlarının ve "Yenilikler"in birbirini tuttuğunu denetler. Sonra `v1.2.0` açıklamalı etiketini ("Keymotion 1.2.0") atar, gönderir ve `main` → `develop` geri birleştirme PR'ını açar. CI yeşil olunca o PR'ı bir birleştirme commit'iyle birleştirin.
+
+5. **Etiket derler ve gönderir.** `release.yml` metinleri saniyeler içinde denetler, kurulum dosyasını derler ve GitHub sürümünü taslak olarak hazırlar. **Microsoft Store package** işi (`store.yml`) aynı etiketten `.msix` dosyasını derler; **Submit to the Microsoft Store** işi de onu sertifikasyona gönderir: eski paketin yerine yeni paketi, dosyalardaki "Yenilikler" metnini ve "Don't publish this submission until I select Publish now" seçeneğini taşıyan yeni bir gönderim. Deneme sürümlerinde iki iş de atlanır. Denetim sürerken gönderimi Partner Center'da değiştirmeyin: orada değiştirilen bir gönderimi API artık değiştiremez.
+
+6. **Sertifikasyondan geçince** (Microsoft en çok üç iş günü öngörür; Store bir e-posta gönderir) GitHub › Actions › **Publish a release** › Run workflow'u açın. "Use workflow from"u etikete ayarlayın (Tags › `v1.2.0`), aynı etiketi yazın, **Only check** kutusunun işaretini kaldırın ve çalıştırın. İş akışı gönderimin durumunu okur ve GitHub taslağını yalnızca Store sürümü sertifikasyondan geçirdiyse yayımlar. Sonra Partner Center › Keymotion'da **Publish now** düğmesine basın: API'de bunun bir yolu yok.
 
 </Steps>
 
+- **Bekleyen bir gönderim varsa** (Partner Center'da başlatılmış ya da önceki bir çalıştırmadan kalmış): Submit işi durur ve hiçbir şeyi değiştirmez; bir gönderimi asla silmez. O gönderimi Partner Center'da tamamlayın ya da silin, sonra işi yeniden çalıştırın ya da paketi elle yükleyin (aşağıda).
+- **Elle yükleme** (Store gizli bilgileri yoksa ya da Submit işi başarısız olduysa): `.msix` dosyasını çalıştırmanın çıktılarından indirin. Partner Center'da Keymotion için yeni bir gönderim başlatın: Paketler bölümüne `.msix` dosyasını yükleyin ve öncekini kaldırın; "Yenilikler" alanını `store/whats-new`'den doldurun; Gönderim seçenekleri'nde "Don't publish this submission until I select Publish now" seçeneğini seçin. Gönderin.
 - **Store paketi geri çevirirse:** Düzeltmeyi bir sonraki yama sürümünde yapın ve onu iki kanalda yayımlayın. Geri çevrilen numara hiçbir yerde yayımlanmaz; değişiklik listesindeki bölümü yeni numaraya taşınır. Yalnızca mağaza sayfasıyla (metin, ekran görüntüleri) ilgili bir ret yeni paket gerektirmez.
 - **Acil düzeltme** (çökme, güvenlik sorunu) önce GitHub'da yayımlanabilir; sürüm notları Store'un arkadan geleceğini söyler.
-- Store işi elle de çalıştırılabilir: GitHub › Actions › **Microsoft Store package**, sürüm etiketiyle (`v1.2.3`).
+- Store işi elle de çalıştırılabilir: GitHub › Actions › **Microsoft Store package**, sürüm etiketiyle (`v1.2.3`). Gönderimi yalnızca "Use workflow from" aynı etikete ayarlıysa yapar.
+- **Yalnızca denetim:** **Publish a release**, **Only check** işaretliyken (varsayılan) durumu okur ve hiçbir şey yayımlamaz.
 
 İş akışı, Partner Center › Keymotion › Ürün kimliği sayfasından aynen kopyalanan üç depo değişkeni ister: `STORE_IDENTITY_NAME`, `STORE_PUBLISHER` ve `STORE_PUBLISHER_DISPLAY_NAME`. Bunlar gizli değildir; her pakette görünürler.
 
-Uygulama yayına girdikten sonra gönderim iş akışından da yapılabilir (Microsoft'un `msstore` aracıyla). Ancak bunun için Partner Center hesabına erişimi olan bir Microsoft Entra uygulama kaydı gerekir. Bireysel geliştirici hesabı bunun için bir Microsoft Entra kiracısı oluşturabilir ya da bağlayabilir (Partner Center › Account settings › Tenants). Bunun kurulması hâlâ açık bir konu; şimdilik yükleme elle yapılır.
+### GitHub'dan gönderimin kurulumu
+
+Submit işi ve **Publish a release**, Store'un gönderim API'sine bir Microsoft Entra uygulaması olarak girer. Bu kurulmadıkça Submit işi yalnızca gizli bilgilerin eksik olduğunu söyler ve paket elle yüklenir. Microsoft'un `msstore` aracı yerine projenin kendi betiği kullanılır; çünkü o araç bekleyen bir gönderimi siler. Kurulum bir kez, hesap sahibi tarafından yapılır:
+
+<Steps>
+
+1. Partner Center'da dişli simgesi › **Account settings** › **Tenants** sayfasını açın ve (ücretsiz) bir Microsoft Entra kiracısı oluşturun ya da elinizdekini bağlayın.
+
+2. **User management** › **Microsoft Entra applications** bölümünde bir Microsoft Entra uygulaması oluşturun (ya da var olanı ekleyin) ve ona **Manager** rolünü verin.
+
+3. Uygulamayı açın ve **Add new key**'i seçin. **Tenant ID**, **Client ID** ve **Key** değerlerini not edin: anahtar yalnızca bir kez gösterilir. Anahtarın bir bitiş tarihi vardır; o tarihten önce yenisini ekleyin (süresi dolmuş anahtarla çalışan Submit işi girişte durur ve bunu söyler).
+
+4. GitHub'da Settings › **Environments** bölümünde `microsoft-store` ortamını oluşturun. **Deployment branches and tags** altında **Selected branches and tags**'i seçin ve `v*` etiket kuralını ekleyin; böylece ortamı yalnızca sürüm etiketleri kullanabilir. Üç ortam gizli bilgisi ekleyin: `STORE_TENANT_ID`, `STORE_CLIENT_ID` ve `STORE_CLIENT_SECRET` (anahtar).
+
+5. Hiçbir şeyi değiştirmeden deneyin: **Publish a release**'i **Only check** işaretliyken, iş akışı eklendikten sonra atılmış bir sürüm etiketinden çalıştırın. Yalnızca o sürümün gönderim durumunu okur.
+
+</Steps>
+
+İki şey Partner Center'da kalır: API'si olmayan **Publish now** ve API'de alanı olmayan tam güven yeteneğinin (`runFullTrust`) gerekçesi. Partner Center, paketin yetenekleri değişmedikçe gerekçeyi genellikle yeniden sormaz.

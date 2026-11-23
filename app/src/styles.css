@@ -6,75 +6,144 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* ------------------------------------------------------------------
-   Tokens. Anodized aluminium surfaces; the only saturated colour in the
-   chrome is the "signal" orange of an indicator LED. Keyboard lighting
-   brings every other colour.
+   Tokens. "Windows draws the frame, Keymotion the content" (design A+E,
+   2026-11-22): the window, the navigation pane, rows, buttons, switches,
+   lists, sliders, tabs, dialogs and the type scale follow Windows 11;
+   orange is only the accent. The keyboard drawing, its light, the effect
+   previews and the screen pictures keep their own colours.
+
+   --bg          the window (the navigation pane sits on it)
+   --layer       the page area, a lighter layer with a rounded corner
+   --surface     cards and rows (solid, so dialogs and menus can use it)
+   --surface-2   a card hovered or a control pressed
+   --bg-raise    a control's fill (text box, list, switch track)
+   --line        card and control edges; --line-strong a stronger edge
+   --ctl-bottom  a control's bottom edge; --ctl-strong a switch or slider
    ------------------------------------------------------------------ */
 :root,
 :root[data-theme="dark"] {
-  --bg: #0d0e10;
-  --bg-raise: #131417;
-  --surface: #17191c;
-  --surface-2: #1d2024;
+  --app-bg:
+    radial-gradient(1000px 560px at 92% -6%, rgb(255 138 61 / 0.1), transparent 62%),
+    linear-gradient(160deg, #202023, #1c1c1e 55%, #1f1f23);
+  --bg: #1f1f21;
+  --layer: rgb(255 255 255 / 0.035);
+  --layer-edge: rgb(255 255 255 / 0.06);
+  --bg-raise: rgb(255 255 255 / 0.06);
+  --surface: #2b2b2d;
+  --surface-2: #333335;
   --line: rgb(255 255 255 / 0.07);
-  --line-strong: rgb(255 255 255 / 0.13);
-  --ink: #ece9e3;
-  --ink-2: #a9a8a4;
-  /* Helper text: at least 4.5:1 on every surface below. */
-  --ink-3: #8a8b8e;
-  --signal: #ff8a3d;
+  --line-strong: rgb(255 255 255 / 0.14);
+  --ctl-bottom: rgb(255 255 255 / 0.12);
+  --ctl-strong: rgb(255 255 255 / 0.6);
+  --subtle-hover: rgb(255 255 255 / 0.05);
+  --subtle-sel: rgb(255 255 255 / 0.075);
+  --ink: #ffffff;
+  --ink-2: #cecece;
+  /* Helper text: at least 4.5:1 on the cards and the page. */
+  --ink-3: #9b9b9b;
+  /* The accent: the brand orange, lighter on dark (Windows' accent light 1). */
+  --signal: #ff9a55;
   --signal-ink: #1a0d04;
-  --ok: #5fd39a;
-  --warn: #f2c14e;
-  --danger: #ff5d5d;
+  --ok: #6ccb5f;
+  --warn: #fcb34d;
+  --danger: #ff99a4;
+  --focus: #ffffff;
   /* The keyboard drawing: dark plate and unlit caps in both themes. */
-  --plate: #0a0b0d;
+  --plate: #121214;
   --kb-cap: #1b1d21;
   --kb-cap-edge: rgb(255 255 255 / 0.06);
   --kb-legend-off: #a9a59e;
   --kb-ring: #f4f1ea;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+  --shadow: none;
+  --shadow-flyout: 0 8px 16px rgb(0 0 0 / 0.26);
+  --shadow-dialog: 0 32px 64px rgb(0 0 0 / 0.37), 0 2px 21px rgb(0 0 0 / 0.22);
+  --smoke: rgb(0 0 0 / 0.3);
   color-scheme: dark;
 }
 
 :root[data-theme="light"] {
-  --bg: #ebe9e4;
-  --bg-raise: #f2f0ec;
-  --surface: #f8f7f4;
-  --surface-2: #ffffff;
-  --line: rgb(20 20 24 / 0.08);
-  --line-strong: rgb(20 20 24 / 0.16);
-  --ink: #16171a;
-  --ink-2: #55565b;
-  --ink-3: #66676b;
-  /* Dark text on the orange: 5:1. The orange itself keeps 3:1 on the page. */
-  --signal: #d65f12;
-  --signal-ink: #1a0d04;
-  --ok: #1f9d63;
-  --warn: #b7860b;
-  --danger: #d23b3b;
-  --plate: #1f2125;
+  --app-bg:
+    radial-gradient(1000px 560px at 92% -6%, rgb(255 138 61 / 0.14), transparent 62%),
+    linear-gradient(160deg, #eceff3, #f3f3f3 55%, #edeef2);
+  --bg: #f3f3f3;
+  --layer: rgb(255 255 255 / 0.55);
+  --layer-edge: rgb(0 0 0 / 0.06);
+  --bg-raise: rgb(255 255 255 / 0.7);
+  --surface: #fbfbfb;
+  --surface-2: #f3f3f3;
+  --line: rgb(0 0 0 / 0.08);
+  --line-strong: rgb(0 0 0 / 0.16);
+  --ctl-bottom: rgb(0 0 0 / 0.26);
+  --ctl-strong: rgb(0 0 0 / 0.52);
+  --subtle-hover: rgb(0 0 0 / 0.035);
+  --subtle-sel: rgb(0 0 0 / 0.055);
+  --ink: #1b1b1b;
+  --ink-2: #5d5d5d;
+  --ink-3: #6b6b6b;
+  /* White text on the darker orange: 5:1, and the orange keeps 4.5:1 as text. */
+  --signal: #c45200;
+  --signal-ink: #ffffff;
+  --ok: #0f7b0f;
+  --warn: #9d5d00;
+  --danger: #c42b1c;
+  --focus: rgb(0 0 0 / 0.9);
+  --plate: #1d1e21;
   --kb-cap: #2a2d32;
   --kb-cap-edge: rgb(255 255 255 / 0.07);
   --kb-legend-off: #bdb9b1;
   --kb-ring: #f4f1ea;
-  --shadow: 0 1px 2px rgb(40 30 20 / 0.08);
+  --shadow: none;
+  --shadow-flyout: 0 8px 16px rgb(0 0 0 / 0.14);
+  --shadow-dialog: 0 32px 64px rgb(0 0 0 / 0.19), 0 2px 21px rgb(0 0 0 / 0.15);
+  --smoke: rgb(0 0 0 / 0.3);
   color-scheme: light;
 }
 
 /* Windows 11 Mica shows through the window background. */
 :root[data-mica="true"][data-theme="dark"] {
-  --bg: rgb(13 14 16 / 0.55);
-  --bg-raise: rgb(19 20 23 / 0.5);
+  --app-bg:
+    radial-gradient(1000px 560px at 92% -6%, rgb(255 138 61 / 0.08), transparent 62%),
+    linear-gradient(rgb(28 28 30 / 0.5), rgb(28 28 30 / 0.5));
 }
 :root[data-mica="true"][data-theme="light"] {
-  --bg: rgb(235 233 228 / 0.55);
-  --bg-raise: rgb(242 240 236 / 0.55);
+  --app-bg:
+    radial-gradient(1000px 560px at 92% -6%, rgb(255 138 61 / 0.1), transparent 62%),
+    linear-gradient(rgb(243 243 243 / 0.5), rgb(243 243 243 / 0.5));
+}
+
+/* The interface fonts by language (App.tsx sets <html lang>: "en", "tr",
+   "ru", "zh-CN"). Segoe UI has Latin, Turkish and Cyrillic letters. Chinese
+   adds Microsoft YaHei UI (in every Windows 10 and 11) for the characters, and
+   lang="zh-CN" keeps shared characters in their Simplified Chinese shapes
+   rather than Japanese ones. */
+:root {
+  --ui-display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --ui-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+:root:lang(ru) {
+  --ui-display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --ui-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+:root:lang(zh-CN) {
+  --ui-display: "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --ui-sans: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+}
+/* Chinese has no tightened letter spacing (nor italics). */
+:root:lang(zh-CN) .page-title {
+  letter-spacing: 0;
+}
+
+/* Windows 11 corners: 4 px for controls and cards (rounded-md, rounded-lg),
+   8 px for galleries, dialogs and menus (rounded-xl). */
+@theme {
+  --radius-md: 4px;
+  --radius-lg: 4px;
+  --radius-xl: 8px;
 }
 
 @theme inline {
-  --font-display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: var(--ui-display);
+  --font-sans: var(--ui-sans);
   --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
 
   --color-bg: var(--bg);
@@ -101,20 +170,35 @@ body,
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--app-bg);
+  background-color: var(--bg);
   color: var(--ink);
   font-family: var(--font-sans);
+  /* Windows' body text: 14 px on a 20 px line. */
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 20px;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
   user-select: none;
 }
+:root[data-mica="true"] body {
+  background-color: transparent;
+}
 
+/* Windows' focus visual: a solid ring in the text colour, close around. */
 :focus-visible {
-  outline: 2px solid var(--signal);
-  outline-offset: 2px;
-  border-radius: 6px;
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+/* A text box shows its focus with the accent line under it (Windows), not a ring. */
+input[type="text"]:focus-visible,
+input[type="search"]:focus-visible,
+input[type="number"]:focus-visible,
+input[type="url"]:focus-visible,
+input:not([type]):focus-visible,
+textarea:focus-visible {
+  outline: none;
 }
 
 /* Numbers line up; the face stays the interface font. */
@@ -128,37 +212,70 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Page title and its one-line description. */
+/* ------------------------------------------------------------------
+   Type scale (Windows 11): title 28/36, subtitle 20/28, body strong
+   14/20, body 14/20, caption 12/16.
+   ------------------------------------------------------------------ */
 .page-title {
   font-family: var(--font-display);
   font-size: 28px;
-  line-height: 1.2;
+  line-height: 36px;
   font-weight: 600;
-  letter-spacing: -0.01em;
   color: var(--ink);
 }
 .page-desc {
   margin-top: 4px;
   max-width: 80ch;
   font-size: 14px;
+  line-height: 20px;
   color: var(--ink-2);
+}
+.subtitle {
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
 }
 
 /* Section label inside a page or card. */
 .eyebrow {
   font-size: 14px;
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 20px;
   color: var(--ink);
 }
 
-/* Group label in the sidebar. */
+/* A group of rows' heading (Windows Settings' "Related settings"). */
+.section-title {
+  display: flex;
+  min-height: 32px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 18px 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--ink);
+}
+.section-title:first-child {
+  margin-top: 0;
+}
+.section-title .count {
+  margin-left: 6px;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+/* Group label in the navigation pane. */
 .nav-group {
   font-size: 12px;
   font-weight: 600;
-  color: var(--ink-3);
+  line-height: 16px;
+  color: var(--ink-2);
 }
 
+/* A card: a solid surface on the page, a hairline edge, no shadow. */
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -166,55 +283,288 @@ body {
   box-shadow: var(--shadow);
 }
 
-/* Buttons. Disabled ones turn grey with no orange left, so they never
-   look pressable. */
+/* ------------------------------------------------------------------
+   Rows (Windows Settings cards): full width, an icon, a title and one
+   line under it, and the control on the right. 4 px between rows.
+   ------------------------------------------------------------------ */
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 64px;
+  padding: 10px 16px 10px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  text-align: left;
+}
+.row.row-tall {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 14px 16px;
+}
+.row-icon {
+  display: flex;
+  width: 20px;
+  flex: none;
+  justify-content: center;
+  color: var(--ink);
+}
+.row-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.row-title {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink);
+}
+.row-desc {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-2);
+}
+.row-end {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+}
+/* A row that opens something: the whole row is the button. */
+button.row,
+.row-link {
+  cursor: default;
+  transition: background-color 83ms linear;
+}
+button.row:hover:not(:disabled),
+.row-link:hover {
+  background: var(--surface-2);
+}
+button.row:active:not(:disabled) {
+  background: var(--surface);
+  color: var(--ink-2);
+}
+button.row:disabled {
+  opacity: 0.55;
+}
+
+/* ------------------------------------------------------------------
+   Buttons (Windows 11): accent, standard and subtle. 32 px, 4 px corners.
+   Disabled ones turn grey with no orange left, so they never look
+   pressable.
+   ------------------------------------------------------------------ */
 .btn-primary,
-.btn-secondary {
+.btn-secondary,
+.btn-subtle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 36px;
-  padding: 0 16px;
-  border-radius: 8px;
-  font-size: 13.5px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
   white-space: nowrap;
   transition:
-    background-color 120ms ease-out,
-    color 120ms ease-out,
-    transform 120ms ease-out;
+    background-color 83ms linear,
+    color 83ms linear,
+    box-shadow 83ms linear;
 }
 .btn-primary {
   background: var(--signal);
   color: var(--signal-ink);
-  font-weight: 600;
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.08),
+    inset 0 -1px 0 rgb(0 0 0 / 0.25);
 }
 .btn-primary:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--signal) 90%, var(--ink));
+  background: color-mix(in srgb, var(--signal) 90%, var(--bg));
+}
+.btn-primary:active:not(:disabled) {
+  background: color-mix(in srgb, var(--signal) 80%, var(--bg));
+  color: color-mix(in srgb, var(--signal-ink) 80%, var(--signal));
+  box-shadow: none;
 }
 .btn-secondary {
-  background: transparent;
+  background: var(--bg-raise);
   color: var(--ink);
-  font-weight: 500;
-  box-shadow: inset 0 0 0 1px var(--line-strong);
+  box-shadow:
+    inset 0 0 0 1px var(--line),
+    inset 0 -1px 0 var(--ctl-bottom);
 }
 .btn-secondary:hover:not(:disabled) {
-  background: var(--surface-2);
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
 }
-.btn-primary:active:not(:disabled),
 .btn-secondary:active:not(:disabled) {
-  transform: scale(0.98);
-}
-.btn-primary:disabled,
-.btn-secondary:disabled {
-  cursor: not-allowed;
-  background: transparent;
-  color: var(--ink-3);
-  font-weight: 500;
+  color: var(--ink-2);
   box-shadow: inset 0 0 0 1px var(--line);
 }
-.btn-primary:disabled {
-  background: var(--surface-2);
+.btn-subtle {
+  padding: 0 11px;
+  background: transparent;
+  color: var(--ink);
+}
+.btn-subtle:hover:not(:disabled) {
+  background: var(--subtle-hover);
+}
+.btn-subtle:active:not(:disabled) {
+  background: var(--subtle-sel);
+  color: var(--ink-2);
+}
+/* A smaller button for toolbars and dense lists; text in the accent or
+   the error colour for the actions that need to stand out. */
+.btn-sm {
+  height: 28px;
+  padding: 0 10px;
+  gap: 6px;
+  font-size: 13px;
+}
+.btn-secondary.is-accent {
+  color: var(--signal);
+}
+.btn-secondary.is-danger {
+  color: var(--danger);
+}
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-subtle:disabled {
+  cursor: not-allowed;
+  background: var(--bg-raise);
+  color: var(--ink-3);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.btn-subtle:disabled {
+  background: transparent;
+  box-shadow: none;
+}
+
+/* ------------------------------------------------------------------
+   Text boxes and lists: a filled box with a bottom edge that turns into
+   a 2 px accent line while typing (Windows' TextBox and ComboBox).
+   ------------------------------------------------------------------ */
+@layer base {
+input[type="text"]:not(.bare),
+input[type="search"]:not(.bare),
+input[type="number"]:not(.bare),
+input[type="time"]:not(.bare),
+input[type="date"]:not(.bare),
+input[type="url"]:not(.bare),
+input:not([type]):not(.bare),
+textarea:not(.bare),
+select:not(.bare) {
+  box-shadow: inset 0 -1px 0 var(--ctl-bottom);
+}
+input[type="text"]:not(.bare):focus,
+input[type="search"]:not(.bare):focus,
+input[type="number"]:not(.bare):focus,
+input[type="time"]:not(.bare):focus,
+input[type="date"]:not(.bare):focus,
+input[type="url"]:not(.bare):focus,
+input:not([type]):not(.bare):focus,
+textarea:not(.bare):focus {
+  outline: none;
+  border-color: var(--line);
+  background-color: var(--surface);
+  box-shadow: inset 0 -2px 0 var(--signal);
+}
+select:not(.bare) {
+  appearance: none;
+  padding-right: 32px !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+}
+select option {
+  background: var(--surface);
+  color: var(--ink);
+}
+}
+
+/* The open list as Windows 11 draws it (Chromium's customizable select,
+   in WebView2 since 135): a flyout with 8 px corners, rows with 4 px
+   corners, the chosen one tinted with a short accent line, as in the
+   navigation pane. The closed box stays as above; elsewhere the system's
+   list opens. */
+@supports (appearance: base-select) {
+  @layer base {
+    select:not(.bare),
+    select:not(.bare)::picker(select) {
+      appearance: base-select;
+    }
+    /* The box as before: one line, centred, cut off before the arrow, and
+       as wide as the longest choice where no width is set (selectWidth.ts). */
+    select:not(.bare) {
+      width: var(--select-w, auto);
+      align-items: center;
+      white-space: nowrap;
+      overflow: clip;
+      overflow-clip-margin: content-box;
+    }
+  }
+  select:not(.bare)::picker-icon {
+    display: none;
+  }
+  select:not(.bare)::picker(select) {
+    margin-block: 4px;
+    padding: 3px 0;
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: var(--shadow-flyout);
+  }
+  select:not(.bare) option {
+    position: relative;
+    min-height: 32px;
+    margin: 2px 4px;
+    padding: 6px 12px;
+    border-radius: 4px;
+    background: transparent;
+    line-height: 20px;
+  }
+  select:not(.bare) option::checkmark {
+    display: none;
+  }
+  select:not(.bare) option:hover:not(:disabled) {
+    background: var(--subtle-hover);
+  }
+  select:not(.bare) option:checked {
+    background: var(--subtle-sel);
+  }
+  select:not(.bare) option:checked::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 3px;
+    height: 16px;
+    margin-top: -8px;
+    border-radius: 2px;
+    background: var(--signal);
+  }
+  select:not(.bare) option:disabled {
+    color: var(--ink-3);
+  }
+  /* The list opens with the chosen row focused: the ring shows on the
+     rows the arrow keys move to. */
+  select:not(.bare) option:focus-visible {
+    outline-offset: -2px;
+  }
+  select:not(.bare) option:checked:focus-visible {
+    outline: none;
+  }
 }
 
 /* Screen previews: one panel pixel per CSS block, no smoothing. */
@@ -222,62 +572,592 @@ body {
   image-rendering: pixelated;
 }
 
-/* Range slider: filled track up to --pct in --fill, ring thumb. */
+/* ------------------------------------------------------------------
+   Toggle switch (Windows 11): 40×20; off is an outline with a small
+   dot, on is the accent with a larger dot to the right.
+   ------------------------------------------------------------------ */
+.tog {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 20px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--bg-raise);
+  box-shadow: inset 0 0 0 1px var(--ctl-strong);
+  transition: background-color 120ms linear;
+}
+.tog::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ctl-strong);
+  transition:
+    left 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 120ms ease-out,
+    height 120ms ease-out,
+    top 120ms ease-out;
+}
+.tog:hover:not(:disabled)::after {
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  left: 4px;
+}
+.tog[aria-checked="true"] {
+  background: var(--signal);
+  box-shadow: none;
+}
+.tog[aria-checked="true"]::after {
+  top: 4px;
+  left: 24px;
+  width: 12px;
+  height: 12px;
+  background: var(--signal-ink);
+}
+.tog[aria-checked="true"]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--signal) 90%, var(--bg));
+}
+.tog[aria-checked="true"]:hover:not(:disabled)::after {
+  top: 3px;
+  left: 23px;
+  width: 14px;
+  height: 14px;
+}
+.tog:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+/* ------------------------------------------------------------------
+   Slider (Windows 11): a 4 px track filled with the accent up to --pct,
+   a round thumb with an accent dot that grows on hover. Notched sliders
+   draw tick marks under the track (.ticks).
+   ------------------------------------------------------------------ */
 .range {
   appearance: none;
   width: 100%;
-  height: 20px;
+  height: 22px;
+  margin: 0;
   background: transparent;
-  cursor: pointer;
+  cursor: default;
   --pct: 50%;
   --fill: var(--signal);
 }
 .range:disabled {
   cursor: not-allowed;
+  opacity: 0.45;
 }
 .range::-webkit-slider-runnable-track {
-  height: 6px;
-  border-radius: 999px;
-  background: linear-gradient(to right, var(--fill) 0 var(--pct), var(--line-strong) var(--pct) 100%);
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--fill) 0 var(--pct), var(--ctl-strong) var(--pct) 100%);
 }
 .range::-webkit-slider-thumb {
   appearance: none;
-  width: 16px;
-  height: 16px;
-  margin-top: -5px;
+  width: 20px;
+  height: 20px;
+  margin-top: -8px;
   border-radius: 50%;
-  background: var(--surface);
-  border: 2px solid var(--fill);
-  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
-  transition: transform 120ms ease-out;
+  background:
+    radial-gradient(circle, var(--fill) 0 5px, transparent 5.5px),
+    var(--surface);
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    0 1px 2px rgb(0 0 0 / 0.25);
+  transition: background 120ms ease-out;
 }
-.range:active::-webkit-slider-thumb {
-  transform: scale(1.15);
+.range:hover:not(:disabled)::-webkit-slider-thumb {
+  background:
+    radial-gradient(circle, var(--fill) 0 6.5px, transparent 7px),
+    var(--surface);
+}
+.range:active:not(:disabled)::-webkit-slider-thumb {
+  background:
+    radial-gradient(circle, var(--fill) 0 4px, transparent 4.5px),
+    var(--surface);
 }
 .range:focus-visible {
   outline: none;
 }
 .range:focus-visible::-webkit-slider-thumb {
-  outline: 2px solid var(--signal);
-  outline-offset: 2px;
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
 }
 .range::-moz-range-track {
-  height: 6px;
-  border-radius: 999px;
-  background: linear-gradient(to right, var(--fill) 0 var(--pct), var(--line-strong) var(--pct) 100%);
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--fill) 0 var(--pct), var(--ctl-strong) var(--pct) 100%);
 }
 .range::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
+  width: 20px;
+  height: 20px;
+  border: 0;
   border-radius: 50%;
+  background: radial-gradient(circle, var(--fill) 0 5px, transparent 5.5px), var(--surface);
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+/* Tick marks of a notched slider: one per step, under the track. The
+   thumb's centre runs from 10 px to (width − 10 px). */
+.ticks {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 9.5px;
+  margin-top: 2px;
+}
+.ticks i {
+  width: 1px;
+  height: 4px;
+  background: var(--ink-3);
+}
+
+/* ------------------------------------------------------------------
+   Segmented choice (Windows' segmented control): a tinted track, the
+   chosen option raised as a card.
+   ------------------------------------------------------------------ */
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--subtle-sel);
+}
+.seg > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-2);
+  transition:
+    background-color 83ms linear,
+    color 83ms linear;
+}
+.seg > button:hover:not(:disabled):not([aria-checked="true"]):not([aria-selected="true"]) {
+  color: var(--ink);
+  background: var(--subtle-hover);
+}
+.seg > button[aria-checked="true"],
+.seg > button[aria-selected="true"] {
   background: var(--surface);
-  border: 2px solid var(--fill);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--line);
+}
+.seg > button:disabled {
+  cursor: not-allowed;
+}
+
+/* ------------------------------------------------------------------
+   Tabs (Windows' selector bar): words with a short accent line under
+   the chosen one.
+   ------------------------------------------------------------------ */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.tabs > [role="tab"] {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--ink-2);
+  transition:
+    background-color 83ms linear,
+    color 83ms linear;
+}
+.tabs > [role="tab"]:hover {
+  background: var(--subtle-hover);
+  color: var(--ink);
+}
+.tabs > [role="tab"][aria-selected="true"] {
+  color: var(--ink);
+  font-weight: 600;
+}
+.tabs > [role="tab"][aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 1px;
+  width: 16px;
+  height: 3px;
+  margin-left: -8px;
+  border-radius: 2px;
+  background: var(--signal);
+}
+
+/* ------------------------------------------------------------------
+   Info bar (Windows' InfoBar): an icon, a bold title and a line, then
+   the buttons. The save bar of the editors is one.
+   ------------------------------------------------------------------ */
+.infobar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 12px 14px 12px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.infobar.floating {
+  box-shadow: 0 12px 28px -14px rgb(0 0 0 / 0.5);
+}
+.infobar[data-tone="warn"] {
+  background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+}
+.infobar[data-tone="error"] {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+}
+.infobar[data-tone="ok"] {
+  background: color-mix(in srgb, var(--ok) 10%, var(--surface));
+}
+
+/* ------------------------------------------------------------------
+   Command bar (Windows' CommandBar): one row of commands with icons, the
+   main one in the accent colour, a separator between groups.
+   ------------------------------------------------------------------ */
+.cmdbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.cmdbar .cb {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: 4px;
+  font-size: 13px;
+  white-space: nowrap;
+  color: var(--ink);
+  transition: background-color 83ms linear;
+}
+.cmdbar .cb:hover:not(:disabled) {
+  background: var(--subtle-hover);
+}
+.cmdbar .cb:active:not(:disabled) {
+  background: var(--subtle-sel);
+}
+.cmdbar .cb:disabled {
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+.cmdbar .cb.acc:not(:disabled) {
+  background: var(--signal);
+  color: var(--signal-ink);
+}
+.cmdbar .cb.acc:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--signal) 90%, var(--bg));
+}
+.cmdbar .cb.danger:not(:disabled) {
+  color: var(--danger);
+}
+.cmdbar .sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 6px;
+  background: var(--line-strong);
+}
+.cmdbar .r {
+  margin-left: auto;
+  padding-right: 10px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+/* ------------------------------------------------------------------
+   Gallery (Windows' themes gallery): 8 px corners; the chosen item has a
+   2 px accent outline and a check in its corner.
+   ------------------------------------------------------------------ */
+.gallery-item {
+  position: relative;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  transition: background-color 83ms linear;
+}
+.gallery-item:hover {
+  background: var(--surface-2);
+}
+.gallery-item[aria-checked="true"],
+.gallery-item[aria-pressed="true"],
+.gallery-item[aria-selected="true"],
+.gallery-item.is-chosen {
+  border-color: transparent;
+  box-shadow: 0 0 0 2px var(--signal);
+}
+.gallery-check {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  display: grid;
+  width: 24px;
+  height: 22px;
+  place-items: center;
+  border-radius: 0 8px 0 7px;
+  background: var(--signal);
+  color: var(--signal-ink);
+}
+
+/* ------------------------------------------------------------------
+   Dialogs (Windows' ContentDialog): a smoke over the window, an 8 px
+   card with the buttons on a darker strip at the bottom.
+   ------------------------------------------------------------------ */
+.dlg-smoke {
+  background: var(--smoke);
+}
+.dlg {
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  box-shadow: var(--shadow-dialog);
+}
+.dlg-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 24px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+.dlg-foot > button {
+  min-width: 120px;
+}
+
+/* A menu or tooltip floating over the page. */
+.flyout {
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  box-shadow: var(--shadow-flyout);
 }
 
 /* Thin scrollbars that match the chrome. */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
+}
+
+/* ------------------------------------------------------------------
+   The window's frame: the navigation pane on the window background, the
+   page on a lighter layer with a rounded top-left corner.
+   ------------------------------------------------------------------ */
+.page-layer {
+  background: var(--layer);
+  border-top: 1px solid var(--layer-edge);
+  border-left: 1px solid var(--layer-edge);
+  border-top-left-radius: 8px;
+}
+.nav-item {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 36px;
+  align-items: center;
+  gap: 14px;
+  padding: 0 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink);
+  text-align: left;
+  transition: background-color 83ms linear;
+}
+.nav-item:hover {
+  background: var(--subtle-hover);
+}
+.nav-item:active {
+  color: var(--ink-2);
+}
+.nav-item[aria-current="page"] {
+  background: var(--subtle-sel);
+}
+.nav-search::-webkit-search-cancel-button {
+  display: none;
+}
+.nav-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--signal);
+}
+
+/* ------------------------------------------------------------------
+   The keyboard's glass strip (Overview, design E): the screen on the
+   left, the mountain picture printed on the glass, the knob with its
+   brightness ring. Dark glass in both themes, as on the keyboard. Its
+   inner space is the plate's, so the screen lines up with the drawing's
+   left edge and the knob with its right edge.
+   ------------------------------------------------------------------ */
+.dev {
+  --pad: 14px;
+  display: grid;
+}
+.glass {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  padding: var(--pad);
+  border-radius: 12px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #0d0e11 0%, #050608 55%, #08090c 100%);
+  box-shadow:
+    0 0 0 1px #000,
+    inset 0 1px 0 rgb(255 255 255 / 0.16),
+    inset 0 -1px 0 rgb(255 255 255 / 0.05),
+    0 14px 26px -18px rgb(0 0 0 / 0.8);
+}
+.glass::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    linear-gradient(101deg, transparent 0 22%, rgb(255 255 255 / 0.055) 22% 27%, rgb(255 255 255 / 0.018) 27% 38%, transparent 38% 100%),
+    linear-gradient(180deg, rgb(255 255 255 / 0.07), transparent 30%);
+}
+.glass-screen {
+  position: relative;
+  flex: none;
+  width: 240px;
+  height: 135px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #000;
+  box-shadow:
+    0 0 0 1px #000,
+    0 0 0 2px rgb(255 255 255 / 0.05);
+}
+/* The panel's pixel grid, faintly. */
+.glass-screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgb(0 0 0 / 0.22) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(0 0 0 / 0.22) 1px, transparent 1px);
+  background-size: 2px 2px;
+}
+.glass-art {
+  min-width: 0;
+  flex: 1;
+  height: 120px;
+}
+.glass-art svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.glass-knob {
+  position: relative;
+  flex: none;
+  width: 135px;
+  height: 135px;
+}
+.glass-knob svg {
+  position: absolute;
+  inset: 0;
+  width: 135px;
+  height: 135px;
+}
+.glass-knob .cap {
+  position: absolute;
+  inset: 16px;
+  border-radius: 50%;
+  background: repeating-conic-gradient(#d6d9de 0deg 2deg, #979ca3 2deg 4deg);
+  box-shadow:
+    0 7px 14px rgb(0 0 0 / 0.8),
+    0 0 0 1px rgb(0 0 0 / 0.7);
+}
+.glass-knob .face {
+  position: absolute;
+  inset: 24px;
+  border-radius: 50%;
+  background:
+    repeating-radial-gradient(circle at 50% 50%, rgb(0 0 0 / 0.035) 0 1px, transparent 1px 3px),
+    conic-gradient(from 205deg, #f4f5f7, #b1b6bd 16%, #eef0f2 31%, #9ea4ac 49%, #e9ebee 66%, #b6bbc2 83%, #f4f5f7);
+  box-shadow:
+    inset 0 1px 1px rgb(255 255 255 / 0.85),
+    inset 0 -2px 4px rgb(0 0 0 / 0.28),
+    0 0 0 1px rgb(0 0 0 / 0.3);
+}
+.glass-knob .face::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  width: 3px;
+  height: 13px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: #ff8a3d;
+  box-shadow: 0 0 5px rgb(255 138 61 / 0.85);
+  transform-origin: 50% 37.5px;
+  transform: rotate(var(--turn, 135deg));
+}
+/* Narrow page: the picture on the glass gives way first. */
+@container (max-width: 640px) {
+  .glass-art {
+    display: none;
+  }
+  .glass {
+    justify-content: space-between;
+  }
+}
+.dev-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 18px;
+  padding: 10px var(--pad) 14px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-2);
+}
+.dev-plate {
+  padding: var(--pad);
+  border-radius: 12px;
+  background: var(--plate);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.5);
+}
+.dev-live {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding: 10px var(--pad) 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-2);
 }
 
 /* ------------------------------------------------------------------

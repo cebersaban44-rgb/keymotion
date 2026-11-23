@@ -4,17 +4,22 @@
 
 import type { GeometryInfo } from "../bindings/GeometryInfo";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
+import type { Locale } from "./i18n/locales";
 // Generated from Rust by `cargo test` (dto.rs export_mock_geometry).
 import ak980Geometry from "../bindings/geometry-ajazz-ak980-pro.json";
 
 /** The keyboard the app supports today (site: help/keyboards). */
 export const SUPPORTED_MODEL = "AJAZZ AK980 PRO";
+export const SUPPORTED_MODEL_ID = "ajazz-ak980-pro";
 
 /** The project's documentation site (site/, published from main). */
 export const DOCS_URL = "https://cebersaban44-rgb.github.io/keymotion/";
 
+/** Each interface language's folder on the documentation site (English is the root). */
+const DOCS_FOLDER: Record<Locale, string> = { en: "", tr: "tr/", ru: "ru/", "zh-CN": "zh-cn/" };
+
 /** A page of the documentation site in the interface language ("" is the home page). */
-export const docsPage = (path: string, locale: string) => `${DOCS_URL}${locale === "tr" ? "tr/" : ""}${path}`;
+export const docsPage = (path: string, locale: Locale) => `${DOCS_URL}${DOCS_FOLDER[locale]}${path}`;
 
 /**
  * Stand-in for the supported model while nothing is connected. No channel
@@ -24,7 +29,7 @@ export const docsPage = (path: string, locale: string) => `${DOCS_URL}${locale =
  */
 export const OFFLINE_KEYBOARD: KeyboardInfo = {
   key: "offline",
-  modelId: "ajazz-ak980-pro",
+  modelId: SUPPORTED_MODEL_ID,
   modelName: SUPPORTED_MODEL,
   vendor: "AJAZZ",
   layout: "98",
@@ -41,6 +46,7 @@ export const OFFLINE_KEYBOARD: KeyboardInfo = {
   hasDisplayChannel: false,
   bleName: null,
   bleAddress: null,
+  bleConnected: false,
   battery: null,
   geometry: ak980Geometry as GeometryInfo,
 };

@@ -2,7 +2,7 @@
 title: Keymotion ve AK980 PRO hakkında sık sorulanlar
 sidebar:
   label: Sık sorulanlar
-description: "Keymotion ve AJAZZ AK980 PRO üzerine kısa yanıtlar: Windows uyarısı, virüs taramaları, sürücü ve AJAZZ'ın yazılımı, ekrana GIF koyma, Bluetooth ve 2.4 GHz alıcı, yalnızca Windows, klavyenin güvenliği, verileriniz ve AK980 V2."
+description: "Keymotion ve AJAZZ AK980 PRO üzerine kısa yanıtlar: Windows uyarısı, virüs taramaları, sürücü ve AJAZZ'ın yazılımı, ekrana GIF koyma, Bluetooth ve 2.4 GHz alıcı, yalnızca Windows, klavyenin güvenliği, oyunlar ve hile önleyiciler, verileriniz ve AK980 V2."
 ---
 
 import { Aside } from "@astrojs/starlight/components";
@@ -66,7 +66,7 @@ USB kablosunda ise tersi geçerlidir: klavye pil düzeyini bildirmez. Keymotion 
 
 ## 2.4 GHz alıcıyla ne olur?
 
-Klavye alıcıyla normal çalışır ve Keymotion onu tanır, ama alıcı üzerinden henüz ayar yapılamaz. Ayarları değiştirmek için USB kablosunu kullanın. Her bağlantıda nelerin çalıştığı [Bağlantı](/keymotion/tr/guide/connection/) sayfasında.
+Alıcıyla her zamanki gibi yazabilirsiniz. Keymotion alıcının takılı olduğunu görür, ama onunla henüz konuşmaz; bu yüzden arkasındaki klavyenin açık olup olmadığını anlayamaz ve alıcı üzerinden ayar yapamaz. Ayarları değiştirmek için USB kablosunu kullanın. Her bağlantıda nelerin çalıştığı [Bağlantı](/keymotion/tr/guide/connection/) sayfasında.
 
 ## Keymotion klavyeme zarar verebilir mi?
 
@@ -74,7 +74,7 @@ Keymotion klavyeye özenle davranacak biçimde yapıldı:
 
 - Yalnızca bu klavyede denenmiş komutları gönderir. Başka her komut bilgisayarınızdan çıkmadan engellenir; klavye yazılımını güncellemeye başlatacak komutlar da bunlara dahildir. Keymotion klavyenin yazılımını hiçbir zaman güncellemez, Bluetooth'ta ise klavyeye hiçbir şey yazmaz.
 - Ayarlarınız klavyenin kalıcı belleğine yalnızca siz kaydettiğinizde ya da yüklediğinizde gider, örneğin **Klavyeye kaydet** ile. Önizlemeler kaydedilmez.
-- Kaydetmeden önce denetler. Klavyenizin yazılım sürümü Keymotion'la denenmemişse önce size sorar. Klavye yazılımını tanımazsa hiçbir şey göndermez. Klavyeyi başka bir program kullanıyorsa ya da USB'ye birden fazla klavye bağlıysa kaydetmez.
+- Kaydetmeden önce denetler. Klavyenizin yazılım sürümü Keymotion'la denenmemişse önce size sorar; siz onay verene kadar klavyenin saatini de eşitlemez. Klavyenin saklamadığı canlı ışıklar ise sormadan çalışır. Klavye yazılımını tanımazsa hiçbir şey göndermez. Klavyeyi başka bir program kullanıyorsa ya da USB'ye birden fazla klavye bağlıysa kaydetmez.
 - Kayıt sürerken Keymotion'ı kapatırsanız kaydın bitmesini bekler, sonra kapanır. Windows'u kapatırsanız Windows, Keymotion'ın klavyeye kayıt yaptığını gösterir.
 
 Ekranın belleği her yüklemeyle biraz yıpranır. Ömrü kesin bilinmiyor; bu tür belleklerin bilinen ömrüne göre günde birkaç yükleme yıllarca sorun çıkarmaz. Canlı ekranın günlük yükleme sınırı bu yüzden vardır.
@@ -87,7 +87,23 @@ Bir aygıtın kalıcı belleğine yazmak onu her zaman istenmeyen bir durumda b�
 
 Kaydettikleriniz için gerekmez. Işıklar, tuş atamaları, makrolar ve ekrandaki görsel klavyenin kendisinde saklanır.
 
-Odak zamanlayıcısı, hatırlatıcılar, takvim kartları, canlı ekran ve sistem göstergeleri için Keymotion'ın çalışıyor olması gerekir. Penceresini kapattığınızda Keymotion saatin yanındaki simgesiyle çalışmaya devam eder. Bunu **Ayarlar**'da, **Kapatma ve açılış** bölümünde değiştirebilirsiniz. Bkz. [Ayarlar](/keymotion/tr/guide/settings/).
+Odak zamanlayıcısı, hatırlatıcılar, takvim kartları, canlı ekran, sistem göstergeleri, oyun oturumu ve uygulamaya göre profiller için Keymotion'ın çalışıyor olması gerekir. Penceresini kapattığınızda Keymotion saatin yanındaki simgesiyle çalışmaya devam eder. Bunu **Ayarlar**'da, **Kapatma ve açılış** bölümünde değiştirebilirsiniz. Bkz. [Ayarlar](/keymotion/tr/guide/settings/).
+
+## Keymotion'ı oyunlarda ve hile önleyicilerle kullanmak güvenli mi?
+
+Keymotion bir oyunun belleğini okumaz ya da değiştirmez, oyunlara tuş göndermez ve sürücü kurmaz. Hangi programın önde olduğunu Windows'un erişilebilirlik araçlarının kullandığı yoldan görür; bir League of Legends maçında da yalnız oyunun bilgisayarınızda kendi sunduğu veriyi okur. Bir oyunun hile önleyicisiyle yine de sorun yaşarsanız [Oyun oturumu](/keymotion/tr/guide/game-session/#hile-önleyiciler) sayfasında **Oyun sürerken klavyeye hiçbir şey gönderilmesin**'i açın.
+
+League of Legends, VALORANT ve CS2 gibi rekabetçi oyunlarda makrolar, klavyenin kendi makroları bile, oyunun kurallarına aykırı olabilir. Keymotion bir oyun için makroları kendi başına açmaz.
+
+[Müzik modu](/keymotion/tr/guide/music-mode/) da bir oyunun koduna ya da belleğine dokunmaz: Görüşme ve yayın uygulamaları gibi yalnızca Windows'un hoparlörünüze gönderdiği karışık sesi okur ve sol ile sağı hiçbir zaman ayrı göstermez. **Oyun oynarken dur** seçeneği başta açıktır.
+
+## Müzik modu mikrofonumu dinler mi?
+
+Hayır. Yalnızca bilgisayarınızın çaldığı sesi, hoparlörünüze ya da kulaklığınıza giderken okur; o da yalnızca o anki yüksekliğini. Hiçbir şey kaydedilmez, saklanmaz, bir yere gönderilmez.
+
+## Müzik ışıkları neden bazı uygulamalarda tepki vermiyor?
+
+Bazı müzik çalarlar sesi kendilerine ayırabilir (ayarlarında çoğunlukla "özel mod" ya da "exclusive mode" diye geçer); yayın uygulamalarındaki bazı korumalı film ve diziler de paylaşılmaz. Windows bu sesi başka hiçbir programa vermez, ışıklar da kıpırdamaz. Müzik modu Windows'un varsayılan çıkışını izler: Ses başka bir aygıttan çalıyorsa Windows ses ayarlarından onu seçin.
 
 ## Ayarlarım nerede saklanıyor?
 
@@ -102,13 +118,37 @@ Bilgisayarınızda, Windows kullanıcı klasörünüzde:
 
 Hayır. Kullanım bilgisi toplamaz, hesap istemez, sizinle ya da bilgisayarınızla ilgili hiçbir şey göndermez. İnternete yalnızca eklediğiniz takvimleri okumak ve GitHub'da yeni sürüm olup olmadığına bakmak için bağlanır. Sorun bildirimleri GitHub'a yalnızca siz gönderdiğinizde gider. Ayrıntılar [Gizlilik politikası](/keymotion/tr/about/privacy/) sayfasında.
 
+## Codex yeni kancaları onaylamamı istiyor. Onaylamalı mıyım?
+
+Evet, Codex'i **Yapay zekâ ajanları** sayfasında bağladıysanız. Codex, Keymotion'ın eklediği kancalara güvenmek için bir kez onayınızı ister: Codex'te `/hooks` yazın ya da Codex uygulamasında Ayarlar › Kancalar'ı açın ve onaylayın. O zamana kadar Keymotion **Codex'te bir kez onay bekliyor** gösterir ve Codex bir işin bittiğini ya da sizi beklediğini Keymotion'a haber vermez. Keymotion güncellenince kancalar değişmez, bu yüzden Codex yeniden sormaz. [Yapay zekâ ajanları](/keymotion/tr/guide/ai-agents/) sayfasına bakın.
+
+## Keymotion'ı kaldırmadan önce ne yapmalıyım?
+
+Claude Code'u ya da Codex'i **Yapay zekâ ajanları** sayfasında bağladıysanız önce bağlantıları kaldırın: **Yapay zekâ ajanları**'nı açın, her uygulamanın yanındaki oka tıklayın ve **Bağlantıyı kaldır**'ı seçin. Claude Code, Keymotion'ın komut satırı aracını doğrudan çağırır; bu yüzden Keymotion kaldırıldıktan sonra, bağlantı kaldırılana kadar her olayda bir kanca hatası bildirir. Bu en çok Microsoft Store'dan kurulan Keymotion için önemlidir: Windows onu, arkasını toplamasına fırsat vermeden kaldırır.
+
+GitHub'dan kurulan Keymotion, onu kendi Windows hesabınızdan kaldırdığınızda bağlantılarını kendisi kaldırır. Başka bir Windows hesabıyla (Windows'un sorusuna yazılan bir yöneticinin adı ve parolası) kaldırırsanız onları bırakır: önce bağlantıları kaldırın.
+
+Zaten kaldırdıysanız Keymotion'ı yeniden kurup bağlantıları kaldırın ya da `%USERPROFILE%\.claude\settings.json` dosyasından `keymotion-cli` geçen kancaları kendiniz silin.
+
 ## Başka klavyelerle çalışır mı?
 
 Henüz çalışmaz. Keymotion AJAZZ AK980 PRO'yu destekler. Henüz desteklenmeyen bir SONiX ya da AJAZZ klavye takarsanız Keymotion bunu söyler, klavyeye hiçbir şey göndermez ve GitHub'da destek istemeniz için **Destek iste**'yi sunar. Bkz. [Desteklenen klavyeler](/keymotion/tr/help/keyboards/).
 
 ## AJAZZ AK980 V2'de çalışır mı?
 
-Evet. Keymotion'ın denendiği klavye AK980 V2 olarak satıldı: AJAZZ'ın mağazası onu "AK980MAX … V2" adıyla listeliyordu, kutusunda "AK980 V2" yazıyor. USB'de kendini "SONiX AK980 PRO" diye tanıtır ve Keymotion onu böyle tanır. Önemli olan donanım: 240×135 ekranlı ve topuzlu 98 tuşlu model. Bkz. [Desteklenen klavyeler](/keymotion/tr/help/keyboards/).
+Evet. Keymotion'ın denendiği klavye AK980 V2 olarak satıldı: AJAZZ'ın mağazası onu "AK980MAX … V2" adıyla listeliyordu, kutusunda "AK980 V2" yazıyor. USB'de üretici olarak SONiX'i, ad olarak "AK980 PRO"yu bildirir; Keymotion onu bu addan tanır. Önemli olan donanım: 240×135 ekranlı ve topuzlu 98 tuşlu model. Bkz. [Desteklenen klavyeler](/keymotion/tr/help/keyboards/).
+
+## AJAZZ'ın en yeni klavye yazılımını kurmalı mıyım?
+
+AJAZZ'ın AK980 PRO için en yeni klavye yazılımı "AK980 Led v2 Firmware 769" (sürüm 3.01), klavyeyi farklı bir komut takımına geçirir; klavye bundan sonra genellikle yeni bir USB kimliğiyle, 0C45:8039 olarak görünür. AJAZZ'ın web sitesindeki klavye aracı bunu eski AK980 PRO klavyelere de önerir. Keymotion bu klavye yazılımını henüz desteklemiyor ve onu çalıştıran bir klavyeye hiçbir şey göndermez; desteğin sonraki bir güncellemede gelmesi planlanıyor. AJAZZ eski klavye yazılımına dönmenin bir yolunu sunmuyor.
+
+Karar sizin: Keymotion'ı şimdi kullanmaya devam etmek istiyorsanız güncellemeden önce bekleyin. Eski klavye yazılımındaki klavyeler eskisi gibi çalışır.
+
+## Klavyem artık tanınmıyor
+
+Keymotion bir klavyeyi artık tanımıyorsa (örneğin bir klavye yazılımı güncellemesinden sonra) ona hiçbir şey göndermez ve **Destek iste** ile birlikte **Bu klavye henüz desteklenmiyor** gösterir. Ona, sonra **GitHub'da bildir**'e tıklayın: klavyenin bilgileri panoya kopyalanır ve projenin GitHub'daki formu açılır. Bilgileri formun ayrıntılar kutusuna yapıştırın (Ctrl+V) ve gönderin; klavyeyi desteklemek için gereken bu bilgilerdir. Klavyeye hiçbir şey yazılmaz.
+
+Keymotion klavyeyi hâlâ tanıyor ama klavye yazılımının denenmediğini söylüyorsa çalışmaya devam eder ve klavyeye kaydetmeden önce size sorar. [Keymotion klavyeme zarar verebilir mi?](#keymotion-klavyeme-zarar-verebilir-mi) sorusuna bakın.
 
 ## Keymotion'ı AJAZZ mı yaptı?
 

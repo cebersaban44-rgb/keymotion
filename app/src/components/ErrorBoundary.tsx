@@ -60,7 +60,7 @@ function CrashNotice({ full, detail }: { full?: boolean; detail: string }) {
             <TriangleAlert size={19} />
           </span>
           <div className="flex flex-col gap-1.5">
-            <h1 className="font-display text-[20px] leading-tight font-semibold">{t("crash.title")}</h1>
+            <h1 className="subtitle">{t("crash.title")}</h1>
             <p className="text-[13px] leading-relaxed text-ink-2">{t("crash.body")}</p>
           </div>
         </div>
@@ -68,7 +68,7 @@ function CrashNotice({ full, detail }: { full?: boolean; detail: string }) {
           <button
             type="button"
             onClick={() => setReporting(true)}
-            className="flex h-9 items-center gap-2 rounded-lg border border-line bg-bg-raise px-3.5 text-[13px] text-ink transition-colors hover:border-line-strong"
+            className="btn-secondary"
           >
             <MessageSquareWarning size={14} />
             {t("report.problem.report")}
@@ -77,7 +77,7 @@ function CrashNotice({ full, detail }: { full?: boolean; detail: string }) {
             type="button"
             autoFocus
             onClick={() => location.reload()}
-            className="flex h-9 items-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink transition-transform active:scale-[0.98]"
+            className="btn-primary"
           >
             <RotateCw size={14} />
             {t("crash.reload")}

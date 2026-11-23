@@ -3,7 +3,7 @@ import { create } from "zustand";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { ThemePreference } from "../bindings/ThemePreference";
 import type { UiEnvironment } from "../bindings/UiEnvironment";
-import type { Locale } from "./i18n";
+import { LOCALES, localeForWindows, type Locale } from "./i18n/locales";
 
 export type PageId =
   | "overview"
@@ -15,8 +15,11 @@ export type PageId =
   | "connection"
   | "focus"
   | "gauges"
+  | "music"
   | "reminders"
   | "calendar"
+  | "games"
+  | "agents"
   | "settings";
 /** Tabs of the Screen page. */
 export type ScreenTab = "visuals" | "live";
@@ -29,7 +32,8 @@ interface AppState {
   screenTab: ScreenTab;
   theme: ThemePreference;
   locale: Locale;
-  /** The window is on screen (false while the app runs in the tray). */
+  /** The window is on screen (false while the app runs in the tray or the
+   *  window is minimized). */
   windowShown: boolean;
   /** A profile chosen in the tray menu: the Profiles page asks to load it. */
   profileRequest: string | null;
@@ -58,12 +62,12 @@ function load<T extends string>(key: string, allowed: readonly T[], fallback: T)
 }
 
 /** The language to start in until the user picks one in Settings: Windows'
- *  display language when the app has it (Turkish), English for every other
- *  (owner's decision, 2026-11-12). WebView2 starts with Windows' display
- *  language, so `navigator.language` is it. */
+ *  display language when the app has it, English otherwise (the rules are
+ *  in localeForWindows). WebView2 starts with Windows' display language, so
+ *  `navigator.language` is it. */
 function windowsLocale(): Locale {
   try {
-    return navigator.language.toLowerCase().startsWith("tr") ? "tr" : "en";
+    return localeForWindows(navigator.language);
   } catch {
     return "en";
   }
@@ -84,11 +88,16 @@ export const useApp = create<AppState>((set) => ({
   page: "overview",
   screenTab: load<ScreenTab>("ks.screenTab", ["visuals", "live"], "visuals"),
   theme: load<ThemePreference>("ks.theme", ["system", "dark", "light"], "system"),
-  locale: load<Locale>("ks.locale", ["tr", "en"], windowsLocale()),
+  locale: load<Locale>("ks.locale", LOCALES, windowsLocale()),
   windowShown: true,
   profileRequest: null,
   setKeyboards: (keyboards) => set({ keyboards, loaded: true }),
-  setEnv: (env) => set({ env }),
+  setEnv: (env) => {
+    // For theme-boot.js, which marks the window translucent before the app
+    // can ask (the launch animation shows on it).
+    save("ks.mica", String(env.mica));
+    set({ env });
+  },
   setPage: (page) => set({ page }),
   setScreenTab: (screenTab) => {
     save("ks.screenTab", screenTab);
@@ -133,10 +142,20 @@ export function useNarrowWindow(): boolean {
   return narrow;
 }
 
-/** The keyboard the UI is focused on: prefer the richest connection. */
+/**
+ * Which entry to show when the app sees the keyboard more than one way,
+ * lowest first (the backend's `KeyboardInfo::focus_rank`, which the tray
+ * follows): the cable; Bluetooth while the keyboard says it is connected;
+ * the 2.4 GHz receiver, which shows up whether or not a keyboard is on
+ * behind it; Bluetooth not known to be connected.
+ */
+export function focusRank(k: KeyboardInfo): number {
+  if (k.connection === "usb") return 0;
+  if (k.connection === "bluetooth") return k.bleConnected ? 1 : 3;
+  return 2;
+}
+
+/** The keyboard the UI is focused on (focusRank). */
 export function useActiveKeyboard(): KeyboardInfo | null {
-  return useApp((s) => {
-    const rank = { usb: 0, dongle: 1, bluetooth: 2 } as const;
-    return [...s.keyboards].sort((a, b) => rank[a.connection] - rank[b.connection])[0] ?? null;
-  });
+  return useApp((s) => [...s.keyboards].sort((a, b) => focusRank(a) - focusRank(b))[0] ?? null);
 }

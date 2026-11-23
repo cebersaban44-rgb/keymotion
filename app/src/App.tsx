@@ -1,6 +1,7 @@
 import { Lock } from "lucide-react";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useEffect, useState } from "react";
+import { Row } from "./components/controls";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Reporting } from "./components/Reporting";
 import { Sidebar } from "./components/Sidebar";
@@ -21,28 +22,50 @@ import {
   setWindowTheme,
 } from "./lib/ipc";
 import { follow } from "./lib/follow";
+import { useUnsupported } from "./lib/report";
 import { useUnsaved } from "./lib/unsaved";
-import { connectionKey, tNow, useT, type MessageKey } from "./lib/i18n";
+import { connectionKey, modelNames, tNow, useT, type MessageKey } from "./lib/i18n";
 import { useKeymap } from "./lib/keymap";
 import { useLayout } from "./lib/layout";
+import { startAgentCards } from "./lib/agentCards";
 import { startLive } from "./lib/live";
-import { calendarCard, calendarWords, nowPlayingCard, pomodoroCard, pomodoroWords, reminderCard, reminderWords } from "./lib/liveCards";
+import {
+  agentCard,
+  agentCardWords,
+  calendarCard,
+  calendarWords,
+  gameStartCard,
+  gameSummaryCard,
+  gameWords,
+  nowPlayingCard,
+  pomodoroCard,
+  pomodoroWords,
+  reminderCard,
+  reminderWords,
+} from "./lib/liveCards";
+import { gameCover, startGames } from "./lib/games";
+import { programIconData } from "./lib/icons";
 import { startPomodoro, usePomodoro, DEFAULT_SETTINGS } from "./lib/pomodoro";
 import { followGauges, useGauges } from "./lib/gauges";
+import { followMusic, useMusic } from "./lib/music";
 import { startCalendar, useCalendar } from "./lib/calendar";
 import { startReminders } from "./lib/reminders";
 import { startUpdates, useUpdates } from "./lib/updates";
 import { UpdateDialog, UpdateStrip } from "./components/Updates";
 import { useMacros } from "./lib/macros";
+import { followAutoWrites } from "./lib/profiles";
 import { useScreen } from "./lib/screen";
+import { followSelectWidths } from "./lib/selectWidth";
 import { OFFLINE_KEYBOARD } from "./lib/offline";
 import { useActiveKeyboard, useApp, type PageId } from "./lib/store";
 import { Calendar } from "./pages/Calendar";
+import { Games } from "./pages/Games";
 import { Connection } from "./pages/Connection";
 import { Keymap } from "./pages/Keymap";
 import { Macros } from "./pages/Macros";
 import { Focus } from "./pages/Focus";
 import { Gauges } from "./pages/Gauges";
+import { Music } from "./pages/Music";
 import { Reminders } from "./pages/Reminders";
 import { Lighting } from "./pages/Lighting";
 import { Overview } from "./pages/Overview";
@@ -50,6 +73,7 @@ import { Profiles } from "./pages/Profiles";
 import { Screen, ScreenUploadToast } from "./pages/Screen";
 import { ScreenNotices } from "./pages/screen/Safety";
 import { Settings } from "./pages/Settings";
+import { Agents } from "./pages/Agents";
 import { Welcome } from "./pages/Welcome";
 import { finishIntro } from "./lib/intro";
 
@@ -69,12 +93,14 @@ function useBootstrap() {
       window.removeEventListener("focus", refreshLayout);
     };
   }, [setKeyboards, setEnv]);
+  // List boxes as wide as their longest choice, whatever is chosen.
+  useEffect(() => followSelectWidths(), []);
 }
 
 function useThemeSync() {
   const theme = useApp((s) => s.theme);
   const locale = useApp((s) => s.locale);
-  const mica = useApp((s) => s.env?.mica ?? false);
+  const mica = useApp((s) => s.env?.mica);
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
     const apply = () => {
@@ -87,7 +113,8 @@ function useThemeSync() {
     return () => media.removeEventListener("change", apply);
   }, [theme]);
   useEffect(() => {
-    document.documentElement.dataset.mica = String(mica);
+    // Until the backend answers, theme-boot.js's mark from the last start stays.
+    if (mica !== undefined) document.documentElement.dataset.mica = String(mica);
   }, [mica]);
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -106,6 +133,8 @@ function useKeyboardRecords() {
     useMacros.getState().load(modelId).catch(console.error);
     useScreen.getState().load(modelId).catch(console.error);
   }, [modelId]);
+  // A profile written by the per-app profiles: those records are read again.
+  useEffect(() => (modelId ? followAutoWrites(modelId) : undefined), [modelId]);
 }
 
 /** Words of the Pomodoro cards in the current language. */
@@ -129,12 +158,30 @@ function useLiveScreen() {
     [],
   );
   useEffect(() => startReminders((card) => reminderCard(card, reminderWords(tNow, useApp.getState().locale))), []);
+  useEffect(() => startAgentCards((card) => agentCard(card, agentCardWords(tNow, useApp.getState().locale))), []);
+  useEffect(
+    () =>
+      startGames(async (card) => {
+        if (card.kind !== "start") return gameSummaryCard(card, gameWords(tNow));
+        const cover = card.steamApp != null ? await gameCover(card.steamApp) : null;
+        // No cover (or one that can't be read): the program's own icon.
+        const exe = card.exe;
+        return gameStartCard(card, cover, gameWords(tNow), () => (exe ? programIconData(exe, 48) : Promise.resolve(null)));
+      }),
+    [],
+  );
   useEffect(() => startUpdates(), []);
   // Whether the system gauges are on (the Lighting page says so); the
   // tray menu can switch them too.
   useEffect(() => {
     useGauges.getState().load().catch(console.error);
     return followGauges();
+  }, []);
+  // Whether music mode is on (the Lighting and gauges pages say so); the
+  // tray menu can switch it too.
+  useEffect(() => {
+    useMusic.getState().load().catch(console.error);
+    return followMusic();
   }, []);
 }
 
@@ -146,12 +193,17 @@ function useTray() {
   const locale = useApp((s) => s.locale);
   const setWindowShown = useApp((s) => s.setWindowShown);
   const requestProfile = useApp((s) => s.requestProfile);
+  // A keyboard Keymotion can't drive yet (an AK980 PRO on AJAZZ's firmware
+  // 769, or another model): the menu says why no keyboard shows.
+  const unsupported = useUnsupported();
+  const newFirmware = unsupported.newFirmware.length > 0;
+  const otherKeyboard = unsupported.list.length > 0;
   useEffect(() => {
     // Templates go as they are: the backend fills in {min}, {n}, ….
     setTrayTexts({
       locale,
       open: tNow("tray.open"),
-      noKeyboard: tNow("tray.noKeyboard"),
+      noKeyboard: tNow(newFirmware ? "fw769.tray" : otherKeyboard ? "unsupported.tray" : "tray.noKeyboard"),
       battery: tNow("tray.battery"),
       connUsb: tNow(connectionKey("usb")),
       connDongle: tNow(connectionKey("dongle")),
@@ -175,6 +227,7 @@ function useTray() {
       remindersNone: tNow("tray.reminders.none"),
       tomorrow: tNow("tray.tomorrow"),
       gauges: tNow("tray.gauges"),
+      music: tNow("tray.music"),
       profiles: tNow("tray.profiles"),
       defaultProfile: tNow("prof.default"),
       quit: tNow("tray.quit"),
@@ -183,6 +236,11 @@ function useTray() {
       updateAvailable: tNow("tray.update.available"),
       updateReady: tNow("tray.update.ready"),
       updateTooltip: tNow("tray.update.tooltip"),
+      game: tNow("tray.game"),
+      gameHours: tNow("games.time.hours"),
+      gameMinutes: tNow("games.time.minutes"),
+      gameLess: tNow("games.time.less"),
+      autoProfile: tNow("tray.autoProfile"),
       noticeReadyTitle: tNow("notice.update.ready.title"),
       noticeReadyBody: tNow("notice.update.ready.body"),
       noticeInstall: tNow("notice.update.install"),
@@ -190,18 +248,29 @@ function useTray() {
       noticeInstalledTitle: tNow("notice.update.installed.title"),
       noticeInstalledAuto: tNow("notice.update.installed.auto"),
       noticeWhatsNew: tNow("update.whatsNew"),
+      modelNames: modelNames(),
     }).catch(console.error);
-  }, [locale]);
+  }, [locale, newFirmware, otherKeyboard]);
   useEffect(() => {
     let alive = true;
     const offs: (() => void)[] = [];
     const keep = (off: () => void) => (alive ? offs.push(off) : off());
-    isWindowShown().then(setWindowShown).catch(console.error);
-    onWindowShown(setWindowShown).then(keep);
+    // On screen: shown by the backend (not in the tray, not minimized) and
+    // not hidden to the page itself, where WebView2 says so.
+    let shown = true;
+    const update = () => setWindowShown(shown && document.visibilityState !== "hidden");
+    const fromBackend = (value: boolean) => {
+      shown = value;
+      update();
+    };
+    isWindowShown().then(fromBackend).catch(console.error);
+    onWindowShown(fromBackend).then(keep);
+    document.addEventListener("visibilitychange", update);
     onTrayProfile(requestProfile).then(keep);
     return () => {
       alive = false;
       offs.forEach((off) => off());
+      document.removeEventListener("visibilitychange", update);
     };
   }, [setWindowShown, requestProfile]);
 }
@@ -249,27 +318,18 @@ function DeviceLocked({ page }: { page: PageId }) {
   return (
     <div className="flex flex-col gap-6" data-locked={page}>
       {info && (
-        <header className="flex flex-col gap-2">
+        <header>
           <h1 className="page-title">{t(info.title)}</h1>
           <p className="page-desc">{t(info.desc)}</p>
         </header>
       )}
-      <section className="card flex flex-wrap items-center gap-4 p-5">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-ink-2">
-          <Lock size={18} aria-hidden />
-        </span>
-        <div className="min-w-[220px] flex-1">
-          <h2 className="eyebrow">{t("locked.title")}</h2>
-          <p className="mt-0.5 text-[13px] text-ink-2">{t("locked.body")}</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setPage("overview")}
-          className="h-9 rounded-lg border border-line px-3 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink"
-        >
-          {t("locked.steps")}
-        </button>
-      </section>
+      <div className="rows">
+        <Row icon={Lock} title={t("locked.title")} desc={t("locked.body")}>
+          <button type="button" onClick={() => setPage("overview")} className="btn-secondary">
+            {t("locked.steps")}
+          </button>
+        </Row>
+      </div>
     </div>
   );
 }
@@ -308,12 +368,18 @@ export default function App() {
         return <Focus kb={tool} />;
       case "gauges":
         return <Gauges kb={tool} />;
+      case "music":
+        return <Music kb={tool} />;
       case "reminders":
         return <Reminders kb={tool} />;
       case "calendar":
         return <Calendar />;
+      case "games":
+        return <Games kb={tool} />;
       case "screen":
         return <Screen kb={tool} />;
+      case "agents":
+        return <Agents />;
     }
     if (!kb) return page === "overview" || page === "connection" ? <Welcome /> : <DeviceLocked page={page} />;
     switch (page) {
@@ -333,10 +399,10 @@ export default function App() {
   return (
     // Follows Windows' "Animation effects" setting.
     <MotionConfig reducedMotion="user">
-    <div className="flex h-full bg-bg">
+    <div className="flex h-full">
       <div className="contents" inert={guard.asking || safetyOpen || updateOpen}>
         <Sidebar />
-        <main className="relative min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+        <main className="page-layer relative min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
           <AnimatePresence mode="wait">
             <motion.div
               key={page + (kb?.key ?? "none")}
@@ -344,7 +410,7 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.18 }}
-              className="@container mx-auto min-h-full max-w-[1240px] px-6 pt-7 pb-10 min-[1200px]:px-10 min-[1200px]:pt-9"
+              className="@container mx-auto min-h-full max-w-[1240px] px-6 pt-[26px] pb-11 min-[1200px]:px-10"
             >
               {/* A new version found by the daily look (or downloading). */}
               <UpdateStrip />

@@ -21,7 +21,7 @@ Sistem göstergeleri tuşlarınızı küçük ölçerlere çevirir. İşlemci, e
 
 Anahtarın altındaki satır tuşların şu an ne yaptığını söyler; örneğin **Tuşlarda görünüyor** ya da **Yalnız önizleme**. Klavye çizimi tuşlarda görüneni gösterir. Altında anlık değerler yer alır: **İşlemci**, **Ekran kartı**, **Bellek**, **Ses düzeyi** ve **Mikrofon**. Çizim ve değerler, göstergeleri açmadan önce de çalışır.
 
-Göstergeler açıkken kayıtlı ışığınız görünmez. Gösterge olmayan tuşlar **Görünüm** ayarına göre yanar.
+Göstergeler açıkken kayıtlı ışığınız görünmez. Gösterge olmayan tuşlar **Görünüm** ayarına göre yanar. [Oyun oturumunda](/keymotion/tr/guide/game-session/#oyunda-ışıklar) oyunun tuşları yanarken göstergeler bekler; mikrofon kapalı uyarısı yine görünür.
 
 Pencereyi kapattığınızda Keymotion çalışmaya devam ediyorsa saatin yanındaki simgesinin menüsünden de **Tuşlarda sistem göstergeleri** açılıp kapatılabilir.
 
@@ -41,7 +41,7 @@ Her yük, bir tuş sırasını soldan sağa dolduran bir çubukla gösterilir. H
 
 Başta işlemci ve ekran kartı açık, bellek kapalıdır.
 
-İki ekran kartı varsa daha yoğun olanı gösterilir. Sıcaklık gösterilmez, çünkü Windows bunu ek bir sürücü olmadan vermez.
+İki ekran kartı varsa daha yoğun olanı gösterilir. Sıcaklık tuşlarda gösterilmez; ekran kartı sıcaklığını bildiriyorsa en yüksek değer [oyun oturumunun](/keymotion/tr/guide/game-session/) özet kartında görünür.
 
 ## Ses düzeyi
 
@@ -67,10 +67,11 @@ Tuşları aynı anda birkaç şey yakmak isteyebilir. **Öncelik sırası** list
 1. **Işıklar sayfasındaki önizleme**, yalnız orada düzenleme yaparken.
 2. **Ses düzeyi ve mikrofon**, yalnız kendi tuşlarında.
 3. **Odak zamanlayıcısı**, tüm klavyede.
-4. **Yük çubukları**, zamanlayıcı bitince geri gelir.
-5. **Kayıtlı ışık**, üsttekiler kapalıyken.
+4. **Müzik modu**, ses çalarken.
+5. **Yük çubukları**, zamanlayıcı bitince geri gelir.
+6. **Kayıtlı ışık**, üsttekiler kapalıyken.
 
-Yani [odak zamanlayıcısı](/keymotion/tr/guide/focus-timer/) çalışırken yük çubukları bekler, ama ses düzeyi ve mikrofon tuşu görünmeye devam eder.
+Yani [odak zamanlayıcısı](/keymotion/tr/guide/focus-timer/) çalışırken yük çubukları bekler, ama ses düzeyi ve mikrofon tuşu görünmeye devam eder. [Müzik modu](/keymotion/tr/guide/music-mode/) açıkken ses çalarken müzik ışıkları görünür, ses durunca çubuklar geri gelir.
 
 <Aside type="tip" title="Klavyeye hiçbir şey kaydedilmez">
 Göstergeleri kapattığınızda ya da Keymotion'dan çıktığınızda kayıtlı ışığınız geri gelir. Göstergeler klavyede kayıtlı olanı hiç değiştirmez.

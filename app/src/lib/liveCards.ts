@@ -1,20 +1,25 @@
 // Live cards drawn for the keyboard screen (phase C). Same rules as the
 // text cards: fonts loaded first, background dithered, text sharp.
 
+import type { AgentCard } from "../bindings/AgentCard";
 import type { CalendarCard } from "../bindings/CalendarCard";
+import type { GameCard } from "../bindings/GameCard";
 import type { PomodoroCard } from "../bindings/PomodoroCard";
 import type { PomodoroPhase } from "../bindings/PomodoroPhase";
 import type { PomodoroSettings } from "../bindings/PomodoroSettings";
 import type { ReminderCard } from "../bindings/ReminderCard";
 import type { ReminderIcon } from "../bindings/ReminderIcon";
 import type { TrackInfo } from "../bindings/TrackInfo";
-import type { MessageKey, Translate } from "./i18n";
+import { clockTime, fillTemplate, percent, type MessageKey, type Translate } from "./i18n";
+import { iconTone } from "./icons";
 import { phaseColor } from "./pomodoro";
 import { H, STILL_DELAY_MS, W, type Prepared } from "./screenImport";
-import { compose565, makeLayers } from "./screenText";
+import { append, pieces, trimBeforeEllipsis } from "./lineBreak";
+import { compose565, makeLayers, SCRIPT_FONTS } from "./screenText";
 
-const DISPLAY = '"Bricolage Grotesque Variable", "Segoe UI Emoji", sans-serif';
-const SANS = '"Instrument Sans Variable", "Segoe UI Emoji", sans-serif';
+// Russian and Chinese letters come from SCRIPT_FONTS (the card fonts are Latin only).
+const DISPLAY = `"Bricolage Grotesque Variable", "Segoe UI Emoji", ${SCRIPT_FONTS}, sans-serif`;
+const SANS = `"Instrument Sans Variable", "Segoe UI Emoji", ${SCRIPT_FONTS}, sans-serif`;
 
 async function fonts(text: string) {
   try {
@@ -24,26 +29,33 @@ async function fonts(text: string) {
   }
 }
 
+/** Lines, and whether the text was cut to fit them (a text that itself
+ *  ends in "…" fits as it is). */
+type Lines = string[] & { cut: boolean };
+const NO_LINES: Lines = Object.assign([], { cut: false });
+
 /** Lines of at most `maxW`, at most `max` of them; the last one ends in
- *  "…" when text is left over, and words wider than a line are cut. */
-function lines(ctx: CanvasRenderingContext2D, text: string, maxW: number, max: number): string[] {
+ *  "…" when text is left over, and words wider than a line are cut. Chinese
+ *  breaks between words (lineBreak.ts). */
+function lines(ctx: CanvasRenderingContext2D, text: string, maxW: number, max: number): Lines {
   const width = (s: string) => ctx.measureText(s).width;
   const cut = (s: string) => {
-    let c = s;
-    while (c.length > 1 && width(`${c}…`) > maxW) c = c.slice(0, -1);
-    return `${c.replace(/[\s,.;:–-]+$/, "")}…`;
+    // By characters, so an emoji or a rare Chinese character is never split.
+    const chars = Array.from(s);
+    while (chars.length > 1 && width(`${chars.join("")}…`) > maxW) chars.pop();
+    return `${trimBeforeEllipsis(chars.join(""))}…`;
   };
   const out: string[] = [];
   let line = "";
   let rest = false;
-  for (const w of text.split(/\s+/).filter(Boolean)) {
-    const next = line ? `${line} ${w}` : w;
+  for (const p of pieces(text)) {
+    const next = append(line, p);
     if (!line || width(next) <= maxW) {
       line = next;
       continue;
     }
     out.push(line);
-    line = w;
+    line = p.text;
     if (out.length === max) {
       rest = true;
       break;
@@ -58,7 +70,7 @@ function lines(ctx: CanvasRenderingContext2D, text: string, maxW: number, max: n
     const last = fitted[fitted.length - 1]!;
     if (!last.endsWith("…")) fitted[fitted.length - 1] = cut(`${last} `);
   }
-  return fitted;
+  return Object.assign(fitted, { cut: rest || fitted.some((l, i) => l !== out[i]) });
 }
 
 /** Average colour of the cover, darkened for a background behind text. */
@@ -149,11 +161,11 @@ export async function nowPlayingCard(t: TrackInfo, cover: Blob | null, label: st
 
   // Title: as large as fits in two lines.
   let px = 18;
-  let tl: string[] = [];
+  let tl = NO_LINES;
   for (; px >= 12; px--) {
     fg.font = `700 ${px}px ${DISPLAY}`;
     tl = lines(fg, title, maxW, 2);
-    if (!tl.some((l) => l.endsWith("…")) || px === 12) break;
+    if (!tl.cut || px === 12) break;
   }
   fg.fillStyle = "#ffffff";
   const tH = Math.round(px * 1.15);
@@ -188,7 +200,8 @@ export async function nowPlayingCard(t: TrackInfo, cover: Blob | null, label: st
 
 // -------------------------------------------------------------- pomodoro
 
-const MONO = '"JetBrains Mono Variable", monospace';
+// Times and minutes; a Chinese unit after them ("25 分钟") comes from YaHei.
+const MONO = '"JetBrains Mono Variable", "Microsoft YaHei UI", monospace';
 
 /** Words the Pomodoro cards need, in the UI language. */
 export interface PomodoroWords {
@@ -257,7 +270,7 @@ export async function pomodoroCard(c: PomodoroCard, s: PomodoroSettings, w: Pomo
   const color = phaseColor(s, done ? (check ? "break" : "focus") : c.phase);
   const tone = hexRgb(color);
   const light = tone.map((v) => Math.round(v + (255 - v) * 0.35)) as [number, number, number];
-  const endTime = new Date(c.endedMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const endTime = clockTime(c.endedMs);
 
   const title = done ? (c.complete ? w.doneComplete : w.doneStopped) : w.phase[c.phase];
   const big = done ? `${c.focusMin} ${w.min}` : `${String(c.minutes).padStart(2, "0")}:00`;
@@ -374,7 +387,7 @@ export function calendarWords(tNow: (key: MessageKey) => string, locale: string)
   };
 }
 
-const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const clock = (ms: number) => clockTime(ms);
 
 /**
  * Calendar card ("Sıradaki", owner's choice 2026-11-11): the start large,
@@ -438,11 +451,11 @@ export async function calendarCard(c: CalendarCard, calendarName: string, w: Cal
 
   // Title: as large as fits in two lines.
   let px = 18;
-  let tl: string[] = [];
+  let tl = NO_LINES;
   for (; px >= 12; px--) {
     fg.font = `700 ${px}px ${DISPLAY}`;
     tl = lines(fg, title, maxW, 2);
-    if (!tl.some((l) => l.endsWith("…")) || px === 12) break;
+    if (!tl.cut || px === 12) break;
   }
   fg.fillStyle = "#ffffff";
   let y = 84 + px * 0.2;
@@ -609,11 +622,11 @@ export async function reminderCard(c: ReminderCard, w: ReminderWords): Promise<P
 
   // Title: as large as fits in two lines.
   let px = 20;
-  let tl: string[] = [];
+  let tl = NO_LINES;
   for (; px >= 12; px--) {
     fg.font = `700 ${px}px ${DISPLAY}`;
     tl = lines(fg, title, maxW, 2);
-    if (!tl.some((l) => l.endsWith("…")) || px === 12) break;
+    if (!tl.cut || px === 12) break;
   }
   fg.fillStyle = "#ffffff";
   let y = 86 + px * 0.1;
@@ -634,4 +647,529 @@ export async function reminderCard(c: ReminderCard, w: ReminderWords): Promise<P
     name: `${w.name} · ${time} ${title}`,
     kind: "image",
   };
+}
+
+// ----------------------------------------------------------------- games
+
+/** Words the game cards need, in the UI language. */
+export interface GameWords {
+  /** Name of the feature, for the card's name in the app. */
+  name: string;
+  started: string;
+  /** "Ended {time}". */
+  endedAt: string;
+  today: string;
+  /** "{h} h {min} min", "{min} min" and "under 1 min". */
+  hours: string;
+  minutes: string;
+  less: string;
+  gpu: string;
+  temp: string;
+  cpu: string;
+  avg: string;
+  peak: string;
+  todayTotal: string;
+  win: string;
+  lose: string;
+  cs: string;
+  kda: string;
+}
+
+export function gameWords(tNow: (key: MessageKey) => string): GameWords {
+  return {
+    name: tNow("games.card.name"),
+    started: tNow("games.card.started"),
+    endedAt: tNow("games.card.endedAt"),
+    today: tNow("games.card.today"),
+    hours: tNow("games.time.hours"),
+    minutes: tNow("games.time.minutes"),
+    less: tNow("games.time.less"),
+    gpu: tNow("games.card.gpu"),
+    temp: tNow("games.card.temp"),
+    cpu: tNow("games.card.cpu"),
+    avg: tNow("games.card.avg"),
+    peak: tNow("games.card.peak"),
+    todayTotal: tNow("games.card.todayTotal"),
+    win: tNow("games.card.win"),
+    lose: tNow("games.card.lose"),
+    cs: tNow("games.card.cs"),
+    kda: tNow("games.card.kda"),
+  };
+}
+
+function hhmm(ms: number) {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/** "2 h 14 min", "45 min", "0 min" from words with `{h}` and `{min}`; a
+ *  moment under a minute is "under 1 min", not "0 min". */
+export function playTime(ms: number, w: Pick<GameWords, "hours" | "minutes" | "less">): string {
+  if (ms > 0 && ms < 60_000) return w.less;
+  const total = Math.max(0, Math.floor(ms / 60_000));
+  const h = Math.floor(total / 60);
+  const min = total % 60;
+  return h > 0 ? fillTemplate(w.hours, { h, min }) : fillTemplate(w.minutes, { min });
+}
+
+/** The game starts: its Steam picture (or its name on a dark tone), when
+ *  it started, and today's play time. A still picture: it stays true for
+ *  the whole session, nothing moves while the game runs. `programIcon` is
+ *  asked only when there is no cover, or one that can't be read. */
+export async function gameStartCard(
+  c: GameCard,
+  cover: Blob | null,
+  w: GameWords,
+  programIcon: () => Promise<ImageData | null> = () => Promise.resolve(null),
+): Promise<Prepared> {
+  const label = `${w.started} · ${hhmm(c.startedMs)}`;
+  const today = fillTemplate(w.today, { time: playTime(c.todayMs, w) });
+  await fonts(`${label} ${c.name} ${today}`);
+  const bmp = cover ? await createImageBitmap(cover).catch(() => null) : null;
+  // No cover: the program's icon, on its own colour.
+  const icon = bmp ? null : await programIcon().catch(() => null);
+  const mark = icon ? await createImageBitmap(icon).catch(() => null) : null;
+  const tone: [number, number, number] = bmp ? coverTone(bmp) : ((icon && iconTone(icon)) ?? [92, 52, 150]);
+  const max = Math.max(...tone, 1);
+  const accent = rgb(tone.map((v) => 120 + (v / max) * 135) as [number, number, number]);
+
+  const { bg, fg } = makeLayers();
+  bg.fillStyle = rgb(tone, 0.22);
+  bg.fillRect(0, 0, W, H);
+  const top = 82;
+  if (bmp) {
+    // Centre-crop the wide picture to the top band.
+    const want = W / top;
+    let sw = bmp.width;
+    let sh = sw / want;
+    if (sh > bmp.height) {
+      sh = bmp.height;
+      sw = sh * want;
+    }
+    bg.drawImage(bmp, (bmp.width - sw) / 2, (bmp.height - sh) / 2, sw, sh, 0, 0, W, top);
+    bmp.close();
+  } else {
+    bg.fillStyle = rgb(tone, 0.55);
+    bg.fillRect(0, 0, W, top);
+  }
+
+  fg.clearRect(0, 0, W, H);
+  fg.textBaseline = "alphabetic";
+  fg.textAlign = "left";
+  const left = 12;
+  const maxW = W - left * 2;
+  if (!bmp) {
+    // No picture: the name, large, in the band (after the icon, if any).
+    const iconSize = 44;
+    const nameLeft = mark ? left + iconSize + 10 : left;
+    const nameW = W - nameLeft - left;
+    if (mark) {
+      fg.imageSmoothingQuality = "high";
+      fg.drawImage(mark, left, Math.round((top - iconSize) / 2), iconSize, iconSize);
+      mark.close();
+    }
+    let px = 26;
+    let tl = NO_LINES;
+    for (; px >= 14; px--) {
+      fg.font = `700 ${px}px ${DISPLAY}`;
+      tl = lines(fg, c.name, nameW, 2);
+      if (!tl.cut || px === 14) break;
+    }
+    fg.fillStyle = "#ffffff";
+    const lh = Math.round(px * 1.1);
+    let y = Math.round((top - lh * tl.length) / 2 + px * 0.85);
+    for (const l of tl) {
+      fg.fillText(l, nameLeft, y);
+      y += lh;
+    }
+  }
+  fg.letterSpacing = "1px";
+  fg.fillStyle = accent;
+  fitFont(fg, label, (px) => `600 ${px}px ${SANS}`, maxW, 9, 7);
+  fg.fillText(label.toLocaleUpperCase(document.documentElement.lang || undefined), left, top + 17);
+  fg.letterSpacing = "0px";
+  fg.fillStyle = "#ffffff";
+  if (bmp) {
+    fitFont(fg, c.name, (px) => `700 ${px}px ${DISPLAY}`, maxW, 15, 10);
+    fg.fillText(lines(fg, c.name, maxW, 1)[0] ?? "", left, top + 34);
+  }
+  fg.fillStyle = "rgba(255,255,255,0.72)";
+  fg.font = `500 11px ${SANS}`;
+  fg.fillText(today, left, H - 9);
+
+  const px565 = compose565(bg.getImageData(0, 0, W, H).data, fg.getImageData(0, 0, W, H).data, true);
+  return { frames: [px565], delaysMs: [STILL_DELAY_MS], name: `${w.name} · ${c.name}`, kind: "image" };
+}
+
+/** The session ended: how long, the graphics card and processor load,
+ *  the hottest the card got, and today's total. Readings the computer did
+ *  not give are left out. */
+export async function gameSummaryCard(c: GameCard, w: GameWords): Promise<Prepared> {
+  const end = c.endedMs ?? Date.now();
+  const lol = c.lol;
+  const who = lol?.champion ? `${c.name} · ${lol.champion}` : c.name;
+  const label = `${who} · ${fillTemplate(w.endedAt, { time: hhmm(end) })}`;
+  const length = playTime(end - c.startedMs, w);
+  // A League of Legends match: the result first, then K/D/A.
+  const result = lol?.win == null ? null : lol.win ? w.win : w.lose;
+  const time = result ?? length;
+  const pct = (v: number | null) => (v == null ? null : percent(Math.round(v)));
+  const cells: [string, string][] = [];
+  if (lol) {
+    cells.push([w.kda, `${lol.kills} / ${lol.deaths} / ${lol.assists}`]);
+    cells.push([w.cs, `${lol.cs}${result ? ` · ${length}` : ""}`]);
+  }
+  if (c.gpuAvg != null) {
+    const peak = pct(c.gpuPeak);
+    cells.push([w.gpu, `${w.avg} ${pct(c.gpuAvg)}${peak ? ` · ${w.peak} ${peak}` : ""}`]);
+  }
+  if (c.tempPeak != null) cells.push([w.temp, `${w.peak} ${Math.round(c.tempPeak)} °C`]);
+  if (c.cpuAvg != null) {
+    const peak = pct(c.cpuPeak);
+    cells.push([w.cpu, `${w.avg} ${pct(c.cpuAvg)}${peak ? ` · ${w.peak} ${peak}` : ""}`]);
+  }
+  cells.push([w.todayTotal, playTime(c.todayMs, w)]);
+  await fonts(`${label} ${time} ${cells.flat().join(" ")}`);
+
+  const { bg, fg } = makeLayers();
+  const grad = bg.createLinearGradient(0, 0, W, H);
+  grad.addColorStop(0, "rgb(30, 34, 46)");
+  grad.addColorStop(1, "rgb(12, 14, 20)");
+  bg.fillStyle = grad;
+  bg.fillRect(0, 0, W, H);
+
+  fg.clearRect(0, 0, W, H);
+  fg.textBaseline = "alphabetic";
+  fg.textAlign = "left";
+  const left = 12;
+  const maxW = W - left * 2;
+  fg.fillStyle = "rgba(255,255,255,0.6)";
+  fitFont(fg, label, (px) => `600 ${px}px ${SANS}`, maxW, 10, 7);
+  fg.fillText(lines(fg, label, maxW, 1)[0] ?? "", left, 20);
+  fg.fillStyle = lol?.win === true ? "#f0c75e" : lol?.win === false ? "#ff6b5e" : "#ffffff";
+  fitFont(fg, time, (px) => `700 ${px}px ${DISPLAY}`, maxW, 32, 18);
+  fg.fillText(time, left, 54);
+
+  // Two columns of readings.
+  const colW = (W - left * 2 - 10) / 2;
+  cells.slice(0, 4).forEach(([k, v], i) => {
+    const x = left + (i % 2) * (colW + 10);
+    const y = 78 + Math.floor(i / 2) * 30;
+    fg.fillStyle = "rgba(255,255,255,0.55)";
+    fg.font = `500 9.5px ${SANS}`;
+    fg.fillText(k, x, y);
+    fg.fillStyle = "#ffffff";
+    fitFont(fg, v, (px) => `600 ${px}px ${SANS}`, colW, 11.5, 8);
+    fg.fillText(v, x, y + 14);
+  });
+
+  const px565 = compose565(bg.getImageData(0, 0, W, H).data, fg.getImageData(0, 0, W, H).data, true);
+  return { frames: [px565], delaysMs: [STILL_DELAY_MS], name: `${w.name} · ${c.name} · ${time}`, kind: "image" };
+}
+
+// ---------------------------------------------------------------- agents
+
+/** Words the agents' cards need, in the UI language. */
+export interface AgentCardWords {
+  locale: string;
+  /** Name of the feature, for the card's name in the app. */
+  name: string;
+  done: string;
+  hours: string;
+  minutes: string;
+  less: string;
+}
+
+export function agentCardWords(tNow: (key: MessageKey) => string, locale: string): AgentCardWords {
+  return {
+    locale,
+    name: tNow("ag.card.name"),
+    done: tNow("ag.card.done"),
+    hours: tNow("games.time.hours"),
+    minutes: tNow("games.time.minutes"),
+    less: tNow("games.time.less"),
+  };
+}
+
+/** An agent's card when it chose no colour: Keymotion's orange. */
+const AGENT_TONE: [number, number, number] = [255, 154, 85];
+const PICTURE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+
+/**
+ * An agent's words as plain text for the canvas: never read as markup (they
+ * are only ever drawn with `fillText`), control and direction-changing
+ * characters left out, line breaks kept, and at most `max` characters.
+ */
+export function agentText(s: string | null | undefined, max: number): string {
+  if (!s) return "";
+  const hidden = (c: number) =>
+    c < 0x20 ||
+    (c >= 0x7f && c <= 0x9f) ||
+    c === 0x200b ||
+    c === 0x200e ||
+    c === 0x200f ||
+    (c >= 0x202a && c <= 0x202e) ||
+    (c >= 0x2066 && c <= 0x2069) ||
+    c === 0xfeff;
+  const chars = Array.from(s.replace(/\r\n?/g, "\n").replace(/\t/g, " ")).filter(
+    (ch) => ch === "\n" || !hidden(ch.codePointAt(0)!),
+  );
+  return Array.from(chars.join("").trim()).slice(0, max).join("");
+}
+
+/** The agent's picture, decoded (an animated one gives its first frame). */
+async function agentPicture(c: AgentCard): Promise<ImageBitmap | null> {
+  const img = c.image;
+  if (!img) return null;
+  if (!PICTURE_TYPES.has(img.mime)) throw new Error(`unsupported picture type ${img.mime}`);
+  let bytes: Uint8Array<ArrayBuffer>;
+  try {
+    const bin = atob(img.data);
+    bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  } catch {
+    throw new Error("the picture's data is not valid base64");
+  }
+  try {
+    return await createImageBitmap(new Blob([bytes], { type: img.mime }));
+  } catch {
+    throw new Error("the picture could not be decoded");
+  }
+}
+
+/**
+ * The picture inside a box, whole (letterboxed), centred. A small picture
+ * that grows at least twice (pixel art, an icon) is scaled by whole steps
+ * without smoothing and drawn on the text layer, so its edges stay sharp;
+ * a photo is smoothed and dithered with the background.
+ */
+function drawPicture(
+  bg: CanvasRenderingContext2D,
+  fg: CanvasRenderingContext2D,
+  bmp: ImageBitmap,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
+  const k = Math.min(w / bmp.width, h / bmp.height);
+  if (k >= 2) {
+    const s = Math.floor(k);
+    const dw = bmp.width * s;
+    const dh = bmp.height * s;
+    fg.save();
+    fg.imageSmoothingEnabled = false;
+    fg.drawImage(bmp, Math.round(x + (w - dw) / 2), Math.round(y + (h - dh) / 2), dw, dh);
+    fg.restore();
+    return;
+  }
+  const dw = bmp.width * k;
+  const dh = bmp.height * k;
+  bg.save();
+  bg.imageSmoothingEnabled = true;
+  bg.imageSmoothingQuality = "high";
+  bg.drawImage(bmp, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+  bg.restore();
+}
+
+/** Paragraphs (the agent's line breaks) wrapped to `maxW`, at most `max`
+ *  lines in all; the last one ends in "…" when text is left over. */
+function paragraphs(ctx: CanvasRenderingContext2D, text: string, maxW: number, max: number): Lines {
+  const out: string[] = [];
+  let cut = false;
+  const parts = text.split("\n").filter((p) => p.trim());
+  for (let i = 0; i < parts.length && out.length < max; i++) {
+    const part = lines(ctx, parts[i]!, maxW, max - out.length);
+    out.push(...part);
+    cut ||= part.cut;
+    if (out.length >= max && i < parts.length - 1) {
+      cut = true;
+      const last = out[max - 1]!;
+      if (!last.endsWith("…")) out[max - 1] = lines(ctx, `${last} …`, maxW, 1)[0] ?? last;
+    }
+  }
+  return Object.assign(out.slice(0, max), { cut });
+}
+
+/** The largest size from `max` down to `min` at which `text` fits in
+ *  `rows` lines without being cut. */
+function fitLines(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  font: (px: number) => string,
+  maxW: number,
+  rows: number,
+  max: number,
+  min: number,
+) {
+  let px = max;
+  let ls = NO_LINES;
+  for (; px >= min; px--) {
+    ctx.font = font(px);
+    ls = paragraphs(ctx, text, maxW, rows);
+    if (!ls.cut || px === min) break;
+  }
+  return { px: Math.max(px, min), lines: ls };
+}
+
+/** Lines drawn inside a clip of the area they may use. */
+function drawLines(
+  ctx: CanvasRenderingContext2D,
+  ls: string[],
+  x: number,
+  y: number,
+  step: number,
+  clip: [number, number, number, number],
+) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(...clip);
+  ctx.clip();
+  for (const l of ls) {
+    ctx.fillText(l, x, y);
+    y += step;
+  }
+  ctx.restore();
+}
+
+/** A ring with a check mark (a long task's card). */
+function drawCheck(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 0.42, cy + r * 0.02);
+  ctx.lineTo(cx - r * 0.1, cy + r * 0.34);
+  ctx.lineTo(cx + r * 0.45, cy - r * 0.3);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** The live cards' background: the colour fading, a stripe on the left. */
+function agentLayers(tone: [number, number, number]) {
+  const { bg, fg } = makeLayers();
+  const grad = bg.createLinearGradient(0, 0, W * 0.6, H);
+  grad.addColorStop(0, rgb(tone, 0.34));
+  grad.addColorStop(1, rgb(tone, 0.07));
+  bg.fillStyle = grad;
+  bg.fillRect(0, 0, W, H);
+  fg.clearRect(0, 0, W, H);
+  fg.textBaseline = "alphabetic";
+  fg.textAlign = "left";
+  fg.fillStyle = rgb(tone);
+  fg.fillRect(0, 0, 4, H);
+  return { bg, fg };
+}
+
+/**
+ * An agent's card (`agent-card`), in the live cards' style: a stripe and a
+ * background in the agent's colour, its title in that colour, its text in
+ * white as large as fits, and its picture whole. A long task's card (F)
+ * says "Done" and how long it took, with the project folder above.
+ */
+export async function agentCard(c: AgentCard, w: AgentCardWords): Promise<Prepared> {
+  const tone = c.color ?? AGENT_TONE;
+  const light = tone.map((v) => Math.round(v + (255 - v) * 0.45)) as [number, number, number];
+  if (c.kind === "longTask") return longTaskCard(c, w, tone, light);
+
+  const title = agentText(c.title, 48).replace(/\n/g, " ");
+  const text = agentText(c.text, 160);
+  const bmp = await agentPicture(c);
+  await fonts(`${title} ${text}`);
+  const { bg, fg } = agentLayers(tone);
+
+  if (bmp && !title && !text) {
+    // The picture alone: as large as the screen allows.
+    drawPicture(bg, fg, bmp, 4, 0, W - 4, H);
+    bmp.close();
+  } else if (bmp) {
+    // The picture on the left, the words beside it.
+    const size = 104;
+    const px = 14;
+    const py = Math.round((H - size) / 2);
+    bg.save();
+    bg.beginPath();
+    bg.roundRect(px, py, size, size, 8);
+    bg.fillStyle = rgb(tone, 0.16);
+    bg.fill();
+    bg.clip();
+    drawPicture(bg, fg, bmp, px, py, size, size);
+    bg.restore();
+    bmp.close();
+    const left = px + size + 12;
+    const maxW = W - left - 10;
+    let top = py;
+    if (title) {
+      fg.fillStyle = rgb(light);
+      fitFont(fg, title, (p) => `700 ${p}px ${DISPLAY}`, maxW, 15, 10);
+      drawLines(fg, lines(fg, title, maxW, 1), left, top + 13, 0, [left, 0, maxW, top + 20]);
+      top += 24;
+    }
+    if (text) {
+      const fit = fitLines(fg, text, (p) => `600 ${p}px ${SANS}`, maxW, title ? 4 : 5, 15, 10);
+      fg.fillStyle = "#ffffff";
+      drawLines(fg, fit.lines, left, top + fit.px, Math.round(fit.px * 1.22), [left, top, maxW, H - top - 4]);
+    }
+  } else {
+    // Words only: the title above, the text large.
+    const left = 16;
+    const maxW = W - left - 12;
+    if (title && text) {
+      fg.fillStyle = rgb(light);
+      fitFont(fg, title, (p) => `700 ${p}px ${DISPLAY}`, maxW, 17, 11);
+      drawLines(fg, lines(fg, title, maxW, 1), left, 30, 0, [left, 0, maxW, 40]);
+    }
+    const body = text || title;
+    const top = title && text ? 42 : 10;
+    const fit = fitLines(fg, body, (p) => `700 ${p}px ${DISPLAY}`, maxW, 3, 26, 12);
+    const step = Math.round(fit.px * 1.15);
+    const block = step * (fit.lines.length - 1) + fit.px;
+    const y = Math.round(top + (H - 8 - top - block) / 2 + fit.px * 0.85);
+    fg.fillStyle = "#ffffff";
+    drawLines(fg, fit.lines, left, y, step, [left, top, maxW, H - top - 2]);
+  }
+
+  const px565 = compose565(bg.getImageData(0, 0, W, H).data, fg.getImageData(0, 0, W, H).data, true);
+  const first = (title || text.split("\n")[0] || "").trim();
+  return { frames: [px565], delaysMs: [STILL_DELAY_MS], name: first ? `${w.name} · ${first}` : w.name, kind: "image" };
+}
+
+/** Behaviour F: a long task finished. "Done", how long it took, and the
+ *  project folder; it stays true however long it shows. */
+async function longTaskCard(
+  c: AgentCard,
+  w: AgentCardWords,
+  tone: [number, number, number],
+  light: [number, number, number],
+): Promise<Prepared> {
+  // A folder's name, as it is written (in capitals "keymotion" would
+  // become "KEYMOTİON" in Turkish).
+  const label = agentText(c.label, 64).replace(/\n/g, " ");
+  const length = playTime(Math.max(0, c.minutes ?? 0) * 60_000, w);
+  await fonts(`${label} ${w.done} ${length}`);
+  const { bg, fg } = agentLayers(tone);
+  drawCheck(fg, W - 38, 46, 20, rgb(light));
+
+  const left = 16;
+  const maxW = W - left - 12;
+  const beside = maxW - 56;
+  if (label) {
+    fg.fillStyle = rgb(light);
+    fitFont(fg, label, (px) => `600 ${px}px ${SANS}`, beside, 11, 8);
+    drawLines(fg, lines(fg, label, beside, 1), left, 25, 0, [left, 0, beside, 32]);
+  }
+  fg.fillStyle = "#ffffff";
+  fitFont(fg, w.done, (px) => `700 ${px}px ${DISPLAY}`, beside, 32, 18);
+  drawLines(fg, [w.done], left, 70, 0, [left, 30, beside, 50]);
+  fg.fillStyle = rgb(light);
+  fitFont(fg, length, (px) => `700 ${px}px ${DISPLAY}`, maxW, 24, 14);
+  drawLines(fg, [length], left, 108, 0, [left, 80, maxW, 40]);
+
+  const px565 = compose565(bg.getImageData(0, 0, W, H).data, fg.getImageData(0, 0, W, H).data, true);
+  return { frames: [px565], delaysMs: [STILL_DELAY_MS], name: `${w.done} · ${length}`, kind: "image" };
 }

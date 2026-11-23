@@ -10,7 +10,7 @@ body:
 
         When Keymotion sees a keyboard it doesn't support yet, it offers **Request support**. That copies the keyboard's details: its USB ids, its name and the descriptions Windows reads from it. Paste them into the "Keyboard details" box below. Keymotion only reads these; it writes nothing to the keyboard.
 
-        *Türkçe yazabilirsiniz.*
+        *Türkçe yazabilirsiniz. Можно писать по-русски. 可以用中文填写。*
   - type: input
     id: model
     attributes:

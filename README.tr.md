@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · <b>Türkçe</b>
+  <a href="README.md">English</a> · <b>Türkçe</b> · <a href="README.ru.md">Русский</a> · <a href="README.zh-CN.md">简体中文</a>
 </p>
 
 <p align="center">
@@ -66,6 +66,9 @@ Keymotion AJAZZ AK980 PRO'da denendi. Aynı altyapıyla yapılmış başka klavy
 | <img src="docs/images/ajazz-ak980-pro.webp" width="170" alt="AJAZZ AK980 PRO"> | **AJAZZ AK980 PRO**<br>AK980 V2 adıyla da satılıyor | Her şey | Yazma, medya tuşları ve topuz | Yazma, medya tuşları, topuz ve pil düzeyi |
 
 Ayarlar USB kablosundan gider; klavye böyle yapılmış.
+
+> [!NOTE]
+> AJAZZ'ın AK980 PRO için en yeni klavye yazılımı 3.01 ("AK980 Led v2 Firmware 769") farklı bir komut takımı kullanıyor; Keymotion bunu henüz desteklemiyor ve AJAZZ eski yazılıma dönmenin bir yolunu sunmuyor. Keymotion'ı şimdi kullanmaya devam etmek istiyorsanız güncellemeden önce bekleyin. [SSS'de ayrıntılar](https://cebersaban44-rgb.github.io/keymotion/tr/help/faq/#ajazzın-en-yeni-klavye-yazılımını-kurmalı-mıyım).
 
 ### Aynı altyapı, henüz denenmedi
 
@@ -121,10 +124,20 @@ Klavyeniz listede yok mu? Yine de takın ve [bize bildirin](https://github.com/c
 | <img src="docs/images/features/screen.webp" width="240" alt="Klavyenin ekranı için görsel hazırlama"> | **Ekran stüdyosu**<br>240×135 ekrana görsel, GIF, video ve yazı kartı koyun. |
 | <img src="docs/images/features/live-screen.webp" width="240" alt="Ekranda canlı kartlar"> | **Canlı ekran**<br>Kendiliğinden güncellenen kartlar: çalan şarkı, sıradaki toplantı, odak zamanlayıcısı. |
 | <img src="docs/images/features/focus.webp" width="240" alt="Tuşlarda odak zamanlayıcısı"> | **Odak ve hatırlatıcılar**<br>Tuşlarda yanan odak zamanlayıcısı, hatırlatıcılar ve sistem göstergeleri. |
+| <img src="docs/images/features/music.webp" width="240" alt="Müzik modu: tuş ışıkları sesi çubuk, ritim, düzey şeridi ve dalga olarak izliyor"> | **Müzik modu**<br>Bilgisayarınızda çalan sese göre hareket eden tuş ışıkları: bastan tize çubuklar, her vuruşta bir nabız, bir ses yüksekliği şeridi ya da dalgalar. Ses kaydedilmez, mikrofon kullanılmaz. |
+| <img src="docs/images/features/game-session.webp" width="240" alt="League of Legends ışıkları: can tuşlarda azalıyor, mana F tuşlarında boşalıyor"> | **Oyun oturumu**<br>Oynadığınızı fark eder: oyun başlarken ekrana bir kart, bitince bir özet gönderir ve oyunun tuşlarını yakar. League of Legends'ta canınız, mananız ve maçın olayları tuşlarda görünür. |
+| <img src="docs/images/features/profiles.webp" width="240" alt="Bütün oyunları ve bir programı kendi profillerine bağlama"> | **Uygulamaya göre profiller**<br>Işığı, tuşları ve makroları profil olarak saklayın. Her program ya da bütün oyunlar öne gelince kendi profiline geçer. |
+| <img src="docs/images/features/ai-agents.webp" width="240" alt="Klavyenin ekranında bir yapay zekâ ajanının kartı: Tests, All 214 passed, Ready to merge"> | **Yapay zekâ kodlama ajanları**<br>Claude Code ve Codex bir işi bitirince, onayınızı beklerken ya da hata verince ışıkla haber verir; ajan tuşlarda yazı da yazabilir, ekrana kart da gönderebilir. [Aşağıda daha fazlası](#yapay-zekâ-kodlama-ajanları). |
 
 [Kullanım kılavuzu](https://cebersaban44-rgb.github.io/keymotion/tr/) uygulamanın her sayfasını tek tek anlatır.
 
 <a name="indirme-ve-kurulum"></a>
+
+## Yapay zekâ kodlama ajanları
+
+Claude Code ya da Codex bir işi bitirince, onayınızı beklerken ya da hata verince klavyeniz ışıkla haber verebilir. Ajan tuşları kendi bildiği gibi de yakabilir: harf tuşlarında bir kelime, F sırasında bir ilerleme çubuğu. Bunu bir kez, **Araçlar › Yapay zekâ ajanları** sayfasında açarsınız: Keymotion her kodlama uygulamasına ne ekleyeceğini gösterir ve onayınızdan sonra bağlar.
+
+Ajanlar Keymotion'la, uygulamayla birlikte gelen `keymotion-cli` komut satırı aracı üzerinden konuşur. Araç klavyeyi hiçbir zaman kendisi açmaz, yalnızca bu bilgisayarda sizin Windows kullanıcınız için çalışır ve siz ajan erişimini açana kadar hiçbir şey yapmaz. Ayrıntılar [Yapay zekâ ajanları rehberinde](https://cebersaban44-rgb.github.io/keymotion/tr/guide/ai-agents/); komutlar [Ajan komut satırı](https://cebersaban44-rgb.github.io/keymotion/tr/developers/agent-cli/) sayfasında.
 
 ## İndirme ve kurulum
 
@@ -164,7 +177,7 @@ Güncellemeler: Store'dan kurulan kopyayı Microsoft Store günceller. GitHub'da
 
 ## Güvenlik
 
-Keymotion yalnızca gerçek bir klavyede ölçülmüş komutları gönderir; ürün yazılımı ve önyükleyici güncellemeleri kodda engellidir. Işıklar, tuş atamaları, makrolar ve ekran görselleri klavyenin belleğine kaydedilir ve her zaman geri dönebilirsiniz: nasıl yapılacağı [Bir şey ters giderse](https://cebersaban44-rgb.github.io/keymotion/tr/help/recovery/) sayfasında.
+Keymotion yalnızca gerçek bir klavyede ölçülmüş komutları gönderir; klavye yazılımı ve önyükleyici güncellemeleri kodda engellidir. Işıklar, tuş atamaları, makrolar ve ekran görselleri klavyenin belleğine kaydedilir ve her zaman geri dönebilirsiniz: nasıl yapılacağı [Bir şey ters giderse](https://cebersaban44-rgb.github.io/keymotion/tr/help/recovery/) sayfasında.
 
 ## Gizlilik
 
@@ -201,3 +214,7 @@ PR açmadan önce [katkı rehberini](https://cebersaban44-rgb.github.io/keymotio
 Keymotion, seçiminize göre [Apache Lisansı 2.0](LICENSE-APACHE) ya da [MIT lisansı](LICENSE-MIT) ile lisanslanmıştır. Uygulamadaki üçüncü taraf yazılımlar [app/public/third-party-notices.txt](app/public/third-party-notices.txt) dosyasında listelenir.
 
 Keymotion bağımsız bir projedir. AJAZZ, AULA ya da burada adı geçen başka bir klavye markasıyla bağlantısı yoktur; onlar tarafından onaylanmamış ya da desteklenmemiştir. Ürün adları yalnızca uygulamanın hangi donanımla çalıştığını söylemek için kullanılır. [NOTICE](NOTICE) dosyasına bakın.
+
+League of Legends ışıkları için Riot Games'in istediği not:
+
+Keymotion isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.

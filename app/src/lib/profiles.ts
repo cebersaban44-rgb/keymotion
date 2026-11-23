@@ -6,8 +6,8 @@ import type { ProfileInfo } from "../bindings/ProfileInfo";
 import type { ProfilePart } from "../bindings/ProfilePart";
 import type { ProfileParts } from "../bindings/ProfileParts";
 import type { ProfilesState } from "../bindings/ProfilesState";
-import type { Locale, MessageKey, Translate } from "./i18n";
-import { getProfiles, loadProfilePart } from "./ipc";
+import { intlTag, listOf, type Locale, type MessageKey, type Translate } from "./i18n";
+import { getProfiles, inTauri, listen, loadProfilePart } from "./ipc";
 import { adoptKeymapRecord } from "./keymap";
 import { initLighting } from "./lighting";
 import { adoptMacrosRecord } from "./macros";
@@ -47,15 +47,11 @@ export const PART_NOUN: Record<ProfilePart, MessageKey> = {
 
 export const PARTS: readonly ProfilePart[] = ["lighting", "keymap", "macros", "screen"];
 
-const intl = (locale: Locale) => (locale === "tr" ? "tr-TR" : "en-US");
-
-/** "a, b ve c" / "a, b, and c". */
-export function listOf(items: string[], locale: Locale): string {
-  return new Intl.ListFormat(intl(locale), { type: "conjunction" }).format(items);
-}
+/** "a, b ve c" / "a, b, and c" (in i18n.ts; the Profiles page imports it from here). */
+export { listOf };
 
 function capitalize(text: string, locale: Locale): string {
-  return text.charAt(0).toLocaleUpperCase(intl(locale)) + text.slice(1);
+  return text.charAt(0).toLocaleUpperCase(intlTag(locale)) + text.slice(1);
 }
 
 export function profileName(p: ProfileInfo, t: Translate): string {
@@ -174,12 +170,32 @@ export async function loadProfile(
     }
     return "done";
   } finally {
-    const jobs: Promise<unknown>[] = [useProfiles.getState().load(modelId)];
-    if (tried.has("lighting")) jobs.push(initLighting());
-    if (tried.has("keymap")) jobs.push(adoptKeymapRecord(modelId));
-    if (tried.has("macros")) jobs.push(adoptMacrosRecord(modelId));
-    await Promise.all(jobs.map((j) => j.catch(console.error)));
+    await readRecordsAgain(modelId, tried);
   }
+}
+
+/** After a profile was written: the list and the editors read the records
+ *  again; the parts written replace the editors' drafts. */
+async function readRecordsAgain(modelId: string, parts: ReadonlySet<ProfilePart>) {
+  const jobs: Promise<unknown>[] = [useProfiles.getState().load(modelId)];
+  if (parts.has("lighting")) jobs.push(initLighting());
+  if (parts.has("keymap")) jobs.push(adoptKeymapRecord(modelId));
+  if (parts.has("macros")) jobs.push(adoptMacrosRecord(modelId));
+  await Promise.all(jobs.map((j) => j.catch(console.error)));
+}
+
+/** The per-app profiles wrote a profile to the keyboard (autoprofile.rs
+ *  sends "auto-profile-written"): the same as after loading one by hand, so
+ *  the Lighting, Key mapping and Macros pages hold what the keyboard has.
+ *  Followed for the whole session, whatever page is open. */
+export function followAutoWrites(modelId: string): () => void {
+  if (import.meta.env.DEV && !inTauri) return () => {};
+  const off = listen<null>("auto-profile-written", () => {
+    void readRecordsAgain(modelId, new Set<ProfilePart>(["lighting", "keymap", "macros"]));
+  });
+  return () => {
+    off.then((f) => f()).catch(console.error);
+  };
 }
 
 async function uploadPicture(p: ProfileInfo) {

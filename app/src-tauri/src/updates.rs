@@ -27,7 +27,9 @@
 //! (kb_winsys::protocol): Windows starts the app with the address, and the
 //! running app gets it through its single-instance lock (lib.rs). "Update
 //! now" carries a token made at start, so only this run's notification can
-//! start an install; any other address only opens the window.
+//! start an install; `keymotion://background` (keymotion-cli starting the
+//! app for an agent) opens nothing; any other address only opens the
+//! window.
 //!
 //! A test version ("0.1.0-rc.1") also looks at GitHub's pre-releases, so
 //! an update from one test version to the next can be tried for real; a
@@ -80,9 +82,8 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const PROGRESS_EVERY: Duration = Duration::from_millis(150);
 /// GitHub's list of releases, newest first (test versions only).
 const RELEASES_API: &str = "https://api.github.com/repos/cebersaban44-rgb/keymotion/releases?per_page=10";
-/// The release notes on the documentation site, in the UI language.
-const NOTES_EN: &str = "https://cebersaban44-rgb.github.io/keymotion/about/release-notes/";
-const NOTES_TR: &str = "https://cebersaban44-rgb.github.io/keymotion/tr/about/release-notes/";
+/// The release notes on the documentation site (in the UI language's folder).
+const NOTES_PAGE: &str = "about/release-notes/";
 /// Notifications about updates replace each other.
 const NOTICE_TAG: &str = "update";
 
@@ -183,6 +184,10 @@ pub enum Link {
     /// Install the update found now ("Update now" on the notification). The
     /// token must be this run's.
     Install { token: String },
+    /// Run without opening the window (`keymotion://background`, what
+    /// keymotion-cli opens through Explorer to start the app for an agent).
+    /// A running app does nothing.
+    Background,
 }
 
 /// The address among a program's arguments, if any.
@@ -199,6 +204,7 @@ fn parse_link(arg: &str) -> Option<Link> {
     let (path, query) = rest.split_once('?').unwrap_or((rest, ""));
     Some(match path.trim_end_matches('/').to_ascii_lowercase().as_str() {
         "update" => Link::Update,
+        "background" => Link::Background,
         "update/install" => {
             Link::Install { token: query.split('&').find_map(|p| p.strip_prefix("t=")).unwrap_or_default().to_string() }
         }
@@ -554,7 +560,7 @@ impl Updates {
         let store = crate::channel::store();
         self.notify("updated", move |t, app_id| {
             let title = fill(&t.notice_installed_title, &version);
-            let notes = if t.locale == "tr" { NOTES_TR } else { NOTES_EN };
+            let notes = crate::i18n::docs_page(&t.locale, NOTES_PAGE);
             crate::notify::show_notice(
                 app_id,
                 &crate::notify::Notice {
@@ -563,7 +569,7 @@ impl Updates {
                     // The Store build has no `keymotion:` address: Windows
                     // starts it by itself when the notification is clicked.
                     open: (!store).then_some(ADDRESS_OPEN),
-                    buttons: vec![(&t.notice_whats_new, Some(notes))],
+                    buttons: vec![(&t.notice_whats_new, Some(&notes))],
                     tag: Some(NOTICE_TAG),
                 },
             )
@@ -866,6 +872,9 @@ mod tests {
         assert_eq!(link(&["KEYMOTION://Update/Install?t=00ab"]), Some(Link::Install { token: "00ab".into() }));
         assert_eq!(link(&["keymotion://update/install"]), Some(Link::Install { token: String::new() }));
         assert_eq!(link(&["keymotion://open"]), Some(Link::Open));
+        assert_eq!(link(&["C:\\x\\keymotion.exe", "keymotion://background"]), Some(Link::Background));
+        assert_eq!(link(&["KEYMOTION://Background/"]), Some(Link::Background));
+        assert_eq!(link(&["--background"]), None);
         // Anything else of ours only opens the window; other schemes are not ours.
         assert_eq!(link(&["keymotion:whatever/../x"]), Some(Link::Open));
         assert_eq!(link(&["https://example.com/keymotion://update"]), None);

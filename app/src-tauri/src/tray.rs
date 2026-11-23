@@ -14,6 +14,7 @@
 //!   skip to the next phase, stop;
 //! * Reminders ▸ the next one, on / off;
 //! * System gauges on the keys (on / off; RAM only, no flash write);
+//! * Music mode (on / off; RAM only, no flash write);
 //! * Profiles ▸ each profile, the keyboard's own ticked;
 //! * Quit.
 //!
@@ -30,15 +31,17 @@
 
 use crate::device::{DeviceHandle, EVENT_KEYBOARDS_CHANGED};
 use crate::dto::{
-    BackgroundSettings, Connection, KeyboardInfo, PomodoroPhase, PomodoroState, PomodoroStatus, ReminderState,
-    TrayTexts,
+    BackgroundSettings, Connection, PomodoroPhase, PomodoroState, PomodoroStatus, ReminderState, TrayTexts,
 };
+use crate::games::{GamesHandle, EVENT_GAMES};
 use crate::gauges::{GaugesHandle, EVENT_GAUGES};
+use crate::music::{MusicHandle, EVENT_MUSIC};
 use crate::pomodoro::{PomodoroAction, PomodoroHandle, EVENT_POMODORO};
 use crate::reminders::{RemindersHandle, EVENT_REMINDERS};
 use crate::updates::{Updates, EVENT_UPDATE};
 use crate::{notify, settings};
-use chrono::{DateTime, Local, TimeZone};
+use jiff::tz::TimeZone;
+use jiff::{Timestamp, Zoned};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -54,6 +57,10 @@ const TRAY_ID: &str = "main";
 /// Windows starts the app with this when it starts with Windows: the
 /// window stays hidden, only the tray icon shows.
 pub const ARG_HIDDEN: &str = "--hidden";
+/// keymotion-cli started the app for an agent (or `keymotion://background`
+/// did): the window stays hidden as with [`ARG_HIDDEN`], but this is not a
+/// start with Windows. A running app that gets it shows nothing.
+pub const ARG_BACKGROUND: &str = "--background";
 /// The value's name in the `Run` key.
 pub const RUN_NAME: &str = "Keymotion";
 const FILE: &str = "background.json";
@@ -61,7 +68,8 @@ const VERSION: u32 = 1;
 
 /// The UI opens the Profiles page on this profile's confirmation.
 pub const EVENT_TRAY_PROFILE: &str = "tray-profile";
-/// The window was shown (`true`) or hidden (`false`).
+/// The window was shown (`true`) or hidden (`false`): hidden in the tray,
+/// or minimized.
 pub const EVENT_WINDOW_SHOWN: &str = "window-shown";
 
 const PROFILE_PREFIX: &str = "profile:";
@@ -99,6 +107,8 @@ pub struct Background {
     notice_given: AtomicBool,
     /// The UI has sent its words (until then they are English).
     texts_received: AtomicBool,
+    /// The window was minimized when last looked at.
+    minimized: AtomicBool,
     refresh: Mutex<Option<Sender<()>>>,
 }
 
@@ -112,6 +122,7 @@ impl Background {
             quitting: AtomicBool::new(false),
             notice_given: AtomicBool::new(false),
             texts_received: AtomicBool::new(false),
+            minimized: AtomicBool::new(false),
             refresh: Mutex::new(None),
         })
     }
@@ -240,12 +251,37 @@ impl Background {
         self.quitting.store(false, Ordering::SeqCst);
     }
 
+    /// Tell the coding agents' hooks: a Keymotion the user quit stays closed
+    /// (the owner's decision, 2026-11-23); staying after all undoes it. The
+    /// tray's "Quit", and closing the window when it is not kept in the tray:
+    /// Windows shutting down or signing out is no quit (it closes no window
+    /// through its close button).
+    pub fn tell_agents(app: &AppHandle, quit: bool) {
+        if let Some(agents) = app.try_state::<Arc<crate::agent::AgentHandle>>() {
+            agents.quitting(quit);
+        }
+    }
+
     /// True once per run of the app: the first time the window is hidden
     /// (owner's decision, 2026-11-12). Started hidden with Windows, the
     /// window is not closed until the user opens it, so no notice comes then.
     fn take_notice(&self) -> bool {
         !self.notice_given.swap(true, Ordering::SeqCst)
     }
+
+    /// The window is `minimized` now: whether that changed since the last
+    /// look.
+    fn minimized_changed(&self, minimized: bool) -> bool {
+        self.minimized.swap(minimized, Ordering::SeqCst) != minimized
+    }
+}
+
+/// The command line asks for the app without its window, for an agent
+/// ([`ARG_BACKGROUND`] or `keymotion://background`). Not a start with
+/// Windows: that is [`ARG_HIDDEN`].
+pub fn background_start<S: AsRef<str>>(args: &[S]) -> bool {
+    args.iter().any(|a| a.as_ref() == ARG_BACKGROUND)
+        || crate::updates::link(args) == Some(crate::updates::Link::Background)
 }
 
 /// Bring the main window back: shown, restored, in front.
@@ -255,6 +291,21 @@ pub fn show_main(app: &AppHandle) {
     let _ = window.show();
     let _ = window.set_focus();
     let _ = app.emit(EVENT_WINDOW_SHOWN, true);
+}
+
+/// The window was resized or gained or lost the focus: when it was just
+/// minimized or restored, tell the UI as for hiding it in the tray, so the
+/// pages that read the sound or the gauges for the window stop while nobody
+/// sees it. A window hidden in the tray was told already.
+pub fn follow_minimized(window: &tauri::Window) {
+    let app = window.app_handle();
+    let Some(bg) = app.try_state::<Arc<Background>>() else { return };
+    let minimized = window.is_minimized().unwrap_or(false);
+    if !bg.minimized_changed(minimized) || !window.is_visible().unwrap_or(true) {
+        return;
+    }
+    tracing::debug!(minimized, "window minimized or restored");
+    let _ = app.emit(EVENT_WINDOW_SHOWN, !minimized);
 }
 
 /// The window's close button (or Alt+F4): hide the window instead, when the
@@ -290,6 +341,7 @@ fn quit(app: &AppHandle) {
     let bg = app.state::<Arc<Background>>();
     bg.quitting.store(true, Ordering::SeqCst);
     tracing::info!("quit chosen in the tray");
+    Background::tell_agents(app, true);
     let Some(window) = app.get_webview_window("main") else {
         app.exit(0);
         return;
@@ -318,6 +370,7 @@ pub fn refresh(app: &AppHandle) {
 /// The keyboard line's facts.
 #[derive(Debug, Clone, PartialEq)]
 struct KeyboardLine {
+    model_id: String,
     name: String,
     connection: Connection,
     battery: Option<u8>,
@@ -331,10 +384,15 @@ struct Facts {
     /// Reminders on, and the next one (when, title).
     reminders: Option<(bool, Option<(f64, String)>)>,
     gauges: Option<bool>,
+    music: Option<bool>,
     /// Id, name (empty: the built-in one) and whether the keyboard has it.
     profiles: Vec<(String, String, bool)>,
     /// A new version waits: its number, and whether it is downloaded.
     update: Option<(String, bool)>,
+    /// A game session runs: the game and when it started.
+    game: Option<(String, f64)>,
+    /// Per-app profiles run (on and not paused).
+    auto: bool,
 }
 
 /// Everything the menu shows, as text: what changed is set on its item.
@@ -343,6 +401,8 @@ struct View {
     /// The first line while a new version waits.
     update: Option<String>,
     keyboard: String,
+    /// The line under the keyboard's while a game session runs.
+    game: Option<String>,
     open: String,
     focus: String,
     focus_status: String,
@@ -357,14 +417,20 @@ struct View {
     reminders_on: bool,
     gauges_label: String,
     gauges_on: bool,
+    music_label: String,
+    music_on: bool,
     profiles_label: String,
     profiles: Vec<(String, String, bool)>,
+    auto_label: String,
+    auto_on: bool,
     quit: String,
     tooltip: String,
 }
 
-fn fill(template: &str, pairs: &[(&str, &str)]) -> String {
-    pairs.iter().fold(template.to_string(), |s, (k, v)| s.replace(&format!("{{{k}}}"), v))
+/// A template from the UI with its places filled in, plural forms chosen by
+/// the UI's language (i18n.rs).
+fn fill(t: &TrayTexts, template: &str, pairs: &[(&str, &str)]) -> String {
+    crate::i18n::fill(&t.locale, template, pairs)
 }
 
 /// Minutes left in the phase, rounded up, at least 1 while it runs.
@@ -378,7 +444,7 @@ fn minutes_left(p: &PomodoroState, now_ms: f64) -> u32 {
 fn focus_status(t: &TrayTexts, p: &PomodoroState, now_ms: f64) -> String {
     if p.status == PomodoroStatus::Idle {
         let (blocks, min) = (p.settings.blocks.len().to_string(), p.settings.total_minutes().to_string());
-        return fill(&t.ready, &[("blocks", &blocks), ("min", &min)]);
+        return fill(t, &t.ready, &[("blocks", &blocks), ("min", &min)]);
     }
     let mut parts = Vec::new();
     if p.status == PomodoroStatus::Paused {
@@ -390,28 +456,27 @@ fn focus_status(t: &TrayTexts, p: &PomodoroState, now_ms: f64) -> String {
     });
     if p.settings.blocks.len() > 1 {
         let (n, total) = (p.block.to_string(), p.settings.blocks.len().to_string());
-        parts.push(fill(&t.round, &[("n", &n), ("total", &total)]));
+        parts.push(fill(t, &t.round, &[("n", &n), ("total", &total)]));
     }
-    parts.push(fill(&t.left, &[("min", &minutes_left(p, now_ms).to_string())]));
+    parts.push(fill(t, &t.left, &[("min", &minutes_left(p, now_ms).to_string())]));
     parts.join(" · ")
 }
 
-/// "14:30" today, "tomorrow 09:00", "14.11 09:00" (Turkish) or
-/// "Nov 14 09:00" later.
-fn when<Tz: TimeZone>(t: &TrayTexts, at_ms: f64, now_ms: f64, tz: &Tz) -> String
-where
-    Tz::Offset: std::fmt::Display,
-{
-    let at: Option<DateTime<Tz>> = tz.timestamp_millis_opt(at_ms as i64).single();
-    let now: Option<DateTime<Tz>> = tz.timestamp_millis_opt(now_ms as i64).single();
-    let (Some(at), Some(now)) = (at, now) else { return String::new() };
-    let time = at.format("%H:%M").to_string();
-    let days = (at.date_naive() - now.date_naive()).num_days();
+/// "14:30" today, "tomorrow 09:00", then the date: "14.11 09:00" (Turkish,
+/// Russian), "11月14日 09:00" (Chinese) or "Nov 14 09:00" (English).
+fn when(t: &TrayTexts, at_ms: f64, now_ms: f64, tz: &TimeZone) -> String {
+    let zoned = |ms: f64| -> Option<Zoned> { Some(Timestamp::from_millisecond(ms as i64).ok()?.to_zoned(tz.clone())) };
+    let (Some(at), Some(now)) = (zoned(at_ms), zoned(now_ms)) else { return String::new() };
+    let time = at.strftime("%H:%M").to_string();
+    let days = at.date().since(now.date()).map_or(0, |s| s.get_days());
     match days {
         ..=0 => time,
         1 => format!("{} {time}", t.tomorrow),
-        _ if t.locale == "tr" => format!("{} {time}", at.format("%d.%m")),
-        _ => format!("{} {time}", at.format("%b %-d")),
+        _ => match t.locale.as_str() {
+            "tr" | "ru" => format!("{} {time}", at.strftime("%d.%m")),
+            "zh-CN" => format!("{} {time}", at.strftime("%-m月%-d日")),
+            _ => format!("{} {time}", at.strftime("%b %-d")),
+        },
     }
 }
 
@@ -423,16 +488,15 @@ fn connection_word(t: &TrayTexts, c: Connection) -> &str {
     }
 }
 
-fn view_of<Tz: TimeZone>(t: &TrayTexts, f: &Facts, now_ms: f64, tz: &Tz) -> View
-where
-    Tz::Offset: std::fmt::Display,
-{
+fn view_of(t: &TrayTexts, f: &Facts, now_ms: f64, tz: &TimeZone) -> View {
     let keyboard = match &f.keyboard {
         None => t.no_keyboard.clone(),
         Some(k) => {
-            let mut parts = vec![k.name.clone(), connection_word(t, k.connection).to_string()];
+            // The name the UI gives the model in its language, if any.
+            let name = t.model_names.get(&k.model_id).unwrap_or(&k.name).clone();
+            let mut parts = vec![name, connection_word(t, k.connection).to_string()];
             if let Some(n) = k.battery.filter(|_| k.connection != Connection::Usb) {
-                parts.push(fill(&t.battery, &[("n", &n.to_string())]));
+                parts.push(fill(t, &t.battery, &[("n", &n.to_string())]));
             }
             parts.join(" · ")
         }
@@ -445,20 +509,38 @@ where
         (true, None) => t.reminders_none.clone(),
         (true, Some((at, title))) => {
             let title = if title.trim().is_empty() { "—".to_string() } else { title };
-            fill(&t.reminders_next, &[("time", &when(t, at, now_ms, tz)), ("title", &title)])
+            fill(t, &t.reminders_next, &[("time", &when(t, at, now_ms, tz)), ("title", &title)])
         }
     };
     let update = f.update.as_ref().map(|(version, ready)| {
-        fill(if *ready { &t.update_ready } else { &t.update_available }, &[("version", version)])
+        fill(t, if *ready { &t.update_ready } else { &t.update_available }, &[("version", version)])
+    });
+    let game = f.game.as_ref().map(|(name, started)| {
+        // As on the page: "1 h 5 min", "42 min", "under 1 min".
+        let ms = (now_ms - started).max(0.0);
+        let total = (ms / 60_000.0).floor() as u64;
+        let (h, min) = ((total / 60).to_string(), (total % 60).to_string());
+        let time = if ms < 60_000.0 {
+            t.game_less.clone()
+        } else if total >= 60 {
+            fill(t, &t.game_hours, &[("h", &h), ("min", &min)])
+        } else {
+            fill(t, &t.game_minutes, &[("min", &min)])
+        };
+        fill(t, &t.game, &[("name", name), ("time", &time)])
     });
     let mut tooltip =
         if status == PomodoroStatus::Idle { "Keymotion".to_string() } else { format!("Keymotion — {focus_line}") };
+    if let Some(g) = &game {
+        tooltip = format!("{tooltip} · {g}");
+    }
     if f.update.is_some() {
         tooltip = format!("{tooltip} · {}", t.update_tooltip);
     }
     View {
         update,
         keyboard,
+        game,
         open: t.open.clone(),
         focus: t.focus.clone(),
         focus_status: focus_line.clone(),
@@ -476,6 +558,8 @@ where
         reminders_on,
         gauges_label: t.gauges.clone(),
         gauges_on: f.gauges.unwrap_or(false),
+        music_label: t.music.clone(),
+        music_on: f.music.unwrap_or(false),
         profiles_label: t.profiles.clone(),
         profiles: f
             .profiles
@@ -484,27 +568,30 @@ where
                 (id.clone(), if name.is_empty() { t.default_profile.clone() } else { name.clone() }, *on)
             })
             .collect(),
+        auto_label: t.auto_profile.clone(),
+        auto_on: f.auto,
         quit: t.quit.clone(),
         tooltip,
     }
 }
 
-/// The keyboard the UI shows (USB first, as `useActiveKeyboard`).
+/// The keyboard the UI shows (`KeyboardInfo::focus_rank`, as
+/// `useActiveKeyboard`): a receiver never hides a connected Bluetooth one.
 fn keyboard_line(app: &AppHandle) -> Option<KeyboardLine> {
     let device = app.try_state::<Arc<DeviceHandle>>()?;
     let snap = device.snapshot.lock().ok()?;
-    let rank = |k: &&KeyboardInfo| match k.connection {
-        Connection::Usb => 0,
-        Connection::Dongle => 1,
-        Connection::Bluetooth => 2,
-    };
-    let k = snap.keyboards.iter().min_by_key(rank)?;
+    let k = snap.keyboards.iter().min_by_key(|k| k.focus_rank())?;
     let name = if k.model_name.starts_with(&k.vendor) {
         k.model_name.clone()
     } else {
         format!("{} {}", k.vendor, k.model_name)
     };
-    Some(KeyboardLine { name, connection: k.connection, battery: k.battery.as_ref().map(|b| b.percent) })
+    Some(KeyboardLine {
+        model_id: k.model_id.clone(),
+        name,
+        connection: k.connection,
+        battery: k.battery.as_ref().map(|b| b.percent),
+    })
 }
 
 fn next_reminder(s: &ReminderState) -> Option<(f64, String)> {
@@ -527,6 +614,8 @@ fn update_line(app: &AppHandle) -> Option<(String, bool)> {
 fn facts(app: &AppHandle) -> Facts {
     Facts {
         update: update_line(app),
+        game: app.try_state::<Arc<GamesHandle>>().and_then(|g| g.session()),
+        auto: app.try_state::<Arc<crate::autoprofile::AutoProfiles>>().and_then(|a| a.running()).unwrap_or(false),
         keyboard: keyboard_line(app),
         pomodoro: app.try_state::<Arc<PomodoroHandle>>().and_then(|p| p.state().ok()),
         reminders: app
@@ -534,6 +623,7 @@ fn facts(app: &AppHandle) -> Facts {
             .and_then(|r| r.state().ok())
             .map(|s| (s.settings.enabled, next_reminder(&s))),
         gauges: app.try_state::<Arc<GaugesHandle>>().and_then(|g| g.state().ok()).map(|s| s.settings.enabled),
+        music: app.try_state::<Arc<MusicHandle>>().and_then(|m| m.state().ok()).map(|s| s.settings.enabled),
         profiles: crate::tray_profiles(app)
             .map(|(state, connected)| {
                 std::iter::once(state.factory)
@@ -560,6 +650,8 @@ struct Items {
     update: MenuItem<Wry>,
     update_sep: PredefinedMenuItem<Wry>,
     keyboard: MenuItem<Wry>,
+    /// Under the keyboard's line while a game session runs.
+    game: MenuItem<Wry>,
     open: MenuItem<Wry>,
     focus: Submenu<Wry>,
     focus_status: MenuItem<Wry>,
@@ -570,7 +662,10 @@ struct Items {
     reminders_next: MenuItem<Wry>,
     reminders_on: CheckMenuItem<Wry>,
     gauges: CheckMenuItem<Wry>,
+    music: CheckMenuItem<Wry>,
     profiles: Submenu<Wry>,
+    /// First in Profiles: the per-app profiles' switch.
+    auto: CheckMenuItem<Wry>,
     profile_items: Vec<CheckMenuItem<Wry>>,
     quit: MenuItem<Wry>,
 }
@@ -615,14 +710,19 @@ fn build(app: &AppHandle, v: &View) -> tauri::Result<(Menu<Wry>, Items)> {
         &[&reminders_next, &PredefinedMenuItem::separator(app)?, &reminders_on],
     )?;
     let gauges = CheckMenuItem::with_id(app, "gauges", menu_text(&v.gauges_label), true, v.gauges_on, None::<&str>)?;
+    let music = CheckMenuItem::with_id(app, "music", menu_text(&v.music_label), true, v.music_on, None::<&str>)?;
     let items = profile_items(app, v)?;
-    let refs: Vec<&dyn IsMenuItem<Wry>> = items.iter().map(|i| i as &dyn IsMenuItem<Wry>).collect();
+    let auto = CheckMenuItem::with_id(app, "auto", menu_text(&v.auto_label), true, v.auto_on, None::<&str>)?;
+    let auto_sep = PredefinedMenuItem::separator(app)?;
+    let mut refs: Vec<&dyn IsMenuItem<Wry>> = vec![&auto, &auto_sep];
+    refs.extend(items.iter().map(|i| i as &dyn IsMenuItem<Wry>));
     let profiles = Submenu::with_items(app, menu_text(&v.profiles_label), true, &refs)?;
     let keyboard = item(app, "keyboard", &v.keyboard, false)?;
     let open = item(app, "open", &v.open, true)?;
     let quit = item(app, "quit", &v.quit, true)?;
     let update = item(app, "update", v.update.as_deref().unwrap_or_default(), true)?;
     let update_sep = PredefinedMenuItem::separator(app)?;
+    let game = item(app, "game", v.game.as_deref().unwrap_or_default(), false)?;
     let menu = Menu::with_items(
         app,
         &[
@@ -632,11 +732,15 @@ fn build(app: &AppHandle, v: &View) -> tauri::Result<(Menu<Wry>, Items)> {
             &focus,
             &reminders,
             &gauges,
+            &music,
             &profiles,
             &PredefinedMenuItem::separator(app)?,
             &quit,
         ],
     )?;
+    if v.game.is_some() {
+        menu.insert(&game, 1)?;
+    }
     if v.update.is_some() {
         menu.insert(&update, 0)?;
         menu.insert(&update_sep, 1)?;
@@ -648,6 +752,7 @@ fn build(app: &AppHandle, v: &View) -> tauri::Result<(Menu<Wry>, Items)> {
             update,
             update_sep,
             keyboard,
+            game,
             open,
             focus,
             focus_status,
@@ -658,7 +763,9 @@ fn build(app: &AppHandle, v: &View) -> tauri::Result<(Menu<Wry>, Items)> {
             reminders_next,
             reminders_on,
             gauges,
+            music,
             profiles,
+            auto,
             profile_items: items,
             quit,
         },
@@ -688,6 +795,16 @@ fn apply(app: &AppHandle, items: &mut Items, old: &View, new: &View) -> tauri::R
         (Some(a), Some(b)) if a != b => items.update.set_text(menu_text(b))?,
         _ => {}
     }
+    match (&old.game, &new.game) {
+        (None, Some(line)) => {
+            items.game.set_text(menu_text(line))?;
+            // Under the keyboard's line, which follows the update lines.
+            items.menu.insert(&items.game, if new.update.is_some() { 3 } else { 1 })?;
+        }
+        (Some(_), None) => items.menu.remove(&items.game)?,
+        (Some(a), Some(b)) if a != b => items.game.set_text(menu_text(b))?,
+        _ => {}
+    }
     text!(items.keyboard, keyboard);
     text!(items.open, open);
     text!(items.focus, focus);
@@ -699,7 +816,9 @@ fn apply(app: &AppHandle, items: &mut Items, old: &View, new: &View) -> tauri::R
     text!(items.reminders_next, reminders_next);
     text!(items.reminders_on, reminders_on_label);
     text!(items.gauges, gauges_label);
+    text!(items.music, music_label);
     text!(items.profiles, profiles_label);
+    text!(items.auto, auto_label);
     text!(items.quit, quit);
     if old.focus_active != new.focus_active {
         items.focus_skip.set_enabled(new.focus_active)?;
@@ -707,6 +826,8 @@ fn apply(app: &AppHandle, items: &mut Items, old: &View, new: &View) -> tauri::R
     }
     items.reminders_on.set_checked(new.reminders_on)?;
     items.gauges.set_checked(new.gauges_on)?;
+    items.music.set_checked(new.music_on)?;
+    items.auto.set_checked(new.auto_on)?;
     let same_list = old.profiles.len() == new.profiles.len()
         && old.profiles.iter().zip(&new.profiles).all(|(a, b)| a.0 == b.0 && a.1 == b.1);
     if same_list {
@@ -758,6 +879,13 @@ fn on_menu(app: &AppHandle, id: &str) {
                 tracing::warn!("reminders from the tray: {e}");
             }
         }
+        "auto" => {
+            if let Some(auto) = app.try_state::<Arc<crate::autoprofile::AutoProfiles>>() {
+                let on = !auto.running().unwrap_or(false);
+                tracing::info!(on, "per-app profiles from the tray");
+                auto.set_running(on);
+            }
+        }
         "gauges" => {
             let gauges = app.state::<Arc<GaugesHandle>>();
             let result = gauges.state().and_then(|s| {
@@ -771,6 +899,21 @@ fn on_menu(app: &AppHandle, id: &str) {
                     let _ = app.emit(EVENT_GAUGES, state);
                 }
                 Err(e) => tracing::warn!("gauges from the tray: {e}"),
+            }
+        }
+        "music" => {
+            let music = app.state::<Arc<MusicHandle>>();
+            let result = music.state().and_then(|s| {
+                let mut settings = s.settings;
+                settings.enabled = !settings.enabled;
+                music.configure(settings)
+            });
+            match result {
+                // The page's switch follows (it listens only while open).
+                Ok(state) => {
+                    let _ = app.emit(EVENT_MUSIC, state);
+                }
+                Err(e) => tracing::warn!("music mode from the tray: {e}"),
             }
         }
         _ => {
@@ -861,7 +1004,7 @@ fn keep_up(
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
         }
-        let view = view_of(&bg.texts(), &facts(&app), crate::now_ms(), &Local);
+        let view = view_of(&bg.texts(), &facts(&app), crate::now_ms(), &crate::zones::pc_zone());
         if let Err(e) = apply(&app, &mut items, &shown, &view) {
             tracing::warn!("tray menu not updated: {e}");
         }
@@ -880,7 +1023,7 @@ fn keep_up(
 /// Put the icon in the tray and keep its menu and tooltip up to date.
 pub fn start(app: &AppHandle) -> tauri::Result<()> {
     let bg = app.state::<Arc<Background>>().inner().clone();
-    let first = view_of(&bg.texts(), &facts(app), crate::now_ms(), &Local);
+    let first = view_of(&bg.texts(), &facts(app), crate::now_ms(), &crate::zones::pc_zone());
     let (menu, items) = build(app, &first)?;
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .tooltip(&first.tooltip)
@@ -902,7 +1045,14 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
     if let Ok(mut r) = bg.refresh.lock() {
         *r = Some(tx);
     }
-    for event in [EVENT_POMODORO, EVENT_KEYBOARDS_CHANGED, EVENT_REMINDERS, EVENT_UPDATE] {
+    for event in [
+        EVENT_POMODORO,
+        EVENT_KEYBOARDS_CHANGED,
+        EVENT_REMINDERS,
+        EVENT_UPDATE,
+        EVENT_GAMES,
+        crate::autoprofile::EVENT_AUTO_PROFILE,
+    ] {
         let app = app.clone();
         app.clone().listen_any(event, move |_| refresh(&app));
     }
@@ -917,7 +1067,16 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::FixedOffset;
+    use jiff::civil::date;
+
+    #[test]
+    fn a_start_for_an_agent_is_hidden_but_not_a_start_with_windows() {
+        assert!(background_start(&["C:\\x\\keymotion.exe", "--background"]));
+        assert!(background_start(&["C:\\x\\keymotion.exe", "keymotion://background"]));
+        assert!(!background_start(&["C:\\x\\keymotion.exe", "--hidden"]));
+        assert!(!background_start(&["C:\\x\\keymotion.exe", "keymotion://open"]));
+        assert!(!background_start(&["C:\\x\\keymotion.exe"]));
+    }
 
     /// The classic sequence (6 blocks, 100 minutes), at block `block`.
     fn pomodoro(status: PomodoroStatus, phase: PomodoroPhase, block: u8, remaining_ms: f64) -> PomodoroState {
@@ -934,6 +1093,7 @@ mod tests {
             focus_done: 0,
             last: None,
             trying: false,
+            once: None,
         }
     }
 
@@ -948,7 +1108,7 @@ mod tests {
         }
     }
 
-    const UTC3: i32 = 3 * 3600;
+    const UTC3: i8 = 3;
 
     #[test]
     fn focus_line_shows_phase_block_and_minutes() {
@@ -970,12 +1130,16 @@ mod tests {
     #[test]
     fn view_reads_like_the_menu() {
         let t = tr();
-        let tz = FixedOffset::east_opt(UTC3).unwrap();
+        let tz = TimeZone::fixed(jiff::tz::offset(UTC3));
+        let ms = |d: i8, h: i8, m: i8| {
+            date(2026, 11, d).at(h, m, 0, 0).to_zoned(tz.clone()).unwrap().timestamp().as_millisecond() as f64
+        };
         // 2026-11-12 10:00 local.
-        let now = tz.with_ymd_and_hms(2026, 11, 12, 10, 0, 0).unwrap().timestamp_millis() as f64;
-        let at = |d: u32, h: u32, m: u32| tz.with_ymd_and_hms(2026, 11, d, h, m, 0).unwrap().timestamp_millis() as f64;
+        let now = ms(12, 10, 0);
+        let at = ms;
         let mut f = Facts {
             keyboard: Some(KeyboardLine {
+                model_id: "ajazz-ak980-pro".into(),
                 name: "AJAZZ AK980 PRO".into(),
                 connection: Connection::Bluetooth,
                 battery: Some(80),
@@ -983,8 +1147,11 @@ mod tests {
             pomodoro: Some(pomodoro(PomodoroStatus::Running, PomodoroPhase::Focus, 1, 5.0 * 60_000.0)),
             reminders: Some((true, Some((at(12, 14, 30), "Su iç".into())))),
             gauges: Some(true),
+            music: Some(true),
             profiles: vec![("default".into(), String::new(), false), ("p1".into(), "Oyun & iş".into(), true)],
             update: None,
+            game: None,
+            auto: false,
         };
         let v = view_of(&t, &f, now, &tz);
         assert_eq!(v.keyboard, "AJAZZ AK980 PRO · Bluetooth · battery 80%");
@@ -992,6 +1159,8 @@ mod tests {
         assert!(v.focus_active);
         assert_eq!(v.reminders_next, "Next: 14:30 · Su iç");
         assert!(v.gauges_on);
+        assert!(v.music_on);
+        assert_eq!(v.music_label, "Music mode");
         assert_eq!(v.profiles[0].1, "Default");
         assert_eq!(v.tooltip, "Keymotion — Focus · Blok 1/6 · 1 dk kaldı");
 
@@ -1003,11 +1172,20 @@ mod tests {
         assert_eq!(view_of(&t, &f, now, &tz).reminders_next, "Reminders off");
 
         // The cable: no battery; no keyboard; the timer idle.
-        f.keyboard =
-            Some(KeyboardLine { name: "AJAZZ AK980 PRO".into(), connection: Connection::Usb, battery: Some(80) });
+        f.keyboard = Some(KeyboardLine {
+            model_id: "ajazz-ak980-pro".into(),
+            name: "AJAZZ AK980 PRO".into(),
+            connection: Connection::Usb,
+            battery: Some(80),
+        });
         f.pomodoro = Some(pomodoro(PomodoroStatus::Idle, PomodoroPhase::Focus, 1, 0.0));
         let v = view_of(&t, &f, now, &tz);
         assert_eq!(v.keyboard, "AJAZZ AK980 PRO · USB cable");
+        // The UI's name for the model, in Chinese the name it is sold under.
+        let mut zh = t.clone();
+        zh.model_names.insert("ajazz-ak980-pro".into(), "黑爵 AK980 V2（带屏版）".into());
+        zh.conn_usb = "USB 有线".into();
+        assert_eq!(view_of(&zh, &f, now, &tz).keyboard, "黑爵 AK980 V2（带屏版） · USB 有线");
         assert_eq!((v.focus_toggle.as_str(), v.focus_active, v.tooltip.as_str()), ("Start", false, "Keymotion"));
         f.keyboard = None;
         assert_eq!(view_of(&t, &f, now, &tz).keyboard, "No keyboard connected");
@@ -1020,6 +1198,46 @@ mod tests {
         assert_eq!(v.tooltip, "Keymotion · update available");
         f.update = Some(("1.1.0".into(), true));
         assert_eq!(view_of(&t, &f, now, &tz).update.as_deref(), Some("Install now: Keymotion 1.1.0"));
+
+        // A game session: a line under the keyboard's, and in the tooltip.
+        f.update = None;
+        f.game = Some(("League of Legends".into(), now - 42.5 * 60_000.0));
+        let v = view_of(&t, &f, now, &tz);
+        assert_eq!(v.game.as_deref(), Some("Playing League of Legends · 42 min"));
+        assert_eq!(v.tooltip, "Keymotion · Playing League of Legends · 42 min");
+        // Hours, and under a minute, as on the page.
+        f.game = Some(("League of Legends".into(), now - 135.0 * 60_000.0));
+        assert_eq!(view_of(&t, &f, now, &tz).game.as_deref(), Some("Playing League of Legends · 2 h 15 min"));
+        f.game = Some(("League of Legends".into(), now - 20_000.0));
+        assert_eq!(view_of(&t, &f, now, &tz).game.as_deref(), Some("Playing League of Legends · under 1 min"));
+    }
+
+    #[test]
+    fn dates_and_counts_in_each_language() {
+        let tz = TimeZone::fixed(jiff::tz::offset(UTC3));
+        let ms = |d: i8, h: i8| {
+            date(2026, 11, d).at(h, 0, 0, 0).to_zoned(tz.clone()).unwrap().timestamp().as_millisecond() as f64
+        };
+        let (now, later) = (ms(12, 10), ms(14, 9));
+        let s = |t: &str| t.to_string();
+        let texts = |locale: &str| TrayTexts { locale: s(locale), ..TrayTexts::default() };
+        assert_eq!(when(&texts("en"), later, now, &tz), "Nov 14 09:00");
+        assert_eq!(when(&texts("tr"), later, now, &tz), "14.11 09:00");
+        assert_eq!(when(&texts("ru"), later, now, &tz), "14.11 09:00");
+        assert_eq!(when(&texts("zh-CN"), later, now, &tz), "11月14日 09:00");
+
+        // The idle line counts blocks: English one/other, Russian one/few/many.
+        let mut idle = pomodoro(PomodoroStatus::Idle, PomodoroPhase::Focus, 1, 0.0);
+        let ru = TrayTexts {
+            ready: s("Готово: {blocks, plural, one {# блок} few {# блока} many {# блоков} other {# блока}}, {min} мин"),
+            ..texts("ru")
+        };
+        assert_eq!(focus_status(&ru, &idle, 0.0), "Готово: 6 блоков, 100 мин");
+        idle.settings.blocks.truncate(2);
+        assert_eq!(focus_status(&ru, &idle, 0.0), "Готово: 2 блока, 30 мин");
+        idle.settings.blocks.truncate(1);
+        assert_eq!(focus_status(&ru, &idle, 0.0), "Готово: 1 блок, 25 мин");
+        assert_eq!(focus_status(&texts("en"), &idle, 0.0), "Ready: 1 block, 25 min");
     }
 
     #[test]
@@ -1059,5 +1277,16 @@ mod tests {
         assert!(!bg.take_notice());
         // A new run of the app (a new Background) shows it again.
         assert!(Background::open(None).take_notice());
+    }
+
+    #[test]
+    fn minimizing_and_restoring_are_told_once_each() {
+        let bg = Background::open(None);
+        // Resized and focus events while it stays as it was: nothing new.
+        assert!(!bg.minimized_changed(false));
+        assert!(bg.minimized_changed(true));
+        assert!(!bg.minimized_changed(true), "the focus going after the minimize");
+        assert!(bg.minimized_changed(false));
+        assert!(!bg.minimized_changed(false));
     }
 }

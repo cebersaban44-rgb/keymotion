@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { ClockStatus } from "../bindings/ClockStatus";
 import { follow } from "../lib/follow";
 import { getClockStatus, onClockChanged, setClockAuto, syncClock } from "../lib/ipc";
-import { useAgo, useT } from "../lib/i18n";
+import { intlTag, useAgo, useT } from "../lib/i18n";
 import { useApp } from "../lib/store";
 import { Toggle } from "./controls";
 import { friendlyError } from "../lib/errors";
@@ -56,16 +56,16 @@ export function ClockCard({ usb }: { usb: boolean }) {
   const lastDate =
     last === null
       ? undefined
-      : new Date(last).toLocaleString(locale === "tr" ? "tr-TR" : "en-US", { dateStyle: "medium", timeStyle: "short" });
+      : new Date(last).toLocaleString(intlTag(locale), { dateStyle: "medium", timeStyle: "short" });
 
   return (
-    <div className="card flex flex-wrap items-center gap-x-5 gap-y-4 p-5" data-clock>
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-ink-2">
-        <Clock3 size={20} strokeWidth={1.8} />
-      </div>
+    <div className="row flex-wrap gap-y-3" data-clock>
+      <span className="row-icon">
+        <Clock3 size={20} strokeWidth={1.4} />
+      </span>
 
       <div className="min-w-[220px] flex-1">
-        <div className="eyebrow">{t("clock.title")}</div>
+        <div className="row-title">{t("clock.title")}</div>
         <div className="num mt-1 text-[13px] text-ink-2" title={lastDate}>
           {status ? lastText : "…"}
         </div>
@@ -95,7 +95,7 @@ export function ClockCard({ usb }: { usb: boolean }) {
         type="button"
         onClick={() => void syncNow()}
         disabled={!usb || sync.kind === "busy"}
-        className="flex h-9 shrink-0 items-center gap-2 rounded-lg border border-line px-3 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+        className="btn-secondary shrink-0"
       >
         {sync.kind === "busy" ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={14} />}
         {sync.kind === "busy" ? t("clock.syncing") : t("clock.sync")}

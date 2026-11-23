@@ -13,4 +13,4 @@
 - [ ] The pull request targets `develop`.
 - [ ] `cargo fmt`, `cargo clippy`, `cargo test`, the TypeScript build and ESLint pass.
 - [ ] No new keyboard command that hasn't been measured on that keyboard.
-- [ ] If people see the change: the user guide in `site/` is updated in English and Turkish.
+- [ ] If people see the change: the user guide in `site/` is updated in English and Turkish (Russian and Chinese: list the pages here, the maintainer updates them).

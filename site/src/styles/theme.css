@@ -5,9 +5,23 @@
    [data-theme="light"]. */
 
 :root {
-  --sl-font: "Instrument Sans Variable", "Segoe UI", system-ui, sans-serif;
+  --km-font-latin: "Instrument Sans Variable", "Segoe UI", system-ui, sans-serif;
+  --km-display-latin: "Bricolage Grotesque Variable", "Segoe UI", system-ui, sans-serif;
+  /* Russian: one family for Cyrillic and Latin letters alike, so "Keymotion"
+     or "USB" in a Russian sentence matches the words around it. */
+  --km-font-ru: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Noto Sans", Arial, sans-serif;
+  --km-display-ru: "Segoe UI Variable Display", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Noto Sans", Arial, sans-serif;
+  /* Simplified Chinese: Latin letters and digits in the site's own fonts,
+     Chinese characters and punctuation in the system's Simplified Chinese
+     font (macOS PingFang SC, Windows Microsoft YaHei, Linux and Android
+     Noto Sans SC / Noto Sans CJK SC). */
+  --km-cjk-sc: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --km-font-zh: "Instrument Sans Variable", var(--km-cjk-sc);
+  --km-display-zh: "Bricolage Grotesque Variable", var(--km-cjk-sc);
+
+  --sl-font: var(--km-font-latin);
   --sl-font-mono: "JetBrains Mono Variable", ui-monospace, Consolas, monospace;
-  --km-display: "Bricolage Grotesque Variable", "Segoe UI", system-ui, sans-serif;
+  --km-display: var(--km-display-latin);
 
   --sl-color-accent-low: #3a1d0a;
   --sl-color-accent: #ff8a3d;
@@ -55,6 +69,33 @@ h1#_top { font-weight: 750; }
 .site-title { font-weight: 700; gap: 0.6rem; }
 .site-title img { height: 1.75rem; width: auto; }
 
+/* Fonts per language. Instrument Sans and Bricolage Grotesque draw Latin
+   letters only, so Russian and Chinese text gets system fonts that have its
+   letters (no web fonts are downloaded for them). The fonts follow each
+   element's lang attribute: the page's language on <html>, English again on
+   the <main lang="en"> of a page that is not translated yet, and the page's
+   language once more on the components that speak it (src/i18n.ts). */
+[lang] {
+  --sl-font: var(--km-font-latin);
+  --km-display: var(--km-display-latin);
+}
+[lang|="ru"] {
+  --sl-font: var(--km-font-ru);
+  --km-display: var(--km-display-ru);
+}
+[lang="zh-CN" i] {
+  --sl-font: var(--km-font-zh);
+  --km-display: var(--km-display-zh);
+  --sl-line-height-headings: 1.35;
+}
+[lang] { font-family: var(--sl-font), var(--sl-font-system); }
+/* The site's name is a word mark: the same letters in every language. */
+.site-title { font-family: var(--km-display-latin); }
+/* Chinese has no italics and no tightened letter spacing; emphasis is bold. */
+:is(h1#_top, .sl-markdown-content :is(h1, h2, h3), .hero h1, .card .title):lang(zh-CN) { letter-spacing: normal; }
+:is(em, i, cite, dfn, var):lang(zh-CN) { font-style: normal; }
+em:lang(zh-CN) { font-weight: 600; }
+
 /* Sidebar: the current page carries the LED colour as a thin edge. */
 .sidebar-content a[aria-current="page"] {
   background: color-mix(in srgb, var(--km-signal) 12%, transparent);
@@ -74,6 +115,9 @@ h1#_top { font-weight: 750; }
   letter-spacing: -0.028em;
   text-wrap: balance;
 }
+/* Cyrillic and Chinese characters stand taller than Latin ones. */
+.hero h1:lang(ru) { line-height: 1.1; }
+.hero h1:lang(zh-CN) { line-height: 1.25; }
 .hero .tagline { font-size: clamp(1.05rem, 1.6vw, 1.2rem); max-width: 44ch; }
 .hero > .hero-html { width: min(100%, 44rem); }
 .hero img {

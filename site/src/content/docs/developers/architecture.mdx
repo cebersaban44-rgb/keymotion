@@ -16,7 +16,9 @@ kb-core            shared logic         detection, the protocol driver, color, r
    ├── kb-protocol   packets and the safety guard   (no I/O)
    ├── kb-devices    model files and matching       (no I/O)
    └── kb-transport  HID and Bluetooth LE access    (moves bytes)
-kb-winsys          Windows readings     processor, graphics, audio, running programs
+kb-winsys          Windows readings     processor, graphics, audio, sound playing, running programs
+kb-agent           agent protocol       messages and checks for keymotion-cli (no HID)
+keymotion-cli      agents' tool         lights for scripts and AI agents, through the app's pipe
 kb-cli (kb)        developer tool on the same crates
 ```
 
@@ -30,8 +32,10 @@ The Cargo workspace is `crates/*` plus `app/src-tauri`. The workspace denies `un
 | `kb-devices` | Keyboard model files (TOML in `models/`, embedded at compile time) and matching: which model and connection mode an HID collection belongs to. No I/O. |
 | `kb-transport` | Raw device access. `hid` enumerates HID collections and exchanges feature, output and input reports through hidapi. `ble` reads the battery over Bluetooth LE through WinRT and has no write function. It moves bytes and knows nothing about protocols. |
 | `kb-core` | Logic shared by the app and `kb`: detection (`detect`), HID descriptor shape checks (`shape`), the command-channel driver with its sessions, echoes, checksums and screen upload (`sonix`), color calibration (`color`), read-back interpretation (`readback`), programs that conflict with the keyboard (`conflicts`), the clock, keymap rules and screen import. |
-| `kb-winsys` | Readings from Windows for the system gauges and reminders: processor, graphics and memory load, speaker volume, microphone mute, idle time, running programs. Also the Windows version, per-user data protection for calendar addresses, the startup entry and the notification identity. The only crate that calls Win32 and COM directly, behind small safe types. |
+| `kb-winsys` | Readings from Windows for the system gauges, music mode and reminders: processor, graphics and memory load, speaker volume, microphone mute, how loud the sound playing is (WASAPI loopback of the default output, opened only while something plays, mixed to mono; `loopback.rs`), idle time, running programs. Also the Windows version, the taskbar clock's time and the time zone setting (read afresh each time, for the keyboard clock, the calendar and reminders), per-user data protection for calendar addresses, the startup entry and the notification identity, and the named pipe for `kb-agent` (`pipe.rs`: an explicit security descriptor that is owned by and admits only the current user, no clients from the network, a first-instance check against squatting, and a client that refuses a pipe owned by anyone else). The only crate that calls Win32 and COM directly, behind small safe types. |
 | `kb-cli` | The `kb` developer tool: lists keyboards, reads descriptors and colors, streams live frames, and runs measured write commands behind `--yes`. |
+| `kb-agent` | The local protocol of `keymotion-cli`, the command-line tool for scripts and AI coding agents: one JSON message per line over a named pipe (protocol 1, `hello` first, at most 64 KiB a line), the checks of colors, durations, effects and key lists that the tool and the app share (the app checks again), stable error codes and exit codes (never 2), and the pipe name `\\.\pipe\keymotion-agent-<user SID>-<session>`. Commands of protocol 1: `hello`, `status`, `keys`, `signal`, `light`, `progress`, `clear`, `log`, `settings_get` and `settings_set`. It never opens the keyboard: a test keeps it away from `kb-transport` and hidapi. The app serves it (`agent/`, below); `examples/agent_call.rs` sends one raw command for testing. |
+| `keymotion-cli` | The command-line tool itself ([Agent command line](/keymotion/developers/agent-cli/)): clap commands that map to protocol 1, human or JSON output, exit codes that are never 2, and the start of the app without a window when it is not running, by package activation or `explorer.exe keymotion://background` so the app never lands in a calling app's package box (`launch.rs`). It depends on `kb-agent` and `kb-winsys` only; a test keeps the HID stack, Tauri and tokio away from it. |
 
 ## The Tauri shell
 
@@ -39,18 +43,19 @@ The Cargo workspace is `crates/*` plus `app/src-tauri`. The workspace denies `un
 
 - **Commands.** `lib.rs` defines every `#[tauri::command]`. A command converts its input from the interface's types, hands the work on, and returns a result or an English error string. The interface maps those errors to its own messages (`app/src/lib/errors.ts`).
 - **The device actor** (`device.rs`) is the only code that talks to keyboards. One thread owns the HID subsystem. Requests arrive on a channel and run one at a time, so two protocol sessions can never interleave. Between requests it re-enumerates devices every 2 seconds, re-sends the current live frame every 50 ms, reads the keys' colors every 250 ms while the interface shows its mirror, and sets the keyboard's clock when it connects (at most once a day). It keeps the app's own record of the keymap and macros, because the keyboard cannot report them.
-- **Background tasks**, each with its own handle, started in `setup`: the live screen worker (`live.rs`), what Windows reports as playing (`now_playing.rs`), the focus timer (`pomodoro.rs`), the system gauges (`gauges.rs`), the calendar (`calendar.rs`, `ics.rs`), reminders (`reminders.rs`) and updates (`updates.rs`). They hand light layers to the device actor and screen cards to the live worker.
-- **The tray** (`tray.rs`). Closing the window can hide it, and the app goes on in the notification area, because the focus timer, reminders, calendar cards, live screen and gauges only work while it runs. The menu shows the keyboard and offers the focus timer, reminders, gauges, profiles and Quit. A profile chosen there opens the window to confirm it, since every write to permanent memory needs the user's yes.
+- **Background tasks**, each with its own handle, started in `setup`: the live screen worker (`live.rs`), what Windows reports as playing (`now_playing.rs`), the focus timer (`pomodoro.rs`), the system gauges (`gauges.rs`), music mode (`music.rs`, with the sound analysis in `spectrum.rs`), the calendar (`calendar.rs`, `ics.rs`), reminders (`reminders.rs`), the game session (`games.rs`, with League of Legends' lights in `lol.rs`), per-app profiles (`autoprofile.rs`), the AI agents (`agent/`) and updates (`updates.rs`). They hand light layers to the device actor and screen cards to the live worker. The game session and per-app profiles share one watcher of the program in front (`front.rs`), which runs only while one of them is on.
+- **The agents** (`agent/`). The pipe server for `keymotion-cli` starts with the app, whether or not the user has turned agent access on, so a script always gets a clear answer: with access off, everything but `status`, `keys`, `log` and `settings_get` is refused with `agent_access_off` (exit code 77). `engine.rs` keeps each source's lights (at most 8; an id replaces the source's earlier light with that id; no source touches another's), ends them when their time is up, ranks them on each key (a question for the user over an error over the newest; lights on different keys show together), limits each source to 20 requests a second (beyond that a replacement of one of its lights waits, only the newest per light, and the worker puts it up within the rate) and logs the last 200 changes, with what an agent's settings change replaced so the user can undo it (a key changed again since stays as it is). `effects.rs` draws the looks 20 times a second, and a last check holds a key's colour rather than let it change more than six times (three flashes) within a second, whatever the requests ask for. `keys.rs` turns key names and groups into LEDs from the model file, once per light and keyboard model. Settings live in `agents.json`; agents may change the looks and the behaviour, never access, the permissions or the limits (`config.rs`). Lights need the USB cable (`needs_usb` otherwise) and never write the keyboard's memory.
+- **The tray** (`tray.rs`). Closing the window can hide it, and the app goes on in the notification area, because the focus timer, reminders, calendar cards, live screen and gauges only work while it runs. The menu shows the keyboard and offers the focus timer, reminders, gauges, music mode, profiles and Quit. A profile chosen there opens the window to confirm it, since every write to permanent memory needs the user's yes.
 - **The updater** (`updates.rs`, `tauri-plugin-updater`). The release workflow publishes `latest.json` with each GitHub release; the updater checks the download against the public key in `tauri.conf.json`. If the user allows it, the app looks once a day; nothing installs until the user chooses to, and installing waits for a write to the keyboard to finish.
 - **Storage.** Settings are versioned JSON files in `%APPDATA%\dev.keymotion` (`settings.rs`); a damaged file is kept aside and reported once. The screen library (`screen_lib.rs`) is the only copy of uploaded pictures, because the keyboard cannot give them back. Logs go to `%LOCALAPPDATA%\dev.keymotion\logs`, one file a day.
-- **One instance.** `tauri-plugin-single-instance` brings the open window forward instead of starting a second copy, which would send commands at the same time. A second start with Windows (`--hidden`) stays quiet, and the GitHub copy hands over to an installed Microsoft Store copy (`handoff.rs`; [Microsoft Store package](/keymotion/developers/microsoft-store/#both-installed)).
+- **One instance.** `tauri-plugin-single-instance` brings the open window forward instead of starting a second copy, which would send commands at the same time. A second start with Windows (`--hidden`) stays quiet, as does a start for an agent (`--background`, `keymotion://background`, which also never shows the window on a first start), and the GitHub copy hands over to an installed Microsoft Store copy (`handoff.rs`; [Microsoft Store package](/keymotion/developers/microsoft-store/#both-installed)).
 
 ## The interface
 
 `app/src` is React 19 and TypeScript, built with Vite and styled with Tailwind CSS.
 
 - `pages/` has one component per sidebar page, `components/` the shared pieces.
-- `lib/` holds each feature's logic and state (zustand stores), `lib/ipc.ts` every call to the backend, and `lib/i18n.ts` every text in Turkish and English.
+- `lib/` holds each feature's logic and state (zustand stores), `lib/ipc.ts` every call to the backend, and `lib/i18n/` every text in English (`en.ts`, the source), Turkish, Russian and Simplified Chinese; `tools/check-i18n.mjs` checks them.
 - The interface holds no keyboard logic. It prepares data, for example the screen image in the keyboard's format (`lib/screen.ts`), but the backend validates everything again: the interface is not trusted with the keyboard's format.
 - Tauri runs commands concurrently, so two quick calls can arrive in the wrong order. Commands that change state go through one serial queue in `lib/ipc.ts`.
 
@@ -79,7 +84,7 @@ The same test run writes the browser mock's data from Rust: the effect catalogue
 
 ### The browser mock
 
-For interface work without the app or a keyboard, run `pnpm --dir app dev` and open `http://127.0.0.1:1420/` in a browser. Outside Tauri, each function in `lib/ipc.ts` returns stand-in data instead of calling the backend; `lib/screen.ts`, `live.ts`, `pomodoro.ts`, `calendar.ts`, `reminders.ts` and `gauges.ts` have their own. Switches in the address:
+For interface work without the app or a keyboard, run `pnpm --dir app dev` and open `http://127.0.0.1:1420/` in a browser. Outside Tauri, each function in `lib/ipc.ts` returns stand-in data instead of calling the backend; `lib/screen.ts`, `live.ts`, `pomodoro.ts`, `calendar.ts`, `reminders.ts`, `gauges.ts` and `music.ts` have their own. Switches in the address:
 
 | Switch | What it does |
 |---|---|
@@ -115,11 +120,19 @@ Saving a lighting effect, step by step:
 
 </Steps>
 
-Other paths use the same layers. A preview sends `set_live_frame`; the actor keeps the frame and sends it as a RAM-only live frame every 50 ms, with the focus timer's or the gauges' light layer underneath. A screen upload starts as an image the interface prepared; `screen_add` validates it again, and `screen_upload` sends it page by page on the screen channel, with progress events. Live cards from the focus timer, the calendar, reminders and the song that is playing go through the live worker, which waits for the cable and the daily upload limit.
+Other paths use the same layers. A preview sends `set_live_frame`; the actor keeps the frame and sends it as a RAM-only live frame every 50 ms, with the background light layers underneath: from the bottom, the per-app profile, the gauges, music mode, a game's lights and the focus timer (one of these shows, the highest), then the AI agents' lights on the keys they name, then the alerts, reminders and their waves on top, so an agent never hides a muted microphone or a meeting's key. While a game wants the keyboard left alone, the agents' layer is hidden too unless the user turned that off. Requests already waiting are handled together, and of the frames among them only the newest per layer is applied, so frames that piled up during a screen upload don't play back late. A screen upload starts as an image the interface prepared; `screen_add` validates it again, and `screen_upload` sends it page by page on the screen channel, with progress events. Live cards from the focus timer, the calendar, reminders and the song that is playing go through the live worker, which waits for the cable and the daily upload limit.
 
 ## Safety layers
 
 Each layer works on its own, so a mistake in one is caught by the next.
+
+**Games and anti-cheat software.** Keymotion runs next to games protected by anti-cheat software (Riot Vanguard, Easy Anti-Cheat, BattlEye, FACEIT). What those block is almost always a kernel driver with known holes, a program that opens the game, reads its memory or sends it input. So, by rule:
+
+- No driver of any kind, no DLL injected anywhere, no overlay, no `SendInput`, no keyboard or mouse hooks.
+- The program in front comes from an out-of-context WinEvent hook (`kb-winsys/foreground.rs`); its path from `NtQuerySystemInformation(SystemProcessIdInformation)`, without a handle to the process. The running-programs list (`running_programs`) works the same way. Game libraries are read from the launchers' own files and registry keys (`kb-winsys/games.rs`).
+- Music mode reads only the mixed output that Windows' own loopback capture gives any program (as call and streaming apps do), never a game's process; left and right are mixed to mono, so no direction reaches the keys.
+- Game data only through a game's documented interface for third-party tools: League of Legends' Live Client Data API, on `127.0.0.1:2999` only (`lol.rs`), and only the player's own visible state and public events.
+- Macros are never turned on for a game by the app itself.
 
 | Layer | Where | What it does |
 |---|---|---|
@@ -131,6 +144,7 @@ Each layer works on its own, so a mistake in one is caught by the next.
 | Write gate | `device::write_block` | No writes to permanent memory with more than one keyboard on the cable, while a known program talks to the keyboard (the official driver, SignalRGB, OpenRGB, `kb`), or on a firmware version not in the model's tested list until the user confirms it for this session. |
 | One writer | the device actor, the serial queue, single instance | Requests run one at a time on one thread, so sessions never interleave. |
 | Daily screen upload limit | `live.rs` | Every upload erases flash, so the live screen runs on a token bucket: **Low** 8 a day (3 in a row), **Balanced** 24 (6), **High** 48 (8). Uploads the user starts by hand count too but are never blocked; the debt is capped so the live screen is not locked out for long. An upload that never reached the keyboard is given back. |
+| Agent pipe | `kb_winsys::pipe`, `kb-agent`, `agent/` | Only this computer and only this Windows user can open it; another program holding its name is refused. Agent access and each permission are off until the user turns them on, in the app only. Agents' lights are RAM only, at most 20 requests a second per source and never more than three flashes a second. |
 | Writes in progress | `flash-write`, `kb-winsys` | While permanent memory is written, closing the app waits and Windows is told why shutting down now is a bad idea. |
 
 <Aside type="note" title="Measured first">

@@ -2,8 +2,8 @@
 //
 // Browser mock (development only): outside Tauri, `pnpm dev` in a browser
 // uses stand-ins for the backend so the UI can be designed and tested
-// (`?mock=usb|bluetooth|dongle|none`, `?fw=`, `?reset=`, `?failPart=`,
-// `?unsupported`, `?crash`, `mock-close-requested`; lib/screen.ts, live.ts, pomodoro.ts, calendar.ts,
+// (`?mock=usb|bluetooth|dongle|none`, `?fw=`, `?clock=wait`, `?reset=`, `?failPart=`,
+// `?unsupported`, `?mock=fw769|fw769-8009|old-8009`, `?crash`, `mock-close-requested`; lib/screen.ts, live.ts, pomodoro.ts, calendar.ts,
 // reminders.ts and gauges.ts have their own). Every mock branch is guarded
 // by `import.meta.env.DEV`, written out at the guard itself: Vite replaces
 // it with `false` in a production build, so the mock code and its switches
@@ -56,9 +56,21 @@ export const inTauri = isTauri();
 
 const outsideApp = (what: string) => new Error(`Keymotion's backend is not available: this page runs outside the app (${what})`);
 
+/** Development builds only: while tools/screenshots/capture.mjs takes the
+ *  site's pictures from the real app, its guard refuses the commands that
+ *  would write to the keyboard or to other programs' files. The app locks
+ *  Tauri's own `invoke`, so every command asks the guard here, and
+ *  `__ksGuardHook` tells it this build does. */
+type GuardedWindow = Window & { __ksGuard?: { check: (cmd: string) => Error | null }; __ksGuardHook?: boolean };
+if (import.meta.env.DEV) (window as GuardedWindow).__ksGuardHook = true;
+
 /** Tauri's `invoke`; outside the app it rejects with a clear error. Use this one, not Tauri's. */
 export function invoke<T>(cmd: string, args?: InvokeArgs, options?: InvokeOptions): Promise<T> {
   if (!inTauri) return Promise.reject(outsideApp(cmd));
+  if (import.meta.env.DEV) {
+    const refused = (window as GuardedWindow).__ksGuard?.check(cmd);
+    if (refused) return Promise.reject(refused);
+  }
   return tauriInvoke<T>(cmd, args, options);
 }
 
@@ -269,7 +281,20 @@ export async function confirmFirmware(version: string): Promise<void> {
   await invoke("confirm_firmware", { firmware: version });
 }
 
-/** A write was refused for untested firmware (also from the live mode). */
+/**
+ * The untested firmware version the clock sync on connect waits on, if any
+ * (its question may have gone out before the window was ready).
+ */
+export async function getFirmwareQuestion(): Promise<string | null> {
+  if (import.meta.env.DEV && !inTauri) {
+    // `?fw=1.07&clock=wait` plays the clock sync waiting at start-up.
+    const fw = mockFirmware();
+    return new URLSearchParams(location.search).get("clock") === "wait" && fw !== "1.06" ? fw : null;
+  }
+  return invoke<string | null>("firmware_question");
+}
+
+/** A write was refused for untested firmware (also from the live mode or the clock sync). */
 export async function onFirmwareUnverified(cb: (version: string) => void): Promise<UnlistenFn> {
   if (import.meta.env.DEV && !inTauri) return () => {};
   return listen<string>("firmware-unverified", (e) => cb(e.payload));
@@ -398,13 +423,18 @@ export function getClockStatus(): Promise<ClockStatus> {
   return invoke<ClockStatus>("clock_status");
 }
 
-/** Set the keyboard clock to the PC's local time now (USB only). */
-export async function syncClock(): Promise<ClockStatus> {
-  if (import.meta.env.DEV && !inTauri) {
-    await mockDelay(300);
-    return (mockClock = { ...mockClock, lastSyncMs: Date.now() });
-  }
-  return serial(() => invoke<ClockStatus>("sync_clock"));
+/**
+ * Set the keyboard clock to the PC's local time now (USB only). On untested
+ * firmware it waits for the user's go-ahead, like a save (flashWrite).
+ */
+export function syncClock(): Promise<ClockStatus> {
+  return flashWrite(async () => {
+    if (import.meta.env.DEV && !inTauri) {
+      await mockDelay(300);
+      return (mockClock = { ...mockClock, lastSyncMs: Date.now() });
+    }
+    return serial(() => invoke<ClockStatus>("sync_clock"));
+  });
 }
 
 /** Turn automatic clock sync (on USB connect, at most once a day) on or off. */
@@ -635,10 +665,23 @@ export async function crashSeen(name: string): Promise<void> {
 }
 
 const MOCK_UNSUPPORTED: UnsupportedKeyboard[] = [{ id: "0C45:8009:usb", name: "SONiX AK820 PRO" }];
+/** An AK980 PRO the backend doesn't take, and no supported keyboard:
+ *  `?mock=fw769` on AJAZZ's firmware 769 (3.01) as 0C45:8039,
+ *  `?mock=fw769-8009` on the same firmware as 0C45:8009 (its screen channel,
+ *  usage page 0xFF67, tells it apart), `?mock=old-8009` on the old firmware
+ *  but not taken (no 0xFF67: the generic card). */
+const MOCK_AK980: Record<string, { id: string; release: string; pages: string[] }> = {
+  fw769: { id: "0C45:8039:usb", release: "0301", pages: ["0001", "000C", "FF67"] },
+  "fw769-8009": { id: "0C45:8009:usb", release: "0301", pages: ["0001", "000C", "FF67"] },
+  "old-8009": { id: "0C45:8009:usb", release: "0106", pages: ["0001", "000C", "FF13"] },
+};
+const mockAk980 = () => MOCK_AK980[new URLSearchParams(location.search).get("mock") ?? ""];
 
 /** Keyboards that look like SONiX or AJAZZ ones but aren't supported yet. */
 export async function getUnsupportedKeyboards(): Promise<UnsupportedKeyboard[]> {
   if (import.meta.env.DEV && !inTauri) {
+    const ak980 = mockAk980();
+    if (ak980) return [{ id: ak980.id, name: "AK980 PRO" }];
     return new URLSearchParams(location.search).has("unsupported") ? MOCK_UNSUPPORTED : [];
   }
   return invoke<UnsupportedKeyboard[]>("unsupported_keyboards");
@@ -654,6 +697,12 @@ export async function onUnsupportedChanged(cb: (list: UnsupportedKeyboard[]) => 
 export async function unsupportedReport(id: string): Promise<string> {
   if (import.meta.env.DEV && !inTauri) {
     await mockDelay(200);
+    const ak980 = mockAk980();
+    if (ak980 && id === ak980.id) {
+      const [vid, pid] = id.split(":");
+      const pages = ak980.pages.map((p, i) => `  ${i + 1}. usage page 0x${p}, usage 0x0001, interface ${i}`);
+      return `Keymotion keyboard support request\nApp version: 0.1.0-dev\n\nKeyboard: AK980 PRO\nMaker: SONiX\nUSB ids: VID ${vid}, PID ${pid}, release 0x${ak980.release}\nConnection: USB\n\nCollections (${pages.length}):\n${pages.join("\n")}\n`;
+    }
     return `Keymotion keyboard support request\nApp version: 0.1.0-dev\n\nKeyboard: SONiX AK820 PRO\nUSB ids: ${id}\n\nCollections (1):\n  1. usage page 0x0001, usage 0x0006 (keyboard)\n     descriptor, 4 bytes:\n     05 01 09 06\n`;
   }
   return invoke<string>("unsupported_report", { id });
@@ -761,6 +810,7 @@ async function mockInspect(bytes: ArrayBuffer): Promise<BackupSummary> {
   if (b.clock) sections.push({ section: "clock", count: 0 });
   if (b.pomodoro) sections.push({ section: "focus", count: 0 });
   if (b.gauges) sections.push({ section: "gauges", count: 0 });
+  if (b.music) sections.push({ section: "music", count: 0 });
   if (b.reminders) sections.push({ section: "reminders", count: list(b.reminders, "reminders") });
   if (b.calendar) sections.push({ section: "calendar", count: list(b.calendar, "sources") });
   if (list(b.profiles, "profiles")) sections.push({ section: "profiles", count: list(b.profiles, "profiles") });
@@ -1139,7 +1189,7 @@ const mockDelay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /** Browser-only stand-in mirroring what the hardware reported on 2026-11-10. */
 function mockKeyboards(): KeyboardInfo[] {
   const mode = new URLSearchParams(location.search).get("mock") ?? "bluetooth";
-  if (mode === "none") return [];
+  if (mode === "none" || mode in MOCK_AK980) return [];
   const usb = mode === "usb";
   const dongle = mode === "dongle";
   const usbFeatures: KeyboardInfo["features"] = ["lighting", "per-key-rgb", "keymap", "macros", "screen", "clock"];
@@ -1155,7 +1205,7 @@ function mockKeyboards(): KeyboardInfo[] {
       hasSideLight: true,
       screen: { width: 240, height: 135, verified: true },
       connection: usb ? "usb" : dongle ? "dongle" : "bluetooth",
-      product: usb ? "SONiX AK980 PRO" : null,
+      product: usb ? "AK980 PRO" : null,
       firmware: usb ? mockFirmware() : null,
       // What the app drives in each mode (kb_core::app_capabilities).
       features: usb ? usbFeatures : dongle ? [] : ["battery"],
@@ -1168,6 +1218,7 @@ function mockKeyboards(): KeyboardInfo[] {
       hasDisplayChannel: usb,
       bleName: usb || dongle ? null : "AK980 PRO-1",
       bleAddress: usb || dongle ? null : "AA:BB:CC:DD:EE:FF",
+      bleConnected: !usb && !dongle,
       battery: usb || dongle ? null : { percent: 94, readAtMs: Date.now() - 40_000 },
       geometry: ak980Geometry as GeometryInfo,
     },

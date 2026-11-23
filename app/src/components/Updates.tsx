@@ -9,7 +9,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, type SyntheticEvent } from "react";
 import type { UpdateMode } from "../bindings/UpdateMode";
 import type { UpdateState } from "../bindings/UpdateState";
-import { useAgo, useT, type MessageKey, type Translate } from "../lib/i18n";
+import { intlTag, useAgo, useT, type Locale, type MessageKey, type Translate } from "../lib/i18n";
 import { openLink, openWindowsPage } from "../lib/ipc";
 import { useApp } from "../lib/store";
 import { useUnsaved } from "../lib/unsaved";
@@ -38,10 +38,10 @@ function Progress({ done, total }: { done: number; total: number | null }) {
 }
 
 /** One line on where the update stands, for the settings row. */
-function statusLine(s: UpdateState, t: Translate, since: (ms: number) => string, locale: "tr" | "en"): string {
+function statusLine(s: UpdateState, t: Translate, since: (ms: number) => string, locale: Locale): string {
   const current = s.current;
   const st = s.status;
-  const ago = (ms: number) => (Date.now() - ms < 60_000 ? t("update.justNow") : t("update.ago", { time: since(ms) }));
+  const ago = (ms: number) => (Date.now() - ms < 60_000 ? t("update.justNow") : since(ms));
   switch (st.kind) {
     case "idle":
       return s.lastCheckMs ? t("update.state.upToDate", { current, ago: ago(s.lastCheckMs) }) : t("update.state.idle", { current });
@@ -309,7 +309,7 @@ export function UpdateDialog() {
   // The notes come with the version found; keep them while it downloads.
   const found = useRef<{ version: string; notes: string | null; dateMs: number | null } | null>(null);
   if (st?.kind === "available" || st?.kind === "ready") found.current = { version: st.version, notes: st.notes, dateMs: st.dateMs };
-  const notes = found.current && found.current.version === version ? notesFor(found.current.notes, locale) : null;
+  const notes = found.current && found.current.version === version ? notesFor(found.current.notes, [locale]) : null;
   const dateMs = found.current?.version === version ? found.current?.dateMs : null;
 
   useEffect(() => {
@@ -335,7 +335,7 @@ export function UpdateDialog() {
     <AnimatePresence>
       {open && st && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-6 backdrop-blur-[2px]"
+          className="fixed inset-0 z-50 flex items-center justify-center dlg-smoke p-6"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -345,7 +345,7 @@ export function UpdateDialog() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="update-title"
-            className="card flex w-full max-w-[480px] flex-col gap-4 p-6"
+            className="dlg flex w-full max-w-[480px] flex-col gap-4 p-6"
             initial={{ opacity: 0, y: 8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 4, scale: 0.98 }}
@@ -353,14 +353,14 @@ export function UpdateDialog() {
             data-update-dialog={st.kind}
           >
             <div className="flex flex-col gap-1">
-              <h2 id="update-title" className="font-display text-[20px] leading-tight font-semibold">
+              <h2 id="update-title" className="subtitle">
                 {t("update.dialog.title", { version: version ?? "" })}
               </h2>
               <p className="num text-[12.5px] text-ink-2">
                 {t("update.dialog.current", { current: state.current })}
                 {dateMs != null &&
                   ` · ${t("update.dialog.date", {
-                    date: new Date(dateMs).toLocaleDateString(locale === "tr" ? "tr-TR" : "en-US", {
+                    date: new Date(dateMs).toLocaleDateString(intlTag(locale), {
                       day: "numeric",
                       month: "long",
                       year: "numeric",

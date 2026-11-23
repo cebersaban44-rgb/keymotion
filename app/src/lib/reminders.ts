@@ -11,7 +11,7 @@ import type { ReminderIcon } from "../bindings/ReminderIcon";
 import type { ReminderSettings } from "../bindings/ReminderSettings";
 import type { ReminderState } from "../bindings/ReminderState";
 import type { ReminderWhen } from "../bindings/ReminderWhen";
-import type { MessageKey, Translate } from "./i18n";
+import { clockTime, type MessageKey, type Translate } from "./i18n";
 import { inTauri, invoke, listen } from "./ipc";
 import { mockLiveHold, mockReturnAfter, submitLive, useLive } from "./live";
 import type { Prepared } from "./screenImport";
@@ -100,9 +100,9 @@ export function parseMinute(s: string): number | null {
   return Number(m[1]) < 24 && Number(m[2]) < 60 ? v : null;
 }
 
-/** "14:00". */
+/** "14:00", in the interface language (clockTime). */
 export function hhmm(ms: number) {
-  return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return clockTime(ms);
 }
 
 /** "Her gün", "Hafta içi", "Pzt, Çar". */

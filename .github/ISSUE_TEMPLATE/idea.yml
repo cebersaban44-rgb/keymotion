@@ -8,7 +8,7 @@ body:
       value: |
         Ideas are welcome. For a looser chat first, there's also [Ideas in Discussions](https://github.com/cebersaban44-rgb/keymotion/discussions/categories/ideas).
 
-        *Türkçe yazabilirsiniz.*
+        *Türkçe yazabilirsiniz. Можно писать по-русски. 可以用中文填写。*
   - type: textarea
     id: idea
     attributes:

@@ -4,15 +4,24 @@
 #
 #   release.yml calls this for every release tag (not pre-releases), so the
 #   .msix waits beside the GitHub draft: both channels publish the same day
-#   (owner's decision, 2026-11-16). The owner uploads it in Partner Center
-#   (Microsoft signs it when it passes certification); once it passes, the
-#   GitHub draft and the Store submission are published together. Nothing
-#   is submitted from here yet. Docs site: developers/microsoft-store.
+#   (owner's decision, 2026-11-16). The Submit job sends it for
+#   certification (tools/store/submit.mjs), with the tag's What's new files
+#   and set to wait for "Publish now"; Microsoft signs it when it passes.
+#   Once it passes, publish.yml publishes the GitHub draft and the owner
+#   selects "Publish now" in Partner Center. Docs site:
+#   developers/microsoft-store.
 #
-#   "Run workflow" with a release tag ("v1.0.0") builds it again by hand.
+#   "Run workflow" with a release tag ("v1.0.0") builds it again by hand;
+#   it is also submitted when "Use workflow from" is that same tag (the
+#   microsoft-store environment only lets v* tags use its secrets).
 #   "Test package" makes the same package with a made-up identity, for
 #   trying on a computer with Windows' developer mode; the Store would
 #   refuse it.
+#
+# Secrets, in the microsoft-store environment (Settings › Environments),
+# from a Microsoft Entra app with the Manager role in Partner Center:
+# STORE_TENANT_ID, STORE_CLIENT_ID, STORE_CLIENT_SECRET. Without them the
+# Submit job only says so, and the package is uploaded by hand.
 #
 # Repository variables (Settings › Secrets and variables › Actions ›
 # Variables), copied from Partner Center › the app › Product identity:
@@ -93,6 +102,21 @@ jobs:
           fi
           node tools/check-version.mjs --tag "$TAG"
 
+      # The Submit job sends the tag's What's new files: they, and the rest
+      # of the release's text, must be written (release.yml checks it too).
+      # A tag from before the check (v1.1.0 and older) has neither the check
+      # nor What's new files; its package is built again as it was.
+      - name: The release text is written
+        if: ${{ !inputs.test }}
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if [ ! -f tools/release/check-release.mjs ]; then
+            echo "$TAG is older than tools/release/check-release.mjs: no release text to check."
+            exit 0
+          fi
+          node tools/release/check-release.mjs --tag "$TAG"
+
       - name: Store script tests
         run: node --test "tools/store/*.test.mjs"
 
@@ -124,10 +148,28 @@ jobs:
           rustup toolchain install "$channel" --profile minimal --no-self-update
           rustc --version
 
-      # The program only: the package is made below, and the updater's
-      # files belong to the GitHub release.
-      - name: Build keymotion.exe
-        run: pnpm --dir app tauri build --no-bundle
+      # The programs only: the package is made below, and the updater's
+      # files belong to the GitHub release. keymotion-cli (the agents'
+      # command-line tool) is built from the same commit; msix.mjs packs it
+      # beside keymotion.exe, with its app execution alias.
+      - name: Build keymotion.exe and keymotion-cli.exe
+        run: |
+          pnpm --dir app tauri build --no-bundle
+          cargo build --release -p keymotion-cli
+
+      # As in release.yml: the tool says the app's version (msix.mjs checks
+      # it again before it packs).
+      - name: keymotion-cli says the app's version
+        run: |
+          version="$(node -p "require('./app/src-tauri/tauri.conf.json').version")"
+          said="$(target/release/keymotion-cli.exe --version)"
+          case "$said" in
+            "keymotion-cli $version "*) echo "$said" ;;
+            *)
+              echo "::error::target/release/keymotion-cli.exe says '$said'; the app is $version."
+              exit 1
+              ;;
+          esac
 
       - name: Pack the MSIX
         id: pack
@@ -162,7 +204,42 @@ jobs:
           {
             echo "### Package $VERSION is ready"
             echo
-            echo "1. Download the artifact; in Partner Center › Keymotion › a new submission › Packages, upload the .msix (remove the old one) and fill in \"What's new\" from CHANGELOG.md."
+            echo "1. The **Submit to the Microsoft Store** job sends it for certification, set to wait for \"Publish now\". Without the Store secrets, or on a run by hand not started from the tag, it doesn't: then download the artifact and, in Partner Center › Keymotion › a new submission, upload the .msix (remove the old one), fill in \"What's new\" from store/whats-new, choose to wait for \"Publish now\" and submit."
             echo "2. Keep the GitHub draft unpublished until the submission passes certification."
-            echo "3. Then publish both together: the GitHub draft, and \"Publish now\" in Partner Center."
+            echo "3. Then run **Publish a release** from the tag (it publishes the GitHub draft) and select \"Publish now\" in Partner Center."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Sends the package for certification. Only a release tag's own run may:
+  # the microsoft-store environment lets v* tags alone use its secrets.
+  # Without the secrets, tools/store/submit.mjs only says so (green), and
+  # the package is uploaded in Partner Center by hand. A pending submission
+  # stops it without changes: it never deletes one.
+  submit:
+    name: Submit to the Microsoft Store
+    needs: package
+    if: ${{ !inputs.test && github.ref_type == 'tag' && github.ref_name == inputs.tag }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: microsoft-store
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: keymotion-${{ inputs.tag }}-msix
+          path: store-package
+
+      - name: Submit for certification
+        env:
+          TAG: ${{ inputs.tag }}
+          STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
+          STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
+          STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
+        run: node tools/store/submit.mjs --tag "$TAG" --msix store-package

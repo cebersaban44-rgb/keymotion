@@ -29,9 +29,9 @@ export function BackgroundCard() {
   const startHint = locked ? t("bg.start.locked") : settings?.startTurnedOff ? t("bg.start.off") : t("bg.start.hint");
 
   return (
-    <section className="card px-5 py-1">
-      <div className="eyebrow pt-4 pb-1">{t("bg.title")}</div>
-      <p className="max-w-[70ch] pb-3 text-[12.5px] text-ink-2">{t("bg.intro")}</p>
+    <section className="rows">
+      <h2 className="section-title">{t("bg.title")}</h2>
+      <p className="max-w-[80ch] pb-2 text-[13px] text-ink-2">{t("bg.intro")}</p>
       <Row label={t("bg.tray")} hint={t("bg.tray.hint")}>
         <Toggle
           label={t("bg.tray")}
@@ -56,7 +56,7 @@ export function BackgroundCard() {
         )}
       </Row>
       {error && (
-        <p role="alert" className="flex items-start gap-2 pb-4 text-[13px] text-danger">
+        <p role="alert" className="flex items-start gap-2 pt-1 text-[13px] text-danger">
           <AlertTriangle size={14} className="mt-0.5 shrink-0" />
           {error}
         </p>

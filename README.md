@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <b>English</b> · <a href="README.tr.md">Türkçe</a>
+  <b>English</b> · <a href="README.tr.md">Türkçe</a> · <a href="README.ru.md">Русский</a> · <a href="README.zh-CN.md">简体中文</a>
 </p>
 
 <p align="center">
@@ -66,6 +66,9 @@ Keymotion is tested on the AJAZZ AK980 PRO. Other keyboards built on the same pl
 | <img src="docs/images/ajazz-ak980-pro.webp" width="170" alt="AJAZZ AK980 PRO"> | **AJAZZ AK980 PRO**<br>also sold as AK980 V2 | Everything | Typing, media keys and the knob | Typing, media keys, the knob and the battery level |
 
 Settings travel over the USB cable: that is how the keyboard is built.
+
+> [!NOTE]
+> AJAZZ's newest firmware for the AK980 PRO, 3.01 ("AK980 Led v2 Firmware 769"), uses a different set of commands that Keymotion doesn't support yet, and AJAZZ offers no way back to the older firmware. If you want to keep using Keymotion now, wait before updating. [More in the FAQ](https://cebersaban44-rgb.github.io/keymotion/help/faq/#should-i-install-ajazzs-newest-firmware).
 
 ### Same platform, not tested yet
 
@@ -121,8 +124,18 @@ Not on the list? Plug it in anyway and [tell us about it](https://github.com/ceb
 | <img src="docs/images/features/screen.webp" width="240" alt="Preparing a picture for the keyboard's screen"> | **Screen studio**<br>Put images, GIFs, videos and text cards on the 240×135 screen. |
 | <img src="docs/images/features/live-screen.webp" width="240" alt="Live cards on the screen"> | **Live screen**<br>Cards that update on their own: the song that is playing, your next meeting, the focus timer. |
 | <img src="docs/images/features/focus.webp" width="240" alt="The focus timer on the keys"> | **Focus and reminders**<br>A focus timer, reminders and system gauges that light up on the keys. |
+| <img src="docs/images/features/music.webp" width="240" alt="Music mode: the key lights follow the sound as bars, a beat, a level band and waves"> | **Music mode**<br>Key lights that move with the sound your PC plays: bars from bass to treble, a pulse on each beat, a band of loudness, or waves. Nothing is recorded and the microphone isn't used. |
+| <img src="docs/images/features/game-session.webp" width="240" alt="League of Legends lights: health recedes across the keys and mana empties on the F keys"> | **Game session**<br>Notices when you play: a card on the screen when a game starts and a summary when it ends, and the game's keys lit. In League of Legends, your health, mana and the match's events show on the keys. |
+| <img src="docs/images/features/profiles.webp" width="240" alt="Linking every game and a program to their own profiles"> | **Profiles by app**<br>Keep lighting, keys and macros as profiles. Each program, or every game, switches to its own when it comes to the front. |
+| <img src="docs/images/features/ai-agents.webp" width="240" alt="An AI agent's card on the keyboard's screen: Tests, All 214 passed, Ready to merge"> | **AI coding agents**<br>Claude Code and Codex tell you with light when they finish, wait for your approval or run into an error; an agent can also write on the keys or send a card to the screen. [More below](#ai-coding-agents). |
 
 The [user guide](https://cebersaban44-rgb.github.io/keymotion/) goes through every page of the app.
+
+## AI coding agents
+
+When Claude Code or Codex finishes a task, waits for your approval or runs into an error, your keyboard can tell you with light. An agent can also light keys its own way: a word on the letter keys, a progress bar on the F row. You turn it on once, under **Tools › AI agents**: Keymotion shows what it will add to each coding app and connects them after you approve.
+
+Agents talk to Keymotion through `keymotion-cli`, a command-line tool that comes with the app. It never opens the keyboard itself, works only for your Windows user on this computer, and does nothing until you turn agent access on. Read more in the [AI agents guide](https://cebersaban44-rgb.github.io/keymotion/guide/ai-agents/); the commands are on the [Agent command line](https://cebersaban44-rgb.github.io/keymotion/developers/agent-cli/) page.
 
 ## Download and install
 
@@ -199,3 +212,5 @@ Before you open a pull request, read [CONTRIBUTING.md](CONTRIBUTING.md).
 Keymotion is licensed under either of the [Apache License, Version 2.0](LICENSE-APACHE) or the [MIT license](LICENSE-MIT), at your option. Third-party software in the app is listed in [app/public/third-party-notices.txt](app/public/third-party-notices.txt).
 
 Keymotion is an independent project. It is not affiliated with, endorsed by or supported by AJAZZ, AULA or any other keyboard brand named here. Product names are used only to say which hardware this software works with. See [NOTICE](NOTICE).
+
+Keymotion isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.

@@ -302,6 +302,7 @@ impl Timer {
             focus_done: self.focus_done,
             last: self.last,
             trying: false,
+            once: None,
             settings,
         }
     }
@@ -350,7 +351,7 @@ impl KeyMap {
 }
 
 /// Where a key sits along the drain: keys with a higher value go dark first.
-fn drain_order(motion: PomodoroMotion, x: f32, y: f32) -> f32 {
+pub(crate) fn drain_order(motion: PomodoroMotion, x: f32, y: f32) -> f32 {
     match motion {
         PomodoroMotion::RightToLeft => x,
         PomodoroMotion::LeftToRight => 1.0 - x,
@@ -361,7 +362,7 @@ fn drain_order(motion: PomodoroMotion, x: f32, y: f32) -> f32 {
 }
 
 /// Light (0–1) of a key at `order` when `left` (0–1) of the phase is left.
-fn lit(motion: PomodoroMotion, order: f32, left: f32) -> f32 {
+pub(crate) fn lit(motion: PomodoroMotion, order: f32, left: f32) -> f32 {
     let left = left.clamp(0.0, 1.0);
     if motion == PomodoroMotion::Fade {
         return left;
@@ -547,6 +548,32 @@ struct Inner {
     /// Last frame (and brightness) handed to the device, to send only changes.
     sent: Option<(Vec<(u8, Rgb)>, u8)>,
     model: Option<(String, KeyMap)>,
+    /// The series running is one focus block of this many minutes an agent
+    /// started (`focus start --for`), the user's settings unchanged.
+    once: Option<u16>,
+}
+
+impl Inner {
+    /// The settings the timer runs with: the user's, or for an agent's
+    /// one-off block that block alone (once), in the user's colours.
+    fn active(&self) -> PomodoroSettings {
+        match self.once {
+            Some(minutes) => {
+                PomodoroSettings { blocks: vec![PomodoroBlock::focus(minutes)], repeat: 1, ..self.settings.clone() }
+            }
+            None => self.settings.clone(),
+        }
+    }
+}
+
+/// What an agent's `focus` did.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AgentFocus {
+    /// `start` found the timer running already (nothing changed).
+    pub already_running: bool,
+    /// `start` went on after a pause.
+    pub resumed: bool,
+    pub state: PomodoroState,
 }
 
 enum Msg {
@@ -586,6 +613,7 @@ impl PomodoroHandle {
             try_sounded: false,
             sent: None,
             model: None,
+            once: None,
         }));
         let (tx, rx) = mpsc::channel();
         let handle = Arc::new(Self { tx, inner, app, live, config_dir });
@@ -609,9 +637,30 @@ impl PomodoroHandle {
 
     pub fn state(&self) -> Result<PomodoroState, String> {
         let inner = self.inner.lock().map_err(|_| "pomodoro unavailable")?;
-        let mut state = inner.timer.state(inner.settings.clone(), now_ms());
+        let mut state = inner.timer.state(inner.active(), now_ms());
+        state.settings = inner.settings.clone();
         state.trying = inner.trying.is_some();
+        state.once = inner.once;
         Ok(state)
+    }
+
+    /// An agent's `focus`: like the page's buttons, and `start` may run one
+    /// block of `minutes` instead of the user's sequence, without saving
+    /// it. Starting a timer that runs changes nothing; a paused one goes on.
+    pub fn agent_control(&self, action: PomodoroAction, minutes: Option<u16>) -> Result<AgentFocus, String> {
+        let (status, was_once) = {
+            let mut inner = self.inner.lock().map_err(|_| "pomodoro unavailable")?;
+            let status = inner.timer.status;
+            if action == PomodoroAction::Start && status == PomodoroStatus::Idle {
+                inner.once = minutes.map(|m| m.clamp(1, crate::dto::BLOCK_MAX_MIN));
+            }
+            (status, inner.once)
+        };
+        let already_running = action == PomodoroAction::Start && status == PomodoroStatus::Running;
+        let resumed = action == PomodoroAction::Start && status == PomodoroStatus::Paused;
+        let state = if already_running { self.state()? } else { self.control(action)? };
+        tracing::info!(?action, once = ?was_once, "pomodoro, by an agent");
+        Ok(AgentFocus { already_running, resumed, state })
     }
 
     fn emit(&self) {
@@ -624,7 +673,7 @@ impl PomodoroHandle {
         let now = now_ms();
         let step = {
             let mut inner = self.inner.lock().map_err(|_| "pomodoro unavailable")?;
-            let s = inner.settings.clone();
+            let s = inner.active();
             if action != PomodoroAction::Try {
                 inner.trying = None;
             }
@@ -663,8 +712,11 @@ impl PomodoroHandle {
         let settings = settings.sanitized();
         {
             let mut inner = self.inner.lock().map_err(|_| "pomodoro unavailable")?;
-            inner.timer.settings_changed(&settings);
             inner.settings = settings.clone();
+            // An agent's one-off block keeps its length; the colours, lights
+            // and screen follow the new settings.
+            let active = inner.active();
+            inner.timer.settings_changed(&active);
         }
         if let Some(dir) = &self.config_dir {
             settings::save(dir, FILE, VERSION, settings).map_err(|e| e.to_string())?;
@@ -685,6 +737,7 @@ impl PomodoroHandle {
             Step::Done(summary) => {
                 inner.card_at = None;
                 inner.done_at = Some(now);
+                inner.once = None;
                 let cards = inner.settings.screen && self.live.enabled();
                 let end = inner.settings.end_screen;
                 drop(inner);
@@ -726,7 +779,7 @@ impl PomodoroHandle {
         let live_on = self.live.enabled();
         let (step, sound) = {
             let Ok(mut inner) = self.inner.lock() else { return IDLE };
-            let s = inner.settings.clone();
+            let s = inner.active();
             (inner.timer.tick(&s, now), s.sound)
         };
         if let Some(step) = step {
@@ -740,7 +793,7 @@ impl PomodoroHandle {
         }
 
         let Ok(mut inner) = self.inner.lock() else { return IDLE };
-        let s = inner.settings.clone();
+        let s = inner.active();
         let running = inner.timer.status != PomodoroStatus::Idle;
 
         // A phase card left on the screen from before the app started (it

@@ -45,6 +45,7 @@ import {
 } from "../lib/profiles";
 import { useScreen } from "../lib/screen";
 import { useApp } from "../lib/store";
+import { AutoProfiles } from "./ProfilesAuto";
 
 /** Larger files are not read (profiles.rs MAX_FILE_BYTES). */
 const MAX_FILE_BYTES = 32 * 1024 * 1024;
@@ -488,6 +489,8 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
       </section>
 
       <PartsChoice t={t} parts={parts} onChange={setParts} />
+
+      <AutoProfiles profiles={state} usb={canWrite} />
     </div>
   );
 }

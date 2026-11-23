@@ -5,6 +5,7 @@
 // canvas, so that only background pixels get dithered: gradients stay smooth
 // on the RGB565 panel while text edges stay crisp.
 
+import { append, noLineStart, pieces } from "./lineBreak";
 import { H, MAX_DELAY_MS, MAX_FRAMES, MIN_DELAY_MS, STILL_DELAY_MS, W, toRgb565, type Prepared } from "./screenImport";
 
 export type TemplateId = "name" | "quote" | "marquee" | "mountain" | "badge";
@@ -107,10 +108,14 @@ const FONTS: Record<FontId, { family: string; weight: number; sub: number }> = {
   mono: { family: '"JetBrains Mono Variable"', weight: 700, sub: 500 },
 };
 const EMOJI_FONTS = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji"';
+/** After the card fonts and emoji: Windows' fonts for the letters the card
+ *  fonts lack (Bricolage and Instrument are Latin only): Cyrillic from Segoe
+ *  UI (Variable on Windows 11), Chinese from Microsoft YaHei UI. */
+export const SCRIPT_FONTS = '"Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI"';
 
 function fontOf(spec: CardSpec, px: number, sub = false) {
   const f = FONTS[spec.font];
-  return `${sub ? f.sub : f.weight} ${px}px ${f.family}, ${EMOJI_FONTS}`;
+  return `${sub ? f.sub : f.weight} ${px}px ${f.family}, ${EMOJI_FONTS}, ${SCRIPT_FONTS}`;
 }
 
 /** Load the card's font (with the subsets its text needs, e.g. Turkish
@@ -157,25 +162,27 @@ function fitPx(ctx: CanvasRenderingContext2D, spec: CardSpec, text: string, px: 
   return p;
 }
 
-/** Word wrap; words longer than a line are broken by letters. */
+/** Word wrap (Chinese between words, see lineBreak.ts); words longer than a
+ *  line are broken by letters, and punctuation hangs rather than start a line. */
 function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
   const out: string[] = [];
   for (const para of text.split(/\r?\n/)) {
     let line = "";
-    for (const word of para.split(/\s+/).filter(Boolean)) {
-      const tryLine = line ? `${line} ${word}` : word;
+    for (const piece of pieces(para)) {
+      const tryLine = append(line, piece);
       if (ctx.measureText(tryLine).width <= maxW) {
         line = tryLine;
         continue;
       }
       if (line) out.push(line);
       line = "";
+      const word = piece.text;
       if (ctx.measureText(word).width <= maxW) {
         line = word;
         continue;
       }
       for (const ch of Array.from(word)) {
-        if (ctx.measureText(line + ch).width > maxW && line) {
+        if (ctx.measureText(line + ch).width > maxW && line && !noLineStart(ch)) {
           out.push(line);
           line = "";
         }

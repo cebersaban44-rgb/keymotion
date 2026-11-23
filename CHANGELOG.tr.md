@@ -12,6 +12,217 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 
 ## [Yayımlanmamış]
 
+## [1.2.0] - 2026-11-23
+
+Keymotion'ın görünüşü artık Windows 11 biçiminde ve yeni araçları var: müzik
+modu, League of Legends ışıklarıyla oyun oturumu, uygulamaya göre profil ve
+Claude Code, Codex gibi yapay zekâ kodlama ajanları için ışıklar. Uygulama
+artık Rusça ve Basitleştirilmiş Çince olarak da var. Klavyenizde AJAZZ'ın
+yeni 769 klavye yazılımı varsa Keymotion artık bunu açıkça söylüyor ve
+klavyeye hiçbir şey göndermiyor; desteğin sonraki bir güncellemede gelmesi
+planlanıyor.
+
+### Eklenenler
+
+- **Müzik modu:** Araçlar › **Müzik modu** tuş ışıklarını bilgisayarınızda
+  çalan sese göre hareket ettirir (USB kablosuyla): **Çubuklar** (solda
+  bastan sağda tize sütunlar alt sıradan yukarı dolar, tepede bir işaret bir
+  an kalır), **Ritim** (bütün klavye her vuruşta parlar, güçlü vuruşta
+  ortadan bir halka yayılır), **Düzey** (ortadan iki yana açılan bir ses
+  yüksekliği şeridi) ve **Dalga** (her bas vuruşu tuşlar boyunca bir dalga
+  gönderir). Renkler **Yeşil-sarı-kırmızı**, **Gökkuşağı**, **Tek renk** ya da
+  **İki renk**; Çubuklar ve Dalga için **Ortadan**; %50 ile %200 arasında
+  hassasiyet; diğer tuşlar karanlık ya da soluk. Ses durduktan birkaç saniye
+  sonra klavyenin kendi ışığı geri gelir (ya da seçiminize göre bütün tuşlar
+  soluk ya da karanlık olur). Odak zamanlayıcısı çalışırken ve oyun öndeyken
+  (**Oyun oynarken dur**, başta açık) ışıklar bekler. Keymotion yalnızca
+  hoparlörünüze ya da kulaklığınıza giden sesin o anki yüksekliğini,
+  Windows'un kendi ses sistemiyle okur: Ses kaydedilmez, mikrofon
+  kullanılmaz. Bildirim alanı menüsünde ve yedeklerde de var.
+- **Oyun oturumu:** Araçlar › **Oyun oturumu** oynadığınızı fark eder.
+  Oyunlar başlatıcılarınızın listelerinden (Steam, Epic Games, GOG, Xbox,
+  Riot Games, Xbox Game Bar) ve sizin sözünüzden gelir (**Oyun ekle**,
+  **Oyun değil**, **Geri al**); birkaç dakika ekranı kaplayan bir program için
+  "Bir oyun mu?" diye sorulur. Bir oyun 15 saniye
+  önde kalınca oturum başlar ve oyun açık kaldıkça, Alt+Tab'da da sürer.
+  Canlı ekran açıksa başlarken klavyenin ekranına bir kart, 5 dakika ya da
+  daha uzun bir oturum bitince bir özet (süre, ekran kartının yükü ve
+  sıcaklığı, işlemcinin ortalama ve en yüksek yükü, bugünün toplamı) gider;
+  oyun sürerken ekrana yeni bir şey gelmez. Oyunun tuşları (WASD, MOBA, 1–6
+  ya da sizin seçtikleriniz) ya da bir profilin tuş tuş ışığı, klavyeye bir
+  şey kaydedilmeden yanabilir; ışıklar öndeki pencereyi izler, Alt+Tab ile
+  başka işe geçince bekler. Oyun listesi her programın simgesini ve aldığı
+  profili gösterir, son oynanana ya da en çok oynanana göre sıralanır; Steam
+  resmi olmayan bir oyunun başlangıç kartında simgesi görünür. Oyun sırasında
+  gelen bir toplantı ya da hatırlatıcı kartı oyundan sonra kalkar. Geçmiş bu
+  bilgisayarda kalır. "Kendiliğinden güncelle" oyunun bitmesini bekler.
+- **League of Legends ışıkları:** maç sırasında, oyunun bilgisayarınızda
+  sunduğu veriden: canınız bütün klavyede, azaldıkça seçtiğiniz yönde
+  çekilerek (odak zamanlayıcısındaki gibi), ya da 1–0'da; mana F1–F12'de;
+  ölünce koyu kırmızı, yeniden doğmaya yaklaştıkça geri gelen ışık (1–0'da
+  geri sayılan kalan süre); zafer, yenilgi, seviye atlama, öldürme, as,
+  ejderha, Baron ve Vadi'nin Alameti için seçtiğiniz renkte seçtiğiniz animasyon
+  (dalga, parlama, nabız, kıvılcım, halka, yukarıdan sönme). Sayfadaki çizim
+  bunları maçın kendi koduyla önizler, "Klavyede dene" klavyede gösterir.
+  Oyun listesinde League of Legends'ın altında (Özel ışıklar), maçtaki
+  sırasıyla gruplanmış olarak ayarlanır; kapatmadıkça ejderha, Vadi'nin Alameti
+  ve Baron yalnız takımınız aldığında yanar. Özet kartı sonucu, K/D/A'yı ve
+  minyon sayısını gösterir. Rakip ya da hedef sayaçları yok.
+- **Uygulamaya göre profil:** Profiller › **Uygulamaya göre** bir programı
+  ya da bütün oyunları bir profile bağlar. Varsayılan olarak yalnız tuş
+  başına renk tasarımının ışığı değişir, klavyeye bir şey kaydedilmez; bir
+  kural tuş atamasını ve makroları da kaydedebilir, günde en çok 20 kez
+  (sonuncusu geri dönüşe ayrılır; başka bir klavye modeli için yapılmış
+  profil atlanır ve sayılmaz). Oyunun tuş ataması ve makroları oyun boyunca kalır; oyun bitince klavye
+  önceki haline döner (ya da seçtiğiniz profile geçer ya da olduğu gibi
+  kalır), bu arada elle değiştirmediyseniz. Kurallar program güncellendikten
+  sonra da tutar (Microsoft Store uygulamaları, Discord, Roblox). Simge
+  menüsünden duraklatılabilir.
+- **Oyun sürerken klavyeye hiçbir şey gönderilmesin:** oyun boyunca Keymotion
+  klavyeye ışık, kart ya da profil göndermez, klavye kendi ışığında kalır;
+  hile önleyicisi bundan rahatsız olabilecek oyunlar için. Kapatmadıkça
+  toplantı ve hatırlatıcı uyarıları yine gelir; sessiz mod tek bir oyun için
+  de açılabilir.
+- **Kullanım koşulları:** sitede bir Kullanım koşulları sayfası var.
+- **Rusça ve Basitleştirilmiş Çince:** uygulama, kullanım kılavuzu, kurulum
+  ve README artık Rusça (Русский) ve Basitleştirilmiş Çince (简体中文) de
+  var. Windows'un dili bu dördünden biriyse Keymotion o dilde başlar;
+  **Ayarlar** › **Dil** dili hemen değiştirir. Çeviriler yapay zekâ
+  yardımıyla yapıldı ve ana dili bu diller olan kişilerin incelemesini
+  bekliyor: düzeltmeler memnuniyetle karşılanır. Çince arayüzde klavyenin
+  adı, Çin'de satıldığı ad olan 黑爵 AK980 V2（带屏版）.
+- **Yapay zekâ kodlama ajanları:**
+  `keymotion-cli`, Claude Code'un, Codex'in ve betiklerin tuşları yakmasını
+  sağlar: biten bir iş, sizi bekleyen bir soru, bir hata, bir ilerleme
+  çubuğu ya da bir ajanın tuşlardan, renklerden ve efektlerden kurduğu her
+  şey. `keymotion-cli connect claude-code` ya da `connect codex`, o
+  uygulamanın ayarlarına birkaç kanca ve kısa bir yetenek ekler (önce neyin
+  değişeceğini gösterir, bir kopya saklar, başka hiçbir şeye dokunmaz);
+  ardından klavye ajan bitirince, onayınızı beklerken (siz cevap verene ya
+  da bir tuşa dokunana kadar; Claude Code'un otomatik kipinde olduğu gibi
+  ajan kendisi karar verdiğinde değil), hata verince ya da kullanım sınırına
+  takılınca (yavaş mor) kendiliğinden yanar; iki ya da daha çok oturum
+  varken bekleyenin numarası rakam sırasında yanar. Keymotion çalışmıyorsa
+  böyle bir olay onu başlatır; siz kapattıysanız ya da ajan erişimini
+  kapattıysanız başlatmaz. Sizin ya da ajanın yazdığı hiçbir şey Keymotion'a
+  ulaşmaz: yalnız ne olduğu. `disconnect` hepsini geri alır. Ajan erişimi
+  siz açana kadar kapalı kalır; GitHub kopyasında açmak `keymotion-cli`'ı
+  yeni açılan terminaller için PATH'inize de ekler.
+  Araçlar › **Yapay zekâ ajanları** onu iki adımda açar (Claude Code'a ve
+  Codex'e ne ekleneceği, sonra ne yapıldığı; ilkinde Vazgeç), her
+  uygulamanın durumunu gösterir; beş sinyalin rengini, efektini ve süresini
+  **Klavyede dene** ile, ajanların başka neler yapabileceğini, ek
+  davranışları, ajanların bu ayarları değiştirip değiştiremeyeceğini, oturum
+  numaralarını ve **Geri al**'lı son işlemleri ayarlar; yapılmayan bir
+  isteğin nedenini de söyler. Gizlilik politikası ve güvenlik politikası,
+  ajanların neyi ilettiğini ve neyi hiçbir zaman değiştiremeyeceğini
+  anlatır. `keymotion-cli` Keymotion'la birlikte gelir: GitHub'daki kurulum
+  onu kendine ait bir `bin` klasörüne koyar ve kaldırma, Keymotion'ın
+  Claude Code ile Codex bağlantılarını ve klasörünü PATH'inizden siler;
+  Microsoft Store kopyası onu her terminalde yazılabilen bir komut olarak
+  getirir. Üç şey daha, yalnız kendi izniyle ve her biri başta kapalı:
+  ajanlar odak zamanlayıcısını başlatıp duraklatabilir ya da durdurabilir
+  (ayarlarınızı değiştirmeden kendi seçtikleri uzunlukta tek bir blok da),
+  bir profilin ışığını bir süre gösterebilir ya da klavyeye yazabilir
+  (yalnız ışığını; bütün ajanlar birlikte herhangi bir 24 saatte en çok 10
+  kez) ve ekrana yazılı ya da görselli bir kart koyabilir (bütün ajanlar
+  birlikte saatte en çok 4, sizin ayarladığınız kadar; sonra kendi
+  görseliniz geri gelir). Ekran kartlarına izin verdiyseniz 10 dakika ya da
+  daha uzun süren bir kodlama işi bitince ekranda "Bitti · 14 dk" yazar.
+  Ajanlar tuşlara harf harf bir kelime de yazabilir (`keymotion-cli spell
+  "DONE"`) ve kendi küçük animasyonlarını oynatabilir (`scene`); bunları bir
+  adla saklayıp yeniden oynatabilirler (`pattern`). Hepsi klavyenin çalışma
+  belleğinde, saniyede en çok üç yanıp sönmeyle.
+
+### Değişenler
+
+- **Windows 11 biçiminde yeni görünüş:** sayfalar Windows Ayarlar'daki
+  gibi soldaki bir bölmede; bölmenin başında bağlı klavye (adı ve nasıl
+  bağlandığı ya da "Klavye bekleniyor"), listeyi daraltan bir arama kutusu,
+  en altta Ayarlar. Ayarlar tam genişlikte satırlar, anahtar, liste ya da
+  düğme sağda; düğmeler, anahtarlar, kaydırıcılar, sekmeler, pencereler ve
+  kaydet çubuğu Windows'unkiler gibi, turuncu yalnızca vurgu rengi. Klavye
+  çizimi ve ışıkları olduğu gibi kalıyor. **Genel bakış** klavyenin cam
+  şeridiyle başlıyor (ekranı, camdaki resim ve son ayarlanan parlaklığıyla
+  döner düğme), sonra klavye, sonra Keymotion'ın yaptığı her iş için bir
+  satır; hatırlatıcılar ve sistem göstergeleri orada açılıp kapanabiliyor.
+  **Işıklar** efektleri bir galeride, ayarlarını satırlarda gösteriyor;
+  **Yön** bir liste. **Ekran** GIF sayfasını büyük, saat sayfasını yanında
+  gösteriyor; kütüphane tek komut çubuklu bir resim ızgarası: bir görseli
+  seçmek için tıklayın, sonra **Yükle**, **Işıkları eşleştir**, **Yeniden
+  adlandır** ya da **Sil**. **Görsel ya da video**, **Yazı kartı** ve
+  **Slayt gösterisi** aynı çubukta; bir dosya kütüphanenin üzerine
+  bırakılabiliyor. Ayarlar, pencereler ve öteki sayfalar da aynı görünüşte.
+  Listeler Windows 11'deki gibi açılıyor; seçili olan kısa turuncu bir
+  çizgiyle belli.
+- Yazmadan önce resmî yazılımı ya da SignalRGB'yi bulmak için kullanılan
+  çalışan programlar listesi artık hiçbir programı açmıyor.
+- **Tanıma:** AJAZZ AK980 PRO olarak yalnızca USB adında, denenen klavyenin
+  bildirdiği gibi "AK980 PRO" geçen klavye sayılıyor. Aynı USB kimliğini
+  taşıyan başka bir AK980, örneğin ekransız olanı, artık **Destek iste**'yi
+  görüyor.
+- **AJAZZ'ın yeni klavye yazılımı:** AJAZZ'ın farklı bir komut takımı
+  kullanan 769 (3.01) yazılımındaki bir AK980 PRO artık yalnızca henüz
+  desteklenmeyen bir klavye olarak görünmüyor. Karşılama sayfası, soldaki
+  bölme ve saatin yanındaki simgenin menüsü, klavyede AJAZZ'ın yeni yazılımı
+  olduğunu, Keymotion'ın ona hiçbir şey göndermediğini ve desteğin sonraki
+  bir güncellemede gelmesinin planlandığını söyler; SSS'ye bir bağlantı da
+  vardır. **Destek iste** yerinde kalır. Henüz desteklenmeyen başka bir
+  klavye de artık soldaki bölmede "Klavye bekleniyor" yerine kendi adıyla
+  görünür; karşılama sayfası da böyle bir klavyenin takılı olduğunu söyler.
+- **Denenmemiş klavye yazılımı:** Keymotion'la denenmemiş bir yazılım
+  sürümünde klavyenin saati de onayınızı bekliyor; hem bağlanınca eşitleme
+  hem **Şimdi eşitle**. Keymotion kaydetmeden önceki soruyu soruyor,
+  verdiğiniz onay uygulama kapanana kadar geçerli. Canlı ışıklar sormadan
+  çalışmayı sürdürüyor.
+
+### Düzeltilenler
+
+- **Takvim ve hatırlatıcılar:** saatlerin geri alındığı gece 03:00'e
+  (Avrupa'nın çoğunda; başka yerlerde değişikliğin bittiği saat) kurulu bir
+  hatırlatıcı bir saat erken çalıyordu; o saatteki, kendi saat dilimi
+  olmayan bir takvim etkinliği de bir saat erken görünüyordu.
+- **Takvim:** gece yarısı tekrarlanan bir etkinlik, saat değişikliğinin
+  gece yarısını atladığı ya da iki kez yaşattığı günde (Şili, Küba ve birkaç
+  yer daha) artık kaybolmuyor. Ayın sondan beşinci pazartesisi gibi bir
+  tekrarın yalnızca ilk tarihi değil, bütün tarihleri görünüyor. Kuralında
+  "ilk pazartesi" yazan haftalık bir tekrar artık her gün değil, yalnızca
+  pazartesileri geliyor.
+- **2.4 GHz alıcı:** yalnızca alıcı takılıyken Keymotion artık klavyenizin
+  çalıştığını söylemiyor. Bağlantı sayfası ve Genel bakış, alıcının takılı
+  olduğunu ve Keymotion'ın klavyenin açık olup olmadığını henüz
+  anlayamadığını söylüyor; yanındaki nokta gri. Klavye Bluetooth'la
+  bağlıyken alıcı takılı kalırsa uygulama ve bildirim alanı menüsü alıcıyı
+  değil, Bluetooth'u gösteriyor.
+- AK980 PRO'nun USB kimliğini ve adını taşıyan ama içi farklı yapılmış bir
+  klavye, her işlemin başarısız olduğu bir AK980 PRO gibi görünüyordu. Artık
+  **Destek iste**'yi görüyor ve ona hiçbir şey gönderilmiyor.
+- **Takvim:** La Paz / Mazatlán ya da Bişkek saat dilimindeki bir Outlook
+  takviminin etkinlikleri yıl boyunca bir saat kaymış görünüyordu; yaz saati
+  uygulanan birkaç saat diliminde (Indiana, Küba, Haiti, Aleut Adaları,
+  Chatham Adaları, Lord Howe Adası ve birkaç yer daha) yazın bir saat
+  kayıyordu. Keymotion artık Outlook'un kullandığı bütün saat dilimi
+  adlarını tanıyor.
+- **Bildirim alanı menüsü:** **Tuşlarda sistem göstergeleri**'ni kendi
+  sayfasında açıp kapattığınızda menü bunu hemen gösteriyor. Önceden menü
+  10 dakikaya kadar eski durumu gösterebiliyordu; o arada tıkladığınızda da
+  gösterdiğinin tersini yapıyordu.
+- **Genel bakış:** **Fırlatma** ya da **Halkalar** gibi yalnızca bastığınız
+  tuşları yakan bir efektte, hiçbir tuşa basılmadığında klavyenin altındaki
+  satır **Klavyenin ışığı kapalı** diyordu. Artık **Klavyenizin tuşları
+  yazdıkça yanar** diyor.
+- **Açılış animasyonu:** Windows 11'de artık uygulamayla aynı yarı saydam
+  pencere arka planında oynuyor; uygulama göründüğünde renkler değişmiyor.
+- **Işıklar:** **Tuş başına renk** sekmesinde **Klavyede önizle** açıkken
+  pencereyi kapattığınızda, Keymotion saatin yanında çalışırken önizleme
+  tuşlarda kalıyor; odak zamanlayıcısını, hatırlatıcıları, müzik modunu ve
+  ajan ışıklarını örtüyordu. Önizleme artık pencere kapalıyken bekliyor,
+  pencereyi açınca geri geliyor.
+- **Ekran:** "…" ile biten bir şarkı, toplantı ya da hatırlatıcı adı
+  artık en küçük boyutta çizilmiyor.
+- **Kurulum:** Keymotion'ı GitHub'dan yüklü kopyanın üstüne yeniden
+  kurduğunuzda **Bilgisayar açılınca Keymotion'ı başlat** artık kapanmıyor.
+
 ## [1.1.0] - 2026-11-16
 
 Keymotion artık yeni sürüm çıkınca haber veriyor ve isterseniz kendiliğinden
@@ -183,7 +394,8 @@ Store 0 ile başlayan sürüm numarası kabul etmediği için bu sürüm 1.0.0.
   yapılacağı, desteklenen ve sırada olabilecek klavyeler, geliştiriciler için
   sayfalar. Ayarlar › Hakkında'dan açılır.
 
-[Yayımlanmamış]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.1.0...develop
+[Yayımlanmamış]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.0...develop
+[1.2.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.0
 [1.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.1.0
 [1.0.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.0.0
 [0.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v0.1.0

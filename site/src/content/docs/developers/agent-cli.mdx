@@ -1,0 +1,279 @@
+---
+title: Agent command line
+description: keymotion-cli, the command-line tool scripts and AI coding agents use to light the keyboard through Keymotion. Commands, JSON output, exit codes, how it starts the app, the hooks and skill for Claude Code and Codex, and its security model.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+`keymotion-cli` lets a script or an AI coding agent (Claude Code, Codex and others that run shell commands) tell the user something with the keyboard's lights: a task finished, a question waits, three tests failed. The agent decides what to show and how; the ready signals are shortcuts, and keys, colors, effects and timing are free to combine.
+
+<Aside>
+`keymotion-cli` comes with Keymotion ([Where it is installed](#where-it-is-installed)): the GitHub copy has it in its installation's `bin` folder, on PATH once agent access is on; the Microsoft Store copy gives it the command `keymotion-cli`. A build from the repository is in [Development](#development).
+</Aside>
+
+## How it works
+
+```text
+agent ──runs──▶ keymotion-cli ──named pipe──▶ Keymotion (agent/) ──▶ device actor ──USB──▶ keyboard
+```
+
+- `keymotion-cli` never opens the keyboard. It sends one JSON message per line over a named pipe to the running app ([protocol 1](#the-pipe), `crates/kb-agent`), and the app's device actor stays the keyboard's only owner, with its light layers and guards. A test keeps the HID stack, Tauri and tokio out of the tool (`crates/keymotion-cli/tests/dependencies.rs`).
+- Agents' lights are one light layer in the app: over the focus timer, a game's lights, music mode, the gauges and the per-app profile; under the alerts, the reminders and their waves ([Architecture](/keymotion/developers/architecture/#from-a-click-to-a-hid-report)).
+- Lights are RAM only: nothing is written to the keyboard's memory, and every light ends by itself, after 2 hours at most. Only two commands write the memory, each behind its own permission and `--write-flash`: `profile apply` (a profile's lighting) and `card` (the screen).
+- The tool's version is always the app's (`version.workspace = true`); `keymotion-cli --version` prints `keymotion-cli 1.2.0 (protocol 1)`.
+
+## Commands
+
+| Command | What it does | Starts the app |
+|---|---|---|
+| `status` | Whether Keymotion runs, its version and channel, agent access and the permissions, the keyboards and their connection, whether agents' lights show now (or why not: no keyboard, no USB cable, a game, the night), every agent light that is on. When the app is not running: `{"app":{"running":false}}` and exit 0. | No |
+| `keys` | The keyboard's key ids and labels, their position in key units, and the groups. | Yes |
+| `signal <name>` | A ready signal: `done`, `attention`, `error`, `busy` or `info`. The user chooses each one's look in the app; `--color`, `--effect`, `--direction`, `--speed`, `--times`, `--for` and `--keys` override it for this call. `busy` shows nothing by default and clears the source's earlier signals. | Yes |
+| `light` | A light of the agent's own: `--color` (required), `--keys` (default: the whole keyboard), `--effect solid\|pulse\|blink\|flash\|wave`, `--direction left\|right\|up\|down` (wave), `--speed 1-5`, and `--times N` or `--for <duration>` (default 60 s). | Yes |
+| `progress <percent>` | A bar from 0 to 100 on a row of keys: the user's choice of the F row or the number row, or `--keys`. `--label`, `--color`, `--for` (default 10 minutes after the last update). Send it again with the new percent. | Yes |
+| `clear` | Takes away one light (`--id`) or every light of this source. Never another source's. | Yes |
+| `log` | The last agent requests the app took or refused (`--limit`, default 20, at most 200): source, command, result, id, and the settings a request changed. | Yes |
+| `settings get [key]` | The looks and behaviour settings (signal looks, progress keys, night quiet and the rest), and which keys only the user may change. | Yes |
+| `settings set <key> <value>` | Changes one look or behaviour setting, e.g. `signals.done.color green`. The user sees it in the app's log and can undo it. Access, the permissions, "agents may change these settings", "hide while playing", the screen's hourly limit and whether a long task puts a card up (`long_task.on`) are the user's alone: the app refuses them (77). An agent may set `long_task.after` to 10 minutes or longer, never shorter (65). | Yes |
+| `focus start\|pause\|skip\|stop\|status` | The focus timer. `start` runs the user's sequence, or with `--for 50m` one focus block of that many whole minutes (1 to 180) without changing the user's settings; a running timer stays as it is (`already_running`), a paused one goes on (`resumed`); then `--for` is not applied: `minutes` is `null` and `minutes_not_applied` says why. Needs the user's **focus timer** permission; `status` needs none. | Yes |
+| `profile list` | The user's profiles (the built-in `Default` first): id, name, parts, whether the lighting is an effect or a per-key design, whether it fits the keyboard and is on it. | Yes |
+| `profile show <name>` | A profile's per-key lighting on the keys for `--for` (default 60 s), in working memory, as one of the agent's lights; keys the design leaves out are dark. An effect cannot be drawn from memory (69: write it instead). By name in any case, or id. | Yes |
+| `profile apply <name> --write-flash` | Writes the profile's **lighting only** to the keyboard, never its key mapping, macros or screen. Needs the user's **profile lighting** permission and `--write-flash` (77 otherwise); the write guard applies (several keyboards, another program, untested firmware: `write_blocked`). While the user has changes in Keymotion that are not saved yet, or a game wants the keyboard left alone, it writes nothing for now: 75 `not_now` with `retry_after_ms`. Nothing is written when the keyboard has it already (`changed: false`). At most 10 writes in any 24 hours for **all agents together** (an agent's name is whatever it says, so a new name is no way round it; the count survives a restart; then 75 with `retry_after_ms`). A write that did not happen does not count. | Yes |
+| `card [text]` | A card on the keyboard's screen: text (at most 60 characters on 2 lines; `\n` starts the second), `--title` (24), `--image FILE`, `--color`, `--for` (30 s to 2 h, default 5 minutes: then the user's own picture comes back). Needs the user's **screen cards** permission, `--write-flash`, a keyboard with a screen on the USB cable, the live screen on, and Keymotion's window loaded once since the app started (it draws the card; 69 until then). At most the user's number an hour for **all agents together** (default 4; the count survives a restart; 75 with `retry_after_ms`), and the live screen's budget; the same card again is not sent (`skipped: same_content`). `--wait 20s` (at most 60 s) answers when it is on the screen. While a meeting's or a reminder's card holds the screen, agents' cards wait for it: 75 `not_now` with `retry_after_ms` (a long task puts no card up then). | Yes |
+| `scene <file>` | A timed animation of the agent's own ([Scenes](#scenes-patterns-and-spelling)) from a JSON file on this computer (`-`: standard input; at most 32 KiB; no network path, device name or link): its steps play in time on the keys, in working memory. `--repeat N` (0 loops until `--for`), `--for` (at most 2 h; with runs that end sooner, the light ends with them), `--id`; `--save NAME` keeps it as the agent's pattern, `--no-play` (with `--save`) only keeps it. Agent access only. | Yes |
+| `pattern list\|play\|delete` | The agent's saved scenes (all sessions of one coding app share them; at most 32). `play NAME` with `--repeat`, `--for`, `--id` instead of the saved ones. | Yes |
+| `spell <text>` | Writes a word on its keys, one character after another: a–z, 0–9 and `- = , . / ; ' [ ] \` and `` ` ``; a space is a short pause; the same key twice goes dark in between. `--color` (default white), `--speed 1-5` (default 3: half a second a letter), `--times N` (1 to 10, a pause between). A Latin letter with marks is written as its plain letter (ü as u, ı as i, ß as ss; `plain` lists them); characters with no key (an emoji, another script) are skipped and named (`skipped`); none at all → 65. At most 32 characters. Agent access only. | Yes |
+| `version` | The tool's version and protocol, and the app's when it runs. A protocol mismatch is reported, not failed. | No |
+| `guide` | A short guide for agents (at most 60 lines): what to run first, ideas, values, exit codes. Agents read this rather than this page. | No |
+| `doctor` | Checks the setup and exits 0 whatever it finds: the tool, whether the app runs and answers, which program serves the pipe (expected `keymotion.exe`) and that the pipe is this user's, versions and protocol, agent access, the keyboard and its USB cable, how the tool would start the app, whether `keymotion-cli` is on PATH or in the Store's alias folder, and whether the tool runs inside another app's package box. | No |
+| `start` | Starts the app without a window and waits until it answers; if it runs, says so. | Yes |
+| `connect claude-code\|codex` | Adds keymotion-cli's hooks, its skill and (for Codex) a rule to that agent's settings ([Coding agents](#coding-agents-hooks-and-the-skill)). Says what it will change first; at a terminal it asks, otherwise it needs `--yes`. `--dry-run` only says. | No |
+| `disconnect claude-code\|codex` | Takes away only what `connect` added, and only the empty containers it made. Same `--yes` and `--dry-run`. `--if-this-copy`: only when every Keymotion entry for the agent (each of its hooks, the skill, Codex's rule) names this keymotion-cli; when one names another copy (the Store's, while the GitHub copy is uninstalled), all of them stay, and the answer names it (`runs`, every one in `others`). | No |
+| `path remove` | Takes the folder this keymotion-cli is in off your PATH, only if Keymotion put it there (its record in `HKCU\Software\Keymotion\UserPath` names the folder), and the record with it. The GitHub copy's uninstaller runs it. Not in the Codex rule. | No |
+| `connections` | Whether each agent is installed and connected, and for Codex whether you have trusted the hooks yet. | No |
+| `hook claude-code\|codex` | What the agents run on their hook events: reads the event on stdin, prints nothing, always exits 0 ([Hook mode](#hook-mode)). | When the event lights something |
+
+### Scenes, patterns and spelling
+
+A scene is the agent's own animation: a list of steps, each with `keys` (default all), `color` (`off` is dark, over what is under it), `effect` with `direction` and `speed` as `light` takes them, `at` (when it starts, from the scene's start, 0 included; default when the step before it ends) and `for` (50 ms to 60 s, default 500 ms). `at` and `for` are durations (`"300ms"`, `"2s"`) or milliseconds. One run ends with its last step, within 10 minutes; at most 64 steps.
+
+```json
+{"steps": [
+  {"keys": "q", "color": "red", "for": "400ms"},
+  {"keys": "w", "color": "blue", "effect": "pulse"},
+  {"keys": "all", "color": "off", "at": 0, "for": 100}
+], "repeat": 2}
+```
+
+- A later step wins a key that several steps light at the same moment; keys no step lights now show what is under the agent's lights.
+- It is one of the agent's lights (`id` `<source>:scene` unless `--id`): it counts towards the eight a source keeps, `clear` takes it away, and it ends by itself, after 2 hours at most. The same flash guard as for every light holds: a key changes at most six times a second (three flashes), whatever the steps say.
+- **Patterns:** `--save NAME` keeps the scene, as checked (every key, colour, start and length written out; at most 16 KiB), in `agent-patterns.json` under the agent's name (the source before `:`): every session of that coding app plays it by name. The names are what the agents say they are, so this keeps agents' patterns apart; it does not hide them from a program that calls itself by another agent's name. Names are a–z, 0–9, `-` and `_`, at most 32; 32 patterns a name, 32 names, 512 KiB in all (a full table → 65). A file that does not read as patterns is kept aside, as a damaged settings file is. `pattern play NAME` plays one as `<source>:pattern-NAME`.
+- **Spelling** builds a scene from the text: one key per character, `--speed` sets how long each shows (900, 700, 500, 380, 280 ms), a space is a letter's pause, and the same key twice in a row goes dark for 200 ms in between so both show. A character is what a reader sees as one (a letter with its marks, written precomposed or not; an emoji with its joiners and skin tone). The answer says what was written (`written`), what was written plain (`plain`, `from` and `to`) and what was skipped.
+
+### Screen cards
+
+The page draws an agent's card as it draws the focus timer's or a meeting's (the fonts, the dithering); the app does the rest:
+
+0. The page says it listens: `agents_card_drawer_ready` (no argument; `{ ready: false }` when it stops). Until then `card` is refused (`unsupported`, 69, "open Keymotion's window once") and a long task puts no card up; a reload or a closed window resets it.
+1. `card` is checked (access, the permission, `--write-flash`, the screen, the live screen, the page, the hour's number, the same card) and the app asks the page for it: event `agent-card` with `AgentCard` (`id`, `kind` `text` or `longTask`, `title`, `text`, `image`, `color`, `minutes`, `label`, `showS`).
+2. The page draws it and hands it back: `agents_card_drawn`, the picture as the body like `live_submit`, header `x-card: <id>`; or `agents_card_failed { id, error }`. A card not drawn within 15 seconds fails and does not count.
+3. The live screen uploads it on its budget (source `agent`): only when the budget has three uploads, the card, the return of the user's own picture and one left for a meeting or a reminder. After `--for` it puts the user's own picture back. One card at a time: a newer one replaces one still on its way; if the older one reached the screen all the same, or one is left there from before a restart, the user's picture still comes back (after the older card's time, or 30 seconds). A card replaced on its way that never reached the screen does not count either.
+
+**Pictures** (`--image`): PNG, JPEG, GIF or WebP, told apart by their first bytes; at most 40 KiB, so the picture travels in one protocol line; sides 8 to 2048 pixels; the page fits it to 240×135. A card is a still: an animated picture shows its first frame. A GIF's frames must lie inside its own screen size (a renderer grows its canvas to the frame). One frame is the screen's smallest upload (16 of its 4 KiB pages), and each card costs a second upload when the user's own picture comes back, so cards are for news, a few an hour. keymotion-cli checks the file before it sends anything (65 for a picture that does not fit) and the app checks it again.
+
+**A long task done (F).** When the user lets agents use the screen and keeps "long task" on (it is on by default, 10 minutes, a card for 5), a coding app's turn that took at least that long puts a card up when it ends: `longTask` with the minutes and the project folder's name; the page words it ("Done · 14 min") in the user's language. It counts towards the hourly number of all agents and is skipped when the hour is full, or when the page cannot draw it. Turning it on or off is the user's alone; an agent can only make "a long task" longer than 10 minutes.
+
+### Options for every command
+
+| Option | Meaning |
+|---|---|
+| `--json` | Exactly one JSON object on stdout, on success and on failure. Also `KEYMOTION_OUTPUT=json`. |
+| `--source <name>` | Who is asking (`claude-code`, `build-script`). Each source has its own lights and can clear only its own. Also `KEYMOTION_SOURCE`; default `cli`. Up to 64 of `a-z 0-9 : . _ -`. |
+| `--timeout <duration>` | How long to wait for the app, connecting and the answer together (default `5s`, at most `5m`). When given, it bounds the whole run, starting the app included, so a hook with a time limit is never cut off. Without it, a start may take up to 15 seconds and the call then has 5. |
+| `--no-start` | Do not start the app; exit 69 when it is not running. |
+| `-q`, `--quiet` | Nothing on stdout or stderr on success, in human mode. Errors still go to stderr. |
+| `--log <level>` | Diagnostics on stderr: `off`, `error`, `warn` (default; `error` with `--quiet`), `info`, `debug`. |
+
+### Values
+
+- **Keys:** ids from the model file (`esc`, `f1`, `w`, `1`), numbered ranges (`f1-f12`, `1-3`), groups (`all`, `f-row`, `numbers`, `letters`, `wasd`, `arrows`, `numpad`), comma-separated. The same names work on every model; `keys` lists them.
+- **Colors:** `#RRGGBB`, `RRGGBB` or a name: red, green, blue, amber, yellow, orange, purple, pink, cyan, white.
+- **Durations:** a whole number and a unit: `500ms`, `30s`, `5m`, `1h`; lights last at most `2h`.
+- **Ids:** without `--id`, a command replaces the source's previous light of its kind (`<source>:light`, `<source>:progress`, `<source>:<signal>`). With ids a source keeps up to 8 lights; a ninth pushes out the oldest, and the answer says which.
+- Blinking and flashing never exceed three flashes a second (WCAG 2.3.1).
+
+Values are checked by the tool before anything is sent, with the same code the app uses (`kb-agent`), and checked again by the app.
+
+## Output
+
+Results go to stdout and diagnostics to stderr. The tool reads stdin only in hook mode, and asks a question only in `connect` and `disconnect` at a terminal. Human output is a few short English lines. With `--json`:
+
+```json
+{"ok":true,"schema":1,"command":"signal","data":{"id":"claude-code:done","shown":true,"lit":true,"expires_in_ms":120000,"replaced":false,"evicted":[],"coalesced":false,"hidden":null},"warnings":[]}
+```
+
+```json
+{"ok":false,"schema":1,"command":"light","error":{"code":"agent_access_off","message":"Agent access is off in Keymotion.","hint":"The user can turn it on in Keymotion › Tools › AI agents.","retry_after_ms":null}}
+```
+
+- `command` is the command as typed (`signal`, `settings get`); `null` when the command line named none. `--help` and `--version` with `--json` answer as `help` and `version`, with the text in `data.text`.
+- `data` is the app's answer (for `version`, `guide`, `doctor`, `start` and `help`, the tool's own). For `signal`, `light` and `progress`: the light's `id`, whether it is `shown` now, `expires_in_ms`, whether it `replaced` an earlier one, what it `evicted`, and `hidden` (`"game"` or `"night"`) when it waits.
+- `warnings` are sentences for whoever reads the output: the app was started for this call, the light is covered or hidden for now, agent access is off.
+- `hint` and `retry_after_ms` are `null` when there is none.
+- `schema` stays 1 while fields are only added; removing a field or changing its meaning raises it.
+- Nothing printed can drive a terminal. In human output, control characters (escape sequences included) and invisible or direction-changing characters from the app's answers or from echoed input are written out (`\u{1B}`); in JSON, DEL, the C1 controls and those characters become `\u` escapes besides what JSON escapes anyway.
+
+## Exit codes
+
+| Code | Meaning | `error.code` |
+|---|---|---|
+| 0 | Done | — |
+| 1 | Something unexpected | `internal` |
+| 64 | The command line: an unknown command or option, a missing argument, options that do not go together | `bad_argument` |
+| 65 | A value: color, duration, key, effect, id, number | `bad_color`, `bad_duration`, `bad_keys`, `unknown_key`, `bad_effect`, `bad_value`, … |
+| 69 | Not available: the app is not running and could not be started, no keyboard, the USB cable is needed, a pipe that is not Keymotion's | `app_not_running`, `no_keyboard`, `needs_usb`, `unsupported`, `pipe_not_trusted` |
+| 75 | Try again later: rate limit (20 requests a second per source), timeout, the connection closed, or Keymotion holds it back for now (a meeting's or a reminder's card on the screen, a game that wants the keyboard left alone, changes the user has not saved yet) | `rate_limited`, `timeout`, `connection_lost`, `not_now` |
+| 76 | The tool and the app share no protocol version, the app is older than the command, or a message breaks the protocol | `protocol_mismatch`, `unknown_command`, `bad_request`, `bad_response` |
+| 77 | Not allowed: agent access is off, or a setting only the user may change | `agent_access_off`, `permission_off` |
+
+Exit code 2 is never used: Claude Code and Codex read 2 from a hook as "keep going" (and Codex also as "refuse the permission"). clap's own usage errors become 64, and `--help` and `--version` exit 0.
+
+## Starting the app
+
+`status`, `version`, `guide` and `doctor` never start the app. Every other command, when nobody serves the pipe, starts Keymotion without a window and waits for its pipe, unless `--no-start` is given: up to 15 seconds, or only as long as `--timeout` allows when it is given (`start` always has the 15 seconds). If a copy already runs but its pipe is not open yet (it is starting), the tool starts nothing and waits up to 5 seconds; if that copy is a Store copy too old to answer agents, it says so at once.
+
+The tool may run inside another packaged app's box: the Claude desktop app's terminal is one. A program started there as a plain child process stays in that box, so its AppData writes would land in the other app's folder and it would read settings that are not the user's. Windows' package API does not show such a box (`GetCurrentPackageFullName` answers "no package" there), but named pipes do cross it. So the tool never starts `keymotion.exe` as its own child; it asks Windows to start it, in this order (`crates/keymotion-cli/src/launch.rs`):
+
+1. The tool runs with Keymotion's package identity (the Store copy's app execution alias): it activates the package's app by its AUMID with `--background`.
+2. The Store copy is installed and new enough: the same with the Store package's AUMID (one Keymotion per computer prefers the Store copy). New enough means at least the first version that takes `--background` (`kb_agent::BACKGROUND_START_SINCE`, 1.2.0) and at least the tool's own version, read from the package's full name. An older Store copy would open its window and has no pipe, so it is never started.
+3. The `keymotion:` address scheme opens the installed GitHub copy (which registers it; a development build's registration does not count, as made inside another app's box it is invisible to Explorer, which would then ask the user for an app): `explorer.exe keymotion://background`, by Explorer's full path, started with `CreateProcessW` and no inherited handles (`kb_winsys::shell::run_alone`; Rust's own `Command` hands every inheritable handle on), so an agent reading the tool's output is never kept waiting by Explorer. A GitHub copy beside an old Store copy then stays itself, hidden, instead of handing over.
+4. None of these: exit 69 at once, "start Keymotion", or "update Keymotion from the Microsoft Store" when only an old Store copy is there.
+
+In the app, `--background` and `keymotion://background` mean "run with the tray icon only". Neither counts as a start with Windows (that stays `--hidden`), so the window state and the start-with-Windows hand-over are unchanged. A running app that receives either does nothing visible, and a GitHub copy that hands over to the Store copy passes `--background` on, but only to a Store copy that knows it (`app/src-tauri/src/tray.rs`, `handoff.rs`).
+
+## Coding agents: hooks and the skill
+
+Two things tell an agent's user what is going on, and they do different jobs. While the agent waits for an approval it is frozen; when its service fails it is not running at all; and it may forget to say it finished. Only the coding app knows these moments, so it says so itself through **hooks**: it runs `keymotion-cli hook <agent>` on its events, and the model knows nothing of it and spends no context on it. When the agent itself wants to say something more (a word on the keys, a count, a progress bar), it uses the tool through a **skill**: one short file that says the tool is here and to run `keymotion-cli guide` first.
+
+`keymotion-cli connect claude-code|codex` adds both; the app's AI agents page does the same when you turn agent access on, after showing you what it adds. Nothing else of the agents' files is touched:
+
+| | Claude Code | Codex |
+|---|---|---|
+| Settings folder | `CLAUDE_CONFIG_DIR`, else `%USERPROFILE%\.claude` | `CODEX_HOME`, else `%USERPROFILE%\.codex` |
+| Hooks | `settings.json`, `hooks` | `hooks.json` |
+| How a hook runs | the program and its arguments, no shell: `{"command": "<path>\\keymotion-cli.exe", "args": ["hook", "claude-code"]}` (Claude Code 2.1.139 or newer) | one line for its shell, PowerShell: `if (Test-Path -LiteralPath '<path>') { & '<path>' hook codex }` |
+| Skill | `skills\keymotion\SKILL.md` | `%USERPROFILE%\.agents\skills\keymotion\SKILL.md` |
+| Also | | `rules\keymotion.rules` (below) |
+| Approval | none | Codex asks once: `/hooks`, or Settings › Hooks in the app |
+
+- **The hook line never changes.** It is the same for every event and in every version; what an event means lives in keymotion-cli and in your settings in Keymotion. That matters for Codex, which asks you to trust a hook again whenever it changes. The line names keymotion-cli by a path that stays put: the Store copy's app execution alias (`%LOCALAPPDATA%\Microsoft\WindowsApps\keymotion-cli.exe`, never the versioned package folder), the GitHub copy's `bin` folder, or a development build's own path (with a warning: the hooks stop working when it moves).
+- **Why two forms.** Claude Code runs a hook's `command` with Git Bash when it is installed and with PowerShell otherwise, and no quoted path with arguments after it reads the same in both (PowerShell refuses a quoted path followed by words; in Bash `&` starts a background job). Its `args` form runs the program itself, so spaces in a user folder do not matter. Codex 0.166.0 runs every hook through `powershell -NoProfile -Command`. The path is quoted for PowerShell, with each of the five characters it ends a quoted string at (`'` and the typographic `‘ ’ ‚ ‛`) doubled, so a folder such as `O’Brien` works. The line first checks that the program is there: once Keymotion is uninstalled, Codex's hooks do nothing and say nothing. A path PowerShell cannot check (a name alone) is looked up with `Get-Command` instead.
+- **Claude Code 2.1.139 or newer.** The `args` form came in 2.1.139; an older Claude Code would run the bare program without `hook claude-code`. Before 2.1.101, a hook event it did not know made it ignore the whole settings file. So `connect` refuses an older Claude Code it finds (`claude.exe` in `%USERPROFILE%\.local\bin`, or the npm package) and says to update it; `connections` warns the same way. Hook mode never checks (it stays fast).
+- **Your files stay yours.** Strict JSON only: a file that does not read is refused and left as it is. Your keys and hooks keep their order and the file its indentation and line endings; ours go in groups of their own, last. Before each change a copy of the file as it was is kept (`settings.json.before-keymotion`). Files are written whole through a temporary file, flushed to the disk before it takes the file's place; a file that is a link is written where the link points, and the link stays. Each file is read again right before it is written: when the agent changed it after keymotion-cli said what it would change (while you decided, say), it is planned again from what it is now, and asked about again at a terminal; it is never written from the old copy. A rules file or skill that is not Keymotion's is refused. Connecting twice changes nothing; connecting from another copy of keymotion-cli updates our entries in place. `connection.json` beside the skill remembers what connecting made, so disconnecting removes only that.
+- **The Codex rule.** Codex runs an agent's commands in a sandbox that cannot reach Keymotion's per-user pipe. `rules\keymotion.rules` lets `keymotion-cli status|keys|signal|light|progress|clear|log|settings|focus|profile|card|scene|pattern|spell|version|guide|doctor|start` run outside it without asking (each still needs the user's permission in Keymotion; version 3 of the rule, which the app rewrites at start), by name or by this keymotion-cli's full path (`host_executable`), and no other program of that name: a copy a repository brings along stays in the sandbox. `connect`, `disconnect` and `hook` are not in it. Checked with `codex execpolicy check --resolve-host-executables`.
+- **The skill** is the same for both agents and stays thin: the tool is here, run `keymotion-cli guide` first (and the full path if `keymotion-cli` is not found), you decide how to tell the user things and the ready signals are optional, and you can write on the keyboard (`keymotion-cli spell "DONE"`). It carries a version mark; at start the app rewrites its own skill file and Codex rule when they are older than its version, and only those, only where they are, and naming the same keymotion-cli they named.
+
+`keymotion-cli connections --json` reports, for each agent, `state`: `not_found`, `not_connected`, `connected`, `needs_approval` (Codex: hooks you have not trusted yet, read from Codex's `config.toml`, which keymotion-cli never writes), `outdated` (some of ours are missing or name another keymotion-cli) or `unreadable`; and a `warning` when the Claude Code found is too old.
+
+### The AI agents page
+
+The app does the same through `kb_hooks::setup` (`app/src-tauri/src/agent/apps.rs`), with these Tauri commands for its page under Tools › AI agents:
+
+| Command | What it does |
+|---|---|
+| `agents_connections` | Claude Code and Codex: on this computer, their state (as above, plus `tooOld` with the version found and `minVersion` 2.1.139 for Claude Code), the keymotion-cli this copy comes with and whether it is there, and for the GitHub copy whether its `bin` folder is on PATH. |
+| `agents_connect_plan { apps? }` | What turning agent access on would add, per coding app found: each file, created, changed or removed, what it is (hooks and how many, the skill, the Codex rule, Keymotion's own note), where the copy of it is kept; whether Codex will ask to trust the hooks; why an app cannot be connected (`problem`). Nothing is written. A `token` stands for what it showed. |
+| `agents_connect { token, apps? }` | The user approved: the apps are connected, the `bin` folder goes on PATH (GitHub copy), and agent access goes on (unless every app failed). When a coding app wrote its settings in between, the plan is made again: if it still shows the same, it is written with the app's new entries kept; if not, nothing changes and the new plan comes back (`applied: false`) to show again. Approved twice (a double click), the second finds it done and succeeds. An app that cannot be connected does not stop the others, and an app whose files cannot all be written gets back what it had (`problem: partial` when even that fails: disconnecting then removes what stayed). |
+| `agents_disconnect_plan { app }`, `agents_disconnect { app }` | What disconnecting takes away, and doing it. Agent access and PATH stay as they are. |
+
+**PATH (GitHub copy).** Turning agent access on in the app also puts the installation's `bin` folder, where `keymotion-cli.exe` is, at the end of your own PATH (`HKCU\Environment`), and tells open programs; terminals opened afterwards find `keymotion-cli` by its name. It never happens by itself, and only when `keymotion-cli.exe` is there. The value is read and written back as the exact text it is, in its type (`REG_EXPAND_SZ` stays so), nothing else in it changed or reordered; a PATH that cannot be read (another type, access refused) is never written, and the page says why. Before the change, the value as it was is kept in `HKCU\Software\Keymotion\UserPath` (`PathBefore`), with the folder Keymotion added (`PathAdded`). Folders compare as Windows compares names (ordinal, ignoring case); one with `;` in it goes in quotes. Turning access off leaves it; uninstalling takes it away, and only when Keymotion added it (a folder you put there yourself stays); updates leave it alone. The Store copy needs none of it: its alias is in a folder Windows keeps on PATH.
+
+**Uninstalling.** Claude Code's hooks name the program itself and cannot check that it is still there: after Keymotion is gone, Claude Code would report a failed hook on each event until they are removed (Codex's line checks first and does nothing). The GitHub copy's uninstaller removes them itself ([Where it is installed](#where-it-is-installed)). Windows removes a Store app without running anything of it, so before uninstalling the Store copy, remove the connections (in Keymotion, or `keymotion-cli disconnect claude-code` and `disconnect codex`).
+
+## Where it is installed
+
+The tool is built from the same commit as the app, with the same version (`release.yml` checks `keymotion-cli --version` against the release), and only what the app's two channels need is added for it.
+
+| | GitHub (NSIS installer) | Microsoft Store (MSIX) |
+|---|---|---|
+| Where | `<installation>\bin\keymotion-cli.exe`: a Tauri resource that `app/src-tauri/tauri.bundle-cli.conf.json` adds to a release build (`tauri build --config src-tauri/tauri.bundle-cli.conf.json`, after `cargo build --release -p keymotion-cli`). A folder of its own, so putting it on PATH does not put `uninstall.exe` there too. | The package's second application, `Cli` (`keymotion-cli.exe`, `desktop4:Subsystem="console"`, several at once, no tile and nothing in the Start menu), with the app execution alias `keymotion-cli.exe` in `%LOCALAPPDATA%\Microsoft\WindowsApps`, which Windows keeps on PATH. `tools/store/msix.mjs` packs the one beside `keymotion.exe` (or `--cli`). No new capability: full trust is all. The app's id stays `Keymotion` (the tool starts the app by it). |
+| On PATH | When the user turns agent access on (above). | Always, by the alias (the user can turn it off in Windows' Settings › Apps › Advanced app settings › App execution aliases). |
+| Updates | Replaced with the app, never deleted first. A keymotion-cli that runs at that moment (a hook waiting for the app to start) cannot be replaced, but can be renamed: only then the installer renames it `keymotion-cli.old-<n>.exe` (a new name each time) and writes the new one; if the install fails, the old one gets its name back. Renamed ones go on the next install or the uninstall. PATH and the connections stay, from the app's update as from a new setup run over the installed copy: that setup runs the installed copy's uninstaller first (when "uninstall before installing" is chosen on its "already installed" page), and tells it, by the `KEYMOTION_SETUP_REPLACES` environment variable that uninstaller inherits, that a copy is being installed right after. | The Store's. |
+| Uninstall | Keymotion is closed first (the same "Keymotion is running" question as the rest of the uninstall). Then, before its files go, the uninstaller runs `keymotion-cli disconnect claude-code --yes --if-this-copy`, the same for `codex`, and `keymotion-cli path remove`, each hidden, at most 15 seconds, its result ignored: the uninstall never stops for it. Skipped on an update, under a new setup (above), and when another Windows user runs the uninstall (an administrator's account typed into Windows' prompt): what it would find is that user's, not the owner's. Run from inside another app's package box (a coding app from the Microsoft Store), the connections go, but Windows keeps the PATH change inside that box. Under another user the owner removes the connections in Keymotion before uninstalling ([FAQ](/keymotion/help/faq/#what-should-i-do-before-uninstalling-keymotion)); a folder left on PATH that no longer exists does nothing. Last, `HKCU\Software\Keymotion` goes, if nothing is left in it. | Nothing of the app runs: remove the connections first (above). |
+
+Keymotion's own checks tell the two programs apart by their exact names, never by a prefix: Tauri's "is Keymotion running" check asks Windows about the file `keymotion.exe` itself, and a running `keymotion-cli.exe` is never taken for a program that talks to the keyboard (`crates/kb-core/src/conflicts.rs`), wherever it is installed.
+
+### Hook mode
+
+`keymotion-cli hook claude-code|codex` reads the event from stdin (at most 16 MiB, within 2 seconds, and not at all from a terminal) and sends the app one `hook` request with what the event means. Then it exits.
+
+- **Always 0, never a byte on stdout**, whatever comes: bad JSON, an event or agent it does not know, no app, agent access off, a panic. An exit code of 2 means "deny the permission", "keep going" or "block the prompt" to these agents, and Codex reads text on stdout as a decision. It is read before the command-line parser, so no mistake on its command line can make it 64 either.
+- **Fast.** One short request to the app (about 12 to 15 ms in a release build, starting the process included); the agent may wait for it. When the app is not running, the hook does not wait for it (see below).
+- **Only the meaning leaves the process.** Read: the event's name, the session id (it becomes a source such as `claude-code:3f9a0c1d`, a hash), the last folder of the working directory (shown beside the session's number), a notification's type, a failure's kind, a helper agent's type. Never sent or logged: the prompt, the agent's messages, the transcript's path, any tool's input or output. A tool call is named only by a hash of it salted with the session, so a question and its answer can be paired.
+- `KEYMOTION_HOOK_LOG=1` writes on stderr what hook mode did (the event's meaning and the app's answer); the agents do not show a hook's stderr when it exits with 0.
+
+#### When Keymotion is not running
+
+- **An event that lights something** (waiting for you, done, failed, usage limit) starts Keymotion. The hook hands it to a copy of keymotion-cli that runs on its own: no handles, no window, out of the hook runner's job when it allows that, in the Windows folder rather than the agent's project folder, and on the Store copy by its app execution alias, which runs it with Keymotion's package. That copy starts Keymotion as `start` does and delivers the event.
+- **One such copy at a time** (a named mutex and a pipe of its own beside Keymotion's). The hooks that come while Keymotion starts, answers and new prompts too, queue behind the first event in order; when Keymotion answers, the queue goes to it without what came after it made it old news (a question answered meanwhile, a "done" before a new prompt), and nothing older than a minute. The copy then passes on what comes for two more seconds, and ends.
+- **Not worth starting Keymotion for:** a new prompt, an answer, a session's start or end, a helper agent finishing (H).
+- **You closed it: it stays closed.** When you quit Keymotion from its menu, or turn agent access off, it writes a note, `stopped.json`, in each connected agent's skill folder, and the hooks start nothing while it is there. Keymotion removes it when it starts with access on, and when access is turned on. A quit counts for that sign-in only: after Windows restarts or you sign in again, the first event starts Keymotion as before. Windows shutting down or signing out is no quit. A missing or unreadable note means Keymotion is just not running. The agent's own commands (`keymotion-cli signal …`) still start it.
+- **Why the skill folder.** A hook may run inside another packaged app's box (the Claude desktop app runs Claude Code in its own). Such a box sees its own copy of `%LOCALAPPDATA%` and `%APPDATA%`, so a note Keymotion wrote there would not reach a hook in the box; the rest of the user's folder is shared by all (measured with the Claude desktop app on 2026-11-23). The skill folders are there, and they exist exactly while an agent is connected.
+
+What the events mean (checked against the agents' documentation and, for Codex, its 0.166.0 source):
+
+| Meaning | Claude Code | Codex |
+|---|---|---|
+| A session starts: it gets its number | `SessionStart` | `SessionStart` |
+| Working: the session's earlier lights go | `UserPromptSubmit` | `UserPromptSubmit` |
+| You stopped the turn: its question and its "working" light go, what came before stays | | `Interrupt` |
+| Waiting for you (`attention`) | `PermissionRequest` in a mode that asks you (below); `PreToolUse` of `AskUserQuestion` and `ExitPlanMode`; `Elicitation`; `Notification` `permission_prompt`, `elicitation_dialog`, `elicitation_url_dialog`, `agent_needs_input` | `PermissionRequest`, except under the approval policy `never` |
+| Answered | `PostToolUse`, `PostToolUseFailure`, `PermissionDenied` (that call); `PostToolBatch`, `ElicitationResult`, `Notification` `elicitation_complete`, `elicitation_response` (all of the session's) | `PostToolUse` (that call), `PreModelRequest` (that turn's) |
+| Done | `Stop` | `Stop` |
+| Failed | `StopFailure` | `PostModelRequest` with `status: failed` |
+| Usage limit (A) | `StopFailure` with `rate_limit`, `billing_error`, `server_error` (an overloaded service) | a failed request whose message speaks of a usage or rate limit, credits, a spend cap, the quota, or a model at capacity, or that gave up retrying on status 429 or 5xx (`exceeded retry limit, last status: 429`) |
+| A helper finished (H) | `SubagentStop` (with a type), `TaskCompleted` | `SubagentStop` |
+| The session ends | `SessionEnd` | `SessionEnd` |
+
+- **"Waiting for you" stays until it is answered**, at most its duration (30 minutes by default), when its look says so (`signals.attention.until_answered`, on by default); the end of the turn takes it away in any case. Keymotion keeps the tool calls it waits for: with several calls running at once, another call finishing does not take it away, the answer to the last one does. A question with no call of its own (a form, a notification's question) goes only with an answer for the whole session: a helper agent's call finishing is no answer to it. An approved call ends with its `PostToolUse`, so a long command that you approved keeps the light until it ends (neither agent says when you approve).
+- **Only when you are asked.** Both agents run `PermissionRequest` before anyone decides, also when no one will ask you; its `permission_mode` says who decides. Claude Code: `default` (the mode shown as Manual) asks you, and so does `acceptEdits`, except for file edits (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`), which it approves itself. In `auto` its classifier decides, in `plan` the same classifier decides on commands when auto mode is available, `dontAsk` denies and `bypassPermissions` allows: there the request lights nothing (measured in auto mode: no prompt, yet the light stayed until the call ended). A prompt that shows there after all (an `ask` rule, auto mode paused after repeated blocks, a dangerous `rm` in a terminal) lights with `Notification` `permission_prompt`, about 6 seconds later; `AskUserQuestion` and `ExitPlanMode` light in every mode. A mode Keymotion does not know yet counts as not asking, and no mode at all (an older version) as asking. Codex sends `default` for the approval policies that ask and `bypassPermissions` for `never`, which lights nothing; other modes count as asking, since Codex has no notification to back a prompt up. With Codex's auto-review ("Approve for me") its reviewer answers, but the hook still says `default`, so the light stays until that call ends.
+- **A key you press puts it out.** Once the question has shown on the keys (its first flashes over, about a second, and the flash of your return to the computer over), the first touch of the keyboard or mouse takes the light away: you have seen it. Input before that, or while the lights cannot be seen (a game hides them, the night has put them off, no cable), does not count. The question is still open: it does not flash again after five minutes, the notification that backs it up does not light it again, and with two or more sessions its number key stays lit, steadily, until it is answered. A new question lights again.
+- **Claude Code's `idle_prompt`** (about a minute after each finished turn) lights nothing: the turn's "done" said it already, and a "waiting for you" after every turn would wear the signal out.
+- **Codex** retries some failed requests; the same turn failing again leaves the light as it is, and a request of that turn that goes through takes it away. A failed turn ends without `Stop`.
+- **A session's end** takes its question and its number away; what it ended with (done, failed) stays its time, since a headless run (`claude -p`, `codex exec`) ends its session right after its turn.
+- **B, which session waits.** Each session gets the lowest free number from 1 to 9 when it first reaches Keymotion. A session counts while it was heard of in the last 30 minutes or its question is up; one quiet for longer gives its number to a new session that needs one, and a session that ended gives it back at once (one not heard of for 12 hours is forgotten). With two or more such sessions, a waiting session's number key lights white over the "waiting" light; `status` and the Agents page show number, project folder and agent.
+- **A, H** and the looks are your settings in Keymotion (`usage_limit.*`, `helper.*`, `sessions.*`); H is off by default.
+
+The hooks Keymotion adds: for Claude Code `SessionStart`, `UserPromptSubmit`, `PreToolUse` (matcher `AskUserQuestion|ExitPlanMode`), `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `PostToolBatch`, `Notification`, `Elicitation`, `ElicitationResult`, `Stop`, `StopFailure`, `SubagentStop`, `TaskCompleted` and `SessionEnd` (time limit 10 s; 2 s for `SessionEnd`, whose limit also bounds your own `SessionEnd` hooks; the tool-call events run without Claude Code waiting); for Codex `SessionStart`, `UserPromptSubmit`, `PermissionRequest`, `PostToolUse`, `PreModelRequest`, `PostModelRequest`, `Stop`, `Interrupt`, `SubagentStop` and `SessionEnd` (Codex starts PowerShell for each hook, about a second on a test machine, so it waits only for `Interrupt` and `SessionEnd`, which it always waits for, at most 3 s).
+
+## Security
+
+- **This computer, this user.** The pipe is `\\.\pipe\keymotion-agent-<user SID>-<session>`, refuses network clients, and its security descriptor admits only the user who runs the app. The app creates it as the first instance, so another program cannot hold the name first unnoticed; the tool refuses a pipe that this user does not own before sending a byte, and `doctor` names the process that serves it. There is no TCP or HTTP listener and no token file.
+- **The user's switch.** Agent access is off until the user turns it on in the app; with it off, only `status`, `keys`, `log` and `settings get` answer, and the rest exits 77. No command can turn access or a permission on.
+- **Limits that protect the keyboard and the user.** RAM only; 20 requests a second and 8 lights per source; at most 3 flashes a second; at most 2 hours per light; a muted microphone and a meeting reminder always show above agents' lights; a game that wants the keyboard left alone hides them (the user can turn that off).
+- **Sources stay apart.** A source cannot clear or replace another source's lights.
+- **Nothing private is logged.** The app logs the source, the command and the result of each request. Hook mode sends only what an event means ([Hook mode](#hook-mode)).
+- **Other programs' settings only on request.** `connect` and `disconnect` change Claude Code's and Codex's files only when you ask, after saying what changes, and only Keymotion's own entries; the Codex rule lets only keymotion-cli's commands for the keyboard (lights, scenes, status, and what the user's permissions allow) out of the sandbox.
+
+## The pipe
+
+Protocol 1 is described in `crates/kb-agent/src/protocol.rs`: newline-delimited JSON, at most 64 KiB a line, `hello` first with the protocol versions each side speaks. The tool says hello as `keymotion-cli` with its version and refuses an app that picks a version it does not speak (76). A connection the app closed while idle is reopened once, within the same deadline.
+
+## Development
+
+```bash
+cargo build -p keymotion -j 2          # the app (start it, or the dev server's build)
+cargo run -p keymotion-cli -- status
+cargo run -p keymotion-cli -- light --keys f1-f12 --color green --effect wave --times 1
+cargo test -p keymotion-cli
+```
+
+Start the development build of the app before trying commands that need it: when no Keymotion runs, the tool starts the installed one (the Store copy, if it is new enough). `--no-start` keeps it from starting anything.
+
+Try `connect` on a test folder, never on the settings of the Claude Code or Codex you work in: `KEYMOTION_CLI_TEST_HOME=<folder>` makes `connect`, `disconnect` and `connections` work in `<folder>\.claude`, `<folder>\.codex` and `<folder>\.agents` (`CLAUDE_CONFIG_DIR` and `CODEX_HOME` count only inside it). A development build of the app run against the dev server reads the same variable for its AI agents page (and for the notes it leaves beside the skill), so the page can be tried without touching your own; it then leaves PATH alone. An installed copy, a `tauri build --debug` one included, never reads it. A recorded event goes in by hand:
+
+```powershell
+'{"hook_event_name":"Stop","session_id":"s1","cwd":"C:\\dev\\demo"}' | cargo run -p keymotion-cli -- hook claude-code
+```
+
+The tests run the real `keymotion-cli` program against a fake app built on `kb_agent::transport::serve`, on a pipe of their own (`KEYMOTION_CLI_TEST_PIPE`, which also replaces the start with a no-op). Only debug builds and builds with the `test-pipe` feature read that variable; a release never does, so whoever sets an environment cannot point agents' calls at a fake app. The integration tests build only where it is read (`cargo test --release --features test-pipe` for a release run). Every command, access off, no app, a hung app, another protocol and every usage error are covered, and no run may exit with 2. `tests/hooks.rs` feeds hook mode garbage, nothing, 17 MiB and unknown agents (0, no output, every time), checks what reaches the app, delivers an event to an app that starts later, and connects and disconnects in a test home under a folder with spaces in its name, then runs the hook lines `connect` wrote the way the agents do: Claude Code's as a program with its arguments, Codex's through PowerShell (and the plain line through `cmd.exe`). `KEYMOTION_CLI_TEST_HOME` is read by the same builds as the test pipe.

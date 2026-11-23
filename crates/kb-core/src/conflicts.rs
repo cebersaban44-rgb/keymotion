@@ -42,10 +42,18 @@ const BY_NAME: &[(&str, Conflict)] = &[
 /// (the official one installs as `…\AK980 PRO\…`).
 const PATH_MARK: &str = "ak980";
 
+/// Keymotion's command-line tool never opens the keyboard (it talks to the
+/// app over a pipe): never a conflict, wherever it is installed. Its exact
+/// name only, never a prefix: `keymotion.exe` is not it.
+const OWN_TOOL: &str = "keymotion-cli.exe";
+
 /// Which known program a running executable is, if any. `name` is the file
 /// name (`SignalRgb.exe`); `path` the full path when the OS gave it.
 pub fn conflict_of(name: &str, path: Option<&str>) -> Option<Conflict> {
     let name = name.to_ascii_lowercase();
+    if name == OWN_TOOL {
+        return None;
+    }
     if let Some((_, c)) = BY_NAME.iter().find(|(n, _)| *n == name) {
         return Some(*c);
     }
@@ -92,6 +100,23 @@ mod tests {
         assert_eq!(conflict_of("OpenRGB-helper.exe", None), None);
         assert_eq!(conflict_of("DeviceDriver.dll", None), None);
         assert_eq!(conflict_of("Code.exe", None), None);
+    }
+
+    #[test]
+    fn keymotion_cli_is_never_a_conflict_but_only_by_its_exact_name() {
+        // Installed under a folder that names the keyboard.
+        let at = r"D:\Tools\AK980\bin\keymotion-cli.exe";
+        assert_eq!(conflict_of("keymotion-cli.exe", Some(at)), None);
+        assert_eq!(conflict_of("KEYMOTION-CLI.EXE", Some(at)), None);
+        // keymotion.exe from another process there is still looked at; so is
+        // a name that only starts the same.
+        assert_eq!(conflict_of("keymotion.exe", Some(r"D:\Tools\AK980\keymotion.exe")), Some(Conflict::AjazzDriver));
+        assert_eq!(
+            conflict_of("keymotion-cli-old.exe", Some(r"D:\Tools\AK980\bin\keymotion-cli-old.exe")),
+            Some(Conflict::AjazzDriver)
+        );
+        let running = [(100, "keymotion.exe", None), (101, "keymotion-cli.exe", Some(at))];
+        assert_eq!(find_conflict(running, 100), None);
     }
 
     #[test]

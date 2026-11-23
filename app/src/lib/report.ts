@@ -10,7 +10,8 @@ import { useEffect, useState } from "react";
 import { create } from "zustand";
 import type { UnsupportedKeyboard } from "../bindings/UnsupportedKeyboard";
 import { follow } from "./follow";
-import { getUnsupportedKeyboards, onUnsupportedChanged } from "./ipc";
+import { getUnsupportedKeyboards, onUnsupportedChanged, unsupportedReport } from "./ipc";
+import { firmwareVersion, isAk980Candidate, isNewAk980Firmware, parseDetails, type KeyboardDetails } from "./newFirmware";
 
 export interface ReportRequest {
   /** A problem (the "bug" form) or a keyboard support request. */
@@ -69,9 +70,57 @@ export function crashTitle(note: string): string {
   return problemTitle(`Crash: ${message || "no message"}`);
 }
 
-/** Keyboards that look like SONiX or AJAZZ ones but aren't supported yet. */
-export function useUnsupportedKeyboards(): UnsupportedKeyboard[] {
-  const [list, setList] = useState<UnsupportedKeyboard[]>([]);
+/** Each AK980 PRO candidate's support details, read once while it is
+ *  plugged in (lib/newFirmware.ts). */
+const useDetails = create<{ byId: Record<string, KeyboardDetails | null> }>(() => ({ byId: {} }));
+const asked = new Set<string>();
+const NONE: UnsupportedKeyboard[] = [];
+
+/** Read the details of the keyboards that may run AJAZZ's new firmware; a
+ *  keyboard that went away is read again when it comes back (its firmware
+ *  may have changed). */
+function readDetails(list: UnsupportedKeyboard[]) {
+  const here = new Set(list.map((k) => k.id));
+  const gone = [...asked].filter((id) => !here.has(id));
+  if (gone.length) {
+    gone.forEach((id) => asked.delete(id));
+    useDetails.setState((s) => ({ byId: Object.fromEntries(Object.entries(s.byId).filter(([id]) => here.has(id))) }));
+  }
+  for (const k of list) {
+    if (!isAk980Candidate(k) || asked.has(k.id)) continue;
+    asked.add(k.id);
+    unsupportedReport(k.id)
+      .then(parseDetails, () => null)
+      .then((d) => useDetails.setState((s) => ({ byId: { ...s.byId, [k.id]: d } })));
+  }
+}
+
+export interface UnsupportedView {
+  /** Every keyboard that looks like a SONiX or AJAZZ one but isn't supported. */
+  list: UnsupportedKeyboard[];
+  /** AK980 PROs on AJAZZ's new firmware, with its version when known. */
+  newFirmware: { keyboard: UnsupportedKeyboard; version: string | null }[];
+  /** The rest (an AK980 PRO whose details are still being read waits). */
+  others: UnsupportedKeyboard[];
+}
+
+/** Keyboards that look like SONiX or AJAZZ ones but aren't supported yet,
+ *  with the AK980 PROs on AJAZZ's new firmware told apart. */
+export function useUnsupported(): UnsupportedView {
+  // Nothing known until the first answer: a page opened later (Welcome)
+  // must not take its empty start for "every keyboard went away" and drop
+  // the details the sidebar and the tray still use.
+  const [known, setList] = useState<UnsupportedKeyboard[] | null>(null);
   useEffect(() => follow(getUnsupportedKeyboards, onUnsupportedChanged, setList), []);
-  return list;
+  useEffect(() => {
+    if (known) readDetails(known);
+  }, [known]);
+  const list = known ?? NONE;
+  const byId = useDetails((s) => s.byId);
+  const fresh = list.filter((k) => isNewAk980Firmware(k, byId[k.id]));
+  return {
+    list,
+    newFirmware: fresh.map((k) => ({ keyboard: k, version: firmwareVersion(byId[k.id]?.release) })),
+    others: list.filter((k) => !fresh.includes(k) && (!isAk980Candidate(k) || k.id in byId)),
+  };
 }

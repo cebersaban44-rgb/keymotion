@@ -1,24 +1,27 @@
-// Genel Bakış: the connected keyboard at a glance. Its drawing shows the
-// keyboard's real light (read back over USB about four times a second) and
-// the keys held down while the app is in front, across the whole width so
-// the keys' letters stay readable. Under it, the picture on the keyboard's
-// screen and one tile for each thing the app does (light, focus timer,
-// reminders, calendar, system gauges, profile), each saying what is on now
-// and linking to its page. The connection details
-// and the clock live on the Bağlantı page.
+// Genel Bakış: the connected keyboard at a glance (design A+E). At the top
+// the keyboard's glass strip (its screen, the picture on the glass and the
+// knob), under it one line with the keyboard's name and connection, then
+// the drawing with the keyboard's real light (read back over USB about four
+// times a second) and the keys held down while the app is in front, across
+// the whole width so the keys' letters stay readable. Under it one row for
+// each thing the app does (light, focus timer, calendar, reminders, system
+// gauges, the screen, profile), each saying what is on now and opening its
+// page. The connection details and the clock live on the Bağlantı page.
 
-import { BatteryCharging, BatteryFull, BatteryMedium, Usb } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { BatteryCharging, BatteryFull, BatteryMedium, Radio, Usb } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { GeometryInfo } from "../bindings/GeometryInfo";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import { KeyboardView } from "../components/KeyboardView";
 import { hidFromCode } from "../lib/hidCodes";
-import { connectionKey, percent, useAgo, useT } from "../lib/i18n";
+import { connectionKey, listOf, modelTitle, percent, useAgo, useT } from "../lib/i18n";
 import { useMirror } from "../lib/mirror";
-import { useApp, useNarrowWindow } from "../lib/store";
-import { FocusTile } from "./overview/FocusTile";
-import { ScreenNow } from "./overview/ScreenNow";
-import { CalendarTile, GaugesTile, LightTile, ProfileTile, RemindersTile } from "./overview/tiles";
+import { InfoBar, Rows } from "../components/controls";
+import { DARK_UNTIL_PRESSED, useLighting } from "../lib/lighting";
+import { useApp } from "../lib/store";
+import { FocusRow } from "./overview/FocusRow";
+import { GlassStrip } from "./overview/GlassStrip";
+import { CalendarRow, GaugesRow, LightRow, ProfileRow, RemindersRow, ScreenRow } from "./overview/tiles";
 
 /** LEDs of the keys held down while the window has focus. The Fn key and
  *  keys the system keeps (Win, Print Screen) send nothing here. */
@@ -94,87 +97,95 @@ function firmwareOf(kb: KeyboardInfo): string | null {
   return kb.firmware?.trim() || null;
 }
 
-/** "%98 düzen, 97 tuş, 240×135 ekran ve döner düğme." in the UI language. */
+/** "%98 düzen ve 97 tuş" in the UI language; the screen and the knob are
+ *  drawn on the glass strip. */
 function useSpecs(kb: KeyboardInfo): string {
   const t = useT();
   const locale = useApp((s) => s.locale);
   const layout = /^\d+$/.test(kb.layout) ? percent(Number(kb.layout)) : kb.layout;
-  const parts = [
-    t("overview.spec.layout", { layout }),
-    t("overview.spec.keys", { count: kb.keyCount }),
-    kb.screen ? t("overview.spec.screen", { size: `${kb.screen.width}×${kb.screen.height}` }) : null,
-    kb.hasKnob ? t("overview.spec.knob") : null,
-  ].filter((p): p is string => !!p);
-  const list = new Intl.ListFormat(locale === "tr" ? "tr-TR" : "en-US", { type: "conjunction" }).format(parts);
-  const firmware = firmwareOf(kb);
-  return [t("overview.spec", { list }), firmware ? t("overview.firmware", { version: firmware }) : null].filter(Boolean).join(" ");
+  return listOf([t("overview.spec.layout", { layout }), t("overview.spec.keys", { count: kb.keyCount })], locale);
 }
 
-function Pill({ children, data }: { children: ReactNode; data?: string }) {
-  return (
-    <span className="flex h-8 items-center gap-2 rounded-md border border-line bg-surface px-3 text-[13px] whitespace-nowrap" data-pill={data}>
-      {children}
-    </span>
-  );
+/** Whether the light the app last saved is an effect that lights keys only
+ *  as they are pressed (Launch, Ripples…), at a brightness above zero: the
+ *  keys read back dark between presses, yet the light is on. */
+function useLightOnPress(): boolean {
+  const applied = useLighting((s) => s.appliedEffect);
+  const saved = useLighting((s) => s.savedPerKey);
+  return !saved && !!applied && DARK_UNTIL_PRESSED.has(applied.mode) && applied.brightness > 0;
+}
+
+/** The brightness the knob is at, as far as the app knows: the level it
+ *  last stored with the light. */
+function useKnobLevel(): number | null {
+  const applied = useLighting((s) => s.appliedEffect);
+  const saved = useLighting((s) => s.savedPerKey);
+  return saved ? saved.brightness : applied ? applied.brightness : null;
 }
 
 export function Overview({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
   const ago = useAgo();
   const usb = kb.connection === "usb";
+  // Only the receiver is seen: whether the keyboard is on behind it is not
+  // known yet, so nothing here says it is connected.
+  const receiver = kb.connection === "dongle";
   const live = usb && kb.hasCommandChannel && kb.features.includes("lighting");
   const mirror = useMirror(live);
   const pressed = usePressedKeys(kb.geometry ?? null);
   const pressedClass = useMemo(() => Object.fromEntries([...pressed].map((l) => [l, "is-pressed"])), [pressed]);
-  // Off when nothing but the indicator keys (Num Lock, Caps Lock, Fn) is lit.
+  // Off when nothing but the indicator keys (Num Lock, Caps Lock, Fn) is lit,
+  // unless the keys light only as they are pressed: then the line says so,
+  // pressed or not.
   const lit = mirror ? Object.values(mirror).filter((c) => c !== "#000000").length : 0;
-  const lightsOff = !!mirror && Object.keys(mirror).length > 0 && lit <= 3;
+  const onPress = useLightOnPress();
+  const lightsOff = !onPress && !!mirror && Object.keys(mirror).length > 0 && lit <= 3;
   const charge = useChargeState(kb, live ? mirror : null);
   const specs = useSpecs(kb);
   const lastRead = kb.battery ? t("overview.bat.read", { level: percent(kb.battery.percent), ago: ago(kb.battery.readAtMs) }) : undefined;
-  const narrow = useNarrowWindow();
+  const level = useKnobLevel();
+  const firmware = firmwareOf(kb);
 
   return (
-    <div className="flex flex-col gap-5" data-overview>
-      <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-        <div className="min-w-0">
-          <h1 className="page-title">{kb.modelName}</h1>
-          <p className="page-desc num" data-overview-specs>
-            {specs}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Pill data="connection">
-            <span className="h-2 w-2 rounded-full bg-ok" aria-hidden />
+    <div className="flex flex-col" data-overview>
+      <h1 className="page-title mb-5">{t("nav.overview")}</h1>
+
+      {/* The glass strip, then the keyboard as it is lit right now: the
+          whole width, so the keys' letters and numbers stay readable. The
+          strip's screen and the drawing start at the same left edge. */}
+      <section className="dev" data-overview-keyboard>
+        {kb.screen && <GlassStrip level={level} knob={kb.hasKnob} />}
+        <div className="dev-caption">
+          <span className="text-[14px] font-semibold text-ink">{modelTitle(t, kb.modelId, kb.modelName)}</span>
+          <span className="flex items-center gap-[7px] text-[13px] text-ink" data-pill="connection">
+            <span className={`h-2 w-2 rounded-full ${receiver ? "bg-ink-3" : "bg-ok"}`} aria-hidden />
             {t(connectionKey(kb.connection))}
-          </Pill>
-          {usb && charge && (
-            <span title={lastRead} data-overview-charge={charge}>
-              <Pill>
+          </span>
+          {firmware && <span>{t("overview.firmware.short", { version: firmware })}</span>}
+          <span className="num" data-overview-specs>
+            {specs}
+          </span>
+          <span className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1">
+            {usb && charge && (
+              <span title={lastRead} className="flex items-center gap-1.5 text-ink" data-overview-charge={charge}>
                 {charge === "full" ? (
-                  <BatteryFull size={16} className="text-ok" aria-hidden />
+                  <BatteryFull size={15} className="text-ok" aria-hidden />
                 ) : (
-                  <BatteryCharging size={16} className="text-ok" aria-hidden />
+                  <BatteryCharging size={15} className="text-ok" aria-hidden />
                 )}
                 {t(charge === "charging" ? "overview.bat.charging" : "overview.bat.full")}
-              </Pill>
-            </span>
-          )}
-          {!usb && kb.battery && (
-            <span title={lastRead} data-overview-battery>
-              <Pill>
-                <BatteryMedium size={16} className="text-ok" aria-hidden />
+              </span>
+            )}
+            {!usb && kb.battery && (
+              <span title={lastRead} className="flex items-center gap-1.5 text-ink" data-overview-battery>
+                <BatteryMedium size={15} className="text-ok" aria-hidden />
                 <span className="num">{t("overview.bat.level", { level: percent(kb.battery.percent) })}</span>
-              </Pill>
-            </span>
-          )}
+              </span>
+            )}
+            {kb.hasKnob && level != null && <span className="num">{t("overview.knob", { level })}</span>}
+          </span>
         </div>
-      </header>
-
-      {/* The keyboard, as it is lit right now: the whole width, so the
-          keys' letters and numbers stay readable (K12, option A). */}
-      <section className="card flex min-w-0 flex-col overflow-hidden p-0" data-overview-keyboard>
-        <div className="p-6 pb-5" style={{ background: "var(--plate)" }}>
+        <div className="dev-plate">
           {kb.geometry && (
             <KeyboardView
               geometry={kb.geometry}
@@ -185,42 +196,40 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
             />
           )}
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-line px-5 py-3 text-[13px]">
-          <span className="flex items-center gap-2 text-ink-2" data-overview-live={live ? (lightsOff ? "off" : "on") : "unavailable"}>
-            <span className={`h-2 w-2 rounded-full ${live && mirror ? "bg-ok" : "bg-ink-3"}`} aria-hidden />
-            {!live ? t("overview.kb.usbOnly") : lightsOff ? t("overview.kb.off") : t("overview.kb.live")}
+        <div className="dev-live">
+          <span className="flex items-center gap-2" data-overview-live={live ? (onPress ? "on-press" : lightsOff ? "off" : "on") : "unavailable"}>
+            <span className={`h-[7px] w-[7px] rounded-full ${live && mirror ? "bg-ok" : "bg-ink-3"}`} aria-hidden />
+            {!live ? t("overview.kb.usbOnly") : onPress ? t("overview.kb.onPress") : lightsOff ? t("overview.kb.off") : t("overview.kb.live")}
           </span>
-          <span className="text-ink-3">{t("overview.kb.press")}</span>
+          <span>{t("overview.kb.press")}</span>
         </div>
       </section>
 
-      {/* One tile for each thing the app does; the keyboard's screen first,
-          two rows tall so its picture stays large. */}
-      <div className={`grid gap-4 ${narrow ? "grid-cols-2" : "grid-cols-3"}`} data-overview-cards>
-        {kb.screen && <ScreenNow className="row-span-2" />}
-        <LightTile />
-        <FocusTile />
-        <RemindersTile />
-        <CalendarTile />
-        {/* Wide window with the screen tile: the gauges take two columns so
-            the last row is full. */}
-        <div className={`grid min-w-0 ${kb.screen && !narrow ? "col-span-2" : ""}`}>
-          <GaugesTile geometry={kb.geometry ?? null} usb={usb && kb.hasCommandChannel} />
-        </div>
-        <ProfileTile modelId={kb.modelId} />
-      </div>
-
       {!usb && (
-        <section className="card flex gap-4 p-5" data-overview-unlock>
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-signal/15 text-signal">
-            <Usb size={20} aria-hidden />
-          </div>
-          <div className="flex-1">
-            <h2 className="eyebrow">{t("overview.unlock.title")}</h2>
-            <p className="mt-0.5 max-w-[70ch] text-[13px] text-ink-2">{t("overview.unlock.body")}</p>
-          </div>
-        </section>
+        <InfoBar
+          className="mt-6"
+          icon={receiver ? <Radio size={20} strokeWidth={1.6} /> : <Usb size={20} strokeWidth={1.6} />}
+          title={t(receiver ? "overview.receiver.title" : "overview.unlock.title")}
+          data={receiver ? "receiver" : "usb"}
+        >
+          <span className="block max-w-[80ch]" data-overview-unlock={receiver ? "receiver" : "usb"}>
+            {t(receiver ? "overview.receiver.body" : "overview.unlock.body")}
+          </span>
+        </InfoBar>
       )}
+
+      {/* One row for each thing the app does. */}
+      <div className="mt-6">
+        <Rows title={t("overview.status")} data="overview">
+          <LightRow />
+          <FocusRow />
+          <CalendarRow />
+          <RemindersRow />
+          <GaugesRow geometry={kb.geometry ?? null} usb={usb && kb.hasCommandChannel} />
+          {kb.screen && <ScreenRow />}
+          <ProfileRow modelId={kb.modelId} />
+        </Rows>
+      </div>
     </div>
   );
 }

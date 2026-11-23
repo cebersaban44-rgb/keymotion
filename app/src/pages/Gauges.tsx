@@ -13,12 +13,14 @@ import type { GaugesSettings } from "../bindings/GaugesSettings";
 import type { Connection } from "../bindings/Connection";
 import type { GeometryInfo } from "../bindings/GeometryInfo";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
-import { ColorPicker, Segmented, Slider, Toggle } from "../components/controls";
+import { ColorPicker, InfoBar, Segmented, Slider, Toggle } from "../components/controls";
 import { KeyboardView } from "../components/KeyboardView";
 import { OWN_COLORS, heatRgb, rgbCss, useGauges, watchGauges } from "../lib/gauges";
 import { percent, useT, type MessageKey } from "../lib/i18n";
 import { fromHex, toHex } from "../lib/pomodoroLights";
+import { useMusic } from "../lib/music";
 import { usePomodoro } from "../lib/pomodoro";
+import { useApp } from "../lib/store";
 
 export function Gauges({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
@@ -26,6 +28,7 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
   const s = useGauges((x) => x.state);
   const configure = useGauges((x) => x.configure);
   const timer = usePomodoro((x) => x.state);
+  const music = useMusic((x) => x.state);
   const [picking, setPicking] = useState(false);
   // Colour drags fire many changes: show them at once, save the latest
   // shortly after.
@@ -40,7 +43,10 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
     }, 150);
     return () => window.clearTimeout(id);
   }, [draft]);
-  useEffect(() => watchGauges(kb.geometry ?? null), [kb.geometry]);
+  // Readings for the page only while the window is on screen (closed to
+  // the tray or minimized, the page stays mounted but nobody looks).
+  const windowShown = useApp((x) => x.windowShown);
+  useEffect(() => (windowShown ? watchGauges(kb.geometry ?? null) : undefined), [kb.geometry, windowShown]);
   const geometry = kb.geometry;
   const colors = useMemo(() => {
     if (!s || !geometry) return null;
@@ -67,6 +73,11 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
   const micKey = geometry?.keys.find((k) => k.id === shown.micKey);
   const micLed = micKey?.led;
   const bars = shown.cpu || shown.gpu || shown.ram;
+  // Music mode lies over the bars while sound plays.
+  const musicOn = !!music?.settings.enabled;
+  // On the keys: while sound plays, and while it's quiet with "Dim color"
+  // or "Dark" (the backend says so).
+  const musicFront = !!music?.covers && !timerFront;
 
   return (
     <div className="flex flex-col gap-6" data-gauges>
@@ -75,10 +86,7 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
         <p className="page-desc">{t("gauges.body")}</p>
       </header>
       {!usb && (
-        <div className="flex items-center gap-3 rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-[13px]">
-          <Usb size={16} className="text-signal" />
-          {t("gauges.noUsb")}
-        </div>
+        <InfoBar tone="warn" icon={<Usb size={20} strokeWidth={1.6} />} title={t("gauges.noUsb")} data="usb" />
       )}
 
       <section className="card flex flex-col">
@@ -98,6 +106,11 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
             />
             <span className={shown.enabled ? "text-ink-2" : "text-ink-3"}>{t(status)}</span>
           </div>
+          {shown.enabled && musicOn && (
+            <p className="text-[12px] text-ink-3" data-gauges-music>
+              {t("gauges.music")}
+            </p>
+          )}
           {geometry && colors && (
             <div className="flex flex-col gap-2">
               <span className="text-[12px] text-ink-3">{picking ? t("gauges.mic.pick") : t("gauges.preview")}</span>
@@ -164,7 +177,7 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
                 <button
                   type="button"
                   onClick={() => setPicking((p) => !p)}
-                  className="rounded-lg border border-line px-3 py-1.5 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+                  className="btn-secondary"
                   data-gauges-pick
                 >
                   {picking ? t("gauges.cancel") : t("gauges.mic.change")}
@@ -228,7 +241,14 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
           </Row>
         </div>
 
-        <LayerList enabled={shown.enabled} bars={bars} timerFront={timerFront} alerts={s.volumeShowing || (shown.mic && !!r.micMuted)} lit={s.frame.length > 0} />
+        <LayerList
+          enabled={shown.enabled}
+          bars={bars}
+          timerFront={timerFront}
+          musicFront={musicFront}
+          alerts={s.volumeShowing || (shown.mic && !!r.micMuted)}
+          lit={s.frame.length > 0}
+        />
       </section>
     </div>
   );
@@ -344,12 +364,14 @@ function LayerList({
   enabled,
   bars,
   timerFront,
+  musicFront,
   alerts,
   lit,
 }: {
   enabled: boolean;
   bars: boolean;
   timerFront: boolean;
+  musicFront: boolean;
   alerts: boolean;
   lit: boolean;
 }) {
@@ -358,8 +380,9 @@ function LayerList({
     { title: "gauges.layer.preview", note: "gauges.layer.preview.note", on: false },
     { title: "gauges.layer.alerts", note: "gauges.layer.alerts.note", on: enabled && alerts },
     { title: "gauges.layer.timer", note: "gauges.layer.timer.note", on: timerFront },
-    { title: "gauges.layer.bars", note: "gauges.layer.bars.note", on: enabled && bars && !timerFront },
-    { title: "gauges.layer.saved", note: "gauges.layer.saved.note", on: !timerFront && !(enabled && lit) },
+    { title: "gauges.layer.music", note: "gauges.layer.music.note", on: musicFront },
+    { title: "gauges.layer.bars", note: "gauges.layer.bars.note", on: enabled && bars && !timerFront && !musicFront },
+    { title: "gauges.layer.saved", note: "gauges.layer.saved.note", on: !timerFront && !musicFront && !(enabled && lit) },
   ];
   return (
     <div className="flex flex-col gap-3 border-t border-line px-5 py-4" data-gauges-layers>

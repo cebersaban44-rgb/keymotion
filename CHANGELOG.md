@@ -15,6 +15,215 @@ says so.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-23
+
+Keymotion has a new look in the style of Windows 11, and new tools: music
+mode, the game session with League of Legends lights, profiles by app, and
+lights for AI coding agents such as Claude Code and Codex. It is now in
+Russian and Simplified Chinese too. An AK980 PRO on AJAZZ's new firmware 769
+now gets a clear notice: Keymotion sends nothing to it, and support is
+planned for a later update.
+
+### Added
+
+- **Music mode:** Tools › **Music mode** moves the key lights with the
+  sound your PC plays, over USB: **Bars** (columns from bass on the left to
+  treble on the right, filling from the bottom row, with a mark that holds
+  at the top), **Beat** (the whole keyboard flashes on each beat, a ring
+  spreads from the middle on a strong beat), **Level** (a band of loudness
+  opening from the middle) and **Wave** (each bass beat sends a wave across
+  the keys). Colors **Green-yellow-red**, **Rainbow**, **One color** or
+  **Two colors**; **Center-out** for Bars and Wave; sensitivity from 50% to
+  200%; the other keys dark or dim. A few seconds after the sound stops,
+  the keyboard's own light comes back (or every key dim or dark, as you
+  choose). The lights wait while the focus timer runs, and while a game is
+  in front (**Pause while playing a game**, on at first). Keymotion reads
+  only how loud the sound going to your speakers or headphones is right
+  now, through Windows' own sound system: nothing is recorded, and the
+  microphone isn't used. Also in the tray menu and in backups.
+- **Game session:** Tools › **Game session** notices when you play. Games
+  come from your launchers' lists (Steam, Epic Games, GOG, Xbox, Riot Games,
+  Xbox Game Bar) and from your own word (**Add a game**, **Not a game**,
+  **Undo**); a program that fills the screen for a few minutes is offered as
+  "Is it a game?". A session starts once a game
+  has been in front for 15 seconds and lasts while the game runs, Alt+Tab
+  included. With the live screen on, a card goes to the keyboard's screen
+  when it starts and a summary (time played, graphics card load and
+  temperature, processor load and peak, today's total) when a session of 5
+  minutes or more ends; nothing new comes up while you play. The keys the
+  game uses can light up (WASD, MOBA, 1–6 or your own), or a profile's
+  key-by-key lighting, without saving anything to the keyboard; the lights
+  follow the window, so they wait while you Alt+Tab to other work. The games
+  list shows each program's icon and the profile it gets, and sorts by last
+  or most played; a game without a Steam picture gets its icon on the start
+  card. A meeting's or reminder's card that came up during a game goes away
+  after the game. The history stays on this computer. "Update automatically"
+  waits for the game to end.
+- **League of Legends lights:** during a match, from the data the game
+  offers on your computer: your health on the whole keyboard, receding the
+  way you choose as it drops (as with the focus timer), or on 1–0; mana on
+  F1–F12; dark red when you die, the light coming back as respawn nears (on
+  1–0, the time left counting down); and an animation of your choice (wave,
+  flash, pulse, sparkle, ring, fade from the top) in your color for victory,
+  defeat, level ups, kills, an ace, dragons, Baron and Herald. A drawing on the page previews them with the
+  match's own code, and "Try on the keyboard" plays them. They're set up
+  under League of Legends in the games list (Special lights), grouped as a
+  match brings them; dragons, Herald and Baron light up only when your team
+  takes them, unless you turn that off. The summary card shows the result,
+  K/D/A and CS. No enemy timers or objective timers.
+- **Profiles by app:** Profiles › **By app** links a program, or every game,
+  to a profile. By default only a per-key design's lighting changes, without
+  saving anything to the keyboard; a rule can also save the key mapping and
+  macros, at most 20 times a day (the last one is kept for going back; a
+  profile for another keyboard model is skipped and not counted). A game's
+  key mapping and macros stay for the
+  whole game; when it ends, the keyboard goes back to what it had before (or
+  to a profile you choose, or stays), unless you changed it by hand meanwhile.
+  Rules still hold after a program updates (Microsoft Store apps, Discord,
+  Roblox). The tray menu can pause it.
+- **Send nothing to the keyboard while playing:** during a game Keymotion
+  sends no lights, cards or profiles to the keyboard, for anti-cheat software
+  that might mind; the keyboard keeps its own light. Meeting and reminder
+  alerts still come unless you turn that off, and quiet mode can be on for a
+  single game.
+- **Terms of use:** the site has a Terms of use page.
+- **Russian and Simplified Chinese:** the app, the user guide, the installer
+  and the README are now also in Russian (Русский) and Simplified Chinese
+  (简体中文). Keymotion starts in the language Windows uses when it is one
+  of the four, and **Settings** › **Language** changes it at once. The
+  translations were made with AI help and wait for a review by native
+  speakers: corrections are welcome. In Chinese the keyboard is called
+  黑爵 AK980 V2（带屏版）, the name it is sold under in China.
+- **AI coding agents:**
+  `keymotion-cli` lets Claude Code, Codex and scripts light the keys: a
+  finished task, a question waiting for you, an error, a progress bar, or
+  anything an agent makes of keys, colors and effects. `keymotion-cli
+  connect claude-code` or `connect codex` adds a few hooks and a short skill
+  to that app's settings (showing what changes first, keeping a copy, never
+  touching anything else); then the keyboard lights by itself when the agent
+  finishes, waits for your approval (until you answer or touch a key;
+  not when the agent decides by itself, as in Claude Code's auto mode),
+  fails, or stops at its usage limit (slow purple), and with two or more
+  sessions the waiting one's number lights on the number row. When
+  Keymotion is not running, such an event starts it, unless you quit it
+  yourself or turned agent access off. Nothing you or the agent writes
+  reaches Keymotion: only what happened. `disconnect` takes it all away
+  again. Agent access stays off until you turn it on; on the GitHub copy,
+  turning it on also puts `keymotion-cli` on your PATH for new terminals.
+  Tools › **AI agents** turns it on in two steps (what will be added to
+  Claude Code and Codex, then what was done, with Cancel on the first),
+  shows how each app stands, and sets the five signals' color, effect and
+  length with **Try on the keyboard**, what else agents may do, the extra
+  signals, whether agents may change these settings, the session numbers
+  and the recent actions, with **Undo** and, for a request that wasn't
+  carried out, why. The privacy policy and the security policy say what
+  agents pass on and what they can never change. `keymotion-cli` comes
+  with Keymotion: the installer from GitHub puts it in a `bin` folder of its
+  own, and uninstalling removes Keymotion's connections to Claude Code and
+  Codex and its folder from your PATH; the Microsoft Store copy brings it as
+  a command you can type in any terminal.
+  Three more things only with their own permission, each off at first:
+  agents can start, pause or stop the focus timer (also one block of their
+  own length, without changing your settings), show a profile's lighting
+  for a while or write it to the keyboard (its lighting only, at most 10
+  writes in any 24 hours for all agents together), and put a card with text
+  or a picture on the screen (at most 4 an hour for all agents together, as
+  you set it; your own picture comes back after it). With screen cards
+  allowed, a coding task that took 10 minutes or more says "Done · 14 min"
+  on the screen when it ends. Agents can also write a word on the keys,
+  letter after letter (`keymotion-cli spell "DONE"`), and play little
+  animations of their own (`scene`), which they can keep under a name and
+  play again (`pattern`); all of it in the keyboard's working memory, at
+  most three flashes a second.
+
+### Changed
+
+- **A new look, in the style of Windows 11:** the pages are listed in a
+  pane on the left as in Windows Settings, with the connected keyboard at
+  its top (its name and how it is connected, or "Waiting for a keyboard"),
+  a search box that narrows the list, and Settings at the bottom. Settings
+  are full-width rows with the switch, list or button on the right;
+  buttons, switches, sliders, tabs, dialogs and the save bar look like
+  Windows' own, and orange stays only as the accent color. The keyboard
+  drawing and its lights stay as they were. **Overview** starts with the
+  keyboard's glass strip (its screen, the picture on the glass and the
+  knob with the brightness it was last set to), then the keyboard, then
+  one row for each thing Keymotion does; reminders and the system gauges
+  can be switched on and off right there.
+  **Lighting** shows the effects as a gallery and their settings as rows,
+  with **Direction** as a list. **Screen** shows the GIF page large and the
+  clock page beside it; the library is a picture grid with one command
+  bar: click a picture to choose it, then **Upload**, **Match lights**,
+  **Rename** or **Delete**. **Image or video**, **Text card** and
+  **Slideshow** are in the same bar, and a file can be dropped on the
+  library. Settings, dialogs and the other pages follow the same look.
+  A list opens as in Windows 11, its chosen item marked with a short
+  orange line.
+- The list of running programs, used to find the official software or
+  SignalRGB before a write, no longer opens any program.
+- **Recognition:** only a keyboard whose USB name includes "AK980 PRO", as
+  the tested one reports, is taken for the AJAZZ AK980 PRO. Another AK980
+  with the same USB identity, for example one without the screen, is now
+  offered **Request support** instead.
+- **AJAZZ's new firmware:** an AK980 PRO on AJAZZ's firmware 769 (3.01),
+  which uses a different set of commands, no longer shows as just a keyboard
+  that isn't supported yet. The welcome page, the pane on the left and the
+  tray menu say it has AJAZZ's new firmware, that Keymotion sends nothing to
+  it and that support is planned for a later update, with a link to the FAQ.
+  **Request support** stays. Any other keyboard that isn't supported yet now
+  shows its name in the pane on the left instead of "Waiting for a
+  keyboard", and the welcome page says that one is plugged in.
+- **Untested firmware:** on a firmware version that hasn't been tested with
+  Keymotion, the keyboard clock waits for your go-ahead too, both the sync
+  on connect and **Sync now**. Keymotion asks the same question as before
+  saving, and a yes holds until it closes. Live lighting still goes on
+  without asking.
+
+### Fixed
+
+- **Calendar and reminders:** on the night the clocks go back, a reminder
+  at 03:00 (in most of Europe; elsewhere, the hour the change ends) went off
+  an hour early, and a calendar event at that time with no time zone of its
+  own showed an hour early.
+- **Calendar:** an event repeating at midnight no longer goes missing on
+  the day a clock change skips or repeats midnight (Chile, Cuba and a few
+  other places). A repeat on, say, the fifth-last Monday of a month now
+  shows all its dates, not just the first. A weekly repeat whose rule says
+  "the first Monday" comes on Mondays only, not every day.
+- **2.4 GHz receiver:** with only the receiver plugged in, Keymotion no
+  longer says your keyboard works. The Connection page and the Overview say
+  that the receiver is plugged in and that Keymotion can't tell yet whether
+  the keyboard is turned on, and the dot next to it is grey. With the
+  keyboard on Bluetooth and the receiver still plugged in, the app and the
+  tray menu show Bluetooth, not the receiver.
+- A keyboard with the AK980 PRO's USB identity and name but built
+  differently inside showed up as an AK980 PRO on which every action failed.
+  It now gets **Request support**, and nothing is sent to it.
+- **Calendar:** events from an Outlook calendar in the La Paz / Mazatlán or
+  Bishkek time zone showed an hour off all year, and in a few time zones
+  with summer time (Indiana, Cuba, Haiti, the Aleutian Islands, the Chatham
+  Islands, Lord Howe Island and some more) an hour off in summer. Keymotion
+  now knows every time zone name Outlook uses.
+- **Tray menu:** switching **System gauges on the keys** on or off on its
+  page now shows in the tray menu at once. Before, the menu could show the
+  old state for up to 10 minutes, and clicking it then did the opposite of
+  what it showed.
+- **Overview:** with an effect that lights only the keys you press, such as
+  **Launch** or **Ripples**, the line under the keyboard said **Keyboard
+  lighting is off** while no key was pressed. It now says **Your keyboard
+  lights up as you type**.
+- **Opening animation:** on Windows 11 it now plays on the same translucent
+  window background as the app, so the colors no longer change when the
+  app appears.
+- **Lighting:** with **Preview on keyboard** on in **Per-key color**,
+  closing the window to the tray left the preview on the keys, over the
+  focus timer, reminders, music mode and the agents' lights. The preview
+  now waits while the window is closed and comes back when you open it.
+- **Screen:** a song, meeting or reminder title that ends in "…" is no
+  longer drawn at the smallest size.
+- **Installer:** installing Keymotion from GitHub again over the copy you
+  have no longer turns off **Start Keymotion when the computer starts**.
+
 ## [1.1.0] - 2026-11-16
 
 Keymotion now tells you when a new version is out, and can install it by
@@ -171,7 +380,8 @@ The first release. It supports the AJAZZ AK980 PRO on Windows.
   something goes wrong, the supported keyboards and the ones that could come
   next, and pages for developers. Settings › About opens it.
 
-[Unreleased]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.1.0...develop
+[Unreleased]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.0...develop
+[1.2.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.0
 [1.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.1.0
 [1.0.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.0.0
 [0.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v0.1.0

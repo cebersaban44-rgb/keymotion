@@ -1,0 +1,227 @@
+//! Running a command: its plan, the app's answer, the output.
+
+use kb_agent::protocol::SUPPORTED_PROTOCOLS;
+use kb_agent::{AgentError, Command, ErrorCode};
+use serde_json::{json, Value};
+
+use crate::cli::{self, Env, Invocation, Plan};
+use crate::output::{self, Done, Logger};
+use crate::session::{self, Ctx, IfNotRunning, Started};
+use crate::{connect, doctor, guide, hook, human};
+
+/// Run a command line clap took; the exit code.
+pub fn run(inv: Invocation, env: &Env) -> u8 {
+    let json = inv.global.json || env.json();
+    let quiet = inv.global.quiet;
+    let name = inv.command.name();
+    let log = Logger::new(inv.global.log, quiet);
+    let plan = inv.command.plan();
+    // Hook mode through clap (`--json hook codex`): still nothing printed,
+    // and 0 (`main` reads plain `hook` before clap).
+    if let Ok(Plan::Hook { agent, deliver }) = &plan {
+        hook::run(agent, deliver.as_deref(), env);
+        return kb_agent::exit::OK;
+    }
+    let result = plan.and_then(|plan| match plan {
+        // Needs nothing, so a wrong KEYMOTION_SOURCE does not hide it.
+        Plan::Guide => Ok(Done::new(guide::data(), guide::GUIDE)),
+        Plan::Connect { agent, yes, dry_run } => connect::run(env, agent, true, yes, dry_run, json),
+        Plan::Disconnect { agent, yes, dry_run, if_this_copy } => {
+            if if_this_copy {
+                if let Some(left) = connect::another_copy(env, agent)? {
+                    return Ok(left);
+                }
+            }
+            connect::run(env, agent, false, yes, dry_run, json)
+        }
+        Plan::Connections => connect::connections(env),
+        Plan::PathRemove => connect::path_remove(),
+        plan => {
+            let mut ctx = Ctx::new(&inv.global, env, log)?;
+            // `card --wait`: the answer may take that long, unless the agent
+            // bounded the whole run with --timeout.
+            if let Plan::Call(Command::Card(args)) = &plan {
+                if let (Some(wait), false) = (args.wait_ms, ctx.timeout_given) {
+                    ctx.timeout = ctx.timeout.max(std::time::Duration::from_millis(wait + 5_000));
+                }
+            }
+            execute(&ctx, plan)
+        }
+    });
+    output::finish(json, quiet, name, result)
+}
+
+fn execute(ctx: &Ctx, plan: Plan) -> Result<Done, AgentError> {
+    match plan {
+        Plan::Call(command) => call(ctx, command),
+        Plan::Status => status(ctx),
+        Plan::Version => version(ctx),
+        Plan::Guide => Ok(Done::new(guide::data(), guide::GUIDE)),
+        Plan::Doctor => Ok(doctor::run(ctx)),
+        Plan::Start => start(ctx),
+        Plan::Hook { .. } | Plan::Connect { .. } | Plan::Disconnect { .. } | Plan::Connections | Plan::PathRemove => {
+            Err(AgentError::new(ErrorCode::Internal, "This command is run elsewhere."))
+        }
+    }
+}
+
+/// A command for the app, which is started first when it is not running.
+fn call(ctx: &Ctx, command: Command) -> Result<Done, AgentError> {
+    let mut conn = session::connect(ctx, IfNotRunning::Start)?;
+    let left = conn.left();
+    let data = conn.client.call_within(&command, left)?;
+    let mut warnings = Vec::new();
+    if let Some(Started { method: Some(_), waited_ms }) = &conn.started {
+        warnings.push(started_note(*waited_ms));
+    }
+    let name = command.name();
+    let text = match name {
+        "keys" => human::keys(&data),
+        "signal" | "light" | "progress" => {
+            warnings.extend(human::lit_warnings(&data));
+            human::lit(name, &data)
+        }
+        "scene" | "spell" => {
+            if data.get("length_ms").is_some() {
+                warnings.extend(human::lit_warnings(&data));
+            }
+            warnings.extend(human::spell_warnings(&data));
+            human::scene(name, &data)
+        }
+        "pattern" => {
+            if data.get("length_ms").is_some() {
+                warnings.extend(human::lit_warnings(&data));
+            }
+            human::pattern(&data)
+        }
+        "clear" => human::clear(&data),
+        "log" => human::log(&data, now_ms()),
+        "settings_get" => human::settings_get(&data),
+        "settings_set" => human::settings_set(&data),
+        "focus" => human::focus(&data),
+        "profile" => human::profile(&data),
+        "card" => {
+            warnings.extend(human::card_warnings(&data));
+            human::card(&data)
+        }
+        _ => String::new(),
+    };
+    Ok(Done { data, warnings, text })
+}
+
+fn started_note(waited_ms: u64) -> String {
+    format!("Keymotion was not running; started it in the background ({}).", human::duration(waited_ms))
+}
+
+fn now_ms() -> f64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_millis() as f64)
+}
+
+/// `status`: works when the app is not running (exit 0, `running: false`).
+fn status(ctx: &Ctx) -> Result<Done, AgentError> {
+    match session::connect(ctx, IfNotRunning::Report) {
+        Ok(mut conn) => {
+            let left = conn.left();
+            let data = conn.client.call_within(&cli::status_command(), left)?;
+            let mut warnings = Vec::new();
+            if data["agents"]["enabled"] == json!(false) {
+                warnings.push(
+                    "Agent access is off: lights are refused until the user turns it on in Keymotion > Tools > AI agents."
+                        .to_string(),
+                );
+            }
+            let text = human::status(&data);
+            Ok(Done { data, warnings, text })
+        }
+        Err(e) if e.code == ErrorCode::AppNotRunning => {
+            if ctx.app_running() {
+                let data = json!({ "app": { "running": true, "answering": false } });
+                let text = human::status(&data);
+                let why = match ctx.old_copy_running() {
+                    Some(old) => {
+                        let e = session::old_copy(old);
+                        format!("{} {}", e.message, e.hint.unwrap_or_default())
+                    }
+                    None => "Keymotion runs but does not answer agents yet: it may be starting, or older than keymotion-cli."
+                        .to_string(),
+                };
+                Ok(Done::new(data, text).warn([why]))
+            } else {
+                let data = json!({ "app": { "running": false } });
+                let text = human::status(&data);
+                Ok(Done::new(data, text))
+            }
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// The CLI's own version line, for `version` and `doctor`.
+pub fn cli_data() -> Value {
+    json!({
+        "version": crate::VERSION,
+        "protocol": SUPPORTED_PROTOCOLS.max,
+        "protocols": { "min": SUPPORTED_PROTOCOLS.min, "max": SUPPORTED_PROTOCOLS.max },
+    })
+}
+
+/// `version`: the CLI's, and the app's when it runs (never starts it).
+fn version(ctx: &Ctx) -> Result<Done, AgentError> {
+    let mut warnings = Vec::new();
+    let app = match session::connect(ctx, IfNotRunning::Report) {
+        Ok(conn) => {
+            let a = conn.app();
+            if a.version != crate::VERSION {
+                warnings.push(format!(
+                    "Keymotion is {} and keymotion-cli is {}; they still work together (protocol {}).",
+                    a.version,
+                    crate::VERSION,
+                    a.protocol
+                ));
+            }
+            json!({ "running": true, "compatible": true, "version": a.version, "channel": a.channel, "protocol": a.protocol })
+        }
+        Err(e) if e.code == ErrorCode::AppNotRunning && ctx.app_running() => {
+            json!({ "running": true, "answering": false })
+        }
+        Err(e) if e.code == ErrorCode::AppNotRunning => json!({ "running": false }),
+        Err(e) if e.code == ErrorCode::ProtocolMismatch => {
+            warnings.push(format!("{} {}", e.message, e.hint.as_deref().unwrap_or_default()).trim().to_string());
+            json!({
+                "running": true,
+                "compatible": false,
+                "error": { "code": e.code.as_str(), "message": e.message, "hint": e.hint },
+            })
+        }
+        Err(e) => return Err(e),
+    };
+    let data = json!({ "cli": cli_data(), "app": app });
+    let text = human::version(&data);
+    Ok(Done::new(data, text).warn(warnings))
+}
+
+/// `start`: start the app without a window and wait for it; nothing to do
+/// when it runs.
+fn start(ctx: &Ctx) -> Result<Done, AgentError> {
+    if ctx.no_start {
+        return Err(AgentError::new(ErrorCode::BadArgument, "start and --no-start ask for opposite things.")
+            .with_hint("Leave out --no-start."));
+    }
+    let conn = session::connect(ctx, IfNotRunning::StartAndWait)?;
+    let a = conn.app();
+    let app = json!({ "version": a.version, "channel": a.channel, "protocol": a.protocol });
+    let data = match &conn.started {
+        Some(Started { method: Some(method), waited_ms }) => {
+            json!({ "already_running": false, "method": method, "waited_ms": waited_ms, "app": app })
+        }
+        // Running already, perhaps with its pipe still opening.
+        other => json!({
+            "already_running": true,
+            "method": null,
+            "waited_ms": other.as_ref().map_or(0, |s| s.waited_ms),
+            "app": app,
+        }),
+    };
+    let text = human::start(&data);
+    Ok(Done::new(data, text))
+}

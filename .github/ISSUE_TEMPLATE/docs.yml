@@ -8,7 +8,7 @@ body:
       value: |
         Thanks for helping the guide get better. Small fixes can also go straight into a pull request: every page of the guide has an "Edit this page" link.
 
-        *Türkçe yazabilirsiniz.*
+        *Türkçe yazabilirsiniz. Можно писать по-русски. 可以用中文填写。*
   - type: input
     id: where
     attributes:
@@ -24,7 +24,9 @@ body:
       options:
         - English
         - Türkçe
-        - Both
+        - Русский
+        - 简体中文
+        - More than one
     validations:
       required: true
   - type: textarea
