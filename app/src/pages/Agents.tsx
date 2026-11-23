@@ -6,6 +6,7 @@
 // the recent actions with Undo.
 
 import {
+  ArrowRight,
   Bot,
   Check,
   ChevronDown,
@@ -19,14 +20,20 @@ import {
   Undo2,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { AgentEffect } from "../bindings/AgentEffect";
 import type { AgentLook } from "../bindings/AgentLook";
 import type { AgentLogEntry } from "../bindings/AgentLogEntry";
+import type { AgentSessionInfo } from "../bindings/AgentSessionInfo";
 import type { AgentSettings } from "../bindings/AgentSettings";
 import type { AgentSignalLooks } from "../bindings/AgentSignalLooks";
 import { ColorPicker, InfoBar, Row, Rows, Toggle } from "../components/controls";
-import type { AgentApp, AgentAppPlan, AgentAppStatus, AgentConnectOutcome, AgentConnectPlan, AgentFileChange } from "../lib/agentTypes";
+import type { AgentApp } from "../bindings/AgentApp";
+import type { AgentAppPlan } from "../bindings/AgentAppPlan";
+import type { AgentAppStatus } from "../bindings/AgentAppStatus";
+import type { AgentConnectOutcome } from "../bindings/AgentConnectOutcome";
+import type { AgentConnectPlan } from "../bindings/AgentConnectPlan";
+import type { AgentFileChange } from "../bindings/AgentFileChange";
 import {
   agentConnect,
   agentConnectPlan,
@@ -244,7 +251,7 @@ export function Agents() {
         {state.log.length === 0 ? (
           <Row title={<span className="text-ink-2">{t("ag.log.none")}</span>} />
         ) : (
-          state.log.slice(0, 20).map((e) => <LogRow key={e.seq} entry={e} looks={s.signals} onError={(m) => setError(m)} />)
+          state.log.slice(0, 20).map((e) => <LogRow key={e.seq} entry={e} settings={s} sessions={state.sessions} onError={(m) => setError(m)} />)
         )}
       </Rows>
     </div>
@@ -301,7 +308,9 @@ function ConnectFlow({ flow, onCancel, onApprove, onDone }: { flow: Flow; onCanc
               <li>{t("ag.line.path")}</li>
             </ul>
             {plan.path.error && <p className="ml-4 text-danger">{t("ag.done.pathError", { message: plan.path.error })}</p>}
-            {details && <code className="mono mt-1 ml-4 text-[12px] break-all text-ink-2 select-text">{plan.path.dir}</code>}
+            {details && (
+              <code className="mono mt-1 ml-4 text-[12px] break-all text-ink-2 select-text">{t("ag.details.path", { path: plan.path.dir })}</code>
+            )}
           </div>
         )}
       </>
@@ -434,14 +443,22 @@ function problemText(plan: AgentAppPlan, t: Translate): string {
   return t("ag.problem.other", { message: p.message });
 }
 
-/** One short line for a file Keymotion adds, changes or takes away. */
+/** What a file Keymotion adds, changes or takes away does, in plain words
+ *  (its name and the hooks' count are in Details). */
 function fileLine(c: AgentFileChange, t: Translate): string | null {
-  const file = c.path.split(/[\\/]/).pop() ?? c.path;
   const remove = c.action === "remove" || /^remove/i.test(c.summary);
-  if (c.kind === "hooks") return t(remove ? "ag.line.removeHooks" : "ag.line.addHooks", { count: c.hooks ?? 0, file });
+  if (c.kind === "hooks") return t(remove ? "ag.line.removeHooks" : "ag.line.addHooks");
   if (c.kind === "skill") return t(remove ? "ag.line.removeSkill" : "ag.line.addSkill");
   if (c.kind === "rule") return t(remove ? "ag.line.removeRule" : "ag.line.addRule");
   return null;
+}
+
+/** A file under Details: what it is and where. */
+function fileDetail(c: AgentFileChange, t: Translate): string {
+  if (c.kind === "hooks") return t("ag.details.hooks", { count: c.hooks ?? 0, path: c.path });
+  if (c.kind === "skill") return t("ag.details.skill", { path: c.path });
+  if (c.kind === "rule") return t("ag.details.rule", { path: c.path });
+  return t("ag.details.note", { path: c.path });
 }
 
 function PlanApp({ plan, details }: { plan: AgentAppPlan; details: boolean }) {
@@ -464,7 +481,7 @@ function PlanApp({ plan, details }: { plan: AgentAppPlan; details: boolean }) {
         <div className="mt-1.5 ml-4 flex flex-col gap-1 text-[12px] text-ink-2 select-text">
           {plan.changes.map((c) => (
             <span key={c.path} className="flex flex-col">
-              <code className="mono break-all">{c.path}</code>
+              <code className="mono break-all">{fileDetail(c, t)}</code>
               {c.backup && <span>{t("ag.details.backup", { path: c.backup })}</span>}
             </span>
           ))}
@@ -658,22 +675,53 @@ function LookControls({ look, onChange, until, tryable = true }: { look: AgentLo
   );
 }
 
-/** A colour dot that opens Windows' colour dialog. */
+/** A colour dot that opens the app's colour grid (as on the Lighting page)
+ *  in a flyout under it. */
 function ColorDot({ color, onChange, label, hollow }: { color: Rgb; onChange: (c: Rgb) => void; label: string; hollow?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        box.current?.querySelector<HTMLButtonElement>("button")?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", key);
+    window.requestAnimationFrame(() => box.current?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"], [role="radio"]')?.focus());
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
   return (
-    <label
-      className="relative block h-[14px] w-[14px] cursor-pointer rounded-full shadow-[0_0_0_3px_var(--subtle-sel)]"
-      style={hollow ? { boxShadow: "inset 0 0 0 1.5px var(--ink-3), 0 0 0 3px var(--subtle-sel)" } : { background: hex(color) }}
-      title={label}
-    >
-      <input
-        type="color"
-        value={hex(color)}
-        onChange={(e) => onChange(rgb(e.target.value))}
+    <span ref={box} className="relative block">
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
         aria-label={label}
-        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        title={label}
+        onClick={() => setOpen((o) => !o)}
+        className="block h-[14px] w-[14px] rounded-full transition-transform hover:scale-125"
+        style={
+          hollow
+            ? { boxShadow: "inset 0 0 0 1.5px var(--ink-3), 0 0 0 3px var(--subtle-sel)" }
+            : { background: hex(color), boxShadow: "0 0 0 3px var(--subtle-sel)" }
+        }
+        data-color-dot
       />
-    </label>
+      {open && (
+        <div role="dialog" aria-label={label} className="flyout absolute top-6 -left-2 z-30 w-[292px] p-3.5" data-color-flyout>
+          <ColorPicker label={label} value={hex(color)} onChange={(h) => onChange(rgb(h))} />
+        </div>
+      )}
+    </span>
   );
 }
 
@@ -900,35 +948,214 @@ function NumberTile({ n }: { n: number | null }) {
   );
 }
 
-const SIGNAL_OF = (id: string | null): SignalId | null => {
-  const last = id?.split(":").pop();
-  return last && (SIGNALS as string[]).includes(last) ? (last as SignalId) : null;
+/** The light or event an entry was about: the id's last part
+ *  (`claude-code:3f9a:done` → `done`). */
+const EVENT_OF = (id: string | null) => id?.split(":").pop() ?? null;
+
+const EVENT_NAME: Record<string, MessageKey> = {
+  done: "ag.sig.done",
+  attention: "ag.sig.attention",
+  error: "ag.sig.error",
+  busy: "ag.sig.busy",
+  info: "ag.sig.info",
+  usage_limit: "ag.x.usage",
+  helper: "ag.x.helper",
+  answered: "ag.ev.answered",
+  session_start: "ag.ev.sessionStart",
+  session_end: "ag.ev.sessionEnd",
+  interrupted: "ag.ev.interrupted",
 };
 
-function LogRow({ entry: e, looks, onError }: { entry: AgentLogEntry; looks: AgentSignalLooks; onError: (m: string) => void }) {
+const COMMAND_NAME: Record<string, MessageKey> = {
+  light: "ag.cmd.light",
+  clear: "ag.cmd.clear",
+  progress: "ag.x.progress",
+};
+
+/** Why an agent's request was not carried out, in plain words. */
+const ERROR_TEXT: Record<string, MessageKey> = {
+  agent_access_off: "ag.err.accessOff",
+  needs_usb: "ag.err.needsUsb",
+  no_keyboard: "ag.err.noKeyboard",
+  rate_limited: "ag.err.rateLimited",
+  permission_off: "ag.err.permissionOff",
+  budget_exhausted: "ag.err.budget",
+  write_blocked: "ag.err.writeBlocked",
+  bad_value: "ag.err.badRequest",
+  bad_argument: "ag.err.badRequest",
+  bad_color: "ag.err.badRequest",
+  unknown_key: "ag.err.badRequest",
+};
+
+type ValueKind = "color" | "effect" | "duration" | "bool" | "speed" | "time" | "keys" | "nightMode" | "number";
+
+/** The looks an agent may change, by key prefix. */
+const LOOK_PREFIX: Record<string, MessageKey> = {
+  "signals.done": "ag.sig.done",
+  "signals.attention": "ag.sig.attention",
+  "signals.error": "ag.sig.error",
+  "signals.busy": "ag.sig.busy",
+  "signals.info": "ag.sig.info",
+  usage_limit: "ag.x.usage",
+};
+const LOOK_FIELD: Record<string, [MessageKey, ValueKind]> = {
+  color: ["ag.field.color", "color"],
+  effect: ["ag.field.effect", "effect"],
+  speed: ["ag.field.speed", "speed"],
+  duration: ["ag.field.duration", "duration"],
+  until_answered: ["ag.field.untilAnswered", "bool"],
+};
+/** Every other setting the engine logs (config.rs): its section, its own name (none for a switch) and its kind. */
+const OTHER_KEYS: Record<string, [MessageKey, MessageKey | null, ValueKind]> = {
+  enabled: ["ag.access", null, "bool"],
+  "permissions.screen": ["ag.screen", null, "bool"],
+  "permissions.focus": ["ag.focus", null, "bool"],
+  "permissions.profiles": ["ag.profiles", null, "bool"],
+  agents_may_edit: ["ag.mayEdit", null, "bool"],
+  hide_in_game: ["ag.hideInGame", null, "bool"],
+  "screen.per_hour": ["ag.screen", "ag.field.perHour", "number"],
+  "usage_limit.on": ["ag.x.usage", null, "bool"],
+  "sessions.on": ["ag.x.sessions", null, "bool"],
+  "sessions.color": ["ag.x.sessions", "ag.field.color", "color"],
+  "away.on": ["ag.x.away", null, "bool"],
+  "away.after": ["ag.x.away", "ag.x.away.after", "duration"],
+  "unanswered.on": ["ag.x.unanswered", null, "bool"],
+  "unanswered.every": ["ag.x.unanswered", "ag.x.unanswered.every", "duration"],
+  "unanswered.up_to": ["ag.x.unanswered", "ag.x.unanswered.upTo", "duration"],
+  "progress.keys": ["ag.x.progress", "ag.x.progress.keys", "keys"],
+  "progress.color": ["ag.x.progress", "ag.field.color", "color"],
+  "long_task.on": ["ag.x.longTask", null, "bool"],
+  "long_task.after": ["ag.x.longTask", "ag.x.longTask.after", "duration"],
+  "long_task.show": ["ag.x.longTask", "ag.x.longTask.show", "duration"],
+  "night.on": ["ag.x.night", null, "bool"],
+  "night.from": ["ag.x.night", "ag.x.night.from", "time"],
+  "night.to": ["ag.x.night", "ag.x.night.to", "time"],
+  "night.mode": ["ag.x.night", "ag.x.night.mode", "nightMode"],
+  "helper.on": ["ag.x.helper", null, "bool"],
+  "helper.color": ["ag.x.helper", "ag.field.color", "color"],
+};
+
+/** A setting key as people read it, and the kind of its values. */
+function settingName(key: string, t: Translate): { label: string; kind: ValueKind | null } {
+  const dot = key.lastIndexOf(".");
+  const look = LOOK_PREFIX[key.slice(0, dot)];
+  const field = LOOK_FIELD[key.slice(dot + 1)];
+  if (look && field) {
+    const name = key.startsWith("signals.") ? t("ag.log.signal", { name: t(look) }) : t(look);
+    return { label: `${name} · ${t(field[0])}`, kind: field[1] };
+  }
+  const other = OTHER_KEYS[key];
+  if (other) return { label: other[1] ? `${t(other[0])} · ${t(other[1])}` : t(other[0]), kind: other[2] };
+  return { label: t("ag.log.otherSetting"), kind: null };
+}
+
+/** "2m", "30s", "1h", "500ms" → seconds. */
+function seconds(text: string): number | null {
+  const m = /^(\d+)(ms|s|m|h)$/.exec(text.trim());
+  if (!m) return null;
+  const n = Number(m[1]);
+  return m[2] === "h" ? n * 3600 : m[2] === "m" ? n * 60 : m[2] === "s" ? n : Math.max(1, Math.round(n / 1000));
+}
+
+/** One value of a setting, as the page names it elsewhere. */
+function SettingValue({ kind, value }: { kind: ValueKind | null; value: string }) {
   const t = useT();
+  const span = useSpan();
+  if (kind === "color" && /^#[0-9a-f]{6}$/i.test(value)) {
+    const name = colorNameKey(rgb(value.toLowerCase()));
+    return (
+      <span className="inline-flex items-center gap-1.5" title={value}>
+        <span className="h-3 w-3 rounded-full shadow-[0_0_0_1px_var(--line-strong)]" style={{ background: value }} aria-hidden />
+        {name ? t(name) : value}
+      </span>
+    );
+  }
+  let text = value;
+  if (kind === "effect") {
+    const camel = value.replace(/_(\w)/g, (_, c: string) => c.toUpperCase());
+    if ((EFFECTS as string[]).includes(camel)) text = t(`ag.fx.${camel}` as MessageKey);
+  } else if (kind === "duration") {
+    const s = seconds(value);
+    if (s != null) text = span(s);
+  } else if (kind === "bool") {
+    if (value === "true" || value === "false") text = t(value === "true" ? "overview.on" : "overview.off");
+  } else if (kind === "speed") {
+    text = `${value}/5`;
+  } else if (kind === "keys") {
+    if (value === "f-row") text = t("ag.x.progress.fRow");
+    else if (value === "numbers") text = t("ag.x.progress.numbers");
+  } else if (kind === "nightMode") {
+    if (value === "dim") text = t("ag.x.night.dim");
+    else if (value === "off") text = t("ag.x.night.off");
+  }
+  return <span>{text}</span>;
+}
+
+/** A look as one line: "Green · Wave, then steady · 2 minutes". */
+function lookLine(look: AgentLook, t: Translate, span: (s: number) => string): string {
+  if (look.effect === "off") return t("ag.fx.off");
+  const color = colorNameKey(look.color);
+  return [color ? t(color) : hex(look.color), t(`ag.fx.${look.effect}` as MessageKey), look.untilAnswered ? t("ag.dur.untilAnswered") : span(look.durationS)].join(" · ");
+}
+
+function LogRow({
+  entry: e,
+  settings,
+  sessions,
+  onError,
+}: {
+  entry: AgentLogEntry;
+  settings: AgentSettings;
+  sessions: AgentSessionInfo[];
+  onError: (m: string) => void;
+}) {
+  const t = useT();
+  const span = useSpan();
   const locale = useApp((s) => s.locale);
-  const who = sourceName(e.source, t);
-  const signal = SIGNAL_OF(e.id);
+  // Two sessions of one app are told apart by their project folder (or number).
+  const session = sessions.find((x) => x.source === e.source);
+  const tag = session?.label ?? (session?.number != null ? String(session.number) : null);
+  const who = tag ? `${sourceName(e.source, t)} (${tag})` : sourceName(e.source, t);
+  const event = EVENT_OF(e.id);
   const settingsChange = e.changes.length > 0;
-  const title = settingsChange ? t("ag.log.settings", { source: who }) : `${who} · ${signal ? t(`ag.sig.${signal}` as MessageKey) : e.command}`;
-  const desc = [
-    settingsChange ? e.changes.map((c) => `${c.key}: ${c.before} → ${c.after}`).join("; ") : null,
-    settingsChange ? t("ag.log.settingsKind") : null,
-    e.error ? t("ag.log.refused", { code: e.error }) : null,
-    e.kept.length ? t("ag.log.kept", { keys: e.kept.join(", ") }) : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  const lead = signal ? (
-    <span className="block h-[14px] w-[14px] rounded-full shadow-[0_0_0_3px_var(--subtle-sel)]" style={{ background: hex(looks[signal].color) }} aria-hidden />
+  const signal = event && (SIGNALS as string[]).includes(event) ? (event as SignalId) : null;
+  const look = signal ? settings.signals[signal] : event === "usage_limit" ? settings.usageLimit.look : null;
+  const what = event && EVENT_NAME[event] ? t(EVENT_NAME[event]) : COMMAND_NAME[e.command] ? t(COMMAND_NAME[e.command]!) : t("ag.cmd.other");
+  const title = settingsChange
+    ? e.changes.length === 1
+      ? t("ag.log.settings", { source: who })
+      : t("ag.log.settingsMany", { source: who, count: e.changes.length })
+    : `${who} · ${what}`;
+  const desc = (
+    <>
+      {settingsChange &&
+        e.changes.map((c) => {
+          const { label, kind } = settingName(c.key, t);
+          return (
+            <span key={c.key} className="flex flex-wrap items-center gap-x-1.5" data-log-change={c.key}>
+              <span>{label}:</span>
+              <SettingValue kind={kind} value={c.before} />
+              <ArrowRight size={12} aria-label="→" />
+              <SettingValue kind={kind} value={c.after} />
+            </span>
+          );
+        })}
+      {!settingsChange && look && !e.error && <span className="block">{lookLine(look, t, span)}</span>}
+      {e.error && <span className="block">{t(ERROR_TEXT[e.error] ?? "ag.err.other")}</span>}
+      {e.kept.length > 0 && (
+        <span className="block">{t("ag.log.kept", { keys: e.kept.map((k) => settingName(k, t).label).join(", ") })}</span>
+      )}
+    </>
+  );
+  const lead = look ? (
+    <span className="block h-[14px] w-[14px] rounded-full shadow-[0_0_0_3px_var(--subtle-sel)]" style={{ background: hex(look.color) }} aria-hidden />
   ) : e.error ? (
     <CircleAlert size={20} strokeWidth={1.4} className="text-danger" aria-hidden />
   ) : (
     <Settings2 size={20} strokeWidth={1.4} aria-hidden />
   );
   return (
-    <Row lead={lead} title={title} desc={desc || undefined} data={`log-${e.seq}`}>
+    <Row lead={lead} title={title} desc={desc} data={`log-${e.seq}`}>
       <span className="num text-[12px] text-ink-2">{clockTime(e.atMs, locale)}</span>
       {settingsChange &&
         (e.undone ? (

@@ -12,16 +12,14 @@ import { create } from "zustand";
 import type { AgentLook } from "../bindings/AgentLook";
 import type { AgentSettings } from "../bindings/AgentSettings";
 import type { AgentsState } from "../bindings/AgentsState";
-import type {
-  AgentApp,
-  AgentAppPlan,
-  AgentAppStatus,
-  AgentConnectOutcome,
-  AgentConnectPlan,
-  AgentConnections,
-  AgentDisconnectOutcome,
-  AgentFileAction,
-} from "./agentTypes";
+import type { AgentApp } from "../bindings/AgentApp";
+import type { AgentAppPlan } from "../bindings/AgentAppPlan";
+import type { AgentAppStatus } from "../bindings/AgentAppStatus";
+import type { AgentConnectOutcome } from "../bindings/AgentConnectOutcome";
+import type { AgentConnectPlan } from "../bindings/AgentConnectPlan";
+import type { AgentConnections } from "../bindings/AgentConnections";
+import type { AgentDisconnectOutcome } from "../bindings/AgentDisconnectOutcome";
+import type { AgentFileAction } from "../bindings/AgentFileAction";
 import { inTauri, invoke, listen } from "./ipc";
 
 // ------------------------------------------------------------------ calls
@@ -162,6 +160,20 @@ const mock = (() => {
   const now = Date.now();
   let log: AgentsState["log"] = on
     ? [
+        {
+          seq: 4,
+          atMs: now - 2 * 60_000,
+          source: "codex:91be",
+          command: "settings_set",
+          error: null,
+          id: null,
+          changes: [
+            { key: "signals.attention.effect", before: "flash_then_pulse", after: "pulse" },
+            { key: "away.after", before: "5m", after: "10m" },
+          ],
+          undone: false,
+          kept: [],
+        },
         {
           seq: 3,
           atMs: now - 6 * 60_000,
