@@ -9,7 +9,7 @@ export default defineConfig({
   server: { host: "127.0.0.1", port: 1420, strictPort: true },
   envPrefix: ["VITE_", "TAURI_ENV_"],
   // One chunk on purpose: the app loads from disk, and all four languages'
-  // texts (about 400 kB of the 1.3 MB) are in it so the language changes at
+  // texts (about 450 kB of the 1.45 MB) are in it so the language changes at
   // once. The limit still catches an accidental large dependency.
-  build: { target: "chrome120", sourcemap: false, chunkSizeWarningLimit: 1400 },
+  build: { target: "chrome120", sourcemap: false, chunkSizeWarningLimit: 1500 },
 });

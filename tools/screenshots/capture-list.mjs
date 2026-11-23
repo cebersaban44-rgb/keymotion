@@ -543,9 +543,9 @@ export const CAPTURES = [
   {
     name: "welcome-new-firmware",
     pages: ["guide/first-launch"],
-    state: "An AK980 PRO on AJAZZ's firmware 769: the welcome page's card about it.",
+    state: "An AK980 PRO on an AJAZZ firmware Keymotion doesn't know yet: the welcome page's card about it.",
     source: "mock",
-    mock: "fw769",
+    mock: "newfw",
     page: "overview",
   },
 ];

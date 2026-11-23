@@ -2017,7 +2017,7 @@ export const tr: Messages = {
   "sc.pages.note.aa": "Sayfalar arasında Fn+Home ile geçersiniz.",
   "sc.pages.aa": "Bu klavye yazılımında yükleme saat sayfasının yerini alabilir. Saat sayfası ancak klavyenin tam sıfırlamasıyla (Fn+Boşluk) geri gelir; tam sıfırlama tuş atamalarınızı, makrolarınızı ve ışıklarınızı da siler.",
   "sc.confirm.clock": "GIF sayfası değişir; saat sayfası da gidebilir. Saat sayfası ancak klavyenin tam sıfırlamasıyla (Fn+Boşluk) geri gelir; tam sıfırlama tuş atamalarınızı, makrolarınızı ve ışıklarınızı da siler.",
-  "sc.confirm.clockOnce": "Keymotion saat sayfasını yalnızca bu bir kez sorar.",
+  "sc.confirm.clockOnce": "Keymotion saat sayfasıyla ilgili bunu yalnızca bir kez sorar.",
   "sc.cancelUpload": "Yüklemeyi durdur",
   "sc.cancelUpload.busy": "Durduruluyor",
   "sc.warn.unprovenAa": "Bu klavye yazılımında yükleme henüz gerçek bir klavyede denenmedi. Klavye en çok {max} kare alır.",

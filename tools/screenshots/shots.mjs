@@ -152,8 +152,61 @@ async function busyOverview(page, { lang }) {
 export const SHOTS = [
   // Getting started and basics
   { name: "welcome", mock: "none", page: "overview" },
-  // An AK980 PRO on AJAZZ's firmware 769.
-  { name: "welcome-new-firmware", mock: "fw769", page: "overview" },
+  // An AK980 PRO on an AJAZZ firmware Keymotion doesn't know yet (firmware
+  // 769 is supported in beta: the "aa-" shots below).
+  { name: "welcome-new-firmware", mock: "newfw", page: "overview" },
+  // An AK980 PRO on AJAZZ's firmware 3.01 ("769", the "AA" family), in beta.
+  // The Overview: firmware 3.01, "In beta", the battery over the cable.
+  { name: "aa-overview", mock: "aa769", page: "overview" },
+  // Connection: the details with "In beta", and the keyboard's backups.
+  {
+    name: "aa-connection-backups",
+    mock: "aa769",
+    page: "connection",
+    steps: async (page) => {
+      await scrollTo(page, page.locator("[data-keyboard-backups]"), 360);
+    },
+  },
+  // Restoring a backup: what comes back, the colour when the backup doesn't
+  // know it, then what was put back.
+  ...[
+    { name: "aa-restore-check", aa: "", clicks: 0 },
+    { name: "aa-restore-color", aa: "nocolor", clicks: 1 },
+    { name: "aa-restore-done", aa: "nocolor", clicks: 2 },
+  ].map(({ name, aa, clicks }) => ({
+    name,
+    mock: "aa769",
+    query: aa ? { aa } : {},
+    page: "connection",
+    steps: async (page) => {
+      await page.locator("[data-backup-restore]").first().click();
+      await page.waitForTimeout(500);
+      for (let i = 0; i < clicks; i++) {
+        await page.locator("[data-restore-go]").click();
+        await page.waitForTimeout(i === 0 ? 1200 : 2800);
+      }
+      await scrollTo(page, page.locator("[data-restore-flow]"), 120);
+    },
+  })),
+  // Nothing is written: what the keyboard reports doesn't look as expected.
+  { name: "aa-read-only", mock: "aa769", query: { aa: "insane" }, page: "lighting" },
+  // Live lighting can't show yet: the colour of the user's lighting isn't known.
+  { name: "aa-live-lights", mock: "aa769", query: { aa: "color" }, page: "music" },
+  // The upload question before the first upload: the clock page may go.
+  {
+    name: "aa-clock-page",
+    mock: "aa769",
+    query: { aa: "clock" },
+    page: "screen",
+    screenTab: "visuals",
+    settle: 1500,
+    steps: async (page) => {
+      await page.locator("[data-library-item] button").first().click();
+      await page.waitForTimeout(300);
+      await page.locator("[data-library-upload]").click();
+      await page.waitForTimeout(1000);
+    },
+  },
   // Every tile: the window as tall as the page.
   {
     name: "overview",
