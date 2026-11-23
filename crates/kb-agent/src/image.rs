@@ -188,7 +188,10 @@ fn jpeg(b: &[u8]) -> Option<ImageInfo> {
     }
 }
 
-/// GIF: the logical screen's sides; more than one image block moves.
+/// GIF: the logical screen's sides; more than one image block moves. An
+/// image must lie inside the screen: a renderer grows its canvas to the
+/// frame, so a 40 KiB file declaring a 65535x65535 frame on a small screen
+/// would ask for gigabytes.
 fn gif(b: &[u8]) -> Option<ImageInfo> {
     let (width, height) = (le16(b, 6)?, le16(b, 8)?);
     let flags = *b.get(10)?;
@@ -213,6 +216,11 @@ fn gif(b: &[u8]) -> Option<ImageInfo> {
             0x21 => at = skip_blocks(at + 2)?,
             0x2C => {
                 frames += 1;
+                let (left, top) = (le16(b, at + 1)?, le16(b, at + 3)?);
+                let (w, h) = (le16(b, at + 5)?, le16(b, at + 7)?);
+                if w == 0 || h == 0 || left + w > width || top + h > height {
+                    return None;
+                }
                 let local = *b.get(at + 9)?;
                 at += 10;
                 if local & 0x80 != 0 {
@@ -294,6 +302,11 @@ pub(crate) mod samples {
 
     /// A GIF of `frames` 1x1 images on a `width` x `height` screen.
     pub fn gif(width: u16, height: u16, frames: usize) -> Vec<u8> {
+        gif_frame(width, height, frames, (0, 0, 1, 1))
+    }
+
+    /// A GIF of `frames` images at `left`, `top`, `w` x `h`.
+    pub fn gif_frame(width: u16, height: u16, frames: usize, (left, top, w, h): (u16, u16, u16, u16)) -> Vec<u8> {
         let mut b = b"GIF89a".to_vec();
         b.extend(width.to_le_bytes());
         b.extend(height.to_le_bytes());
@@ -303,7 +316,11 @@ pub(crate) mod samples {
         b.extend([0x21, 0xFE, 2, b'h', b'i', 0]);
         for _ in 0..frames {
             b.extend([0x21, 0xF9, 4, 0, 10, 0, 0, 0]);
-            b.extend([0x2C, 0, 0, 0, 0, 1, 0, 1, 0, 0]);
+            b.push(0x2C);
+            for v in [left, top, w, h] {
+                b.extend(v.to_le_bytes());
+            }
+            b.push(0);
             b.extend([2, 2, 0x4C, 0x01, 0]);
         }
         b.push(0x3B);
@@ -361,6 +378,23 @@ mod tests {
         }
         // A GIF that ends before any image.
         assert!(inspect(b"GIF89a\x01\x00\x01\x00\x00\x00\x00\x3B").is_none());
+    }
+
+    #[test]
+    fn a_gif_frame_must_lie_inside_its_screen() {
+        assert!(check(&samples::gif_frame(240, 135, 1, (0, 0, 240, 135))).is_ok());
+        assert!(check(&samples::gif_frame(240, 135, 1, (40, 35, 200, 100))).is_ok());
+        // A small screen, a huge first frame: the renderer would grow its
+        // canvas to the frame.
+        for frame in [(0, 0, 65_535, 65_535), (0, 0, 241, 135), (1, 0, 240, 135), (0, 100, 10, 36), (0, 0, 0, 10)] {
+            let e = check(&samples::gif_frame(240, 135, 1, frame)).unwrap_err();
+            assert_eq!(e.code, ErrorCode::BadValue, "{frame:?}");
+        }
+        // The second frame too.
+        let mut two = samples::gif_frame(240, 135, 2, (0, 0, 10, 10));
+        let second = two.iter().rposition(|&b| b == 0x2C).unwrap();
+        two[second + 5..second + 7].copy_from_slice(&5_000u16.to_le_bytes());
+        assert!(check(&two).is_err());
     }
 
     #[test]

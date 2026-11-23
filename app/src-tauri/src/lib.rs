@@ -432,6 +432,24 @@ fn agents_card_failed(agents: Agents<'_>, id: String, error: String) {
     agents.card_failed(&id, &error);
 }
 
+/// The page listens for `agent-card` and can draw agents' cards (`ready`
+/// left out or `true`), or stops (`false`). Until it says so, `card` is
+/// refused (`unsupported`, "open Keymotion's window once") and a long
+/// task puts no card up; a page that reloads or whose window closes is not
+/// ready until it says so again.
+#[tauri::command]
+fn agents_card_drawer_ready(agents: Agents<'_>, ready: Option<bool>) {
+    tracing::debug!(?ready, "ipc: agents_card_drawer_ready");
+    agents.card_drawer(ready.unwrap_or(true));
+}
+
+/// The page that drew agents' cards is gone (a reload, its window closed).
+fn agents_drawer_gone(app: &AppHandle) {
+    if let Some(agents) = app.try_state::<Arc<AgentHandle>>() {
+        agents.card_drawer(false);
+    }
+}
+
 /// Run an agents' setup step off the main thread (it reads and writes the
 /// coding apps' files, and PATH).
 async fn agents_blocking<T: Send + 'static>(
@@ -1777,7 +1795,16 @@ pub fn run() {
         .manage(Arc::new(DriverGif::default()))
         .manage(PendingImport::default())
         .manage(LastExport::default())
+        .on_page_load(|webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Started {
+                agents_drawer_gone(webview.app_handle());
+            }
+        })
         .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                agents_drawer_gone(window.app_handle());
+                return;
+            }
             let tauri::WindowEvent::CloseRequested { api, .. } = event else { return };
             // Kept in the tray: hiding loses nothing, so nothing to ask.
             if tray::hide_on_close(window) {
@@ -1966,6 +1993,7 @@ pub fn run() {
             agents_disconnect,
             agents_card_drawn,
             agents_card_failed,
+            agents_card_drawer_ready,
             pomodoro_state,
             pomodoro_control,
             pomodoro_configure,

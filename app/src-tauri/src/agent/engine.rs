@@ -1242,6 +1242,7 @@ impl Engine {
                 ));
             }
             config::set(&mut next, key, value)?;
+            config::agent_may_set_to(key, &next)?;
             let after = config::get(&next, key).unwrap_or(Value::Null);
             if before != after {
                 found.push(Change { key: key.clone(), before, after });
@@ -2131,6 +2132,16 @@ mod tests {
             run(&mut e, "a", set(&[("night.from", json!("25:00"))]), 200).unwrap_err().code,
             ErrorCode::BadValue
         );
+        // F: only the user turns it on or off; an agent may make a long task
+        // no shorter than 10 minutes.
+        assert_eq!(
+            run(&mut e, "a", set(&[("long_task.on", json!(true))]), 300).unwrap_err().code,
+            ErrorCode::PermissionOff
+        );
+        let short = run(&mut e, "a", set(&[("long_task.after", json!("2m"))]), 300).unwrap_err();
+        assert_eq!(short.code, ErrorCode::BadValue);
+        assert!(run(&mut e, "a", set(&[("long_task.after", json!("15m"))]), 300).is_ok());
+        assert_eq!(e.settings().long_task.after_s, 15 * 60);
         // The user can say no to all of it.
         let mut s = *e.settings();
         s.agents_may_edit = false;
