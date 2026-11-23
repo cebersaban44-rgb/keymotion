@@ -250,11 +250,15 @@ pub fn focus(data: &Value) -> String {
         _ => "idle".to_string(),
     };
     let once = f["once"].as_u64().map(|m| format!(" (one block of {m}m)")).unwrap_or_default();
-    match data["action"].as_str() {
+    let line = match data["action"].as_str() {
         None => format!("Focus timer: {now}{once}."),
         Some(_) if flag(data, "already_running") => format!("The focus timer runs already: {now}{once}."),
         Some(_) if flag(data, "resumed") => format!("The focus timer goes on: {now}{once}."),
         Some(action) => format!("Focus timer {}: {now}{once}.", printable(action)),
+    };
+    match data["minutes_not_applied"].as_str() {
+        Some(why) => format!("{line} --for was not applied: {}.", printable(why)),
+        None => line,
     }
 }
 
@@ -281,7 +285,12 @@ pub fn profile(data: &Value) -> String {
     }
     let name = text(data, "profile");
     match data.get("changed") {
-        Some(Value::Bool(true)) => format!("Wrote the lighting of {name} to the keyboard."),
+        Some(Value::Bool(true)) => match (data["writes_in_24h"].as_u64(), data["writes_per_24h"].as_u64()) {
+            (Some(n), Some(max)) => {
+                format!("Wrote the lighting of {name} to the keyboard ({n} of {max} agent writes in 24 hours).")
+            }
+            _ => format!("Wrote the lighting of {name} to the keyboard."),
+        },
         Some(Value::Bool(false)) => format!("The keyboard has the lighting of {name} already; nothing written."),
         _ => match data["expires_in_ms"].as_u64() {
             Some(ms) => format!("Showing the lighting of {name} for {}.", duration(ms)),

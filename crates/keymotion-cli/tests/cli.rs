@@ -140,7 +140,7 @@ fn fake_app(pipe: &str) -> (PipeServer, Arc<Fake>) {
                     if !p.write_flash {
                         return Err(AgentError::new(ErrorCode::WriteFlashFlagMissing, "This command writes the keyboard's memory."));
                     }
-                    return Ok(json!({"id": "profile:p1", "profile": "Night Owl", "changed": true, "writes_today": 1, "writes_per_day": 10}));
+                    return Ok(json!({"id": "profile:p1", "profile": "Night Owl", "changed": true, "writes_in_24h": 1, "agent_writes_in_24h": 1, "writes_per_24h": 10}));
                 }
                 let mut v = lit(format!("{source}:profile"), 60_000);
                 v["profile"] = json!("Night Owl");
@@ -232,7 +232,10 @@ fn focus_profiles_and_cards_reach_the_app() {
     let r = run(&pipe, &["profile", "apply", "Night Owl", "--json"]);
     assert_eq!((r.code, r.json()["error"]["code"].clone()), (77, json!("write_flash_flag_missing")));
     let r = run(&pipe, &["profile", "apply", "Night Owl", "--write-flash"]);
-    assert_eq!((r.code, r.stdout.trim()), (0, "Wrote the lighting of Night Owl to the keyboard."));
+    assert_eq!(
+        (r.code, r.stdout.trim()),
+        (0, "Wrote the lighting of Night Owl to the keyboard (1 of 10 agent writes in 24 hours).")
+    );
 
     // A card: its text (with \n for the second line), a picture as base64.
     let picture = png_file("ok", 0);

@@ -133,6 +133,12 @@ Keymotion 已在黑爵 AK980 V2（带屏版）上测试。基于同一平台的�
 
 [使用指南](https://cebersaban44-rgb.github.io/keymotion/zh-cn/)逐一介绍了应用的每个页面。
 
+## AI 编程智能体
+
+当 Claude Code 或 Codex 完成任务、等待你批准或出错时，键盘可以用灯光告诉你。智能体也可以按自己的方式点亮按键：在字母键上拼出一个词，在 F 键行显示进度条。只需在**工具 › AI 智能体**中开启一次：Keymotion 会显示它将为每个编程应用添加什么，经你批准后再连接。
+
+智能体通过随应用提供的命令行工具 `keymotion-cli` 与 Keymotion 通信。它从不自己打开键盘，只为这台电脑上你的 Windows 用户工作，在你开启智能体访问之前什么也不做。详见 [AI 智能体指南](https://cebersaban44-rgb.github.io/keymotion/zh-cn/guide/ai-agents/)；命令见[智能体命令行](https://cebersaban44-rgb.github.io/keymotion/zh-cn/developers/agent-cli/)页面。
+
 ## 下载与安装
 
 Keymotion 有两种获取方式。两者是同一个应用，版本相同，发行说明也相同，适用于 Windows 10 和 11（64 位）。安装其中一个即可。

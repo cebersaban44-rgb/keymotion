@@ -7,7 +7,10 @@ import type { AgentCardKind } from "./AgentCardKind";
  * draws it like the other live cards and hands it back with
  * `agents_card_drawn` (header `x-card: <id>`, the picture as the body,
  * like `live_submit`), or says why it could not with `agents_card_failed`.
- * It must be drawn within 15 seconds.
+ * It must be drawn within 15 seconds. The page first says it listens:
+ * `agents_card_drawer_ready` (no argument, or `{ ready: false }` when it
+ * stops); until then agents get no card (a reload or a closed window
+ * resets it).
  */
 export type AgentCard = { id: string, kind: AgentCardKind, 
 /**

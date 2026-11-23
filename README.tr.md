@@ -129,6 +129,12 @@ Klavyeniz listede yok mu? Yine de takın ve [bize bildirin](https://github.com/c
 
 <a name="indirme-ve-kurulum"></a>
 
+## Yapay zekâ kodlama ajanları
+
+Claude Code ya da Codex bir işi bitirince, onayınızı beklerken ya da hata verince klavyeniz ışıkla haber verebilir. Ajan tuşları kendi bildiği gibi de yakabilir: harf tuşlarında bir kelime, F sırasında bir ilerleme çubuğu. Bunu bir kez, **Araçlar › Yapay zekâ ajanları** sayfasında açarsınız: Keymotion her kodlama uygulamasına ne ekleyeceğini gösterir ve onayınızdan sonra bağlar.
+
+Ajanlar Keymotion'la, uygulamayla birlikte gelen `keymotion-cli` komut satırı aracı üzerinden konuşur. Araç klavyeyi hiçbir zaman kendisi açmaz, yalnızca bu bilgisayarda sizin Windows kullanıcınız için çalışır ve siz ajan erişimini açana kadar hiçbir şey yapmaz. Ayrıntılar [Yapay zekâ ajanları rehberinde](https://cebersaban44-rgb.github.io/keymotion/tr/guide/ai-agents/); komutlar [Ajan komut satırı](https://cebersaban44-rgb.github.io/keymotion/tr/developers/agent-cli/) sayfasında.
+
 ## İndirme ve kurulum
 
 Keymotion'ı iki yoldan kurabilirsiniz. İkisi de aynı uygulama; sürüm numarası ve sürüm notları da aynı. Windows 10 ve 11'de (64 bit) çalışır. Birini kurun.
@@ -167,7 +173,7 @@ Güncellemeler: Store'dan kurulan kopyayı Microsoft Store günceller. GitHub'da
 
 ## Güvenlik
 
-Keymotion yalnızca gerçek bir klavyede ölçülmüş komutları gönderir; ürün yazılımı ve önyükleyici güncellemeleri kodda engellidir. Işıklar, tuş atamaları, makrolar ve ekran görselleri klavyenin belleğine kaydedilir ve her zaman geri dönebilirsiniz: nasıl yapılacağı [Bir şey ters giderse](https://cebersaban44-rgb.github.io/keymotion/tr/help/recovery/) sayfasında.
+Keymotion yalnızca gerçek bir klavyede ölçülmüş komutları gönderir; klavye yazılımı ve önyükleyici güncellemeleri kodda engellidir. Işıklar, tuş atamaları, makrolar ve ekran görselleri klavyenin belleğine kaydedilir ve her zaman geri dönebilirsiniz: nasıl yapılacağı [Bir şey ters giderse](https://cebersaban44-rgb.github.io/keymotion/tr/help/recovery/) sayfasında.
 
 ## Gizlilik
 
