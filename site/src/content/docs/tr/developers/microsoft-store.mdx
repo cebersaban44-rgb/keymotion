@@ -22,7 +22,7 @@ Uygulama hangi yoldan kurulduğunu çalışırken anlar. Windows, MSIX'ten kurul
 | Windows açılınca başlatma | Kullanıcının `Run` anahtarında bir değer, `--hidden` ile | Paketin başlangıç görevi (`KeymotionStartup`), yine `--hidden` ile. Kullanıcı bunu Windows ayarlarından kapatırsa yalnızca kendisi oradan yeniden açabilir; Ayarlar › Kapatma ve açılış o sayfaya bağlantı verir. |
 | Bildirimlerdeki ad ve logo | Açılışta `dev.keymotion` uygulama kimliğiyle kaydedilir | Paketin kendisinden gelir |
 | Veri klasörleri | `%APPDATA%\dev.keymotion`, `%LOCALAPPDATA%\dev.keymotion` | Uygulamanın gördüğü yollar aynıdır. Klasörler önceden yoksa Windows onları paketin kendi klasöründe tutar (`%LOCALAPPDATA%\Packages\<paket ailesi>\LocalCache\…`) ve uygulamayla birlikte siler; "Klasörü aç" o klasörü açar. |
-| `keymotion-cli` (ajanların komut satırı aracı) | Kurulumda `bin\keymotion-cli.exe`; ajan erişimi açılınca PATH'te; kaldırma programı ajan bağlantılarını ve bu PATH girdisini siler | Paketin ikinci uygulaması; `keymotion-cli` diğer adıyla çalışır ([Ajan komut satırı](/keymotion/tr/developers/agent-cli/#nereye-kurulur)) |
+| `keymotion-cli` (ajanların komut satırı aracı) | Kurulumda `bin\keymotion-cli.exe`; ajan erişimi açılınca PATH'te; kaldırma programı ajan bağlantılarını ve bu PATH girdisini siler | Uygulamanın `keymotion-cli` uygulama yürütme diğer adı ([Ajan komut satırı](/keymotion/tr/developers/agent-cli/#nereye-kurulur)) |
 | Ayarlar'daki gizlilik metni | GitHub'daki güncelleme denetiminden söz eder | Güncellemeleri Store'un getirdiğini söyler |
 
 İki sürümün ortak bir kuralı var: nasıl kurulmuş olursa olsun aynı anda yalnızca bir Keymotion çalışır. İkisi birden çalışsa klavyeye aynı anda komut gönderirlerdi.
@@ -44,7 +44,7 @@ Bu değişiklikten eski GitHub kopyaları (1.0.0) yol vermez; bir sonraki günce
 
 | Dosya | Ne işe yarar |
 |---|---|
-| `app/src-tauri/store/AppxManifest.xml` | Paket bildirimi; kimlik ve sürüm için boş yerler içerir. Tam güven (`runFullTrust`): program, kurulum dosyasından kurulduğundaki gibi kullanıcının olağan yetkileriyle çalışır. HID, göstergeler ve saatin yanındaki simge bunu gerektirir. İki uygulama: `Keymotion` ve `keymotion-cli.exe` için `Cli`; ikincisi `keymotion-cli.exe` uygulama yürütme diğer adı olan, Başlat menüsünde yeri olmayan bir konsol programıdır. |
+| `app/src-tauri/store/AppxManifest.xml` | Paket bildirimi; kimlik ve sürüm için boş yerler içerir. Tam güven (`runFullTrust`): program, kurulum dosyasından kurulduğundaki gibi kullanıcının olağan yetkileriyle çalışır. HID, göstergeler ve saatin yanındaki simge bunu gerektirir. Tek uygulama: `Keymotion`; `keymotion-cli.exe` konsol programını çalıştıran `keymotion-cli.exe` uygulama yürütme diğer adıyla (Windows Terminal paketindeki `wt.exe` gibi). Başlat menüsünde yeri olmayan ikinci bir uygulama "başsız uygulama" sayılır ve Partner Center bunu özel izin olmadan kabul etmez. |
 | `app/src-tauri/store/Assets/` | Windows'un istediği her boyutta logolar. `tools/store/make-assets.py`, `app/src-tauri/icons/icon.png` dosyasından çizer. Simge değişince yeniden çalıştırın. |
 | `tools/store/msix.mjs` | Bildirimi doldurur, logoları dizinler (`makepri`) ve MSIX'i `keymotion.exe` ve yanındaki `keymotion-cli.exe` (ya da `--cli`) ile paketler (`makeappx`). Windows SDK gerekir. Testler: `node --test "tools/store/*.test.mjs"`. |
 | `.github/workflows/store.yml` | Yayımlanmış bir sürümün paketini oluşturur; **Submit** işi paketi sertifikasyona gönderir. |

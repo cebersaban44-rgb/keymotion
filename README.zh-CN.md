@@ -6,7 +6,8 @@
 
 <p align="center">
   适用于黑爵 AK980 V2（带屏版）键盘的免费开源 Windows 应用：<br>
-  灯光、自定义按键、宏，还能在键盘的小屏幕上显示你自己的 GIF。无需黑爵官方驱动。
+  灯光、自定义按键、宏，还能在键盘的小屏幕上显示你自己的 GIF。无需黑爵官方驱动。<br>
+  还有音乐模式、带英雄联盟灯光的游戏时段、按应用切换配置文件，以及 AI 编程智能体的灯光提醒。
 </p>
 
 <p align="center">
@@ -31,7 +32,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/cebersaban44-rgb/keymotion/releases/latest"><img src="docs/images/download-windows.png" height="56" alt="从 GitHub 下载：安装程序，适用于 64 位 Windows 10 和 11"></a>
+  <a href="https://github.com/cebersaban44-rgb/keymotion/releases/latest"><img src="docs/images/download-windows-zh-CN.png" height="56" alt="从 GitHub 下载：安装程序，适用于 64 位 Windows 10 和 11"></a>
   &nbsp;
   <a href="https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&amp;mode=full"><picture><source media="(prefers-color-scheme: dark)" srcset="https://get.microsoft.com/images/zh-cn%20light.svg"><img src="https://get.microsoft.com/images/zh-cn%20dark.svg" height="56" alt="从 Microsoft Store 下载"></picture></a>
 </p>

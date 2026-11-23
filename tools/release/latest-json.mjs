@@ -154,6 +154,46 @@ export function foldNotes(notes) {
   return intro ? `${intro}\n\n${folded}` : folded;
 }
 
+/** A line that starts a block of its own: a heading, a list item, a quote,
+ *  a table row, HTML, a rule or a code fence. */
+const BLOCK_START = /^\s*(#{1,6}\s|[-*+]\s|\d+[.)]\s|>|\||<|---|```|~~~)/;
+
+/**
+ * The notes with each paragraph and list item on one line. The CHANGELOGs
+ * wrap their lines at about 75 characters, and GitHub shows every line break
+ * in a release's text as a break, so the release page showed the notes as a
+ * narrow, ragged column. A line joins the one before when both are plain
+ * text; blank lines, the lines that start a block (BLOCK_START) and
+ * everything inside a code block stay as they are.
+ */
+export function unwrapNotes(notes) {
+  const out = [];
+  let code = false;
+  let joinable = false;
+  for (const line of notes.split("\n")) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      code = !code;
+      out.push(line);
+      joinable = false;
+      continue;
+    }
+    if (code || !line.trim()) {
+      out.push(line);
+      joinable = false;
+      continue;
+    }
+    const starts = BLOCK_START.test(line);
+    if (joinable && !starts) {
+      out[out.length - 1] = `${out[out.length - 1].trimEnd()} ${line.trim()}`;
+      continue;
+    }
+    out.push(line);
+    // Paragraphs and list items take the next line; headings, tables, quotes and HTML don't.
+    joinable = !starts || /^\s*([-*+]\s|\d+[.)]\s)/.test(line);
+  }
+  return out.join("\n");
+}
+
 /** Keymotion in the Microsoft Store: the Store app opens on its page. */
 export const STORE_URL = "https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&mode=full";
 /** Each language's name in the script's own messages. */
@@ -171,7 +211,8 @@ const STORE_BADGE = (theme) => `https://get.microsoft.com/images/en-us%20${theme
  * its size and what it needs) and, beside it, Microsoft's "Get it from
  * Microsoft" badge: the same version comes out in the Microsoft Store the
  * same day (pre-releases don't). While releases are unsigned, the Windows
- * warning follows; then the notes, folded when long; then how to install,
+ * warning follows; then the notes, one line per paragraph (unwrapNotes) and
+ * folded when long; then how to install,
  * the setup file's SHA-256 and the links SignPath asks a download page to
  * carry (code signing policy, privacy policy), and links to the notes in
  * `languages` (CHANGELOG.<lang>.md; Turkish by default). `signed` drops the
@@ -221,7 +262,7 @@ export function releaseBody({ notes, fileName, sha256, size, preface, repository
       links.push(`[${NOTES_LINK[lang] ?? lang}](https://github.com/${repository}/blob/v${version}/CHANGELOG.${lang}.md)`);
     }
   }
-  parts.push(foldNotes(notes), "---", "### Install", ...install, `SHA-256 of \`${fileName}\`: \`${sha256}\``, links.join(" · "));
+  parts.push(foldNotes(unwrapNotes(notes)), "---", "### Install", ...install, `SHA-256 of \`${fileName}\`: \`${sha256}\``, links.join(" · "));
   return `${parts.join("\n\n")}\n`;
 }
 

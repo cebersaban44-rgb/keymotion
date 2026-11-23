@@ -1,19 +1,23 @@
 #!/usr/bin/env node
-// The GitHub download button at the top of the README, in English and
-// Turkish. It stands beside Microsoft's own "Get it from Microsoft" badge,
+// The GitHub download button at the top of the README, in each README's
+// language. It stands beside Microsoft's own "Get it from Microsoft" badge,
 // at the same height (the README shows both 56 px high), so the two ways to
 // install read as a pair. GitHub shows no real buttons in a README, so it is
 // a picture that links to the latest release. It holds no version number,
 // so it never goes out of date. Writes:
-//   docs/images/download-windows.png      (English README)
-//   docs/images/download-windows-tr.png   (Turkish README)
+//   docs/images/download-windows.png         (English README)
+//   docs/images/download-windows-tr.png      (Turkish README)
+//   docs/images/download-windows-ru.png      (Russian README)
+//   docs/images/download-windows-zh-CN.png   (Simplified Chinese README)
 //
 //   pnpm --dir tools/screenshots install && pnpm --dir site install
 //   node tools/screenshots/download-button.mjs
 //
 // Drawn at twice its size so it stays sharp on high-density screens. The
 // corners are transparent, so it sits on GitHub's light and dark themes
-// alike. The font comes from the site's own files; nothing is downloaded.
+// alike. The Latin font comes from the site's own files; Russian and Chinese
+// use the Windows fonts the site uses for them (Segoe UI, Microsoft YaHei).
+// Nothing is downloaded.
 
 import { rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,9 +30,17 @@ const url = (p) => pathToFileURL(join(root, p)).href;
 const font = "site/node_modules/@fontsource-variable/instrument-sans/files/instrument-sans-latin-ext-wght-normal.woff2";
 const fontLatin = "site/node_modules/@fontsource-variable/instrument-sans/files/instrument-sans-latin-wght-normal.woff2";
 
+// As on the site (site/src/styles/theme.css): Russian wholly in Segoe UI,
+// Chinese with Latin letters in Instrument Sans and the rest in YaHei.
+const LATIN = '"Instrument"';
+const RUSSIAN = '"Segoe UI Variable Text", "Segoe UI", sans-serif';
+const CHINESE = '"Instrument", "Microsoft YaHei", sans-serif';
+
 const buttons = [
-  { file: "download-windows.png", title: "Download from GitHub", sub: "Installer · Windows 10 and 11 · 64-bit" },
-  { file: "download-windows-tr.png", title: "GitHub'dan indir", sub: "Kurulum · Windows 10 ve 11 · 64 bit" },
+  { file: "download-windows.png", title: "Download from GitHub", sub: "Installer · Windows 10 and 11 · 64-bit", font: LATIN },
+  { file: "download-windows-tr.png", title: "GitHub'dan indir", sub: "Kurulum · Windows 10 ve 11 · 64 bit", font: LATIN },
+  { file: "download-windows-ru.png", title: "Скачать с GitHub", sub: "Установщик · Windows 10 и 11 · x64", font: RUSSIAN },
+  { file: "download-windows-zh-CN.png", title: "从 GitHub 下载", sub: "安装程序 · Windows 10 和 11 · 64 位", font: CHINESE },
 ];
 
 // A download arrow into a tray.
@@ -41,7 +53,7 @@ const page = (b) => `<!doctype html><meta charset="utf-8"><style>
 * { margin: 0; box-sizing: border-box }
 html, body { background: transparent }
 #b { width: 240px; height: 64px; padding-top: 11px; border-radius: 8px; background: #ff8a3d; color: #1f1206;
-  font-family: "Instrument"; text-align: center; line-height: 1.2 }
+  font-family: ${b.font}; text-align: center; line-height: 1.2 }
 .t { font-size: 18px; font-weight: 650; display: flex; align-items: center; justify-content: center; gap: 9px; letter-spacing: -0.005em }
 .t svg { stroke: #1f1206; flex: none }
 .s { margin-top: 4px; font-size: 11px; font-weight: 500; color: #5a2f0e; word-spacing: 0.12em }

@@ -12,6 +12,18 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 
 ## [Yayımlanmamış]
 
+## [1.2.1] - 2026-11-23
+
+Keymotion 1.2.1, 1.2.0'ı Microsoft Store'a getiriyor. GitHub'dan kurulan
+kopya için hiçbir şey değişmiyor.
+
+### Düzeltilenler
+
+- **Microsoft Store:** Store paketi `keymotion-cli`'ı artık Keymotion'ın
+  kendi komutu olarak, Store'un kabul ettiği biçimde getiriyor; böylece
+  1.2.0'ın yenilikleri Store kopyasına da geliyor. GitHub'dan kurulan
+  kopya için hiçbir şey değişmiyor.
+
 ## [1.2.0] - 2026-11-23
 
 Keymotion'ın görünüşü artık Windows 11 biçiminde ve yeni araçları var: müzik
@@ -394,7 +406,8 @@ Store 0 ile başlayan sürüm numarası kabul etmediği için bu sürüm 1.0.0.
   yapılacağı, desteklenen ve sırada olabilecek klavyeler, geliştiriciler için
   sayfalar. Ayarlar › Hakkında'dan açılır.
 
-[Yayımlanmamış]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.0...develop
+[Yayımlanmamış]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.1...develop
+[1.2.1]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.1
 [1.2.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.0
 [1.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.1.0
 [1.0.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.0.0

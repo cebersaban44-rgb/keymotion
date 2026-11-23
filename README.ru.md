@@ -6,7 +6,8 @@
 
 <p align="center">
   Бесплатное приложение для Windows с открытым исходным кодом для клавиатуры AJAZZ AK980 PRO (также продаётся как AK980 V2):<br>
-  подсветка, назначение клавиш, макросы и ваши собственные GIF на её маленьком экране. Программа AJAZZ не нужна.
+  подсветка, назначение клавиш, макросы и ваши собственные GIF на её маленьком экране. Программа AJAZZ не нужна.<br>
+  А также музыкальный режим, игровая сессия с подсветкой League of Legends, профили по приложениям и подсветка для ИИ-агентов для программирования.
 </p>
 
 <p align="center">
@@ -31,7 +32,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/cebersaban44-rgb/keymotion/releases/latest"><img src="docs/images/download-windows.png" height="56" alt="Скачать с GitHub: установщик для 64-разрядных Windows 10 и 11"></a>
+  <a href="https://github.com/cebersaban44-rgb/keymotion/releases/latest"><img src="docs/images/download-windows-ru.png" height="56" alt="Скачать с GitHub: установщик для 64-разрядных Windows 10 и 11"></a>
   &nbsp;
   <a href="https://apps.microsoft.com/detail/9NL03GDZZ0ZS?referrer=appbadge&amp;mode=full"><picture><source media="(prefers-color-scheme: dark)" srcset="https://get.microsoft.com/images/ru%20light.svg"><img src="https://get.microsoft.com/images/ru%20dark.svg" height="56" alt="Скачать из Microsoft Store"></picture></a>
 </p>

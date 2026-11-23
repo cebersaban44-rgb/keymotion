@@ -1,0 +1,9 @@
+• Windows 11 biçiminde yeni görünüş: Sayfalar Windows Ayarlar'daki gibi solda, en üstte klavyeniz var. Düğmeler, anahtarlar ve listeler Windows'unkiler gibi.
+• Müzik modu: Tuş ışıkları bilgisayarınızda çalan sese göre çubuk, ritim, ses yüksekliği şeridi ya da dalga olarak hareket eder. Ses kaydedilmez, mikrofon kullanılmaz.
+• Oyun oturumu: Keymotion oynadığınızı fark eder; oyun başlarken klavyenin ekranına bir kart, bitince bir özet gönderir ve oyunun tuşlarını yakabilir. Hile önleyicisi rahatsız olabilecek oyunlarda isterseniz klavyeye hiçbir şey göndermez.
+• League of Legends ışıkları: Canınız, mananız ve maçın olayları tuşlarda.
+• Uygulamaya göre profil: Bir program ya da bütün oyunlar, öndeyken kendi profilini kullanır.
+• Yapay zekâ kodlama ajanları: Claude Code ve Codex bir işi bitirince, onayınızı beklerken ya da hata verince klavyeniz ışıkla haber verir. Araçlar › Yapay zekâ ajanları sayfasından açın. keymotion-cli, her terminalde yazabileceğiniz bir komut olarak Keymotion'la gelir.
+• Rusça ve Basitleştirilmiş Çince: Uygulama artık bu dillerde de var.
+• AJAZZ'ın yeni klavye yazılımı: Klavyenizde 769 yazılımı varsa Keymotion bunu söyler ve klavyeye hiçbir şey göndermez; desteğin sonraki bir güncellemede gelmesi planlanıyor.
+• Düzeltmeler: Saatlerin geri alındığı gece ve bazı Outlook saat dilimlerinde hatırlatıcılar ve toplantılar artık bir saat kaymıyor. Yalnızca 2.4 GHz alıcı takılıyken Keymotion artık klavyenizin çalıştığını söylemiyor.
