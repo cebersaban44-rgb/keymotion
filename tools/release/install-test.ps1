@@ -922,8 +922,11 @@ Invoke-Scenario 'c' 'Silent uninstall' {
 }
 
 Invoke-Scenario 'd' 'Manual reinstall keeps the connections and PATH' {
-    $code = Invoke-Setup $Installer @('/S')
-    Confirm-That ($code -eq 0) 'installed again (setup /S)' "exit code $code"
+    # Installed as a user installs it (with its window, passive here): a
+    # silent setup never saves the installer language, and the uninstaller
+    # then asks for one before anything else.
+    $code = Invoke-Setup $Installer @('/P') -TimeoutSec 180
+    Confirm-That ($code -eq 0) 'installed again (setup /P)' "exit code $code; installer language saved: $(Get-RegValue $RecordKey 'Installer Language')"
     # The user turns agent access on in the app: it connects Claude Code and
     # Codex (taking Codex over from the other copy) and puts bin on PATH.
     $access = Enable-AgentAccess
