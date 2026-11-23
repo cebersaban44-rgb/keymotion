@@ -133,6 +133,7 @@ Bir sürüm GitHub'da ve Microsoft Store'da aynı gün çıkar; böylece bir num
 - **Elle yükleme** (Store gizli bilgileri yoksa ya da Submit işi başarısız olduysa): `.msix` dosyasını çalıştırmanın çıktılarından indirin. Partner Center'da Keymotion için yeni bir gönderim başlatın: Paketler bölümüne `.msix` dosyasını yükleyin ve öncekini kaldırın; "Yenilikler" alanını `store/whats-new`'den doldurun; Gönderim seçenekleri'nde "Don't publish this submission until I select Publish now" seçeneğini seçin. Gönderin.
 - **Store paketi geri çevirirse:** Düzeltmeyi bir sonraki yama sürümünde yapın ve onu iki kanalda yayımlayın. Geri çevrilen numara hiçbir yerde yayımlanmaz; değişiklik listesindeki bölümü yeni numaraya taşınır. Yalnızca mağaza sayfasıyla (metin, ekran görüntüleri) ilgili bir ret yeni paket gerektirmez.
 - **Acil düzeltme** (çökme, güvenlik sorunu) önce GitHub'da yayımlanabilir; sürüm notları Store'un arkadan geleceğini söyler.
+- **Beta** (`1.3.0-beta.1`) yalnızca GitHub'da, ön sürüm olarak çıkar ve bir `beta/*` dalından kendi yolunu izler: bkz. [Beta (ön sürüm)](/keymotion/tr/developers/contributing/#beta-ön-sürüm).
 - Store işi elle de çalıştırılabilir: GitHub › Actions › **Microsoft Store package**, sürüm etiketiyle (`v1.2.3`). Gönderimi yalnızca "Use workflow from" aynı etikete ayarlıysa yapar.
 - **Yalnızca denetim:** **Publish a release**, **Only check** işaretliyken (varsayılan) durumu okur ve hiçbir şey yayımlamaz.
 

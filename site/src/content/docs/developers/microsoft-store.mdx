@@ -133,6 +133,7 @@ A version comes out on GitHub and in the Microsoft Store the same day, so that a
 - **Uploading by hand** (no Store secrets, or a failed Submit job): download the `.msix` from the run's artifacts. In Partner Center, start a new submission for Keymotion: under Packages, upload the `.msix` and remove the previous one; fill in "What's new" from `store/whats-new`; under Submission options, choose "Don't publish this submission until I select Publish now". Submit it.
 - **The Store turns down the package.** Fix it in the next patch version and release that in both channels. The turned-down number is published nowhere; its changelog section moves to the new number. A rejection about the listing only (text, screenshots) needs no new package.
 - **An urgent fix** (a crash, a security problem) may be published on GitHub first; its release notes say the Store follows.
+- **A beta** (`1.3.0-beta.1`) is only on GitHub, as a pre-release, and takes its own route from a `beta/*` branch: see [Beta (pre-release)](/keymotion/developers/contributing/#beta-pre-release).
 - The Store job can also be run by hand: GitHub › Actions › **Microsoft Store package**, with the release tag (`v1.2.3`). It submits only when "Use workflow from" is that same tag.
 - **Only check:** **Publish a release** with **Only check** ticked (the default) reads the status and publishes nothing.
 

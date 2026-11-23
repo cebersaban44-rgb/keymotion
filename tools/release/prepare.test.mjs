@@ -10,18 +10,21 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { SKELETON_MARKER, STORE_LANGUAGES } from "../store/whats-new.mjs";
-import { changelogFiles, releaseNotesPages, releaseNotesSection, releaseProblems } from "./check-release.mjs";
+import { changelogFiles, isPrerelease, PRERELEASE_VERSION, releaseNotesPages, releaseNotesSection, releaseProblems } from "./check-release.mjs";
 import {
   addNotesSection,
   bumpKind,
+  compareVersions,
   nextVersion,
   planRelease,
   releaseChangelog,
+  REPOSITORY_URL,
   setJsonVersion,
   setLockVersions,
   setWorkspaceVersion,
   suggestBump,
 } from "./prepare.mjs";
+import { changelogSection } from "./latest-json.mjs";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const script = join(root, "tools", "release", "prepare.mjs");
@@ -160,11 +163,56 @@ test("nextVersion: minor and patch count up, X.Y.Z must be above", () => {
   assert.throws(() => nextVersion("1.1.0", "1.1.0"), /not above/);
   assert.throws(() => nextVersion("1.1.0", "1.0.9"), /not above/);
   assert.throws(() => nextVersion("1.1.0", "v1.2.0"), /expected X\.Y\.Z/);
-  assert.throws(() => nextVersion("1.1.0", "1.2.0-rc.1"), /expected X\.Y\.Z/);
   assert.throws(() => nextVersion("1.1.0", undefined), /expected X\.Y\.Z/);
   assert.equal(bumpKind("1.1.0", "1.1.1"), "patch");
   assert.equal(bumpKind("1.1.0", "1.2.0"), "minor");
   assert.equal(bumpKind("1.1.0", "2.0.0"), "major");
+});
+
+test("nextVersion: a pre-release, and the release after it", () => {
+  // From a release: a pre-release of a higher version.
+  assert.equal(nextVersion("1.2.1", "1.3.0-beta.1"), "1.3.0-beta.1");
+  assert.equal(nextVersion("1.1.0", "1.2.0-rc.1"), "1.2.0-rc.1");
+  // 1.2.1-beta.1 comes before 1.2.1.
+  assert.throws(() => nextVersion("1.2.1", "1.2.1-beta.1"), /1\.2\.1-beta\.1 is not above the app's version 1\.2\.1/);
+  // From a pre-release (on a beta branch): its release, the next pre-release, or anything above.
+  assert.equal(nextVersion("1.3.0-beta.1", "1.3.0"), "1.3.0");
+  assert.equal(nextVersion("1.3.0-beta.1", "1.3.0-beta.2"), "1.3.0-beta.2");
+  assert.equal(nextVersion("1.3.0-beta.9", "1.3.0-beta.10"), "1.3.0-beta.10");
+  assert.equal(nextVersion("1.3.0-beta.2", "1.3.0-rc.1"), "1.3.0-rc.1");
+  assert.equal(nextVersion("1.3.0-beta.1", "1.4.0"), "1.4.0");
+  assert.throws(() => nextVersion("1.3.0-beta.1", "1.3.0-beta.1"), /not above/);
+  assert.throws(() => nextVersion("1.3.0-beta.2", "1.3.0-beta.1"), /not above/);
+  assert.throws(() => nextVersion("1.3.0-beta.1", "1.2.9"), /not above/);
+  // "minor" would skip 1.3.0: the version must be named.
+  assert.throws(() => nextVersion("1.3.0-beta.1", "minor"), /1\.3\.0-beta\.1 is a pre-release: name the version instead of minor \(1\.3\.0 releases it\)/);
+  assert.throws(() => nextVersion("1.3.0-beta.1", "patch"), /is a pre-release/);
+  // Semantic Versioning's form, without build metadata or leading zeros.
+  for (const bad of ["1.3.0-", "1.3.0-beta..1", "1.3.0-beta.01", "1.3.0+build.1", "1.3.0-beta_1", "1.3-beta.1"]) {
+    assert.throws(() => nextVersion("1.2.1", bad), /expected X\.Y\.Z, a pre-release such as X\.Y\.Z-beta\.1, minor or patch/, bad);
+  }
+  assert.throws(() => nextVersion("1.3.0-beta.01", "1.3.0"), /is not X\.Y\.Z or a pre-release/);
+  assert.equal(bumpKind("1.2.1", "1.3.0-beta.1"), "minor");
+  assert.equal(bumpKind("1.2.1", "1.2.2-beta.1"), "patch");
+  assert.equal(bumpKind("1.3.0-beta.1", "1.3.0-beta.2"), "pre-release");
+  assert.equal(bumpKind("1.3.0-beta.1", "1.3.0"), "release");
+});
+
+test("compareVersions: Semantic Versioning's order", () => {
+  const order = ["1.2.1", "1.3.0-alpha", "1.3.0-alpha.1", "1.3.0-alpha.beta", "1.3.0-beta", "1.3.0-beta.2", "1.3.0-beta.11", "1.3.0-rc.1", "1.3.0", "1.3.1", "1.10.0", "2.0.0"];
+  for (let i = 0; i < order.length; i++) {
+    for (let j = 0; j < order.length; j++) {
+      assert.equal(Math.sign(compareVersions(order[i], order[j])), Math.sign(i - j), `${order[i]} vs ${order[j]}`);
+    }
+  }
+});
+
+test("PRERELEASE_VERSION and isPrerelease", () => {
+  for (const v of ["1.3.0-beta.1", "1.3.0-rc.1", "1.3.0-alpha", "1.3.0-0.3.7", "1.3.0-x-y.1"]) assert.ok(PRERELEASE_VERSION.test(v), v);
+  for (const v of ["1.3.0", "1.3.0-beta.01", "1.3.0-", "1.3.0+b.1", "v1.3.0-beta.1"]) assert.ok(!PRERELEASE_VERSION.test(v), v);
+  assert.equal(isPrerelease("1.3.0-beta.1"), true);
+  assert.equal(isPrerelease("1.3.0"), false);
+  assert.equal(isPrerelease("1.3.0+build-1"), false);
 });
 
 test("suggestBump: minor for Added or Changed, patch for Fixed and Security only", () => {
@@ -215,6 +263,42 @@ test("releaseChangelog: stops on an empty section, a missing one or a version al
   assert.throws(() => releaseChangelog(empty, { version: "1.2.0", date: "2026-11-30", file: "CHANGELOG.ru.md" }), /CHANGELOG\.ru\.md: the \[Unreleased\] section is empty/);
   assert.throws(() => releaseChangelog("# Changelog\n\n## [1.1.0]\n\n- A.\n", { version: "1.2.0", date: "2026-11-30" }), /no Unreleased section/);
   assert.throws(() => releaseChangelog(CHANGELOG, { version: "1.1.0", date: "2026-11-30" }), /already has a section for 1\.1\.0/);
+});
+
+test("releaseChangelog: a pre-release gets a copy of Unreleased, which stays as it is", () => {
+  const { text, groups, label } = releaseChangelog(CHANGELOG, { version: "1.2.0-beta.1", date: "2026-11-30" });
+  assert.equal(label, "Unreleased");
+  assert.deepEqual(groups, [{ name: "Added", items: 1 }, { name: "Fixed", items: 1 }]);
+  const unreleased = "### Added\n\n- **Music mode:** new.\n\n### Fixed\n\n- A bug.\n\n";
+  // Everything above the old versions is as it was, the copy comes after it;
+  // [Unreleased] still compares with the last release.
+  assert.equal(
+    text,
+    CHANGELOG.replace("## [1.1.0] - 2026-11-16", `## [1.2.0-beta.1] - 2026-11-30\n\n${unreleased}## [1.1.0] - 2026-11-16`).replace(
+      `[1.1.0]: ${REPO}/releases/tag/v1.1.0\n`,
+      `[1.2.0-beta.1]: ${REPO}/releases/tag/v1.2.0-beta.1\n[1.1.0]: ${REPO}/releases/tag/v1.1.0\n[1.0.0]: ${REPO}/releases/tag/v1.0.0\n`,
+    ),
+  );
+  assert.equal(changelogSection(text, "1.2.0-beta.1").body, changelogSection(CHANGELOG, "x", { allowUnreleased: true }).body);
+  assert.equal(changelogSection(text, "x", { allowUnreleased: true }).body, changelogSection(CHANGELOG, "x", { allowUnreleased: true }).body);
+
+  // A translation whose Unreleased is the last section, before the links; CRLF comes out as LF.
+  const ru = "# Журнал\r\n\r\n## [Не выпущено]\r\n\r\n### Добавлено\r\n\r\n- Новое.\r\n\r\n[Не выпущено]: https://github.com/a/b/compare/v1.1.0...develop\r\n";
+  assert.equal(
+    releaseChangelog(ru, { version: "1.2.0-beta.1", date: "2026-11-30" }).text,
+    "# Журнал\n\n## [Не выпущено]\n\n### Добавлено\n\n- Новое.\n\n## [1.2.0-beta.1] - 2026-11-30\n\n### Добавлено\n\n- Новое.\n\n" +
+      "[Не выпущено]: https://github.com/a/b/compare/v1.1.0...develop\n[1.2.0-beta.1]: https://github.com/a/b/releases/tag/v1.2.0-beta.1\n",
+  );
+  // Without an [Unreleased] link, it compares the last release; a second pre-release stacks above the first.
+  const bare = "## [Unreleased]\n\n- A.\n\n## [1.2.0-beta.1] - 2026-11-29\n\n- A.\n\n## [1.1.0] - 2026-11-16\n\n- B.\n";
+  const second = releaseChangelog(bare, { version: "1.2.0-beta.2", date: "2026-11-30" }).text;
+  assert.match(second, /^## \[Unreleased\]\n\n- A\.\n\n## \[1\.2\.0-beta\.2\] - 2026-11-30\n\n- A\.\n\n## \[1\.2\.0-beta\.1\] - 2026-11-29\n/);
+  assert.match(second, new RegExp(`\\n\\[Unreleased\\]: ${REPOSITORY_URL}/compare/v1\\.1\\.0\\.\\.\\.develop\\n\\[1\\.2\\.0-beta\\.2\\]: `));
+  assert.throws(() => releaseChangelog(bare, { version: "1.2.0-beta.1", date: "2026-11-30" }), /already has a section for 1\.2\.0-beta\.1/);
+  assert.throws(
+    () => releaseChangelog("## [Unreleased]\n\n## [1.1.0]\n\n- A.\n", { version: "1.2.0-beta.1", date: "2026-11-30", file: "CHANGELOG.zh-CN.md" }),
+    /CHANGELOG\.zh-CN\.md: the \[Unreleased\] section is empty; write its changes before preparing 1\.2\.0-beta\.1/,
+  );
 });
 
 test("addNotesSection: a skeleton above the newest version, once", () => {
@@ -316,6 +400,82 @@ test("CLI: without a version it suggests one and stops", (t) => {
   const res = spawnSync(process.execPath, [script, "--root", dir], { encoding: "utf8", env });
   assert.equal(res.status, 1);
   assert.match(res.stdout, /Unreleased has Added, Fixed: suggested minor, 1\.1\.0 → 1\.2\.0\./);
+});
+
+test("planRelease: a pre-release changes the version and the CHANGELOGs only", (t) => {
+  const dir = fixture(t);
+  const plan = planRelease({ root: dir, wanted: "1.2.0-beta.1", date: "2026-11-30" });
+  assert.equal(plan.version, "1.2.0-beta.1");
+  assert.equal(plan.prerelease, true);
+  assert.equal(plan.kind, "minor");
+  assert.deepEqual(
+    plan.changes.map((c) => c.file),
+    ["Cargo.toml", "app/package.json", "app/src-tauri/tauri.conf.json", "crates/other/Cargo.toml", "Cargo.lock", "CHANGELOG.md", "CHANGELOG.tr.md"],
+  );
+  assert.deepEqual(plan.kept, ["the release notes pages and the Store's What's new (a pre-release is only on GitHub)"]);
+  // A pre-release of a patch with Added items gets the usual warning.
+  assert.match(planRelease({ root: dir, wanted: "1.1.1-beta.1", date: "2026-11-30" }).warnings[0], /minor version, not a patch/);
+});
+
+test("CLI: a pre-release leaves Unreleased and the site and Store files alone; the release after it works", (t) => {
+  const dir = fixture(t);
+  const run = (...args) => spawnSync(process.execPath, [script, ...args, "--root", dir, "--date", "2026-11-30"], { encoding: "utf8", env });
+  const unreleased = (text) => changelogSection(text, "none", { allowUnreleased: true }).body;
+  const before = Object.fromEntries(changelogFiles(dir).map((f) => [f, read(dir, f)]));
+  const notes = releaseNotesPages(dir).map((page) => read(dir, page));
+
+  const dry = run("1.2.0-beta.1", "--dry-run");
+  assert.equal(dry.status, 0, dry.stdout + dry.stderr);
+  assert.match(dry.stdout, /Keymotion 1\.1\.0 → 1\.2\.0-beta\.1 \(minor pre-release; CHANGELOG\.md suggests minor \(Added, Fixed\)\), dated 2026-11-30\./);
+  assert.match(dry.stdout, /CHANGELOG\.tr\.md +\[Yayımlanmamış\] copied to \[1\.2\.0-beta\.1\] - 2026-11-30 \(Eklenenler 1\), \[Yayımlanmamış\] kept; links/);
+  assert.match(dry.stdout, /Left as they are:\n {2}the release notes pages and the Store's What's new \(a pre-release is only on GitHub\)/);
+  assert.doesNotMatch(dry.stdout, /release-notes\.mdx|whats-new/);
+
+  const ok = run("1.2.0-beta.1");
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  assert.match(ok.stdout, /Version check: 1\.2\.0-beta\.1 in /);
+  assert.match(ok.stdout, /Commit on beta\/1\.2\.0-beta\.1 and push it; no pull request/);
+  assert.equal(JSON.parse(read(dir, "app/package.json")).version, "1.2.0-beta.1");
+  assert.equal(JSON.parse(read(dir, "app/src-tauri/tauri.conf.json")).version, "1.2.0-beta.1");
+  assert.match(read(dir, "Cargo.toml"), /\[workspace\.package\]\nversion = "1\.2\.0-beta\.1"/);
+  assert.match(read(dir, "Cargo.lock"), /name = "keymotion"\nversion = "1\.2\.0-beta\.1"/);
+  // Every CHANGELOG: Unreleased exactly as it was, and the pre-release's section the same text.
+  for (const [file, text] of Object.entries(before)) {
+    const after = read(dir, file);
+    assert.equal(unreleased(after), unreleased(text), file);
+    assert.equal(changelogSection(after, "1.2.0-beta.1").body, unreleased(text), file);
+    assert.match(after, /\n## \[1\.2\.0-beta\.1\] - 2026-11-30\n/);
+  }
+  // No release notes skeleton, no What's new.
+  assert.deepEqual(releaseNotesPages(dir).map((page) => read(dir, page)), notes);
+  assert.equal(existsSync(join(dir, "store")), false);
+  // check-release (CI on the beta branch, release.yml, tag.mjs): ready as it is.
+  assert.deepEqual(releaseProblems(dir, "1.2.0-beta.1"), { problems: [], checked: ["CHANGELOG.md", "CHANGELOG.tr.md"], prerelease: true });
+
+  // On the beta branch, "minor" would skip 1.2.0: refused, nothing written.
+  const changelog = read(dir, "CHANGELOG.md");
+  const minor = run("minor");
+  assert.equal(minor.status, 1);
+  assert.match(minor.stdout, /1\.2\.0-beta\.1 is a pre-release: name the version instead of minor \(1\.2\.0 releases it\)/);
+  assert.equal(read(dir, "CHANGELOG.md"), changelog);
+
+  // The release of the pre-release: Unreleased (still complete) becomes 1.2.0
+  // as usual, the pre-release's section stays below it, and 1.2.0 gets its
+  // release notes and What's new skeletons.
+  const release = run("1.2.0");
+  assert.equal(release.status, 0, release.stdout + release.stderr);
+  assert.match(release.stdout, /Keymotion 1\.2\.0-beta\.1 → 1\.2\.0 \(release; CHANGELOG\.md suggests minor \(Added, Fixed\)\)/);
+  const final = read(dir, "CHANGELOG.md");
+  assert.match(
+    final,
+    /\n## \[Unreleased\]\n\n## \[1\.2\.0\] - 2026-11-30\n\n### Added\n\n- \*\*Music mode:\*\* new\.\n\n### Fixed\n\n- A bug\.\n\n## \[1\.2\.0-beta\.1\] - 2026-11-30\n\n### Added\n/,
+  );
+  assert.match(
+    final,
+    new RegExp(`\\[Unreleased\\]: ${REPO}/compare/v1\\.2\\.0\\.\\.\\.develop\\n\\[1\\.2\\.0\\]: ${REPO}/releases/tag/v1\\.2\\.0\\n\\[1\\.2\\.0-beta\\.1\\]: ${REPO}/releases/tag/v1\\.2\\.0-beta\\.1\\n`),
+  );
+  assert.match(read(dir, "site/src/content/docs/about/release-notes.mdx"), /## Keymotion 1\.2\.0\n\n\{\/\* TODO\(release\)/);
+  assert.ok(existsSync(join(dir, "store/whats-new/1.2.0.en.txt")));
 });
 
 test("check-release: skeletons fail until the text is written", (t) => {

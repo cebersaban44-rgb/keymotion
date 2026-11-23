@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { backMerge, tagAndPush, tagProblems } from "./tag.mjs";
+import { BETA_BRANCH, backMerge, ciState, tagAndPush, tagProblems } from "./tag.mjs";
 
 const ready = {
   version: "1.2.0",
@@ -24,6 +24,52 @@ test("tagProblems: main's tip, clean, and a tag that doesn't exist yet", () => {
   assert.match(tagProblems({ ...ready, tagLocal: true })[0], /tag v1\.2\.0 already exists here/);
   assert.match(tagProblems({ ...ready, tagRemote: true })[0], /tag v1\.2\.0 already exists on GitHub/);
   assert.equal(tagProblems({ ...ready, branch: "x", clean: false, tagRemote: true }).length, 3);
+  // A release is never tagged on a beta branch, whatever the beta checks say.
+  assert.match(tagProblems({ ...ready, branch: "beta/1.2.0-beta.1", mainIsAncestor: true, ci: "passed" })[0], /the branch is beta\/1\.2\.0-beta\.1, not main/);
+});
+
+const beta = {
+  version: "1.3.0-beta.1",
+  branch: "beta/1.3.0-beta.1",
+  clean: true,
+  head: "c".repeat(40),
+  remoteHead: "c".repeat(40),
+  mainIsAncestor: true,
+  ci: "passed",
+  tagLocal: false,
+  tagRemote: false,
+};
+
+test("tagProblems: a pre-release on its pushed beta branch, with main in it and CI green", () => {
+  assert.deepEqual(tagProblems(beta), []);
+  // Any beta/* branch; never main, develop or a nested name.
+  assert.deepEqual(tagProblems({ ...beta, branch: "beta/1.3.0" }), []);
+  for (const branch of ["main", "develop", "release/1.3.0", "beta", "beta/a/b", "HEAD"]) {
+    assert.match(tagProblems({ ...beta, branch })[0], /a pre-release \(1\.3\.0-beta\.1\) is tagged on its own beta branch, cut from develop \(beta\/1\.3\.0-beta\.1\)/, branch);
+  }
+  assert.ok(BETA_BRANCH.test("beta/1.3.0-beta.1"));
+  assert.match(tagProblems({ ...beta, clean: false })[0], /working tree has changes/);
+  assert.match(tagProblems({ ...beta, remoteHead: null })[0], /beta\/1\.3\.0-beta\.1 is not on GitHub: git push -u origin beta\/1\.3\.0-beta\.1/);
+  assert.match(tagProblems({ ...beta, remoteHead: "d".repeat(40) })[0], /HEAD \(ccccccc\) is not origin\/beta\/1\.3\.0-beta\.1 \(ddddddd\): push it/);
+  assert.match(tagProblems({ ...beta, mainIsAncestor: false })[0], /origin\/main is not in beta\/1\.3\.0-beta\.1: a pre-release must have everything already released/);
+  assert.match(tagProblems({ ...beta, ci: "running" })[0], /CI is still running on HEAD \(ccccccc\)/);
+  assert.match(tagProblems({ ...beta, ci: "failed" })[0], /CI failed on HEAD \(ccccccc\)/);
+  assert.match(tagProblems({ ...beta, ci: "none" })[0], /CI has not run on HEAD \(ccccccc\)/);
+  assert.match(tagProblems({ ...beta, ci: undefined })[0], /CI has not run on HEAD/);
+  assert.match(tagProblems({ ...beta, tagRemote: true })[0], /tag v1\.3\.0-beta\.1 already exists on GitHub/);
+  assert.equal(tagProblems({ ...beta, branch: "develop", mainIsAncestor: false, ci: "failed", tagLocal: true }).length, 4);
+});
+
+test("ciState: a success passes; otherwise running, failed or none", () => {
+  const done = (conclusion) => ({ status: "completed", conclusion });
+  assert.equal(ciState([done("success")]), "passed");
+  // A re-run that passed counts, whatever an older run says.
+  assert.equal(ciState([done("failure"), done("success")]), "passed");
+  assert.equal(ciState([{ status: "in_progress", conclusion: "" }]), "running");
+  assert.equal(ciState([done("failure"), { status: "queued", conclusion: "" }]), "running");
+  assert.equal(ciState([done("failure")]), "failed");
+  assert.equal(ciState([done("cancelled")]), "failed");
+  assert.equal(ciState([]), "none");
 });
 
 test("tagAndPush: the full ref is pushed; a refused push takes the local tag away again", () => {

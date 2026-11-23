@@ -217,13 +217,16 @@ const STORE_BADGE = (theme) => `https://get.microsoft.com/images/en-us%20${theme
  * carry (code signing policy, privacy policy), and links to the notes in
  * `languages` (CHANGELOG.<lang>.md; Turkish by default). `signed` drops the
  * Windows warning once releases are signed (roadmap stage 9). The buttons
- * need `repository` and `version`.
+ * need `repository` and `version`. A pre-release says how it differs: a
+ * normal Keymotion never updates to it (the updater reads GitHub's latest
+ * release), and next to the Store copy it steps aside (handoff.rs).
  */
 export function releaseBody({ notes, fileName, sha256, size, preface, repository, version, signed = false, languages = ["tr"] }) {
   if (!/^[0-9a-f]{64}$/.test(sha256 ?? "")) throw new Error(`not a SHA-256: ${JSON.stringify(sha256)}`);
   const parts = [];
   if (preface) parts.push(`> ${preface}`);
-  const store = Boolean(version) && !version.includes("-");
+  const prerelease = /^\d+\.\d+\.\d+-/.test(version ?? "");
+  const store = Boolean(version) && !prerelease;
   if (repository && version) {
     const url = releaseAssetUrl({ repository, version, fileName });
     const badge = `https://img.shields.io/badge/${badgeText("Download for Windows")}-${badgeText(`Keymotion ${version}`)}-d65f12?style=for-the-badge`;
@@ -250,7 +253,12 @@ export function releaseBody({ notes, fileName, sha256, size, preface, repository
     ...(store
       ? [`Prefer the Microsoft Store? The same version is there, signed by Microsoft: [Keymotion in the Microsoft Store](${STORE_URL}).`]
       : []),
-    "Already using Keymotion? It finds the new version by itself, or open **Settings › About** and select **Check for updates**.",
+    ...(prerelease
+      ? [
+          "This is a pre-release, for trying the next version early. Keymotion from a normal release never updates to it by itself: install it from this page. Once installed, it finds the next pre-release and the next release by itself, or open **Settings › About** and select **Check for updates**.",
+          "Pre-releases are only on GitHub. If Keymotion from the Microsoft Store is installed, this copy steps aside for it and opens the Store copy instead: to try the pre-release, remove the Store copy first (your settings stay).",
+        ]
+      : ["Already using Keymotion? It finds the new version by itself, or open **Settings › About** and select **Check for updates**."]),
   ];
   const links = [
     `[User guide](${SITE}/guide/install/)`,

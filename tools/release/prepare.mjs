@@ -15,14 +15,22 @@
 // People then write the summaries where the skeletons say TODO(release);
 // tools/release/check-release.mjs fails until they have.
 //
+// A pre-release (1.3.0-beta.1, on a beta/1.3.0-beta.1 branch from develop;
+// docs site: developers/contributing, "Beta (pre-release)") is only on
+// GitHub. It gets the version number and, in every CHANGELOG, a
+// "## [1.3.0-beta.1] - <date>" section that is a copy of Unreleased:
+// Unreleased stays as it is, so the release after the pre-release (1.3.0)
+// still lists everything. No release notes or What's new skeletons.
+//
 // Nothing is written unless every file can be prepared: an empty Unreleased
 // section in any CHANGELOG stops it. Files that already have the version's
 // section (release notes, What's new) are left as they are.
 //
-// Usage: node tools/release/prepare.mjs <X.Y.Z|minor|patch> [--dry-run] [--date YYYY-MM-DD]
+// Usage: node tools/release/prepare.mjs <X.Y.Z|X.Y.Z-beta.N|minor|patch> [--dry-run] [--date YYYY-MM-DD]
 //        node tools/release/prepare.mjs     the bump CHANGELOG.md suggests
 //   minor is suggested when Unreleased has anything besides Fixed and
-//   Security (Added, Changed, …), patch when it has only those.
+//   Security (Added, Changed, …), patch when it has only those. From a
+//   pre-release, name the version: 1.3.0 releases 1.3.0-beta.1.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
@@ -31,7 +39,15 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import { STORE_LANGUAGES, SKELETON_MARKER, whatsNewFile, whatsNewPath, whatsNewSkeleton } from "../store/whats-new.mjs";
-import { appVersion, changelogFiles, notesHeading, releaseNotesPages, RELEASE_VERSION } from "./check-release.mjs";
+import {
+  appVersion,
+  changelogFiles,
+  isPrerelease,
+  notesHeading,
+  PRERELEASE_VERSION,
+  releaseNotesPages,
+  RELEASE_VERSION,
+} from "./check-release.mjs";
 import { isUnreleased } from "./latest-json.mjs";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
@@ -39,25 +55,74 @@ const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 /** Where the CHANGELOG links point when a file has none to copy from. */
 export const REPOSITORY_URL = "https://github.com/cebersaban44-rgb/keymotion";
 
-const parse = (v) => v.split(".").map(Number);
+/** The three numbers of a version: "1.3.0-beta.1" → "1.3.0". */
+const core = (v) => v.split(/[-+]/)[0];
+const parse = (v) => core(v).split(".").map(Number);
+/** The pre-release part of a version: "1.3.0-beta.1" → "beta.1", "1.3.0" → "". */
+const preId = (v) => {
+  const s = v.split("+")[0];
+  const dash = s.indexOf("-");
+  return dash < 0 ? "" : s.slice(dash + 1);
+};
 
-/** The next version: "minor" and "patch" count up from `current`; X.Y.Z must be above it. */
+/**
+ * Below 0, 0 or above 0 as version `a` comes before, with or after `b`, in
+ * Semantic Versioning's order: by the three numbers, then a pre-release
+ * before its release (1.3.0-beta.1 < 1.3.0), then the pre-release parts one
+ * by one (beta.2 < beta.10 < rc.1).
+ */
+export function compareVersions(a, b) {
+  const [x, y] = [parse(a), parse(b)];
+  const cmp = x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
+  if (cmp) return cmp;
+  const [p, q] = [preId(a), preId(b)];
+  if (!p || !q) return (p ? -1 : 0) - (q ? -1 : 0);
+  const [ps, qs] = [p.split("."), q.split(".")];
+  for (let i = 0; i < Math.min(ps.length, qs.length); i++) {
+    if (ps[i] === qs[i]) continue;
+    const [pn, qn] = [/^\d+$/.test(ps[i]), /^\d+$/.test(qs[i])];
+    if (pn && qn) return Number(ps[i]) - Number(qs[i]);
+    if (pn !== qn) return pn ? -1 : 1;
+    return ps[i] < qs[i] ? -1 : 1;
+  }
+  return ps.length - qs.length;
+}
+
+/**
+ * The next version: "minor" and "patch" count up from `current`; a version
+ * named (X.Y.Z, or a pre-release such as X.Y.Z-beta.1) must be above it.
+ * From a pre-release, the version must be named: 1.3.0 releases
+ * 1.3.0-beta.1, and "minor" would have skipped it.
+ */
 export function nextVersion(current, wanted) {
-  if (!RELEASE_VERSION.test(current)) throw new Error(`the app's version ${current} is not X.Y.Z`);
+  if (!RELEASE_VERSION.test(current) && !PRERELEASE_VERSION.test(current)) {
+    throw new Error(`the app's version ${current} is not X.Y.Z or a pre-release such as X.Y.Z-beta.1`);
+  }
   const [major, minor, patch] = parse(current);
-  if (wanted === "minor") return `${major}.${minor + 1}.0`;
-  if (wanted === "patch") return `${major}.${minor}.${patch + 1}`;
-  if (!RELEASE_VERSION.test(wanted ?? "")) throw new Error(`expected X.Y.Z, minor or patch, got ${JSON.stringify(wanted)}`);
-  const [a, b] = [parse(wanted), parse(current)];
-  const cmp = a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
-  if (cmp <= 0) throw new Error(`${wanted} is not above the app's version ${current}`);
+  if (wanted === "minor" || wanted === "patch") {
+    if (isPrerelease(current)) {
+      throw new Error(`the app's version ${current} is a pre-release: name the version instead of ${wanted} (${core(current)} releases it)`);
+    }
+    return wanted === "minor" ? `${major}.${minor + 1}.0` : `${major}.${minor}.${patch + 1}`;
+  }
+  if (!RELEASE_VERSION.test(wanted ?? "") && !PRERELEASE_VERSION.test(wanted ?? "")) {
+    throw new Error(`expected X.Y.Z, a pre-release such as X.Y.Z-beta.1, minor or patch, got ${JSON.stringify(wanted)}`);
+  }
+  if (compareVersions(wanted, current) <= 0) throw new Error(`${wanted} is not above the app's version ${current}`);
   return wanted;
 }
 
-/** "major", "minor" or "patch": how far `version` is from `current`. */
+/**
+ * How far `version` is from `current`: "major", "minor" or "patch" by the
+ * three numbers; with the same three, "pre-release" (1.3.0-beta.1 →
+ * 1.3.0-beta.2) or "release" (1.3.0-beta.1 → 1.3.0).
+ */
 export function bumpKind(current, version) {
   const [a, b] = [parse(version), parse(current)];
-  return a[0] !== b[0] ? "major" : a[1] !== b[1] ? "minor" : "patch";
+  if (a[0] !== b[0]) return "major";
+  if (a[1] !== b[1]) return "minor";
+  if (a[2] !== b[2]) return "patch";
+  return isPrerelease(version) ? "pre-release" : "release";
 }
 
 const HEADING = /^##\s+\[([^\]]+)\](.*)$/;
@@ -121,10 +186,13 @@ export function suggestBump(changelog) {
 
 /**
  * The CHANGELOG with its Unreleased section released as `version`:
- * `{ text, groups }`. Throws when there is no Unreleased section, when it is
- * empty, or when the version already has one.
+ * `{ text, groups, label }`. A pre-release (1.3.0-beta.1) gets a copy of the
+ * section below it, and Unreleased stays as it is: the release after the
+ * pre-release lists everything again. Throws when there is no Unreleased
+ * section, when it is empty, or when the version already has one.
  */
 export function releaseChangelog(changelog, { version, date, file = "CHANGELOG.md" }) {
+  const prerelease = isPrerelease(version);
   const lines = changelog.replace(/\r\n?/g, "\n").split("\n");
   if (lines.some((l) => HEADING.exec(l.trimEnd())?.[1].replace(/^v/, "") === version)) {
     throw new Error(`${file} already has a section for ${version}`);
@@ -135,10 +203,15 @@ export function releaseChangelog(changelog, { version, date, file = "CHANGELOG.m
   if (!groups.length) {
     throw new Error(`${file}: the [${section.label}] section is empty; write its changes before preparing ${version}`);
   }
-  lines.splice(section.start, 1, `## [${section.label}]`, "", `## [${version}] - ${date}`);
+  if (prerelease) {
+    lines.splice(section.start + 1 + section.body.length, 0, "", `## [${version}] - ${date}`, ...section.body);
+  } else {
+    lines.splice(section.start, 1, `## [${section.label}]`, "", `## [${version}] - ${date}`);
+  }
 
   // The link definitions: [Unreleased] compares the new tag with develop,
   // and every version heading has a link (the previous one was once missed).
+  // After a pre-release, Unreleased still compares with the last release.
   const defs = new Map();
   for (const l of lines) {
     const m = LINK_DEFINITION.exec(l);
@@ -146,8 +219,12 @@ export function releaseChangelog(changelog, { version, date, file = "CHANGELOG.m
   }
   const base = /^(https:\/\/github\.com\/[^/]+\/[^/]+)\//.exec(defs.get(section.label)?.url ?? "")?.[1] ?? REPOSITORY_URL;
   const labels = lines.map((l) => HEADING.exec(l.trimEnd())?.[1]).filter((label) => label !== undefined);
+  const lastRelease = labels.map((label) => label.replace(/^v/, "")).find((label) => RELEASE_VERSION.test(label));
   const block = labels.map((label) => {
-    if (label === section.label) return `[${label}]: ${base}/compare/v${version}...develop`;
+    if (label === section.label) {
+      if (prerelease) return defs.get(label)?.line ?? `[${label}]: ${base}/compare/v${lastRelease ?? version}...develop`;
+      return `[${label}]: ${base}/compare/v${version}...develop`;
+    }
     return defs.get(label)?.line ?? `[${label}]: ${base}/releases/tag/v${label.replace(/^v/, "")}`;
   });
   const managed = new Set(labels);
@@ -260,6 +337,7 @@ export function planRelease({ root = repoRoot, wanted, date = today() }) {
   if (!changelogs.includes("CHANGELOG.md")) throw new Error("no CHANGELOG.md");
   const suggestion = suggestBump(readFileSync(join(root, "CHANGELOG.md"), "utf8"));
   const version = nextVersion(current, wanted);
+  const prerelease = isPrerelease(version);
   const warnings = [];
   const kind = bumpKind(current, version);
   if (suggestion && kind === "patch" && suggestion.bump === "minor") {
@@ -297,29 +375,39 @@ export function planRelease({ root = repoRoot, wanted, date = today() }) {
     try {
       const out = releaseChangelog(readFileSync(path, "utf8"), { version, date, file });
       const groups = out.groups.map((g) => `${g.name || "intro"} ${g.items}`).join(", ");
-      change(path, out.text, `[${out.label}] → [${version}] - ${date} (${groups}); links`);
+      change(
+        path,
+        out.text,
+        prerelease
+          ? `[${out.label}] copied to [${version}] - ${date} (${groups}), [${out.label}] kept; links`
+          : `[${out.label}] → [${version}] - ${date} (${groups}); links`,
+      );
     } catch (e) {
       problems.push(e.message);
     }
   }
 
-  // The site's release notes.
-  for (const page of releaseNotesPages(root)) {
-    const path = join(root, page);
-    try {
-      const text = addNotesSection(readFileSync(path, "utf8"), version);
-      if (text === null) kept.push(`${page} (has "${notesHeading(version)}")`);
-      else change(path, text, `skeleton section "${notesHeading(version).slice(3)}"`);
-    } catch (e) {
-      problems.push(`${page}: ${e.message}`);
+  // The site's release notes and the Store's What's new describe what both
+  // channels get: a pre-release is only on GitHub, so it has neither.
+  if (prerelease) {
+    kept.push("the release notes pages and the Store's What's new (a pre-release is only on GitHub)");
+  } else {
+    for (const page of releaseNotesPages(root)) {
+      const path = join(root, page);
+      try {
+        const text = addNotesSection(readFileSync(path, "utf8"), version);
+        if (text === null) kept.push(`${page} (has "${notesHeading(version)}")`);
+        else change(path, text, `skeleton section "${notesHeading(version).slice(3)}"`);
+      } catch (e) {
+        problems.push(`${page}: ${e.message}`);
+      }
     }
-  }
 
-  // The Store's What's new.
-  for (const lang of STORE_LANGUAGES) {
-    const path = whatsNewPath(root, version, lang);
-    if (existsSync(path)) kept.push(`${whatsNewFile(version, lang)} (exists)`);
-    else change(path, whatsNewSkeleton(version, lang), "new skeleton");
+    for (const lang of STORE_LANGUAGES) {
+      const path = whatsNewPath(root, version, lang);
+      if (existsSync(path)) kept.push(`${whatsNewFile(version, lang)} (exists)`);
+      else change(path, whatsNewSkeleton(version, lang), "new skeleton");
+    }
   }
 
   if (problems.length) {
@@ -327,7 +415,7 @@ export function planRelease({ root = repoRoot, wanted, date = today() }) {
     e.problems = problems;
     throw e;
   }
-  return { current, version, kind, suggestion, date, changes, kept, warnings };
+  return { current, version, kind, prerelease, suggestion, date, changes, kept, warnings };
 }
 
 /** tools/check-version.mjs of `root`, which checks the files it lives beside. */
@@ -345,7 +433,8 @@ function main() {
     },
   });
   const root = opt.root ?? repoRoot;
-  if (positionals.length > 1) throw new Error("usage: prepare.mjs <X.Y.Z|minor|patch> [--dry-run] [--date YYYY-MM-DD]");
+  const usage = "usage: prepare.mjs <X.Y.Z|X.Y.Z-beta.N|minor|patch> [--dry-run] [--date YYYY-MM-DD]";
+  if (positionals.length > 1) throw new Error(usage);
   const [wanted] = positionals;
   if (!wanted) {
     const current = appVersion(root);
@@ -356,7 +445,7 @@ function main() {
             `Run: node tools/release/prepare.mjs ${s.bump} --dry-run`
         : "CHANGELOG.md's Unreleased section is empty: there is nothing to release.",
     );
-    console.log("usage: prepare.mjs <X.Y.Z|minor|patch> [--dry-run] [--date YYYY-MM-DD]");
+    console.log(usage);
     process.exit(1);
   }
 
@@ -364,7 +453,8 @@ function main() {
   checkVersion(root);
   const plan = planRelease({ root, wanted, ...(opt.date ? { date: opt.date } : {}) });
   const why = plan.suggestion ? `; CHANGELOG.md suggests ${plan.suggestion.bump} (${plan.suggestion.groups.join(", ")})` : "";
-  console.log(`\nKeymotion ${plan.current} → ${plan.version} (${plan.kind}${why}), dated ${plan.date}.`);
+  const kind = plan.prerelease && plan.kind !== "pre-release" ? `${plan.kind} pre-release` : plan.kind;
+  console.log(`\nKeymotion ${plan.current} → ${plan.version} (${kind}${why}), dated ${plan.date}.`);
   for (const w of plan.warnings) console.log(`Warning: ${w}.`);
   const width = Math.max(...plan.changes.map((c) => c.file.length)) + 2;
   console.log(`\n${opt["dry-run"] ? "Would change" : "Changing"}:`);
@@ -382,6 +472,20 @@ function main() {
     writeFileSync(c.path, c.text);
   }
   checkVersion(root);
+  if (plan.prerelease) {
+    console.log(
+      [
+        "",
+        "Next:",
+        `  1. Optionally, a one-line summary under each CHANGELOG's [${plan.version}] heading. Leave Unreleased`,
+        `     as it is: the release after ${plan.version} lists everything again.`,
+        "  2. node tools/release/check-release.mjs   (the CHANGELOG sections are all a pre-release needs)",
+        `  3. Commit on beta/${plan.version} and push it; no pull request, the branch is never merged.`,
+        "     Once CI is green on it: node tools/release/tag.mjs   (on that branch)",
+      ].join("\n"),
+    );
+    return;
+  }
   console.log(
     [
       "",

@@ -8,7 +8,7 @@
 //     every language that has the page;
 //   - the Microsoft Store's "What's new" file of every listing language
 //     (store/whats-new/X.Y.Z.<lang>.txt, tools/store/whats-new.mjs).
-// A pre-release (1.3.0-rc.1) is only on GitHub and needs none of the last two.
+// A pre-release (1.3.0-beta.1) is only on GitHub and needs none of the last two.
 //
 // release.yml and store.yml run it first on a release tag, so a tag without
 // the text fails in seconds; CI runs it on a pull request into main whose
@@ -31,6 +31,20 @@ const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 /** A release version as prepare.mjs makes them: three numbers. */
 export const RELEASE_VERSION = /^\d+\.\d+\.\d+$/;
+
+// A pre-release identifier as Semantic Versioning allows it: a number
+// without a leading zero, or letters, digits and hyphens with a non-digit.
+const IDENTIFIER = "(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)";
+
+/** A pre-release version as prepare.mjs makes them: 1.3.0-beta.1 (no build metadata). */
+export const PRERELEASE_VERSION = new RegExp(`^\\d+\\.\\d+\\.\\d+-${IDENTIFIER}(?:\\.${IDENTIFIER})*$`);
+
+/**
+ * Whether a version is a pre-release (1.3.0-beta.1): a "-" after the three
+ * numbers, as release.yml and store.yml tell them apart. A pre-release is
+ * only on GitHub, marked as a pre-release, and never GitHub's latest release.
+ */
+export const isPrerelease = (version) => /^\d+\.\d+\.\d+-/.test(version);
 
 const CHANGELOG_FILE = /^CHANGELOG(?:\.[A-Za-z]{2,3}(?:-[A-Za-z0-9]+)*)?\.md$/;
 
@@ -94,7 +108,7 @@ export function releaseProblems(root, version) {
   }
   if (!checked.length) problems.push("no CHANGELOG.md");
 
-  if (version.includes("-")) {
+  if (isPrerelease(version)) {
     return { problems, checked, prerelease: true };
   }
 

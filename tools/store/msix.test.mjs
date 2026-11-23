@@ -37,6 +37,11 @@ test("app versions become Store versions with a fourth part 0", () => {
   assert.throws(() => storeVersion("1.1.0-rc.1"), /test version/);
   assert.throws(() => storeVersion("1.70000.0"), /65535/);
   assert.throws(() => storeVersion("v1.0.0"), /not a version/);
+  // A test package of a pre-release (CI on a beta branch) takes its three numbers.
+  assert.equal(storeVersion("1.3.0-beta.1", { allowZero: true, allowPrerelease: true }), "1.3.0.0");
+  assert.equal(storeVersion("1.3.0", { allowPrerelease: true }), "1.3.0.0");
+  assert.throws(() => storeVersion("1.3.0-beta.1", { allowZero: true }), /test version/);
+  assert.throws(() => storeVersion("1.70000.0-beta.1", { allowPrerelease: true }), /65535/);
 });
 
 test("package versions given by hand are checked", () => {
