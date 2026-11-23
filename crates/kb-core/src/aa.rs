@@ -222,6 +222,8 @@ impl OutputPort for HidChannel {
 #[derive(Debug, Default)]
 struct Watch {
     unexpected: u64,
+    /// Of those, the keyboard's own notices (`55 FA`, `55 FB`, `55 FC`).
+    notices: u64,
     resets: u64,
 }
 
@@ -229,6 +231,9 @@ impl Watch {
     fn note(&mut self, report: &[u8]) {
         self.unexpected += 1;
         let notice = notify::notice(report);
+        if notice.is_some() {
+            self.notices += 1;
+        }
         if notice == Some(notify::Notice::Reset) {
             self.resets += 1;
         }
@@ -434,7 +439,7 @@ const UNFINISHED_WRITE: &str = "a write to the keyboard did not finish; read it 
 
 /// Levels in range for a write. Reads may show 0 or 6 (other tools,
 /// sibling boards); the keyboard is only ever sent 1–5.
-fn levels_in_range(e: AaEffect) -> AaEffect {
+pub fn levels_in_range(e: AaEffect) -> AaEffect {
     let fit = |v: u8| v.clamp(effect::MIN_LEVEL, effect::MAX_LEVEL);
     AaEffect { brightness: fit(e.brightness), speed: fit(e.speed), ..e }
 }
@@ -526,6 +531,13 @@ impl<P: OutputPort> AaKeyboard<P> {
     /// tools cannot be found by process name).
     pub fn unexpected_reports(&self) -> u64 {
         self.watch.unexpected
+    }
+
+    /// Of [`Self::unexpected_reports`], the keyboard's own notices (a reset,
+    /// sleep, a status or calibration report): what is left are replies to
+    /// requests this driver did not make.
+    pub fn notices_reported(&self) -> u64 {
+        self.watch.notices
     }
 
     /// How often the keyboard reported a reset (`55 FC 05`).

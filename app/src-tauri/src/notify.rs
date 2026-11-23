@@ -27,7 +27,9 @@ static REGISTERED: AtomicBool = AtomicBool::new(false);
 /// `dir`). Call once at start, before anything is shown. The Store build
 /// needs none: its package gives notifications its name and logo.
 pub fn register(identifier: &str, dir: &Path) {
-    if crate::channel::store() {
+    // The keyboard simulator writes nothing outside its own folders (its
+    // notifications keep the development name).
+    if crate::channel::store() || crate::simulated() {
         return;
     }
     let icon = dir.join(ICON_FILE);

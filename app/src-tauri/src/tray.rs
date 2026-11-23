@@ -111,10 +111,21 @@ pub struct Background {
     /// The window was minimized when last looked at.
     minimized: AtomicBool,
     refresh: Mutex<Option<Sender<()>>>,
+    /// The keyboard simulator runs: starting with Windows belongs to the
+    /// installed copy, whose `Run` value is neither read nor written.
+    simulated: bool,
 }
+
+/// The keyboard simulator does not touch starting with Windows.
+pub const ERR_START_SIMULATED: &str =
+    "not with the keyboard simulator: starting with Windows belongs to the installed copy";
 
 impl Background {
     pub fn open(dir: Option<PathBuf>) -> Arc<Self> {
+        Self::open_as(dir, crate::simulated())
+    }
+
+    fn open_as(dir: Option<PathBuf>, simulated: bool) -> Arc<Self> {
         let stored = dir.as_deref().and_then(|d| settings::load::<Stored>(d, FILE, VERSION)).unwrap_or_default();
         Arc::new(Self {
             stored: Mutex::new(stored),
@@ -125,6 +136,7 @@ impl Background {
             texts_received: AtomicBool::new(false),
             minimized: AtomicBool::new(false),
             refresh: Mutex::new(None),
+            simulated,
         })
     }
 
@@ -144,6 +156,14 @@ impl Background {
 
     pub fn settings(&self) -> BackgroundSettings {
         let close_to_tray = self.stored().close_to_tray;
+        if self.simulated {
+            return BackgroundSettings {
+                close_to_tray,
+                start_with_windows: false,
+                start_turned_off: false,
+                start_locked: true,
+            };
+        }
         if crate::channel::store() {
             use kb_winsys::startup::TaskState;
             let state = kb_winsys::startup::task_state(crate::channel::STARTUP_TASK)
@@ -207,6 +227,12 @@ impl Background {
         if wanted.close_to_tray != now.close_to_tray {
             self.save(Stored { close_to_tray: wanted.close_to_tray })?;
             tracing::info!(close_to_tray = wanted.close_to_tray, "background setting");
+        }
+        if self.simulated {
+            if wanted.start_with_windows {
+                return Err(ERR_START_SIMULATED.into());
+            }
+            return Ok(self.settings());
         }
         if crate::channel::store() {
             self.configure_task(now, wanted.start_with_windows)?;
@@ -1074,6 +1100,22 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
 mod tests {
     use super::*;
     use jiff::civil::date;
+
+    #[test]
+    fn the_simulator_leaves_starting_with_windows_alone() {
+        let dir = std::env::temp_dir().join(format!("keymotion-tray-sim-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let b = Background::open_as(Some(dir.clone()), true);
+        let s = b.settings();
+        assert!(!s.start_with_windows && s.start_locked && !s.start_turned_off, "{s:?}");
+        let wanted = BackgroundSettings { start_with_windows: true, ..s };
+        assert_eq!(b.configure(wanted).unwrap_err(), ERR_START_SIMULATED);
+        // Closing to the tray is the simulator's own setting.
+        let wanted = BackgroundSettings { close_to_tray: !s.close_to_tray, ..s };
+        assert_eq!(b.configure(wanted).unwrap().close_to_tray, !s.close_to_tray);
+        assert_eq!(Background::open_as(Some(dir.clone()), true).settings().close_to_tray, !s.close_to_tray);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn a_start_for_an_agent_is_hidden_but_not_a_start_with_windows() {

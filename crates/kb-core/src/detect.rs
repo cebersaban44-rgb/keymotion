@@ -431,7 +431,9 @@ fn classify_among(
         verdicts.iter().position(|(k, _)| *k == judged(m)).expect("every candidate has a verdict")
     };
 
-    for (iface, candidates) in interfaces.iter().zip(&candidates) {
+    // Collections whose layout was read: a vendor channel of some family.
+    let mut judged_channel = vec![false; interfaces.len()];
+    for (i, (iface, candidates)) in interfaces.iter().zip(&candidates).enumerate() {
         // Only the cable's vendor channels have a layout to check: nothing
         // is sent to the receiver or over Bluetooth yet.
         let usb: Vec<&InterfaceMatch<'static>> =
@@ -441,6 +443,7 @@ fn classify_among(
             continue;
         }
         let Some(desc) = descriptor(iface) else { continue };
+        judged_channel[i] = true;
         for m in &usb {
             let fits = if m.role == InterfaceRole::Standard {
                 // Not a channel of this family, but maybe one of another
@@ -476,7 +479,7 @@ fn classify_among(
     let verdict = |m: &InterfaceMatch<'static>| &verdicts[at(&verdicts, m)].1;
     let mut chosen: Vec<Option<InterfaceMatch<'static>>> = Vec::with_capacity(interfaces.len());
     let mut status: Vec<Status> = Vec::with_capacity(interfaces.len());
-    for c in &candidates {
+    for (c, &judged) in candidates.iter().zip(&judged_channel) {
         // A collection whose IDs and name match a cable mode belongs to a
         // cable mode or to none: a receiver mode behind the same IDs is
         // never the fallback for a rejected cable family.
@@ -486,6 +489,11 @@ fn classify_among(
             .iter()
             .filter(|m| !cable || m.mode.kind == ConnectionKind::Usb)
             .filter(|m| !verdict(m).rejected)
+            // A vendor channel whose layout was read is not another family's
+            // plain collection unless that family has a channel that fits:
+            // a "04 xx" command channel with the wrong layout does not make
+            // an "AA" keyboard without channels appear.
+            .filter(|m| !judged || m.role != InterfaceRole::Standard || verdict(m).fitting > 0)
             .min_by_key(|m| Reverse(verdict(m).fitting))
             .copied();
         status.push(match (&pick, c.is_empty()) {
@@ -727,8 +735,8 @@ mod tests {
         assert!(found.unknown.is_empty());
     }
 
-    // This test is about a model without an "AA" mode (the shipped model
-    // file has none yet): another family's layout is not the model.
+    // Another family's layout is not the model: neither of its families
+    // fits these channels.
     #[test]
     fn a_name_match_with_another_layout_asks_for_support() {
         // Another command family behind the same ids and name: its screen
@@ -778,8 +786,7 @@ mod tests {
 
     /// The AK980 PRO with an "AA" mode next to its "04 xx" one, on its old
     /// PID (AJAZZ's tools know "AA" firmware there too) and on firmware
-    /// 769's. Not shipped: the model file gets its "AA" mode with the
-    /// driver.
+    /// 769's, with other capabilities than the shipped model file's.
     const TWO_FAMILIES: &str = r#"
         id = "test-ak980"
         name = "AK980 PRO (test)"
@@ -910,21 +917,82 @@ mod tests {
         assert_eq!(k.capabilities(), vec![Capability::Screen]);
     }
 
+    /// The shipped AK980 PRO without its "AA" modes: the model file as it
+    /// was before the "AA" driver.
+    fn ff13_only() -> &'static [Model] {
+        let mut m = shipped_ak980();
+        let ff13: Vec<ModeSpec> =
+            m.modes.iter().filter(|mode| m.protocol_of(mode) == Protocol::SonixFf13).cloned().collect();
+        m.modes = ff13;
+        catalogue_of(vec![m])
+    }
+
     #[test]
     fn an_aa_board_on_the_old_pid_asks_for_support_without_an_aa_mode() {
-        // The shipped model file: only the "04 xx" mode behind 0x8009.
-        let found = classify(&aa_board(0x8009), &[], either_family);
+        // Only the "04 xx" mode behind 0x8009.
+        let found = classify_among(&aa_board(0x8009), &[], ff13_only(), either_family);
         assert!(found.keyboards.is_empty());
         assert_eq!(found.unknown.len(), 1);
         let k = &found.unknown[0];
         assert_eq!(k.key(), "0C45:8009:usb");
         assert_eq!(k.release, 0x0301);
         assert_eq!(k.collections.len(), 5, "every collection's details for the request");
-        // On firmware 769's own id it matches no model at all (yet).
-        let found = classify(&aa_board(0x8039), &[], |i| panic!("read {:04X}", i.usage_page));
+        // On firmware 769's own id it matches no model at all.
+        let found = classify_among(&aa_board(0x8039), &[], ff13_only(), |i| panic!("read {:04X}", i.usage_page));
         assert!(found.keyboards.is_empty());
         assert_eq!(found.unknown.len(), 1);
         assert_eq!(found.unknown[0].key(), "0C45:8039:usb");
+    }
+
+    #[test]
+    fn the_shipped_model_drives_both_families_by_their_layouts() {
+        // Firmware 769 on its own id, and "AA" firmware on the old one.
+        for pid in [0x8039, 0x8009] {
+            let found = classify(&aa_board(pid), &[], either_family);
+            assert!(found.unknown.is_empty(), "{pid:04X}");
+            assert_eq!(found.keyboards.len(), 1, "{pid:04X}");
+            let k = &found.keyboards[0];
+            assert_eq!((k.protocol(), k.mode.pid), (Protocol::AjazzAa, pid));
+            assert_eq!(k.command.as_ref().unwrap().usage_page, 0xFF68);
+            assert_eq!(k.display.as_ref().unwrap().usage_page, 0xFF67);
+            assert_eq!(k.record_id(), "ajazz-ak980-pro.aa");
+            assert_eq!(k.firmware, Some(0x0301));
+            assert!(!k.mode.verified && k.mode.verified_firmware.is_empty(), "nothing tried on a keyboard");
+            let caps = k.capabilities();
+            for c in [
+                Capability::Lighting,
+                Capability::PerKeyRgb,
+                Capability::Keymap,
+                Capability::Macros,
+                Capability::Screen,
+                Capability::Clock,
+                Capability::Battery,
+            ] {
+                assert!(caps.contains(&c), "{pid:04X}: {c:?}");
+            }
+            assert!(!caps.contains(&Capability::Options));
+        }
+        // The owner's "04 xx" board on 0x8009 still wins on its layouts,
+        // with today's record id and capabilities.
+        let found = classify(&ak980_pro(), &[], either_family);
+        assert!(found.unknown.is_empty());
+        assert_eq!(found.keyboards.len(), 1);
+        let k = &found.keyboards[0];
+        assert_eq!(k.protocol(), Protocol::SonixFf13);
+        assert_eq!((k.record_id(), k.key()), ("ajazz-ak980-pro".to_string(), "ajazz-ak980-pro:Usb".to_string()));
+        assert_eq!(k.command.as_ref().unwrap().usage_page, 0xFF13);
+        assert_eq!(k.display.as_ref().unwrap().usage_page, 0xFF68);
+        assert!(!k.capabilities().contains(&Capability::Battery));
+        // Unreadable layouts: the first mode in the model file, the
+        // "04 xx" one, as before (opening checks the layout again).
+        let found = classify(&ak980_pro(), &[], |_| None);
+        assert_eq!(found.keyboards.len(), 1);
+        assert_eq!(found.keyboards[0].protocol(), Protocol::SonixFf13);
+        // Both on the cable: two keyboards, so nothing is written.
+        let both: Vec<HidInterface> = ak980_pro().into_iter().chain(aa_board(0x8039)).collect();
+        let found = classify(&both, &[], either_family);
+        assert_eq!(found.keyboards.len(), 2);
+        assert_eq!(wired_count(&found.keyboards), 2);
     }
 
     #[test]

@@ -47,6 +47,7 @@ const mock = {
     own: null,
     goingBack: null,
     factoryAckNeeded: false,
+    clockAckNeeded: false,
   } as LiveState,
   /** The user accepted that live cards erase the factory animation. */
   factoryAck: false,

@@ -280,14 +280,151 @@ pub struct KeyboardLimits {
     pub key_actions: KeyActionSupport,
 }
 
-/// Whether the battery charges, as the keyboard reports it.
+/// Whether the battery charges, as the keyboard reports it. Only what is
+/// known: the "AA" device information's charge status 1. Its other values
+/// (2 on the cable with a full battery, 0 over the receiver) mean nothing
+/// sure yet, so they report no state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
-#[expect(dead_code, reason = "the \"AA\" driver reports it (device information); no driver does yet")]
 pub enum ChargeState {
     Charging,
-    Full,
+}
+
+/// Why Keymotion writes nothing to the "AA" keyboard on the cable. Every
+/// write refuses with the matching backend error (device.rs `WriteBlock`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+#[ts(export)]
+pub enum ReadOnlyReason {
+    /// Its answers did not look as expected, or the full read did not
+    /// finish (`reasons`: English, for the diagnostics report).
+    NotSane { reasons: Vec<String> },
+    /// A firmware update was left unfinished: AJAZZ's tool has to finish it.
+    UpdatePending,
+    /// The backup of its settings could not be saved (`error`: English).
+    NoBackup { error: String },
+}
+
+/// Why live lights (gauges, music, games, agents, previews) do not show on
+/// the "AA" keyboard: it shows them only in per-key mode, which the app
+/// switches to and back (plan K-4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+#[ts(export)]
+pub enum LiveLightsOff {
+    /// The colour of the keyboard's effect is not known, so it could not be
+    /// put back afterwards: setting the lighting once in Keymotion fixes it.
+    ColorUnknown,
+    /// The keyboard is read-only ([`ReadOnlyReason`]).
+    ReadOnly,
+    /// A write was refused (`reason`: the backend error, such as "untested
+    /// keyboard firmware 3.01" or "more than one keyboard on the USB cable").
+    Blocked { reason: String },
+    /// The switch failed (`error`: the backend error).
+    Failed { error: String },
+}
+
+/// What the app knows about an "AA" keyboard on the cable beyond the model
+/// file ([`KeyboardInfo::aa_status`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AaStatus {
+    /// Set: nothing is written to it, and why.
+    pub read_only: Option<ReadOnlyReason>,
+    /// Set: live lights do not show on it, and why.
+    pub live_lights_off: Option<LiveLightsOff>,
+    /// Live lights hold it in per-key mode now; its own effect comes back
+    /// 30 s after they end.
+    pub live_armed: bool,
+    /// Replies nobody asked for keep coming: another program (AJAZZ's web
+    /// page?) seems to talk to the keyboard. Nothing is blocked.
+    pub other_program_suspected: bool,
+    /// The backup of its settings taken before the first write (file name
+    /// in the data folder's `keyboard-backups`).
+    pub backup: Option<String>,
+    /// The colour of its effect is known (the keyboard reports white after
+    /// any write, so only one Keymotion wrote is).
+    pub effect_color_known: bool,
+}
+
+/// Why a keyboard backup was taken.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum KeyboardBackupReason {
+    /// Before Keymotion first wrote to the keyboard.
+    FirstConnect,
+    /// Before a restore.
+    BeforeRestore,
+}
+
+/// A backup of an "AA" keyboard's settings (`keyboard_backups`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct KeyboardBackupInfo {
+    /// Its file name: what `keyboard_backup_restore` takes.
+    pub file: String,
+    #[ts(type = "number")]
+    pub saved_at_ms: u64,
+    pub reason: KeyboardBackupReason,
+    pub record_id: String,
+    /// Firmware version as people read it ("3.01").
+    pub firmware: String,
+    /// Taken from the keyboard on the cable now (same USB ids and
+    /// firmware): only such a backup can be restored.
+    pub matches: bool,
+    /// It knows its effect's colour. If not, a restore that changes the
+    /// effect needs one (`color` of `keyboard_backup_restore`).
+    pub color_known: bool,
+}
+
+/// A key a restore left as the keyboard has it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct KeptKey {
+    pub layer: KeymapLayer,
+    /// The "AA" keymap slot.
+    pub slot: u8,
+    /// The key's LED (its id in the app), when the slot is a key.
+    pub led: Option<u8>,
+    /// Why (English).
+    pub reason: String,
+}
+
+/// What a restore wrote.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct KeyboardRestoreResult {
+    /// The sections written, in English ("base layer", "Fn layer",
+    /// "effect", "per-key table", "macros"); unchanged ones are not.
+    pub written: Vec<String>,
+    pub kept: Vec<KeptKey>,
+}
+
+impl From<kb_core::aa::RestoreReport> for KeyboardRestoreResult {
+    fn from(r: kb_core::aa::RestoreReport) -> Self {
+        Self {
+            written: r.written.iter().map(|s| s.to_string()).collect(),
+            kept: r
+                .kept
+                .into_iter()
+                .map(|k| KeptKey {
+                    layer: match k.layer {
+                        Layer::Base => KeymapLayer::Base,
+                        Layer::Fn => KeymapLayer::Fn,
+                    },
+                    slot: k.slot,
+                    led: k.led,
+                    reason: k.reason,
+                })
+                .collect(),
+        }
+    }
 }
 
 /// What a keyboard reports about itself on the cable (driver.rs
@@ -329,6 +466,11 @@ pub struct KeyboardInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub device: Option<DeviceReport>,
+    /// An "AA" keyboard on the cable, once the app read it: read-only or
+    /// not, live lights, the backup, the conflict hint. Absent otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub aa_status: Option<AaStatus>,
     pub model_name: String,
     pub vendor: String,
     pub layout: String,
@@ -384,6 +526,7 @@ impl KeyboardInfo {
             limits: crate::driver::family::limits(protocol, device.as_ref()),
             battery_over_usb: crate::driver::family::battery_over_usb(protocol),
             device,
+            aa_status: None,
             model_name: m.name.clone(),
             vendor: m.vendor.clone(),
             layout: m.layout.clone(),
@@ -1575,6 +1718,11 @@ pub struct LiveState {
     /// the GIF page probably still shows the factory animation, which the
     /// first card erases for good. Asked once.
     pub factory_ack_needed: bool,
+    /// The keyboard on the cable would lose its clock page with the next
+    /// upload (an "AA" keyboard whose screen the app never wrote, and the
+    /// user has not said yes: `screen_ack_clock_page`). No card goes and
+    /// the screen does not go back to the own picture until then.
+    pub clock_ack_needed: bool,
 }
 
 /// What the "Çalan şarkı" source does when the music stops.
