@@ -440,7 +440,7 @@ async fn agents_connect(
     apps: Option<Vec<AgentApp>>,
 ) -> Result<AgentConnectOutcome, String> {
     tracing::debug!("ipc: agents_connect");
-    agents_blocking(agents, move |a| a.connect(&token, apps.as_deref())).await?
+    agents_blocking(agents, move |a| a.connect(&token, apps.as_deref())).await
 }
 
 /// What disconnecting a coding app would take away. Nothing is written.

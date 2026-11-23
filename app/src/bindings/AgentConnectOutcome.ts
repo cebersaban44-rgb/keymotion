@@ -31,4 +31,14 @@ pathAdded: boolean,
 /**
  * Why it did not, in the backend's words.
  */
-pathError: string | null, connections: AgentConnections, state: AgentsState, };
+pathError: string | null, 
+/**
+ * Agent access could not be saved as on (the files above were
+ * written all the same), in the backend's words.
+ */
+saveError: string | null, connections: AgentConnections, 
+/**
+ * `settings.enabled`: on when at least one coding app connected, or
+ * none had anything to connect; off when every one failed.
+ */
+state: AgentsState, };

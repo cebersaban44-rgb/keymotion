@@ -8,4 +8,9 @@ export type AgentPathInfo = { dir: string,
  * It is on the user's PATH: terminals started from now on find
  * keymotion-cli by its name.
  */
-onPath: boolean, };
+onPath: boolean, 
+/**
+ * The PATH could not be read (it is not text, access was refused):
+ * nothing will be written to it. In the backend's words.
+ */
+error: string | null, };

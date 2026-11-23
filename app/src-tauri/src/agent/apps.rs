@@ -16,8 +16,10 @@
 //!   the new plan.
 //! * The GitHub copy also puts its `bin` folder on the user's PATH, so
 //!   terminals find keymotion-cli by its name (owner's decision, plan §12.1
-//!   row 6): when the user turns access on, never by itself. Turning access
-//!   off leaves it; the uninstaller takes it away; updates leave it alone.
+//!   row 6): when the user turns access on, never by itself, and only when
+//!   keymotion-cli is there. Turning access off leaves it; the uninstaller
+//!   takes it away (only if Keymotion added it); updates leave it alone. A
+//!   PATH that does not read is never written (`kb_winsys::user_path`).
 
 use crate::dto::{
     AgentApp, AgentAppPlan, AgentAppState, AgentAppStatus, AgentCli, AgentCliKind, AgentConnectPlan, AgentConnections,
@@ -35,21 +37,32 @@ const TRIES: usize = 3;
 /// The user's PATH, as the page needs it (the registry in the app, a fake in
 /// tests).
 pub trait UserPath: Send + Sync {
-    fn has(&self, dir: &Path) -> bool;
+    /// `dir` is on it; an error when it cannot be read.
+    fn has(&self, dir: &Path) -> Result<bool, String>;
     /// Put `dir` at its end; whether it changed.
     fn add(&self, dir: &Path) -> Result<bool, String>;
+    /// Tell open programs it changed (without waiting for them).
+    fn announce(&self);
 }
 
 /// The user's own PATH in the registry (`kb_winsys::user_path`).
 pub struct WindowsPath;
 
 impl UserPath for WindowsPath {
-    fn has(&self, dir: &Path) -> bool {
+    fn has(&self, dir: &Path) -> Result<bool, String> {
         kb_winsys::user_path::has(dir)
     }
 
     fn add(&self, dir: &Path) -> Result<bool, String> {
         kb_winsys::user_path::add(dir)
+    }
+
+    fn announce(&self) {
+        // A program that hangs costs the broadcast seconds: not ours to wait.
+        let spawned = std::thread::Builder::new().name("path-announce".into()).spawn(kb_winsys::user_path::announce);
+        if let Err(e) = spawned {
+            tracing::warn!("PATH change not announced: {e}");
+        }
     }
 }
 
@@ -81,6 +94,8 @@ impl Place {
             }
             _ => (exe_dir.map(|d| Cli { path: d.join("keymotion-cli.exe"), kind: CliKind::Dev }), None),
         };
+        // Trying the page with a test folder never touches the real PATH.
+        let bin = bin.filter(|_| super::test_home().is_none());
         Place { homes: super::homes(), cli, bin }
     }
 
@@ -99,7 +114,13 @@ impl Place {
     }
 
     fn path_info(&self, user_path: &dyn UserPath) -> Option<AgentPathInfo> {
-        self.bin.as_ref().map(|b| AgentPathInfo { dir: b.display().to_string(), on_path: user_path.has(b) })
+        self.bin.as_ref().map(|b| {
+            let (on_path, error) = match user_path.has(b) {
+                Ok(on) => (on, None),
+                Err(e) => (false, Some(e)),
+            };
+            AgentPathInfo { dir: b.display().to_string(), on_path, error }
+        })
     }
 
     /// The keymotion-cli to connect with, or why there is none.
@@ -146,6 +167,7 @@ fn problem(e: SetupError) -> AgentProblem {
         ErrorKind::Io => AgentProblemKind::Io,
         ErrorKind::Unsupported => AgentProblemKind::Unsupported,
         ErrorKind::Changed => AgentProblemKind::Changed,
+        ErrorKind::Partial => AgentProblemKind::Partial,
     };
     AgentProblem { kind, message: e.message }
 }
@@ -310,7 +332,8 @@ fn chosen(homes: &Homes, apps: Option<&[AgentApp]>) -> (Vec<Agent>, Vec<AgentApp
 /// What turning access on would write, and the kb-hooks plans behind it.
 fn build(place: &Place, user_path: &dyn UserPath, apps: Option<&[AgentApp]>) -> (Vec<(Agent, Plan)>, AgentConnectPlan) {
     let cli_info = place.cli_info();
-    let path = place.path_info(user_path).filter(|p| !p.on_path);
+    // PATH only for a keymotion-cli that is there: no dead entries.
+    let path = place.path_info(user_path).filter(|p| !p.on_path && place.usable_cli().is_ok());
     let mut plans = Vec::new();
     let mut shown = Vec::new();
     let mut not_found = Vec::new();
@@ -336,7 +359,8 @@ fn build(place: &Place, user_path: &dyn UserPath, apps: Option<&[AgentApp]>) -> 
             }
         }
     }
-    let empty = path.is_none() && shown.iter().all(|p| p.problem.is_some() || p.changes.is_empty());
+    let empty = path.as_ref().is_none_or(|p| p.error.is_some())
+        && shown.iter().all(|p| p.problem.is_some() || p.changes.is_empty());
     let token = token(&shown, path.as_ref(), cli_info.as_ref());
     (plans, AgentConnectPlan { token, apps: shown, not_found, path, cli: cli_info, empty })
 }
@@ -355,8 +379,15 @@ pub struct Applied {
     pub path_error: Option<String>,
 }
 
+/// Nothing left to do and nothing in the way: what a plan approved twice
+/// (a double click) finds the second time.
+fn finished(plan: &AgentConnectPlan) -> bool {
+    plan.empty && plan.apps.iter().all(|p| p.problem.is_none())
+}
+
 /// Write what the page showed (`token`). `Err` with the plan as it is now
-/// when that is not what was shown: nothing was written.
+/// when that is not what was shown: nothing was written. When it is all
+/// done already (approved twice), that is success.
 pub fn connect(
     place: &Place,
     user_path: &dyn UserPath,
@@ -364,7 +395,7 @@ pub fn connect(
     apps: Option<&[AgentApp]>,
 ) -> Result<Applied, Box<AgentConnectPlan>> {
     let (plans, shown) = build(place, user_path, apps);
-    if shown.token != token {
+    if shown.token != token && !finished(&shown) {
         return Err(Box::new(shown));
     }
     let mut done =
@@ -389,6 +420,13 @@ pub fn connect(
         }
     }
     Ok(done)
+}
+
+/// Whether turning access on is what the user approved: at least one
+/// coding app connected, or none failed (nothing to connect, or connected
+/// already). Not when every one of them failed.
+pub fn access_follows(done: &Applied) -> bool {
+    !done.connected.is_empty() || done.failed.is_empty()
 }
 
 /// Apply `plan`; when the coding app wrote its file meanwhile, plan again
@@ -483,24 +521,29 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
-    /// A PATH in memory.
+    /// A PATH in memory: its folders, whether adding fails, whether it
+    /// does not even read.
     #[derive(Default)]
-    struct FakePath(Mutex<Vec<PathBuf>>, Mutex<bool>);
+    struct FakePath(Mutex<Vec<PathBuf>>, Mutex<bool>, Mutex<bool>);
 
     impl UserPath for FakePath {
-        fn has(&self, dir: &Path) -> bool {
-            self.0.lock().unwrap().iter().any(|d| d == dir)
+        fn has(&self, dir: &Path) -> Result<bool, String> {
+            if *self.2.lock().unwrap() {
+                return Err("Path is not text in the registry".into());
+            }
+            Ok(self.0.lock().unwrap().iter().any(|d| d == dir))
         }
         fn add(&self, dir: &Path) -> Result<bool, String> {
             if *self.1.lock().unwrap() {
                 return Err("PATH is full".into());
             }
-            if self.has(dir) {
+            if self.has(dir)? {
                 return Ok(false);
             }
             self.0.lock().unwrap().push(dir.to_path_buf());
             Ok(true)
         }
+        fn announce(&self) {}
     }
 
     fn temp(name: &str) -> PathBuf {
@@ -676,7 +719,53 @@ mod tests {
         assert!(home.join(r".codex\rules\mine.rules").is_file());
         assert!(!home.join(r".codex\rules\keymotion.rules").exists());
         assert!(plan_disconnect(&place, AgentApp::Codex).changes.is_empty());
-        assert!(path.has(place.bin.as_ref().unwrap()), "PATH stays");
+        assert!(path.has(place.bin.as_ref().unwrap()).unwrap(), "PATH stays");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn no_path_entry_for_a_keymotion_cli_that_is_not_there() {
+        let home = temp("no-cli");
+        let place = github(&home);
+        std::fs::remove_file(place.cli.as_ref().unwrap().path.clone()).unwrap();
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        let path = FakePath::default();
+        let plan = plan_connect(&place, &path, None);
+        assert!(plan.path.is_none(), "a dead entry is never planned");
+        assert_eq!(plan.apps[0].problem.as_ref().map(|p| p.kind), Some(AgentProblemKind::NoCli));
+        let done = connect(&place, &path, &plan.token, None).unwrap();
+        assert!(!done.path_added && path.0.lock().unwrap().is_empty());
+        assert!(!access_follows(&done), "every app failed: access stays as it was");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn a_path_that_does_not_read_is_shown_and_never_written() {
+        let home = temp("bad-path");
+        let place = github(&home);
+        let path = FakePath::default();
+        *path.2.lock().unwrap() = true;
+        let plan = plan_connect(&place, &path, None);
+        let info = plan.path.as_ref().expect("still shown, with why");
+        assert!(info.error.as_deref().is_some_and(|e| e.contains("not text")));
+        assert!(plan.empty, "nothing will be written");
+        let done = connect(&place, &path, &plan.token, None).unwrap();
+        assert!(!done.path_added && done.path_error.is_some());
+        assert!(path.0.lock().unwrap().is_empty());
+        assert!(access_follows(&done), "nothing failed: access goes on for the user's own scripts");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn approving_twice_is_no_error() {
+        let home = temp("twice");
+        let place = github(&home);
+        let path = FakePath::default();
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        let plan = plan_connect(&place, &path, None);
+        assert_eq!(connect(&place, &path, &plan.token, None).unwrap().connected, [AgentApp::ClaudeCode]);
+        let again = connect(&place, &path, &plan.token, None).expect("the second click finds it done");
+        assert_eq!((again.connected, again.failed.len(), again.path_added), (vec![AgentApp::ClaudeCode], 0, false));
         let _ = std::fs::remove_dir_all(&home);
     }
 }

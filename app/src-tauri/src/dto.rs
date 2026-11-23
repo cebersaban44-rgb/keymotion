@@ -3532,6 +3532,9 @@ pub struct AgentPathInfo {
     /// It is on the user's PATH: terminals started from now on find
     /// keymotion-cli by its name.
     pub on_path: bool,
+    /// The PATH could not be read (it is not text, access was refused):
+    /// nothing will be written to it. In the backend's words.
+    pub error: Option<String>,
 }
 
 /// The coding apps and the command line tool (`agents_connections`).
@@ -3607,6 +3610,9 @@ pub enum AgentProblemKind {
     /// keymotion-cli is not where it should be (a development build that
     /// did not build it).
     NoCli,
+    /// Writing failed part way and not all of it could be put back: some
+    /// of Keymotion's entries stayed; disconnecting removes them.
+    Partial,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
@@ -3679,7 +3685,12 @@ pub struct AgentConnectOutcome {
     pub path_added: bool,
     /// Why it did not, in the backend's words.
     pub path_error: Option<String>,
+    /// Agent access could not be saved as on (the files above were
+    /// written all the same), in the backend's words.
+    pub save_error: Option<String>,
     pub connections: AgentConnections,
+    /// `settings.enabled`: on when at least one coding app connected, or
+    /// none had anything to connect; off when every one failed.
     pub state: AgentsState,
 }
 

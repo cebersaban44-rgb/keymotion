@@ -3,4 +3,4 @@
 /**
  * Why a coding app could not be connected or disconnected.
  */
-export type AgentProblemKind = "invalid" | "io" | "unsupported" | "changed" | "noCli";
+export type AgentProblemKind = "invalid" | "io" | "unsupported" | "changed" | "noCli" | "partial";
