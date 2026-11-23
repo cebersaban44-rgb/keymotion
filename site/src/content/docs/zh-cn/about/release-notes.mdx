@@ -1,6 +1,6 @@
 ---
 title: 发行说明
-description: 在哪里查看每个 Keymotion 版本的变更，以及 1.1.0、1.0.0 和首个版本 0.1.0 的简要说明。
+description: 在哪里查看每个 Keymotion 版本的变更，以及 1.2.0、1.1.0、1.0.0 和首个版本 0.1.0 的简要说明。
 ---
 
 import Screenshot from "~/components/Screenshot.astro";
@@ -11,7 +11,7 @@ import Screenshot from "~/components/Screenshot.astro";
 
 - **GitHub 上**。[发布页面](https://github.com/cebersaban44-rgb/keymotion/releases)中，每个版本的说明都与它的安装程序以及安装程序的 SHA-256 校验值放在一起。
 - **Keymotion 中**。Keymotion 发现新版本后，在**设置**的**关于**部分单击**新增内容**，或在页面上方的横条中单击**立即安装**。更新窗口会在**新增内容**下显示说明；如果该版本有应用当前语言的说明，就以该语言显示，否则会显示一个 **GitHub 上的发行说明**链接。
-- **完整历史**。所有版本都以英文列在 GitHub 上的 [`CHANGELOG.md`](https://github.com/cebersaban44-rgb/keymotion/blob/main/CHANGELOG.md) 中，土耳其文版本见 [`CHANGELOG.tr.md`](https://github.com/cebersaban44-rgb/keymotion/blob/main/CHANGELOG.tr.md)。
+- **完整历史**。所有版本都以英文列在 GitHub 上的 [`CHANGELOG.md`](https://github.com/cebersaban44-rgb/keymotion/blob/main/CHANGELOG.md) 中，土耳其文版本见 [`CHANGELOG.tr.md`](https://github.com/cebersaban44-rgb/keymotion/blob/main/CHANGELOG.tr.md)。从 1.2.0 起的中文更新日志见 [`CHANGELOG.zh-CN.md`](https://github.com/cebersaban44-rgb/keymotion/blob/main/CHANGELOG.zh-CN.md)。
 
 <Screenshot name="update-whats-new" alt="更新窗口在“新增内容”下显示新版本的说明" />
 
@@ -24,6 +24,21 @@ import Screenshot from "~/components/Screenshot.astro";
 - **新版本何时推出**。新版本会在同一天在 GitHub 和 Microsoft Store 上推出：GitHub 上的发布会等到 Microsoft 审核完 Microsoft Store 版之后。只有紧急修复（崩溃、安全问题）可能会先在 GitHub 上推出；它的发行说明会注明这一点。
 - **测试版**（版本号中带“-rc”）只在 GitHub 上提供。
 - **同一时间只运行一个 Keymotion**。如果两个版本都已安装，它们使用相同的设置。打开 GitHub 版会改为打开 Microsoft Store 版，随 Windows 启动也会改由 Microsoft Store 版完成。此时，Microsoft Store 版的“设置 › 关于”中会显示“GitHub 版”一行，其中的按钮可以打开 Windows 的“已安装的应用”，你可以在那里卸载 GitHub 版；要保留设置，不要勾选 **Also delete my settings and saved data**（同时删除我的设置和已保存的数据）。
+
+## Keymotion 1.2.0
+
+Keymotion 换上了 Windows 11 风格的新外观，还带来了新工具：音乐模式、带英雄联盟灯光的游戏时段、按应用切换配置文件，以及为 Claude Code、Codex 等 AI 编程智能体提供的灯光提示。应用现在也有俄语和简体中文版本。
+
+- **新外观**。各页面像 Windows 设置一样列在左侧窗格中，窗格顶部是已连接的键盘和可筛选列表的搜索框。各项设置整行显示，按钮、开关和列表都与 Windows 一致。**概览**以键盘的玻璃面板开头，**灯光**以图库形式显示效果，**屏幕**页的素材库改为图片网格。键盘图示及其灯光保持不变。
+- **音乐模式**。在**工具 › 音乐模式**中，按键灯光会通过 USB 随电脑播放的声音变化：**光柱**、**节拍**、**响度**或**波浪**，颜色由你选择。声音停止后，键盘自己的灯光会恢复。Keymotion 只读取声音此刻的响度：不会录制任何内容，也不使用麦克风。参见[音乐模式](/keymotion/zh-cn/guide/music-mode/)。
+- **游戏时段**。在**工具 › 游戏时段**中，Keymotion 会识别你何时在玩游戏。游戏来自你的启动器中的游戏列表（Steam、Epic Games、GOG、Xbox、Riot Games、Xbox Game Bar）以及你自己的标记。开启实时屏幕后，游戏开始时会向键盘屏幕发送一张卡片，结束时发送结算卡片；还可以点亮游戏用到的按键。如果担心某个游戏的反作弊程序介意，可以开启**游戏时不向键盘发送任何内容**，键盘会保持自己的灯光。参见[游戏时段](/keymotion/zh-cn/guide/game-session/)。
+- **英雄联盟灯光**。对局中，根据游戏在你电脑上提供的数据显示：生命值显示在按键上，法力值显示在 F1–F12 键上，阵亡时变为暗红色；胜利、失败、升级、击杀、巨龙、男爵等事件会以你选择的颜色播放动画。这些灯光在游戏列表中英雄联盟（League of Legends）的“**专属灯光**”里设置，可用“**在键盘上试一下**”在键盘上播放。国服（腾讯）未测试。参见[英雄联盟](/keymotion/zh-cn/guide/game-session/#英雄联盟)。
+- **按应用切换配置文件**。在**配置文件 › 按应用切换**中，可以将一个程序或所有游戏关联到某个配置文件，程序在前台时就使用该配置文件。默认只切换逐键颜色，不会向键盘保存任何内容；规则也可以把自定义按键和宏保存到键盘，每天最多 20 次。游戏结束后，键盘会恢复到之前的设置，或切换到你选择的配置文件。参见[按应用切换](/keymotion/zh-cn/guide/profiles/#按应用切换)。
+- **AI 编程智能体**。Claude Code 和 Codex 完成任务、等待你批准、出错或达到使用上限时，可以用键盘灯光提醒你。只需在**工具 › AI 智能体**中开启一次：Keymotion 会先显示将为 Claude Code 和 Codex 添加什么，每种信号的颜色和效果由你选择。智能体通过随应用提供的命令行工具 `keymotion-cli` 与 Keymotion 通信。如果你允许（这几项默认都关闭），它们还可以控制专注计时器、显示某个配置文件的灯光，或在屏幕上显示卡片。你或智能体写的任何内容都不会传到 Keymotion，传过去的只有发生了什么。参见[AI 智能体](/keymotion/zh-cn/guide/ai-agents/)。
+- **俄语和简体中文**。应用、使用指南、安装程序和 README 现在也提供俄语（Русский）和简体中文版本。如果 Windows 使用这四种语言之一，Keymotion 会以该语言启动；在**设置 › 语言**中可以随时切换。译文由 AI 辅助完成，正在等待母语者校对，欢迎指正。中文界面中，键盘显示为国内销售时使用的名称“黑爵 AK980 V2（带屏版）”。
+- **黑爵的新固件**。黑爵 769 固件（3.01）使用另一套命令。如果你的黑爵 AK980 V2（带屏版）装有这个固件，Keymotion 现在会说明这一点，不会向键盘发送任何内容，并附有常见问题的链接；计划在之后的更新中支持。参见[要安装黑爵最新的固件吗？](/keymotion/zh-cn/help/faq/#要安装黑爵最新的固件吗)
+- **其他变更**。只有 USB 名称中包含“AK980 PRO”的键盘，才会被视为黑爵 AK980 V2（带屏版）；USB 标识相同的其他 AK980（例如不带屏幕的版本）现在会显示**申请适配**。如果固件版本没有在 Keymotion 上测试过，键盘时钟也会等待你的同意。网站新增了[使用条款](/keymotion/zh-cn/about/terms/)页面。
+- **修复**。在时钟回拨的那一夜，该时间点上的提醒或会议不再提前一小时；某些时区的 Outlook 日历事件不再偏差一小时；一些重复事件不再消失，也不再出现在错误的日期。只插着 2.4G 接收器时，Keymotion 不再说键盘可以正常使用。开启**在键盘上预览**后关闭窗口，预览不再留在按键上。键盘屏幕上以“…”结尾的歌曲、会议或提醒标题，不再以最小字号绘制。
 
 ## Keymotion 1.1.0
 

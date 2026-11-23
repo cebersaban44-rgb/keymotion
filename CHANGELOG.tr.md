@@ -12,6 +12,16 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 
 ## [Yayımlanmamış]
 
+## [1.2.0] - 2026-11-23
+
+Keymotion'ın görünüşü artık Windows 11 biçiminde ve yeni araçları var: müzik
+modu, League of Legends ışıklarıyla oyun oturumu, uygulamaya göre profil ve
+Claude Code, Codex gibi yapay zekâ kodlama ajanları için ışıklar. Uygulama
+artık Rusça ve Basitleştirilmiş Çince olarak da var. Klavyenizde AJAZZ'ın
+yeni 769 klavye yazılımı varsa Keymotion artık bunu açıkça söylüyor ve
+klavyeye hiçbir şey göndermiyor; desteğin sonraki bir güncellemede gelmesi
+planlanıyor.
+
 ### Eklenenler
 
 - **Müzik modu:** Araçlar › **Müzik modu** tuş ışıklarını bilgisayarınızda
@@ -382,7 +392,8 @@ Store 0 ile başlayan sürüm numarası kabul etmediği için bu sürüm 1.0.0.
   yapılacağı, desteklenen ve sırada olabilecek klavyeler, geliştiriciler için
   sayfalar. Ayarlar › Hakkında'dan açılır.
 
-[Yayımlanmamış]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.1.0...develop
+[Yayımlanmamış]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.0...develop
+[1.2.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.0
 [1.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.1.0
 [1.0.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.0.0
 [0.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v0.1.0
