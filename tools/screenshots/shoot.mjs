@@ -10,6 +10,7 @@
 //   node tools/screenshots/shoot.mjs           # everything
 //   node tools/screenshots/shoot.mjs --only lighting-effects,macros --lang tr --theme dark
 //   node tools/screenshots/shoot.mjs --clips   # only the animations
+//   node tools/screenshots/shoot.mjs --only update-strip --out <folder>   # write elsewhere
 //   node tools/screenshots/hero.mjs            # then the README picture
 //
 // Writes:
@@ -48,6 +49,7 @@ const { values: opt } = parseArgs({
     theme: { type: "string" },
     clips: { type: "boolean", default: false },
     "no-clips": { type: "boolean", default: false },
+    out: { type: "string" },
   },
 });
 const only = opt.only ? new Set(opt.only.split(",")) : null;
@@ -176,7 +178,7 @@ for (const lang of langs) {
           const page = await open(shot, lang, theme);
           const png = await page.screenshot({ clip: await area(shot, page), animations: "disabled" });
           await write(
-            join(root, "site", "src", "assets", "screens", lang, theme, `${shot.name}.webp`),
+            join(opt.out ?? join(root, "site", "src", "assets", "screens", lang, theme), `${shot.name}.webp`),
             sharp(png).webp({ quality: 82, effort: 6, smartSubsample: true }),
           );
           await page.context().close();
