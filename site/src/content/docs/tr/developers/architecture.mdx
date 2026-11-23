@@ -61,7 +61,7 @@ Uygulama hiçbir komut ailesini varsaymaz. "04 xx" ile "AA" ailesi arasında de�
 | Kanca | Ne zaman | "04 xx" | "AA" |
 |---|---|---|---|
 | `live_starting` | Bir tutamaçtaki bir akışın ilk canlı karesinden önce | Hiçbir şey: kareleri her efektin üzerinde görünür | Klavyeyi hazırlar: efekti tuş başına renk modunda kaydeder ve yerine geçtiği efekti hatırlar |
-| `live_stopped` | Akış bittiğinde, aynı tutamaçta | Hiçbir şey: klavye kayıtlı efektine kendisi döner | Eski haline getirir: hatırlanan efekti geri yazar |
+| `live_stopped` | Akış bittiğinde, aynı tutamaçta | Hiçbir şey: klavye kayıtlı efektine kendisi döner | Akış bittikten 30 saniye sonra (bu sürede yeni bir akış başlarsa klavye hazır kalır), uygulama kapanırken de hemen eski haline getirir: önce efekti okur ve hatırlanan efekti yalnızca klavye hâlâ Keymotion'ın kurduğu tuş başına renk modundaysa geri yazar; böylece kullanıcının bu arada klavyeden seçtiği efekt kalır. Hatırlanan efekt ayrıca diske, klavyenin tablolarından çıkarılan bir izle o klavyeye bağlı olarak yazılır; uygulama çökerse bir sonraki bağlantıda geri konur |
 | `mirror_colors` | Ayna görünürken her 250 ms'de bir | `04 F5`; kırmızısı uygulamanın beklediğiyle çözülür (`readback`) | `33`; renkleri eksiksiz gelir |
 | `device_info` | Kablo takılıyken ara sıra | Hiçbir şey gönderilmez | `10`: kablodaki pil ve şarj durumu, ekranın kare sınırı, yarım kalmış bir klavye yazılımı güncellemesi |
 

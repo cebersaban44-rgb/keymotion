@@ -61,7 +61,7 @@ The app assumes no command family. What differs between the "04 xx" and the "AA"
 | Hook | When | "04 xx" | "AA" |
 |---|---|---|---|
 | `live_starting` | Before the first live frame of a stream on a handle | Nothing: its frames show over any effect | Arms the keyboard: stores the effect in per-key mode and remembers the one it replaced |
-| `live_stopped` | Once the stream has ended, on the same handle | Nothing: the keyboard goes back to its saved effect by itself | Disarms: writes the remembered effect back |
+| `live_stopped` | Once the stream has ended, on the same handle | Nothing: the keyboard goes back to its saved effect by itself | Disarms 30 seconds after the stream ends (a new stream within that time keeps it armed), and at once when the app closes: it reads the effect first and writes the remembered one back only while the keyboard still shows the per-key mode Keymotion set, so an effect the user picked on the keyboard meanwhile stays. The remembered effect is also kept on disk, tied to that keyboard by a fingerprint of its tables, so after a crash the next connect puts it back |
 | `mirror_colors` | Every 250 ms while the mirror shows | `04 F5`, with its red resolved by what the app expects (`readback`) | `33`, whose colors come back whole |
 | `device_info` | Now and then while the cable is plugged in | Nothing is sent | `10`: battery and charge state on the cable, the screen's frame limit, an unfinished firmware update |
 
