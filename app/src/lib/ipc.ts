@@ -56,9 +56,21 @@ export const inTauri = isTauri();
 
 const outsideApp = (what: string) => new Error(`Keymotion's backend is not available: this page runs outside the app (${what})`);
 
+/** Development builds only: while tools/screenshots/capture.mjs takes the
+ *  site's pictures from the real app, its guard refuses the commands that
+ *  would write to the keyboard or to other programs' files. The app locks
+ *  Tauri's own `invoke`, so every command asks the guard here, and
+ *  `__ksGuardHook` tells it this build does. */
+type GuardedWindow = Window & { __ksGuard?: { check: (cmd: string) => Error | null }; __ksGuardHook?: boolean };
+if (import.meta.env.DEV) (window as GuardedWindow).__ksGuardHook = true;
+
 /** Tauri's `invoke`; outside the app it rejects with a clear error. Use this one, not Tauri's. */
 export function invoke<T>(cmd: string, args?: InvokeArgs, options?: InvokeOptions): Promise<T> {
   if (!inTauri) return Promise.reject(outsideApp(cmd));
+  if (import.meta.env.DEV) {
+    const refused = (window as GuardedWindow).__ksGuard?.check(cmd);
+    if (refused) return Promise.reject(refused);
+  }
   return tauriInvoke<T>(cmd, args, options);
 }
 

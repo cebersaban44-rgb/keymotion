@@ -4,8 +4,11 @@ description: Coding agents such as Claude Code and Codex tell you with the keybo
 ---
 
 import { Aside, Steps } from "@astrojs/starlight/components";
+import Screenshot from "~/components/Screenshot.astro";
 
 When a coding agent such as Claude Code or Codex finishes a task, waits for your approval or runs into an error, your keyboard can tell you with light. The agent may also light keys in its own way: a word spelled on the letter keys, a number, a progress bar on the F row. You only turn access on once; everything else has a ready-made look you can change.
+
+<Screenshot name="ai-agents" alt="The AI agents page with access on, Claude Code and Codex connected, and the signals with their effect, how long each stays and Try on the keyboard" />
 
 ## Turn it on
 
@@ -18,6 +21,8 @@ When a coding agent such as Claude Code or Codex finishes a task, waits for your
 5. **Done** says what was connected. Click **OK**.
 
 </Steps>
+
+<Screenshot name="ai-agents-connect" alt="Turning agent access on, step 1: what Claude Code and Codex will get, above Connect and turn on" />
 
 Codex asks you once to approve these new settings (type `/hooks`, or open Settings › Hooks in Codex). Until then **Connected apps** says **Waiting for your approval in Codex once**.
 
@@ -55,6 +60,8 @@ If you closed it, it stays closed: after you quit Keymotion (right-click its ico
 
 These are off at first: **Send text and pictures to the screen** (each one is written to the keyboard's memory, at most four an hour for all agents together), **Use the focus timer** and **Save a profile's lighting** (key mapping and macros are never touched). **Hide agent lights while playing** is on: during a game session the lights wait.
 
+<Screenshot name="agent-card-text" alt="An agent's card on the keyboard's screen, three times its size: the title Tests and the text All 214 passed, Ready to merge" />
+
 ## More signals
 
 Each row opens its settings with the arrow on the right:
@@ -68,11 +75,15 @@ Each row opens its settings with the arrow on the right:
 - **Night quiet:** dims or turns off the agents' lights at night.
 - **Helper agent finished:** a short wave on the F row when one of Claude Code's helper agents finishes.
 
+<Screenshot name="agent-card-long-task" alt="The Long task finished card on the keyboard's screen, three times its size: Done, 14 minutes, and the project folder's name" />
+
 **Agents may change these settings** (on at first) lets an agent change looks and behavior. Access, the permissions and the connections are always yours.
 
 ## Recent actions
 
 The last things agents did are listed with their time. A settings change has **Undo**. **Turn off all agent lights** turns every agent light off at once. A request that wasn't carried out says why, for example that the keyboard wasn't on the USB cable.
+
+<Screenshot name="ai-agents-recent" alt="Recent actions: a Done signal from Claude Code, a color change by Codex with Undo, and a request Keymotion refused, with the reason" />
 
 Agents use Keymotion through `keymotion-cli`, a small command-line tool. Its commands, which scripts can use too, are on the [Agent command line](/keymotion/developers/agent-cli/) page.
 

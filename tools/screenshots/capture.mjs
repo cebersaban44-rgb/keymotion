@@ -11,6 +11,12 @@
 //   2. Its data: the development build uses the same folder as an installed
 //      copy, %APPDATA%\dev.keymotion. Move it aside (keep it), so the shots
 //      show only what this run makes and nothing of yours; put it back after.
+//      Started from a packaged app's shell (an MSIX app such as a desktop
+//      coding assistant), the app's data lives in that package's
+//      %LOCALAPPDATA%\Packages\<package>\LocalCache\Roaming\dev.keymotion
+//      instead, and the real folder's files show through wherever that copy
+//      has none: move the package's copy aside and leave the real one alone
+//      (an empty screen\library.json there hides a real library).
 //   3. An empty test folder for the coding apps, so the AI agents shots never
 //      touch your own Claude Code or Codex:
 //        mkdir %TEMP%\km-shots-home\.claude %TEMP%\km-shots-home\.codex
@@ -41,8 +47,14 @@
 // In the real app a guard refuses, for the whole run, every call that would
 // write to the keyboard's memory, upload to its screen, turn the live screen
 // on, open a window outside the app or change another program's files
-// (guard.mjs). Connecting Claude Code and Codex is allowed for one step, and
-// only when every path the connect step shows is inside --agents-home.
+// (guard.mjs; the app's development build asks the guard before every
+// command, since Tauri locks its own invoke). Connecting Claude Code and
+// Codex is allowed for one step, and only when every path the connect step
+// shows is inside --agents-home.
+//
+// The app keeps what a shot leaves (a draft, a running focus timer, the
+// gauges on) for the next one: take the shots that leave something after
+// those that must not show it, or one at a time with --only.
 // Afterwards: close the app, delete the test folder, put the data folder back.
 
 import { execFile } from "node:child_process";

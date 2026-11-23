@@ -133,6 +133,7 @@ Keymotion 已在黑爵 AK980 V2（带屏版）上测试。基于同一平台的�
 | <img src="docs/images/features/music.webp" width="240" alt="音乐模式：按键灯光以光柱、节拍、响度光带和波浪的形式随声音变化"> | **音乐模式**<br>随电脑播放的声音变化的按键灯光：从低音到高音的光柱、随每个节拍闪动的脉冲、一条表示响度的光带，或者波浪。不会录制声音，也不使用麦克风。 |
 | <img src="docs/images/features/game-session.webp" width="240" alt="英雄联盟灯光：生命值在按键上逐渐消退，法力值在 F 键上逐渐耗尽"> | **游戏时段**<br>识别你何时在玩游戏：游戏开始时在屏幕上显示一张卡片，结束时显示结算卡片，并点亮游戏用到的按键。在英雄联盟（League of Legends）中，你的生命值、法力值和对局中的事件会显示在按键上。国服（腾讯）未测试。 |
 | <img src="docs/images/features/profiles.webp" width="240" alt="将所有游戏和一个程序分别关联到各自的配置文件"> | **按应用切换配置文件**<br>将灯光、按键和宏保存为配置文件。每个程序（或所有游戏）来到前台时，都会切换到各自的配置文件。 |
+| <img src="docs/images/features/ai-agents.webp" width="240" alt="键盘屏幕上的 AI 智能体卡片：Tests、All 214 passed、Ready to merge"> | **AI 编程智能体**<br>Claude Code 和 Codex 完成任务、等待你批准或出错时，用灯光告诉你；智能体还可以在按键上写字，或向屏幕发送卡片。[详见下文](#ai-编程智能体)。 |
 
 [使用指南](https://cebersaban44-rgb.github.io/keymotion/zh-cn/)逐一介绍了应用的每个页面。
 

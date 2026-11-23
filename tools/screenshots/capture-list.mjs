@@ -110,9 +110,6 @@ async function connectStep(page) {
   if ((await access.getAttribute("aria-checked")) !== "true") await access.click();
   await page.locator("[data-agents-flow]").waitFor({ timeout: 10_000 });
   await page.waitForTimeout(800);
-  const details = await button(page, "ag.flow.details");
-  if ((await details.getAttribute("aria-expanded")) !== "true") await details.click();
-  await page.waitForTimeout(500);
 }
 
 /** A sample card as an agent's request would come, drawn by the page's own
@@ -120,7 +117,7 @@ async function connectStep(page) {
 function agentCardShot(name, card) {
   return {
     name,
-    pages: [],
+    pages: ["guide/ai-agents"],
     state: `An agent's ${card.kind === "longTask" ? "long task card (F)" : "card"} as the keyboard's screen shows it, three times its size.`,
     source: "app",
     page: "overview",
@@ -499,8 +496,10 @@ export const CAPTURES = [
   // New in this version
   {
     name: "ai-agents-connect",
-    pages: [],
-    state: "AI agents: turning access on, step 1 (Things to connect) with Details open. Access off and nothing connected before.",
+    pages: ["guide/ai-agents"],
+    // Details stays closed: in the real app its paths hold the Windows user
+    // name and, in a development build, the build folder.
+    state: "AI agents: turning access on, step 1 (Things to connect), Details closed. Access off and nothing connected before.",
     source: "prep",
     prep: "Start the app with KEYMOTION_CLI_TEST_HOME set to an empty test folder holding .claude and .codex folders (see capture.mjs); agent access off.",
     page: "agents",
@@ -508,7 +507,7 @@ export const CAPTURES = [
   },
   {
     name: "ai-agents",
-    pages: [],
+    pages: ["guide/ai-agents"],
     state: "AI agents: access on, Claude Code and Codex connected (in the test folder), the signals.",
     source: "prep",
     prep: "As for ai-agents-connect; capture.mjs approves the connect step only with --agents-home matching the paths it shows.",
@@ -526,7 +525,7 @@ export const CAPTURES = [
   },
   {
     name: "ai-agents-recent",
-    pages: [],
+    pages: ["guide/ai-agents"],
     state: "AI agents › Recent actions: a signal, a settings change with Undo and a refused request.",
     source: "prep",
     prep: "Agent access on. capture.mjs runs keymotion-cli (--cli) for the entries: a done signal, a color change, a refused request.",
@@ -543,7 +542,7 @@ export const CAPTURES = [
   agentCardShot("agent-card-long-task", { ...CARD, kind: "longTask", minutes: 14, label: "keymotion", color: [63, 207, 142] }),
   {
     name: "welcome-new-firmware",
-    pages: [],
+    pages: ["guide/first-launch"],
     state: "An AK980 PRO on AJAZZ's firmware 769: the welcome page's card about it.",
     source: "mock",
     mock: "fw769",

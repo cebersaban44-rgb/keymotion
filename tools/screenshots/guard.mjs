@@ -41,40 +41,52 @@ export const DENY = [
 ];
 
 /**
- * Runs in the page (`page.evaluate(guard, [DENY, allow])`): wraps Tauri's
- * `invoke` so the `deny` commands not in `allow` are refused and noted.
- * Called again it only changes `allow`. Returns "on", "no-tauri" (a
- * browser, nothing to guard) or "failed" (the guard could not be put in
- * place: capture.mjs stops).
+ * Runs in the page (`page.evaluate(guard, [DENY, allow])`): the `deny`
+ * commands not in `allow` are refused and noted. Called again it only
+ * changes `allow`. Returns "on", "no-tauri" (a browser, nothing to guard)
+ * or "failed" (the guard could not be put in place: capture.mjs stops).
+ *
+ * The real app locks Tauri's `invoke` (neither writable nor configurable),
+ * so a development build's own bridge (app/src/lib/ipc.ts) asks
+ * `window.__ksGuard` before every command, and says it does with
+ * `window.__ksGuardHook`. Where `invoke` can be replaced (the stand-in over
+ * CDP, the tests), it is wrapped as well.
  */
 export function guard([deny, allow]) {
   const internals = window.__TAURI_INTERNALS__;
   if (!internals) return "no-tauri";
-  if (internals.__ksGuard) {
-    internals.__ksGuard.allow = allow;
-    return internals.invoke === internals.__ksGuard.wrapped ? "on" : "failed";
-  }
-  const original = internals.invoke;
-  const state = { allow, blocked: [], wrapped: null };
-  state.wrapped = function (cmd, args, options) {
-    if (deny.includes(cmd) && !state.allow.includes(cmd)) {
-      state.blocked.push(cmd);
-      return Promise.reject(new Error(`screenshot guard: "${cmd}" is not run while capturing`));
+  let state = window.__ksGuard;
+  if (!state) {
+    state = {
+      allow,
+      blocked: [],
+      wrapped: null,
+      check(cmd) {
+        if (!deny.includes(cmd) || state.allow.includes(cmd)) return null;
+        state.blocked.push(cmd);
+        return new Error(`screenshot guard: "${cmd}" is not run while capturing`);
+      },
+    };
+    const original = internals.invoke;
+    state.wrapped = function (cmd, args, options) {
+      const refused = state.check(cmd);
+      return refused ? Promise.reject(refused) : original.call(this, cmd, args, options);
+    };
+    try {
+      window.__ksGuard = state;
+      internals.invoke = state.wrapped;
+    } catch {
+      // Locked: only the app's own bridge can ask the guard (below).
     }
-    return original.call(this, cmd, args, options);
-  };
-  try {
-    internals.invoke = state.wrapped;
-    internals.__ksGuard = state;
-  } catch {
-    return "failed";
   }
-  return internals.invoke === state.wrapped ? "on" : "failed";
+  state.allow = allow;
+  if (window.__ksGuard !== state) return "failed";
+  return internals.invoke === state.wrapped || window.__ksGuardHook === true ? "on" : "failed";
 }
 
 /** Runs in the page: the commands the guard refused since the last call. */
 export function blocked() {
-  const state = window.__TAURI_INTERNALS__?.__ksGuard;
+  const state = window.__ksGuard;
   if (!state) return [];
   return state.blocked.splice(0);
 }
