@@ -88,10 +88,12 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   şey. `keymotion-cli connect claude-code` ya da `connect codex`, o
   uygulamanın ayarlarına birkaç kanca ve kısa bir yetenek ekler (önce neyin
   değişeceğini gösterir, bir kopya saklar, başka hiçbir şeye dokunmaz);
-  ardından klavye ajan bitirince, onayınızı beklerken (siz cevap verene
-  kadar), hata verince ya da kullanım sınırına takılınca (yavaş mor)
-  kendiliğinden yanar; iki ya da daha çok oturum varken bekleyenin numarası
-  rakam sırasında yanar. Sizin ya da ajanın yazdığı hiçbir şey Keymotion'a
+  ardından klavye ajan bitirince, onayınızı beklerken (siz cevap verene ya
+  da bir tuşa dokunana kadar), hata verince ya da kullanım sınırına
+  takılınca (yavaş mor) kendiliğinden yanar; iki ya da daha çok oturum
+  varken bekleyenin numarası rakam sırasında yanar. Keymotion çalışmıyorsa
+  böyle bir olay onu başlatır; siz kapattıysanız ya da ajan erişimini
+  kapattıysanız başlatmaz. Sizin ya da ajanın yazdığı hiçbir şey Keymotion'a
   ulaşmaz: yalnız ne olduğu. `disconnect` hepsini geri alır. Ajan erişimi
   siz açana kadar kapalı kalır.
 

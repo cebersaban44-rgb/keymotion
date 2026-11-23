@@ -92,9 +92,11 @@ says so.
   connect claude-code` or `connect codex` adds a few hooks and a short skill
   to that app's settings (showing what changes first, keeping a copy, never
   touching anything else); then the keyboard lights by itself when the agent
-  finishes, waits for your approval (until you answer), fails, or stops at
-  its usage limit (slow purple), and with two or more sessions the waiting
-  one's number lights on the number row. Nothing you or the agent writes
+  finishes, waits for your approval (until you answer or touch a key),
+  fails, or stops at its usage limit (slow purple), and with two or more
+  sessions the waiting one's number lights on the number row. When
+  Keymotion is not running, such an event starts it, unless you quit it
+  yourself or turned agent access off. Nothing you or the agent writes
   reaches Keymotion: only what happened. `disconnect` takes it all away
   again. Agent access stays off until you turn it on.
 
