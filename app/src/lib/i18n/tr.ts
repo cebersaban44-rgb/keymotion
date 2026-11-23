@@ -205,6 +205,7 @@ export const tr: Messages = {
   "ag.err.unsupported": "Yapılmadı: klavye ya da Keymotion'ın bu kopyası bunu yapamıyor.",
   "ag.err.pipeNotTrusted": "Yapılmadı: bağlantı sizin Keymotion'ınıza çıkmıyordu, bu yüzden hiçbir şey gönderilmedi.",
   "ag.err.busyFlashWrite": "Yapılmadı: o sırada klavyenin belleğine yazılıyordu; ajan sonra yeniden deneyebilir.",
+  "ag.err.notNow": "Şimdilik yapılmadı: ekranda bir toplantı ya da hatırlatma kartı vardı, bir oyun açıktı ya da kaydedilmemiş değişiklikleriniz vardı; ajan sonra yeniden deneyebilir.",
   "ag.err.timeout": "Yapılmadı: zamanında cevap gelmedi.",
   "ag.err.connectionLost": "Yapılmadı: Keymotion cevap vermeden kapandı.",
   "ag.err.protocolMismatch": "Yapılmadı: keymotion-cli ile Keymotion'ın sürümleri birbirine uymuyor; Keymotion'ı güncelleyin.",

@@ -262,6 +262,9 @@ struct Runtime {
     /// A game wants the keyboard left alone: no card goes and the screen
     /// doesn't go back by itself; what the user asks for still does.
     quiet: Quiet,
+    /// Sources whose waiting card another source's card took the place of,
+    /// not asked about yet ([`LiveHandle::take_dropped`]).
+    dropped: Vec<String>,
 }
 
 /// What to do about a scheduled return to the user's own picture.
@@ -462,13 +465,20 @@ impl LiveHandle {
             // A return that is due stays: if this card has to wait for the
             // budget, the old card should not stay on the screen meanwhile.
             // The newest card wins.
-            rt.pending
+            let replaced = rt
+                .pending
                 .replace(Pending {
                     anim,
                     content,
                     item: LiveItem { source: source.to_string(), name: crate::screen_lib::clean_name(name) },
                 })
-                .map(|p| p.item)
+                .map(|p| p.item);
+            if let Some(old) = replaced.as_ref().filter(|old| old.source != source) {
+                if !rt.dropped.contains(&old.source) {
+                    rt.dropped.push(old.source.clone());
+                }
+            }
+            replaced
         };
         tracing::info!(%source, "live card waiting");
         self.wake();
@@ -576,6 +586,19 @@ impl LiveHandle {
             || rt.uploading.as_ref().is_some_and(|u| u.source == source);
         let back = rt.back.as_ref().is_some_and(|b| b.source == source) || rt.restore_auto.as_deref() == Some(source);
         (shown, waiting, back)
+    }
+
+    /// Whether a card of `source` waiting here was put aside for another
+    /// source's card since the last time this was asked.
+    pub fn take_dropped(&self, source: &str) -> bool {
+        self.rt
+            .lock()
+            .map(|mut rt| {
+                let had = rt.dropped.iter().any(|s| s == source);
+                rt.dropped.retain(|s| s != source);
+                had
+            })
+            .unwrap_or(false)
     }
 
     /// A card from `source` waits or is going to the keyboard.

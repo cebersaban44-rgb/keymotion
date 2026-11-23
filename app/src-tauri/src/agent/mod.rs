@@ -160,6 +160,12 @@ pub struct ScreenNow {
 
 /// Profile writes by all agents together in any 24 hours.
 pub const PROFILE_WRITES_PER_DAY: u32 = limits::PROFILE_WRITES as u32;
+/// When to look again after a `not_now`: a meeting's or a reminder's card
+/// stays for minutes, a game for longer; unsaved changes end when the user
+/// saves (no telling when).
+const NOT_NOW_SCREEN: Duration = Duration::from_secs(2 * 60);
+const NOT_NOW_GAME: Duration = Duration::from_secs(5 * 60);
+const NOT_NOW_UNSAVED: Duration = Duration::from_secs(60);
 /// How often the worker looks for an agent's card left on the screen with
 /// nothing to take it back, when no card is on its way.
 const LOOK_FOR_LEFT_CARDS_MS: u64 = 2_000;
@@ -850,19 +856,22 @@ impl Core {
                 // As the per-app profiles: never over the user's unsaved
                 // lighting, never during a game that wants the keyboard left
                 // alone.
+                // For now only (`not_now`, 75): nothing for the user to allow.
                 if self.host.unsaved_changes() {
                     return Err(AgentError::new(
-                        ErrorCode::WriteBlocked,
+                        ErrorCode::NotNow,
                         "Keymotion did not write the keyboard: the user has changes in Keymotion that are not saved yet.",
                     )
-                    .with_hint("The user saves or drops them in Keymotion; do not retry until then."));
+                    .with_hint("Try again later, once the user has saved or dropped them.")
+                    .with_retry_after(NOT_NOW_UNSAVED));
                 }
                 if self.host.quiet() != Quiet::Off {
                     return Err(AgentError::new(
-                        ErrorCode::WriteBlocked,
+                        ErrorCode::NotNow,
                         "Keymotion did not write the keyboard: a game is running and the user asked Keymotion to leave the keyboard alone while playing.",
                     )
-                    .with_hint("Try again after the game."));
+                    .with_hint("Try again after the game.")
+                    .with_retry_after(NOT_NOW_GAME));
                 }
                 let agent = agent_of(call.source.as_str()).to_string();
                 // The slot is taken before the write, under the lock, and
@@ -1134,13 +1143,14 @@ impl Core {
         Ok(())
     }
 
-    /// A meeting's or a reminder's card has the screen.
+    /// A meeting's or a reminder's card has the screen: for now only.
     fn screen_held() -> AgentError {
         AgentError::new(
-            ErrorCode::WriteBlocked,
+            ErrorCode::NotNow,
             "The keyboard's screen shows a meeting's or a reminder's card; agents' cards wait until it is gone.",
         )
         .with_hint("Try again later; the light commands still work meanwhile.")
+        .with_retry_after(NOT_NOW_SCREEN)
     }
 
     /// `card`: a card on the keyboard's screen.
@@ -2015,7 +2025,7 @@ impl Host for AppHost {
         match self.app.try_state::<Arc<crate::live::LiveHandle>>() {
             Some(live) => {
                 let (shown, waiting, back_planned) = live.card_status(CARD_SOURCE);
-                OnScreen { shown, waiting, back_planned }
+                OnScreen { shown, waiting, back_planned, dropped: live.take_dropped(CARD_SOURCE) }
             }
             None => OnScreen::default(),
         }
@@ -2991,7 +3001,7 @@ mod tests {
                     std::thread::sleep(Duration::from_millis(5));
                 };
                 core.card_drawn(&id, anim()).unwrap();
-                *lock(&fake.on_screen) = OnScreen { shown: true, waiting: false, back_planned: false };
+                *lock(&fake.on_screen) = OnScreen { shown: true, waiting: false, back_planned: false, dropped: false };
                 let mut w = Worker::default();
                 core.tick(&mut w);
             })
@@ -3027,7 +3037,7 @@ mod tests {
         core.tick(&mut w);
         assert!(lock(&fake.returns).is_empty(), "card 1 still uploading");
         // Card 1 reaches the screen all the same: it goes back after its time.
-        *lock(&fake.on_screen) = OnScreen { shown: true, waiting: false, back_planned: false };
+        *lock(&fake.on_screen) = OnScreen { shown: true, waiting: false, back_planned: false, dropped: false };
         fake.advance(100);
         core.tick(&mut w);
         assert_eq!(*lock(&fake.returns), [kb_agent::protocol::DEFAULT_CARD_MS]);
@@ -3039,7 +3049,7 @@ mod tests {
     #[test]
     fn a_card_left_on_the_screen_before_a_restart_goes_back() {
         let fake = Fake::new();
-        *lock(&fake.on_screen) = OnScreen { shown: true, waiting: false, back_planned: false };
+        *lock(&fake.on_screen) = OnScreen { shown: true, waiting: false, back_planned: false, dropped: false };
         let core = core_with(&fake, AgentSettings { enabled: true, screen: true, ..AgentSettings::default() });
         let mut w = Worker::default();
         core.tick(&mut w);
@@ -3134,7 +3144,7 @@ mod tests {
         let core = core_with(&fake, AgentSettings { enabled: true, screen: true, ..AgentSettings::default() });
         fake.held.store(true, Ordering::SeqCst);
         let e = call(&core, "tests", card("Build passed", true)).unwrap_err();
-        assert_eq!((e.code, e.exit_code()), (ErrorCode::WriteBlocked, 77));
+        assert_eq!((e.code, e.exit_code(), e.retry_after_ms), (ErrorCode::NotNow, 75, Some(2 * 60_000)));
         assert!(e.message.contains("meeting"), "{e:?}");
         assert!(lock(&fake.cards).is_empty());
         // The meeting's card comes while an agent's card is drawn: that one
@@ -3156,14 +3166,14 @@ mod tests {
         // The user paints a per-key design and has not saved it.
         fake.unsaved.store(true, Ordering::SeqCst);
         let e = call(&core, "tests", profile("apply", Some("p1"), true)).unwrap_err();
-        assert_eq!((e.code, e.exit_code()), (ErrorCode::WriteBlocked, 77));
+        assert_eq!((e.code, e.exit_code(), e.retry_after_ms), (ErrorCode::NotNow, 75, Some(60_000)));
         assert!(e.message.contains("not saved"), "{e:?}");
         fake.unsaved.store(false, Ordering::SeqCst);
         // A game that wants the keyboard left alone.
         for quiet in [Quiet::All, Quiet::ButReminders] {
             *lock(&fake.quiet) = quiet;
             let e = call(&core, "tests", profile("apply", Some("p1"), true)).unwrap_err();
-            assert_eq!(e.code, ErrorCode::WriteBlocked);
+            assert_eq!((e.code, e.retry_after_ms), (ErrorCode::NotNow, Some(5 * 60_000)));
             assert!(e.message.contains("game"), "{e:?}");
         }
         assert!(lock(&fake.wrote).is_empty());

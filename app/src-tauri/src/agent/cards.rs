@@ -91,6 +91,9 @@ pub struct OnScreen {
     pub waiting: bool,
     /// The user's own picture is planned to come back (or coming back).
     pub back_planned: bool,
+    /// An agent's card waiting there was put aside for another source's
+    /// card (a meeting's, the focus timer's) since the last look.
+    pub dropped: bool,
 }
 
 /// What the worker should do after a look ([`CardBook::tick`]).
@@ -215,6 +218,16 @@ impl CardBook {
     /// The worker's look, with what the live mode says now.
     pub fn tick(&mut self, now: u64, screen: OnScreen) -> Due {
         let mut due = Due::default();
+        // An agent's card waiting in the live mode was put aside for another
+        // source's card. While ours on its way has not gone there yet, that
+        // was the card replaced before it: it never goes up. (Ours, once
+        // there, is the one waiting; if it goes, it fails below.)
+        if screen.dropped && !self.current.as_ref().is_some_and(|c| c.stage == Stage::Live) {
+            if let Some(o) = self.orphan.take() {
+                due.failed.push(o.id);
+                due.changed = true;
+            }
+        }
         if let Some(c) = self.current.as_ref() {
             match c.stage {
                 Stage::Drawing if now.saturating_sub(c.since) >= DRAW_WAIT_MS => {
@@ -300,10 +313,10 @@ pub fn content_id(parts: &[&[u8]]) -> u64 {
 mod tests {
     use super::*;
 
-    const SHOWN: OnScreen = OnScreen { shown: true, waiting: false, back_planned: false };
-    const SHOWN_BACK: OnScreen = OnScreen { shown: true, waiting: false, back_planned: true };
-    const WAITING: OnScreen = OnScreen { shown: false, waiting: true, back_planned: false };
-    const NONE: OnScreen = OnScreen { shown: false, waiting: false, back_planned: false };
+    const SHOWN: OnScreen = OnScreen { shown: true, waiting: false, back_planned: false, dropped: false };
+    const SHOWN_BACK: OnScreen = OnScreen { shown: true, waiting: false, back_planned: true, dropped: false };
+    const WAITING: OnScreen = OnScreen { shown: false, waiting: true, back_planned: false, dropped: false };
+    const NONE: OnScreen = OnScreen { shown: false, waiting: false, back_planned: false, dropped: false };
 
     #[test]
     fn a_card_never_drawn_fails_and_says_so_for_its_count() {
@@ -397,6 +410,23 @@ mod tests {
         let due = b.tick(40, NONE);
         assert_eq!(due.failed, [first]);
         assert!(!b.busy());
+        // Card 1 waits; while card 2 is drawn, a meeting's card takes card
+        // 1's place in the live mode: card 1 never goes up.
+        let dropped = OnScreen { dropped: true, ..WAITING };
+        let mut b = CardBook::default();
+        let first = b.start(1, 60_000, "card", 0).0;
+        b.drawn(&first, 10).unwrap();
+        b.start(2, 60_000, "card", 20);
+        assert_eq!(b.tick(30, dropped).failed, [first]);
+        // Card 2 already with the live mode: the card put aside was card 2
+        // (it fails when it is not there any more), not card 1.
+        let mut b = CardBook::default();
+        let first = b.start(1, 60_000, "card", 0).0;
+        b.drawn(&first, 10).unwrap();
+        let second = b.start(2, 60_000, "card", 20).0;
+        b.drawn(&second, 30).unwrap();
+        assert!(b.tick(40, dropped).failed.is_empty());
+        assert!(b.busy());
     }
 
     #[test]
