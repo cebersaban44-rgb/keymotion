@@ -149,6 +149,12 @@ says so.
   the tested one reports, is taken for the AJAZZ AK980 PRO. Another AK980
   with the same USB identity, for example one without the screen, is now
   offered **Request support** instead.
+- **AJAZZ's new firmware:** an AK980 PRO on AJAZZ's firmware 769 (3.01),
+  which uses a different set of commands, no longer shows as just a keyboard
+  that isn't supported yet. The welcome page, the pane on the left and the
+  tray menu say it has AJAZZ's new firmware, that Keymotion sends nothing to
+  it and that support is planned for a later update, with a link to the FAQ.
+  **Request support** stays.
 - **Untested firmware:** on a firmware version that hasn't been tested with
   Keymotion, the keyboard clock waits for your go-ahead too, both the sync
   on connect and **Sync now**. Keymotion asks the same question as before

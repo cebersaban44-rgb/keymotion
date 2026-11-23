@@ -2,17 +2,75 @@
 // to connect it, and what works without it. Shown in place of Genel bakış
 // and Bağlantı until a keyboard is found (the app looks every 2 seconds).
 // A SONiX or AJAZZ keyboard the app doesn't support yet gets a card on top
-// with "Request support" (lib/report.ts).
+// with "Request support" (lib/report.ts). An AK980 PRO on AJAZZ's firmware
+// 769 gets its own card: what that firmware is, calmly, and the FAQ.
 
 import { ArrowUpRight, BellRing, Images, Keyboard, Timer, type LucideIcon } from "lucide-react";
+import type { UnsupportedKeyboard } from "../bindings/UnsupportedKeyboard";
 import { ModeSwitch } from "../components/ModeSwitch";
 import { modelTitle, useT, type MessageKey } from "../lib/i18n";
 import { openLink } from "../lib/ipc";
 import { SUPPORTED_MODEL, SUPPORTED_MODEL_ID, docsPage } from "../lib/offline";
-import { useReport, useUnsupportedKeyboards } from "../lib/report";
+import { useReport, useUnsupported } from "../lib/report";
 import { useApp } from "../lib/store";
 
 const STEPS: MessageKey[] = ["welcome.step1", "welcome.step2", "welcome.step3"];
+
+/** The FAQ entry about AJAZZ's firmware 769, by its heading in each language. */
+const FW769_FAQ: Record<string, string> = {
+  en: "help/faq/#should-i-install-ajazzs-newest-firmware",
+  tr: "help/faq/#ajazzın-en-yeni-klavye-yazılımını-kurmalı-mıyım",
+  ru: "help/faq/#стоит-ли-устанавливать-новейшую-прошивку-ajazz",
+  "zh-CN": "help/faq/#要安装黑爵最新的固件吗",
+};
+
+/** An AK980 PRO on AJAZZ's firmware 769 (3.01): what it is, without alarm,
+ *  that nothing is sent to it, and where to read more. "Request support"
+ *  stays: its details help add the new commands. */
+function NewFirmwareCard({ k, version }: { k: UnsupportedKeyboard; version: string | null }) {
+  const t = useT();
+  const locale = useApp((s) => s.locale);
+  const openReport = useReport((s) => s.openReport);
+  return (
+    <section className="card flex flex-col gap-4 p-5" data-unsupported={k.id} data-new-firmware>
+      <div className="flex items-start gap-5">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-surface-2 text-ink-2">
+          <Keyboard size={19} aria-hidden />
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="text-[12px] text-ink-3">{modelTitle(t, SUPPORTED_MODEL_ID, SUPPORTED_MODEL)}</span>
+          <span className="text-[15px] font-semibold">{t("fw769.title")}</span>
+          <p className="text-[13px] text-ink-2">{version ? t("fw769.body", { version }) : t("fw769.body.unknown")}</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pl-15">
+        <button
+          type="button"
+          onClick={() =>
+            openReport({
+              kind: "keyboard",
+              title: `[Keyboard] ${k.name ?? k.id}${version ? ` (firmware ${version})` : ""}`,
+              keyboardId: k.id,
+              model: k.name ?? undefined,
+            })
+          }
+          className="btn-secondary"
+        >
+          {t("unsupported.request")}
+        </button>
+        <button
+          type="button"
+          onClick={() => openLink(docsPage(FW769_FAQ[locale] ?? FW769_FAQ.en!, locale)).catch(console.error)}
+          className="flex items-center gap-1 rounded-md text-[13px] text-signal hover:underline"
+          data-fw769-faq
+        >
+          {t("fw769.more")}
+          <ArrowUpRight size={14} aria-hidden />
+        </button>
+      </div>
+    </section>
+  );
+}
 
 export function Welcome() {
   const t = useT();
@@ -20,7 +78,7 @@ export function Welcome() {
   const locale = useApp((s) => s.locale);
   const openScreen = useApp((s) => s.openScreen);
   const openReport = useReport((s) => s.openReport);
-  const unsupported = useUnsupportedKeyboards();
+  const unsupported = useUnsupported();
 
   const tools: { icon: LucideIcon; title: MessageKey; body: MessageKey; open: () => void }[] = [
     { icon: Timer, title: "nav.focus", body: "welcome.focus", open: () => setPage("focus") },
@@ -36,7 +94,10 @@ export function Welcome() {
         <p className="page-desc">{t("welcome.desc")}</p>
       </header>
 
-      {unsupported.map((k) => (
+      {unsupported.newFirmware.map(({ keyboard: k, version }) => (
+        <NewFirmwareCard key={k.id} k={k} version={version} />
+      ))}
+      {unsupported.others.map((k) => (
         <section key={k.id} className="card flex flex-wrap items-center gap-x-5 gap-y-4 p-5" data-unsupported={k.id}>
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-warn/15 text-warn">
             <Keyboard size={19} aria-hidden />
@@ -75,7 +136,9 @@ export function Welcome() {
           </ol>
           <p className="mt-1 flex items-center gap-2.5 text-[13px] text-ink-3" role="status" data-welcome-searching>
             <span className="h-2 w-2 rounded-full bg-signal motion-safe:animate-pulse" aria-hidden />
-            {t("welcome.searching")}
+            {/* A keyboard is plugged in, but not one Keymotion supports: say so,
+                and keep looking for one that is. */}
+            {t(unsupported.list.length ? "welcome.searching.other" : "welcome.searching")}
           </p>
         </div>
         <figure className="flex w-[190px] flex-col items-center justify-center gap-2">

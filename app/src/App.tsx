@@ -22,12 +22,16 @@ import {
   setWindowTheme,
 } from "./lib/ipc";
 import { follow } from "./lib/follow";
+import { useUnsupported } from "./lib/report";
 import { useUnsaved } from "./lib/unsaved";
 import { connectionKey, modelNames, tNow, useT, type MessageKey } from "./lib/i18n";
 import { useKeymap } from "./lib/keymap";
 import { useLayout } from "./lib/layout";
+import { startAgentCards } from "./lib/agentCards";
 import { startLive } from "./lib/live";
 import {
+  agentCard,
+  agentCardWords,
   calendarCard,
   calendarWords,
   gameStartCard,
@@ -150,6 +154,7 @@ function useLiveScreen() {
     [],
   );
   useEffect(() => startReminders((card) => reminderCard(card, reminderWords(tNow, useApp.getState().locale))), []);
+  useEffect(() => startAgentCards((card) => agentCard(card, agentCardWords(tNow, useApp.getState().locale))), []);
   useEffect(
     () =>
       startGames(async (card) => {
@@ -184,12 +189,17 @@ function useTray() {
   const locale = useApp((s) => s.locale);
   const setWindowShown = useApp((s) => s.setWindowShown);
   const requestProfile = useApp((s) => s.requestProfile);
+  // A keyboard Keymotion can't drive yet (an AK980 PRO on AJAZZ's firmware
+  // 769, or another model): the menu says why no keyboard shows.
+  const unsupported = useUnsupported();
+  const newFirmware = unsupported.newFirmware.length > 0;
+  const otherKeyboard = unsupported.list.length > 0;
   useEffect(() => {
     // Templates go as they are: the backend fills in {min}, {n}, ….
     setTrayTexts({
       locale,
       open: tNow("tray.open"),
-      noKeyboard: tNow("tray.noKeyboard"),
+      noKeyboard: tNow(newFirmware ? "fw769.tray" : otherKeyboard ? "unsupported.tray" : "tray.noKeyboard"),
       battery: tNow("tray.battery"),
       connUsb: tNow(connectionKey("usb")),
       connDongle: tNow(connectionKey("dongle")),
@@ -236,7 +246,7 @@ function useTray() {
       noticeWhatsNew: tNow("update.whatsNew"),
       modelNames: modelNames(),
     }).catch(console.error);
-  }, [locale]);
+  }, [locale, newFirmware, otherKeyboard]);
   useEffect(() => {
     let alive = true;
     const offs: (() => void)[] = [];
