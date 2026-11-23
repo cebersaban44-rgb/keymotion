@@ -279,7 +279,7 @@ function Invoke-Uninstall([string[]]$Arguments = @('/S'), [int]$TimeoutSec = 300
     if (-not (Test-Path -LiteralPath $UninstallExe)) { throw "$UninstallExe is not there" }
     $code = Invoke-Setup $UninstallExe $Arguments
     $copies = { @(Get-Process | Where-Object { $_.Path -and $_.Path -match '\\~nsu[^\\]*\.tmp\\' }) }
-    $done = Wait-Until $TimeoutSec { (& $copies).Count -eq 0 }
+    $done = Wait-Until $TimeoutSec { @(& $copies).Count -eq 0 }
     if (-not $done) { throw "the uninstaller's copy in %TEMP% did not end within $TimeoutSec s" }
     $code
 }
@@ -363,13 +363,13 @@ function Get-AppProcesses { @(Get-Process -Name keymotion -ErrorAction SilentlyC
 
 # Keymotion closed, and the WebView2 processes it started with it.
 function Stop-App {
-    $procs = Get-AppProcesses
+    $procs = @(Get-AppProcesses)
     if ($procs.Count) {
         $procs | Stop-Process -Force -ErrorAction SilentlyContinue
-        Wait-Until 20 { (Get-AppProcesses).Count -eq 0 } | Out-Null
+        Wait-Until 20 { @(Get-AppProcesses).Count -eq 0 } | Out-Null
     }
     $webviews = { @(Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" | Where-Object { $_.CommandLine -match 'dev\.keymotion' }) }
-    if (-not (Wait-Until 15 { (& $webviews).Count -eq 0 })) {
+    if (-not (Wait-Until 15 { @(& $webviews).Count -eq 0 })) {
         foreach ($w in & $webviews) { Stop-Process -Id $w.ProcessId -Force -ErrorAction SilentlyContinue }
     }
 }
@@ -703,7 +703,7 @@ Invoke-Scenario 'a' 'Fresh silent install' {
     $cliVersion = Get-CliVersion $CliExe
     Confirm-That (Test-CliVersion $cliVersion) 'bin\keymotion-cli.exe says this version' $cliVersion
     $after = Get-UserPath
-    Confirm-That ($after.Raw -ceq $before.Raw -and $after.Kind -eq $before.Kind) 'installing leaves PATH alone (Keymotion adds bin when agent access is turned on)' "$($after.Kind), bin entries: $((Get-BinEntries $after.Raw).Count)"
+    Confirm-That ($after.Raw -ceq $before.Raw -and $after.Kind -eq $before.Kind) 'installing leaves PATH alone (Keymotion adds bin when agent access is turned on)' "$($after.Kind), bin entries: $(@(Get-BinEntries $after.Raw).Count)"
     $scheme = Get-SchemeCommand
     Add-Note "keymotion: scheme right after installing: $(if ($scheme) { $scheme } else { 'not registered (the app registers it at its first start)' })"
 
@@ -813,7 +813,7 @@ Invoke-Scenario 'c' 'Silent uninstall' {
     Confirm-That (-not (Test-Path -LiteralPath $InstallDir)) 'the install folder is gone' $(if (Test-Path -LiteralPath $InstallDir) { (Get-ChildItem -Recurse -Name -LiteralPath $InstallDir) -join ', ' } else { $InstallDir })
     Confirm-That (-not (Test-Path -LiteralPath $UninstallKey)) 'the uninstall entry is gone' $UninstallKey
     $path = Get-UserPath
-    Confirm-That ((Get-BinEntries $path.Raw).Count -eq 0) 'bin is off PATH' $path.Raw
+    Confirm-That (@(Get-BinEntries $path.Raw).Count -eq 0) 'bin is off PATH' $path.Raw
     Confirm-That ($path.Raw -ceq $PathSeed.Raw -and $path.Kind -eq $PathSeed.Kind) "PATH is exactly the user's again (type and entries)" "$($path.Kind) $($path.Raw)"
     Confirm-That ($null -eq (Get-RegValue $UserPathRecordKey 'PathAdded') -and -not (Test-Path -LiteralPath $UserPathRecordKey)) "Keymotion's PATH record is gone" $UserPathRecordKey
     Confirm-That (-not (Test-Path -LiteralPath $SchemeKey) -and -not (Test-Path -LiteralPath $AumidKey)) 'the keymotion: scheme and the AppUserModelId are gone' ''
@@ -862,11 +862,11 @@ Invoke-Scenario 'd' 'Manual reinstall keeps the connections and PATH' {
     $conn = Get-Connections
     Confirm-That ($conn['claude-code']['state'] -eq 'connected' -and $conn['codex']['state'] -in @('connected', 'needs_approval')) 'keymotion-cli connections: both still connected' "Claude Code $($conn['claude-code']['state']); Codex $($conn['codex']['state'])"
     $pathAfter = Get-UserPath
-    Confirm-That ($pathAfter.Raw -ceq $path.Raw -and $pathAfter.Kind -eq $path.Kind -and (Get-BinEntries $pathAfter.Raw).Count -eq 1) 'PATH is as it was, bin on it' "$($pathAfter.Kind) $($pathAfter.Raw)"
+    Confirm-That ($pathAfter.Raw -ceq $path.Raw -and $pathAfter.Kind -eq $path.Kind -and @(Get-BinEntries $pathAfter.Raw).Count -eq 1) 'PATH is as it was, bin on it' "$($pathAfter.Kind) $($pathAfter.Raw)"
     Confirm-That (Test-SameDir "$(Get-RegValue $UserPathRecordKey 'PathAdded')" $Bin) "Keymotion's PATH record stays (a later uninstall still takes bin off)" "PathAdded = $(Get-RegValue $UserPathRecordKey 'PathAdded')"
     $run = Get-RegValue 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 'Keymotion'
     Add-Note "start-with-Windows Run value after the reinstall: $(if ($run) { $run } else { 'none' })"
-    $script:Headline = "setup /P ran the old uninstaller (scheme removed) yet hooks, skills, rule and PATH ($((Get-BinEntries $pathAfter.Raw).Count) bin entry, record kept) are unchanged"
+    $script:Headline = "setup /P ran the old uninstaller (scheme removed) yet hooks, skills, rule and PATH ($(@(Get-BinEntries $pathAfter.Raw).Count) bin entry, record kept) are unchanged"
     Save-State 'd'
 }
 
@@ -911,7 +911,7 @@ Invoke-Scenario 'e' 'Update while a keymotion-cli runs' {
         $pathAfter = Get-UserPath
         Confirm-That ($pathAfter.Raw -ceq $path.Raw -and $pathAfter.Kind -eq $path.Kind) 'the update leaves PATH alone' $pathAfter.Kind
         Confirm-That ((Get-InstalledVersion) -eq $Version) 'the uninstall entry says this version' (Get-InstalledVersion)
-        $restarted = Wait-Until 45 { (Get-AppProcesses).Count -gt 0 }
+        $restarted = Wait-Until 45 { @(Get-AppProcesses).Count -gt 0 }
         Add-Note "/R started Keymotion after the update: $restarted"
     } finally {
         [KmNative]::NtResumeProcess($holder.Handle) | Out-Null
@@ -935,7 +935,7 @@ Invoke-Scenario 'f' 'Uninstall while Keymotion runs' {
     Stop-App
     $p = Start-Process -FilePath $AppExe -PassThru
     $null = $p.Handle # keeps the exit code readable
-    $shown = Wait-Until 60 { $p.HasExited -or (Get-VisibleWindows $p.Id).Count -gt 0 }
+    $shown = Wait-Until 60 { $p.HasExited -or @(Get-VisibleWindows $p.Id).Count -gt 0 }
     if ($p.HasExited) { Skip-Scenario "Keymotion did not keep running on this runner (exit code $($p.ExitCode))" }
     $windows = @(Get-VisibleWindows $p.Id)
     $script:NormalStartWindows = $windows
@@ -944,7 +944,7 @@ Invoke-Scenario 'f' 'Uninstall while Keymotion runs' {
 
     $code = Invoke-Uninstall @('/S')
     Confirm-That ($code -eq 0) 'uninstall.exe /S ends with 0' "exit code $code"
-    $closed = Wait-Until 10 { (Get-AppProcesses).Count -eq 0 }
+    $closed = Wait-Until 10 { @(Get-AppProcesses).Count -eq 0 }
     Confirm-That $closed 'Keymotion was closed by the uninstaller' "running: $(@(Get-AppProcesses | ForEach-Object Id) -join ', ')"
     Confirm-That (-not (Test-Path -LiteralPath $InstallDir)) 'the install folder is gone' $(if (Test-Path -LiteralPath $InstallDir) { (Get-ChildItem -Recurse -Name -LiteralPath $InstallDir) -join ', ' } else { $InstallDir })
     Confirm-That (-not (Test-Path -LiteralPath $UninstallKey)) 'the uninstall entry is gone' ''
@@ -988,8 +988,8 @@ Invoke-Scenario 'g' 'Upgrade from the last published release' {
     Confirm-That (Test-CliVersion $version) 'bin\keymotion-cli.exe is added and runs' $version
     Confirm-That ((Test-Path -LiteralPath $marker) -and @(Get-ChildItem -Recurse -File -LiteralPath $AppData).Count -ge $dataBefore) 'the app data folder is kept' "$AppData, $dataBefore files before"
     $pathAfter = Get-UserPath
-    Confirm-That ($pathAfter.Raw -ceq $path.Raw -and (Get-BinEntries $pathAfter.Raw).Count -eq 0) 'the update leaves PATH alone (bin goes on it when agent access is turned on)' "$($pathAfter.Kind) $($pathAfter.Raw)"
-    $restarted = Wait-Until 45 { (Get-AppProcesses).Count -gt 0 }
+    Confirm-That ($pathAfter.Raw -ceq $path.Raw -and @(Get-BinEntries $pathAfter.Raw).Count -eq 0) 'the update leaves PATH alone (bin goes on it when agent access is turned on)' "$($pathAfter.Kind) $($pathAfter.Raw)"
+    $restarted = Wait-Until 45 { @(Get-AppProcesses).Count -gt 0 }
     Add-Note "/R started Keymotion after the update: $restarted"
     Stop-App
     $script:Headline = "$previous -> $Version with $($UpdaterArgs -join ' '): new keymotion.exe, bin\keymotion-cli.exe added ($version), app data kept, PATH untouched"
@@ -1013,13 +1013,13 @@ Invoke-Scenario 'h' 'keymotion://background starts Keymotion without a window' {
     $logsBefore = @(Get-ChildItem -LiteralPath $AppLogs -File -ErrorAction SilentlyContinue | ForEach-Object FullName)
 
     Start-Process 'keymotion://background'
-    $started = Wait-Until 30 { (Get-AppProcesses).Count -gt 0 }
+    $started = Wait-Until 30 { @(Get-AppProcesses).Count -gt 0 }
     Confirm-That $started 'Keymotion starts' "$(@(Get-AppProcesses | ForEach-Object { "pid $($_.Id)" }) -join ', ')"
     if (-not $started) { return }
     # Long enough for a window to show, as it does within seconds on a
     # normal start.
     Start-Sleep -Seconds 12
-    $procs = Get-AppProcesses
+    $procs = @(Get-AppProcesses)
     $windows = @($procs | ForEach-Object { Get-VisibleWindows $_.Id })
     $control = if ($null -ne $script:NormalStartWindows) { "a normal start (f) showed: $(if ($script:NormalStartWindows.Count) { $script:NormalStartWindows -join '; ' } else { 'none' })" } else { 'no normal start to compare' }
     Confirm-That ($procs.Count -gt 0 -and $windows.Count -eq 0) 'it shows no window' "visible windows: $(if ($windows.Count) { $windows -join '; ' } else { 'none' }); $control"
