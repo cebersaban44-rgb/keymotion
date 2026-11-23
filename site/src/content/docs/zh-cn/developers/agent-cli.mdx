@@ -1,0 +1,232 @@
+---
+title: 智能体命令行
+description: keymotion-cli 是脚本和 AI 编程智能体通过 Keymotion 点亮键盘所用的命令行工具。本页介绍它的命令、JSON 输出、退出码、它如何启动应用、供 Claude Code 和 Codex 使用的钩子和技能，以及它的安全模型。
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+`keymotion-cli` 让脚本或 AI 编程智能体（Claude Code、Codex 以及其他能运行 shell 命令的智能体）用键盘的灯光告诉用户一些事情：任务完成了、有问题在等待回答、三个测试失败了。显示什么、怎么显示由智能体决定；预设信号只是快捷方式，按键、颜色、效果和时间都可以自由组合。
+
+<Aside type="caution">
+应用中开启智能体访问并连接 Claude Code 和 Codex 的页面已经就绪（工具 › AI 智能体）。工具本身还没有包含在安装程序和 Store 软件包中，会在打包这一步加入。在此之前，请从代码仓库构建它（见[开发](#开发)）。
+</Aside>
+
+## 工作原理
+
+```text
+agent ──runs──▶ keymotion-cli ──named pipe──▶ Keymotion (agent/) ──▶ device actor ──USB──▶ keyboard
+```
+
+- `keymotion-cli` 从不打开键盘。它通过命名管道向正在运行的应用发送 JSON 消息，每行一条（[协议 1](#管道)，`crates/kb-agent`）；应用的设备 actor 始终是键盘唯一的所有者，灯光层和各项保护机制都由它掌管。一项测试确保 HID 栈、Tauri 和 tokio 不会进入这个工具（`crates/keymotion-cli/tests/dependencies.rs`）。
+- 智能体的灯光是应用中的一个灯光层：位于专注计时器、游戏灯光、音乐模式、系统指标和按应用切换的配置文件之上，位于警告、提醒及其波浪之下（[架构](/keymotion/developers/architecture/#from-a-click-to-a-hid-report)）。
+- 一切都只在 RAM 中：不会向键盘的存储写入任何内容，每个灯光都会自行结束，最长 2 小时。
+- 工具的版本始终与应用相同（`version.workspace = true`）；`keymotion-cli --version` 会输出 `keymotion-cli 1.2.0 (protocol 1)`。
+
+## 命令
+
+| 命令 | 作用 | 会启动应用 |
+|---|---|---|
+| `status` | Keymotion 是否在运行、它的版本和发布渠道、智能体访问和各项权限、键盘及其连接方式、智能体灯光现在是否显示（如果不显示，原因是什么：没有键盘、没有 USB 数据线、游戏、夜间），以及每个亮着的智能体灯光。应用未运行时：输出 `{"app":{"running":false}}`，退出码为 0。 | 否 |
+| `keys` | 键盘的按键 ID 和标签、以按键单位表示的位置，以及按键组。 | 是 |
+| `signal <name>` | 一个预设信号：`done`、`attention`、`error`、`busy` 或 `info`。每个信号的外观由用户在应用中选择；`--color`、`--effect`、`--direction`、`--speed`、`--times`、`--for` 和 `--keys` 可以在本次调用中覆盖它。`busy` 默认不显示任何灯光，并会清除该来源之前的信号。 | 是 |
+| `light` | 智能体自己的灯光：`--color`（必填）、`--keys`（默认：整个键盘）、`--effect solid\|pulse\|blink\|flash\|wave`、`--direction left\|right\|up\|down`（波浪）、`--speed 1-5`，以及 `--times N` 或 `--for <duration>`（默认 60 秒）。 | 是 |
+| `progress <percent>` | 在一行按键上显示从 0 到 100 的进度条：用户选择的 F 键行或数字行，或者 `--keys`。`--label`、`--color`、`--for`（默认为最后一次更新后 10 分钟）。进度变化时，用新的百分比再次发送。 | 是 |
+| `clear` | 移除一个灯光（`--id`）或此来源的所有灯光。永远不会移除其他来源的灯光。 | 是 |
+| `log` | 应用最近接受或拒绝的智能体请求（`--limit`，默认 20，最多 200）：来源、命令、结果、ID，以及请求更改了哪些设置。 | 是 |
+| `settings get [key]` | 外观和行为设置（信号外观、进度条按键、夜间安静等），以及哪些设置键只能由用户更改。 | 是 |
+| `settings set <key> <value>` | 更改一项外观或行为设置，例如 `signals.done.color green`。用户会在应用的“最近操作”中看到这项更改，并可以撤销。智能体访问、各项权限、“允许智能体更改这些设置”、“游戏时隐藏智能体灯光”和屏幕的每小时上限只由用户决定：应用会拒绝这些更改（77）。 | 是 |
+| `version` | 工具的版本和协议，以及应用运行时它的版本和协议。协议不匹配只会报告，不算失败。 | 否 |
+| `guide` | 一份写给智能体的简短指南（最多 60 行）：先运行什么、用法思路、取值、退出码。智能体读的是它，而不是本页。 | 否 |
+| `doctor` | 检查安装情况，无论发现什么都以 0 退出：工具本身、应用是否在运行并能应答、哪个程序在提供管道（应为 `keymotion.exe`）以及管道是否属于当前用户、版本和协议、智能体访问、键盘及其 USB 数据线、工具会如何启动应用、`keymotion-cli` 是否在 PATH 中或 Store 的别名文件夹中，以及工具是否在另一个打包应用的隔离环境中运行。 | 否 |
+| `start` | 不打开窗口启动应用，并等待它应答；如果应用已在运行，会说明这一点。 | 是 |
+| `connect claude-code\|codex` | 把 keymotion-cli 的钩子、技能以及（对 Codex）一条规则添加到该智能体的设置中（[编程智能体](#编程智能体钩子和技能)）。它会先说明将要更改什么；在终端中会询问你，否则需要 `--yes`。`--dry-run` 只说明，不更改。 | 否 |
+| `disconnect claude-code\|codex` | 只移除 `connect` 添加的内容，以及它创建的、现在已为空的容器。同样支持 `--yes` 和 `--dry-run`。 | 否 |
+| `connections` | 每个智能体是否已安装、是否已连接；对 Codex 还会说明你是否已经信任这些钩子。 | 否 |
+| `hook claude-code\|codex` | 智能体在钩子事件上运行的命令：从 stdin 读取事件，不输出任何内容，始终以 0 退出（[钩子模式](#钩子模式)）。 | 事件需要亮灯时 |
+
+专注计时器、配置文件、屏幕卡片、场景以及在按键上拼出单词，会在之后的步骤中加入。
+
+{/* Docs pass: the agent CLI's step 7 (focus, profile, card commands; screen
+cards; "a long task done"; the limits for all agents together) is described
+in the English and Turkish pages and still needs translating here. */}
+
+### 通用选项
+
+| 选项 | 含义 |
+|---|---|
+| `--json` | 无论成功还是失败，都在 stdout 上输出且只输出一个 JSON 对象。也可以用 `KEYMOTION_OUTPUT=json`。 |
+| `--source <name>` | 请求方是谁（`claude-code`、`build-script`）。每个来源有自己的灯光，并且只能清除自己的灯光。也可以用 `KEYMOTION_SOURCE`；默认为 `cli`。最多 64 个字符，取自 `a-z 0-9 : . _ -`。 |
+| `--timeout <duration>` | 等待应用的时长，连接和应答合计（默认 `5s`，最多 `5m`）。指定后，它限制整个运行过程，包括启动应用，因此有时间限制的钩子永远不会被中途切断。不指定时，启动最多可能需要 15 秒，之后调用本身还有 5 秒。 |
+| `--no-start` | 不启动应用；应用未运行时以 69 退出。 |
+| `-q`、`--quiet` | 在人类可读模式下，成功时 stdout 和 stderr 上都不输出任何内容。错误仍会输出到 stderr。 |
+| `--log <level>` | 在 stderr 上输出诊断信息：`off`、`error`、`warn`（默认；使用 `--quiet` 时为 `error`）、`info`、`debug`。 |
+
+### 取值
+
+- **按键**：型号文件中的 ID（`esc`、`f1`、`w`、`1`）、编号范围（`f1-f12`、`1-3`）、按键组（`all`、`f-row`、`numbers`、`letters`、`wasd`、`arrows`、`numpad`），用逗号分隔。同样的名称适用于每个型号；`keys` 会列出它们。
+- **颜色**：`#RRGGBB`、`RRGGBB` 或颜色名：red、green、blue、amber、yellow、orange、purple、pink、cyan、white。
+- **时长**：一个整数加一个单位：`500ms`、`30s`、`5m`、`1h`；灯光最长持续 `2h`。
+- **ID**：不带 `--id` 时，命令会替换该来源之前的同类灯光（`<source>:light`、`<source>:progress`、`<source>:<signal>`）。使用 ID 时，一个来源最多保留 8 个灯光；第九个会挤掉最早的一个，应答中会说明是哪一个。
+- 闪烁和快闪永远不会超过每秒三次（WCAG 2.3.1）。
+
+工具在发送任何内容之前，会用与应用相同的代码（`kb-agent`）检查这些值，应用收到后还会再检查一次。
+
+## 输出
+
+结果输出到 stdout，诊断信息输出到 stderr。工具只在钩子模式下读取 stdin，只在终端中运行 `connect` 和 `disconnect` 时提问。人类可读输出是几行简短的英文。使用 `--json` 时：
+
+```json
+{"ok":true,"schema":1,"command":"signal","data":{"id":"claude-code:done","shown":true,"lit":true,"expires_in_ms":120000,"replaced":false,"evicted":[],"coalesced":false,"hidden":null},"warnings":[]}
+```
+
+```json
+{"ok":false,"schema":1,"command":"light","error":{"code":"agent_access_off","message":"Agent access is off in Keymotion.","hint":"The user can turn it on in Keymotion › Tools › AI agents.","retry_after_ms":null}}
+```
+
+- `command` 是输入的命令（`signal`、`settings get`）；命令行中没有命令时为 `null`。`--help` 和 `--version` 与 `--json` 一起使用时，分别以 `help` 和 `version` 作答，文本在 `data.text` 中。
+- `data` 是应用的应答（对于 `version`、`guide`、`doctor`、`start` 和 `help`，是工具自己的应答）。对于 `signal`、`light` 和 `progress`：灯光的 `id`、现在是否显示（`shown`）、`expires_in_ms`、是否替换了之前的灯光（`replaced`）、挤掉了哪些灯光（`evicted`），以及灯光在等待时的 `hidden`（`"game"` 或 `"night"`）。
+- `warnings` 是写给读取输出的人的句子：应用是为这次调用启动的、灯光暂时被遮住或隐藏、智能体访问已关闭。
+- 没有提示或重试时间时，`hint` 和 `retry_after_ms` 为 `null`。
+- 只要只是新增字段，`schema` 就保持为 1；删除字段或改变字段的含义时，它会增加。
+- 输出的任何内容都无法控制终端。在人类可读输出中，来自应用应答或回显输入的控制字符（包括转义序列）以及不可见字符或改变文字方向的字符，会以文本形式写出（`\u{1B}`）；在 JSON 中，除了 JSON 本来就会转义的字符外，DEL、C1 控制字符和上述字符也会变成 `\u` 转义。
+
+## 退出码
+
+| 退出码 | 含义 | `error.code` |
+|---|---|---|
+| 0 | 完成 | – |
+| 1 | 意外错误 | `internal` |
+| 64 | 命令行问题：未知的命令或选项、缺少参数、不能同时使用的选项 | `bad_argument` |
+| 65 | 值有误：颜色、时长、按键、效果、ID、数字 | `bad_color`、`bad_duration`、`bad_keys`、`unknown_key`、`bad_effect`、`bad_value`、… |
+| 69 | 不可用：应用未运行且无法启动、没有键盘、需要 USB 数据线、管道不属于 Keymotion | `app_not_running`、`no_keyboard`、`needs_usb`、`unsupported`、`pipe_not_trusted` |
+| 75 | 稍后重试：速率限制（每个来源每秒 20 个请求）、超时、连接已关闭 | `rate_limited`、`timeout`、`connection_lost` |
+| 76 | 工具和应用没有共同支持的协议版本、应用比该命令旧，或某条消息违反协议 | `protocol_mismatch`、`unknown_command`、`bad_request`、`bad_response` |
+| 77 | 不允许：智能体访问已关闭，或该设置只能由用户更改 | `agent_access_off`、`permission_off` |
+
+退出码 2 从不使用：Claude Code 和 Codex 会把钩子返回的 2 理解为“继续”（Codex 还会理解为“拒绝权限”）。clap 自身的用法错误会变成 64，`--help` 和 `--version` 以 0 退出。
+
+## 启动应用
+
+`status`、`version`、`guide` 和 `doctor` 从不启动应用。其他所有命令在没有程序提供管道时，都会不打开窗口启动 Keymotion 并等待它的管道，除非指定了 `--no-start`：最多等待 15 秒；如果指定了 `--timeout`，则只等待它允许的时长（`start` 始终有 15 秒）。如果已有一个 Keymotion 在运行，但它的管道还没有打开（正在启动），工具不会启动任何程序，而是最多等待 5 秒；如果那个 Keymotion 是太旧、无法应答智能体的 Store 版，工具会立即说明。
+
+工具可能在另一个打包应用的隔离环境中运行，Claude 桌面应用的终端就是一例。在那里作为普通子进程启动的程序会留在这个隔离环境中：它对 AppData 的写入会落到另一个应用的文件夹里，它读到的也不是用户自己的设置。Windows 的包 API 看不出这样的隔离环境（`GetCurrentPackageFullName` 在那里的回答是“没有包”），但命名管道可以穿过它。因此，工具从不把 `keymotion.exe` 作为自己的子进程启动，而是请 Windows 按以下顺序启动它（`crates/keymotion-cli/src/launch.rs`）：
+
+1. 工具以 Keymotion 的包标识运行（通过 Store 版的应用执行别名）：它按 AUMID 激活包中的应用，并带上 `--background`。
+2. Store 版已安装且足够新：用 Store 包的 AUMID 做同样的事（每台电脑只运行一个 Keymotion，并优先使用 Store 版）。足够新是指：不低于第一个支持 `--background` 的版本（`kb_agent::BACKGROUND_START_SINCE`，1.2.0），也不低于工具自己的版本；版本从包的全名中读取。更旧的 Store 版会打开窗口，而且没有管道，因此永远不会被启动。
+3. `keymotion:` 地址方案会打开已安装的 GitHub 版（由 GitHub 版注册；开发构建的注册不算数，因为在另一个应用的隔离环境中注册时，资源管理器看不到它，于是会让用户选择用哪个应用打开）：`explorer.exe keymotion://background`，通过资源管理器的完整路径，用 `CreateProcessW` 启动且不继承任何句柄（`kb_winsys::shell::run_alone`；Rust 自带的 `Command` 会传递所有可继承的句柄），因此读取工具输出的智能体永远不会因资源管理器而一直等待。此时，与旧 Store 版并存的 GitHub 版会自己隐藏运行，而不会移交给 Store 版。
+4. 以上都不满足：立即以 69 退出，提示“start Keymotion”；如果只有旧的 Store 版，则提示“update Keymotion from the Microsoft Store”。
+
+在应用中，`--background` 和 `keymotion://background` 的意思是“只在任务栏时钟旁显示图标运行”。两者都不算随 Windows 启动（那仍是 `--hidden`），因此窗口状态和随 Windows 启动时的移交都不受影响。正在运行的应用收到其中任何一个时，不会有任何可见的动作；移交给 Store 版的 GitHub 版会把 `--background` 一并传过去，但只传给支持它的 Store 版（`app/src-tauri/src/tray.rs`、`handoff.rs`）。
+
+## 编程智能体：钩子和技能
+
+有两样东西负责告诉智能体的用户正在发生什么，它们的分工不同。智能体等待批准时处于停滞状态；它的服务出错时，它根本没有在运行；它也可能忘记说自己已经完成。只有编程应用本身知道这些时刻，所以由它自己通过**钩子**来通知：它在自己的事件上运行 `keymotion-cli hook <agent>`，模型对此一无所知，也不会为此占用上下文。当智能体自己想多说一些（按键上的一个词、一个计数、一个进度条）时，它通过**技能**使用这个工具：一个简短的文件，说明这个工具就在这里，并让智能体先运行 `keymotion-cli guide`。
+
+`keymotion-cli connect claude-code|codex` 会添加这两样；你开启智能体访问时，应用的 AI 智能体页面会先向你展示要添加的内容，然后做同样的事。智能体文件中的其他内容都不会被改动：
+
+| | Claude Code | Codex |
+|---|---|---|
+| 设置文件夹 | `CLAUDE_CONFIG_DIR`，否则为 `%USERPROFILE%\.claude` | `CODEX_HOME`，否则为 `%USERPROFILE%\.codex` |
+| 钩子 | `settings.json` 中的 `hooks` | `hooks.json` |
+| 钩子如何运行 | 直接运行程序及其参数，不经过 shell：`{"command": "<path>\\keymotion-cli.exe", "args": ["hook", "claude-code"]}`（Claude Code 2.1.139 或更新版本） | 交给其 shell（PowerShell）的一行命令：`if (Test-Path -LiteralPath '<path>') { & '<path>' hook codex }` |
+| 技能 | `skills\keymotion\SKILL.md` | `%USERPROFILE%\.agents\skills\keymotion\SKILL.md` |
+| 另外 | | `rules\keymotion.rules`（见下文） |
+| 批准 | 不需要 | Codex 会询问一次：`/hooks`，或应用中的“设置 › 钩子” |
+
+- **钩子命令行永远不变**。它对每个事件、在每个版本中都相同；事件的含义由 keymotion-cli 和你在 Keymotion 中的设置决定。这对 Codex 很重要，因为钩子一旦改变，Codex 就会请你再次信任它。这行命令用一个不会变动的路径指向 keymotion-cli：Store 版的应用执行别名（`%LOCALAPPDATA%\Microsoft\WindowsApps\keymotion-cli.exe`，从不使用带版本号的包文件夹）、GitHub 版的 `bin` 文件夹，或开发构建自己的路径（会给出警告：构建移动位置后，钩子就会失效）。
+- **为什么有两种形式**。如果装有 Git Bash，Claude Code 会用 Git Bash 运行钩子的 `command`，否则用 PowerShell；而带引号的路径后面跟参数的写法，没有一种能在两者中得到相同的解释（PowerShell 拒绝带引号的路径后面跟其他词；在 Bash 中，`&` 会启动后台作业）。它的 `args` 形式直接运行程序本身，因此用户文件夹中的空格不会造成问题。Codex 0.166.0 通过 `powershell -NoProfile -Command` 运行每个钩子。路径按 PowerShell 的规则加引号，能让 PowerShell 结束引号字符串的五个字符（`'` 以及排版用的 `‘ ’ ‚ ‛`）都会写成两个，因此像 `O’Brien` 这样的文件夹也能正常使用。这行命令会先检查程序是否存在：卸载 Keymotion 后，Codex 的钩子既不执行任何操作，也不报告任何内容。PowerShell 无法检查的路径（只有名称）会改用 `Get-Command` 查找。
+- **Claude Code 2.1.139 或更新版本**。`args` 形式在 2.1.139 中加入；更旧的 Claude Code 会只运行程序本身，不带 `hook claude-code`。在 2.1.101 之前，遇到不认识的钩子事件会让它忽略整个设置文件。因此，`connect` 发现较旧的 Claude Code（`%USERPROFILE%\.local\bin` 中的 `claude.exe`，或 npm 包）时会拒绝连接，并提示更新；`connections` 也会给出同样的警告。钩子模式从不检查版本（以保持快速）。
+- **你的文件仍归你所有**。只接受严格的 JSON：无法读取的文件会被拒绝，并保持原样。你的键名和钩子保持原来的顺序，文件保持原来的缩进和换行符；我们的条目放在各自独立的分组中，排在最后。每次更改之前，都会保留一份文件原样的副本（`settings.json.before-keymotion`）。文件通过一个临时文件整体写入，临时文件先刷新到磁盘，再替换原文件；如果文件是一个链接，就写入链接指向的位置，链接本身保留。每个文件在写入之前都会重新读取一次：如果在 keymotion-cli 说明将要更改什么之后（比如你还在考虑时），智能体又修改了它，就会根据它现在的内容重新规划，并在终端中再次询问；永远不会根据旧的副本写入。不属于 Keymotion 的规则文件或技能会被拒绝。连接两次不会改变任何内容；从另一个 keymotion-cli 副本连接，会就地更新我们的条目。技能旁边的 `connection.json` 会记住连接时创建了什么，因此移除连接时只移除这些内容。
+- **Codex 规则**。Codex 在沙盒中运行智能体的命令，而沙盒无法访问 Keymotion 按用户创建的管道。`rules\keymotion.rules` 允许 `keymotion-cli status|keys|signal|light|progress|clear|log|settings|version|guide|doctor|start` 无需询问就在沙盒之外运行，无论是按名称调用，还是按这个 keymotion-cli 的完整路径调用（`host_executable`），而同名的其他程序都不行：代码仓库自带的副本会留在沙盒中。`connect`、`disconnect` 和 `hook` 不在规则中。已用 `codex execpolicy check --resolve-host-executables` 验证。
+- **技能**对两个智能体都相同，并且保持精简：工具就在这里；先运行 `keymotion-cli guide`（找不到 `keymotion-cli` 时使用完整路径）；如何告诉用户由你决定，预设信号可用可不用。它带有版本标记；应用启动时，如果自己的技能文件和 Codex 规则比当前版本旧，就会重写它们，而且只重写这些文件，只在它们所在的位置，并且仍指向它们原来指向的那个 keymotion-cli。
+
+`keymotion-cli connections --json` 会为每个智能体报告 `state`：`not_found`、`not_connected`、`connected`、`needs_approval`（Codex：有你尚未信任的钩子，从 Codex 的 `config.toml` 中读取，keymotion-cli 从不写入该文件）、`outdated`（我们的部分条目缺失，或指向另一个 keymotion-cli）或 `unreadable`；如果找到的 Claude Code 太旧，还会给出 `warning`。
+
+### AI 智能体页面
+
+应用通过 `kb_hooks::setup`（`app/src-tauri/src/agent/apps.rs`）做同样的事，并为“工具 › AI 智能体”下的页面提供以下 Tauri 命令：
+
+| 命令 | 作用 |
+|---|---|
+| `agents_connections` | Claude Code 和 Codex：是否在这台电脑上、它们的状态（同上；对 Claude Code 另有带所找到版本的 `tooOld`，以及 `minVersion` 2.1.139）、这个 Keymotion 副本自带的 keymotion-cli 及其是否存在，对 GitHub 版还会说明它的 `bin` 文件夹是否在 PATH 中。 |
+| `agents_connect_plan { apps? }` | 开启智能体访问会为找到的每个编程应用添加什么：每个文件是新建、更改还是删除，它是什么（钩子及其数量、技能、Codex 规则、Keymotion 自己的记录），它的副本保存在哪里；Codex 是否会请你信任这些钩子；某个应用为什么无法连接（`problem`）。不写入任何内容。`token` 代表它展示的这份计划。 |
+| `agents_connect { token, apps? }` | 用户已批准：连接这些应用，把 `bin` 文件夹加入 PATH（GitHub 版），并开启智能体访问（除非所有应用都失败）。如果编程应用在此期间写入了自己的设置，会重新制定计划：如果计划内容仍然相同，就在保留该应用新条目的情况下写入；如果不同，则不做任何更改，并返回新的计划（`applied: false`）以便再次展示。批准两次（双击）时，第二次会发现已经完成，并返回成功。无法连接的应用不会影响其他应用；如果某个应用的文件无法全部写入，它会恢复到原来的状态（如果连恢复也失败，则为 `problem: partial`：此时移除连接会删除留下的内容）。 |
+| `agents_disconnect_plan { app }`、`agents_disconnect { app }` | 移除连接会移除什么，以及执行移除。智能体访问和 PATH 保持不变。 |
+
+**PATH（GitHub 版）**。在应用中开启智能体访问时，还会把安装目录中存放 `keymotion-cli.exe` 的 `bin` 文件夹添加到你自己的 PATH 末尾（`HKCU\Environment`），并通知已打开的程序；之后打开的终端就能按名称找到 `keymotion-cli`。这一步永远不会自行发生，而且只有在 `keymotion-cli.exe` 存在时才会进行。这个值按原样的文本读取和写回，类型不变（`REG_EXPAND_SZ` 仍是 `REG_EXPAND_SZ`），其中的其他内容不会被更改或重新排序；无法读取的 PATH（类型不同、访问被拒绝）永远不会被写入，页面会说明原因。更改之前，原来的值会保存在 `HKCU\Software\Keymotion\UserPath` 中（`PathBefore`），同时保存 Keymotion 添加的文件夹（`PathAdded`）。文件夹的比较方式与 Windows 比较名称的方式相同（按序数比较，不区分大小写）；含有 `;` 的文件夹会加上引号。关闭访问时会保留它；卸载时会移除它，但仅限由 Keymotion 添加的情况（你自己添加的文件夹会保留）；更新不会改动它。Store 版完全不需要这些：它的别名位于 Windows 始终保留在 PATH 中的文件夹里。
+
+**卸载 Keymotion 之前**，请先移除连接（在 Keymotion 中，或使用 `keymotion-cli disconnect claude-code` 和 `disconnect codex`）。Claude Code 的钩子直接指向程序本身，无法检查它是否还在：Keymotion 卸载后，在这些钩子被移除之前，Claude Code 会在每个事件上报告钩子失败。Codex 的那行命令会先检查，因此什么也不做。
+
+### 钩子模式
+
+`keymotion-cli hook claude-code|codex` 从 stdin 读取事件（最多 16 MiB，2 秒内完成；stdin 是终端时完全不读取），然后向应用发送一个说明事件含义的 `hook` 请求，随后退出。
+
+- **始终返回 0，stdout 上一个字节也不输出**，无论遇到什么情况：无效的 JSON、不认识的事件或智能体、没有应用、智能体访问已关闭、panic。对这些智能体来说，退出码 2 意味着“拒绝权限”“继续”或“阻止提示词”，而 Codex 会把 stdout 上的文本当作决定。钩子模式在命令行解析器之前就被识别，因此它的命令行中的任何错误也不会让它以 64 退出。
+- **快速**。只向应用发送一个简短的请求（在发布构建中约 12 到 15 毫秒，包括启动进程）；智能体可能会等待它。应用未运行时，钩子不会等待应用（见下文）。
+- **只有含义会离开进程**。读取的内容：事件名称、会话 ID（它会变成 `claude-code:3f9a0c1d` 这样的来源，是一个哈希值）、工作目录的最后一级文件夹（显示在会话编号旁边）、通知的类型、失败的类别、辅助智能体的类型。永远不会发送或记录：提示词、智能体的消息、对话记录的路径、任何工具的输入或输出。工具调用只用一个以会话加盐的哈希值来标识，以便把问题和它的回答对应起来。
+- `KEYMOTION_HOOK_LOG=1` 会把钩子模式做了什么（事件的含义和应用的应答）写到 stderr；钩子以 0 退出时，智能体不会显示它的 stderr。
+
+#### Keymotion 未运行时
+
+- **需要亮灯的事件**（等待你、完成、失败、使用上限）会启动 Keymotion。钩子把事件交给一个独立运行的 keymotion-cli 进程：不继承句柄，没有窗口；在钩子运行方允许时脱离它的作业；工作目录是 Windows 文件夹而不是智能体的项目文件夹；在 Store 版上通过应用执行别名运行，这样它会以 Keymotion 的包标识运行。这个进程像 `start` 一样启动 Keymotion，并传递事件。
+- **同一时间只有一个这样的进程**（通过一个命名互斥体，以及 Keymotion 管道旁边它自己的一个管道）。Keymotion 启动期间到来的钩子事件，包括回答和新的提示词，会按顺序排在第一个事件之后；Keymotion 应答后，队列会发送给它，但会去掉已被后来事件取代的内容（期间已被回答的问题、新提示词之前的“完成”），也不包含超过一分钟的内容。之后，这个进程会再转发两秒钟内到来的事件，然后结束。
+- **不值得为之启动 Keymotion 的事件**：新的提示词、一个回答、会话的开始或结束、辅助智能体完成（H）。
+- **你关掉了它，它就保持关闭**。当你从 Keymotion 的图标菜单中选择**退出**，或关闭智能体访问时，它会在每个已连接智能体的技能文件夹中写入一个记录文件 `stopped.json`；只要该文件存在，钩子就不会启动任何程序。Keymotion 在开启访问的状态下启动时，以及访问被开启时，会删除这个文件。退出只对本次登录有效：Windows 重启或你重新登录后，第一个事件会像以前一样启动 Keymotion。Windows 关机或注销不算退出。记录文件不存在或无法读取，只表示 Keymotion 没有在运行。智能体自己的命令（`keymotion-cli signal …`）仍然会启动它。
+- **为什么放在技能文件夹中**。钩子可能在另一个打包应用的隔离环境中运行（Claude 桌面应用就在自己的隔离环境中运行 Claude Code）。这样的隔离环境看到的是它自己的一份 `%LOCALAPPDATA%` 和 `%APPDATA%`，因此 Keymotion 写在那里的记录无法到达隔离环境中的钩子；而用户文件夹的其余部分是所有程序共享的（2026 年 11 月 23 日用 Claude 桌面应用实测）。技能文件夹就在那里，而且恰好在智能体已连接期间存在。
+
+各事件的含义（已对照智能体的文档核对；对 Codex 还对照了它 0.166.0 版的源代码）：
+
+| 含义 | Claude Code | Codex |
+|---|---|---|
+| 会话开始：获得编号 | `SessionStart` | `SessionStart` |
+| 工作中：该会话之前的灯光熄灭 | `UserPromptSubmit` | `UserPromptSubmit` |
+| 你停止了这一轮：它的问题和“工作中”灯光熄灭，之前的内容保留 | | `Interrupt` |
+| 等待你（`attention`） | `PermissionRequest`；`AskUserQuestion` 和 `ExitPlanMode` 的 `PreToolUse`；`Elicitation`；`Notification` 的 `permission_prompt`、`elicitation_dialog`、`elicitation_url_dialog`、`agent_needs_input` | `PermissionRequest` |
+| 已回答 | `PostToolUse`、`PostToolUseFailure`、`PermissionDenied`（该调用）；`PostToolBatch`、`ElicitationResult`、`Notification` 的 `elicitation_complete`、`elicitation_response`（该会话的全部） | `PostToolUse`（该调用）、`PreModelRequest`（该轮的全部） |
+| 完成 | `Stop` | `Stop` |
+| 失败 | `StopFailure` | 带 `status: failed` 的 `PostModelRequest` |
+| 已达使用上限（A） | 带 `rate_limit`、`billing_error`、`server_error`（服务过载）的 `StopFailure` | 失败的请求，其消息提到使用上限或速率限制、额度、支出上限、配额或模型容量已满，或者在状态码 429 或 5xx 上放弃了重试（`exceeded retry limit, last status: 429`） |
+| 辅助智能体完成（H） | `SubagentStop`（带类型）、`TaskCompleted` | `SubagentStop` |
+| 会话结束 | `SessionEnd` | `SessionEnd` |
+
+- **“等待你”会一直保持到被回答**，最长为它的持续时间（默认 30 分钟），前提是它的外观设置如此（`signals.attention.until_answered`，默认开启）；无论如何，这一轮结束时它都会熄灭。Keymotion 会记住它在等待的工具调用：多个调用同时进行时，另一个调用结束不会让它熄灭，最后一个调用得到回答才会。没有自己的调用的问题（表单、通知中的问题）只会在整个会话得到回答时熄灭：辅助智能体的调用结束不算回答它。被批准的调用以它的 `PostToolUse` 结束，因此你批准的长命令会让灯一直亮到命令结束（两个智能体都不会告知你何时批准）。
+- **按下按键会让它熄灭**。问题在按键上显示之后（最初的快闪结束，约一秒，并且你回到电脑时的那次闪烁也已结束），第一次触碰键盘或鼠标就会让灯光熄灭：你已经看到了。在此之前的输入，或者灯光看不见时（被游戏隐藏、被夜间设置关闭、没有数据线）的输入，都不算。问题仍然处于待回答状态：五分钟后它不会再次闪烁，作为补充的通知也不会再次点亮它；有两个或更多会话时，它的编号键会一直常亮，直到问题被回答。新的问题会再次亮起。
+- **Claude Code 的 `idle_prompt`**（每轮结束约一分钟后）不会点亮任何灯光：这一轮的“完成”已经说明了这一点，而每轮之后都出现“等待你”会让这个信号失去意义。
+- **Codex** 会重试一些失败的请求；同一轮再次失败时，灯光保持不变，而这一轮中成功的请求会让它熄灭。失败的一轮结束时没有 `Stop`。
+- **会话结束**会移除它的问题和编号；它结束时的状态（完成、失败）会保持其设定的时长，因为无界面运行（`claude -p`、`codex exec`）会在一轮结束后立即结束会话。
+- **B，哪个会话在等待**。每个会话第一次联系 Keymotion 时，会获得 1 到 9 中最小的空闲编号。最近 30 分钟内有过消息、或者有问题待回答的会话才算数；安静更久的会话会把编号让给需要编号的新会话，已结束的会话会立即归还编号（12 小时没有消息的会话会被遗忘）。有两个或更多这样的会话时，等待中会话的编号键会在“等待”灯光之上亮白色；`status` 和 AI 智能体页面会显示编号、项目文件夹和智能体。
+- **A、H** 和各种外观都是你在 Keymotion 中的设置（`usage_limit.*`、`helper.*`、`sessions.*`）；H 默认关闭。
+
+Keymotion 添加的钩子：Claude Code 为 `SessionStart`、`UserPromptSubmit`、`PreToolUse`（匹配器 `AskUserQuestion|ExitPlanMode`）、`PermissionRequest`、`PermissionDenied`、`PostToolUse`、`PostToolUseFailure`、`PostToolBatch`、`Notification`、`Elicitation`、`ElicitationResult`、`Stop`、`StopFailure`、`SubagentStop`、`TaskCompleted` 和 `SessionEnd`（时间限制 10 秒；`SessionEnd` 为 2 秒，这个限制也约束你自己的 `SessionEnd` 钩子；工具调用事件运行时 Claude Code 不等待）；Codex 为 `SessionStart`、`UserPromptSubmit`、`PermissionRequest`、`PostToolUse`、`PreModelRequest`、`PostModelRequest`、`Stop`、`Interrupt`、`SubagentStop` 和 `SessionEnd`（Codex 为每个钩子启动一次 PowerShell，在测试机上约需一秒，因此只在 `Interrupt` 和 `SessionEnd` 上等待，这两个事件 Codex 总是会等待，最多 3 秒）。
+
+## 安全
+
+- **仅限本机、仅限当前用户**。管道名为 `\\.\pipe\keymotion-agent-<user SID>-<session>`，拒绝网络客户端，其安全描述符只允许运行应用的用户访问。应用以第一个实例的身份创建它，因此其他程序无法悄悄抢先占用这个名称；如果管道不属于当前用户，工具会在发送任何字节之前拒绝它，`doctor` 会说出提供管道的进程。没有 TCP 或 HTTP 监听器，也没有令牌文件。
+- **用户的开关**。在用户于应用中开启**允许智能体使用键盘**之前，智能体访问一直处于关闭状态；关闭时，只有 `status`、`keys`、`log` 和 `settings get` 会应答，其余命令以 77 退出。没有任何命令可以开启访问或某项权限。
+- **保护键盘和用户的限制**。只使用 RAM；每个来源每秒最多 20 个请求、最多 8 个灯光；每秒最多闪烁 3 次；每个灯光最长 2 小时；麦克风静音和会议提醒始终显示在智能体灯光之上；希望键盘不受打扰的游戏会隐藏这些灯光（用户可以关闭这一项）。
+- **来源彼此隔离**。一个来源无法清除或替换另一个来源的灯光。
+- **不记录任何隐私内容**。应用只记录每个请求的来源、命令和结果。钩子模式只发送事件的含义（[钩子模式](#钩子模式)）。
+- **只在你要求时才改动其他程序的设置**。`connect` 和 `disconnect` 只在你要求时、并在说明将要更改什么之后，才更改 Claude Code 和 Codex 的文件，而且只改动 Keymotion 自己的条目；Codex 规则只允许灯光和状态命令离开沙盒。
+
+## 管道
+
+协议 1 的说明见 `crates/kb-agent/src/protocol.rs`：以换行分隔的 JSON，每行最多 64 KiB，首先发送 `hello`，带上双方各自支持的协议版本。工具以 `keymotion-cli` 的名义和自己的版本发送 `hello`，如果应用选择了工具不支持的版本，工具会拒绝（76）。应用在空闲时关闭的连接，会在同一截止时间内重新打开一次。
+
+## 开发
+
+```bash
+cargo build -p keymotion -j 2          # the app (start it, or the dev server's build)
+cargo run -p keymotion-cli -- status
+cargo run -p keymotion-cli -- light --keys f1-f12 --color green --effect wave --times 1
+cargo test -p keymotion-cli
+```
+
+在尝试需要应用的命令之前，先启动应用的开发构建：如果没有任何 Keymotion 在运行，工具会启动已安装的那个（如果 Store 版足够新，就启动 Store 版）。`--no-start` 可以阻止它启动任何程序。
+
+请在测试文件夹中试用 `connect`，永远不要在你日常工作所用的 Claude Code 或 Codex 的设置上试用：`KEYMOTION_CLI_TEST_HOME=<folder>` 会让 `connect`、`disconnect` 和 `connections` 在 `<folder>\.claude`、`<folder>\.codex` 和 `<folder>\.agents` 中工作（`CLAUDE_CONFIG_DIR` 和 `CODEX_HOME` 只有位于其中时才有效）。连接开发服务器运行的应用开发构建，也会为它的 AI 智能体页面（以及它留在技能旁边的记录）读取同一个变量，因此可以在不影响你自己设置的情况下试用这个页面；此时它不会改动 PATH。已安装的副本（包括用 `tauri build --debug` 构建的）从不读取这个变量。录制好的事件可以手动输入：
+
+```powershell
+'{"hook_event_name":"Stop","session_id":"s1","cwd":"C:\\dev\\demo"}' | cargo run -p keymotion-cli -- hook claude-code
+```
+
+测试会让真实的 `keymotion-cli` 程序对接一个基于 `kb_agent::transport::serve` 构建的模拟应用，使用它们自己的管道（`KEYMOTION_CLI_TEST_PIPE`，它还会把启动应用替换为空操作）。只有调试构建和启用了 `test-pipe` 特性的构建才会读取这个变量；发布构建从不读取，因此能设置环境变量的人也无法把智能体的调用引向模拟应用。集成测试只在会读取该变量的构建中编译（要在发布模式下运行，用 `cargo test --release --features test-pipe`）。测试覆盖了每个命令、访问关闭、没有应用、应用无响应、不同的协议以及每种用法错误，并且任何一次运行都不得以 2 退出。`tests/hooks.rs` 会向钩子模式输入垃圾数据、空输入、17 MiB 的数据和未知的智能体（每次都是 0、无输出），检查到达应用的内容，把事件传递给稍后才启动的应用，并在一个名称含空格的文件夹下的测试主目录中连接再移除连接，然后按照智能体的方式运行 `connect` 写入的钩子命令行：Claude Code 的作为程序加参数运行，Codex 的通过 PowerShell 运行（普通的那行还会通过 `cmd.exe` 运行）。`KEYMOTION_CLI_TEST_HOME` 由与测试管道相同的构建读取。

@@ -1348,6 +1348,7 @@ impl Engine {
                 ));
             }
             config::set(&mut next, key, value)?;
+            config::agent_may_set_to(key, &next)?;
             let after = config::get(&next, key).unwrap_or(Value::Null);
             if before != after {
                 found.push(Change { key: key.clone(), before, after });
@@ -2250,6 +2251,16 @@ mod tests {
             run(&mut e, "a", set(&[("night.from", json!("25:00"))]), 200).unwrap_err().code,
             ErrorCode::BadValue
         );
+        // F: only the user turns it on or off; an agent may make a long task
+        // no shorter than 10 minutes.
+        assert_eq!(
+            run(&mut e, "a", set(&[("long_task.on", json!(true))]), 300).unwrap_err().code,
+            ErrorCode::PermissionOff
+        );
+        let short = run(&mut e, "a", set(&[("long_task.after", json!("2m"))]), 300).unwrap_err();
+        assert_eq!(short.code, ErrorCode::BadValue);
+        assert!(run(&mut e, "a", set(&[("long_task.after", json!("15m"))]), 300).is_ok());
+        assert_eq!(e.settings().long_task.after_s, 15 * 60);
         // The user can say no to all of it.
         let mut s = *e.settings();
         s.agents_may_edit = false;
@@ -2809,7 +2820,8 @@ mod tests {
         let mut e = on();
         let index = index();
         // F1 red, then F2 green; Esc blue under both the whole time; twice.
-        let scene = scene_of(&[("esc", "blue", Some(0), 600), ("f1", "red", Some(0), 300), ("f2", "green", None, 300)], 2);
+        let scene =
+            scene_of(&[("esc", "blue", Some(0), 600), ("f1", "red", Some(0), 300), ("f2", "green", None, 300)], 2);
         let answer = e.scene(&src("tests"), "tests:scene", &scene, &index, at(0)).unwrap();
         assert_eq!((answer["length_ms"].clone(), answer["expires_in_ms"].clone()), (json!(600), json!(1200)));
         assert_eq!(key_at(&e, "f1", 100), Some([255, 0, 0]));
@@ -2829,17 +2841,20 @@ mod tests {
             repeat: Some(0),
             for_ms: Some(5_000),
             ..kb_agent::protocol::SceneArgs {
-                steps: vec![kb_agent::protocol::SceneStepArgs {
-                    keys: Some("f5".into()),
-                    color: "white".into(),
-                    for_ms: Some(200),
-                    ..Default::default()
-                }, kb_agent::protocol::SceneStepArgs {
-                    keys: Some("f6".into()),
-                    color: "white".into(),
-                    for_ms: Some(200),
-                    ..Default::default()
-                }],
+                steps: vec![
+                    kb_agent::protocol::SceneStepArgs {
+                        keys: Some("f5".into()),
+                        color: "white".into(),
+                        for_ms: Some(200),
+                        ..Default::default()
+                    },
+                    kb_agent::protocol::SceneStepArgs {
+                        keys: Some("f6".into()),
+                        color: "white".into(),
+                        for_ms: Some(200),
+                        ..Default::default()
+                    },
+                ],
                 ..Default::default()
             }
         }
@@ -2851,7 +2866,10 @@ mod tests {
         assert_eq!(key_at(&e, "f5", 15_000), None, "its time is up");
         // Unknown keys are refused with the step's name.
         let far = scene_of(&[("f24", "red", None, 100)], 1);
-        assert_eq!(e.scene(&src("tests"), "tests:x", &far, &index, at(20_000)).unwrap_err().code, ErrorCode::UnknownKey);
+        assert_eq!(
+            e.scene(&src("tests"), "tests:x", &far, &index, at(20_000)).unwrap_err().code,
+            ErrorCode::UnknownKey
+        );
     }
 
     #[test]

@@ -26,10 +26,13 @@
 //! * Beyond lights (plan §12.1 rows 10–11, §12.4 F): the focus timer
 //!   (`focus`, its own permission), profiles (`profile list`, `show` in
 //!   working memory, `apply` the lighting part to the keyboard: its own
-//!   permission, `--write-flash`, a daily number per agent) and screen cards
-//!   (`card`: its own permission, `--write-flash`, an hourly number per
-//!   agent, the live mode's budget; [`cards`]). Agents never turn these
-//!   permissions on: only the page does.
+//!   permission, `--write-flash`, at most 10 writes in any 24 hours) and
+//!   screen cards (`card`: its own permission, `--write-flash`, the user's
+//!   hourly number, the live mode's budget; [`cards`]). The numbers are for
+//!   all agents together and survive a restart ([`limits`]): an agent's
+//!   name is what it says it is. Agents never turn these permissions on:
+//!   only the page does. A card needs the page: it draws it, and says when
+//!   it can (`agents_card_drawer_ready`).
 //! * An agent's own animations (§12.1 last row, §12.5): `scene` plays a
 //!   timeline of steps (keys, colour, effect, when, how long) and may keep
 //!   it under a name, `pattern` lists, plays and forgets those, and `spell`
@@ -42,6 +45,7 @@ mod config;
 mod effects;
 mod engine;
 mod keys;
+mod limits;
 
 pub use cards::SOURCE as CARD_SOURCE;
 
@@ -64,10 +68,11 @@ use kb_agent::{AgentError, Call, Channel, Command, ErrorCode, KeySpec, ServerInf
 use kb_protocol::sonix::level_factor;
 use kb_protocol::sonix::screen::ScreenAnimation;
 use keys::KeyIndex;
+use limits::{Limits, DAY_MS, HOUR_MS};
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::Condvar;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
@@ -150,8 +155,24 @@ pub struct ScreenNow {
     pub live: bool,
 }
 
-/// Agents' profile writes a day, each.
-pub const PROFILE_WRITES_PER_DAY: u32 = 10;
+/// Profile writes by all agents together in any 24 hours.
+pub const PROFILE_WRITES_PER_DAY: u32 = limits::PROFILE_WRITES as u32;
+/// How often the worker looks for an agent's card left on the screen with
+/// nothing to take it back, when no card is on its way.
+const LOOK_FOR_LEFT_CARDS_MS: u64 = 2_000;
+
+/// Why a profile's lighting was not written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WriteError {
+    /// The write guard refused it (several keyboards, another program,
+    /// untested firmware): why.
+    Blocked(String),
+    /// No keyboard on the USB cable.
+    NoUsb,
+    /// The write failed: why.
+    Failed(String),
+}
+
 /// Patterns one agent keeps.
 pub const MAX_PATTERNS: usize = 32;
 /// Agents with patterns.
@@ -278,16 +299,17 @@ pub trait Host: Send + Sync {
     /// (`kb_hooks::setup::mark_stopped`): `Some` when the user quit it or
     /// turned agent access off, `None` when they may again.
     fn note_stopped(&self, why: Option<kb_hooks::setup::Stopped>);
-    /// The agents' saved patterns, as they were last saved.
-    fn load_patterns(&self) -> Option<Value>;
-    fn save_patterns(&self, patterns: &Value) -> Result<(), String>;
     /// The focus timer, for an agent: `action`, and on `start` one block
     /// of `minutes` instead of the user's sequence.
     fn focus_control(&self, action: FocusAction, minutes: Option<u16>) -> Result<FocusDone, String>;
     fn profiles(&self) -> Result<ProfilesNow, String>;
     /// Write `profile`'s lighting to the keyboard on the cable (the write
     /// guard applies). Whether it was written (`false`: it had it).
-    fn write_lighting(&self, profile: &Profile) -> Result<bool, String>;
+    fn write_lighting(&self, profile: &Profile) -> Result<bool, WriteError>;
+    /// A JSON file of the agents' in the app's settings folder, as last
+    /// saved; and saving one.
+    fn load_json(&self, file: &str) -> Option<Value>;
+    fn save_json(&self, file: &str, value: &Value) -> Result<(), String>;
     fn screen(&self) -> ScreenNow;
     /// Ask the page to draw an agent's card.
     fn request_card(&self, card: &AgentCard);
@@ -343,8 +365,14 @@ pub struct Core {
     /// Agents' screen cards; `cards_moved` wakes a `card --wait`.
     cards: Mutex<CardBook>,
     cards_moved: Condvar,
-    /// Profile writes per agent: the day (local) and how many.
-    writes: Mutex<HashMap<String, (i64, u32)>>,
+    /// Profile writes and cards in their windows, all agents together.
+    limits: Mutex<Limits>,
+    /// Numbers the slots of profile writes (to give one back).
+    write_seq: AtomicU64,
+    /// The page listens for `agent-card` and can draw a card.
+    drawer: AtomicBool,
+    /// When the worker next looks for a card left on the screen.
+    next_look: AtomicU64,
     /// The agents' saved scenes.
     patterns: Mutex<Patterns>,
 }
@@ -364,16 +392,21 @@ fn no_keyboard() -> AgentError {
 
 /// A write the device refused or that failed, as an agent's error: the
 /// write guard's refusals (`device::WriteBlock`) are `write_blocked`.
-fn write_error(e: String) -> AgentError {
-    let blocked = ["more than one keyboard", "another program", "untested keyboard firmware"];
-    if blocked.iter().any(|b| e.contains(b)) {
-        AgentError::new(ErrorCode::WriteBlocked, format!("Keymotion did not write the keyboard: {e}."))
-            .with_hint("The user can sort it out in Keymotion; do not retry until then.")
-    } else if e.contains("USB") || e.contains("no keyboard") {
-        needs_usb()
-    } else {
-        AgentError::new(ErrorCode::Internal, format!("The keyboard was not written: {e}"))
+fn write_error(e: WriteError) -> AgentError {
+    match e {
+        WriteError::Blocked(why) => {
+            AgentError::new(ErrorCode::WriteBlocked, format!("Keymotion did not write the keyboard: {why}."))
+                .with_hint("The user can sort it out in Keymotion; do not retry until then.")
+        }
+        WriteError::NoUsb => needs_usb(),
+        WriteError::Failed(why) => AgentError::new(ErrorCode::Internal, format!("The keyboard was not written: {why}")),
     }
+}
+
+/// The page cannot draw cards now.
+fn no_drawer() -> AgentError {
+    AgentError::new(ErrorCode::Unsupported, "Keymotion's window has not loaded, so it cannot draw a card now.")
+        .with_hint("Ask the user to open Keymotion's window once; cards work from then on.")
 }
 
 fn lights_name(l: AgentLights) -> &'static str {
@@ -389,6 +422,8 @@ fn lights_name(l: AgentLights) -> &'static str {
 
 impl Core {
     pub fn new(host: Arc<dyn Host>, settings: AgentSettings, info: ServerInfo, serve_pipe: bool) -> Arc<Self> {
+        let limits: Limits =
+            host.load_json(limits::FILE).and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default();
         Arc::new_cyclic(|me| Self {
             me: me.clone(),
             host,
@@ -401,7 +436,10 @@ impl Core {
             wake: Mutex::new(None),
             cards: Mutex::new(CardBook::default()),
             cards_moved: Condvar::new(),
-            writes: Mutex::new(HashMap::new()),
+            limits: Mutex::new(limits),
+            write_seq: AtomicU64::new(0),
+            drawer: AtomicBool::new(false),
+            next_look: AtomicU64::new(0),
             patterns: Mutex::new(Patterns::new()),
         })
         .with_patterns()
@@ -409,7 +447,7 @@ impl Core {
 
     /// The saved patterns, from the host.
     fn with_patterns(self: Arc<Self>) -> Arc<Self> {
-        let loaded = self.host.load_patterns().and_then(|v| serde_json::from_value::<Patterns>(v).ok());
+        let loaded = self.host.load_json(PATTERNS_FILE).and_then(|v| serde_json::from_value::<Patterns>(v).ok());
         if let Some(p) = loaded {
             *lock(&self.patterns) = p;
         }
@@ -602,13 +640,23 @@ impl Core {
             let done = self.host.focus_control(f.action, f.minutes).map_err(|e| {
                 AgentError::new(ErrorCode::Unsupported, format!("The focus timer did not take it: {e}"))
             })?;
-            Ok(json!({
+            // `--for` starts a block; a timer already going keeps its own.
+            let kept = done.already_running || done.resumed;
+            let mut answer = json!({
                 "action": f.action.as_str(),
                 "already_running": done.already_running,
                 "resumed": done.resumed,
-                "minutes": f.minutes,
+                "minutes": if kept { None } else { f.minutes },
                 "focus": done.now,
-            }))
+            });
+            if kept && f.minutes.is_some() {
+                answer["minutes_not_applied"] = json!(if done.resumed {
+                    "the timer was paused: it went on with what it had"
+                } else {
+                    "the timer was running: it keeps what it has"
+                });
+            }
+            Ok(answer)
         })
     }
 
@@ -732,33 +780,73 @@ impl Core {
                         .with_retry_after(Duration::from_secs(5)));
                 }
                 let agent = agent_of(call.source.as_str()).to_string();
-                let day = self.day();
-                let used = lock(&self.writes).get(&agent).filter(|(d, _)| *d == day).map_or(0, |(_, n)| *n);
-                if used >= PROFILE_WRITES_PER_DAY {
-                    return Err(AgentError::new(
-                        ErrorCode::RateLimited,
-                        format!("{agent} wrote profiles {PROFILE_WRITES_PER_DAY} times today; the keyboard's memory is spared until tomorrow."),
-                    ));
+                // The slot is taken before the write, under the lock, and
+                // given back when nothing was written.
+                let slot = format!("w{}", self.write_seq.fetch_add(1, AtomicOrdering::SeqCst));
+                let wall = self.wall();
+                {
+                    let mut l = lock(&self.limits);
+                    if let Err(wait) = l.profile_writes.room(limits::PROFILE_WRITES, wall, DAY_MS) {
+                        return Err(AgentError::new(
+                            ErrorCode::RateLimited,
+                            format!(
+                                "Agents wrote profiles {PROFILE_WRITES_PER_DAY} times in the last 24 hours; the keyboard's memory is spared for now."
+                            ),
+                        )
+                        .with_retry_after(Duration::from_millis(wait)));
+                    }
+                    l.profile_writes.take(&agent, &slot, wall);
+                    self.store_limits(&l);
                 }
-                let written = self.host.write_lighting(profile).map_err(write_error)?;
-                if written {
-                    lock(&self.writes).insert(agent, (day, used + 1));
-                }
+                let result = self.host.write_lighting(profile);
+                let l = {
+                    let mut l = lock(&self.limits);
+                    if !matches!(result, Ok(true)) {
+                        l.profile_writes.give_back(&slot);
+                        self.store_limits(&l);
+                    }
+                    l.clone()
+                };
+                let written = result.map_err(write_error)?;
                 Ok(json!({
                     "id": id,
                     "profile": Self::profile_name(profile),
                     "changed": written,
-                    "writes_today": used + u32::from(written),
-                    "writes_per_day": PROFILE_WRITES_PER_DAY,
+                    "writes_in_24h": l.profile_writes.count(wall, DAY_MS),
+                    "agent_writes_in_24h": l.profile_writes.count_for(&agent, wall, DAY_MS),
+                    "writes_per_24h": PROFILE_WRITES_PER_DAY,
                 }))
             }),
         }
     }
 
-    /// Today, by the local clock: a number that changes at local midnight.
-    fn day(&self) -> i64 {
-        let minutes = (self.host.wall_ms() / 60_000.0).floor() as i64 - i64::from(self.host.minute_of_day());
-        minutes.div_euclid(24 * 60)
+    /// Now, as the limits count it: Unix ms.
+    fn wall(&self) -> u64 {
+        self.host.wall_ms().max(0.0) as u64
+    }
+
+    /// Keep the limits' times on disk (after every change: a few an hour).
+    fn store_limits(&self, l: &Limits) {
+        let saved =
+            serde_json::to_value(l).map_err(|e| e.to_string()).and_then(|v| self.host.save_json(limits::FILE, &v));
+        if let Err(e) = saved {
+            tracing::warn!("agents' limits not saved: {e}");
+        }
+    }
+
+    /// Give card `id`'s count back: it never reached the screen.
+    fn give_card_back(&self, id: &str) {
+        let mut l = lock(&self.limits);
+        if l.cards.give_back(id) {
+            self.store_limits(&l);
+        }
+    }
+
+    /// The page listens for cards (`true`) or went away (`false`).
+    pub fn set_card_drawer(&self, ready: bool) {
+        if self.drawer.swap(ready, AtomicOrdering::SeqCst) != ready {
+            tracing::debug!(ready, "agent card drawer");
+        }
     }
 
     // ------------------------------------------- scenes, patterns, spelling
@@ -809,7 +897,9 @@ impl Core {
         };
         let (value, replaced) = snapshot;
         let value = value.map_err(|e| AgentError::new(ErrorCode::Internal, format!("Patterns not written: {e}")))?;
-        self.host.save_patterns(&value).map_err(|e| AgentError::new(ErrorCode::Internal, format!("Patterns not saved: {e}")))?;
+        self.host
+            .save_json(PATTERNS_FILE, &value)
+            .map_err(|e| AgentError::new(ErrorCode::Internal, format!("Patterns not saved: {e}")))?;
         Ok(replaced)
     }
 
@@ -819,7 +909,10 @@ impl Core {
         self.carried_as(call, "scene", !scene.play, || {
             let agent = agent_of(call.source.as_str()).to_string();
             let mut answer = if scene.play {
-                let id = scene.id.as_ref().map_or_else(|| format!("{}:scene", call.source.as_str()), |i| i.as_str().to_string());
+                let id = scene
+                    .id
+                    .as_ref()
+                    .map_or_else(|| format!("{}:scene", call.source.as_str()), |i| i.as_str().to_string());
                 self.play(call, &scene, &id)?
             } else {
                 json!({})
@@ -863,7 +956,9 @@ impl Core {
                     ..saved
                 };
                 let scene = args.validate()?;
-                let id = p.id.as_ref().map_or_else(|| format!("{}:pattern-{name}", call.source.as_str()), |i| i.as_str().to_string());
+                let id =
+                    p.id.as_ref()
+                        .map_or_else(|| format!("{}:pattern-{name}", call.source.as_str()), |i| i.as_str().to_string());
                 let mut answer = self.play(call, &scene, &id)?;
                 answer["pattern"] = json!(name);
                 Ok(answer)
@@ -878,9 +973,10 @@ impl Core {
                     all.retain(|_, m| !m.is_empty());
                     serde_json::to_value(&*all)
                 };
-                let value = value.map_err(|e| AgentError::new(ErrorCode::Internal, format!("Patterns not written: {e}")))?;
+                let value =
+                    value.map_err(|e| AgentError::new(ErrorCode::Internal, format!("Patterns not written: {e}")))?;
                 self.host
-                    .save_patterns(&value)
+                    .save_json(PATTERNS_FILE, &value)
                     .map_err(|e| AgentError::new(ErrorCode::Internal, format!("Patterns not saved: {e}")))?;
                 Ok(json!({ "deleted": true, "pattern": name }))
             }),
@@ -894,7 +990,8 @@ impl Core {
             let index = self.lights()?;
             let (scene, written, skipped) =
                 spell_scene(&spell, |id| KeySpec::parse(id).is_ok_and(|k| index.resolve(&k).is_ok()))?;
-            let id = spell.id.as_ref().map_or_else(|| format!("{}:spell", call.source.as_str()), |i| i.as_str().to_string());
+            let id =
+                spell.id.as_ref().map_or_else(|| format!("{}:spell", call.source.as_str()), |i| i.as_str().to_string());
             let mut answer = self.play(call, &scene, &id)?;
             answer["written"] = json!(written);
             answer["skipped"] = json!(skipped);
@@ -932,6 +1029,9 @@ impl Core {
                 return Err(Self::write_flash_missing("card"));
             }
             self.screen_ready()?;
+            if !self.drawer.load(AtomicOrdering::SeqCst) {
+                return Err(no_drawer());
+            }
             let color = c.color.map(|k| [k.r, k.g, k.b]);
             let image_bytes = c.image.as_ref().map(|(b, _)| b.as_slice()).unwrap_or_default();
             let content = cards::content_id(&[
@@ -947,21 +1047,30 @@ impl Core {
                 let stage = book.stage(&id).unwrap_or(Stage::Live);
                 return Ok(json!({ "id": id, "skipped": "same_content", "state": stage.name() }));
             }
-            if let Err(wait) = book.room(&agent, s.screen_per_hour, now) {
-                return Err(AgentError::new(
-                    ErrorCode::RateLimited,
-                    format!(
-                        "{agent} put {} cards on the screen this hour, as many as the user allows.",
-                        s.screen_per_hour
-                    ),
-                )
-                .with_retry_after(Duration::from_millis(wait)));
-            }
-            let show_ms = kb_agent::values::duration_ms(c.duration);
-            let name = Self::card_name(c.title.as_deref(), c.text.as_deref());
-            let id = book.start(&agent, content, show_ms, &name, now);
-            let sent = book.sent_this_hour(&agent, now);
+            let wall = self.wall();
+            let (id, sent, mine) = {
+                let mut l = lock(&self.limits);
+                if let Err(wait) = l.cards.room(usize::from(s.screen_per_hour), wall, HOUR_MS) {
+                    return Err(AgentError::new(
+                        ErrorCode::RateLimited,
+                        format!(
+                            "Agents put {} cards on the screen this hour, as many as the user allows.",
+                            s.screen_per_hour
+                        ),
+                    )
+                    .with_retry_after(Duration::from_millis(wait)));
+                }
+                let show_ms = kb_agent::values::duration_ms(c.duration);
+                let name = Self::card_name(c.title.as_deref(), c.text.as_deref());
+                let id = book.start(content, show_ms, &name, now);
+                l.cards.take(&agent, &id, wall);
+                self.store_limits(&l);
+                (id, l.cards.count(wall, HOUR_MS), l.cards.count_for(&agent, wall, HOUR_MS))
+            };
             drop(book);
+            // A `--wait` on the card this one replaced answers now.
+            self.cards_moved.notify_all();
+            let show_ms = kb_agent::values::duration_ms(c.duration);
             let image = c.image.as_ref().map(|(bytes, info)| AgentCardImage {
                 mime: info.format.mime().to_string(),
                 data: kb_agent::image::encode(bytes),
@@ -982,7 +1091,13 @@ impl Core {
                 show_s: (show_ms / 1000) as u32,
             });
             tracing::info!(%agent, %id, picture = c.image.is_some(), "agent card asked of the page");
-            Ok(json!({ "id": id, "state": "drawing", "sent_this_hour": sent, "per_hour": s.screen_per_hour }))
+            Ok(json!({
+                "id": id,
+                "state": "drawing",
+                "sent_this_hour": sent,
+                "agent_sent_this_hour": mine,
+                "per_hour": s.screen_per_hour,
+            }))
         })?;
         let (Some(wait), Some(id)) = (c.wait, result.get("id").and_then(Value::as_str).map(str::to_string)) else {
             return Ok(self.card_answer(result));
@@ -1013,7 +1128,11 @@ impl Core {
                 data["state"] = json!(stage.name());
                 Ok(self.card_answer(data))
             }
-            None => Ok(self.card_answer(data)),
+            // Settled long ago, past what is remembered.
+            None => {
+                data["state"] = json!("unknown");
+                Ok(self.card_answer(data))
+            }
         }
     }
 
@@ -1034,22 +1153,28 @@ impl Core {
         if !s.enabled || !s.screen || !s.long_task.on || ms < u64::from(s.long_task.after_s) * 1000 {
             return;
         }
-        if self.screen_ready().is_err() {
+        if self.screen_ready().is_err() || !self.drawer.load(AtomicOrdering::SeqCst) {
             return;
         }
         let agent = agent_of(source.as_str()).to_string();
         let now = self.host.mono_ms();
+        let wall = self.wall();
         let minutes = (ms as f64 / 60_000.0).round() as u32;
         let show_ms = u64::from(s.long_task.show_s) * 1000;
         let id = {
             let mut book = lock(&self.cards);
-            if book.room(&agent, s.screen_per_hour, now).is_err() {
+            let mut l = lock(&self.limits);
+            if l.cards.room(usize::from(s.screen_per_hour), wall, HOUR_MS).is_err() {
                 tracing::debug!(%agent, "long task done: no card, the hour's cards are used");
                 return;
             }
             let content = cards::content_id(&[b"long", agent.as_bytes(), &minutes.to_le_bytes(), &now.to_le_bytes()]);
-            book.start(&agent, content, show_ms, &format!("Agent: done in {minutes} min"), now)
+            let id = book.start(content, show_ms, &format!("Agent: done in {minutes} min"), now);
+            l.cards.take(&agent, &id, wall);
+            self.store_limits(&l);
+            id
         };
+        self.cards_moved.notify_all();
         self.host.request_card(&AgentCard {
             id: id.clone(),
             kind: AgentCardKind::LongTask,
@@ -1072,7 +1197,9 @@ impl Core {
         let name = lock(&self.cards).drawn(id, now)?;
         let sent = self.host.submit_card(anim, &name);
         if let Err(e) = &sent {
-            lock(&self.cards).failed(id, &format!("The live screen did not take it: {e}"));
+            if lock(&self.cards).failed(id, &format!("The live screen did not take it: {e}")) {
+                self.give_card_back(id);
+            }
         }
         self.cards_moved.notify_all();
         self.wake();
@@ -1082,19 +1209,30 @@ impl Core {
     /// The page could not draw card `id`.
     pub fn card_failed(&self, id: &str, why: &str) {
         let why: String = why.chars().filter(|c| !c.is_control()).take(200).collect();
-        if lock(&self.cards).failed(id, &format!("The card could not be drawn: {why}")) {
+        let failed = lock(&self.cards).failed(id, &format!("The card could not be drawn: {why}"));
+        if failed {
             tracing::warn!(%id, "agent card not drawn: {why}");
+            self.give_card_back(id);
         }
         self.cards_moved.notify_all();
     }
 
-    /// The worker's look at agents' cards.
+    /// The worker's look at agents' cards: every pass while one is on its
+    /// way, and now and then otherwise, for a card left on the screen with
+    /// nothing to take it back (one from before a restart).
     fn watch_cards(&self) {
+        let now = self.host.mono_ms();
         if !lock(&self.cards).busy() {
-            return;
+            if now < self.next_look.load(AtomicOrdering::SeqCst) {
+                return;
+            }
+            self.next_look.store(now + LOOK_FOR_LEFT_CARDS_MS, AtomicOrdering::SeqCst);
         }
         let on = self.host.cards_on_screen();
-        let due = lock(&self.cards).tick(self.host.mono_ms(), on);
+        let due = lock(&self.cards).tick(now, on);
+        for id in &due.failed {
+            self.give_card_back(id);
+        }
         if let Some(ms) = due.return_after_ms {
             self.host.card_return_after(ms);
         }
@@ -1602,6 +1740,17 @@ impl Host for AppHost {
         }
     }
 
+    fn load_json(&self, file: &str) -> Option<Value> {
+        settings::load::<Value>(self.config_dir.as_deref()?, file, VERSION)
+    }
+
+    fn save_json(&self, file: &str, value: &Value) -> Result<(), String> {
+        match &self.config_dir {
+            Some(dir) => settings::save(dir, file, VERSION, value).map_err(|e| e.to_string()),
+            None => Ok(()),
+        }
+    }
+
     fn publish(&self, state: &AgentsState) {
         let _ = self.app.emit(EVENT_AGENTS, state);
     }
@@ -1617,18 +1766,6 @@ impl Host for AppHost {
         };
         if !done.is_empty() {
             tracing::info!(stopped = why.is_some(), files = done.len(), "agent hooks told whether to start Keymotion");
-        }
-    }
-
-    fn load_patterns(&self) -> Option<Value> {
-        let dir = self.config_dir.as_deref()?;
-        settings::load::<Value>(dir, PATTERNS_FILE, VERSION)
-    }
-
-    fn save_patterns(&self, patterns: &Value) -> Result<(), String> {
-        match &self.config_dir {
-            Some(dir) => settings::save(dir, PATTERNS_FILE, VERSION, patterns).map_err(|e| e.to_string()),
-            None => Ok(()),
         }
     }
 
@@ -1656,12 +1793,17 @@ impl Host for AppHost {
         Ok(ProfilesNow { profiles, current })
     }
 
-    fn write_lighting(&self, profile: &Profile) -> Result<bool, String> {
-        let model = crate::usb_model(&self.app).ok_or("no keyboard on the USB cable")?;
-        let current = crate::profile_current(&self.app, &model)?;
+    fn write_lighting(&self, profile: &Profile) -> Result<bool, WriteError> {
+        let model = crate::usb_model(&self.app).ok_or(WriteError::NoUsb)?;
+        let current = crate::profile_current(&self.app, &model).map_err(WriteError::Failed)?;
+        // The write guard's answer as it is (the write would say it again,
+        // in words).
+        if let Some(block) = self.device.call(Request::WriteBlocked).map_err(WriteError::Failed)? {
+            return Err(WriteError::Blocked(block.to_string()));
+        }
         let mut writer = crate::DeviceWriter { device: &self.device, config_dir: self.config_dir.clone() };
-        let loaded =
-            crate::profiles::load_part(profile, crate::profiles::ProfilePart::Lighting, &current, &mut writer)?;
+        let loaded = crate::profiles::load_part(profile, crate::profiles::ProfilePart::Lighting, &current, &mut writer)
+            .map_err(WriteError::Failed)?;
         let written = loaded == crate::profiles::PartLoaded::Written;
         if written {
             tracing::info!(profile = %profile.id, "an agent wrote a profile's lighting");
@@ -1704,7 +1846,10 @@ impl Host for AppHost {
     fn cards_on_screen(&self) -> OnScreen {
         use tauri::Manager;
         match self.app.try_state::<Arc<crate::live::LiveHandle>>() {
-            Some(live) => OnScreen { shown: live.card_shown(CARD_SOURCE), waiting: live.card_waiting(CARD_SOURCE) },
+            Some(live) => {
+                let (shown, waiting, back_planned) = live.card_status(CARD_SOURCE);
+                OnScreen { shown, waiting, back_planned }
+            }
             None => OnScreen::default(),
         }
     }
@@ -1850,6 +1995,12 @@ impl AgentHandle {
         self.core.card_failed(id, why);
     }
 
+    /// The page listens for `agent-card` and can draw cards (`true`), or
+    /// it went away (`false`: reloaded, its window closed).
+    pub fn card_drawer(&self, ready: bool) {
+        self.core.set_card_drawer(ready);
+    }
+
     /// Claude Code and Codex: here, connected; keymotion-cli; PATH.
     pub fn connections(&self) -> AgentConnections {
         apps::connections(&self.place, self.user_path.as_ref())
@@ -1943,6 +2094,7 @@ mod tests {
     use kb_agent::protocol::{ClearArgs, LightArgs, SettingsSetArgs, SignalArgs, StatusArgs};
     use kb_agent::transport::Client;
     use kb_agent::SourceName;
+    use std::collections::HashMap;
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
     /// A host with a keyboard on the cable and a device that only records.
@@ -1974,7 +2126,15 @@ mod tests {
         submitted: Mutex<Vec<String>>,
         on_screen: Mutex<OnScreen>,
         returns: Mutex<Vec<u64>>,
-        patterns: Mutex<Option<Value>>,
+        /// The agents' files (`load_json`, `save_json`): kept across a
+        /// "restart" (a new Core on the same host).
+        files: Mutex<HashMap<String, Value>>,
+        /// The next profile writes fail so.
+        write_fails: Mutex<Option<WriteError>>,
+        /// A profile write takes this long.
+        write_ms: AtomicU64,
+        /// The focus timer is running already.
+        focus_running: AtomicBool,
     }
 
     /// A per-key profile for the keyboard on the cable: Esc red, F1 blue.
@@ -2030,7 +2190,10 @@ mod tests {
                 submitted: Mutex::new(Vec::new()),
                 on_screen: Mutex::new(OnScreen::default()),
                 returns: Mutex::new(Vec::new()),
-                patterns: Mutex::new(None),
+                files: Mutex::new(HashMap::new()),
+                write_fails: Mutex::new(None),
+                write_ms: AtomicU64::new(0),
+                focus_running: AtomicBool::new(false),
             })
         }
 
@@ -2098,22 +2261,21 @@ mod tests {
         fn note_stopped(&self, why: Option<kb_hooks::setup::Stopped>) {
             lock(&self.stopped).push(why);
         }
-        fn load_patterns(&self) -> Option<Value> {
-            lock(&self.patterns).clone()
-        }
-        fn save_patterns(&self, patterns: &Value) -> Result<(), String> {
-            *lock(&self.patterns) = Some(patterns.clone());
-            Ok(())
-        }
         fn focus_control(&self, action: FocusAction, minutes: Option<u16>) -> Result<FocusDone, String> {
             lock(&self.focus_calls).push((action, minutes));
-            let now = FocusNow { phase: "focus", status: "running", remaining_s: 60, once: minutes };
-            Ok(FocusDone { already_running: false, resumed: false, now: Some(now) })
+            let running = self.focus_running.load(Ordering::SeqCst);
+            let once = if running { None } else { minutes };
+            let now = FocusNow { phase: "focus", status: "running", remaining_s: 60, once };
+            Ok(FocusDone { already_running: running, resumed: false, now: Some(now) })
         }
         fn profiles(&self) -> Result<ProfilesNow, String> {
             Ok(lock(&self.profiles).clone())
         }
-        fn write_lighting(&self, profile: &Profile) -> Result<bool, String> {
+        fn write_lighting(&self, profile: &Profile) -> Result<bool, WriteError> {
+            std::thread::sleep(Duration::from_millis(self.write_ms.load(Ordering::SeqCst)));
+            if let Some(e) = lock(&self.write_fails).clone() {
+                return Err(e);
+            }
             lock(&self.wrote).push(profile.id.clone());
             if let Some(c) = lock(&self.profiles).current.as_mut() {
                 c.lighting.clone_from(&profile.lighting);
@@ -2129,7 +2291,8 @@ mod tests {
         }
         fn submit_card(&self, _anim: ScreenAnimation, name: &str) -> Result<(), String> {
             lock(&self.submitted).push(name.to_string());
-            *lock(&self.on_screen) = OnScreen { shown: false, waiting: true };
+            let mut on = lock(&self.on_screen);
+            on.waiting = true;
             Ok(())
         }
         fn cards_on_screen(&self) -> OnScreen {
@@ -2137,6 +2300,14 @@ mod tests {
         }
         fn card_return_after(&self, ms: u64) {
             lock(&self.returns).push(ms);
+            lock(&self.on_screen).back_planned = true;
+        }
+        fn load_json(&self, file: &str) -> Option<Value> {
+            lock(&self.files).get(file).cloned()
+        }
+        fn save_json(&self, file: &str, value: &Value) -> Result<(), String> {
+            lock(&self.files).insert(file.to_string(), value.clone());
+            Ok(())
         }
     }
 
@@ -2397,9 +2568,12 @@ mod tests {
         core.handle(Call { peer: &peer, source: &source, id: "1" }, command)
     }
 
+    /// A Core on `fake` whose page can draw cards.
     fn core_with(fake: &Arc<Fake>, settings: AgentSettings) -> Arc<Core> {
         let info = ServerInfo { version: "1.2.0".into(), channel: Channel::Dev };
-        Core::new(fake.clone(), settings, info, false)
+        let core = Core::new(fake.clone(), settings, info, false);
+        core.set_card_drawer(true);
+        core
     }
 
     fn focus(action: &str, minutes: Option<u64>) -> Command {
@@ -2421,6 +2595,12 @@ mod tests {
         assert_eq!((answer["minutes"].clone(), answer["focus"]["once"].clone()), (json!(50), json!(50)));
         call(&core, "tests", focus("stop", None)).unwrap();
         assert_eq!(*lock(&fake.focus_calls), [(FocusAction::Start, Some(50)), (FocusAction::Stop, None)]);
+        // A timer already running keeps what it has: the answer says so.
+        fake.focus_running.store(true, Ordering::SeqCst);
+        let kept = call(&core, "tests", focus("start", Some(25))).unwrap();
+        assert_eq!((kept["minutes"].clone(), kept["already_running"].clone()), (Value::Null, json!(true)));
+        assert!(kept["minutes_not_applied"].as_str().unwrap().contains("running"));
+        fake.focus_running.store(false, Ordering::SeqCst);
         assert!(core.state().log.iter().any(|l| l.command == "focus" && l.error.is_none()));
         // Access off: nothing.
         s.enabled = false;
@@ -2467,25 +2647,59 @@ mod tests {
         let e = call(&core, "tests", profile("apply", Some("Night Owl"), false)).unwrap_err();
         assert_eq!((e.code, e.exit_code()), (ErrorCode::WriteFlashFlagMissing, 77));
         let done = call(&core, "tests", profile("apply", Some("p1"), true)).unwrap();
-        assert_eq!((done["changed"].clone(), done["writes_today"].clone()), (json!(true), json!(1)));
+        assert_eq!((done["changed"].clone(), done["writes_in_24h"].clone()), (json!(true), json!(1)));
         let again = call(&core, "tests", profile("apply", Some("p1"), true)).unwrap();
         assert_eq!(again["changed"], false, "it has it: nothing written");
         assert_eq!(*lock(&fake.wrote), ["p1"]);
-        // Ten a day per agent.
-        for i in 1..PROFILE_WRITES_PER_DAY {
-            let back = if i % 2 == 1 { "default" } else { "p1" };
-            call(&core, "claude-code:1", profile("apply", Some(back), true)).unwrap();
+        // Refused by the write guard, or no cable: said as such, and the
+        // slot is given back.
+        *lock(&fake.write_fails) = Some(WriteError::Blocked("another program is using the keyboard (x)".into()));
+        let e = call(&core, "tests", profile("apply", Some("default"), true)).unwrap_err();
+        assert_eq!(e.code, ErrorCode::WriteBlocked);
+        *lock(&fake.write_fails) = Some(WriteError::NoUsb);
+        assert_eq!(
+            call(&core, "tests", profile("apply", Some("default"), true)).unwrap_err().code,
+            ErrorCode::NeedsUsb
+        );
+        *lock(&fake.write_fails) = None;
+        let second = call(&core, "claude-code:1", profile("apply", Some("default"), true)).unwrap();
+        assert_eq!((second["writes_in_24h"].clone(), second["agent_writes_in_24h"].clone()), (json!(2), json!(1)));
+        // Ten in any 24 hours for all agents together: a new name each time
+        // gets no count of its own.
+        for i in 2..PROFILE_WRITES_PER_DAY - 1 {
+            let back = if i % 2 == 0 { "p1" } else { "default" };
+            let answer = call(&core, &format!("agent{i}:s"), profile("apply", Some(back), true)).unwrap();
+            assert_eq!(answer["changed"], true);
         }
-        // Nine went (the keyboard ends with the default); the tenth from
-        // another session of the same agent.
-        assert_eq!(call(&core, "claude-code:2", profile("apply", Some("p1"), true)).unwrap()["writes_today"], 10);
-        let e = call(&core, "claude-code:3", profile("apply", Some("default"), true)).unwrap_err();
-        assert_eq!(e.code, ErrorCode::RateLimited, "all sessions of one agent together");
-        let other = call(&core, "codex:1", profile("apply", Some("default"), true)).unwrap();
-        assert_eq!(other["changed"], true, "another agent has its own");
-        // Tomorrow (local time): ten again.
-        fake.advance(24 * 60 * 60_000);
-        assert_eq!(call(&core, "claude-code:3", profile("apply", Some("p1"), true)).unwrap()["changed"], true);
+        // Nine written, the keyboard has p1. Two at once for the last slot:
+        // it is taken before the write, so only one of them writes.
+        fake.write_ms.store(150, Ordering::SeqCst);
+        let both: Vec<_> = ["one:s", "two:s"]
+            .map(|source| {
+                let core = core.clone();
+                std::thread::spawn(move || call(&core, source, profile("apply", Some("default"), true)))
+            })
+            .into_iter()
+            .map(|t| t.join().unwrap())
+            .collect();
+        fake.write_ms.store(0, Ordering::SeqCst);
+        assert_eq!(both.iter().filter(|r| r.is_ok()).count(), 1, "{both:?}");
+        assert!(both.iter().any(|r| r.as_ref().is_err_and(|e| e.code == ErrorCode::RateLimited)));
+        let e = call(&core, "codex:1", profile("apply", Some("p1"), true)).unwrap_err();
+        assert_eq!(
+            (e.code, e.retry_after_ms),
+            (ErrorCode::RateLimited, Some(limits::DAY_MS)),
+            "until the first is a day old"
+        );
+        // A restart does not start the count again.
+        let restarted = core_with(&fake, AgentSettings { enabled: true, profiles: true, ..AgentSettings::default() });
+        assert_eq!(
+            call(&restarted, "codex:1", profile("apply", Some("p1"), true)).unwrap_err().code,
+            ErrorCode::RateLimited
+        );
+        // A day after the first write: one again.
+        fake.advance(limits::DAY_MS);
+        assert_eq!(call(&restarted, "codex:1", profile("apply", Some("p1"), true)).unwrap()["changed"], true);
     }
 
     fn card(text: &str, write_flash: bool) -> Command {
@@ -2514,9 +2728,15 @@ mod tests {
         fake.screen_ok.store(false, Ordering::SeqCst);
         assert_eq!(call(&core, "tests", card("Build passed", true)).unwrap_err().code, ErrorCode::NeedsUsb);
         fake.screen_ok.store(true, Ordering::SeqCst);
+        // The page has not said it can draw cards (its window never loaded).
+        core.set_card_drawer(false);
+        let e = call(&core, "tests", card("Build passed", true)).unwrap_err();
+        assert_eq!((e.code, e.exit_code()), (ErrorCode::Unsupported, 69));
+        assert!(e.hint.unwrap().contains("open Keymotion's window"));
+        core.set_card_drawer(true);
 
         // A picture and text: asked of the page.
-        let png = kb_agent::image::encode(&std::fs::read(test_png()).unwrap());
+        let png = kb_agent::image::encode(TEST_PNG);
         let with_picture = Command::Card(CardArgs {
             text: Some("Build passed".into()),
             title: Some("CI".into()),
@@ -2537,25 +2757,28 @@ mod tests {
         // The same card again: nothing to send.
         assert_eq!(call(&core, "tests", with_picture).unwrap()["skipped"], "same_content");
         assert_eq!(lock(&fake.cards).len(), 1);
-        // Another one, then the hour is full (two allowed).
-        call(&core, "tests:session", card("Second", true)).unwrap();
-        let e = call(&core, "tests", card("Third", true)).unwrap_err();
+        // Another one from another name, then the hour is full (two
+        // allowed, for all agents together).
+        let second = call(&core, "other-agent:s", card("Second", true)).unwrap();
+        assert_eq!((second["sent_this_hour"].clone(), second["agent_sent_this_hour"].clone()), (json!(2), json!(1)));
+        let e = call(&core, "a-third-name", card("Third", true)).unwrap_err();
         assert_eq!(e.code, ErrorCode::RateLimited);
-        assert!(e.retry_after_ms.is_some());
+        assert_eq!(e.retry_after_ms, Some(HOUR_MS), "until the first is an hour old");
+        // A restart does not start the count again.
+        let restarted = core_with(
+            &fake,
+            AgentSettings { enabled: true, screen: true, screen_per_hour: 2, ..AgentSettings::default() },
+        );
+        assert_eq!(call(&restarted, "tests", card("Fourth", true)).unwrap_err().code, ErrorCode::RateLimited);
     }
 
-    /// A small PNG made for the tests, in the scratch folder.
-    fn test_png() -> std::path::PathBuf {
-        let path = std::env::temp_dir().join(format!("km-card-{}.png", std::process::id()));
-        // 1x1 PNG, real bytes.
-        const PNG: &[u8] = &[
-            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00,
-            0x00, 0x10, 0x00, 0x00, 0x00, 0x10, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x91, 0x68, 0x36, 0x00, 0x00, 0x00,
-            0x00, 0x49, 0x44, 0x41, 0x54, 0xAE, 0x42, 0x60, 0x82,
-        ];
-        std::fs::write(&path, PNG).unwrap();
-        path
-    }
+    /// A PNG header of 16x16 pixels (signature, IHDR, an empty IDAT): what
+    /// the checks read.
+    const TEST_PNG: &[u8] = &[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00,
+        0x00, 0x10, 0x00, 0x00, 0x00, 0x10, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x91, 0x68, 0x36, 0x00, 0x00, 0x00,
+        0x00, 0x49, 0x44, 0x41, 0x54, 0xAE, 0x42, 0x60, 0x82,
+    ];
 
     #[test]
     fn a_drawn_card_goes_to_the_live_mode_and_back_after_its_time() {
@@ -2579,7 +2802,7 @@ mod tests {
                     std::thread::sleep(Duration::from_millis(5));
                 };
                 core.card_drawn(&id, anim()).unwrap();
-                *lock(&fake.on_screen) = OnScreen { shown: true, waiting: false };
+                *lock(&fake.on_screen) = OnScreen { shown: true, waiting: false, back_planned: false };
                 let mut w = Worker::default();
                 core.tick(&mut w);
             })
@@ -2596,7 +2819,45 @@ mod tests {
         let mut w = Worker::default();
         core.tick(&mut w);
         assert_eq!(core.card_drawn(&id, anim()).unwrap_err(), format!("card {id} is not on its way any more"));
-        assert_eq!(lock(&core.cards).sent_this_hour("tests", fake.mono_ms()), 1);
+        assert_eq!(lock(&core.limits).cards.count(core.wall(), HOUR_MS), 1, "the one never drawn gave its count back");
+        assert_eq!(*lock(&fake.returns), [60_000]);
+    }
+
+    #[test]
+    fn a_card_replaced_while_going_up_still_gives_the_screen_back() {
+        let fake = Fake::new();
+        let core = core_with(&fake, AgentSettings { enabled: true, screen: true, ..AgentSettings::default() });
+        let mut w = Worker::default();
+        // Card 1 drawn: the live mode uploads it.
+        let first = call(&core, "tests", card("One", true)).unwrap()["id"].as_str().unwrap().to_string();
+        core.card_drawn(&first, anim()).unwrap();
+        // Card 2 replaces it, and the page cannot draw it.
+        let second = call(&core, "tests", card("Two", true)).unwrap()["id"].as_str().unwrap().to_string();
+        core.card_failed(&second, "a broken picture");
+        assert_eq!(lock(&core.limits).cards.count(core.wall(), HOUR_MS), 1, "card 2 gave its count back");
+        core.tick(&mut w);
+        assert!(lock(&fake.returns).is_empty(), "card 1 still uploading");
+        // Card 1 reaches the screen all the same: it goes back after its time.
+        *lock(&fake.on_screen) = OnScreen { shown: true, waiting: false, back_planned: false };
+        fake.advance(100);
+        core.tick(&mut w);
+        assert_eq!(*lock(&fake.returns), [kb_agent::protocol::DEFAULT_CARD_MS]);
+        fake.advance(LOOK_FOR_LEFT_CARDS_MS);
+        core.tick(&mut w);
+        assert_eq!(lock(&fake.returns).len(), 1, "once");
+    }
+
+    #[test]
+    fn a_card_left_on_the_screen_before_a_restart_goes_back() {
+        let fake = Fake::new();
+        *lock(&fake.on_screen) = OnScreen { shown: true, waiting: false, back_planned: false };
+        let core = core_with(&fake, AgentSettings { enabled: true, screen: true, ..AgentSettings::default() });
+        let mut w = Worker::default();
+        core.tick(&mut w);
+        assert_eq!(*lock(&fake.returns), [cards::LEFT_BEHIND_MS]);
+        fake.advance(LOOK_FOR_LEFT_CARDS_MS);
+        core.tick(&mut w);
+        assert_eq!(lock(&fake.returns).len(), 1, "planned: not again");
     }
 
     #[test]
@@ -2632,7 +2893,18 @@ mod tests {
             (c.kind, c.minutes, c.label.as_deref(), c.show_s),
             (AgentCardKind::LongTask, Some(14), Some("klavye"), 300)
         );
-        assert_eq!(lock(&core.cards).sent_this_hour("claude-code", fake.mono_ms()), 1, "it counts for the hour");
+        assert_eq!(
+            lock(&core.limits).cards.count_for("claude-code", core.wall(), HOUR_MS),
+            1,
+            "it counts for the hour"
+        );
+        // No page to draw it: no card, nothing counted.
+        core.set_card_drawer(false);
+        call(&core, "claude-code:a1", hook("busy")).unwrap();
+        fake.advance(12 * 60_000);
+        call(&core, "claude-code:a1", hook("done")).unwrap();
+        assert_eq!(lock(&fake.cards).len(), 1);
+        assert_eq!(lock(&core.limits).cards.count(core.wall(), HOUR_MS), 1);
     }
 
     fn frame_has(fake: &Fake, key: &str) -> Option<kb_protocol::sonix::Rgb> {
@@ -2644,7 +2916,9 @@ mod tests {
     fn a_word_is_spelled_key_after_key_and_what_is_missing_is_said() {
         let fake = Fake::new();
         let core = core_with(&fake, AgentSettings { enabled: true, ..AgentSettings::default() });
-        let spell = |text: &str| Command::Spell(SpellArgs { text: text.into(), color: Some("green".into()), ..Default::default() });
+        let spell = |text: &str| {
+            Command::Spell(SpellArgs { text: text.into(), color: Some("green".into()), ..Default::default() })
+        };
         let answer = call(&core, "tests", spell("Gül 2")).unwrap();
         assert_eq!(answer["written"], "Gl 2");
         assert_eq!(answer["skipped"], json!(["ü"]));
@@ -2665,15 +2939,18 @@ mod tests {
 
     #[test]
     fn the_same_key_twice_goes_dark_in_between() {
-        let s = kb_agent::protocol::SpellArgs { text: "OO".into(), speed: Some(3), ..Default::default() }.validate().unwrap();
+        let s = kb_agent::protocol::SpellArgs { text: "OO".into(), speed: Some(3), ..Default::default() }
+            .validate()
+            .unwrap();
         let (scene, written, skipped) = spell_scene(&s, |_| true).unwrap();
         let times: Vec<(u64, u64)> = scene.steps.iter().map(|x| (x.at_ms, x.for_ms)).collect();
         assert_eq!(times, [(0, 500), (500 + SPELL_GAP_MS, 500)]);
         assert_eq!((written.as_str(), skipped.len()), ("OO", 0));
         // Twice: a pause of two letters between the words.
-        let twice = kb_agent::protocol::SpellArgs { text: "OK".into(), times: Some(2), speed: Some(5), ..Default::default() }
-            .validate()
-            .unwrap();
+        let twice =
+            kb_agent::protocol::SpellArgs { text: "OK".into(), times: Some(2), speed: Some(5), ..Default::default() }
+                .validate()
+                .unwrap();
         let (scene, _, _) = spell_scene(&twice, |_| true).unwrap();
         assert_eq!((scene.length_ms, scene.repeat), (2 * 280 + 2 * 280, 2));
         assert_eq!(scene.duration, Duration::from_millis(2 * 1_120 - 560), "it ends with the last letter");
@@ -2682,8 +2959,16 @@ mod tests {
     fn scene_args(save: Option<&str>, play: bool) -> SceneArgs {
         SceneArgs {
             steps: vec![
-                kb_agent::protocol::SceneStepArgs { keys: Some("f1".into()), color: "red".into(), ..Default::default() },
-                kb_agent::protocol::SceneStepArgs { keys: Some("f2".into()), color: "blue".into(), ..Default::default() },
+                kb_agent::protocol::SceneStepArgs {
+                    keys: Some("f1".into()),
+                    color: "red".into(),
+                    ..Default::default()
+                },
+                kb_agent::protocol::SceneStepArgs {
+                    keys: Some("f2".into()),
+                    color: "blue".into(),
+                    ..Default::default()
+                },
             ],
             save: save.map(str::to_string),
             play: Some(play),
@@ -2696,7 +2981,11 @@ mod tests {
         let fake = Fake::new();
         let core = core_with(&fake, AgentSettings { enabled: true, ..AgentSettings::default() });
         let pattern = |action: &str, name: Option<&str>| {
-            Command::Pattern(PatternArgs { action: action.into(), name: name.map(str::to_string), ..Default::default() })
+            Command::Pattern(PatternArgs {
+                action: action.into(),
+                name: name.map(str::to_string),
+                ..Default::default()
+            })
         };
         // Played and kept under a name.
         let played = call(&core, "claude-code:s1", Command::Scene(scene_args(Some("Deploy"), true))).unwrap();
@@ -2704,23 +2993,35 @@ mod tests {
         // Only kept.
         call(&core, "claude-code:s1", Command::Scene(scene_args(Some("quiet"), false))).unwrap();
         let list = call(&core, "claude-code:s2", pattern("list", None)).unwrap();
-        let names: Vec<&str> = list["patterns"].as_array().unwrap().iter().map(|p| p["name"].as_str().unwrap()).collect();
+        let names: Vec<&str> =
+            list["patterns"].as_array().unwrap().iter().map(|p| p["name"].as_str().unwrap()).collect();
         assert_eq!(names, ["deploy", "quiet"], "every session of the agent sees them");
-        assert_eq!(call(&core, "codex:x", pattern("list", None)).unwrap()["patterns"], json!([]), "not another agent's");
+        assert_eq!(
+            call(&core, "codex:x", pattern("list", None)).unwrap()["patterns"],
+            json!([]),
+            "not another agent's"
+        );
         // Played by name, from another session.
         let again = call(&core, "claude-code:s2", pattern("play", Some("deploy"))).unwrap();
-        assert_eq!((again["pattern"].clone(), again["id"].clone()), (json!("deploy"), json!("claude-code:s2:pattern-deploy")));
+        assert_eq!(
+            (again["pattern"].clone(), again["id"].clone()),
+            (json!("deploy"), json!("claude-code:s2:pattern-deploy"))
+        );
         let mut w = Worker::default();
         core.tick(&mut w);
         assert_eq!(frame_has(&fake, "f1"), Some([255, 0, 0]));
         assert_eq!(call(&core, "codex:x", pattern("play", Some("deploy"))).unwrap_err().code, ErrorCode::BadValue);
         // Kept across a restart: the host has them.
         let core2 = core_with(&fake, AgentSettings { enabled: true, ..AgentSettings::default() });
-        assert_eq!(call(&core2, "claude-code:s3", pattern("list", None)).unwrap()["patterns"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            call(&core2, "claude-code:s3", pattern("list", None)).unwrap()["patterns"].as_array().unwrap().len(),
+            2
+        );
         assert_eq!(call(&core2, "claude-code:s3", pattern("delete", Some("quiet"))).unwrap()["deleted"], true);
         assert_eq!(call(&core2, "claude-code:s3", pattern("delete", Some("quiet"))).unwrap()["deleted"], false);
         // At most 32 each.
         for i in 0..31 {
+            fake.advance(60);
             call(&core2, "cli", Command::Scene(scene_args(Some(&format!("p{i}")), false))).unwrap();
         }
         call(&core2, "cli", Command::Scene(scene_args(Some("p31"), false))).unwrap();
@@ -2729,7 +3030,10 @@ mod tests {
         assert!(call(&core2, "cli", Command::Scene(scene_args(Some("p31"), false))).is_ok(), "replacing one is fine");
         // Access off: nothing plays, nothing is kept.
         core2.save(AgentSettings::default()).unwrap();
-        assert_eq!(call(&core2, "cli", Command::Scene(scene_args(None, true))).unwrap_err().code, ErrorCode::AgentAccessOff);
+        assert_eq!(
+            call(&core2, "cli", Command::Scene(scene_args(None, true))).unwrap_err().code,
+            ErrorCode::AgentAccessOff
+        );
     }
 
     #[test]

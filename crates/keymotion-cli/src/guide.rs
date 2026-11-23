@@ -13,7 +13,7 @@ light ends by itself (2h at most), or when you clear it.
 
 You decide how to tell the user things. The ready signals below are optional
 shortcuts; you may as well pick keys, colors, effects and timing yourself, with
-no setup. The user's only switch: Keymotion > Tools > AI agents > agent access.
+no setup. Only the user turns on agent access and each permission, in Keymotion.
 
 First
   keymotion-cli status --json       running? access on? keyboard? your lights
