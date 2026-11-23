@@ -127,6 +127,12 @@ Not on the list? Plug it in anyway and [tell us about it](https://github.com/ceb
 
 The [user guide](https://cebersaban44-rgb.github.io/keymotion/) goes through every page of the app.
 
+## AI coding agents
+
+When Claude Code or Codex finishes a task, waits for your approval or runs into an error, your keyboard can tell you with light. An agent can also light keys its own way: a word on the letter keys, a progress bar on the F row. You turn it on once, under **Tools › AI agents**: Keymotion shows what it will add to each coding app and connects them after you approve.
+
+Agents talk to Keymotion through `keymotion-cli`, a command-line tool that comes with the app. It never opens the keyboard itself, works only for your Windows user on this computer, and does nothing until you turn agent access on. Read more in the [AI agents guide](https://cebersaban44-rgb.github.io/keymotion/guide/ai-agents/); the commands are on the [Agent command line](https://cebersaban44-rgb.github.io/keymotion/developers/agent-cli/) page.
+
 ## Download and install
 
 Keymotion comes two ways. It is the same app, with the same version and the same release notes, for Windows 10 and 11 (64-bit). Install one of them.

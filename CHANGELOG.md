@@ -105,7 +105,9 @@ says so.
   shows how each app stands, and sets the five signals' color, effect and
   length with **Try on the keyboard**, what else agents may do, the extra
   signals, whether agents may change these settings, the session numbers
-  and the recent actions with **Undo**.
+  and the recent actions, with **Undo** and, for a request that wasn't
+  carried out, why. The privacy policy and the security policy say what
+  agents pass on and what they can never change.
 
 ### Changed
 

@@ -51,7 +51,7 @@ Keymotion 本身不会发送任何关于你的信息。当你使用以下服务�
 | 处理器、显卡和内存负载，来自 Windows 的性能计数器 | 系统指标开启时，或其页面打开时 | 按键上的负载条 |
 | 扬声器音量和静音状态、麦克风静音状态，来自 Windows 的声音系统 | 系统指标开启时，或其页面打开时 | 音量条和静音指示灯 |
 | 电脑正在播放的声音此刻的响度，来自 Windows 的声音系统（发往扬声器或耳机的混合声音；从不读取麦克风） | 音乐模式开启时，或其页面打开时 | 按键上的音乐灯光。不会录制、存储或向任何地方发送声音；只短暂保留它的响度 |
-| 距你上次使用键盘或鼠标的时间 | 提醒开启时 | 你不在时，重复提醒会等待 |
+| 距你上次使用键盘或鼠标的时间 | 提醒或智能体访问开启时 | 你不在时，重复提醒会等待；智能体的等待灯光会在你第一次触碰时熄灭，你不在时发生的事会在你回来时闪烁 |
 | 哪个程序在前台：它的文件名和文件夹，以及它的窗口是否占满屏幕。从不读取窗口标题，也不会打开任何程序 | **识别游戏**或配置文件的**按应用切换**开启时 | 区分游戏和其他程序，以及为每个程序切换配置文件 |
 | 程序的图标，从它的文件中读取（不会打开该程序） | 游戏或程序列表中显示它时，以及没有 Steam 图片（或图片无法读取）的游戏启动时 | 列表中和开局卡片上的图标 |
 | 你的启动器中的游戏列表（Steam、Epic Games、GOG、Xbox、Riot Games、Xbox Game Bar） | **识别游戏**开启时，每隔几分钟 | 判断哪些程序是游戏 |
@@ -62,12 +62,26 @@ Keymotion 本身不会发送任何关于你的信息。当你使用以下服务�
 | 键盘的 HID 描述（Windows 记录的关于它的信息） | 你为尚未支持的键盘申请适配时 | 适配申请 |
 | Windows 和 WebView2 的版本 | 你复制诊断信息或报告问题时 | 诊断信息文本 |
 
+## AI 编程智能体
+
+只有在**工具 › AI 智能体**中开启**允许智能体使用键盘**之后，这部分才会工作，而且一切都留在你的电脑上。
+
+- **编程应用传递什么。** 已连接的 Claude Code 或 Codex 会在发生事情时运行 Keymotion 的命令行工具 `keymotion-cli`：任务完成、有问题在等待、出现错误。在编程应用交给它的内容中，keymotion-cli 只传递事件名称、会话 ID（转换为简短代码）、智能体所在项目文件夹的名称（只有最后一级文件夹，显示在会话编号旁）、通知类型、失败类别以及辅助智能体的类型。你写给智能体的内容、智能体的消息、对话记录，以及工具收到或返回的内容，从不传递、不写入日志，也不保存。为了把问题和回答对应起来，一次工具调用只以在你电脑上由它计算出的代码（哈希）来识别，无法从这个代码还原出调用内容。
+- **任何内容都不会离开你的电脑。** keymotion-cli 通过只有你在这台电脑上的 Windows 用户才能打开的连接与 Keymotion 通信，不经过网络。Keymotion 不会把与智能体有关的任何内容发送到任何地方。
+- **Keymotion 保存什么。** 智能体设置保存在 `agents.json` 中。**最近操作**（哪个智能体在何时请求了什么、结果以及它更改的设置）只在 Keymotion 运行时保留。日志文件中最多只记录智能体名称、命令和结果。
+- **Keymotion 在编程应用文件夹中写入什么。** 只有在你批准 **AI 智能体**页面显示的列表之后才会写入；**移除连接**会再把它们删除。
+  - Claude Code，在 `%USERPROFILE%\.claude\` 中：`settings.json` 里的钩子，以及 `skills\keymotion\SKILL.md` 中的技能。
+  - Codex，在 `%USERPROFILE%\.codex\` 中：`hooks.json` 里的钩子，以及 `rules\keymotion.rules` 中的一条规则，允许智能体的键盘命令在 Codex 的沙盒之外运行。技能放在 `%USERPROFILE%\.agents\skills\keymotion\SKILL.md`。
+  - 更改文件之前，会在旁边保留一份原来的副本（`settings.json.before-keymotion`、`hooks.json.before-keymotion`）。每个技能文件夹中还有 `connection.json`（Keymotion 对自己所添加内容的记录），以及在你退出 Keymotion 或关闭智能体访问期间存在的 `stopped.json`，它告诉钩子不要启动 Keymotion。
+  - 这些文件中你自己的设置保持不变。Keymotion 启动时只更新它自己的技能文件和 Codex 规则，而且只在它们比当前版本旧时才更新。
+- **PATH，仅限从 GitHub 安装的 Keymotion。** 连接还会把 Keymotion 的 `bin` 文件夹添加到你的用户 PATH 中，这样终端可以直接按名称找到 `keymotion-cli`。原来的值保存在注册表的 `HKCU\Software\Keymotion\UserPath` 下。卸载 Keymotion 时，如果这个文件夹是 Keymotion 添加的，会把它从 PATH 中移除。
+
 ## 你的数据存放在哪里
 
 所有内容都在你的 Windows 用户文件夹中。在**设置**的**关于**部分，**数据文件夹**和**日志文件**可以打开这些文件夹。
 
 - **设置和记录**，位于 `%APPDATA%\dev.keymotion\`：
-  - `calibration.json`、`clock.json`、`lighting.json`、`pomodoro.json`、`gauges.json`、`music.json`、`reminders.json`、`battery.json`、`profiles.json`、`background.json`、`updates.json`、`games.json`；
+  - `calibration.json`、`clock.json`、`lighting.json`、`pomodoro.json`、`gauges.json`、`music.json`、`reminders.json`、`battery.json`、`profiles.json`、`background.json`、`updates.json`、`games.json`、`agents.json`；
   - `auto-profiles.json`：你的**按应用切换**配置文件；以及在为某个程序把配置文件保存到键盘之后，保存之前键盘上的灯光、自定义按键和宏的一份副本，用于恢复之前的状态；
   - `game-history.json`：你的游戏时段（游戏、开始和结束时间、读取的数值、英雄联盟的对局结果）。**游戏时段**页面上的**删除历史记录**会清空它；
   - `keymap.json` 和 `macros.json`：Keymotion 对已写入键盘内容的唯一记录，因为键盘无法回报这些设置；

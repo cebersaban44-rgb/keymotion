@@ -13,7 +13,7 @@ When a coding agent such as Claude Code or Codex finishes a task, waits for your
 
 1. Open **AI agents** under **Tools** in the sidebar.
 2. Turn on **Agents may use the keyboard**.
-3. Under **Things to connect**, Keymotion says what each coding app on this computer gets: Claude Code and Codex will tell Keymotion when a task is done, when the agent waits for your approval and when it fails, and get a short note (a skill) that tells the agent how to use the keyboard; Codex also lets the agent run its keyboard commands outside its sandbox. **Details** shows the files, how many hooks each one gets, and where a copy of each changed file is kept.
+3. Under **Things to connect**, Keymotion says what each coding app on this computer gets: Claude Code and Codex will tell Keymotion when a task is done, when the agent waits for your approval and when it fails, and get a short note (a skill) that tells the agent how to use the keyboard; Codex also lets the agent run its keyboard commands outside its sandbox. With Keymotion from GitHub, terminals also find `keymotion-cli` by its name. **Details** shows the files, how many hooks each one gets, and where a copy of each changed file is kept.
 4. Click **Connect and turn on**. To stop here, click **Cancel**: nothing is written and access stays off.
 5. **Done** says what was connected. Click **OK**.
 
@@ -27,7 +27,9 @@ Turning **Agents may use the keyboard** off stops every agent at once; the conne
 
 ## Connected apps
 
-Each app shows how it stands: **Connected**, **Waiting for your approval in Codex once**, **Not connected**, **Not on this computer**, or **Too old** when Claude Code needs `claude update`. The arrow on the right shows its folder and files, and **Remove connection**, which takes away only what Keymotion added.
+Each app shows how it stands: **Connected**, **Waiting for your approval in Codex once**, **Not connected**, **Not on this computer**, or **Too old** when Claude Code is older than version 2.1.139 and needs `claude update`. The arrow on the right shows its folder and files, and **Remove connection**, which takes away only what Keymotion added.
+
+Before you uninstall Keymotion, click **Remove connection** for each connected app. Claude Code calls Keymotion's command-line tool directly: once Keymotion is gone, it reports a hook error on every event until the connection is removed. Codex checks first and stays quiet.
 
 ## How the keyboard tells you
 
@@ -40,6 +42,14 @@ Each app shows how it stands: **Connected**, **Waiting for your approval in Code
 | **Info** | Blue wave | 10 seconds |
 
 Click the dot to change a signal's color; the lists change the effect and how long it stays. **Try on the keyboard** shows it for a few seconds. Lights never flash more than three times a second.
+
+**Waiting for your approval** goes off when you answer the agent. It also goes off at your first touch of the keyboard or mouse after it has shown, because you've seen it. With two or more sessions, the waiting session's number key stays lit until you answer.
+
+## When Keymotion isn't running
+
+If an agent finishes or needs you while Keymotion isn't running, Keymotion starts by itself, without its window and with only its icon next to the clock, and shows the light.
+
+If you closed it, it stays closed: after you quit Keymotion (right-click its icon next to the clock and choose **Quit**) or turn **Agents may use the keyboard** off, agents' events don't start it until you open it yourself, Windows restarts or you sign in again. A command an agent runs on purpose can still start it.
 
 ## What else agents may do
 
@@ -62,7 +72,9 @@ Each row opens its settings with the arrow on the right:
 
 ## Recent actions
 
-The last things agents did are listed with their time. A settings change has **Undo**. **Turn off all agent lights** turns every agent light off at once.
+The last things agents did are listed with their time. A settings change has **Undo**. **Turn off all agent lights** turns every agent light off at once. A request that wasn't carried out says why, for example that the keyboard wasn't on the USB cable.
+
+Agents use Keymotion through `keymotion-cli`, a small command-line tool. Its commands, which scripts can use too, are on the [Agent command line](/keymotion/developers/agent-cli/) page.
 
 <Aside type="note">
 The agents' lights show over the USB cable. They sit above the focus timer, the gauges, music mode and the profile's light, and under the muted-microphone warning and meeting reminders.

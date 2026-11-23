@@ -13,7 +13,7 @@ Claude Code ya da Codex gibi bir kodlama ajanı bir işi bitirince, onayınızı
 
 1. Kenar çubuğunda **Araçlar** altından **Yapay zekâ ajanları**'nı açın.
 2. **Ajanlar klavyeyi kullanabilsin**'i açın.
-3. **Bağlanacaklar** adımında Keymotion bu bilgisayardaki her kodlama uygulamasına ne ekleneceğini söyler: Claude Code ve Codex bir iş bitince, onayınızı beklerken ya da hata verince Keymotion'a haber verir ve ajana klavyeyi nasıl kullanacağını anlatan kısa bir not (yetenek) alır; Codex ayrıca ajanın klavye komutlarını korumalı alanının dışında çalıştırmasına izin verir. **Ayrıntılar** dosyaları, her birine kaç kanca eklendiğini ve değişen her dosyanın kopyasının nerede saklandığını gösterir.
+3. **Bağlanacaklar** adımında Keymotion bu bilgisayardaki her kodlama uygulamasına ne ekleneceğini söyler: Claude Code ve Codex bir iş bitince, onayınızı beklerken ya da hata verince Keymotion'a haber verir ve ajana klavyeyi nasıl kullanacağını anlatan kısa bir not (yetenek) alır; Codex ayrıca ajanın klavye komutlarını korumalı alanının dışında çalıştırmasına izin verir. GitHub'dan kurulan Keymotion'da terminaller `keymotion-cli`'ı adıyla da bulur. **Ayrıntılar** dosyaları, her birine kaç kanca eklendiğini ve değişen her dosyanın kopyasının nerede saklandığını gösterir.
 4. **Bağla ve aç**'a tıklayın. Burada durmak için **Vazgeç**'e tıklayın: hiçbir şey yazılmaz, erişim kapalı kalır.
 5. **Tamamlandı** neyin bağlandığını söyler. **Tamam**'a tıklayın.
 
@@ -27,7 +27,9 @@ Adımlar açıkken bir kodlama uygulaması ayarlarını yazarsa Keymotion şimdi
 
 ## Bağlı uygulamalar
 
-Her uygulama ne durumda olduğunu gösterir: **Bağlı**, **Codex'te bir kez onay bekliyor**, **Bağlı değil**, **Bu bilgisayarda yok** ya da Claude Code'un `claude update` ile güncellenmesi gerektiğinde **Çok eski**. Sağdaki ok klasörünü ve dosyalarını, bir de yalnızca Keymotion'ın eklediklerini kaldıran **Bağlantıyı kaldır**'ı gösterir.
+Her uygulama ne durumda olduğunu gösterir: **Bağlı**, **Codex'te bir kez onay bekliyor**, **Bağlı değil**, **Bu bilgisayarda yok** ya da Claude Code 2.1.139 sürümünden eskiyse ve `claude update` ile güncellenmesi gerekiyorsa **Çok eski**. Sağdaki ok klasörünü ve dosyalarını, bir de yalnızca Keymotion'ın eklediklerini kaldıran **Bağlantıyı kaldır**'ı gösterir.
+
+Keymotion'ı kaldırmadan önce bağlı her uygulama için **Bağlantıyı kaldır**'a tıklayın. Claude Code, Keymotion'ın komut satırı aracını doğrudan çağırır: Keymotion kaldırıldıktan sonra, bağlantı kaldırılana kadar her olayda bir kanca hatası bildirir. Codex önce bakar ve sessiz kalır.
 
 ## Klavye nasıl haber versin
 
@@ -40,6 +42,14 @@ Her uygulama ne durumda olduğunu gösterir: **Bağlı**, **Codex'te bir kez ona
 | **Bilgi** | Mavi dalga | 10 saniye |
 
 Bir sinyalin rengini değiştirmek için noktaya tıklayın; listeler efekti ve ne kadar süreceğini değiştirir. **Klavyede dene** birkaç saniye gösterir. Işıklar saniyede üç kezden hızlı yanıp sönmez.
+
+**Onayınızı bekliyor** ajana cevap verince söner. Işık göründükten sonra klavyeye ya da fareye ilk dokunuşunuzda da söner, çünkü onu gördünüz. İki ya da daha çok oturum varken bekleyen oturumun numara tuşu siz cevap verene kadar yanık kalır.
+
+## Keymotion çalışmıyorken
+
+Keymotion çalışmıyorken bir ajan işini bitirir ya da size ihtiyaç duyarsa Keymotion penceresini açmadan, yalnızca saatin yanındaki simgesiyle kendiliğinden başlar ve ışığı gösterir.
+
+Siz kapattıysanız kapalı kalır: Keymotion'dan çıktıktan (saatin yanındaki simgesine sağ tıklayıp **Çık**'ı seçtikten) ya da **Ajanlar klavyeyi kullanabilsin**'i kapattıktan sonra ajanların olayları onu başlatmaz; siz kendiniz açana, Windows yeniden başlayana ya da yeniden oturum açana kadar. Bir ajanın bilerek çalıştırdığı bir komut onu yine başlatabilir.
 
 ## Ajanlar başka neler yapabilsin
 
@@ -62,7 +72,9 @@ Her satırın ayarları sağdaki okla açılır:
 
 ## Son işlemler
 
-Ajanların son yaptıkları saatleriyle listelenir. Bir ayar değişikliğinde **Geri al** vardır. **Bütün ajan ışıklarını söndür** bütün ajan ışıklarını bir anda söndürür.
+Ajanların son yaptıkları saatleriyle listelenir. Bir ayar değişikliğinde **Geri al** vardır. **Bütün ajan ışıklarını söndür** bütün ajan ışıklarını bir anda söndürür. Yapılmayan bir istek nedenini de söyler; örneğin klavyenin USB kablosuyla bağlı olmadığını.
+
+Ajanlar Keymotion'ı küçük bir komut satırı aracı olan `keymotion-cli` ile kullanır. Betiklerin de kullanabileceği komutları [Ajan komut satırı](/keymotion/tr/developers/agent-cli/) sayfasındadır.
 
 <Aside type="note">
 Ajan ışıkları USB kablosuyla görünür. Odak zamanlayıcısının, göstergelerin, müzik modunun ve profil ışığının üstünde, sessiz mikrofon uyarısının ve toplantı hatırlatmalarının altında dururlar.
