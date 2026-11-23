@@ -150,17 +150,21 @@ public static class KmNative {
         return found;
     }
 
-    // The same, as "class 'title' WxH".
-    public static List<string> VisibleWindows(int pid) {
+    // The same, as "class 'title' WxH", at least minSize wide and high: a
+    // Tauri app also keeps small helper windows (tao's event target, the
+    // single-instance window) that Windows counts as visible.
+    public static List<string> VisibleWindows(int pid, int minSize) {
         var found = new List<string>();
         foreach (var h in VisibleWindowHandles(pid)) {
+            RECT r;
+            GetWindowRect(h, out r);
+            int w = r.Right - r.Left, ht = r.Bottom - r.Top;
+            if (w < minSize || ht < minSize) continue;
             var title = new StringBuilder(256);
             GetWindowTextW(h, title, 256);
             var cls = new StringBuilder(256);
             GetClassNameW(h, cls, 256);
-            RECT r;
-            GetWindowRect(h, out r);
-            found.Add(String.Format("{0} '{1}' {2}x{3}", cls, title, r.Right - r.Left, r.Bottom - r.Top));
+            found.Add(String.Format("{0} '{1}' {2}x{3}", cls, title, w, ht));
         }
         return found;
     }
@@ -357,8 +361,8 @@ function Find-CliOnPath {
     $fresh = @{ PATH = Get-FreshPath }
     $where = Invoke-Exe 'where.exe' @('keymotion-cli') -Environment $fresh
     $first = @($where.Out -split "`r?`n" | Where-Object { $_ })[0] ?? ''
-    $version = Invoke-Exe 'cmd.exe' @('/d', '/c', 'keymotion-cli --version') -Environment $fresh
-    [pscustomobject]@{ Where = $first; WhereCode = $where.ExitCode; Version = $version.Out; VersionCode = $version.ExitCode }
+    $cliSaid = Invoke-Exe 'cmd.exe' @('/d', '/c', 'keymotion-cli --version') -Environment $fresh
+    [pscustomobject]@{ Where = $first; WhereCode = $where.ExitCode; Version = $cliSaid.Out; VersionCode = $cliSaid.ExitCode }
 }
 
 function Test-CliVersion([string]$Line) { $Line -like "keymotion-cli $Version (*" }
@@ -384,7 +388,9 @@ function Stop-App {
     }
 }
 
-function Get-VisibleWindows([int]$ProcessId) { @([KmNative]::VisibleWindows($ProcessId)) }
+# A process's visible windows a user would see (100 px or more each way);
+# -All lists the small helper windows too.
+function Get-VisibleWindows([int]$ProcessId, [switch]$All) { @([KmNative]::VisibleWindows($ProcessId, $(if ($All) { 0 } else { 100 }))) }
 
 function Get-SchemeCommand { Get-RegValue $SchemeCommandKey '' }
 
@@ -434,20 +440,52 @@ function Invoke-AppCommand([string]$Command, [hashtable]$Arguments = @{}) {
     $answer['value']
 }
 
+# WebView2's own per-program setting for extra browser arguments (the
+# registry twin of WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS).
+$WebView2ArgsKey = 'HKCU:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
+
+# Why the DevTools port does not answer, for the failure message.
+function Get-CdpDiagnosis {
+    $webviews = @(Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" | Where-Object { $_.CommandLine -match 'dev\.keymotion' })
+    $withPort = @($webviews | Where-Object { $_.CommandLine -match 'remote-debugging-port' })
+    $browser = @($webviews | Where-Object { $_.CommandLine -notmatch '--type=' }) | Select-Object -First 1
+    $listening = @(Get-NetTCPConnection -State Listen -LocalPort $CdpPort -ErrorAction SilentlyContinue)
+    $activePort = Join-Path $env:LOCALAPPDATA 'dev.keymotion\EBWebView\DevToolsActivePort'
+    $active = if (Test-Path -LiteralPath $activePort) { (Get-Content -Raw -LiteralPath $activePort) -replace '\s+', ' ' } else { 'none' }
+    $line = if ($browser) { "$($browser.CommandLine)".Substring(0, [math]::Min(400, "$($browser.CommandLine)".Length)) } else { 'no browser process' }
+    "WebView2 processes: $($webviews.Count), with --remote-debugging-port: $($withPort.Count); port $CdpPort listening: $($listening.Count); DevToolsActivePort: $active; browser: $line"
+}
+
 # Keymotion started as a user starts it, with WebView2's DevTools port open
 # for this test.
 function Start-AppWithCdp {
     Stop-App
-    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$CdpPort"
+    $arg = "--remote-debugging-port=$CdpPort"
+    New-Item -Force -Path $WebView2ArgsKey | Out-Null
+    Set-ItemProperty -LiteralPath $WebView2ArgsKey -Name 'keymotion.exe' -Value $arg
+    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $arg
     try {
         $p = Start-Process -FilePath $AppExe -PassThru
+        $null = $p.Handle
+        $lastError = 'no answer yet'
+        $clock = [Diagnostics.Stopwatch]::StartNew()
+        $ready = $false
+        while (-not $ready -and -not $p.HasExited -and $clock.Elapsed.TotalSeconds -lt 120) {
+            try {
+                $ready = (Invoke-Cdp 'typeof window.__TAURI_INTERNALS__?.invoke' -TimeoutSec 5) -eq 'function'
+                if (-not $ready) { $lastError = '__TAURI_INTERNALS__.invoke is not there yet' }
+            } catch {
+                $lastError = $_.Exception.Message
+            }
+            if (-not $ready) { Start-Sleep -Seconds 1 }
+        }
+        if (-not $ready) {
+            $alive = if ($p.HasExited) { "it ended with exit code $($p.ExitCode)" } else { 'it runs' }
+            throw "Keymotion's page did not answer over WebView2's DevTools port within 120 s ($alive; last: $lastError; $(Get-CdpDiagnosis))"
+        }
     } finally {
         Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue
-    }
-    $ready = Wait-Until 90 { (Invoke-Cdp 'typeof window.__TAURI_INTERNALS__?.invoke' -TimeoutSec 5) -eq 'function' } 1000
-    if (-not $ready) {
-        $alive = if ($p.HasExited) { "it ended with exit code $($p.ExitCode)" } else { 'it runs' }
-        throw "Keymotion's page did not answer over WebView2's DevTools port within 90 s ($alive)"
+        Remove-ItemProperty -LiteralPath $WebView2ArgsKey -Name 'keymotion.exe' -ErrorAction SilentlyContinue
     }
     $p
 }
@@ -635,8 +673,9 @@ function Save-State([string]$Label) {
     try {
         $dest = Join-Path $OutDir "state-$Label"
         New-Item -ItemType Directory -Force -Path $dest | Out-Null
+        # Without the leading dot: the artifact upload leaves hidden files out.
         foreach ($dir in @($Claude.Dir, $Codex.Dir, (Join-Path $HomeDir '.agents'))) {
-            if (Test-Path -LiteralPath $dir) { Copy-Item -Recurse -Force -LiteralPath $dir -Destination (Join-Path $dest ([IO.Path]::GetFileName($dir))) }
+            if (Test-Path -LiteralPath $dir) { Copy-Item -Recurse -Force -LiteralPath $dir -Destination (Join-Path $dest ([IO.Path]::GetFileName($dir).TrimStart('.'))) }
         }
         $facts = [ordered]@{
             path = Get-UserPath
@@ -915,8 +954,8 @@ Invoke-Scenario 'e' 'Update while a keymotion-cli runs' {
         Confirm-That ($code -eq 0) "the setup with the updater's arguments ends with 0" "$($UpdaterArgs -join ' '): exit code $code"
         $old = @(Get-ChildItem -LiteralPath $Bin -Filter 'keymotion-cli.old*.exe' -ErrorAction SilentlyContinue)
         Confirm-That ($old.Count -eq 1 -and $old[0].Name -match '^keymotion-cli\.old-\d+\.exe$') 'the running keymotion-cli was renamed to keymotion-cli.old-<n>.exe' "$(@($old | ForEach-Object Name) -join ', ')"
-        $version = Get-CliVersion $CliExe
-        Confirm-That (Test-CliVersion $version) 'the new bin\keymotion-cli.exe is in place and runs' $version
+        $cliSaid = Get-CliVersion $CliExe
+        Confirm-That (Test-CliVersion $cliSaid) 'the new bin\keymotion-cli.exe is in place and runs' $cliSaid
         Confirm-That (-not $holder.HasExited) 'the running copy was not stopped' "pid $($holder.Id) alive"
         Confirm-That ((Get-ConnectionSnapshot) -eq $snapshot) 'the update leaves the Claude Code and Codex files alone' ''
         $pathAfter = Get-UserPath
@@ -937,7 +976,7 @@ Invoke-Scenario 'e' 'Update while a keymotion-cli runs' {
     $old = @(Get-ChildItem -LiteralPath $Bin -Filter 'keymotion-cli.old*.exe' -ErrorAction SilentlyContinue)
     Confirm-That ($code -eq 0 -and $old.Count -eq 0) 'the next setup run deletes it' "exit code $code; left: $(@($old | ForEach-Object Name) -join ', ')"
     Stop-App
-    $script:Headline = "a held keymotion-cli was renamed to keymotion-cli.old-<n>.exe, the new one runs ($version), connections and PATH untouched; the old file goes at the next setup run"
+    $script:Headline = "a held keymotion-cli was renamed to keymotion-cli.old-<n>.exe, the new one runs ($cliSaid), connections and PATH untouched; the old file goes at the next setup run"
     Save-State 'e'
 }
 
@@ -950,8 +989,8 @@ Invoke-Scenario 'f' 'Uninstall while Keymotion runs' {
     if ($p.HasExited) { Skip-Scenario "Keymotion did not keep running on this runner (exit code $($p.ExitCode))" }
     $windows = @(Get-VisibleWindows $p.Id)
     $script:NormalStartWindows = $windows
-    Confirm-That (-not $p.HasExited) 'Keymotion runs' "pid $($p.Id); visible windows: $(if ($windows.Count) { $windows -join '; ' } else { 'none' })"
-    if (-not $shown) { Add-Note 'no visible window within 60 s' }
+    Confirm-That (-not $p.HasExited) 'Keymotion runs' "pid $($p.Id); its window: $(if ($windows.Count) { $windows -join '; ' } else { 'none within 60 s' })"
+    if (-not $shown) { Add-Note "no window within 60 s; helper windows: $((Get-VisibleWindows $p.Id -All) -join '; ')" }
 
     $code = Invoke-Uninstall @('/S')
     Confirm-That ($code -eq 0) 'uninstall.exe /S ends with 0' "exit code $code"
@@ -959,9 +998,10 @@ Invoke-Scenario 'f' 'Uninstall while Keymotion runs' {
     Confirm-That $closed 'Keymotion was closed by the uninstaller' "running: $(@(Get-AppProcesses | ForEach-Object Id) -join ', ')"
     Confirm-That (-not (Test-Path -LiteralPath $InstallDir)) 'the install folder is gone' $(if (Test-Path -LiteralPath $InstallDir) { (Get-ChildItem -Recurse -Name -LiteralPath $InstallDir) -join ', ' } else { $InstallDir })
     Confirm-That (-not (Test-Path -LiteralPath $UninstallKey)) 'the uninstall entry is gone' ''
-    $claude = Get-HookFacts $Claude.Settings 'claude-code' $CliExe
-    $codex = Get-HookFacts $Codex.Hooks 'codex' $CliExe
-    Confirm-That ($claude.Total -eq 0 -and $codex.Total -eq 0) "Keymotion's hooks are gone from both" "Claude Code $($claude.Total), Codex $($codex.Total) left"
+    $claudeHooks = Get-HookFacts $Claude.Settings 'claude-code' $CliExe
+    $codexHooks = Get-HookFacts $Codex.Hooks 'codex' $CliExe
+    Confirm-That ($claudeHooks.Mine -eq 0 -and $codexHooks.Mine -eq 0) "no hook runs this copy's keymotion-cli any more" "Claude Code $($claudeHooks.Mine), Codex $($codexHooks.Mine) left"
+    Confirm-That ($claudeHooks.Total -eq 0 -and $codexHooks.Total -eq 0) "nor another copy's: d connected both to this copy" "Keymotion hooks left: Claude Code $($claudeHooks.Total), Codex $($codexHooks.Total) ($($claudeHooks.Others + $codexHooks.Others -join ', '))"
     Confirm-That (-not (Test-Path -LiteralPath $Claude.SkillDir) -and -not (Test-Path -LiteralPath $Codex.SkillDir) -and -not (Test-Path -LiteralPath $Codex.Rule)) 'the skills and the Codex rule are gone' ''
     Confirm-That ((Get-UserView $Claude.Settings) -ceq $script:ClaudeUser -and (Get-EventNames $Claude.Settings) -eq $script:ClaudeSeedEvents) "Claude Code: the user's settings as they were" (Get-EventNames $Claude.Settings)
     Confirm-That ((Get-UserView $Codex.Hooks) -ceq $script:CodexUser -and (Get-EventNames $Codex.Hooks) -eq $script:CodexSeedEvents) "Codex: the user's hooks.json as it was" (Get-EventNames $Codex.Hooks)
@@ -995,15 +1035,15 @@ Invoke-Scenario 'g' 'Upgrade from the last published release' {
     $newHash = Get-FileSha $AppExe
     Confirm-That ((Get-InstalledVersion) -eq $Version -and $newHash -eq $script:AppHash) "Keymotion $Version is installed (keymotion.exe is this build's)" "DisplayVersion $(Get-InstalledVersion); keymotion.exe $(Get-Short $oldHash) -> $(Get-Short $newHash)"
     if ($previous -eq $Version) { Add-Note "the published release has the same version number ($previous): told apart by keymotion.exe's SHA-256" }
-    $version = if (Test-Path -LiteralPath $CliExe) { Get-CliVersion $CliExe } else { 'missing' }
-    Confirm-That (Test-CliVersion $version) 'bin\keymotion-cli.exe is added and runs' $version
+    $cliSaid = if (Test-Path -LiteralPath $CliExe) { Get-CliVersion $CliExe } else { 'missing' }
+    Confirm-That (Test-CliVersion $cliSaid) 'bin\keymotion-cli.exe is added and runs' $cliSaid
     Confirm-That ((Test-Path -LiteralPath $marker) -and @(Get-ChildItem -Recurse -File -LiteralPath $AppData).Count -ge $dataBefore) 'the app data folder is kept' "$AppData, $dataBefore files before"
     $pathAfter = Get-UserPath
     Confirm-That ($pathAfter.Raw -ceq $path.Raw -and @(Get-BinEntries $pathAfter.Raw).Count -eq 0) 'the update leaves PATH alone (bin goes on it when agent access is turned on)' "$($pathAfter.Kind) $($pathAfter.Raw)"
     $restarted = Wait-Until 45 { @(Get-AppProcesses).Count -gt 0 }
     Add-Note "/R started Keymotion after the update: $restarted"
     Stop-App
-    $script:Headline = "$previous -> $Version with $($UpdaterArgs -join ' '): new keymotion.exe, bin\keymotion-cli.exe added ($version), app data kept, PATH untouched"
+    $script:Headline = "$previous -> $Version with $($UpdaterArgs -join ' '): new keymotion.exe, bin\keymotion-cli.exe added ($cliSaid), app data kept, PATH untouched"
     Save-State 'g'
 }
 
@@ -1053,9 +1093,9 @@ Invoke-Scenario 'i' 'A setup cancelled after it replaced the installed copy' {
     Start-AppWithCdp | Out-Null
     Enable-AgentAccess | Out-Null
     Stop-App
-    $claude = Get-HookFacts $Claude.Settings 'claude-code' $CliExe
-    $codex = Get-HookFacts $Codex.Hooks 'codex' $CliExe
-    Confirm-That ($claude.Mine -gt 0 -and $codex.Mine -gt 0 -and @(Get-BinEntries (Get-UserPath).Raw).Count -eq 1) 'connected to both through the app, bin on PATH' "Claude Code $($claude.Mine), Codex $($codex.Mine) hooks run bin"
+    $claudeHooks = Get-HookFacts $Claude.Settings 'claude-code' $CliExe
+    $codexHooks = Get-HookFacts $Codex.Hooks 'codex' $CliExe
+    Confirm-That ($claudeHooks.Mine -gt 0 -and $codexHooks.Mine -gt 0 -and @(Get-BinEntries (Get-UserPath).Raw).Count -eq 1) 'connected to both through the app, bin on PATH' "Claude Code $($claudeHooks.Mine), Codex $($codexHooks.Mine) hooks run bin"
 
     # "Uninstall before installing" on the new setup's "already installed"
     # page: it runs the installed copy's uninstaller with
@@ -1068,8 +1108,8 @@ Invoke-Scenario 'i' 'A setup cancelled after it replaced the installed copy' {
     }
     $kept = Join-Path $Bin 'keymotion-cli.replaced.exe'
     Confirm-That ($code -eq 0 -and -not (Test-Path -LiteralPath $AppExe) -and (Test-Path -LiteralPath $kept)) 'the replaced copy is gone and keeps its keymotion-cli for the new setup' "exit code $code; keymotion.exe there: $(Test-Path -LiteralPath $AppExe); $([IO.Path]::GetFileName($kept)) there: $(Test-Path -LiteralPath $kept)"
-    $claude = Get-HookFacts $Claude.Settings 'claude-code' $CliExe
-    Confirm-That ($claude.Mine -gt 0 -and @(Get-BinEntries (Get-UserPath).Raw).Count -eq 1) 'its connections and PATH entry wait for the new setup' "Claude Code $($claude.Mine) hooks run bin"
+    $claudeHooks = Get-HookFacts $Claude.Settings 'claude-code' $CliExe
+    Confirm-That ($claudeHooks.Mine -gt 0 -and @(Get-BinEntries (Get-UserPath).Raw).Count -eq 1) 'its connections and PATH entry wait for the new setup' "Claude Code $($claudeHooks.Mine) hooks run bin"
 
     # The user cancels the new setup (Cancel on its first page).
     $psi = [Diagnostics.ProcessStartInfo]::new($Installer)
@@ -1091,9 +1131,9 @@ Invoke-Scenario 'i' 'A setup cancelled after it replaced the installed copy' {
     if (-not $ended) { $setup.Kill() }
     Confirm-That $ended 'Cancel ends the setup' "exit code $(if ($ended) { $setup.ExitCode } else { 'none (killed)' })"
 
-    $claude = Get-HookFacts $Claude.Settings 'claude-code' $CliExe
-    $codex = Get-HookFacts $Codex.Hooks 'codex' $CliExe
-    Confirm-That ($claude.Total -eq 0 -and $codex.Total -eq 0) "no hook is left running the deleted keymotion-cli" "Claude Code $($claude.Total), Codex $($codex.Total) left"
+    $claudeHooks = Get-HookFacts $Claude.Settings 'claude-code' $CliExe
+    $codexHooks = Get-HookFacts $Codex.Hooks 'codex' $CliExe
+    Confirm-That ($claudeHooks.Total -eq 0 -and $codexHooks.Total -eq 0) "no hook is left running the deleted keymotion-cli" "Claude Code $($claudeHooks.Total), Codex $($codexHooks.Total) left"
     Confirm-That (-not (Test-Path -LiteralPath $Claude.SkillDir) -and -not (Test-Path -LiteralPath $Codex.SkillDir) -and -not (Test-Path -LiteralPath $Codex.Rule)) 'the skills and the Codex rule are gone' ''
     Confirm-That ((Get-UserView $Claude.Settings) -ceq $script:ClaudeUser -and (Get-UserView $Codex.Hooks) -ceq $script:CodexUser) "the user's own settings stay" ''
     $path = Get-UserPath
