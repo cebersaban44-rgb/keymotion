@@ -29,10 +29,15 @@ async function fonts(text: string) {
   }
 }
 
+/** Lines, and whether the text was cut to fit them (a text that itself
+ *  ends in "…" fits as it is). */
+type Lines = string[] & { cut: boolean };
+const NO_LINES: Lines = Object.assign([], { cut: false });
+
 /** Lines of at most `maxW`, at most `max` of them; the last one ends in
  *  "…" when text is left over, and words wider than a line are cut. Chinese
  *  breaks between words (lineBreak.ts). */
-function lines(ctx: CanvasRenderingContext2D, text: string, maxW: number, max: number): string[] {
+function lines(ctx: CanvasRenderingContext2D, text: string, maxW: number, max: number): Lines {
   const width = (s: string) => ctx.measureText(s).width;
   const cut = (s: string) => {
     // By characters, so an emoji or a rare Chinese character is never split.
@@ -65,7 +70,7 @@ function lines(ctx: CanvasRenderingContext2D, text: string, maxW: number, max: n
     const last = fitted[fitted.length - 1]!;
     if (!last.endsWith("…")) fitted[fitted.length - 1] = cut(`${last} `);
   }
-  return fitted;
+  return Object.assign(fitted, { cut: rest || fitted.some((l, i) => l !== out[i]) });
 }
 
 /** Average colour of the cover, darkened for a background behind text. */
@@ -156,11 +161,11 @@ export async function nowPlayingCard(t: TrackInfo, cover: Blob | null, label: st
 
   // Title: as large as fits in two lines.
   let px = 18;
-  let tl: string[] = [];
+  let tl = NO_LINES;
   for (; px >= 12; px--) {
     fg.font = `700 ${px}px ${DISPLAY}`;
     tl = lines(fg, title, maxW, 2);
-    if (!tl.some((l) => l.endsWith("…")) || px === 12) break;
+    if (!tl.cut || px === 12) break;
   }
   fg.fillStyle = "#ffffff";
   const tH = Math.round(px * 1.15);
@@ -446,11 +451,11 @@ export async function calendarCard(c: CalendarCard, calendarName: string, w: Cal
 
   // Title: as large as fits in two lines.
   let px = 18;
-  let tl: string[] = [];
+  let tl = NO_LINES;
   for (; px >= 12; px--) {
     fg.font = `700 ${px}px ${DISPLAY}`;
     tl = lines(fg, title, maxW, 2);
-    if (!tl.some((l) => l.endsWith("…")) || px === 12) break;
+    if (!tl.cut || px === 12) break;
   }
   fg.fillStyle = "#ffffff";
   let y = 84 + px * 0.2;
@@ -617,11 +622,11 @@ export async function reminderCard(c: ReminderCard, w: ReminderWords): Promise<P
 
   // Title: as large as fits in two lines.
   let px = 20;
-  let tl: string[] = [];
+  let tl = NO_LINES;
   for (; px >= 12; px--) {
     fg.font = `700 ${px}px ${DISPLAY}`;
     tl = lines(fg, title, maxW, 2);
-    if (!tl.some((l) => l.endsWith("…")) || px === 12) break;
+    if (!tl.cut || px === 12) break;
   }
   fg.fillStyle = "#ffffff";
   let y = 86 + px * 0.1;
@@ -764,11 +769,11 @@ export async function gameStartCard(
       mark.close();
     }
     let px = 26;
-    let tl: string[] = [];
+    let tl = NO_LINES;
     for (; px >= 14; px--) {
       fg.font = `700 ${px}px ${DISPLAY}`;
       tl = lines(fg, c.name, nameW, 2);
-      if (!tl.some((l) => l.endsWith("…")) || px === 14) break;
+      if (!tl.cut || px === 14) break;
     }
     fg.fillStyle = "#ffffff";
     const lh = Math.round(px * 1.1);
@@ -969,17 +974,21 @@ function drawPicture(
 
 /** Paragraphs (the agent's line breaks) wrapped to `maxW`, at most `max`
  *  lines in all; the last one ends in "…" when text is left over. */
-function paragraphs(ctx: CanvasRenderingContext2D, text: string, maxW: number, max: number): string[] {
+function paragraphs(ctx: CanvasRenderingContext2D, text: string, maxW: number, max: number): Lines {
   const out: string[] = [];
+  let cut = false;
   const parts = text.split("\n").filter((p) => p.trim());
   for (let i = 0; i < parts.length && out.length < max; i++) {
-    out.push(...lines(ctx, parts[i]!, maxW, max - out.length));
+    const part = lines(ctx, parts[i]!, maxW, max - out.length);
+    out.push(...part);
+    cut ||= part.cut;
     if (out.length >= max && i < parts.length - 1) {
+      cut = true;
       const last = out[max - 1]!;
       if (!last.endsWith("…")) out[max - 1] = lines(ctx, `${last} …`, maxW, 1)[0] ?? last;
     }
   }
-  return out.slice(0, max);
+  return Object.assign(out.slice(0, max), { cut });
 }
 
 /** The largest size from `max` down to `min` at which `text` fits in
@@ -994,11 +1003,11 @@ function fitLines(
   min: number,
 ) {
   let px = max;
-  let ls: string[] = [];
+  let ls = NO_LINES;
   for (; px >= min; px--) {
     ctx.font = font(px);
     ls = paragraphs(ctx, text, maxW, rows);
-    if (!ls.some((l) => l.endsWith("…")) || px === min) break;
+    if (!ls.cut || px === min) break;
   }
   return { px: Math.max(px, min), lines: ls };
 }

@@ -57,6 +57,8 @@ const SIGNALS: SignalId[] = ["done", "attention", "error", "busy", "info"];
 const EFFECTS: AgentEffect[] = ["solid", "pulse", "blink", "wave", "flash", "waveThenSolid", "flashThenPulse", "blinkTwiceThenSolid", "off"];
 /** Durations offered, in seconds (the one set now is added when it is not here). */
 const DURATIONS = [10, 30, 60, 120, 300, 600, 1800, 3600, 7200];
+/** Screen cards all agents together may send in an hour (the backend keeps 1–20). */
+const PER_HOUR = Array.from({ length: 20 }, (_, i) => i + 1);
 
 const hex = (c: Rgb) => `#${c.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 const rgb = (h: string): Rgb => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) as Rgb;
@@ -89,8 +91,16 @@ export function Agents() {
 
   useEffect(() => {
     useAgents.getState().load().catch(console.error);
-    useAgents.getState().loadConnections().catch(console.error);
-    return followAgents();
+    // The apps change outside Keymotion (Codex's one-time approval, a
+    // Claude Code update): read how they stand again on coming back.
+    const readApps = () => void useAgents.getState().loadConnections().catch(console.error);
+    readApps();
+    window.addEventListener("focus", readApps);
+    const stop = followAgents();
+    return () => {
+      window.removeEventListener("focus", readApps);
+      stop();
+    };
   }, []);
 
   if (!state) return null;
@@ -192,18 +202,33 @@ export function Agents() {
 
       <Rows title={t("ag.signals")} data="signals">
         {SIGNALS.map((id) => (
-          <SignalRow key={id} id={id} look={s.signals[id]} onChange={(look) => set({ signals: { ...s.signals, [id]: look } })} />
+          <SignalRow key={id} id={id} look={s.signals[id]} onChange={(look) => set({ signals: { ...s.signals, [id]: look } })} onError={setError} />
         ))}
       </Rows>
 
       <Rows title={t("ag.more")} data="more">
-        <PermissionRow icon={Monitor} title={t("ag.screen")} desc={t("ag.screen.desc", { count: s.screenPerHour })} on={s.screen} set={(screen) => set({ screen })} />
+        <PermissionRow icon={Monitor} title={t("ag.screen")} desc={t("ag.screen.desc")} on={s.screen} set={(screen) => set({ screen })}>
+          <select
+            value={String(s.screenPerHour)}
+            disabled={!s.screen}
+            aria-label={t("ag.screen.limit")}
+            onChange={(e) => set({ screenPerHour: Number(e.target.value) })}
+            className="h-8 w-[140px] max-w-full rounded-md border border-line bg-bg-raise px-2.5 text-[13px] disabled:opacity-45"
+            data-agents-per-hour
+          >
+            {PER_HOUR.map((n) => (
+              <option key={n} value={String(n)}>
+                {t("ag.screen.perHour", { count: n })}
+              </option>
+            ))}
+          </select>
+        </PermissionRow>
         <PermissionRow icon={Timer} title={t("ag.focus")} desc={t("ag.focus.desc")} on={s.focus} set={(focus) => set({ focus })} />
         <PermissionRow icon={Layers} title={t("ag.profiles")} desc={t("ag.profiles.desc")} on={s.profiles} set={(profiles) => set({ profiles })} />
         <PermissionRow icon={Gamepad2} title={t("ag.hideInGame")} desc={t("ag.hideInGame.desc")} on={s.hideInGame} set={(hideInGame) => set({ hideInGame })} />
       </Rows>
 
-      <Extras settings={s} set={set} />
+      <Extras settings={s} set={set} onError={setError} />
 
       <div className="rows">
         <Row icon={Settings2} title={t("ag.mayEdit")} desc={t("ag.mayEdit.desc")} data="may-edit">
@@ -321,10 +346,18 @@ function ConnectFlow({ flow, onCancel, onApprove, onDone }: { flow: Flow; onCanc
     const o = flow.outcome;
     body = (
       <ul className="flex flex-col gap-2">
-        <li className="flex items-start gap-2 font-semibold">
-          <Check size={16} className="mt-0.5 text-ok" aria-hidden />
-          {t("ag.flow.done")}
-        </li>
+        {/* Access stays off when every app failed or the setting wasn't saved. */}
+        {o.state.settings.enabled ? (
+          <li className="flex items-start gap-2 font-semibold">
+            <Check size={16} className="mt-0.5 text-ok" aria-hidden />
+            {t("ag.flow.done")}
+          </li>
+        ) : (
+          <li className="flex items-start gap-2 font-semibold" data-agents-stayed-off>
+            <CircleAlert size={16} className="mt-0.5 shrink-0 text-warn" aria-hidden />
+            {t("ag.flow.stayedOff")}
+          </li>
+        )}
         {o.connected.map((app) => {
           const name = o.connections.apps.find((a) => a.app === app)?.name ?? app;
           const waits = o.connections.apps.find((a) => a.app === app)?.state === "needsApproval";
@@ -439,10 +472,17 @@ function ConnectFlow({ flow, onCancel, onApprove, onDone }: { flow: Flow; onCanc
 function problemText(plan: AgentAppPlan, t: Translate): string {
   const p = plan.problem;
   if (!p) return "";
-  if (p.kind === "unsupported") return t("ag.problem.unsupported", { name: plan.name, min: p.message.match(/\d+\.\d+\.\d+/)?.[0] ?? "" });
+  if (p.kind === "unsupported") return t("ag.problem.unsupported", { name: plan.name, min: minVersion(plan) });
   if (p.kind === "invalid") return t("ag.problem.invalid");
   if (p.kind === "partial") return t("ag.problem.partial");
   return t("ag.problem.other", { message: p.message });
+}
+
+/** The oldest version the hooks work with: the backend's own number, or the
+ *  one its message names before "or newer" (it names the installed one first). */
+function minVersion(plan: AgentAppPlan): string {
+  const known = useAgents.getState().connections?.apps.find((a) => a.app === plan.app)?.minVersion;
+  return known ?? /(\d+\.\d+\.\d+) or newer/.exec(plan.problem?.message ?? "")?.[1] ?? "";
 }
 
 /** What a file Keymotion adds, changes or takes away does, in plain words
@@ -629,7 +669,19 @@ function Expander({
 // --------------------------------------------------------------- signals
 
 /** Effect and duration lists for a look, and "Try on the keyboard". */
-function LookControls({ look, onChange, until, tryable = true }: { look: AgentLook; onChange: (l: AgentLook) => void; until?: boolean; tryable?: boolean }) {
+function LookControls({
+  look,
+  onChange,
+  onError,
+  until,
+  tryable = true,
+}: {
+  look: AgentLook;
+  onChange: (l: AgentLook) => void;
+  onError: (message: string) => void;
+  until?: boolean;
+  tryable?: boolean;
+}) {
   const t = useT();
   const span = useSpan();
   const off = look.effect === "off";
@@ -676,9 +728,16 @@ function LookControls({ look, onChange, until, tryable = true }: { look: AgentLo
           className="btn-secondary"
           disabled={off}
           onClick={() => {
-            setTried(true);
-            tryAgentLook(look).then(useAgents.getState().set, console.error);
-            window.setTimeout(() => setTried(false), 1500);
+            // The check only once the keys lit; without a keyboard on the
+            // cable the page says so.
+            tryAgentLook(look).then(
+              (state) => {
+                useAgents.getState().set(state);
+                setTried(true);
+                window.setTimeout(() => setTried(false), 1500);
+              },
+              (e) => onError(friendlyError(e, t)),
+            );
           }}
         >
           {tried && <Check size={14} aria-hidden />}
@@ -707,7 +766,10 @@ function ColorDot({ color, onChange, label, hollow }: { color: Rgb; onChange: (c
     };
     document.addEventListener("pointerdown", away);
     document.addEventListener("keydown", key);
-    window.requestAnimationFrame(() => box.current?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"], [role="radio"]')?.focus());
+    // The colour set now, or the first one for a colour of the user's own.
+    window.requestAnimationFrame(() =>
+      (box.current?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]') ?? box.current?.querySelector<HTMLElement>('[role="radio"]'))?.focus(),
+    );
     return () => {
       document.removeEventListener("pointerdown", away);
       document.removeEventListener("keydown", key);
@@ -739,7 +801,7 @@ function ColorDot({ color, onChange, label, hollow }: { color: Rgb; onChange: (c
   );
 }
 
-function SignalRow({ id, look, onChange }: { id: SignalId; look: AgentLook; onChange: (l: AgentLook) => void }) {
+function SignalRow({ id, look, onChange, onError }: { id: SignalId; look: AgentLook; onChange: (l: AgentLook) => void; onError: (message: string) => void }) {
   const t = useT();
   const name = t(`ag.sig.${id}` as MessageKey);
   const off = look.effect === "off";
@@ -753,14 +815,29 @@ function SignalRow({ id, look, onChange }: { id: SignalId; look: AgentLook; onCh
       desc={`${head} · ${t(`ag.sig.${id}.desc` as MessageKey)}`}
       data={`signal-${id}`}
     >
-      <LookControls look={look} onChange={onChange} until={id === "attention"} />
+      <LookControls look={look} onChange={onChange} onError={onError} until={id === "attention"} />
     </Row>
   );
 }
 
-function PermissionRow({ icon, title, desc, on, set }: { icon: LucideIcon; title: string; desc: string; on: boolean; set: (v: boolean) => void }) {
+function PermissionRow({
+  icon,
+  title,
+  desc,
+  on,
+  set,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  desc: string;
+  on: boolean;
+  set: (v: boolean) => void;
+  children?: ReactNode;
+}) {
   return (
     <Row icon={icon} title={title} desc={desc}>
+      {children}
       <Toggle state checked={on} onChange={set} label={title} />
     </Row>
   );
@@ -803,7 +880,15 @@ const fromTime = (v: string) => {
   return (h ?? 0) * 60 + (m ?? 0);
 };
 
-function Extras({ settings: s, set }: { settings: AgentSettings; set: (p: Partial<AgentSettings>) => void }) {
+function Extras({
+  settings: s,
+  set,
+  onError,
+}: {
+  settings: AgentSettings;
+  set: (p: Partial<AgentSettings>) => void;
+  onError: (message: string) => void;
+}) {
   const t = useT();
   const [open, setOpen] = useState<string | null>(null);
   const toggle = (id: string) => () => setOpen((o) => (o === id ? null : id));
@@ -850,7 +935,7 @@ function Extras({ settings: s, set }: { settings: AgentSettings; set: (p: Partia
         <>
           {color(s.usageLimit.look.color, (c) => set({ usageLimit: { ...s.usageLimit, look: { ...s.usageLimit.look, color: c } } }))}
           <div className="flex flex-wrap items-center gap-2">
-            <LookControls look={s.usageLimit.look} onChange={(look) => set({ usageLimit: { ...s.usageLimit, look } })} />
+            <LookControls look={s.usageLimit.look} onChange={(look) => set({ usageLimit: { ...s.usageLimit, look } })} onError={onError} />
           </div>
         </>,
       )}

@@ -32,7 +32,8 @@ interface AppState {
   screenTab: ScreenTab;
   theme: ThemePreference;
   locale: Locale;
-  /** The window is on screen (false while the app runs in the tray). */
+  /** The window is on screen (false while the app runs in the tray or the
+   *  window is minimized). */
   windowShown: boolean;
   /** A profile chosen in the tray menu: the Profiles page asks to load it. */
   profileRequest: string | null;

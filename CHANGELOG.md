@@ -197,6 +197,12 @@ says so.
 - **Opening animation:** on Windows 11 it now plays on the same translucent
   window background as the app, so the colors no longer change when the
   app appears.
+- **Lighting:** with **Preview on keyboard** on in **Per-key color**,
+  closing the window to the tray left the preview on the keys, over the
+  focus timer, reminders, music mode and the agents' lights. The preview
+  now waits while the window is closed and comes back when you open it.
+- **Screen:** a song, meeting or reminder title that ends in "…" is no
+  longer drawn at the smallest size.
 
 ## [1.1.0] - 2026-11-16
 
