@@ -26,6 +26,7 @@
 pub mod error;
 pub mod image;
 pub mod keys;
+pub mod letters;
 pub mod protocol;
 #[cfg(windows)]
 pub mod transport;

@@ -272,8 +272,11 @@ impl Swing {
 /// takes, so pulses and waves pass untouched; channels swinging the same
 /// way are one change even when they cross the line on different frames
 /// (an orange dimming), channels swinging opposite ways (red to blue) are
-/// a change every time. A key that would change once more keeps the colour
-/// it shows.
+/// a change every time. A key the agents' layer starts or stops covering is
+/// a change too, whatever its colour: where the layer leaves a key, the
+/// layers under it show (a profile, the music, the keyboard's own light),
+/// so dark or dim against nothing is no smaller a change than red against
+/// blue. A key that would change once more keeps what it shows.
 #[derive(Debug, Default)]
 pub struct FlashGuard {
     keys: HashMap<u8, KeyState>,
@@ -328,8 +331,10 @@ impl FlashGuard {
                 _ => 0,
             };
             // Another channel going the way the last change went is the same
-            // change, a little later.
-            let changed = (up || down) && !(way != 0 && way == state.way);
+            // change, a little later. Covering a key or leaving it to the
+            // layers under is a change of its own.
+            let covers = state.shown.is_some() != want.is_some();
+            let changed = covers || ((up || down) && !(way != 0 && way == state.way));
             let shows = if changed && state.changes.len() >= MAX_CHANGES {
                 // Held: the key keeps what it shows.
                 state.shown
@@ -355,6 +360,39 @@ impl FlashGuard {
 mod tests {
     use super::*;
     use crate::dto::AgentSignalLooks;
+
+    /// How often key 1 changes in any second, asked to switch every 50 ms
+    /// between `a` and `b` (`None`: left to the layers under) for 3 s.
+    fn most_changes(a: Option<Rgb>, b: Option<Rgb>) -> (usize, usize) {
+        let mut guard = FlashGuard::default();
+        let mut last = None;
+        let mut changes = Vec::new();
+        for i in 0..60u64 {
+            let want = if i % 2 == 0 { a } else { b };
+            let out = guard.check(i * 50, want.map(|c| vec![(1, c)]).unwrap_or_default());
+            let now = out.iter().find(|k| k.0 == 1).map(|k| k.1);
+            if i > 0 && now != last {
+                changes.push(i * 50);
+            }
+            last = now;
+        }
+        let most = changes.iter().map(|&t| changes.iter().filter(|&&u| u >= t && u < t + 1000).count()).max();
+        (most.unwrap_or(0), changes.len())
+    }
+
+    #[test]
+    fn dark_or_dim_against_the_layers_under_counts_as_a_change() {
+        for (a, b) in
+            [(Some([0, 0, 0]), None), (Some([32, 32, 32]), None), (None, Some([0, 0, 0])), (Some([255, 0, 0]), None)]
+        {
+            let (most, all) = most_changes(a, b);
+            assert!(most <= MAX_CHANGES, "{a:?}/{b:?}: {most}");
+            assert!(all >= 6, "{a:?}/{b:?}: it still changes at the safe rate ({all})");
+        }
+        // A steady key is untouched; a key that stays uncovered too.
+        assert_eq!(most_changes(Some([0, 0, 0]), Some([0, 0, 0])), (0, 0));
+        assert_eq!(most_changes(None, None), (0, 0));
+    }
 
     /// Times a key goes from dark to lit, sampled every `step` ms for `ms`.
     fn ups(level: impl Fn(u64) -> f32, step: u64, ms: u64) -> Vec<u64> {

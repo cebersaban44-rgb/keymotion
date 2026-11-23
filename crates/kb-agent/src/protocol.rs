@@ -1100,6 +1100,371 @@ impl CardArgs {
     }
 }
 
+// ------------------------------------------- scenes, patterns, spelling
+
+/// The most steps a scene has.
+pub const MAX_SCENE_STEPS: usize = 64;
+/// A step lasts at least this long…
+pub const MIN_STEP_MS: u64 = 50;
+/// …at most this long…
+pub const MAX_STEP_MS: u64 = 60_000;
+/// …and this long when the scene does not say.
+pub const DEFAULT_STEP_MS: u64 = 500;
+/// One run of a scene ends within this.
+pub const MAX_SCENE_MS: u64 = 10 * 60_000;
+/// A scene runs at most this many times.
+pub const MAX_SCENE_REPEAT: u32 = 100;
+/// A saved pattern's name: up to this many of `a-z 0-9 - _`.
+pub const MAX_PATTERN_NAME_LEN: usize = 32;
+/// The longest word `spell` writes.
+pub const MAX_SPELL_CHARS: usize = 32;
+/// `spell` writes its word at most this many times.
+pub const MAX_SPELL_TIMES: u32 = 10;
+
+/// One step of a scene: keys in a colour, with an effect, from `at_ms` for
+/// `for_ms`. As typed; checked with the scene.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SceneStepArgs {
+    /// Default: the whole keyboard.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keys: Option<String>,
+    /// A colour, or `off` (dark: the keys show nothing under it either).
+    pub color: String,
+    /// Default: solid.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effect: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub direction: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speed: Option<u32>,
+    /// When it starts, from the scene's start; default: when the step
+    /// before it ends.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at_ms: Option<u64>,
+    /// How long it stays; default [`DEFAULT_STEP_MS`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub for_ms: Option<u64>,
+}
+
+/// A checked step.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SceneStep {
+    pub keys: KeySpec,
+    pub color: Color,
+    pub effect: Effect,
+    /// Start and length, in ms from the scene's start.
+    pub at_ms: u64,
+    pub for_ms: u64,
+}
+
+/// `scene`: a timed animation of the agent's own, played on the keys and,
+/// with `save`, kept under a name to play again (`pattern play`). As
+/// typed; [`SceneArgs::validate`] checks it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SceneArgs {
+    pub steps: Vec<SceneStepArgs>,
+    /// How many times it runs (default 1); 0: again and again until
+    /// `for_ms`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repeat: Option<u32>,
+    /// How long it plays at most; with `repeat: 0`, how long it loops.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub for_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Keep it as the agent's pattern of this name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub save: Option<String>,
+    /// Play it now (default); `false` with `save` only keeps it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub play: Option<bool>,
+}
+
+/// A checked scene.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Scene {
+    pub steps: Vec<SceneStep>,
+    /// One run, in ms: when its last step ends.
+    pub length_ms: u64,
+    /// Runs; 0 loops until `duration`.
+    pub repeat: u32,
+    /// How long it plays in all (at most two hours).
+    pub duration: Duration,
+    pub id: Option<SignalId>,
+    pub save: Option<String>,
+    pub play: bool,
+}
+
+/// A pattern's name, checked and in lower case.
+pub fn pattern_name(input: &str) -> Result<String, AgentError> {
+    let s = input.trim().to_ascii_lowercase();
+    let ok = !s.is_empty()
+        && s.len() <= MAX_PATTERN_NAME_LEN
+        && s.bytes().next().is_some_and(|b| b.is_ascii_alphanumeric())
+        && s.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_');
+    if ok {
+        Ok(s)
+    } else {
+        Err(AgentError::new(ErrorCode::BadValue, format!("'{}' is not a pattern name.", crate::values::shown(input)))
+            .with_hint(format!("Use up to {MAX_PATTERN_NAME_LEN} of a-z, 0-9, - and _, e.g. deploy-done.")))
+    }
+}
+
+/// `off` (or `black`) as a colour: the keys dark.
+fn step_color(input: &str) -> Result<Color, AgentError> {
+    match input.trim().to_ascii_lowercase().as_str() {
+        "off" | "black" | "none" => Ok(Color::rgb(0, 0, 0)),
+        _ if input.trim().is_empty() => Err(AgentError::new(ErrorCode::BadArgument, "A scene's step needs a color.")
+            .with_hint("e.g. \"color\": \"green\", or \"off\" for dark keys.")),
+        _ => Color::parse(input),
+    }
+}
+
+impl SceneArgs {
+    pub fn validate(&self) -> Result<Scene, AgentError> {
+        if self.steps.is_empty() {
+            return Err(AgentError::new(ErrorCode::BadArgument, "A scene needs at least one step."));
+        }
+        if self.steps.len() > MAX_SCENE_STEPS {
+            return Err(AgentError::new(
+                ErrorCode::BadArgument,
+                format!("A scene has at most {MAX_SCENE_STEPS} steps; this one has {}.", self.steps.len()),
+            ));
+        }
+        let mut steps = Vec::with_capacity(self.steps.len());
+        let mut next = 0u64;
+        for (n, a) in self.steps.iter().enumerate() {
+            let at = |e: AgentError| AgentError { message: format!("Step {}: {}", n + 1, e.message), ..e };
+            let keys = a.keys.as_deref().map(KeySpec::parse).transpose().map_err(at)?.unwrap_or_default();
+            let color = step_color(&a.color).map_err(at)?;
+            let effect = Effect::from_parts(a.effect.as_deref(), a.direction.as_deref(), a.speed, None).map_err(at)?;
+            let for_ms = a.for_ms.unwrap_or(DEFAULT_STEP_MS);
+            if !(MIN_STEP_MS..=MAX_STEP_MS).contains(&for_ms) {
+                return Err(at(AgentError::new(
+                    ErrorCode::BadDuration,
+                    format!("a step lasts {MIN_STEP_MS}ms to {}s.", MAX_STEP_MS / 1000),
+                )));
+            }
+            let at_ms = a.at_ms.unwrap_or(next);
+            if at_ms > MAX_SCENE_MS || at_ms + for_ms > MAX_SCENE_MS {
+                return Err(at(AgentError::new(
+                    ErrorCode::BadDuration,
+                    format!("one run of a scene ends within {} minutes.", MAX_SCENE_MS / 60_000),
+                )));
+            }
+            next = at_ms + for_ms;
+            steps.push(SceneStep { keys, color, effect, at_ms, for_ms });
+        }
+        let length_ms = steps.iter().map(|s| s.at_ms + s.for_ms).max().unwrap_or(0);
+        let repeat = self.repeat.unwrap_or(1);
+        if repeat > MAX_SCENE_REPEAT {
+            return Err(AgentError::new(
+                ErrorCode::BadValue,
+                format!("A scene runs at most {MAX_SCENE_REPEAT} times; 0 loops it for its duration."),
+            ));
+        }
+        let max = MAX_SIGNAL_DURATION.as_millis() as u64;
+        let total = match (repeat, self.for_ms) {
+            (0, None) => {
+                return Err(AgentError::new(ErrorCode::BadArgument, "A scene that loops (repeat 0) needs a duration.")
+                    .with_hint("e.g. --for 2m"))
+            }
+            // Runs that end sooner end it sooner: no light is held after
+            // its last step.
+            (0, Some(ms)) => signal_duration_ms(ms)?.as_millis() as u64,
+            (n, Some(ms)) => (signal_duration_ms(ms)?.as_millis() as u64).min(length_ms * u64::from(n)),
+            (n, None) => (length_ms * u64::from(n)).min(max),
+        };
+        let id = self.id.as_deref().map(SignalId::parse).transpose()?;
+        let save = self.save.as_deref().map(pattern_name).transpose()?;
+        let play = self.play.unwrap_or(true);
+        if !play && save.is_none() {
+            return Err(AgentError::new(ErrorCode::BadArgument, "A scene that is not played must be saved."));
+        }
+        Ok(Scene { steps, length_ms, repeat, duration: Duration::from_millis(total), id, save, play })
+    }
+
+    /// The scene as it is kept under a name: its steps as checked (keys,
+    /// colours and effects in their plain form, every start and length
+    /// written out) and how it runs, without what this one call asked
+    /// (`id`, `save`, `play`). Its size has a bound: 64 short steps.
+    pub fn to_pattern(&self) -> Result<SceneArgs, AgentError> {
+        let scene = self.validate()?;
+        let steps = scene.steps.iter().map(SceneStep::to_args).collect();
+        Ok(SceneArgs { steps, repeat: self.repeat, for_ms: self.for_ms, ..SceneArgs::default() })
+    }
+}
+
+impl SceneStep {
+    /// The step as typed, in its plain form.
+    pub fn to_args(&self) -> SceneStepArgs {
+        let kind = self.effect.kind();
+        let moves = kind != crate::values::EffectKind::Solid;
+        SceneStepArgs {
+            keys: Some(self.keys.to_string()),
+            color: self.color.hex(),
+            effect: moves.then(|| kind.as_str().to_string()),
+            direction: self.effect.direction().map(|d| d.as_str().to_string()),
+            speed: moves.then(|| self.effect.speed()),
+            at_ms: Some(self.at_ms),
+            for_ms: Some(self.for_ms),
+        }
+    }
+}
+
+/// What `pattern` does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PatternAction {
+    /// The agent's patterns.
+    List,
+    /// Play one by its name.
+    Play,
+    /// Forget one.
+    Delete,
+}
+
+impl PatternAction {
+    pub const ALL: [PatternAction; 3] = [Self::List, Self::Play, Self::Delete];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::List => "list",
+            Self::Play => "play",
+            Self::Delete => "delete",
+        }
+    }
+
+    pub fn parse(input: &str) -> Result<Self, AgentError> {
+        let s = input.trim();
+        Self::ALL.into_iter().find(|a| a.as_str().eq_ignore_ascii_case(s)).ok_or_else(|| {
+            AgentError::new(ErrorCode::BadValue, format!("'{}' is not a pattern action.", crate::values::shown(input)))
+                .with_hint("Use list, play or delete.")
+        })
+    }
+}
+
+/// `pattern list|play|delete`: the scenes an agent saved. As typed;
+/// [`PatternArgs::validate`] checks it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PatternArgs {
+    pub action: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// `play`: instead of the saved number of runs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repeat: Option<u32>,
+    /// `play`: instead of the saved duration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub for_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+}
+
+/// A checked `pattern`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pattern {
+    pub action: PatternAction,
+    pub name: Option<String>,
+    pub repeat: Option<u32>,
+    pub for_ms: Option<u64>,
+    pub id: Option<SignalId>,
+}
+
+impl PatternArgs {
+    pub fn validate(&self) -> Result<Pattern, AgentError> {
+        let action = PatternAction::parse(&self.action)?;
+        let name = self.name.as_deref().map(pattern_name).transpose()?;
+        match (action, &name) {
+            (PatternAction::List, Some(_)) => {
+                return Err(AgentError::new(ErrorCode::BadArgument, "pattern list takes no name."))
+            }
+            (PatternAction::Play | PatternAction::Delete, None) => {
+                return Err(AgentError::new(ErrorCode::BadArgument, "Name the pattern.")
+                    .with_hint("keymotion-cli pattern list shows yours."))
+            }
+            _ => {}
+        }
+        let played = self.repeat.is_some() || self.for_ms.is_some() || self.id.is_some();
+        if played && action != PatternAction::Play {
+            return Err(AgentError::new(ErrorCode::BadArgument, "Only pattern play takes --repeat, --for and --id."));
+        }
+        let id = self.id.as_deref().map(SignalId::parse).transpose()?;
+        Ok(Pattern { action, name, repeat: self.repeat, for_ms: self.for_ms, id })
+    }
+}
+
+/// `spell <word>`: the word written on the keyboard, one key after
+/// another. As typed; [`SpellArgs::validate`] checks it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SpellArgs {
+    pub text: String,
+    /// Default: white.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// 1 (slow) to 5 (fast); default 3.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speed: Option<u32>,
+    /// How many times the word is written (default 1).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub times: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+}
+
+/// A checked `spell`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Spell {
+    pub text: String,
+    pub color: Color,
+    pub speed: u32,
+    pub times: u32,
+    pub id: Option<SignalId>,
+}
+
+impl SpellArgs {
+    pub fn validate(&self) -> Result<Spell, AgentError> {
+        let text = self.text.trim();
+        if text.is_empty() {
+            return Err(AgentError::new(ErrorCode::BadArgument, "Give a word to spell, e.g. spell \"DONE\"."));
+        }
+        if text.contains('\n') {
+            return Err(AgentError::new(ErrorCode::TextTooLong, "A word to spell is one line."));
+        }
+        // Emoji, joiners and marks are fine: what has no key is skipped.
+        if let Some(c) = text.chars().find(|c| c.is_control()) {
+            return Err(AgentError::new(
+                ErrorCode::BadText,
+                format!("The text has a control character (U+{:04X}).", u32::from(c)),
+            ));
+        }
+        let shown = crate::letters::clusters(text).len();
+        if shown > MAX_SPELL_CHARS {
+            return Err(AgentError::new(
+                ErrorCode::TextTooLong,
+                format!("The text has {shown} characters; at most {MAX_SPELL_CHARS} are spelled."),
+            ));
+        }
+        let color = self.color.as_deref().map(Color::parse).transpose()?.unwrap_or(Color::rgb(255, 255, 255));
+        let speed = self.speed.unwrap_or(3);
+        if !(1..=5).contains(&speed) {
+            return Err(AgentError::new(ErrorCode::BadValue, format!("Speed {speed} is out of range; use 1 to 5.")));
+        }
+        let times = self.times.unwrap_or(1);
+        if !(1..=MAX_SPELL_TIMES).contains(&times) {
+            return Err(AgentError::new(
+                ErrorCode::BadValue,
+                format!("A word is written 1 to {MAX_SPELL_TIMES} times."),
+            ));
+        }
+        let id = self.id.as_deref().map(SignalId::parse).transpose()?;
+        Ok(Spell { text: text.to_string(), color, speed, times, id })
+    }
+}
+
 /// Every command of protocol v1, with its arguments as typed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
@@ -1117,11 +1482,14 @@ pub enum Command {
     Focus(FocusArgs),
     Profile(ProfileArgs),
     Card(CardArgs),
+    Scene(SceneArgs),
+    Pattern(PatternArgs),
+    Spell(SpellArgs),
 }
 
 impl Command {
     /// Every command name of this build.
-    pub const NAMES: [&'static str; 14] = [
+    pub const NAMES: [&'static str; 17] = [
         "hello",
         "status",
         "keys",
@@ -1136,6 +1504,9 @@ impl Command {
         "focus",
         "profile",
         "card",
+        "scene",
+        "pattern",
+        "spell",
     ];
 
     /// The `cmd` string.
@@ -1155,6 +1526,9 @@ impl Command {
             Self::Focus(_) => "focus",
             Self::Profile(_) => "profile",
             Self::Card(_) => "card",
+            Self::Scene(_) => "scene",
+            Self::Pattern(_) => "pattern",
+            Self::Spell(_) => "spell",
         }
     }
 
@@ -1175,6 +1549,9 @@ impl Command {
             Self::Focus(a) => serde_json::to_value(a),
             Self::Profile(a) => serde_json::to_value(a),
             Self::Card(a) => serde_json::to_value(a),
+            Self::Scene(a) => serde_json::to_value(a),
+            Self::Pattern(a) => serde_json::to_value(a),
+            Self::Spell(a) => serde_json::to_value(a),
         };
         // Plain structs of strings and numbers always serialize to objects.
         match value {
@@ -1205,6 +1582,9 @@ impl Command {
             "focus" => Self::Focus(typed(cmd, args)?),
             "profile" => Self::Profile(typed(cmd, args)?),
             "card" => Self::Card(typed(cmd, args)?),
+            "scene" => Self::Scene(typed(cmd, args)?),
+            "pattern" => Self::Pattern(typed(cmd, args)?),
+            "spell" => Self::Spell(typed(cmd, args)?),
             _ => {
                 return Err(AgentError::new(
                     ErrorCode::UnknownCommand,
@@ -1419,6 +1799,28 @@ mod tests {
                 write_flash: true,
                 wait_ms: Some(10_000),
             }),
+            Command::Scene(SceneArgs {
+                steps: vec![
+                    SceneStepArgs {
+                        keys: Some("f1".into()),
+                        color: "red".into(),
+                        for_ms: Some(300),
+                        ..Default::default()
+                    },
+                    SceneStepArgs {
+                        keys: Some("f2".into()),
+                        color: "off".into(),
+                        effect: Some("pulse".into()),
+                        at_ms: Some(100),
+                        ..Default::default()
+                    },
+                ],
+                repeat: Some(2),
+                save: Some("deploy".into()),
+                ..Default::default()
+            }),
+            Command::Pattern(PatternArgs { action: "play".into(), name: Some("deploy".into()), ..Default::default() }),
+            Command::Spell(SpellArgs { text: "OK".into(), speed: Some(4), times: Some(2), ..Default::default() }),
         ];
         for (i, command) in commands.iter().enumerate() {
             let request = Request::new(1, i.to_string(), &source(), command);
@@ -1847,6 +2249,166 @@ mod tests {
             CardArgs { color: Some("teal-ish".into()), ..text("x") }.validate().unwrap_err().code,
             ErrorCode::BadColor
         );
+    }
+
+    fn step(keys: &str, color: &str, at: Option<u64>, ms: Option<u64>) -> SceneStepArgs {
+        SceneStepArgs { keys: Some(keys.into()), color: color.into(), at_ms: at, for_ms: ms, ..Default::default() }
+    }
+
+    #[test]
+    fn scenes_are_checked_and_timed() {
+        // Steps follow each other unless they say when they start.
+        let s = SceneArgs {
+            steps: vec![
+                step("f1", "red", None, Some(300)),
+                step("f2", "green", None, None),
+                step("all", "off", Some(100), Some(50)),
+            ],
+            ..Default::default()
+        }
+        .validate()
+        .unwrap();
+        let starts: Vec<(u64, u64)> = s.steps.iter().map(|x| (x.at_ms, x.for_ms)).collect();
+        assert_eq!(starts, [(0, 300), (300, DEFAULT_STEP_MS), (100, 50)]);
+        assert_eq!((s.length_ms, s.repeat, s.duration), (800, 1, Duration::from_millis(800)));
+        assert_eq!(s.steps[2].color, Color::rgb(0, 0, 0), "off is dark");
+        assert!(s.play && s.save.is_none());
+        // Repeats, a loop for a time, saving.
+        let twice =
+            SceneArgs { steps: vec![step("esc", "blue", None, Some(1000))], repeat: Some(3), ..Default::default() };
+        assert_eq!(twice.validate().unwrap().duration, Duration::from_secs(3));
+        let looped = SceneArgs { repeat: Some(0), for_ms: Some(120_000), ..twice.clone() };
+        assert_eq!(looped.validate().unwrap().duration, Duration::from_secs(120));
+        let saved = SceneArgs { save: Some(" Deploy-Done ".into()), play: Some(false), ..twice.clone() };
+        let v = saved.validate().unwrap();
+        assert_eq!((v.save.as_deref(), v.play), (Some("deploy-done"), false));
+        // Kept in its plain form, every value written out.
+        let kept = saved.to_pattern().unwrap();
+        assert_eq!(
+            kept,
+            SceneArgs {
+                steps: vec![SceneStepArgs {
+                    keys: Some("esc".into()),
+                    color: "#0000ff".into(),
+                    at_ms: Some(0),
+                    for_ms: Some(1000),
+                    ..Default::default()
+                }],
+                repeat: Some(3),
+                ..Default::default()
+            }
+        );
+        assert_eq!(kept.validate().unwrap().steps, saved.validate().unwrap().steps, "it plays the same");
+        let wave = SceneArgs {
+            steps: vec![SceneStepArgs {
+                effect: Some("Wave".into()),
+                speed: Some(4),
+                ..step("f1-f4", "off", None, None)
+            }],
+            ..Default::default()
+        };
+        let w = &wave.to_pattern().unwrap().steps[0];
+        assert_eq!(
+            (w.keys.as_deref(), w.color.as_str(), w.effect.as_deref(), w.direction.as_deref(), w.speed),
+            (Some("f1-f4"), "#000000", Some("wave"), Some("right"), Some(4))
+        );
+        // --for longer than the runs: the light ends with its last step.
+        let long_for = SceneArgs { for_ms: Some(600_000), ..twice.clone() };
+        assert_eq!(long_for.validate().unwrap().duration, Duration::from_secs(3));
+        let short_for = SceneArgs { for_ms: Some(1_500), ..twice.clone() };
+        assert_eq!(short_for.validate().unwrap().duration, Duration::from_millis(1_500));
+        // A start past the end cannot overflow.
+        let far = SceneArgs { steps: vec![step("f1", "red", Some(u64::MAX - 10), Some(60_000))], ..Default::default() };
+        assert_eq!(far.validate().unwrap_err().code, ErrorCode::BadDuration);
+        // Two hours at most, however it runs.
+        let long = SceneArgs {
+            steps: vec![step("f1", "red", Some(540_000), Some(60_000))],
+            repeat: Some(100),
+            ..Default::default()
+        };
+        assert_eq!(long.validate().unwrap().duration, MAX_SIGNAL_DURATION);
+        let too_long = SceneArgs { for_ms: Some(MAX_SIGNAL_DURATION.as_millis() as u64 + 1), ..twice.clone() };
+        assert_eq!(too_long.validate().unwrap_err().code, ErrorCode::BadDuration);
+
+        let code = |a: SceneArgs| a.validate().unwrap_err().code;
+        assert_eq!(code(SceneArgs::default()), ErrorCode::BadArgument);
+        assert_eq!(
+            code(SceneArgs { steps: vec![step("f1", "red", None, None); 65], ..Default::default() }),
+            ErrorCode::BadArgument
+        );
+        assert_eq!(
+            code(SceneArgs { steps: vec![step("f1", "", None, None)], ..Default::default() }),
+            ErrorCode::BadArgument
+        );
+        assert_eq!(
+            code(SceneArgs { steps: vec![step("f1", "red", None, Some(49))], ..Default::default() }),
+            ErrorCode::BadDuration
+        );
+        assert_eq!(
+            code(SceneArgs { steps: vec![step("f1", "red", Some(MAX_SCENE_MS), Some(50))], ..Default::default() }),
+            ErrorCode::BadDuration
+        );
+        assert_eq!(
+            code(SceneArgs { steps: vec![step("f1,!", "red", None, None)], ..Default::default() }),
+            ErrorCode::BadKeys
+        );
+        assert_eq!(code(SceneArgs { repeat: Some(0), ..twice.clone() }), ErrorCode::BadArgument, "a loop needs a time");
+        assert_eq!(code(SceneArgs { repeat: Some(101), ..twice.clone() }), ErrorCode::BadValue);
+        assert_eq!(code(SceneArgs { play: Some(false), ..twice.clone() }), ErrorCode::BadArgument);
+        assert_eq!(code(SceneArgs { save: Some("no spaces".into()), ..twice.clone() }), ErrorCode::BadValue);
+        let e = SceneArgs {
+            steps: vec![step("f1", "red", None, None), step("f2", "nope", None, None)],
+            ..Default::default()
+        }
+        .validate()
+        .unwrap_err();
+        assert!(e.message.starts_with("Step 2:"), "{}", e.message);
+        // A blink inside a step still never passes three flashes a second.
+        let fast = SceneArgs {
+            steps: vec![SceneStepArgs {
+                effect: Some("blink".into()),
+                speed: Some(5),
+                ..step("f1", "red", None, None)
+            }],
+            ..Default::default()
+        };
+        assert!(fast.validate().unwrap().steps[0].effect.flashes_per_second() <= 3.0);
+    }
+
+    #[test]
+    fn patterns_and_spelling_are_checked() {
+        let p = |action: &str, name: Option<&str>| PatternArgs {
+            action: action.into(),
+            name: name.map(str::to_string),
+            ..Default::default()
+        };
+        assert_eq!(p("list", None).validate().unwrap().action, PatternAction::List);
+        assert_eq!(p("PLAY", Some("Deploy")).validate().unwrap().name.as_deref(), Some("deploy"));
+        assert_eq!(p("play", None).validate().unwrap_err().code, ErrorCode::BadArgument);
+        assert_eq!(p("list", Some("x")).validate().unwrap_err().code, ErrorCode::BadArgument);
+        assert_eq!(p("rename", Some("x")).validate().unwrap_err().code, ErrorCode::BadValue);
+        assert_eq!(
+            PatternArgs { repeat: Some(2), ..p("delete", Some("x")) }.validate().unwrap_err().code,
+            ErrorCode::BadArgument
+        );
+        assert_eq!(pattern_name("-x").unwrap_err().code, ErrorCode::BadValue);
+        assert_eq!(pattern_name(&"a".repeat(33)).unwrap_err().code, ErrorCode::BadValue);
+
+        let spell = |text: &str| SpellArgs { text: text.into(), ..Default::default() };
+        let s = spell(" OK ").validate().unwrap();
+        assert_eq!((s.text.as_str(), s.speed, s.times, s.color), ("OK", 3, 1, Color::rgb(255, 255, 255)));
+        assert_eq!(spell("").validate().unwrap_err().code, ErrorCode::BadArgument);
+        assert_eq!(spell(&"A".repeat(33)).validate().unwrap_err().code, ErrorCode::TextTooLong);
+        assert_eq!(spell("A\nB").validate().unwrap_err().code, ErrorCode::TextTooLong);
+        // Emoji with joiners and marks are taken (skipped when spelled); a
+        // control character is not.
+        assert!(spell("OK \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}").validate().is_ok());
+        assert!(spell("Gu\u{0308}l").validate().is_ok());
+        assert_eq!(spell("O\u{7}K").validate().unwrap_err().code, ErrorCode::BadText);
+        // 32 characters as a reader counts them, marks and all.
+        assert!(spell(&"u\u{0308}".repeat(32)).validate().is_ok());
+        assert_eq!(SpellArgs { speed: Some(6), ..spell("OK") }.validate().unwrap_err().code, ErrorCode::BadValue);
+        assert_eq!(SpellArgs { times: Some(11), ..spell("OK") }.validate().unwrap_err().code, ErrorCode::BadValue);
     }
 
     fn call(session: &mut Session, line: &str) -> Response {

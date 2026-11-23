@@ -22,7 +22,7 @@ import {
   setWindowTheme,
 } from "./lib/ipc";
 import { follow } from "./lib/follow";
-import { isNewAk980Firmware, useUnsupportedKeyboards } from "./lib/report";
+import { useUnsupported } from "./lib/report";
 import { useUnsaved } from "./lib/unsaved";
 import { connectionKey, modelNames, tNow, useT, type MessageKey } from "./lib/i18n";
 import { useKeymap } from "./lib/keymap";
@@ -191,9 +191,9 @@ function useTray() {
   const requestProfile = useApp((s) => s.requestProfile);
   // A keyboard Keymotion can't drive yet (an AK980 PRO on AJAZZ's firmware
   // 769, or another model): the menu says why no keyboard shows.
-  const unsupported = useUnsupportedKeyboards();
-  const newFirmware = unsupported.some(isNewAk980Firmware);
-  const otherKeyboard = unsupported.length > 0;
+  const unsupported = useUnsupported();
+  const newFirmware = unsupported.newFirmware.length > 0;
+  const otherKeyboard = unsupported.list.length > 0;
   useEffect(() => {
     // Templates go as they are: the backend fills in {min}, {n}, ….
     setTrayTexts({

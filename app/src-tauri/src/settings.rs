@@ -94,6 +94,14 @@ fn keep_aside(dir: &Path, file: &str) -> Option<String> {
     }
 }
 
+/// `file` read, but its contents are not what they should be (a caller
+/// checked them): keep it aside and record the reset, as for a damaged one.
+pub(crate) fn set_aside(dir: &Path, file: &str) {
+    if dir.join(file).exists() {
+        reset(dir, file);
+    }
+}
+
 /// `file` cannot be used: keep it aside and record the reset.
 fn reset(dir: &Path, file: &str) {
     let backup = keep_aside(dir, file);

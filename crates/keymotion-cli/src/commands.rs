@@ -81,6 +81,19 @@ fn call(ctx: &Ctx, command: Command) -> Result<Done, AgentError> {
             warnings.extend(human::lit_warnings(&data));
             human::lit(name, &data)
         }
+        "scene" | "spell" => {
+            if data.get("length_ms").is_some() {
+                warnings.extend(human::lit_warnings(&data));
+            }
+            warnings.extend(human::spell_warnings(&data));
+            human::scene(name, &data)
+        }
+        "pattern" => {
+            if data.get("length_ms").is_some() {
+                warnings.extend(human::lit_warnings(&data));
+            }
+            human::pattern(&data)
+        }
         "clear" => human::clear(&data),
         "log" => human::log(&data, now_ms()),
         "settings_get" => human::settings_get(&data),

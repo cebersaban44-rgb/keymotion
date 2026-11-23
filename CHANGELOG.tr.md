@@ -118,6 +118,10 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   birlikte saatte en çok 4, sizin ayarladığınız kadar; sonra kendi
   görseliniz geri gelir). Ekran kartlarına izin verdiyseniz 10 dakika ya da
   daha uzun süren bir kodlama işi bitince ekranda "Bitti · 14 dk" yazar.
+  Ajanlar tuşlara harf harf bir kelime de yazabilir (`keymotion-cli spell
+  "DONE"`) ve kendi küçük animasyonlarını oynatabilir (`scene`); bunları bir
+  adla saklayıp yeniden oynatabilirler (`pattern`). Hepsi klavyenin çalışma
+  belleğinde, saniyede en çok üç yanıp sönmeyle.
 
 ### Değişenler
 

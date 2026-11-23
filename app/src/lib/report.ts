@@ -11,6 +11,7 @@ import { create } from "zustand";
 import type { UnsupportedKeyboard } from "../bindings/UnsupportedKeyboard";
 import { follow } from "./follow";
 import { getUnsupportedKeyboards, onUnsupportedChanged, unsupportedReport } from "./ipc";
+import { firmwareVersion, isAk980Candidate, isNewAk980Firmware, parseDetails, type KeyboardDetails } from "./newFirmware";
 
 export interface ReportRequest {
   /** A problem (the "bug" form) or a keyboard support request. */
@@ -69,42 +70,50 @@ export function crashTitle(note: string): string {
   return problemTitle(`Crash: ${message || "no message"}`);
 }
 
-/**
- * AJAZZ's newest firmware for the AK980 PRO ("AK980 Led v2 Firmware 769",
- * 3.01) moves the keyboard to another command set, under its own USB id
- * (0C45:8039). Keymotion doesn't speak it yet, so the backend lists the
- * keyboard as unknown and sends it nothing; the page says what it is.
- */
-export function isNewAk980Firmware(k: UnsupportedKeyboard): boolean {
-  const [vid, pid] = k.id.toUpperCase().split(":");
-  return vid === "0C45" && pid === "8039" && /AK980\s*PRO/i.test(k.name ?? "");
+/** Each AK980 PRO candidate's support details, read once while it is
+ *  plugged in (lib/newFirmware.ts). */
+const useDetails = create<{ byId: Record<string, KeyboardDetails | null> }>(() => ({ byId: {} }));
+const asked = new Set<string>();
+
+/** Read the details of the keyboards that may run AJAZZ's new firmware; a
+ *  keyboard that went away is read again when it comes back (its firmware
+ *  may have changed). */
+function readDetails(list: UnsupportedKeyboard[]) {
+  const here = new Set(list.map((k) => k.id));
+  const gone = [...asked].filter((id) => !here.has(id));
+  if (gone.length) {
+    gone.forEach((id) => asked.delete(id));
+    useDetails.setState((s) => ({ byId: Object.fromEntries(Object.entries(s.byId).filter(([id]) => here.has(id))) }));
+  }
+  for (const k of list) {
+    if (!isAk980Candidate(k) || asked.has(k.id)) continue;
+    asked.add(k.id);
+    unsupportedReport(k.id)
+      .then(parseDetails, () => null)
+      .then((d) => useDetails.setState((s) => ({ byId: { ...s.byId, [k.id]: d } })));
+  }
 }
 
-/** The firmware's version ("3.01") from the keyboard's USB release number,
- *  read from Windows for the support request; `null` until it is read or
- *  when it can't be. */
-export function useFirmwareVersion(id: string | null): string | null {
-  const [version, setVersion] = useState<string | null>(null);
-  useEffect(() => {
-    setVersion(null);
-    if (!id) return;
-    let live = true;
-    unsupportedReport(id)
-      .then((text) => {
-        const m = /release 0x([0-9A-F]{2})([0-9A-F]{2})/i.exec(text);
-        if (live && m) setVersion(`${parseInt(m[1]!, 16)}.${m[2]}`);
-      })
-      .catch(console.error);
-    return () => {
-      live = false;
-    };
-  }, [id]);
-  return version;
+export interface UnsupportedView {
+  /** Every keyboard that looks like a SONiX or AJAZZ one but isn't supported. */
+  list: UnsupportedKeyboard[];
+  /** AK980 PROs on AJAZZ's new firmware, with its version when known. */
+  newFirmware: { keyboard: UnsupportedKeyboard; version: string | null }[];
+  /** The rest (an AK980 PRO whose details are still being read waits). */
+  others: UnsupportedKeyboard[];
 }
 
-/** Keyboards that look like SONiX or AJAZZ ones but aren't supported yet. */
-export function useUnsupportedKeyboards(): UnsupportedKeyboard[] {
+/** Keyboards that look like SONiX or AJAZZ ones but aren't supported yet,
+ *  with the AK980 PROs on AJAZZ's new firmware told apart. */
+export function useUnsupported(): UnsupportedView {
   const [list, setList] = useState<UnsupportedKeyboard[]>([]);
   useEffect(() => follow(getUnsupportedKeyboards, onUnsupportedChanged, setList), []);
-  return list;
+  useEffect(() => readDetails(list), [list]);
+  const byId = useDetails((s) => s.byId);
+  const fresh = list.filter((k) => isNewAk980Firmware(k, byId[k.id]));
+  return {
+    list,
+    newFirmware: fresh.map((k) => ({ keyboard: k, version: firmwareVersion(byId[k.id]?.release) })),
+    others: list.filter((k) => !fresh.includes(k) && (!isAk980Candidate(k) || k.id in byId)),
+  };
 }

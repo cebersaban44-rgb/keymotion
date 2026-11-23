@@ -30,7 +30,7 @@ import type { Feature } from "../bindings/Feature";
 import { connectionKey, modelTitle, percent, useT, type MessageKey } from "../lib/i18n";
 import { fmtClock, phaseColor, remainingNow, usePomodoro } from "../lib/pomodoro";
 import { SUPPORTED_MODEL, SUPPORTED_MODEL_ID } from "../lib/offline";
-import { isNewAk980Firmware, useUnsupportedKeyboards } from "../lib/report";
+import { useUnsupported } from "../lib/report";
 import { useActiveKeyboard, useApp, useNarrowWindow, type PageId } from "../lib/store";
 import { useUnsaved } from "../lib/unsaved";
 import { useUpdates } from "../lib/updates";
@@ -93,7 +93,7 @@ export function Sidebar() {
   const page = useApp((s) => s.page);
   const setPage = useApp((s) => s.setPage);
   const kb = useActiveKeyboard();
-  const unsupported = useUnsupportedKeyboards();
+  const unsupported = useUnsupported();
   const unsavedPages = new Set(useUnsaved().filter((i) => !i.background).map((i) => i.page));
   // A new version waits: a dot on Settings, where the update is.
   const updateKind = useUpdates((s) => s.state?.status.kind);
@@ -188,8 +188,8 @@ export function Sidebar() {
   // A keyboard is there that Keymotion can't drive yet (an AK980 PRO on
   // AJAZZ's firmware 769, or another model): say so rather than "Waiting
   // for a keyboard".
-  const newFirmware = !kb && unsupported.some(isNewAk980Firmware);
-  const other = kb || newFirmware ? null : (unsupported[0] ?? null);
+  const newFirmware = !kb && unsupported.newFirmware.length > 0;
+  const other = kb || newFirmware ? null : (unsupported.others[0] ?? null);
   const deviceTitle = kb
     ? modelTitle(t, kb.modelId, kb.modelName)
     : newFirmware

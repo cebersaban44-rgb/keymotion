@@ -19,8 +19,8 @@ use std::ffi::OsString;
 use clap::error::ErrorKind;
 use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use kb_agent::protocol::{
-    CardArgs, ClearArgs, FocusArgs, KeysArgs, LightArgs, LogArgs, ProfileArgs, ProgressArgs, SettingsGetArgs,
-    SettingsSetArgs, SignalArgs, StatusArgs,
+    CardArgs, ClearArgs, FocusArgs, KeysArgs, LightArgs, LogArgs, PatternArgs, ProfileArgs, ProgressArgs, SceneArgs,
+    SceneStepArgs, SettingsGetArgs, SettingsSetArgs, SignalArgs, SpellArgs, StatusArgs,
 };
 use kb_agent::values::{duration_ms, parse_duration};
 use kb_agent::{AgentError, Command, ErrorCode};
@@ -181,6 +181,13 @@ pub enum Cmd {
     Profile(ProfileCmd),
     /// A card on the keyboard's screen: text and/or a picture (--write-flash)
     Card(CardCmd),
+    /// Play your own timed animation from a JSON file; --save NAME keeps it
+    Scene(SceneCmd),
+    /// Your saved scenes: list, play NAME, delete NAME
+    #[command(subcommand)]
+    Pattern(PatternCmd),
+    /// Write a word on its letter keys, one letter after another
+    Spell(SpellCmd),
     /// keymotion-cli's version and protocol, and Keymotion's when it runs
     Version,
     /// A short guide for agents: what to run, examples, exit codes
@@ -407,6 +414,68 @@ pub struct CardCmd {
     pub wait: Option<String>,
 }
 
+#[derive(Args, Debug, Clone)]
+pub struct SceneCmd {
+    /// The scene: a JSON file (- reads standard input) with a list of steps, or
+    /// {"steps": [...], "repeat": N, "for": "2m"}; a step is
+    /// {"keys": "f1-f4", "color": "red", "effect": "pulse", "at": "0ms", "for": "500ms"}
+    pub file: String,
+    /// Keep it as your pattern of this name (a-z, 0-9, - and _): pattern play NAME
+    #[arg(long, value_name = "NAME")]
+    pub save: Option<String>,
+    /// With --save: keep it without playing it now
+    #[arg(long)]
+    pub no_play: bool,
+    /// How many times it runs (default 1); 0 loops it until --for
+    #[arg(long, value_name = "N")]
+    pub repeat: Option<u32>,
+    /// How long it plays at most (at most 2h)
+    #[arg(long = "for", value_name = "DURATION")]
+    pub for_: Option<String>,
+    /// The same id replaces your earlier light or scene
+    #[arg(long)]
+    pub id: Option<String>,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum PatternCmd {
+    /// Your saved patterns (every session of your coding app sees them)
+    List,
+    /// Play one by its name
+    Play {
+        name: String,
+        /// Instead of its saved number of runs; 0 loops it until --for
+        #[arg(long, value_name = "N")]
+        repeat: Option<u32>,
+        /// Instead of its saved length (at most 2h)
+        #[arg(long = "for", value_name = "DURATION")]
+        for_: Option<String>,
+        /// The same id replaces your earlier light or scene
+        #[arg(long)]
+        id: Option<String>,
+    },
+    /// Forget one
+    Delete { name: String },
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct SpellCmd {
+    /// The word or words: a-z, 0-9, - = , . / ; ' [ ] \ and `; a space is a short pause
+    pub text: String,
+    /// Default: white
+    #[arg(long)]
+    pub color: Option<String>,
+    /// 1 (slow) to 5 (fast); default 3
+    #[arg(long, value_name = "1-5")]
+    pub speed: Option<u32>,
+    /// How many times it is written (1 to 10)
+    #[arg(long, value_name = "N")]
+    pub times: Option<u32>,
+    /// The same id replaces your earlier light or scene
+    #[arg(long)]
+    pub id: Option<String>,
+}
+
 #[derive(Subcommand, Debug, Clone)]
 pub enum SettingsCmd {
     /// Every setting, or those under KEY (e.g. signals.done)
@@ -467,6 +536,9 @@ impl Cmd {
             Self::Focus(_) => "focus",
             Self::Profile(_) => "profile",
             Self::Card(_) => "card",
+            Self::Scene(_) => "scene",
+            Self::Pattern(_) => "pattern",
+            Self::Spell(_) => "spell",
             Self::Version => "version",
             Self::Guide => "guide",
             Self::Doctor => "doctor",
@@ -608,8 +680,192 @@ impl Cmd {
                 args.validate()?;
                 Command::Card(args)
             }
+            Self::Scene(c) => {
+                let mut args = read_scene(&c.file)?;
+                if c.repeat.is_some() {
+                    args.repeat = c.repeat;
+                }
+                if let Some(ms) = for_ms(c.for_.as_deref())? {
+                    args.for_ms = Some(ms);
+                }
+                args.id.clone_from(&c.id);
+                args.save.clone_from(&c.save);
+                args.play = c.no_play.then_some(false);
+                args.validate()?;
+                Command::Scene(args)
+            }
+            Self::Pattern(p) => {
+                let args = match p {
+                    PatternCmd::List => PatternArgs { action: "list".into(), ..Default::default() },
+                    PatternCmd::Play { name, repeat, for_, id } => PatternArgs {
+                        action: "play".into(),
+                        name: Some(name.clone()),
+                        repeat: *repeat,
+                        for_ms: for_ms(for_.as_deref())?,
+                        id: id.clone(),
+                    },
+                    PatternCmd::Delete { name } => {
+                        PatternArgs { action: "delete".into(), name: Some(name.clone()), ..Default::default() }
+                    }
+                };
+                args.validate()?;
+                Command::Pattern(args)
+            }
+            Self::Spell(c) => {
+                let args = SpellArgs {
+                    text: c.text.clone(),
+                    color: c.color.clone(),
+                    speed: c.speed,
+                    times: c.times,
+                    id: c.id.clone(),
+                };
+                args.validate()?;
+                Command::Spell(args)
+            }
         };
         Ok(Plan::Call(command))
+    }
+}
+
+/// The most a scene file may have.
+const MAX_SCENE_FILE_BYTES: u64 = 32 * 1024;
+
+/// A scene from its file (`-`: standard input): a list of steps, or an
+/// object with `steps` and, if it likes, `repeat` and `for`. In a step,
+/// `at` and `for` are durations (`300ms`, `2s`) or numbers of
+/// milliseconds; `keys`, `color`, `effect`, `direction` and `speed` are as
+/// `light` takes them.
+pub fn read_scene(file: &str) -> Result<SceneArgs, AgentError> {
+    use std::io::Read;
+    let bad = |why: String| {
+        AgentError::new(ErrorCode::BadValue, why).with_hint(
+            "A scene is JSON: [{\"keys\":\"f1\",\"color\":\"red\",\"for\":\"500ms\"}, ...], or {\"steps\":[...],\"repeat\":2}.",
+        )
+    };
+    let mut bytes = Vec::new();
+    let read = if file == "-" {
+        std::io::stdin().take(MAX_SCENE_FILE_BYTES + 1).read_to_end(&mut bytes)
+    } else {
+        local_file(std::path::Path::new(file), "scene")?;
+        std::fs::File::open(file).and_then(|f| f.take(MAX_SCENE_FILE_BYTES + 1).read_to_end(&mut bytes))
+    };
+    read.map_err(|e| bad(format!("The scene {} cannot be read: {e}.", kb_agent::values::shown(file))))?;
+    if bytes.len() as u64 > MAX_SCENE_FILE_BYTES {
+        return Err(AgentError::new(ErrorCode::TooLarge, "A scene file has at most 32 KiB."));
+    }
+    let value: Value = serde_json::from_slice(&bytes).map_err(|e| bad(format!("The scene is not JSON: {e}.")))?;
+    scene_from_json(&value).map_err(bad)
+}
+
+/// [`read_scene`]'s reading, from JSON.
+pub fn scene_from_json(value: &Value) -> Result<SceneArgs, String> {
+    let (steps, top) = match value {
+        Value::Array(steps) => (steps, None),
+        Value::Object(top) => match top.get("steps") {
+            Some(Value::Array(steps)) => (steps, Some(top)),
+            _ => return Err("The scene has no \"steps\" list.".into()),
+        },
+        _ => return Err("A scene is a list of steps, or an object with \"steps\".".into()),
+    };
+    let mut args = SceneArgs::default();
+    if let Some(top) = top {
+        for (key, v) in top {
+            match key.as_str() {
+                "steps" => {}
+                "repeat" => args.repeat = Some(whole(v, "repeat")?),
+                "for" | "for_ms" => args.for_ms = Some(millis(v, key)?),
+                other => return Err(format!("A scene has no \"{other}\"; it has steps, repeat and for.")),
+            }
+        }
+    }
+    for (n, step) in steps.iter().enumerate() {
+        let at = |why: String| format!("Step {}: {why}", n + 1);
+        let Value::Object(fields) = step else { return Err(at("a step is an object.".into())) };
+        let mut s = SceneStepArgs::default();
+        for (key, v) in fields {
+            let text = || v.as_str().map(str::to_string).ok_or_else(|| at(format!("\"{key}\" is text.")));
+            match key.as_str() {
+                "keys" => s.keys = Some(text()?),
+                "color" => s.color = text()?,
+                "effect" => s.effect = Some(text()?),
+                "direction" => s.direction = Some(text()?),
+                "speed" => s.speed = Some(whole(v, "speed").map_err(at)?),
+                "at" | "at_ms" => s.at_ms = Some(start(v, key).map_err(at)?),
+                "for" | "for_ms" => s.for_ms = Some(millis(v, key).map_err(at)?),
+                other => {
+                    return Err(at(format!(
+                        "a step has no \"{other}\"; it has keys, color, effect, direction, speed, at and for."
+                    )))
+                }
+            }
+        }
+        args.steps.push(s);
+    }
+    Ok(args)
+}
+
+/// A whole number from JSON.
+fn whole(v: &Value, key: &str) -> Result<u32, String> {
+    v.as_u64().and_then(|n| u32::try_from(n).ok()).ok_or_else(|| format!("\"{key}\" is a whole number."))
+}
+
+/// A step's start: as [`millis`], and zero too (`0`, `"0ms"`, `"0s"`).
+fn start(v: &Value, key: &str) -> Result<u64, String> {
+    if let Value::String(t) = v {
+        let number = t.trim().trim_end_matches(|c: char| c.is_ascii_alphabetic()).trim();
+        if !number.is_empty() && number.parse::<f64>().is_ok_and(|n| n == 0.0) {
+            return Ok(0);
+        }
+    }
+    millis(v, key)
+}
+
+/// A file named on the command line, as keymotion-cli reads it: on this
+/// computer only. The Codex rule runs keymotion-cli outside the sandbox,
+/// so a network path (`\\host\share\…`, which would open a connection and
+/// pass the user's sign-in), a `\\?\` or `\\.\` path, a device name (`CON`,
+/// `NUL`, `COM1`, which can hang a read) or a link is refused.
+pub fn local_file(path: &std::path::Path, what: &str) -> Result<(), AgentError> {
+    let text = path.as_os_str().to_string_lossy();
+    let refuse = |why: &str| {
+        Err(AgentError::new(
+            ErrorCode::BadValue,
+            format!(
+                "The {what} {} is {why}; keymotion-cli reads files on this computer only.",
+                kb_agent::values::shown(&text)
+            ),
+        )
+        .with_hint("Give the path of a file on this computer, e.g. C:\\Users\\you\\scene.json or .\\scene.json."))
+    };
+    if text.starts_with("\\\\") || text.starts_with("//") || text.starts_with("\\/") || text.starts_with("/\\") {
+        return refuse("a network or device path");
+    }
+    let last = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let stem = last.split('.').next().unwrap_or_default().trim_end_matches([' ', '.']).to_ascii_uppercase();
+    let numbered = |prefix: &str| {
+        stem.strip_prefix(prefix).is_some_and(|n| {
+            let n: Vec<char> = n.chars().collect();
+            n.len() == 1 && (n[0].is_ascii_digit() || matches!(n[0], '\u{B9}' | '\u{B2}' | '\u{B3}'))
+        })
+    };
+    let device = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$" | "CLOCK$")
+        || numbered("COM")
+        || numbered("LPT");
+    if device || (last.is_empty() && text.ends_with(':')) {
+        return refuse("a device");
+    }
+    if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+        return refuse("a link");
+    }
+    Ok(())
+}
+
+/// Milliseconds from JSON: a number, or a duration as text.
+fn millis(v: &Value, key: &str) -> Result<u64, String> {
+    match v {
+        Value::Number(n) => n.as_u64().ok_or_else(|| format!("\"{key}\" is a whole number of milliseconds.")),
+        Value::String(t) => parse_duration(t).map(duration_ms).map_err(|e| format!("\"{key}\": {}", e.message)),
+        _ => Err(format!("\"{key}\" is a duration such as \"500ms\", or milliseconds.")),
     }
 }
 
@@ -623,6 +879,7 @@ fn unescape_lines(text: &str) -> String {
 /// as base64. Only its first 40 KiB and one byte are read.
 fn read_image(path: &std::path::Path) -> Result<String, AgentError> {
     use std::io::Read;
+    local_file(path, "picture")?;
     let shown = path.display().to_string();
     let file = std::fs::File::open(path).map_err(|e| {
         AgentError::new(

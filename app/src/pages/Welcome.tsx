@@ -11,7 +11,7 @@ import { ModeSwitch } from "../components/ModeSwitch";
 import { modelTitle, useT, type MessageKey } from "../lib/i18n";
 import { openLink } from "../lib/ipc";
 import { SUPPORTED_MODEL, SUPPORTED_MODEL_ID, docsPage } from "../lib/offline";
-import { isNewAk980Firmware, useFirmwareVersion, useReport, useUnsupportedKeyboards } from "../lib/report";
+import { useReport, useUnsupported } from "../lib/report";
 import { useApp } from "../lib/store";
 
 const STEPS: MessageKey[] = ["welcome.step1", "welcome.step2", "welcome.step3"];
@@ -27,11 +27,10 @@ const FW769_FAQ: Record<string, string> = {
 /** An AK980 PRO on AJAZZ's firmware 769 (3.01): what it is, without alarm,
  *  that nothing is sent to it, and where to read more. "Request support"
  *  stays: its details help add the new commands. */
-function NewFirmwareCard({ k }: { k: UnsupportedKeyboard }) {
+function NewFirmwareCard({ k, version }: { k: UnsupportedKeyboard; version: string | null }) {
   const t = useT();
   const locale = useApp((s) => s.locale);
   const openReport = useReport((s) => s.openReport);
-  const version = useFirmwareVersion(k.id);
   return (
     <section className="card flex flex-col gap-4 p-5" data-unsupported={k.id} data-new-firmware>
       <div className="flex items-start gap-5">
@@ -79,7 +78,7 @@ export function Welcome() {
   const locale = useApp((s) => s.locale);
   const openScreen = useApp((s) => s.openScreen);
   const openReport = useReport((s) => s.openReport);
-  const unsupported = useUnsupportedKeyboards();
+  const unsupported = useUnsupported();
 
   const tools: { icon: LucideIcon; title: MessageKey; body: MessageKey; open: () => void }[] = [
     { icon: Timer, title: "nav.focus", body: "welcome.focus", open: () => setPage("focus") },
@@ -95,10 +94,10 @@ export function Welcome() {
         <p className="page-desc">{t("welcome.desc")}</p>
       </header>
 
-      {unsupported.filter(isNewAk980Firmware).map((k) => (
-        <NewFirmwareCard key={k.id} k={k} />
+      {unsupported.newFirmware.map(({ keyboard: k, version }) => (
+        <NewFirmwareCard key={k.id} k={k} version={version} />
       ))}
-      {unsupported.filter((k) => !isNewAk980Firmware(k)).map((k) => (
+      {unsupported.others.map((k) => (
         <section key={k.id} className="card flex flex-wrap items-center gap-x-5 gap-y-4 p-5" data-unsupported={k.id}>
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-warn/15 text-warn">
             <Keyboard size={19} aria-hidden />
@@ -139,7 +138,7 @@ export function Welcome() {
             <span className="h-2 w-2 rounded-full bg-signal motion-safe:animate-pulse" aria-hidden />
             {/* A keyboard is plugged in, but not one Keymotion supports: say so,
                 and keep looking for one that is. */}
-            {t(unsupported.length ? "welcome.searching.other" : "welcome.searching")}
+            {t(unsupported.list.length ? "welcome.searching.other" : "welcome.searching")}
           </p>
         </div>
         <figure className="flex w-[190px] flex-col items-center justify-center gap-2">
