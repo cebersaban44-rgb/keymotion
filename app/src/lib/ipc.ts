@@ -3,7 +3,7 @@
 // Browser mock (development only): outside Tauri, `pnpm dev` in a browser
 // uses stand-ins for the backend so the UI can be designed and tested
 // (`?mock=usb|bluetooth|dongle|none`, `?fw=`, `?clock=wait`, `?reset=`, `?failPart=`,
-// `?unsupported`, `?mock=fw769`, `?crash`, `mock-close-requested`; lib/screen.ts, live.ts, pomodoro.ts, calendar.ts,
+// `?unsupported`, `?mock=fw769|fw769-8009|old-8009`, `?crash`, `mock-close-requested`; lib/screen.ts, live.ts, pomodoro.ts, calendar.ts,
 // reminders.ts and gauges.ts have their own). Every mock branch is guarded
 // by `import.meta.env.DEV`, written out at the guard itself: Vite replaces
 // it with `false` in a production build, so the mock code and its switches
@@ -653,14 +653,23 @@ export async function crashSeen(name: string): Promise<void> {
 }
 
 const MOCK_UNSUPPORTED: UnsupportedKeyboard[] = [{ id: "0C45:8009:usb", name: "SONiX AK820 PRO" }];
-/** `?mock=fw769`: an AK980 PRO on AJAZZ's firmware 769 (3.01), no supported keyboard. */
-const MOCK_FW769: UnsupportedKeyboard[] = [{ id: "0C45:8039:usb", name: "AK980 PRO" }];
-const mockFw769 = () => new URLSearchParams(location.search).get("mock") === "fw769";
+/** An AK980 PRO the backend doesn't take, and no supported keyboard:
+ *  `?mock=fw769` on AJAZZ's firmware 769 (3.01) as 0C45:8039,
+ *  `?mock=fw769-8009` on the same firmware as 0C45:8009 (its screen channel,
+ *  usage page 0xFF67, tells it apart), `?mock=old-8009` on the old firmware
+ *  but not taken (no 0xFF67: the generic card). */
+const MOCK_AK980: Record<string, { id: string; release: string; pages: string[] }> = {
+  fw769: { id: "0C45:8039:usb", release: "0301", pages: ["0001", "000C", "FF67"] },
+  "fw769-8009": { id: "0C45:8009:usb", release: "0301", pages: ["0001", "000C", "FF67"] },
+  "old-8009": { id: "0C45:8009:usb", release: "0106", pages: ["0001", "000C", "FF13"] },
+};
+const mockAk980 = () => MOCK_AK980[new URLSearchParams(location.search).get("mock") ?? ""];
 
 /** Keyboards that look like SONiX or AJAZZ ones but aren't supported yet. */
 export async function getUnsupportedKeyboards(): Promise<UnsupportedKeyboard[]> {
   if (import.meta.env.DEV && !inTauri) {
-    if (mockFw769()) return MOCK_FW769;
+    const ak980 = mockAk980();
+    if (ak980) return [{ id: ak980.id, name: "AK980 PRO" }];
     return new URLSearchParams(location.search).has("unsupported") ? MOCK_UNSUPPORTED : [];
   }
   return invoke<UnsupportedKeyboard[]>("unsupported_keyboards");
@@ -676,8 +685,11 @@ export async function onUnsupportedChanged(cb: (list: UnsupportedKeyboard[]) => 
 export async function unsupportedReport(id: string): Promise<string> {
   if (import.meta.env.DEV && !inTauri) {
     await mockDelay(200);
-    if (id === "0C45:8039:usb") {
-      return `Keymotion keyboard support request\nApp version: 0.1.0-dev\n\nKeyboard: AK980 PRO\nMaker: SONiX\nUSB ids: VID 0C45, PID 8039, release 0x0301\nConnection: USB\n`;
+    const ak980 = mockAk980();
+    if (ak980 && id === ak980.id) {
+      const [vid, pid] = id.split(":");
+      const pages = ak980.pages.map((p, i) => `  ${i + 1}. usage page 0x${p}, usage 0x0001, interface ${i}`);
+      return `Keymotion keyboard support request\nApp version: 0.1.0-dev\n\nKeyboard: AK980 PRO\nMaker: SONiX\nUSB ids: VID ${vid}, PID ${pid}, release 0x${ak980.release}\nConnection: USB\n\nCollections (${pages.length}):\n${pages.join("\n")}\n`;
     }
     return `Keymotion keyboard support request\nApp version: 0.1.0-dev\n\nKeyboard: SONiX AK820 PRO\nUSB ids: ${id}\n\nCollections (1):\n  1. usage page 0x0001, usage 0x0006 (keyboard)\n     descriptor, 4 bytes:\n     05 01 09 06\n`;
   }
@@ -1165,7 +1177,7 @@ const mockDelay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /** Browser-only stand-in mirroring what the hardware reported on 2026-11-10. */
 function mockKeyboards(): KeyboardInfo[] {
   const mode = new URLSearchParams(location.search).get("mock") ?? "bluetooth";
-  if (mode === "none" || mode === "fw769") return [];
+  if (mode === "none" || mode in MOCK_AK980) return [];
   const usb = mode === "usb";
   const dongle = mode === "dongle";
   const usbFeatures: KeyboardInfo["features"] = ["lighting", "per-key-rgb", "keymap", "macros", "screen", "clock"];
