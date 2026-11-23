@@ -304,6 +304,25 @@ pub fn command_line(agent: Agent, cli: &Cli) -> String {
     }
 }
 
+/// Whether our hooks' program ([`Status::runs`]: a handler's `command`) is
+/// `cli`: its path (Claude Code), or the line we write for it (Codex).
+pub fn runs_cli(agent: Agent, runs: &str, cli: &Cli) -> bool {
+    let runs = runs.trim();
+    let path = cli.path_text();
+    match agent {
+        Agent::ClaudeCode => {
+            // `<path>` with `args`, or an older `"<path>" hook claude-code`.
+            let line = runs.to_lowercase();
+            let line = line.strip_suffix(" hook claude-code").unwrap_or(&line);
+            line.trim().trim_matches('"') == path.to_lowercase()
+        }
+        Agent::Codex => {
+            runs.to_lowercase() == codex_command(cli).to_lowercase()
+                || runs.to_lowercase().contains(&format!("'{}'", path.to_lowercase()))
+        }
+    }
+}
+
 /// Whether a hook handler is ours: keymotion-cli's hook mode for `agent`,
 /// whichever copy it names.
 pub fn is_ours(agent: Agent, handler: &Json) -> bool {
@@ -1595,6 +1614,35 @@ mod tests {
     }
 }
 "#;
+
+    #[test]
+    fn the_program_our_hooks_run_is_told_apart_from_another_copy() {
+        let mine = Cli {
+            path: PathBuf::from(r"C:\Users\A B\AppData\Local\Keymotion\bin\keymotion-cli.exe"),
+            kind: CliKind::Installed,
+        };
+        let store = Cli {
+            path: PathBuf::from(r"C:\Users\A B\AppData\Local\Microsoft\WindowsApps\keymotion-cli.exe"),
+            kind: CliKind::Store,
+        };
+        for agent in Agent::ALL {
+            let line = |cli: &Cli| match agent {
+                Agent::ClaudeCode => cli.path_text(),
+                Agent::Codex => codex_command(cli),
+            };
+            assert!(runs_cli(agent, &line(&mine), &mine), "{agent:?}");
+            assert!(runs_cli(agent, &line(&mine).to_uppercase(), &mine), "{agent:?}: case");
+            assert!(!runs_cli(agent, &line(&store), &mine), "{agent:?}");
+        }
+        // An older Claude Code line, the program and its arguments in one.
+        assert!(runs_cli(Agent::ClaudeCode, &format!("\"{}\" hook claude-code", mine.path_text()), &mine));
+        // A folder whose name only starts the same.
+        let longer = Cli {
+            path: PathBuf::from(r"C:\Users\A B\AppData\Local\Keymotion\bin2\keymotion-cli.exe"),
+            kind: CliKind::Dev,
+        };
+        assert!(!runs_cli(Agent::Codex, &codex_command(&longer), &mine));
+    }
 
     #[test]
     fn a_write_that_fails_part_way_puts_back_what_was_written() {

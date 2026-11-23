@@ -14,14 +14,25 @@
   installer, at the user's normal rights, outside the app sandbox. The app
   needs it to talk to the keyboard over HID with the Win32 calls, to read
   the system gauges and the running programs, and to show its tray icon.
+
+  Two applications: Keymotion itself, and keymotion-cli, the command-line
+  tool AI coding agents and scripts use (crates/keymotion-cli). The tool is
+  a console program with no tile and no Start menu entry; Windows puts its
+  app execution alias, keymotion-cli.exe, in
+  %LOCALAPPDATA%\Microsoft\WindowsApps, which is on PATH. It talks only to
+  the running Keymotion, over a local named pipe, and never opens the
+  keyboard. The app's id stays "Keymotion" (keymotion-cli starts the app by
+  it: crates/keymotion-cli/src/launch.rs APP_ID).
 -->
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
   xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap uap10 desktop rescap">
+  IgnorableNamespaces="uap uap5 uap10 desktop desktop4 rescap">
 
   <Identity
     Name="{{IdentityName}}"
@@ -68,6 +79,25 @@
           uap10:Parameters="--hidden">
           <desktop:StartupTask TaskId="KeymotionStartup" Enabled="false" DisplayName="Keymotion" />
         </desktop:Extension>
+      </Extensions>
+    </Application>
+    <!-- keymotion-cli: a console tool, run by its alias from a terminal or
+         a coding agent's hook, many at once; no tile, nothing in the Start
+         menu. -->
+    <Application Id="Cli" Executable="keymotion-cli.exe" EntryPoint="Windows.FullTrustApplication" desktop4:Subsystem="console" desktop4:SupportsMultipleInstances="true">
+      <uap:VisualElements
+        DisplayName="Keymotion command line"
+        Description="Keymotion for scripts and AI agents"
+        BackgroundColor="transparent"
+        AppListEntry="none"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <uap5:Extension Category="windows.appExecutionAlias" Executable="keymotion-cli.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap5:AppExecutionAlias desktop4:Subsystem="console">
+            <uap5:ExecutionAlias Alias="keymotion-cli.exe" />
+          </uap5:AppExecutionAlias>
+        </uap5:Extension>
       </Extensions>
     </Application>
   </Applications>

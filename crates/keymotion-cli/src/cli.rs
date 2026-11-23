@@ -192,9 +192,12 @@ pub enum Cmd {
     /// Connect Keymotion to a coding agent: its hooks, a skill (and for Codex a rule)
     Connect(ConnectCmd),
     /// Take Keymotion's hooks, skill and rule away from a coding agent again
-    Disconnect(ConnectCmd),
+    Disconnect(DisconnectCmd),
     /// Whether Claude Code and Codex are connected
     Connections,
+    /// This keymotion-cli's folder on your PATH (the GitHub copy's uninstaller uses it)
+    #[command(subcommand)]
+    Path(PathCmd),
     /// For a coding agent's hooks: reads the event on stdin, prints nothing, always exits 0
     Hook(HookCmd),
 }
@@ -226,6 +229,29 @@ pub struct ConnectCmd {
     /// Only say what would change
     #[arg(long)]
     pub dry_run: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct DisconnectCmd {
+    /// claude-code or codex
+    #[arg(value_enum)]
+    pub agent: AgentArg,
+    /// Do it without asking (needed when no one is at a terminal)
+    #[arg(long, short = 'y')]
+    pub yes: bool,
+    /// Only say what would change
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Only when the agent's hooks run this keymotion-cli; hooks that run
+    /// another copy (the Microsoft Store's) stay. The uninstaller uses it
+    #[arg(long)]
+    pub if_this_copy: bool,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum PathCmd {
+    /// Take this keymotion-cli's folder off your PATH, only if Keymotion put it there
+    Remove,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -414,8 +440,10 @@ pub enum Plan {
         agent: kb_hooks::Agent,
         yes: bool,
         dry_run: bool,
+        if_this_copy: bool,
     },
     Connections,
+    PathRemove,
     /// Hook mode, reached through clap (`main` reads it first otherwise).
     Hook {
         agent: String,
@@ -446,6 +474,7 @@ impl Cmd {
             Self::Connect(_) => "connect",
             Self::Disconnect(_) => "disconnect",
             Self::Connections => "connections",
+            Self::Path(PathCmd::Remove) => "path remove",
             Self::Hook(_) => "hook",
         }
     }
@@ -460,9 +489,15 @@ impl Cmd {
             Self::Start => return Ok(Plan::Start),
             Self::Connect(c) => return Ok(Plan::Connect { agent: c.agent.agent(), yes: c.yes, dry_run: c.dry_run }),
             Self::Disconnect(c) => {
-                return Ok(Plan::Disconnect { agent: c.agent.agent(), yes: c.yes, dry_run: c.dry_run })
+                return Ok(Plan::Disconnect {
+                    agent: c.agent.agent(),
+                    yes: c.yes,
+                    dry_run: c.dry_run,
+                    if_this_copy: c.if_this_copy,
+                })
             }
             Self::Connections => return Ok(Plan::Connections),
+            Self::Path(PathCmd::Remove) => return Ok(Plan::PathRemove),
             Self::Hook(h) => return Ok(Plan::Hook { agent: h.agent.clone(), deliver: h.deliver.clone() }),
             Self::Keys => Command::Keys(KeysArgs {}),
             Self::Signal(s) => {

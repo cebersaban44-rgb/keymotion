@@ -8,7 +8,10 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { checkIdentity, checkPackageVersion, fillManifest, singlePackageConfig, storeVersion, TEST_IDENTITY } from "./msix.mjs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+
+import { checkIdentity, checkPackageVersion, fillManifest, programs, singlePackageConfig, storeVersion, TEST_IDENTITY } from "./msix.mjs";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const store = join(root, "app", "src-tauri", "store");
@@ -65,6 +68,51 @@ test("the manifest keeps what the app relies on", () => {
   assert.match(tray, /ARG_HIDDEN: &str = "--hidden"/);
   // The program the manifest starts is the one the build makes.
   assert.match(manifest, /Executable="keymotion\.exe"/);
+});
+
+test("keymotion-cli is a console app with its alias, the app keeps its id", () => {
+  const apps = [...manifest.matchAll(/<Application Id="(\w+)" Executable="([^"]+)"([^>]*)>/g)];
+  assert.deepEqual(apps.map((a) => [a[1], a[2]]), [["Keymotion", "keymotion.exe"], ["Cli", "keymotion-cli.exe"]]);
+  // keymotion-cli starts the app by the id "Keymotion".
+  const launch = readFileSync(join(root, "crates", "keymotion-cli", "src", "launch.rs"), "utf8");
+  assert.equal(/pub const APP_ID: &str = "([^"]+)"/.exec(launch)?.[1], apps[0][1]);
+  // A console program, no tile, nothing in the Start menu.
+  assert.match(apps[1][3], /desktop4:Subsystem="console"/);
+  const cli = manifest.slice(manifest.indexOf('<Application Id="Cli"'));
+  assert.match(cli, /AppListEntry="none"/);
+  assert.match(cli, /<uap5:AppExecutionAlias desktop4:Subsystem="console">/);
+  // The alias is where the app and the hooks look for it.
+  const alias = /<uap5:ExecutionAlias Alias="([^"]+)" \/>/.exec(cli)?.[1];
+  assert.equal(alias, "keymotion-cli.exe");
+  const apps_rs = readFileSync(join(root, "app", "src-tauri", "src", "agent", "apps.rs"), "utf8");
+  assert.ok(apps_rs.includes("Microsoft\\WindowsApps\\" + alias), "app/src-tauri/src/agent/apps.rs");
+  const setup = readFileSync(join(root, "crates", "kb-hooks", "src", "setup.rs"), "utf8");
+  assert.ok(setup.includes(`join("WindowsApps").join("${alias}")`), "crates/kb-hooks/src/setup.rs");
+  // Every prefix it uses is declared, and ignorable on older Windows.
+  for (const ns of ["uap5", "desktop4"]) {
+    assert.match(manifest, new RegExp(`xmlns:${ns}="http://schemas\\.microsoft\\.com/appx/manifest/`));
+    assert.match(manifest, new RegExp(`IgnorableNamespaces="[^"]*\\b${ns}\\b`));
+  }
+  // Nothing new to ask for: full trust is all.
+  assert.deepEqual([...manifest.matchAll(/Capability Name="(\w+)"/g)].map((m) => m[1]), ["runFullTrust"]);
+});
+
+test("the package takes keymotion-cli.exe from beside keymotion.exe, or --cli", () => {
+  const dir = mkdtempSync(join(tmpdir(), "km-msix-"));
+  try {
+    const app = join(dir, "keymotion.exe");
+    writeFileSync(app, "");
+    assert.throws(() => programs(app), /not a keymotion-cli\.exe/);
+    writeFileSync(join(dir, "keymotion-cli.exe"), "");
+    assert.deepEqual(programs(app), { app, tool: join(dir, "keymotion-cli.exe") });
+    const other = join(dir, "other");
+    mkdirSync(other);
+    writeFileSync(join(other, "kb.exe"), "");
+    assert.throws(() => programs(app, join(other, "kb.exe")), /not a keymotion-cli\.exe/);
+    assert.throws(() => programs(join(dir, "keymotion-cli.exe")), /not a keymotion\.exe/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("every logo the manifest names has its images", () => {
