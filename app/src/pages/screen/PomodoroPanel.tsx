@@ -176,7 +176,7 @@ export function PomodoroPanel({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
                 loopStart.current = Date.now();
                 act("try");
               }}
-              className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[13px] font-semibold text-signal hover:bg-signal/10"
+              className="btn-secondary is-accent"
               data-pomo-try
             >
               {s.trying ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
@@ -486,7 +486,7 @@ function ScreenSettings({ s, set }: { s: PomodoroState; set: (patch: Partial<Pom
             <button
               type="button"
               onClick={() => configureLive({ enabled: true }).catch(console.error)}
-              className="flex h-9 items-center gap-2 rounded-lg bg-signal px-3 text-[13px] font-semibold text-signal-ink"
+              className="btn-primary"
               data-pomo-liveon
             >
               <Radio size={14} /> {t("pomo.screen.liveOn")}
@@ -845,7 +845,7 @@ function SequenceEditor({ settings, set }: { settings: PomodoroSettings; set: (p
             type="button"
             onClick={() => add(phase)}
             disabled={full}
-            className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-[12px] text-ink-2 hover:bg-surface-2 hover:text-ink disabled:opacity-40"
+            className="btn-secondary btn-sm"
             data-pomo-add={phase}
           >
             <Plus size={13} />

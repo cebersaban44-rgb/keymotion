@@ -119,14 +119,14 @@ function FactoryLossDialog() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center dlg-smoke p-6"
       role="dialog"
       aria-modal
       aria-labelledby="live-ack-title"
       data-live-ack
     >
-      <motion.div initial={{ scale: 0.97, y: 8 }} animate={{ scale: 1, y: 0 }} className="card flex w-[480px] flex-col gap-4 p-6">
-        <h2 id="live-ack-title" className="font-display text-[22px] font-semibold">
+      <motion.div initial={{ scale: 0.97, y: 8 }} animate={{ scale: 1, y: 0 }} className="dlg flex w-[480px] max-w-full flex-col gap-4 p-6">
+        <h2 id="live-ack-title" className="subtitle">
           {t("sc.live.ack.title")}
         </h2>
         {hasFactory ? (

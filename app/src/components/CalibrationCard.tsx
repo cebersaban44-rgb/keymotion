@@ -167,7 +167,7 @@ export function CalibrationCard() {
   );
 
   return (
-    <section className="card flex flex-col gap-5 p-5">
+    <section className="card flex flex-col gap-5 p-5" data-calibration>
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1.5">
           <div className="eyebrow">{t("cal.title")}</div>
@@ -259,7 +259,7 @@ export function CalibrationCard() {
           type="button"
           onClick={reset}
           disabled={sameCalibration(cal, info.factory)}
-          className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-line bg-bg-raise px-3 text-[13px] text-ink-2 transition-colors hover:border-line-strong hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+          className="btn-secondary shrink-0"
         >
           <RotateCcw size={13} />
           {t("cal.reset")}

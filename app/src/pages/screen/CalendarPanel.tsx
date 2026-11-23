@@ -118,7 +118,7 @@ export function CalendarBody() {
                 setDone(null);
                 setAdding(true);
               }}
-              className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[13px] font-semibold text-signal hover:bg-signal/10"
+              className="btn-secondary is-accent"
               data-calendar-add
             >
               <Plus size={14} /> {t("calendar.add")}
@@ -127,7 +127,7 @@ export function CalendarBody() {
               <button
                 type="button"
                 onClick={() => refresh().catch(console.error)}
-                className="flex h-9 items-center gap-2 rounded-lg border border-line px-3 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+                className="btn-secondary"
                 data-calendar-refresh
               >
                 {c.reading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} {t("calendar.refresh")}
@@ -172,7 +172,7 @@ export function CalendarBody() {
             <button
               type="button"
               onClick={() => tryReminder().catch(console.error)}
-              className="h-8 rounded-lg border border-line px-3 text-[12px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+              className="btn-secondary btn-sm"
               data-calendar-try
             >
               {t("calendar.reminder.try")}
@@ -290,7 +290,7 @@ function CardPreview({ c }: { c: CalendarState }) {
               <button
                 type="button"
                 onClick={() => void tryOnKeyboard()}
-                className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[13px] font-semibold text-signal hover:bg-signal/10"
+                className="btn-secondary is-accent"
                 data-calendar-try-card
               >
                 {sent === "sending" ? <Loader2 size={14} className="animate-spin" /> : <CalendarDays size={14} />} {t("calendar.preview.try")}
@@ -355,11 +355,11 @@ function SourceRow({ s }: { s: CalendarState["sources"][number] }) {
           <button
             type="button"
             onClick={() => remove(s.id).catch(console.error)}
-            className="rounded-lg border border-danger/50 px-2.5 py-1 font-semibold text-danger hover:bg-danger/10"
+            className="btn-secondary is-danger"
           >
             {t("calendar.remove.yes")}
           </button>
-          <button type="button" onClick={() => setAsking(false)} className="rounded-lg border border-line px-2.5 py-1 text-ink-2 hover:bg-surface-2">
+          <button type="button" onClick={() => setAsking(false)} className="btn-secondary">
             {t("gauges.cancel")}
           </button>
         </div>
@@ -442,7 +442,7 @@ function AddCalendar({ onCancel, onDone }: { onCancel: () => void; onDone: (msg:
         <button
           type="button"
           onClick={onCancel}
-          className="flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-[12px] text-ink-2 hover:bg-surface-2"
+          className="btn-secondary"
           data-calendar-cancel
         >
           <X size={13} /> {t("gauges.cancel")}
@@ -518,7 +518,7 @@ function AddCalendar({ onCancel, onDone }: { onCancel: () => void; onDone: (msg:
             <button
               type="button"
               onClick={() => void submit()}
-              className="flex h-9 items-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink"
+              className="btn-primary"
               data-calendar-submit
             >
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} {t("calendar.add.do")}
@@ -526,7 +526,7 @@ function AddCalendar({ onCancel, onDone }: { onCancel: () => void; onDone: (msg:
             <button
               type="button"
               onClick={() => setStep({ at: "pick" })}
-              className="h-9 rounded-lg border border-line px-3 text-[13px] text-ink-2 hover:bg-surface-2"
+              className="btn-secondary"
             >
               {t("calendar.back")}
             </button>
@@ -549,12 +549,12 @@ function AddCalendar({ onCancel, onDone }: { onCancel: () => void; onDone: (msg:
                     remove(step.id).catch(console.error);
                     setStep({ at: "paste", provider: step.provider });
                   }}
-                  className="h-9 rounded-lg border border-signal/50 px-3 text-[13px] font-semibold text-signal hover:bg-signal/10"
+                  className="btn-secondary is-accent"
                   data-calendar-fix
                 >
                   {t("calendar.fix")}
                 </button>
-                <button type="button" onClick={() => onDone(t("calendar.addedFailing", { name: reading.name }))} className="h-9 rounded-lg border border-line px-3 text-[13px] text-ink-2 hover:bg-surface-2">
+                <button type="button" onClick={() => onDone(t("calendar.addedFailing", { name: reading.name }))} className="btn-secondary">
                   {t("calendar.keep")}
                 </button>
               </div>

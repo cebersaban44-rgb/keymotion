@@ -35,7 +35,7 @@ import {
 } from "../../lib/screenImport";
 import { EditFooter, Hint, PreviewPanel, StudioFrame, errorKey, fmtSeconds, type Done, type Step } from "./common";
 
-const ACCEPT = "image/*,video/mp4,video/webm,.gif,.webp,.apng,.png,.jpg,.jpeg,.bmp,.avif,.mp4,.webm,.m4v,.mov";
+export const ACCEPT = "image/*,video/mp4,video/webm,.gif,.webp,.apng,.png,.jpg,.jpeg,.bmp,.avif,.mp4,.webm,.m4v,.mov";
 
 /** Step 1 tile: pick or drop a file. Opening (decoding) happens here so a
  *  file that cannot be read never leaves step 1. */
@@ -91,7 +91,7 @@ export function FileTile({ onOpened }: { onOpened: (s: Source) => void }) {
         type="button"
         disabled={opening !== null}
         onClick={() => input.current?.click()}
-        className="flex items-center gap-2 rounded-lg bg-signal px-4 py-2 text-[13px] font-semibold text-signal-ink disabled:opacity-50"
+        className="btn-primary"
       >
         {opening !== null ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
         {opening !== null ? t("sc.drop.opening", { percent: percent(Math.round(opening * 100)) }) : t("sc.drop.choose")}

@@ -23,6 +23,10 @@ export const en = {
   "nav.section.app": "App",
   "nav.section.tools": "Tools",
   "nav.focus": "Focus timer",
+  "nav.keyboard": "Connected keyboard",
+  "nav.search": "Search",
+  "nav.search.clear": "Clear search",
+  "nav.search.none": "No page found",
 
   "device.none.title": "Waiting for a keyboard",
   // The model's name as people know it where they live (see modelTitle).
@@ -400,6 +404,8 @@ export const en = {
   "light.settings": "Settings",
   "light.color": "Color",
   "light.rainbow": "Rainbow",
+  "light.rainbow.desc": "The colors change from key to key",
+  "light.color.rainbowNote": "While Rainbow is on, the effect uses its own colors.",
   "light.brightness": "Brightness",
   "light.speed": "Speed",
   "light.direction": "Direction",
@@ -606,6 +612,7 @@ export const en = {
   "sc.lib.filter.image": "Still",
   "sc.lib.filter.animation": "Animated",
   "sc.lib.search": "Search library",
+  "sc.lib.selected": "{count} selected",
   "sc.lib.more": "Show more",
   "sc.lib.left": "{count} more",
   "sc.lib.less": "Show less",
@@ -1361,6 +1368,7 @@ export const en = {
   "color.violet": "Violet",
   "color.magenta": "Magenta",
   "color.pink": "Pink",
+  "color.custom": "Custom color",
 
   // shell and content
   "nav.calendar": "Calendar",
@@ -1392,6 +1400,11 @@ export const en = {
   "overview.spec.screen": "a {size} screen",
   "overview.spec.knob": "a rotary knob",
   "overview.firmware": "Firmware {version}.",
+  "overview.firmware.short": "Firmware {version}",
+  "overview.knob": "Knob: brightness {level}/5",
+  "overview.glass": "The keyboard's glass strip: its screen, the picture on the glass, and the knob",
+  "overview.status": "Status",
+  "overview.light.level": "Brightness {level}/5",
   "overview.bat.level": "Battery {level}",
   "overview.light": "Lighting",
   "overview.light.go": "Go to Lighting",

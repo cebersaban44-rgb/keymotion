@@ -1,21 +1,37 @@
-// The Overview's tiles under the keyboard: light, reminders, calendar,
-// system gauges and profile (the focus timer has its own file). Each says
-// what is on now, or plainly that there is nothing, and links to its page.
+// The Overview's rows under the keyboard ("Status"), one for each thing the
+// app does: light, focus timer (its own file), calendar, reminders, system
+// gauges, the keyboard's screen and profile. Each says what is on now, or
+// plainly that there is nothing, and opens its page; reminders and gauges
+// switch on and off right here, as on their pages.
 
-import { BellRing, CalendarDays, Gauge, Layers, Sparkles } from "lucide-react";
+import { BellRing, CalendarDays, Gauge, Layers, Monitor, Sparkles } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { EffectInfo } from "../../bindings/EffectInfo";
 import type { GeometryInfo } from "../../bindings/GeometryInfo";
+import { Row, Toggle } from "../../components/controls";
 import { calendarColor, hhmm, useCalendar } from "../../lib/calendar";
 import { useGauges, watchGauges } from "../../lib/gauges";
-import { listOf, useT, type MessageKey } from "../../lib/i18n";
+import { listOf, percent, useT, type MessageKey } from "../../lib/i18n";
 import { getLightingCatalog } from "../../lib/ipc";
+import { useLive } from "../../lib/live";
 import { PALETTE, useLighting, type ColorMap } from "../../lib/lighting";
 import { profileName, profileOnKeyboard, useProfiles } from "../../lib/profiles";
 import { rgbCss, useReminders } from "../../lib/reminders";
 import { useApp } from "../../lib/store";
 import { ICON_OF, when } from "../Reminders";
-import { Empty, LoadBar, Swatch, Tile, useClock, useInText } from "./Tile";
+import { useGifPage } from "../screen/common";
+import { Swatch, useClock, useInText } from "./Tile";
+
+/** "A · B · C", leaving out the parts that are empty. */
+function dots(parts: (ReactNode | null | false | undefined)[]): ReactNode {
+  const shown = parts.filter((p): p is ReactNode => p !== null && p !== false && p !== undefined && p !== "");
+  return shown.map((p, i) => (
+    <span key={i}>
+      {i > 0 && " · "}
+      {p}
+    </span>
+  ));
+}
 
 // ------------------------------------------------------------------ light
 
@@ -57,7 +73,7 @@ const MAX_SWATCHES = 8;
  * Lighting page changes it, with its own save step, so the colours here
  * are shown, not picked.
  */
-export function LightTile() {
+export function LightRow() {
   const t = useT();
   const setPage = useApp((s) => s.setPage);
   const applied = useLighting((s) => s.appliedEffect);
@@ -72,69 +88,59 @@ export function LightTile() {
     return p ? t(p.name) : undefined;
   };
 
-  let colors: ReactNode = null;
+  let colorText: string | null = null;
+  let swatches: ReactNode = null;
   if (saved && design.length) {
-    colors = (
+    swatches = (
       <span className="flex flex-wrap items-center gap-1.5" data-light-colors={design.length}>
         {design.slice(0, MAX_SWATCHES).map((hex) => (
           <Swatch key={hex} color={hex} label={colorName(hex)} />
         ))}
-        {design.length > MAX_SWATCHES && <span className="num text-[12px] text-ink-3">+{design.length - MAX_SWATCHES}</span>}
+        {design.length > MAX_SWATCHES && <span className="num text-[12px] text-ink-2">+{design.length - MAX_SWATCHES}</span>}
       </span>
     );
   } else if (applied && applied.mode !== 0 && info) {
     const rainbow = info.color && info.rainbow && applied.rainbow;
-    colors = (
-      <span className="flex items-center gap-2 text-[13px] text-ink-2" data-light-colors={info.color ? (rainbow ? "rainbow" : "one") : "own"}>
-        {info.color ? (
-          <>
-            <Swatch color={applied.color} rainbow={rainbow} />
-            {rainbow ? t("light.rainbow") : colorName(applied.color)}
-          </>
-        ) : (
-          <>
-            <Swatch rainbow />
-            {t("overview.light.ownColors")}
-          </>
-        )}
+    colorText = info.color ? (rainbow ? t("light.rainbow") : (colorName(applied.color) ?? null)) : t("overview.light.ownColors");
+    swatches = (
+      <span data-light-colors={info.color ? (rainbow ? "rainbow" : "one") : "own"}>
+        {info.color && !rainbow ? <Swatch color={applied.color} /> : <Swatch rainbow />}
       </span>
     );
   }
 
   return (
-    <Tile icon={Sparkles} title={t("overview.light")} data="light" link={t("overview.light.go")} onLink={() => setPage("lighting")}>
-      {name ? <span className="truncate text-[15px]">{name}</span> : <Empty>{t("overview.light.unknown")}</Empty>}
-      {colors}
-      {level != null && (
-        <div className="flex items-center gap-3 text-[12px] text-ink-3">
-          <span>{t("light.brightness")}</span>
-          <span
-            role="meter"
-            aria-label={t("light.brightness")}
-            aria-valuemin={0}
-            aria-valuemax={5}
-            aria-valuenow={level}
-            className="flex max-w-[140px] flex-1 gap-1"
-          >
-            {[1, 2, 3, 4, 5].map((i) => (
-              <span key={i} className={`h-1.5 flex-1 rounded-full ${i <= level ? "bg-signal" : "bg-line-strong"}`} />
-            ))}
-          </span>
-        </div>
-      )}
-      {gauges && <span className="text-[12px] text-ink-3">{t("overview.light.gauges")}</span>}
-    </Tile>
+    <Row
+      icon={Sparkles}
+      title={t("overview.light")}
+      desc={
+        <>
+          {name ? (
+            dots([name, colorText, level != null && <span className="num">{t("overview.light.level", { level })}</span>])
+          ) : (
+            t("overview.light.unknown")
+          )}
+          {gauges && <span className="block">{t("overview.light.gauges")}</span>}
+        </>
+      }
+      onOpen={() => setPage("lighting")}
+      openLabel={t("overview.light.go")}
+      data="light"
+    >
+      {swatches}
+    </Row>
   );
 }
 
 // -------------------------------------------------------------- reminders
 
-/** The next reminder and how many are on. */
-export function RemindersTile() {
+/** The next reminder and how many are on; reminders switch on and off here. */
+export function RemindersRow() {
   const t = useT();
   const locale = useApp((s) => s.locale);
   const setPage = useApp((s) => s.setPage);
   const s = useReminders((x) => x.state);
+  const configure = useReminders((x) => x.configure);
   const now = useClock();
   const inText = useInText();
   const list = s?.reminders ?? [];
@@ -143,52 +149,48 @@ export function RemindersTile() {
   // As the Reminders page says it: off, away, the next one, none ahead, none at all.
   const away = !!s && s.away && s.settings.awayWait && list.some((i) => i.reminder.enabled && i.reminder.when.kind === "every");
   const Icon = next ? ICON_OF[next.reminder.icon] : null;
-  // "0 açık" says nothing: the badge shows only how many are on, or that
-  // reminders are off.
-  const badge =
-    s && list.length && (on > 0 || !s.settings.enabled)
-      ? { on: s.settings.enabled, text: s.settings.enabled ? t("overview.rem.on", { count: on }) : t("overview.off") }
-      : null;
+  const enabled = !!s?.settings.enabled;
+
+  let desc: ReactNode = null;
+  if (s) {
+    if (!enabled) desc = t("reminder.status.off");
+    else if (next && Icon && !away)
+      desc = (
+        <span className="flex min-w-0 items-center gap-1.5" data-overview-reminder>
+          <Icon size={13} style={{ color: rgbCss(next.reminder.color) }} className="shrink-0" aria-hidden />
+          <span className="num truncate">
+            {[next.reminder.title, when(next.nextMs!, t, locale), inText(next.nextMs!, now)].filter(Boolean).join(" · ")}
+          </span>
+        </span>
+      );
+    else desc = t(away ? "reminder.status.away" : list.length ? "reminder.status.none" : "reminder.status.empty");
+  }
 
   return (
-    <Tile
+    <Row
       icon={BellRing}
       title={t("nav.reminders")}
+      desc={desc}
+      onOpen={() => setPage("reminders")}
+      openLabel={t("overview.rem.go")}
       data="reminders"
-      badge={badge}
-      link={t("overview.rem.go")}
-      onLink={() => setPage("reminders")}
     >
-      {!s ? null : !s.settings.enabled ? (
-        <Empty>{t("reminder.status.off")}</Empty>
-      ) : next && Icon && !away ? (
-        <div className="flex min-w-0 items-center gap-3" data-overview-reminder>
-          <span
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
-            style={{ background: `color-mix(in srgb, ${rgbCss(next.reminder.color)} 22%, transparent)`, color: rgbCss(next.reminder.color) }}
-          >
-            <Icon size={17} aria-hidden />
+      {s && (
+        <span className="flex items-center gap-3 text-[14px]" data-tile-badge={enabled ? "on" : "off"}>
+          <span className="num" aria-hidden>
+            {enabled && on > 0 ? t("overview.rem.on", { count: on }) : t(enabled ? "overview.on" : "overview.off")}
           </span>
-          <span className="flex min-w-0 flex-col">
-            <span className="truncate text-[15px]" title={next.reminder.title}>
-              {next.reminder.title}
-            </span>
-            <span className="num text-[12px] text-ink-3">
-              {[when(next.nextMs!, t, locale), inText(next.nextMs!, now)].filter(Boolean).join(" · ")}
-            </span>
-          </span>
-        </div>
-      ) : (
-        <Empty>{t(away ? "reminder.status.away" : list.length ? "reminder.status.none" : "reminder.status.empty")}</Empty>
+          <Toggle checked={enabled} onChange={(v) => configure({ enabled: v }).catch(console.error)} label={t("reminder.on")} />
+        </span>
       )}
-    </Tile>
+    </Row>
   );
 }
 
 // --------------------------------------------------------------- calendar
 
 /** The next meeting, or that there is none (or no calendar). */
-export function CalendarTile() {
+export function CalendarRow() {
   const t = useT();
   const locale = useApp((s) => s.locale);
   const setPage = useApp((s) => s.setPage);
@@ -202,26 +204,30 @@ export function CalendarTile() {
     ? `${tomorrow ? `${t("reminder.tomorrow").toLocaleLowerCase(locale)} ` : ""}${hhmm(next.startMs)}–${hhmm(next.endMs)}`
     : "";
 
-  return (
-    <Tile icon={CalendarDays} title={t("nav.calendar")} data="calendar" link={t("overview.cal.go")} onLink={() => setPage("calendar")}>
-      {!c ? null : c.sources.length === 0 ? (
-        <Empty>{t("overview.cal.none")}</Empty>
-      ) : next ? (
-        <div className="flex min-w-0 items-start gap-3" data-overview-meeting>
-          <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: calendarColor(next.color) }} aria-hidden />
-          <span className="flex min-w-0 flex-col">
-            <span className="truncate text-[15px]" title={next.title}>
-              {next.title}
-            </span>
-            <span className="num text-[12px] text-ink-3">
-              {[time, running ? t("overview.cal.now") : inText(next.startMs, now)].filter(Boolean).join(" · ")}
-            </span>
+  let desc: ReactNode = null;
+  if (c) {
+    if (c.sources.length === 0) desc = t("overview.cal.none");
+    else if (next)
+      desc = (
+        <span className="flex min-w-0 items-center gap-1.5" data-overview-meeting>
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: calendarColor(next.color) }} aria-hidden />
+          <span className="num truncate" title={next.title}>
+            {[next.title, time, running ? t("overview.cal.now") : inText(next.startMs, now)].filter(Boolean).join(" · ")}
           </span>
-        </div>
-      ) : (
-        <Empty>{t("calendar.upcoming.none")}</Empty>
-      )}
-    </Tile>
+        </span>
+      );
+    else desc = t("calendar.upcoming.none");
+  }
+
+  return (
+    <Row
+      icon={CalendarDays}
+      title={t("nav.calendar")}
+      desc={desc}
+      onOpen={() => setPage("calendar")}
+      openLabel={t("overview.cal.go")}
+      data="calendar"
+    />
   );
 }
 
@@ -233,12 +239,13 @@ const LOADS = [
   ["gpu", "gauges.r.gpu"],
 ] as const;
 
-/** On or off; while on, the loads the keys show, read live. */
-export function GaugesTile({ geometry, usb }: { geometry: GeometryInfo | null; usb: boolean }) {
+/** On or off (switched here, as on its page); while on, the loads the keys show, read live. */
+export function GaugesRow({ geometry, usb }: { geometry: GeometryInfo | null; usb: boolean }) {
   const t = useT();
   const locale = useApp((s) => s.locale);
   const setPage = useApp((s) => s.setPage);
   const s = useGauges((x) => x.state);
+  const configure = useGauges((x) => x.configure);
   const on = !!s?.settings.enabled;
   // The readings come only while someone watches; the gauges read this PC
   // anyway while they are on, so watching then costs nothing more.
@@ -254,31 +261,81 @@ export function GaugesTile({ geometry, usb }: { geometry: GeometryInfo | null; u
     : [];
   const list = listOf(chosen, locale);
 
+  let desc: ReactNode = null;
+  if (s) {
+    if (on && loads.length > 0)
+      desc = (
+        <span className="num" data-overview-loads>
+          {loads
+            .map(([id, label]) => `${t(label)} ${s.readings[id] == null ? t("gauges.r.none") : percent(Math.round(s.readings[id]!))}`)
+            .join(" · ")}
+        </span>
+      );
+    else if (on) desc = chosen.length ? t("overview.gauges.shown", { list }) : t("overview.gauges.nothing");
+    else desc = chosen.length > 0 ? `${t("overview.gauges.off")} ${t("overview.gauges.chosen", { list })}` : t("overview.gauges.off");
+  }
+
   return (
-    <Tile
+    <Row
       icon={Gauge}
       title={t("nav.gauges")}
-      data="gauges"
-      badge={s ? { on, text: t(on ? "overview.on" : "overview.off") } : null}
-      link={t("light.gaugesGo")}
-      onLink={() => setPage("gauges")}
-    >
-      {!s ? null : on && loads.length > 0 ? (
-        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 text-[12px]" data-overview-loads>
-          {loads.map(([id, label]) => (
-            <LoadBar key={id} label={t(label)} value={s.readings[id]} none={t("gauges.r.none")} />
-          ))}
-        </div>
-      ) : on ? (
-        <Empty>{chosen.length ? t("overview.gauges.shown", { list }) : t("overview.gauges.nothing")}</Empty>
-      ) : (
+      desc={
         <>
-          <Empty>{t("overview.gauges.off")}</Empty>
-          {chosen.length > 0 && <span className="text-[12px] text-ink-3">{t("overview.gauges.chosen", { list })}</span>}
+          {desc}
+          {on && !usb && <span className="block">{t("gauges.status.noUsb")}</span>}
         </>
+      }
+      onOpen={() => setPage("gauges")}
+      openLabel={t("light.gaugesGo")}
+      data="gauges"
+    >
+      {s && (
+        <span data-tile-badge={on ? "on" : "off"}>
+          <Toggle state checked={on} onChange={(v) => configure({ enabled: v }).catch(console.error)} label={t("gauges.on")} />
+        </span>
       )}
-      {on && !usb && <span className="text-[12px] text-ink-3">{t("gauges.status.noUsb")}</span>}
-    </Tile>
+    </Row>
+  );
+}
+
+// ----------------------------------------------------------------- screen
+
+/** What the keyboard's screen shows (the picture itself is on the glass
+ *  strip above), the live screen's state and a card that waits to go. */
+export function ScreenRow() {
+  const t = useT();
+  const openScreen = useApp((s) => s.openScreen);
+  const gif = useGifPage();
+  const liveOn = useLive((s) => (s.state ? s.state.enabled : null));
+  // Whole uploads the live screen may use now.
+  const left = useLive((s) => (s.state ? Math.max(0, Math.floor(s.state.tokens + 1e-6)) : 0));
+  return (
+    <Row
+      icon={Monitor}
+      title={t("overview.screen.title")}
+      desc={
+        <>
+          {dots([
+            <span key="c" data-overview-screen-caption>
+              {gif.caption}
+            </span>,
+            liveOn !== null && (
+              <span key="l" className="num" data-overview-live-screen={liveOn ? "on" : "off"}>
+                {liveOn ? t("overview.screen.liveLeft", { count: left }) : t("overview.screen.liveOff")}
+              </span>
+            ),
+          ])}
+          {gif.waiting && (
+            <span className="block text-warn" data-overview-waiting>
+              {t("overview.screen.waiting", { name: gif.waiting.name })}
+            </span>
+          )}
+        </>
+      }
+      onOpen={() => openScreen(liveOn ? "live" : "visuals")}
+      openLabel={t("overview.screen.go")}
+      data="screen"
+    />
   );
 }
 
@@ -286,7 +343,7 @@ export function GaugesTile({ geometry, usb }: { geometry: GeometryInfo | null; u
 
 /** The profile the keyboard has (all its parts match this computer's
  *  records), or that it matches none. */
-export function ProfileTile({ modelId }: { modelId: string }) {
+export function ProfileRow({ modelId }: { modelId: string }) {
   const t = useT();
   const setPage = useApp((s) => s.setPage);
   const state = useProfiles((s) => (s.modelId === modelId ? s.state : null));
@@ -295,17 +352,22 @@ export function ProfileTile({ modelId }: { modelId: string }) {
   }, [modelId]);
   const match = state ? profileOnKeyboard(state) : null;
   return (
-    <Tile icon={Layers} title={t("overview.profile")} data="profile" link={t("overview.profile.go")} onLink={() => setPage("profiles")}>
-      {state &&
+    <Row
+      icon={Layers}
+      title={t("overview.profile")}
+      desc={
+        state &&
         (match ? (
-          <span className="truncate text-[15px]" title={profileName(match, t)} data-overview-profile={match.id}>
+          <span title={profileName(match, t)} data-overview-profile={match.id}>
             {profileName(match, t)}
           </span>
         ) : (
-          <span data-overview-profile="none">
-            <Empty>{t("overview.profile.none")}</Empty>
-          </span>
-        ))}
-    </Tile>
+          <span data-overview-profile="none">{t("overview.profile.none")}</span>
+        ))
+      }
+      onOpen={() => setPage("profiles")}
+      openLabel={t("overview.profile.go")}
+      data="profile"
+    />
   );
 }

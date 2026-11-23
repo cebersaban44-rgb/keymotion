@@ -13,7 +13,7 @@ import type { GaugesSettings } from "../bindings/GaugesSettings";
 import type { Connection } from "../bindings/Connection";
 import type { GeometryInfo } from "../bindings/GeometryInfo";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
-import { ColorPicker, Segmented, Slider, Toggle } from "../components/controls";
+import { ColorPicker, InfoBar, Segmented, Slider, Toggle } from "../components/controls";
 import { KeyboardView } from "../components/KeyboardView";
 import { OWN_COLORS, heatRgb, rgbCss, useGauges, watchGauges } from "../lib/gauges";
 import { percent, useT, type MessageKey } from "../lib/i18n";
@@ -86,10 +86,7 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
         <p className="page-desc">{t("gauges.body")}</p>
       </header>
       {!usb && (
-        <div className="flex items-center gap-3 rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-[13px]">
-          <Usb size={16} className="text-signal" />
-          {t("gauges.noUsb")}
-        </div>
+        <InfoBar tone="warn" icon={<Usb size={20} strokeWidth={1.6} />} title={t("gauges.noUsb")} data="usb" />
       )}
 
       <section className="card flex flex-col">
@@ -180,7 +177,7 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
                 <button
                   type="button"
                   onClick={() => setPicking((p) => !p)}
-                  className="rounded-lg border border-line px-3 py-1.5 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+                  className="btn-secondary"
                   data-gauges-pick
                 >
                   {picking ? t("gauges.cancel") : t("gauges.mic.change")}

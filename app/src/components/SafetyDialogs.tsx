@@ -47,14 +47,14 @@ function FirmwareDialog({ version }: { version: string }) {
           ref={cancel}
           type="button"
           onClick={() => answer(false)}
-          className="h-9 rounded-lg border border-line bg-bg-raise px-3.5 text-[13px] text-ink transition-colors hover:border-line-strong"
+          className="btn-secondary"
         >
           {t("safety.fw.cancel")}
         </button>
         <button
           type="button"
           onClick={() => answer(true)}
-          className="h-9 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink transition-transform active:scale-[0.98]"
+          className="btn-primary"
         >
           {t("safety.fw.continue")}
         </button>
@@ -95,7 +95,7 @@ function ResetNotice({ files }: { files: string[] }) {
           ref={ok}
           type="button"
           onClick={dismiss}
-          className="h-9 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink transition-transform active:scale-[0.98]"
+          className="btn-primary"
         >
           {t("safety.reset.ok")}
         </button>
@@ -133,7 +133,7 @@ function Dialog({
 }) {
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-6 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center dlg-smoke p-6"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -144,7 +144,7 @@ function Dialog({
         aria-modal="true"
         aria-labelledby={`${id}-title`}
         aria-describedby={`${id}-body`}
-        className="card flex w-full max-w-[460px] flex-col gap-5 p-6"
+        className="dlg flex w-full max-w-[460px] flex-col gap-5 p-6"
         initial={{ opacity: 0, y: 8, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 4, scale: 0.98 }}
@@ -159,7 +159,7 @@ function Dialog({
           >
             <Icon size={19} />
           </span>
-          <h2 id={`${id}-title`} className="self-center font-display text-[20px] leading-tight font-semibold">
+          <h2 id={`${id}-title`} className="self-center subtitle">
             {title}
           </h2>
         </div>

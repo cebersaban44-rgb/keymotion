@@ -60,7 +60,7 @@ export function SlideTile({ onStart }: { onStart: () => void }) {
       <button
         type="button"
         onClick={onStart}
-        className="flex items-center gap-2 rounded-lg border border-signal/50 px-4 py-2 text-[13px] font-semibold text-signal hover:bg-signal/10"
+        className="btn-secondary is-accent"
       >
         <Images size={15} /> {t("sc.src.slidesGo")}
       </button>
@@ -337,7 +337,7 @@ export function SlideFlow({
                 type="button"
                 disabled={full || !!adding}
                 onClick={() => input.current?.click()}
-                className="flex h-9 items-center gap-2 rounded-lg border border-line px-3 text-[13px] font-medium hover:bg-surface-2 disabled:opacity-40"
+                className="btn-secondary"
               >
                 {adding ? <Loader2 size={14} className="animate-spin" /> : <FilePlus2 size={14} />}
                 {adding ? t("sc.sl.adding", { done: adding.done, total: adding.total }) : t("sc.sl.addFiles")}

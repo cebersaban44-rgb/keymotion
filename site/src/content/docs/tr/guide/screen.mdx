@@ -38,7 +38,7 @@ Ekranın iki sayfası vardır:
 
 İki sayfa arasında geçmek için klavyede **Fn+Home** tuşlarına basın. Keymotion klavye saatini ayarladığında ekran saat sayfasına döner.
 
-Ekran sayfasının üstünde iki sayfa yan yana çizilir. Yanında bugün ve toplamda kaç yükleme yaptığınız yazar.
+Ekran sayfasının üstünde GIF sayfası büyük, saat sayfası da yanında kendi boyutunda çizilir. Yanında bugün ve toplamda kaç yükleme yaptığınız yazar.
 
 ## Ekrana GIF, görsel ya da video koyma
 
@@ -47,7 +47,7 @@ Görsel hazırlamak dört adımdır ve adımlar stüdyonun üstünde görünür:
 <Steps>
 
 1. Kenar çubuğundan **Ekran** sayfasını açın ve **Görseller** sekmesinde kalın.
-2. **Ekranda ne olsun?** başlığının altında bir kaynak seçin: **Görsel ya da video**, **Yazı kartı** ya da **Slayt gösterisi**.
+2. Kütüphanenin üstündeki komut çubuğunda bir kaynak seçin: **Görsel ya da video**, **Yazı kartı** ya da **Slayt gösterisi**.
 3. Kaynağı düzenleyin (aşağıya bakın), sonra **Önizle** düğmesine tıklayın.
 4. Önizlemeyi kontrol edin. **Klavyedeki görünüm**, klavyeye gidecek görüntünün birebir aynısını oynatır. **Ad** alanına bir ad yazın.
 5. **Klavyeye yükle** düğmesine tıklayın. Sonra yüklemek üzere saklamak isterseniz **Kütüphaneye kaydet** düğmesini, bir şeyi değiştirmek isterseniz **Düzenlemeye dön** düğmesini kullanın.
@@ -55,7 +55,7 @@ Görsel hazırlamak dört adımdır ve adımlar stüdyonun üstünde görünür:
 
 </Steps>
 
-Yükleme sürerken bir çubuk ilerlemeyi ve kalan süreyi gösterir. Klavyenin ekranında da LOADING % yazar. Yükleme bitince stüdyo ilk adıma döner; neyin yüklendiğini ve ne kadar sürdüğünü söyler. Yüklediğiniz her görsel kütüphaneye de kaydedilir.
+Yükleme sürerken bir çubuk ilerlemeyi ve kalan süreyi gösterir. Klavyenin ekranında da LOADING % yazar. Yükleme bitince kütüphane geri gelir; neyin yüklendiğini ve ne kadar sürdüğünü söyler, yeni görsel de seçili olur. Yüklediğiniz her görsel kütüphaneye de kaydedilir.
 
 Durağan bir görsel birkaç saniyede yüklenir. Animasyonlar daha uzun sürer: ekran en çok 140 kare alır ve 140 karelik bir animasyonun yüklenmesi yaklaşık beş buçuk dakika sürer. Her düzenleyici, başlamadan önce yükleme süresini gösterir.
 
@@ -63,7 +63,7 @@ Durağan bir görsel birkaç saniyede yüklenir. Animasyonlar daha uzun sürer: 
 
 ### Görsel ya da video
 
-**Dosya seç** düğmesine tıklayın ya da dosyayı kutunun üzerine sürükleyin. PNG, JPEG, GIF, WebP, APNG, MP4 ve WebM dosyaları kullanılabilir. Resim ve GIF en çok 64 MB, video en çok 1 GB olabilir. Görsel en çok 8192×8192 piksel, dosya en çok 3000 kare olabilir.
+Komut çubuğunda **Görsel ya da video**'ya tıklayın ya da dosyayı kütüphanenin üzerine sürükleyin. PNG, JPEG, GIF, WebP, APNG, MP4 ve WebM dosyaları kullanılabilir. Resim ve GIF en çok 64 MB, video en çok 1 GB olabilir. Görsel en çok 8192×8192 piksel, dosya en çok 3000 kare olabilir.
 
 - Görseli sürükleyerek konumlayın, fare tekerleğiyle yakınlaştırın. **Yerleşim** için **Doldur**, **Sığdır** ve **Uzat** seçenekleri vardır. **Ortala** görseli yeniden ortaya alır.
 - Animasyon ve videolarda **Başlangıç** ve **Bitiş** istediğiniz bölümü seçer. **Önizleme konumu** o bölümün herhangi bir anını gösterir.
@@ -94,24 +94,24 @@ Yazı rengi arka plana çok yakınsa bir not, yazının ekranda zor okunabilece�
 
 ## Kütüphane
 
-Stüdyonun altındaki **Kütüphane**, yüklediğiniz ya da kaydettiğiniz her görseli saklar. Tek kopya buradadır: Klavye bir görseli geri veremez.
+Klavyenin sayfalarının altındaki **Kütüphane**, yüklediğiniz ya da kaydettiğiniz her görseli saklar. Tek kopya buradadır: Klavye bir görseli geri veremez.
 
 <Screenshot name="screen-library" alt="Kütüphane: Keymotion animasyonu ve kaydedilmiş iki görsel, biri Klavyede olarak işaretli" />
 
-Klavyedeki görsel en başta durur ve **Klavyede** olarak işaretlenir. Her görselin kare sayısı, döngü süresi ve yükleme süresi yazar. Şu düğmeler vardır:
+Klavyedeki görsel en başta durur ve **Klavyede** olarak işaretlenir. Her görselin kare sayısı, döngü süresi ve yükleme süresi yazar. Bir görseli seçmek için üstüne tıklayın (turuncu kenar ve onay işareti gösterir); komut çubuğu artık onun için çalışır:
 
 - **Yükle**, görseli GIF sayfasına yükler. Her yüklemede olduğu gibi önce sorar.
 - **Işıkları eşleştir** (palet simgesi), görselden tuş renkleri hazırlar. Aşağıya bakın.
 - **Yeniden adlandır** (kalem simgesi), adını değiştirir.
 - **Sil** (çöp kutusu simgesi), görseli kaldırır. Onaylamak için bir kez daha tıklayın.
 
-Altıdan fazla görsel olunca **Tümü**, **Durağan** ya da **Hareketli** görselleri ayrı gösterebilirsiniz. On ikiden fazla görsel olunca **Kütüphanede ara** ile bir görseli adından bulabilirsiniz.
+**Tümü**, **Durağan**, **Hareketli** ve **Kütüphanede ara** kütüphanenin başlığındadır: gösterilen görselleri türüne ve adına göre daraltır.
 
 [Ayarlar](/keymotion/tr/guide/settings/) sayfasındaki **Ayarları dışa aktar**, kütüphaneyi de yedek dosyasına kaydeder.
 
 ## Işıkları eşleştir
 
-**Işıkları eşleştir**, bir görselden tuş başına renk tasarımı hazırlar. Bir yüklemeden ya da kayıttan sonra çıkar; kütüphanedeki her görselde palet düğmesi olarak da bulunur.
+**Işıkları eşleştir**, bir görselden tuş başına renk tasarımı hazırlar. Bir yüklemeden ya da kayıttan sonra çıkar; kütüphanede seçtiğiniz görsel için komut çubuğunda da bulunur.
 
 <Screenshot name="screen-match-lights" alt="Işıkları görselle eşleştir penceresi: görselin renkleri ve seçili Degrade seçeneği" />
 
