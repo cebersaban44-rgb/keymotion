@@ -243,8 +243,10 @@ mod tests {
         // It writes where it runs: in the folder it was given.
         let script = format!("Set-Content -LiteralPath '{}' -Value (Get-Location).Path", target.display());
         spawn_detached(&powershell, &["-NoProfile", "-Command", &script], &neutral_dir()).unwrap();
+        // A cold PowerShell on a busy CI runner can take well over 10 s to
+        // start; the test is about the program running, not its speed.
         let started = std::time::Instant::now();
-        while !target.exists() && started.elapsed() < std::time::Duration::from_secs(10) {
+        while !target.exists() && started.elapsed() < std::time::Duration::from_secs(60) {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         assert!(target.exists(), "the detached program ran");
