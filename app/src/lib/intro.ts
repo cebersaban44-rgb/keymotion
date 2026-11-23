@@ -44,11 +44,14 @@ export async function finishIntro() {
       window.addEventListener("keydown", stop);
     });
   }
-  const fade = el.animate([{ opacity: 1 }, { opacity: 0 }], {
+  const timing: KeyframeAnimationOptions = {
     duration: reduced ? 150 : LEAVE_MS,
     easing: "cubic-bezier(.5,0,.2,1)",
     fill: "forwards",
-  });
+  };
+  const fade = el.animate([{ opacity: 1 }, { opacity: 0 }], timing);
+  // The app, unseen under it until now (index.html), comes in as it goes.
+  const appear = document.getElementById("root")?.animate([{ opacity: 0 }, { opacity: 1 }], timing);
   // The logo flies to the sidebar's (when the sidebar shows one).
   const from = el.querySelector("svg")?.getBoundingClientRect();
   const to = document.querySelector("aside img[src='/app-icon.svg']")?.getBoundingClientRect();
@@ -68,4 +71,5 @@ export async function finishIntro() {
   }
   await fade.finished.catch(() => undefined);
   remove(el);
+  appear?.cancel();
 }

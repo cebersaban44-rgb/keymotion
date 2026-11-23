@@ -17,7 +17,7 @@ import { hidFromCode } from "../lib/hidCodes";
 import { connectionKey, listOf, modelTitle, percent, useAgo, useT } from "../lib/i18n";
 import { useMirror } from "../lib/mirror";
 import { InfoBar, Rows } from "../components/controls";
-import { useLighting } from "../lib/lighting";
+import { DARK_UNTIL_PRESSED, useLighting } from "../lib/lighting";
 import { useApp } from "../lib/store";
 import { FocusRow } from "./overview/FocusRow";
 import { GlassStrip } from "./overview/GlassStrip";
@@ -106,6 +106,15 @@ function useSpecs(kb: KeyboardInfo): string {
   return listOf([t("overview.spec.layout", { layout }), t("overview.spec.keys", { count: kb.keyCount })], locale);
 }
 
+/** Whether the light the app last saved is an effect that lights keys only
+ *  as they are pressed (Launch, Ripples…), at a brightness above zero: the
+ *  keys read back dark between presses, yet the light is on. */
+function useLightOnPress(): boolean {
+  const applied = useLighting((s) => s.appliedEffect);
+  const saved = useLighting((s) => s.savedPerKey);
+  return !saved && !!applied && DARK_UNTIL_PRESSED.has(applied.mode) && applied.brightness > 0;
+}
+
 /** The brightness the knob is at, as far as the app knows: the level it
  *  last stored with the light. */
 function useKnobLevel(): number | null {
@@ -125,9 +134,12 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
   const mirror = useMirror(live);
   const pressed = usePressedKeys(kb.geometry ?? null);
   const pressedClass = useMemo(() => Object.fromEntries([...pressed].map((l) => [l, "is-pressed"])), [pressed]);
-  // Off when nothing but the indicator keys (Num Lock, Caps Lock, Fn) is lit.
+  // Off when nothing but the indicator keys (Num Lock, Caps Lock, Fn) is lit,
+  // unless the keys light only as they are pressed: then the line says so,
+  // pressed or not.
   const lit = mirror ? Object.values(mirror).filter((c) => c !== "#000000").length : 0;
-  const lightsOff = !!mirror && Object.keys(mirror).length > 0 && lit <= 3;
+  const onPress = useLightOnPress();
+  const lightsOff = !onPress && !!mirror && Object.keys(mirror).length > 0 && lit <= 3;
   const charge = useChargeState(kb, live ? mirror : null);
   const specs = useSpecs(kb);
   const lastRead = kb.battery ? t("overview.bat.read", { level: percent(kb.battery.percent), ago: ago(kb.battery.readAtMs) }) : undefined;
@@ -185,9 +197,9 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
           )}
         </div>
         <div className="dev-live">
-          <span className="flex items-center gap-2" data-overview-live={live ? (lightsOff ? "off" : "on") : "unavailable"}>
+          <span className="flex items-center gap-2" data-overview-live={live ? (onPress ? "on-press" : lightsOff ? "off" : "on") : "unavailable"}>
             <span className={`h-[7px] w-[7px] rounded-full ${live && mirror ? "bg-ok" : "bg-ink-3"}`} aria-hidden />
-            {!live ? t("overview.kb.usbOnly") : lightsOff ? t("overview.kb.off") : t("overview.kb.live")}
+            {!live ? t("overview.kb.usbOnly") : onPress ? t("overview.kb.onPress") : lightsOff ? t("overview.kb.off") : t("overview.kb.live")}
           </span>
           <span>{t("overview.kb.press")}</span>
         </div>

@@ -328,6 +328,9 @@ export function toLedColors(map: ColorMap): LedColor[] {
 
 /** Effects that react to key presses rather than animating on their own. */
 export const REACTIVE_EFFECTS = new Set([2, 3, 13, 14, 15]);
+/** Of those, the ones that leave every key dark until one is pressed
+ *  (Single key off is lit until then). */
+export const DARK_UNTIL_PRESSED = new Set([2, 13, 14, 15]);
 
 /**
  * The one colour palette of the app's light pickers (effects, per-key,

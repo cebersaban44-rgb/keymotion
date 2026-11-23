@@ -148,6 +148,8 @@ says so.
   **Rename** or **Delete**. **Image or video**, **Text card** and
   **Slideshow** are in the same bar, and a file can be dropped on the
   library. Settings, dialogs and the other pages follow the same look.
+  A list opens as in Windows 11, its chosen item marked with a short
+  orange line.
 - The list of running programs, used to find the official software or
   SignalRGB before a write, no longer opens any program.
 - **Recognition:** only a keyboard whose USB name includes "AK980 PRO", as
@@ -188,6 +190,13 @@ says so.
 - A keyboard with the AK980 PRO's USB identity and name but built
   differently inside showed up as an AK980 PRO on which every action failed.
   It now gets **Request support**, and nothing is sent to it.
+- **Overview:** with an effect that lights only the keys you press, such as
+  **Launch** or **Ripples**, the line under the keyboard said **Keyboard
+  lighting is off** while no key was pressed. It now says **Your keyboard
+  lights up as you type**.
+- **Opening animation:** on Windows 11 it now plays on the same translucent
+  window background as the app, so the colors no longer change when the
+  app appears.
 - **Lighting:** with **Preview on keyboard** on in **Per-key color**,
   closing the window to the tray left the preview on the keys, over the
   focus timer, reminders, music mode and the agents' lights. The preview

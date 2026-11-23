@@ -732,14 +732,15 @@ export const CLIPS = [
     motion: true,
     viewport: { height: 1300 },
     fps: 12,
-    // The list down to the row with Flow (the last one chosen).
+    quality: 75,
+    // The gallery down to the row with Flow (the last one chosen).
     clip: async (page) => {
-      const card = await page.locator("main section.card").filter({ has: page.getByText(await t(page, "light.effects"), { exact: true }) }).first().boundingBox();
-      const flow = await (await find(page, "button", "fx.16", { start: true })).boundingBox();
-      return { x: card.x - 10, y: card.y - 10, width: card.width + 20, height: flow.y + flow.height - card.y + 26 };
+      const gallery = await page.locator("[data-effects]").boundingBox();
+      const flow = await page.locator('[data-effects] [data-effect="16"]').boundingBox();
+      return { x: gallery.x - 12, y: gallery.y - 8, width: gallery.width + 24, height: flow.y + flow.height - gallery.y + 20 };
     },
     steps: async (page) => {
-      await scrollTo(page, page.locator("main").getByText(await t(page, "light.effects"), { exact: true }).first(), 60);
+      await scrollTo(page, page.locator("[data-effects]"), 60);
       // Looked up before recording: the page is slow while 20 previews move.
       tours.set(page, await Promise.all(LIGHTING_TOUR.map((fx) => find(page, "button", fx, { start: true }))));
     },
@@ -809,19 +810,23 @@ export const CLIPS = [
     name: "screen",
     page: "screen",
     screenTab: "visuals",
+    viewport: { height: 1200 },
     frames: 5,
-    delay: [900, 900, 900, 900, 1800],
+    delay: [1100, 900, 900, 900, 1800],
+    // The library, then the text card's steps in its place.
     clip: async (page) => {
-      const source = page.getByText(await t(page, "sc.step.source"), { exact: true });
-      const card = await page.locator("main section.card").filter({ has: source }).last().boundingBox();
-      return { x: card.x, y: card.y, width: card.width, height: 520 };
+      const studio = await page.locator("[data-studio]").boundingBox();
+      return { x: studio.x - 12, y: studio.y - 8, width: studio.width + 24, height: 520 };
     },
     steps: async (page) => {
-      await scrollTo(page, await studioSteps(page), 44);
+      await scrollTo(page, page.locator("[data-studio]"), 44);
     },
-    // Source, Name card, Mountains, Sunset colors, then the preview.
+    // The library's bar, Text card, Mountains, Sunset colors, the preview.
     frame: async (page, i) => {
-      if (i === 1) await press(page, "button", "sc.src.textGo", { wait: 700 });
+      if (i === 1) {
+        await page.locator('[data-library-bar] [data-tile="text"]').dispatchEvent("click");
+        await page.waitForTimeout(700);
+      }
       if (i === 2) await press(page, "radio", "sc.tx.t.mountain", { wait: 600 });
       if (i === 3) {
         const name = new RegExp(`${escape(await t(page, "sc.tx.pal.sunset"))}$`);
