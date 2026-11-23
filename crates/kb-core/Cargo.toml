@@ -18,5 +18,9 @@ serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
+[dev-dependencies]
+# Test catalogues with model files that are not shipped.
+toml.workspace = true
+
 [lints]
 workspace = true
