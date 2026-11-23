@@ -57,7 +57,7 @@ export function Music({ kb }: { kb: KeyboardInfo }) {
     [],
   );
   // The sound is read for the preview only while the window is on screen:
-  // closed to the tray, the page stays mounted but nobody looks.
+  // closed to the tray or minimized, the page stays mounted but nobody looks.
   const windowShown = useApp((x) => x.windowShown);
   useEffect(() => (windowShown ? watchMusic(kb.geometry ?? null) : undefined), [kb.geometry, windowShown]);
   const geometry = kb.geometry;

@@ -354,7 +354,10 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
     setTool,
   } = useLighting();
   const keys = kb.geometry?.keys ?? NO_KEYS;
-  const live = usb && livePreview;
+  // The preview covers every other light (agents, music, the focus timer,
+  // reminders): only while the window is on screen, not in the tray.
+  const windowShown = useApp((s) => s.windowShown);
+  const live = usb && livePreview && windowShown;
 
   // Select tool: keys stay selected and every colour pick recolours them.
   // The ref mirrors the state so rapid drags and colour picks never see a

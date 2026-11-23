@@ -55,6 +55,7 @@ import { UpdateDialog, UpdateStrip } from "./components/Updates";
 import { useMacros } from "./lib/macros";
 import { followAutoWrites } from "./lib/profiles";
 import { useScreen } from "./lib/screen";
+import { followSelectWidths } from "./lib/selectWidth";
 import { OFFLINE_KEYBOARD } from "./lib/offline";
 import { useActiveKeyboard, useApp, type PageId } from "./lib/store";
 import { Calendar } from "./pages/Calendar";
@@ -92,12 +93,14 @@ function useBootstrap() {
       window.removeEventListener("focus", refreshLayout);
     };
   }, [setKeyboards, setEnv]);
+  // List boxes as wide as their longest choice, whatever is chosen.
+  useEffect(() => followSelectWidths(), []);
 }
 
 function useThemeSync() {
   const theme = useApp((s) => s.theme);
   const locale = useApp((s) => s.locale);
-  const mica = useApp((s) => s.env?.mica ?? false);
+  const mica = useApp((s) => s.env?.mica);
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
     const apply = () => {
@@ -110,7 +113,8 @@ function useThemeSync() {
     return () => media.removeEventListener("change", apply);
   }, [theme]);
   useEffect(() => {
-    document.documentElement.dataset.mica = String(mica);
+    // Until the backend answers, theme-boot.js's mark from the last start stays.
+    if (mica !== undefined) document.documentElement.dataset.mica = String(mica);
   }, [mica]);
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -251,12 +255,22 @@ function useTray() {
     let alive = true;
     const offs: (() => void)[] = [];
     const keep = (off: () => void) => (alive ? offs.push(off) : off());
-    isWindowShown().then(setWindowShown).catch(console.error);
-    onWindowShown(setWindowShown).then(keep);
+    // On screen: shown by the backend (not in the tray, not minimized) and
+    // not hidden to the page itself, where WebView2 says so.
+    let shown = true;
+    const update = () => setWindowShown(shown && document.visibilityState !== "hidden");
+    const fromBackend = (value: boolean) => {
+      shown = value;
+      update();
+    };
+    isWindowShown().then(fromBackend).catch(console.error);
+    onWindowShown(fromBackend).then(keep);
+    document.addEventListener("visibilitychange", update);
     onTrayProfile(requestProfile).then(keep);
     return () => {
       alive = false;
       offs.forEach((off) => off());
+      document.removeEventListener("visibilitychange", update);
     };
   }, [setWindowShown, requestProfile]);
 }
