@@ -6,6 +6,7 @@
 //! translates every request through an [`AaLayout`].
 
 use kb_devices::Model;
+use kb_protocol::aa::keymap;
 use kb_protocol::sonix::keymap::FN_USAGE;
 
 /// Keymap slots of the knob (volume up, volume down, mute in the web hub's
@@ -44,6 +45,7 @@ pub struct AaLayout {
     aa_to_led: [Option<u8>; SLOTS],
     fn_slot: Option<u8>,
     indicators: Vec<LayoutKey>,
+    factory_base: Vec<u8>,
 }
 
 impl AaLayout {
@@ -54,6 +56,7 @@ impl AaLayout {
         let mut aa_to_led = [None; SLOTS];
         let mut keys = Vec::with_capacity(g.keys.len());
         let mut fn_slot = None;
+        let mut factory_base = vec![0u8; keymap::LEN];
         for k in &g.keys {
             let aa = k.aa.ok_or_else(|| LayoutError::MissingIndex { model: model.id.clone(), key: k.id.clone() })?;
             if usize::from(aa) >= SLOTS || aa_to_led[usize::from(aa)].is_some() {
@@ -67,6 +70,7 @@ impl AaLayout {
             if k.hid == FN_USAGE {
                 fn_slot = Some(aa);
             }
+            keymap::set_entry(&mut factory_base, aa, [keymap::page::KEYBOARD, 0, k.hid, 0]);
             keys.push(LayoutKey { led: k.led, aa });
         }
         let indicators = model
@@ -74,7 +78,7 @@ impl AaLayout {
             .iter()
             .filter_map(|i| Some(LayoutKey { led: i.led, aa: i.aa.or(led_to_aa[usize::from(i.led)])? }))
             .collect();
-        Ok(Self { model: model.id.clone(), keys, led_to_aa, aa_to_led, fn_slot, indicators })
+        Ok(Self { model: model.id.clone(), keys, led_to_aa, aa_to_led, fn_slot, indicators, factory_base })
     }
 
     /// The model file's id.
@@ -112,6 +116,13 @@ impl AaLayout {
         Some(aa) == self.fn_slot || KNOB_SLOTS.contains(&aa)
     }
 
+    /// The base layer as the factory sets it, as far as the model file
+    /// tells: each key sends its own usage (`02 00 hid 00`); other slots 0.
+    /// A slot written `00 00 00 00` reads back like this (MK87, measured).
+    pub fn factory_base(&self) -> &[u8] {
+        &self.factory_base
+    }
+
     /// The "AA" indices in layout order (the real-time frame's order).
     pub fn order(&self) -> Vec<u8> {
         self.keys.iter().map(|k| k.aa).collect()
@@ -140,6 +151,8 @@ mod tests {
         assert!(!l.is_protected(76));
         assert_eq!(l.indicators(), [LayoutKey { led: 32, aa: 29 }, LayoutKey { led: 96, aa: 85 }]);
         assert_eq!(l.order()[0], 0, "Esc first, as in the model file");
+        assert_eq!(keymap::entry(l.factory_base(), 76), [2, 0, 0x28, 0], "Enter");
+        assert_eq!(keymap::entry(l.factory_base(), 13), [0; 4], "the knob is not in the model file");
     }
 
     #[test]

@@ -3,15 +3,18 @@
 //! without a keyboard (cargo feature `sim`).
 //!
 //! It answers like the protocol notes describe: device information from a
-//! real 769 reply, reads from its tables, writes echoed and stored, the
-//! effect colour reading back `FF FF FF` after a write, FF67 answering
-//! everything with `55 41 00 01`, real-time frames shown only in effect
-//! modes 20, 21 and 128. [`Faults`] make it misbehave.
+//! real 769 reply, reads from its tables, writes echoed and stored (chunks
+//! placed by their address, so a resent chunk lands where it belongs), a
+//! keymap slot written `00 00 00 00` filled in with its factory entry, the
+//! effect colour reading back `FF FF FF` / colour mode 1 after any write,
+//! FF67 answering everything with `55 41 00 01`, real-time frames shown
+//! only in effect modes 20, 21 and 128. [`Faults`] make it misbehave.
 //!
 //! It also checks the driver: a packet the guard refuses, a keymap write
-//! that introduces a firmware function, a macro table chunk with LAST set
-//! or command traffic during a screen upload makes it panic, failing the
-//! test.
+//! the table guard refuses, a macro table chunk with LAST set, a screen
+//! packet written before the previous answer was read, or command traffic
+//! while an upload is open (until [`SimState::upload_quiet`] has passed
+//! since its last packet) makes it panic, failing the test.
 
 use super::{AaError, OutputPort, Result, UsbIdentity};
 use kb_devices::Model;
@@ -20,12 +23,15 @@ use kb_protocol::aa::{cmd, effect, frame, info, keymap, macros, perkey, screen};
 use kb_transport::TransportError;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 
 /// What the simulated keyboard gets wrong, on purpose.
 #[derive(Debug, Clone, Default)]
 pub struct Faults {
     /// No reply to the n-th FF68 request (1-based).
     pub drop_reply: Option<usize>,
+    /// No reply to any FF68 request from the n-th on.
+    pub mute_from: Option<usize>,
     /// `55 FC 05` (keyboard reset) before the reply to the n-th request.
     pub reset_before: Option<usize>,
     /// A stray reply (another address) before the reply to the n-th request.
@@ -41,6 +47,14 @@ pub struct Faults {
     pub garble_echo: bool,
     /// Writes of this command are echoed but not stored.
     pub ignore_writes: Option<u8>,
+    /// The answer to the n-th FF67 packet comes only after the next one.
+    pub late_ack: Option<usize>,
+    /// The n-th FF67 packet is answered twice.
+    pub double_ack: Option<usize>,
+    /// The n-th FF67 packet is never answered.
+    pub drop_ack: Option<usize>,
+    /// No FF67 packet is answered from the n-th on.
+    pub mute_display_from: Option<usize>,
 }
 
 /// Everything the simulated keyboard holds and saw.
@@ -49,10 +63,12 @@ pub struct SimState {
     pub info: [u8; info::LEN],
     pub options: [u8; 56],
     pub keymap: Vec<u8>,
+    /// What a base-layer slot written `00 00 00 00` becomes.
+    pub factory_keymap: Vec<u8>,
     pub fn_keymap: Vec<u8>,
     pub default_fn: Vec<u8>,
     pub effect: [u8; effect::LEN],
-    /// An effect was written since power-up: its colour reads back wrong.
+    /// An effect was written (by anyone): its colour reads back wrong.
     pub effect_written: bool,
     pub per_key: Vec<u8>,
     /// Macro memory (`macro_space_size` bytes).
@@ -65,19 +81,32 @@ pub struct SimState {
     pub screen: Vec<Vec<u8>>,
     /// FF68 packets received, as written.
     pub packets: Vec<Vec<u8>>,
+    /// How long after its last packet an unfinished upload counts as
+    /// abandoned (command traffic before that is a violation).
+    pub upload_quiet: Duration,
     pub faults: Faults,
     requests: usize,
     writes: usize,
+    screen_writes: usize,
     command_replies: VecDeque<Vec<u8>>,
     display_replies: VecDeque<Vec<u8>>,
-    pending_table: Option<(u8, Vec<u8>)>,
+    held_ack: Option<Vec<u8>>,
+    /// A keymap write in progress: its command, the table before it, the
+    /// table being assembled.
+    pending_table: Option<(u8, Vec<u8>, Vec<u8>)>,
     pending_frame: Vec<u8>,
+    frame_done: bool,
     upload_open: bool,
+    last_screen: Option<Instant>,
 }
 
 fn put(table: &mut [u8], slot: u8, e: [u8; 4]) {
     keymap::set_entry(table, slot, e);
 }
+
+/// A colour the factory state shows: one colour (not white rainbow, which
+/// is what the read-back quirk reports).
+pub const FACTORY_EFFECT: [u8; effect::LEN] = [1, 0x00, 0x80, 0xFF, 0xFF, 0, 0, 0, 0, 5, 3, 0, 0, 0, 0, 0];
 
 impl SimState {
     /// A plausible factory state for `model` (its keys need `aa`).
@@ -128,10 +157,11 @@ impl SimState {
         Self {
             info,
             options,
+            factory_keymap: base.clone(),
             keymap: base,
             default_fn: fn_layer.clone(),
             fn_keymap: fn_layer,
-            effect: [1, 0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0, 1, 5, 3, 0, 0, 0, 0, 0],
+            effect: FACTORY_EFFECT,
             effect_written: false,
             per_key,
             macros: vec![0u8; usize::from(u16::from_le_bytes([info[2], info[3]]))],
@@ -139,20 +169,32 @@ impl SimState {
             frames: Vec::new(),
             screen: Vec::new(),
             packets: Vec::new(),
+            upload_quiet: Duration::from_secs(1),
             faults: Faults::default(),
             requests: 0,
             writes: 0,
+            screen_writes: 0,
             command_replies: VecDeque::new(),
             display_replies: VecDeque::new(),
+            held_ack: None,
             pending_table: None,
             pending_frame: Vec::new(),
+            frame_done: false,
             upload_open: false,
+            last_screen: None,
         }
     }
 
     /// FF68 packets whose command is `c`.
     pub fn sent(&self, c: u8) -> Vec<&Vec<u8>> {
         self.packets.iter().filter(|p| p[2] == c).collect()
+    }
+
+    /// Store an effect as another program would (the read-back then shows
+    /// the quirk, like after any write).
+    pub fn set_effect_by_another_tool(&mut self, e: [u8; effect::LEN]) {
+        self.effect = e;
+        self.effect_written = true;
     }
 
     /// The effect as a read shows it.
@@ -186,7 +228,11 @@ impl SimState {
         }
         match channel {
             Channel::Command => {
-                assert!(!self.upload_open, "command traffic during a screen upload");
+                if self.upload_open {
+                    let quiet = self.last_screen.is_some_and(|t| t.elapsed() >= self.upload_quiet);
+                    assert!(quiet, "command traffic during a screen upload");
+                    self.upload_open = false;
+                }
                 self.writes += 1;
                 if self.faults.fail_write == Some(self.writes) {
                     return Err(AaError::Transport(TransportError::Refused("simulated write failure")));
@@ -205,17 +251,38 @@ impl SimState {
                     self.command_replies.push_back(stray);
                 }
                 let reply = self.handle(req);
-                if self.faults.drop_reply != Some(n) {
+                let muted = self.faults.mute_from.is_some_and(|m| n >= m);
+                if self.faults.drop_reply != Some(n) && !muted {
                     self.command_replies.extend(reply);
                 }
             }
             Channel::Display => {
+                assert!(
+                    self.display_replies.is_empty(),
+                    "a screen packet was written before the previous answer was read"
+                );
+                self.screen_writes += 1;
+                let n = self.screen_writes;
                 let p = &wire[1..];
                 let index = usize::from(u16::from_le_bytes([p[2], p[3]]));
                 let total = usize::from(u16::from_le_bytes([p[4], p[5]]));
                 self.upload_open = index + 1 < total;
+                self.last_screen = Some(Instant::now());
                 self.screen.push(p.to_vec());
-                self.display_replies.push_back(report(&screen::ACK));
+                if let Some(held) = self.held_ack.take() {
+                    self.display_replies.push_back(held);
+                }
+                let f = &self.faults;
+                let ack = report(&screen::ACK);
+                if f.mute_display_from.is_some_and(|m| n >= m) || f.drop_ack == Some(n) {
+                    // No answer.
+                } else if f.late_ack == Some(n) {
+                    self.held_ack = Some(ack);
+                } else if f.double_ack == Some(n) {
+                    self.display_replies.extend([ack.clone(), ack]);
+                } else {
+                    self.display_replies.push_back(ack);
+                }
             }
         }
         Ok(wire.len())
@@ -275,20 +342,34 @@ impl SimState {
             }
             cmd::SET_PER_KEY => write(&mut self.per_key),
             cmd::SET_KEYMAP | cmd::SET_FN_KEYMAP => {
-                let current = if c == cmd::SET_KEYMAP { &self.keymap } else { &self.fn_keymap };
                 if addr == 0 {
-                    self.pending_table = Some((c, current.clone()));
+                    let current = if c == cmd::SET_KEYMAP { &self.keymap } else { &self.fn_keymap };
+                    self.pending_table = Some((c, current.clone(), current.clone()));
                 }
-                let Some((pc, table)) = self.pending_table.as_mut() else { panic!("keymap chunk without its start") };
+                let Some((pc, before, table)) = self.pending_table.as_mut() else {
+                    panic!("keymap chunk without its start")
+                };
                 assert_eq!(*pc, c, "keymap chunks of two layers mixed");
                 table[addr..addr + data.len()].copy_from_slice(data);
                 if last {
-                    let (_, table) = self.pending_table.take().expect("pending");
-                    let current = if c == cmd::SET_KEYMAP { &mut self.keymap } else { &mut self.fn_keymap };
-                    if let Err(b) = guard::guard_keymap(current, &table) {
+                    // Kept until the next start, so a resent last chunk
+                    // commits the same table again.
+                    let (before, mut table) = (before.clone(), table.clone());
+                    let factory = if c == cmd::SET_KEYMAP { &self.factory_keymap } else { &self.default_fn };
+                    if let Err(b) = guard::guard_keymap(&before, &table, Some(factory)) {
                         panic!("the keyboard received a keymap the table guard refuses: {b}");
                     }
-                    *current = table;
+                    // A slot written 00 00 00 00 gets its factory function.
+                    for slot in 0..keymap::SLOTS as u8 {
+                        if keymap::entry(&table, slot) == [0; 4] {
+                            keymap::set_entry(&mut table, slot, keymap::entry(factory, slot));
+                        }
+                    }
+                    if c == cmd::SET_KEYMAP {
+                        self.keymap = table;
+                    } else {
+                        self.fn_keymap = table;
+                    }
                 }
             }
             cmd::SET_MACROS => {
@@ -299,11 +380,22 @@ impl SimState {
             cmd::REALTIME => {
                 if addr == 0 {
                     self.pending_frame.clear();
+                    self.frame_done = false;
                 }
-                self.pending_frame.extend_from_slice(data);
+                if self.pending_frame.len() < addr + data.len() {
+                    self.pending_frame.resize(addr + data.len(), 0);
+                }
+                self.pending_frame[addr..addr + data.len()].copy_from_slice(data);
                 if last {
                     let visible = effect::LIVE_MODES.contains(&self.effect[0]);
-                    self.frames.push((std::mem::take(&mut self.pending_frame), visible));
+                    let shown = (self.pending_frame.clone(), visible);
+                    if self.frame_done {
+                        // The last chunk again: the same frame.
+                        *self.frames.last_mut().expect("a frame") = shown;
+                    } else {
+                        self.frames.push(shown);
+                        self.frame_done = true;
+                    }
                 }
             }
             other => panic!("write command 0x{other:02X} has no handler"),

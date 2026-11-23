@@ -46,6 +46,26 @@ pub fn level(app: u8) -> Result<u8, CodecError> {
     })
 }
 
+/// What a read-back shows after any effect write (by any program, in any
+/// session): white and colour mode 1, whatever the keyboard shows.
+pub const READBACK_QUIRK: EffectColor = EffectColor { color: [0xFF, 0xFF, 0xFF], color_mode: 1 };
+
+/// The colour part of an effect: the colour and the colour mode (1 =
+/// rainbow, 0 = one colour). A read-back cannot always tell it
+/// ([`READBACK_QUIRK`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectColor {
+    pub color: Rgb,
+    pub color_mode: u8,
+}
+
+impl EffectColor {
+    /// The app's colour and rainbow flag.
+    pub fn from_settings(s: &EffectSettings) -> Self {
+        Self { color: s.color, color_mode: u8::from(s.rainbow) }
+    }
+}
+
 /// The effect block's fields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AaEffect {
@@ -154,6 +174,16 @@ impl AaEffect {
         LIVE_MODES.contains(&self.mode)
     }
 
+    /// The colour and colour mode.
+    pub fn color_part(&self) -> EffectColor {
+        EffectColor { color: self.color, color_mode: self.color_mode }
+    }
+
+    /// This effect with another colour and colour mode.
+    pub fn with_color(self, c: EffectColor) -> Self {
+        Self { color: c.color, color_mode: c.color_mode, ..self }
+    }
+
     /// This effect switched to per-key mode, everything else kept.
     pub fn per_key(&self) -> Self {
         Self { mode: MODE_PER_KEY, color_mode: 0, ..*self }
@@ -226,6 +256,10 @@ mod tests {
         // The colour comes back FF FF FF with colour mode 1 after a write.
         let read = AaEffect { color: [0xFF; 3], color_mode: 1, ..written };
         assert!(written.same_settings(&read));
+        assert_eq!(read.color_part(), READBACK_QUIRK);
+        assert_eq!(read.with_color(written.color_part()), written);
+        let pink = EffectSettings { color: [0xFF, 0x69, 0xB4], rainbow: false, ..EffectSettings::factory() };
+        assert_eq!(EffectColor::from_settings(&pink), EffectColor { color: [0xFF, 0x69, 0xB4], color_mode: 0 });
         assert!(!written.same_settings(&AaEffect { brightness: 4, ..written }));
         assert!(AaEffect::decode(&[0; 15]).is_err());
     }

@@ -62,6 +62,11 @@ pub fn is_known_page(p: u8) -> bool {
 pub const DANGEROUS_FUNC: [u32; 23] =
     [1, 182, 4096, 113, 205, 38, 59, 60, 101, 108, 174, 221, 153, 103, 292, 49, 68, 82, 276, 187, 255, 256, 45];
 
+/// Whether an entry is a firmware function (FUNC or FUNC_V2).
+pub fn is_func(e: [u8; 4]) -> bool {
+    e[0] == page::FUNC || e[0] >= page::FUNC_V2
+}
+
 /// The firmware function ids an entry names (none unless it is FUNC or
 /// FUNC_V2; zero ids are left out).
 pub fn func_ids(e: [u8; 4]) -> Vec<u32> {
@@ -311,6 +316,7 @@ mod tests {
         assert_eq!(func_ids([0x90, 0x00, 0x00, 0x00]), [4096], "FUNC_V2 factory reset");
         assert_eq!(func_ids([0x80, 0x00, 0x20, 0x00]), [8192]);
         assert!(func_ids([0x02, 0, 4, 0]).is_empty());
+        assert!(is_func([0x0D, 0, 0, 0]) && is_func([0x80, 0, 0, 0]) && !is_func([0x06, 0, 0, 0]));
         for p in [0u8, 1, 2, 3, 5, 6, 7, 13, 0x80, 0xFF] {
             assert!(is_known_page(p), "{p}");
         }

@@ -3,7 +3,7 @@
 //! writes nothing until a full read looks like the keyboard it knows.
 
 use super::UsbIdentity;
-use kb_protocol::aa::effect::{self, AaEffect};
+use kb_protocol::aa::effect::{self, AaEffect, EffectColor};
 use kb_protocol::aa::info::{self, DeviceInfo};
 use kb_protocol::aa::macros::{self, AaMacroEntry};
 use kb_protocol::aa::{keymap, perkey};
@@ -95,6 +95,25 @@ impl From<DeviceInfo> for DeviceRecord {
     }
 }
 
+/// An effect colour and colour mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ColorRecord {
+    pub color: [u8; 3],
+    pub color_mode: u8,
+}
+
+impl From<EffectColor> for ColorRecord {
+    fn from(c: EffectColor) -> Self {
+        Self { color: c.color, color_mode: c.color_mode }
+    }
+}
+
+impl From<ColorRecord> for EffectColor {
+    fn from(c: ColorRecord) -> Self {
+        Self { color: c.color, color_mode: c.color_mode }
+    }
+}
+
 /// One stored macro: its slot, its address and its bytes (header and
 /// entries).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -123,8 +142,14 @@ pub struct AaSnapshot {
     pub fn_keymap: Hex,
     /// `1C`: 512 bytes (read only).
     pub default_fn: Hex,
-    /// `13`: 16 bytes.
+    /// `13`: 16 bytes, as read back. The colour and colour mode in them
+    /// are not reliable ([`effect::READBACK_QUIRK`]).
     pub effect: Hex,
+    /// The effect's colour and colour mode, when the driver knew them: it
+    /// had written them itself, or the read-back was not the quirk. `None`
+    /// = unknown; a restore then needs the colour from the caller.
+    #[serde(default)]
+    pub effect_color: Option<ColorRecord>,
     /// `14`: 512 bytes.
     pub per_key: Hex,
     /// `15` addresses 0–399.
@@ -140,6 +165,7 @@ impl AaSnapshot {
         DeviceInfo::parse(&self.info.0).ok()
     }
 
+    /// The effect as read back (see [`Self::effect_color`]).
     pub fn effect(&self) -> Option<AaEffect> {
         AaEffect::decode(&self.effect.0).ok()
     }
@@ -157,10 +183,21 @@ impl AaSnapshot {
 }
 
 /// Highest macro address the driver reads: the memory the keyboard reports,
-/// at least the table and the 512 bytes AJAZZ's WebHID driver writes.
-pub(crate) fn macro_limit(info: &DeviceInfo) -> u32 {
-    u32::from(info.macro_space_size).max(macros::TABLE_LEN as u32 + macros::CAPACITY as u32)
+/// at least the table and the 512 bytes AJAZZ's WebHID driver writes. What
+/// the keyboard holds there may be read and backed up; writes stay within
+/// [`macros::CAPACITY`].
+pub(crate) fn macro_limit(info: &DeviceInfo) -> u64 {
+    u64::from(info.macro_space_size).max((macros::TABLE_LEN + macros::CAPACITY) as u64)
 }
+
+/// Whether a block of `len` bytes at `addr` lies inside the macro memory
+/// (no arithmetic can overflow).
+pub(crate) fn block_fits(addr: u32, len: usize, limit: u64) -> bool {
+    u64::from(addr) >= u64::from(macros::BLOCKS_AT) && u64::from(addr) + len as u64 <= limit
+}
+
+/// Highest brightness and speed a read may show (written: 1–5 only).
+pub const READ_LEVEL_MAX: u8 = 6;
 
 /// The sanity gate: does this read look like the keyboard the driver
 /// knows, on the cable with these USB ids? `Err` lists every reason not to
@@ -219,14 +256,18 @@ pub fn check(s: &AaSnapshot, usb: UsbIdentity) -> Result<(), Vec<String>> {
     if !effect::is_valid_mode(e.mode) {
         why.push(format!("unknown effect mode {}", e.mode));
     }
-    // Off (mode 0) may carry any levels: they are not shown, and a write
-    // puts them back in range.
-    let levels = effect::MIN_LEVEL..=effect::MAX_LEVEL;
-    if e.mode != 0 && (!levels.contains(&e.brightness) || !levels.contains(&e.speed)) {
-        why.push(format!("effect brightness {} / speed {} outside 1–5", e.brightness, e.speed));
+    // Levels other tools leave on this family (0–5 in the web hub and
+    // AK980-Manager, 6 on some siblings) are plausible to read; writes
+    // only ever send 1–5. Off (mode 0) may hold anything.
+    let plausible = 0..=READ_LEVEL_MAX;
+    if e.mode != 0 && (!plausible.contains(&e.brightness) || !plausible.contains(&e.speed)) {
+        why.push(format!("effect brightness {} / speed {} outside 0–{READ_LEVEL_MAX}", e.brightness, e.speed));
     }
     if e.direction > effect::MAX_DIRECTION || e.color_mode > 1 {
         why.push(format!("effect direction {} / colour mode {}", e.direction, e.color_mode));
+    }
+    if s.effect_color.is_some_and(|c| c.color_mode > 1) {
+        why.push("the remembered effect colour mode is not 0 or 1".into());
     }
 
     for slot in 0..perkey::SLOTS {
@@ -237,16 +278,15 @@ pub fn check(s: &AaSnapshot, usb: UsbIdentity) -> Result<(), Vec<String>> {
 
     let limit = macro_limit(&i);
     for (slot, &p) in macros::pointers(&s.macro_table.0).iter().enumerate() {
-        if p == 0 {
+        if macros::is_none(p) {
             continue;
         }
         let block = s.macro_blocks.iter().find(|b| usize::from(b.slot) == slot && b.addr == p);
-        let ok = p >= u32::from(macros::BLOCKS_AT)
-            && block.is_some_and(|b| {
-                b.bytes.0.len() >= 4
-                    && b.bytes.0.len() == 4 + 4 * macros::header_entries(&b.bytes.0)
-                    && p + b.bytes.0.len() as u32 <= limit
-            });
+        let ok = block.is_some_and(|b| {
+            b.bytes.0.len() >= 4
+                && b.bytes.0.len() == 4 + 4 * macros::header_entries(&b.bytes.0)
+                && block_fits(p, b.bytes.0.len(), limit)
+        });
         if !ok {
             why.push(format!("macro {slot} at address {p} is outside the macro memory or unreadable"));
         }

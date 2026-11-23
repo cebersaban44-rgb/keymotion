@@ -1,6 +1,6 @@
 //! The driver against the simulated keyboard.
 
-use super::sim::{Faults, Sim, SimPort};
+use super::sim::{Faults, Sim, SimPort, SimState, FACTORY_EFFECT};
 use super::*;
 use kb_protocol::aa::keymap::{func_ids, page};
 use kb_protocol::sonix::keymap::{mods, MacroPlay, MouseButton};
@@ -13,6 +13,9 @@ const W: u8 = 39;
 const A: u8 = 56;
 const ENTER: u8 = 85;
 const FN: u8 = 96;
+const SPACE: u8 = 94;
+const UP: u8 = 101;
+const BACKSPACE: u8 = 103;
 const SPACE_AA: u8 = 83;
 const ENTER_AA: u8 = 76;
 const FN_AA: u8 = 85;
@@ -35,6 +38,11 @@ fn ready(sim: &Sim) -> AaKeyboard<SimPort> {
 
 fn slot(table: &[u8], s: u8) -> [u8; 4] {
     keymap::entry(table, s)
+}
+
+/// Write packets the keyboard has received.
+fn writes(sim: &Sim) -> usize {
+    sim.state().packets.iter().filter(|p| guard::WRITES.contains(&p[2])).count()
 }
 
 // ------------------------------------------------------------------ reading
@@ -60,7 +68,7 @@ fn a_full_read_passes_the_sanity_gate() {
     assert_eq!(snap.device.pid, 0x8039);
     assert_eq!(snap.device.tft_max_frames, 140);
     assert_eq!((snap.keymap.0.len(), snap.default_fn.0.len(), snap.per_key.0.len()), (512, 512, 512));
-    assert_eq!(snap.effect.0[..4], [1, 0xFF, 0xFF, 0xFF]);
+    assert_eq!(snap.effect.0, FACTORY_EFFECT);
     assert!(snap.macro_blocks.is_empty());
     // Every read the WebHID driver makes on connect, and nothing else.
     let s = sim.state();
@@ -85,6 +93,30 @@ fn a_keyboard_waiting_for_an_update_gets_nothing_more() {
     assert!(matches!(k.set_clock(&clock_time()), Err(AaError::UpdatePending)));
     assert!(!k.is_sane());
     assert_eq!(sim.state().packets.len(), 1, "only the device information was asked for");
+}
+
+#[test]
+fn no_read_goes_out_before_the_device_information() {
+    // A fresh driver on a keyboard waiting for an update: single reads ask
+    // the device information first and stop there.
+    let sim = Sim::ak980();
+    sim.state().info[32] = 1;
+    let mut k = keyboard(&sim);
+    assert!(matches!(k.read_live_colors(), Err(AaError::UpdatePending)));
+    assert!(matches!(k.read_keymap(Layer::Base), Err(AaError::UpdatePending)));
+    let sent: Vec<u8> = sim.state().packets.iter().map(|p| p[2]).collect();
+    assert_eq!(sent, [cmd::DEVICE_INFO]);
+
+    // A device information that went unanswered is asked again first.
+    let sim = Sim::ak980();
+    sim.state().faults.silent_info = true;
+    let mut k = keyboard(&sim);
+    assert!(matches!(k.read_effect(), Err(AaError::Timeout { cmd: 0x10 })));
+    assert!(k.info().is_none());
+    sim.state().faults.silent_info = false;
+    k.read_effect().unwrap();
+    let sent: Vec<u8> = sim.state().packets.iter().map(|p| p[2]).collect();
+    assert_eq!(sent, [0x10, 0x10, 0x10, 0x10, 0x13]);
 }
 
 #[test]
@@ -140,6 +172,35 @@ fn a_reset_makes_everything_stale() {
 }
 
 #[test]
+fn a_reset_stops_the_operation_it_arrives_in() {
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    // During the fresh read of a keymap change: nothing is written.
+    let n = sim.state().packets.len();
+    sim.state().faults.reset_before = Some(n + 3);
+    let r = k.apply_keymap(Layer::Base, [(A, KeyAction::key(0x05))]);
+    assert!(matches!(r, Err(AaError::NotSane(why)) if why[0].contains("reset")));
+    assert!(sim.state().sent(cmd::SET_KEYMAP).is_empty());
+
+    // Between two chunks of a write: the rest is not sent.
+    k.read_all().unwrap();
+    let n = sim.state().packets.len();
+    sim.state().faults.reset_before = Some(n + 12);
+    assert!(matches!(k.write_per_key([(ENTER, [0xFF, 0, 0])]), Err(AaError::NotSane(_))));
+    assert_eq!(sim.state().sent(cmd::SET_PER_KEY).len(), 2);
+
+    // During the reads a restore plans with: nothing is written.
+    k.read_all().unwrap();
+    let backup = k.snapshot().unwrap().clone();
+    k.apply_keymap(Layer::Base, [(A, KeyAction::key(0x05))]).unwrap();
+    let before = writes(&sim);
+    let n = sim.state().packets.len();
+    sim.state().faults.reset_before = Some(n + 2);
+    assert!(matches!(k.restore(&backup, None), Err(AaError::NotSane(_))));
+    assert_eq!(writes(&sim), before);
+}
+
+#[test]
 fn nothing_is_written_before_a_sane_read() {
     let sim = Sim::ak980();
     let mut k = keyboard(&sim);
@@ -192,20 +253,53 @@ fn the_sanity_gate() {
     fails(&|s| s.keymap.0[4 * 20] = 0x04, usb, "unknown entry page 0x04");
     fails(&|s| s.default_fn.0[4 * 7] = 0x0E, usb, "factory Fn layer slot 7");
     fails(&|s| s.effect.0[0] = 30, usb, "effect mode");
-    fails(&|s| s.effect.0[9] = 6, usb, "brightness 6");
-    fails(&|s| s.effect.0[10] = 0, usb, "speed 0");
+    fails(&|s| s.effect.0[9] = 7, usb, "brightness 7");
+    fails(&|s| s.effect.0[10] = 7, usb, "speed 7");
     fails(&|s| s.effect.0[11] = 4, usb, "direction 4");
+    fails(&|s| s.effect_color = Some(ColorRecord { color: [1, 2, 3], color_mode: 2 }), usb, "colour mode");
     fails(&|s| s.per_key.0[40] = 0, usb, "per-key entry 10");
     fails(&|s| s.keymap.0.truncate(504), usb, "base layer read is 504 bytes");
     fails(&|s| s.macro_table.0[0..4].copy_from_slice(&100u32.to_le_bytes()), usb, "macro 0");
     fails(&|s| s.macro_table.0[8..12].copy_from_slice(&5000u32.to_le_bytes()), usb, "macro 2");
-    // Off may hold levels outside 1–5; per-key mode and FUNC_V2 pages are known.
-    let mut off = good.clone();
-    off.effect.0[..1].copy_from_slice(&[0]);
-    off.effect.0[9] = 0;
-    off.effect.0[10] = 0;
-    off.keymap.0[4 * 20] = 0x90;
-    assert_eq!(check_sanity(&off, usb), Ok(()));
+    // Levels other tools leave (0–6), any levels when off, per-key mode and
+    // FUNC_V2 pages are all plausible.
+    for (mode, brightness, speed) in [(1, 0, 0), (1, 6, 6), (0, 0, 9), (128, 1, 5)] {
+        let mut s = good.clone();
+        s.effect.0[0] = mode;
+        s.effect.0[9] = brightness;
+        s.effect.0[10] = speed;
+        s.keymap.0[4 * 20] = 0x90;
+        assert_eq!(check_sanity(&s, usb), Ok(()), "{mode} {brightness} {speed}");
+    }
+}
+
+#[test]
+fn levels_other_tools_leave_are_read_but_never_written() {
+    // Brightness 6 and speed 0, as sibling boards and AJAZZ's hub leave them.
+    let sim = Sim::ak980();
+    sim.state().effect[9..11].copy_from_slice(&[6, 0]);
+    let mut k = ready(&sim);
+    assert_eq!(k.read_effect().unwrap().effect.brightness, 6);
+    k.arm_live().unwrap();
+    assert_eq!(sim.state().effect[9..11], [5, 1], "only 1–5 is ever sent");
+}
+
+#[test]
+fn erased_or_impossible_macro_pointers_do_not_overflow() {
+    // Erased flash: every table entry FF FF FF FF, which names no macro.
+    let sim = Sim::ak980();
+    sim.state().macros[..400].fill(0xFF);
+    let mut k = ready(&sim);
+    assert!(k.snapshot().unwrap().macro_blocks.is_empty());
+    assert!(k.read_macros().unwrap().iter().all(Vec::is_empty));
+    let addrs: Vec<u16> = sim.state().sent(cmd::MACROS).iter().map(|p| u16::from_le_bytes([p[4], p[5]])).collect();
+    assert!(addrs.iter().all(|&a| a < 400), "only the table was read: {addrs:?}");
+    // A pointer near the top of the address range is outside the memory,
+    // without wrapping around to a small address.
+    sim.state().macros[..4].copy_from_slice(&0xFFFF_FFF0u32.to_le_bytes());
+    k.read_all().unwrap();
+    assert!(!k.is_sane());
+    assert!(k.sanity_reasons().iter().any(|r| r.contains("macro 0")), "{:?}", k.sanity_reasons());
 }
 
 #[test]
@@ -231,10 +325,30 @@ fn live_colours_map_back_to_leds() {
     assert_eq!(reqs, 20, "two reads of 10 chunks");
 }
 
+#[test]
+fn frame_version_1_lengthens_only_the_default_wait() {
+    for (c, plain, v1) in [
+        (cmd::EFFECT, 500, 2000),
+        (cmd::DEVICE_INFO, 500, 2000),
+        (cmd::SET_KEYMAP, 1000, 1000),
+        (cmd::SET_PER_KEY, 2000, 2000),
+        (cmd::REALTIME, 50, 50),
+    ] {
+        assert_eq!((timeout_ms_for(c, 0), timeout_ms_for(c, 1)), (plain, v1), "{c:02X}");
+    }
+}
+
 // ------------------------------------------------------------------ effect
 
 fn red_breath() -> EffectSettings {
     EffectSettings { mode: 7, color: [0xFF, 0x20, 0x00], rainbow: false, brightness: 4, speed: 0, direction: 1 }
+}
+
+const PINK: EffectColor = EffectColor { color: [0xFF, 0x69, 0xB4], color_mode: 0 };
+
+/// Static pink, one colour, stored the WebHID driver's way.
+fn pink_static() -> [u8; 16] {
+    [1, 0xFF, 0x69, 0xB4, 0xFF, 0, 0, 0, 0, 5, 3, 0, 0, 0, 0xAA, 0x55]
 }
 
 #[test]
@@ -248,7 +362,8 @@ fn effects_are_written_in_the_keyboards_ranges() {
     // The colour reads back FF FF FF; the driver remembers what it wrote.
     let raw = k.snapshot().unwrap().effect.0.clone();
     assert_eq!(raw[1..4], [0xFF; 3]);
-    let back = k.effect_settings().unwrap();
+    let (back, known) = k.effect_settings().unwrap();
+    assert!(known);
     assert_eq!(back, EffectSettings { speed: 1, ..red_breath() }, "speed 0 is stored as 1");
     // Out of range or unknown: refused before anything is sent.
     let n = sim.state().packets.len();
@@ -258,6 +373,56 @@ fn effects_are_written_in_the_keyboards_ranges() {
     let raw_bad = AaEffect { brightness: 0, ..AaEffect::from_settings(&red_breath()).unwrap() };
     assert!(matches!(k.write_effect(&raw_bad), Err(AaError::Invalid(_))));
     assert_eq!(sim.state().packets.len(), n);
+}
+
+#[test]
+fn another_tools_colour_is_never_overwritten_with_the_readback() {
+    // Static pink set with AJAZZ's tool: every read now says white rainbow.
+    let sim = Sim::ak980();
+    sim.state().set_effect_by_another_tool(pink_static());
+    let mut k = ready(&sim);
+    let snap = k.snapshot().unwrap();
+    assert_eq!((snap.effect.0[1..4].to_vec(), snap.effect.0[8]), (vec![0xFF; 3], 1));
+    assert_eq!(snap.effect_color, None, "unknown, not white");
+    let (settings, known) = k.effect_settings().unwrap();
+    assert!(!known);
+    assert_eq!((settings.mode, settings.brightness), (1, 5));
+
+    let previous = k.arm_live().unwrap().expect("armed");
+    assert!(!previous.color_known);
+    assert_eq!(previous.color(), None);
+    assert_eq!(sim.state().effect[..4], [128, 0, 0, 0], "the read-back white is not written");
+    // Disarming needs the colour; without it nothing is written.
+    let n = writes(&sim);
+    assert!(matches!(k.disarm_live(previous, None), Err(AaError::ColorUnknown)));
+    assert_eq!(writes(&sim), n);
+    k.disarm_live(previous, Some(PINK)).unwrap();
+    let wire = sim.state().sent(cmd::SET_EFFECT).last().unwrap().to_vec();
+    assert_eq!(wire[9..25], pink_static(), "still pink, one colour");
+    assert_eq!(sim.state().effect, pink_static());
+}
+
+#[test]
+fn a_snapshot_keeps_the_colour_the_driver_knew() {
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    // Before any write the read-back is the keyboard's own colour.
+    let factory = ColorRecord { color: [0x00, 0x80, 0xFF], color_mode: 0 };
+    assert_eq!(k.snapshot().unwrap().effect_color, Some(factory));
+    k.apply_effect(&red_breath()).unwrap();
+    let snap = k.snapshot().unwrap().clone();
+    assert_eq!(snap.effect.0[1..4], [0xFF; 3]);
+    let red = ColorRecord { color: [0xFF, 0x20, 0x00], color_mode: 0 };
+    assert_eq!(snap.effect_color, Some(red));
+    assert_eq!(k.read_all().unwrap().effect_color, Some(red), "still known in the same session");
+
+    // A new session cannot know it, but the backup can put it back.
+    let mut later = ready(&sim);
+    assert_eq!(later.snapshot().unwrap().effect_color, None);
+    later.apply_effect(&EffectSettings { mode: 1, ..red_breath() }).unwrap();
+    let r = later.restore(&snap, None).unwrap();
+    assert_eq!(r.written, ["effect"]);
+    assert_eq!(sim.state().effect[..12], [7, 0xFF, 0x20, 0x00, 0xFF, 0, 0, 0, 0, 4, 1, 1]);
 }
 
 #[test]
@@ -274,6 +439,7 @@ fn a_different_echo_is_an_error() {
     let mut k = ready(&sim);
     sim.state().faults.garble_echo = true;
     assert!(matches!(k.apply_effect(&red_breath()), Err(AaError::Mismatch { cmd: 0x23 })));
+    assert!(!k.is_sane(), "an unfinished write closes the gate");
 }
 
 #[test]
@@ -285,6 +451,49 @@ fn a_failed_write_asks_for_a_new_channel() {
     let err = k.apply_effect(&red_breath()).unwrap_err();
     assert!(err.needs_reopen(), "{err:?}");
     assert_eq!(sim.state().packets.len(), n, "not retried on the same channel");
+}
+
+// ------------------------------------------------------------------ lost echoes
+
+/// Run `op` on a fresh keyboard, losing the echo of the `offset`-th request
+/// it sends (counted from 1).
+fn with_lost_echo(op: fn(&mut AaKeyboard<SimPort>), arm: bool, offset: Option<usize>) -> SimState {
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    if arm {
+        k.arm_live().unwrap();
+    }
+    if let Some(o) = offset {
+        let n = sim.state().packets.len();
+        sim.state().faults.drop_reply = Some(n + o);
+    }
+    op(&mut k);
+    let s = sim.state().clone();
+    s
+}
+
+#[test]
+fn lost_write_echoes_are_resent_where_they_belong() {
+    // The write chunks: first, a middle one, the last (counted from the
+    // operation's first request: fresh reads come first).
+    type Op = fn(&mut AaKeyboard<SimPort>);
+    let cases: [(&str, Op, bool, [usize; 3]); 4] = [
+        ("keymap", |k| k.apply_keymap(Layer::Base, [(A, KeyAction::key(0x05))]).unwrap(), false, [11, 15, 20]),
+        ("per-key", |k| k.write_per_key([(ENTER, [0xFF, 0, 0])]).unwrap(), false, [11, 15, 20]),
+        ("macros", |k| k.write_macros(&[a_macro()]).unwrap(), false, [1, 9, 17]),
+        ("frame", |k| k.realtime_frame([(ENTER, [1, 2, 3])]).unwrap(), true, [1, 4, 7]),
+    ];
+    for (what, op, arm, offsets) in cases {
+        let clean = with_lost_echo(op, arm, None);
+        for o in offsets {
+            let s = with_lost_echo(op, arm, Some(o));
+            assert_eq!(s.packets.len(), clean.packets.len() + 1, "{what} {o}: one resend");
+            assert_eq!(s.keymap, clean.keymap, "{what} {o}");
+            assert_eq!(s.per_key, clean.per_key, "{what} {o}");
+            assert_eq!(s.macros, clean.macros, "{what} {o}");
+            assert_eq!(s.frames, clean.frames, "{what} {o}");
+        }
+    }
 }
 
 // ------------------------------------------------------------------ per-key
@@ -320,7 +529,7 @@ fn per_key_mode_keeps_the_rest_of_the_effect() {
     let mut k = ready(&sim);
     k.apply_per_key([(W, [0, 0, 0xFF])], 2).unwrap();
     let s = sim.state();
-    assert_eq!(s.effect, [128, 0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0, 2, 3, 0, 0, 0, 0xAA, 0x55]);
+    assert_eq!(s.effect, [128, 0x00, 0x80, 0xFF, 0xFF, 0, 0, 0, 0, 2, 3, 0, 0, 0, 0xAA, 0x55]);
     assert_eq!(perkey::get(&s.per_key, 34), [0, 0, 0xFF], "W is slot 34");
     // The effect went first, then the table.
     let order: Vec<u8> = s.packets.iter().map(|p| p[2]).filter(|c| [0x23, 0x24].contains(c)).collect();
@@ -367,8 +576,8 @@ fn keymap_changes_touch_only_the_slots_asked_for() {
     let after = sim.state().keymap.clone();
     assert_eq!(slot(&after, 49), [0x02, 0x01, 0x06, 0x00], "A is slot 49");
     assert_eq!(slot(&after, ENTER_AA), [0x02, 0x00, 0x00, 0x00]);
-    assert_eq!(slot(&after, 0), [0, 0, 0, 0]);
-    for s in (0..128u8).filter(|s| ![49, ENTER_AA, 0].contains(s)) {
+    assert_eq!(slot(&after, 0), [0x02, 0x00, 0x29, 0x00], "Esc was at its factory function already");
+    for s in (0..128u8).filter(|s| ![49, ENTER_AA].contains(s)) {
         assert_eq!(slot(&after, s), slot(&before, s), "slot {s}");
     }
     assert_eq!(slot(&after, 13), [0x03, 0xE9, 0, 0], "the knob");
@@ -380,6 +589,38 @@ fn keymap_changes_touch_only_the_slots_asked_for() {
     assert_eq!(of(ENTER), Binding::Action(KeyAction::Disabled));
     assert_eq!(of(W), Binding::Action(KeyAction::key(0x1A)));
     assert_eq!(of(FN), Binding::Raw([0x02, 0x00, 0xAF, 0x00]), "the Fn key's own entry");
+}
+
+#[test]
+fn default_gives_a_key_its_factory_function_back() {
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    k.apply_keymap(Layer::Base, [(ESC, KeyAction::key(0x3A))]).unwrap();
+    // Written as 00 00 00 00, read back as the factory Esc: that is success.
+    k.apply_keymap(Layer::Base, [(ESC, KeyAction::Default)]).unwrap();
+    let s = sim.state();
+    let first_chunks: Vec<&Vec<u8>> = s.sent(cmd::SET_KEYMAP).into_iter().filter(|p| p[4..6] == [0, 0]).collect();
+    assert_eq!(&first_chunks.last().unwrap()[9..13], &[0, 0, 0, 0], "sent as the factory function");
+    assert_eq!(slot(&s.keymap, 0), [0x02, 0x00, 0x29, 0x00], "the keyboard fills in its own");
+    drop(s);
+    assert_eq!(slot(&k.snapshot().unwrap().keymap.0, 0), [0x02, 0x00, 0x29, 0x00]);
+    assert!(k.is_sane());
+}
+
+#[test]
+fn default_never_brings_back_a_factory_firmware_function() {
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    // Fn+Space is factory reset from the factory; the user put Space there.
+    k.apply_keymap(Layer::Fn, [(SPACE, KeyAction::key(0x2C))]).unwrap();
+    let n = writes(&sim);
+    let err = k.apply_keymap(Layer::Fn, [(SPACE, KeyAction::Default)]).unwrap_err();
+    assert!(matches!(err, AaError::Unsupported(why) if why.contains("factory function")), "{err}");
+    assert_eq!(writes(&sim), n);
+    assert_eq!(slot(&sim.state().fn_keymap, SPACE_AA), [0x02, 0x00, 0x2C, 0x00]);
+    // Where the key still is its factory function, Default changes nothing.
+    k.apply_keymap(Layer::Fn, [(BACKSPACE, KeyAction::Default)]).unwrap();
+    assert_eq!(writes(&sim), n);
 }
 
 #[test]
@@ -397,7 +638,7 @@ fn the_fn_layer_keeps_its_firmware_functions() {
     assert!(s.sent(cmd::SET_KEYMAP).is_empty(), "the base layer is untouched");
     drop(s);
     let map = k.read_default_fn().unwrap();
-    let space = map.iter().find(|(l, _)| *l == 94).unwrap().1;
+    let space = map.iter().find(|(l, _)| *l == SPACE).unwrap().1;
     assert_eq!(space, Binding::Raw([page::FUNC, 0, 0, 1]));
 }
 
@@ -448,11 +689,14 @@ fn the_a_macro() {
     let s = sim.state();
     assert_eq!(&s.macros[..4], &[0x90, 0x01, 0x00, 0x00], "pointer 400");
     assert_eq!(&s.macros[400..412], &[0x04, 0x00, 0x00, 0x00, 0x0A, 0x00, 0x04, 0xB0, 0x00, 0x00, 0x04, 0x30]);
-    // The table: 8 chunks, none with LAST; the block: one chunk with LAST.
+    // An empty table (8 chunks, no LAST), the block (one chunk, LAST), the
+    // table (8 chunks, no LAST).
     let writes = s.sent(cmd::SET_MACROS);
-    assert_eq!(writes.len(), 9);
-    assert!(writes[..8].iter().all(|w| w[7] == 0));
+    assert_eq!(writes.len(), 17);
+    assert!(writes[..8].iter().all(|w| w[7] == 0 && w[9..].iter().all(|&b| b == 0)));
     assert_eq!(&writes[8][1..9], &[0xAA, 0x25, 12, 0x90, 0x01, 0, 1, 0]);
+    assert!(writes[9..].iter().all(|w| w[7] == 0));
+    assert_eq!(&writes[9][9..13], &[0x90, 0x01, 0x00, 0x00]);
     drop(s);
     let back = k.read_macros().unwrap();
     assert_eq!(macros::to_steps(&back[0]).unwrap(), a_macro());
@@ -467,6 +711,35 @@ fn the_a_macro() {
 }
 
 #[test]
+fn a_macro_write_that_fails_part_way_leaves_no_dangling_pointer() {
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    k.write_macros(&[a_macro()]).unwrap();
+    // 20 steps: an 84-byte block, two chunks; the second one fails.
+    let steps: Vec<MacroStep> = (0..20)
+        .map(|i| MacroStep::new(if i % 2 == 0 { StepKind::KeyDown } else { StepKind::KeyUp }, 0x05, 10_000))
+        .collect();
+    let n = sim.state().packets.len();
+    sim.state().faults.fail_write = Some(n + 8 + 2);
+    let err = k.write_macros(&[steps]).unwrap_err();
+    assert!(err.needs_reopen(), "{err}");
+    assert!(sim.state().macros[..400].iter().all(|&b| b == 0), "no macro names the half-written block");
+    assert!(!k.is_sane());
+    assert!(k.sanity_reasons()[0].contains("did not finish"));
+
+    // The same when the keyboard stops answering in the middle.
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    k.write_macros(&[a_macro()]).unwrap();
+    let n = sim.state().packets.len();
+    // The empty table goes through; the block write gets no answer.
+    sim.state().faults.mute_from = Some(n + 8 + 1);
+    assert!(matches!(k.write_macros(&[a_macro(), a_macro()]), Err(AaError::Timeout { cmd: 0x25 })));
+    assert!(sim.state().macros[..400].iter().all(|&b| b == 0));
+    assert!(!k.is_sane());
+}
+
+#[test]
 fn macro_capacity_edges() {
     let sim = Sim::ak980();
     let mut k = ready(&sim);
@@ -478,9 +751,10 @@ fn macro_capacity_edges() {
     assert!(too_big.to_string().contains("516 bytes"));
     assert!(matches!(k.write_macros(&vec![vec![step]; 65]), Err(AaError::TooLarge { macros: 65, .. })));
     assert_eq!(sim.state().packets.len(), n);
-    // Clearing every macro.
+    // Clearing every macro: the empty table only.
     k.write_macros(&[]).unwrap();
     assert!(sim.state().macros[..400].iter().all(|&b| b == 0));
+    assert_eq!(sim.state().packets.len(), n + 8 + 8, "8 table chunks written, 8 read back");
 }
 
 // ------------------------------------------------------------------ clock
@@ -512,9 +786,10 @@ fn live_frames_need_an_armed_effect() {
     assert!(matches!(k.realtime_frame([(ENTER, [1, 2, 3])]), Err(AaError::NotArmed)));
     assert!(sim.state().sent(cmd::REALTIME).is_empty());
 
-    let previous = k.arm_live().unwrap().expect("static white was replaced");
-    assert_eq!((previous.mode, previous.brightness, previous.speed), (1, 5, 3));
-    assert_eq!(sim.state().effect[..1], [128], "per-key mode");
+    let previous = k.arm_live().unwrap().expect("the static effect was replaced");
+    assert_eq!((previous.effect.mode, previous.effect.brightness, previous.effect.speed), (1, 5, 3));
+    assert!(previous.color_known);
+    assert_eq!(sim.state().effect[..4], [128, 0x00, 0x80, 0xFF], "per-key mode, colour kept");
     assert_eq!(sim.state().effect[9..11], [5, 3], "levels kept");
     assert!(k.arm_live().unwrap().is_none(), "already armed: nothing replaced");
 
@@ -532,11 +807,8 @@ fn live_frames_need_an_armed_effect() {
     assert_eq!(&chunks[6][1..9], &[0xAA, 0x32, 0x34, 0x50, 0x01, 0x00, 0x01, 0x00], "52 bytes at 336, LAST");
     drop(s);
 
-    k.disarm_live(previous).unwrap();
-    let s = sim.state();
-    assert_eq!(&s.effect[..4], &[1, 0xFF, 0xFF, 0xFF]);
-    assert_eq!(s.effect[8..11], [1, 5, 3]);
-    drop(s);
+    k.disarm_live(previous, None).unwrap();
+    assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
     assert!(matches!(k.realtime_frame([]), Err(AaError::NotArmed)));
 }
 
@@ -546,12 +818,20 @@ fn disarming_puts_back_the_colour_the_driver_wrote() {
     let mut k = ready(&sim);
     k.apply_effect(&red_breath()).unwrap();
     let previous = k.arm_live().unwrap().unwrap();
-    assert_eq!(previous.color, [0xFF, 0x20, 0x00], "not the FF FF FF the keyboard reads back");
-    k.disarm_live(previous).unwrap();
+    assert_eq!(previous.color(), Some(EffectColor { color: [0xFF, 0x20, 0x00], color_mode: 0 }));
+    k.disarm_live(previous, None).unwrap();
     assert_eq!(&sim.state().effect[..4], &[7, 0xFF, 0x20, 0x00]);
+    // A colour given by the caller wins.
+    let previous = k.arm_live().unwrap().unwrap();
+    k.disarm_live(previous, Some(PINK)).unwrap();
+    assert_eq!(&sim.state().effect[..4], &[7, 0xFF, 0x69, 0xB4]);
 }
 
 // ------------------------------------------------------------------ screen
+
+fn upload(sim: &Sim, k: &mut AaKeyboard<SimPort>) -> Result<AaScreenReport> {
+    k.upload_screen(&mut sim.display(), &ScreenAnimation::still(test_pattern()), |_, _| {}, &AtomicBool::new(false))
+}
 
 #[test]
 fn a_still_image_is_sixteen_packets() {
@@ -567,7 +847,7 @@ fn a_still_image_is_sixteen_packets() {
             &AtomicBool::new(false),
         )
         .unwrap();
-    assert_eq!((r.packets, r.packet_times.len()), (16, 16));
+    assert_eq!((r.packets, r.packet_times.len(), r.stale_acks), (16, 16, 0));
     assert_eq!(seen.last(), Some(&(16, 16)));
     let s = sim.state();
     assert_eq!(s.screen.len(), 16);
@@ -590,6 +870,76 @@ fn one_hundred_forty_frames() {
 }
 
 #[test]
+fn screen_answers_are_counted_one_per_packet_sent() {
+    // The simulator refuses a packet written while an answer is unread, so
+    // each of these uploads only finishes if no answer is taken for the
+    // wrong packet.
+    let late = Sim::ak980().with_faults(Faults { late_ack: Some(3), ..Faults::default() });
+    let r = upload(&late, &mut ready(&late)).unwrap();
+    assert_eq!(r.packets, 16);
+    let s = late.state();
+    assert_eq!(s.screen.len(), 17, "packet 2 went out twice");
+    assert_eq!(s.screen[2], s.screen[3]);
+    drop(s);
+
+    let double = Sim::ak980().with_faults(Faults { double_ack: Some(2), ..Faults::default() });
+    let r = upload(&double, &mut ready(&double)).unwrap();
+    assert_eq!((r.packets, r.stale_acks), (16, 1));
+    assert_eq!(double.state().screen.len(), 16);
+
+    let lost = Sim::ak980().with_faults(Faults { drop_ack: Some(5), ..Faults::default() });
+    upload(&lost, &mut ready(&lost)).unwrap();
+    assert_eq!(lost.state().screen.len(), 17);
+}
+
+#[test]
+fn after_a_cancelled_upload_the_command_channel_waits() {
+    let sim = Sim::ak980();
+    sim.state().upload_quiet = Duration::from_millis(20);
+    let mut k = ready(&sim);
+    k.set_upload_cooldown(Duration::from_millis(60));
+    let cancel = AtomicBool::new(false);
+    let still = ScreenAnimation::still(test_pattern());
+    let r = k.upload_screen(
+        &mut sim.display(),
+        &still,
+        |done, _| {
+            if done == 3 {
+                cancel.store(true, Ordering::Relaxed);
+            }
+        },
+        &cancel,
+    );
+    assert!(matches!(r, Err(AaError::Cancelled { done: 3, total: 16 })));
+    let n = sim.state().packets.len();
+    assert!(matches!(k.read_effect(), Err(AaError::UploadInterrupted { .. })));
+    assert!(matches!(k.apply_effect(&red_breath()), Err(AaError::UploadInterrupted { .. })));
+    assert!(matches!(k.device_info(), Err(AaError::UploadInterrupted { .. })));
+    assert_eq!(sim.state().packets.len(), n, "nothing on the command channel");
+    // After the cooldown: one device-information request, then the rest.
+    std::thread::sleep(Duration::from_millis(80));
+    k.read_effect().unwrap();
+    let s = sim.state();
+    assert_eq!((s.packets[n][2], s.packets[n + 1][2]), (cmd::DEVICE_INFO, cmd::EFFECT));
+}
+
+#[test]
+fn an_upload_that_stops_answering_silences_the_command_channel() {
+    let sim = Sim::ak980().with_faults(Faults { mute_display_from: Some(5), ..Faults::default() });
+    sim.state().upload_quiet = Duration::from_millis(20);
+    let mut k = ready(&sim);
+    k.set_upload_cooldown(Duration::from_millis(60));
+    assert!(matches!(upload(&sim, &mut k), Err(AaError::Timeout { cmd: 0x50 })));
+    assert_eq!(sim.state().screen.len(), 4 + ATTEMPTS);
+    let n = sim.state().packets.len();
+    assert!(matches!(k.set_clock(&clock_time()), Err(AaError::UploadInterrupted { .. })));
+    assert!(matches!(upload(&sim, &mut k), Err(AaError::UploadInterrupted { .. })), "nor a new upload yet");
+    assert_eq!(sim.state().packets.len(), n);
+    std::thread::sleep(Duration::from_millis(80));
+    k.set_clock(&clock_time()).unwrap();
+}
+
+#[test]
 fn screen_limits() {
     let sim = Sim::ak980();
     sim.state().info[22] = 24; // the keyboard takes 24 frames
@@ -597,11 +947,12 @@ fn screen_limits() {
     let anim = ScreenAnimation::new(vec![(Frame::filled(0), 50); 25]).unwrap();
     let r = k.upload_screen(&mut sim.display(), &anim, |_, _| {}, &AtomicBool::new(false));
     assert!(matches!(r, Err(AaError::Invalid(CodecError::Range { max: 24, .. }))));
-    // Cancelled before the first packet.
+    // Cancelled before the first packet: nothing sent, nothing to wait for.
     let still = ScreenAnimation::still(test_pattern());
     let r = k.upload_screen(&mut sim.display(), &still, |_, _| {}, &AtomicBool::new(true));
     assert!(matches!(r, Err(AaError::Cancelled { done: 0, total: 16 })));
     assert!(sim.state().screen.is_empty());
+    k.read_effect().unwrap();
 
     let sim = Sim::ak980();
     sim.state().info[28] = 255; // no screen
@@ -625,7 +976,9 @@ fn a_backup_restores_what_was_changed() {
     k.write_per_key([(ENTER, [0xFF, 0, 0])]).unwrap();
     k.write_macros(&[a_macro()]).unwrap();
 
-    k.restore(&backup).unwrap();
+    let r = k.restore(&backup, None).unwrap();
+    assert!(r.kept.is_empty());
+    assert_eq!(r.written, ["base layer", "Fn layer", "effect", "per-key table", "macros"]);
     let s = sim.state();
     assert_eq!(s.keymap, original.keymap);
     assert_eq!(s.fn_keymap, original.fn_keymap);
@@ -634,26 +987,103 @@ fn a_backup_restores_what_was_changed() {
     assert_eq!(s.effect[..12], original.effect[..12]);
     assert_eq!(s.effect[14..], [0xAA, 0x55], "written the WebHID driver's way");
     assert!(s.sent(0x21).is_empty(), "options are never written");
+    drop(s);
+    // Restoring again changes nothing.
+    assert!(k.restore(&backup, None).unwrap().written.is_empty());
 }
 
 #[test]
-fn a_backup_never_moves_a_firmware_function() {
+fn a_restore_keeps_firmware_functions_the_keyboard_no_longer_has() {
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    let backup = k.snapshot().unwrap().clone();
+    let original = sim.state().keymap.clone();
+    // The user changed the base layer, and put ordinary keys on Fn+Space
+    // (factory reset) and Fn+↑ (brightness up).
+    k.apply_keymap(Layer::Base, [(A, KeyAction::key(0x05))]).unwrap();
+    k.apply_keymap(Layer::Fn, [(SPACE, KeyAction::key(0x2C)), (UP, KeyAction::Consumer(0xE9))]).unwrap();
+    let r = k.restore(&backup, None).unwrap();
+    assert_eq!(r.written, ["base layer"], "the base layer is restored all the same");
+    assert_eq!(sim.state().keymap, original);
+    let kept: Vec<(Layer, u8, Option<u8>)> = r.kept.iter().map(|s| (s.layer, s.slot, s.led)).collect();
+    assert_eq!(kept, [(Layer::Fn, SPACE_AA, Some(SPACE)), (Layer::Fn, 90, Some(UP))]);
+    assert_eq!(r.kept[0].backup, [0x0D, 0, 0, 1]);
+    assert!(r.kept[0].reason.contains("firmware function 1"), "{}", r.kept[0].reason);
+    assert_eq!(slot(&sim.state().fn_keymap, SPACE_AA), [0x02, 0x00, 0x2C, 0x00]);
+}
+
+#[test]
+fn a_restore_keeps_entries_the_encoder_would_refuse() {
     let sim = Sim::ak980();
     let mut k = ready(&sim);
     let mut backup = k.snapshot().unwrap().clone();
-    // Factory reset on A instead of Space.
-    keymap::set_entry(&mut backup.fn_keymap.0, 49, [0x0D, 0, 0, 1]);
-    let err = k.restore(&backup).unwrap_err();
-    assert!(matches!(err, AaError::Blocked(Blocked::DangerousFunc { slot: 49, id: 1 })), "{err}");
-    assert!(sim.state().sent(cmd::SET_FN_KEYMAP).is_empty());
-    // Another keyboard's backup, or a broken one.
+    // Macro 200 in play mode 7: page 6, but nothing this driver writes.
+    keymap::set_entry(&mut backup.keymap.0, 49, [0x06, 200, 7, 0]);
+    let r = k.restore(&backup, None).unwrap();
+    assert_eq!(r.kept.iter().map(|s| (s.layer, s.slot)).collect::<Vec<_>>(), [(Layer::Base, 49)]);
+    assert!(r.written.is_empty());
+    assert_eq!(slot(&sim.state().keymap, 49), [0x02, 0x00, 0x04, 0x00]);
+}
+
+#[test]
+fn a_restore_that_cannot_finish_writes_nothing() {
+    // 130 steps recorded with AJAZZ's hub: inside the keyboard's 3072
+    // bytes, so the gate takes them, but above the 512 written here.
+    let sim = Sim::ak980();
+    {
+        let mut s = sim.state();
+        s.macros[..4].copy_from_slice(&400u32.to_le_bytes());
+        s.macros[400..402].copy_from_slice(&(2 * 130u16).to_le_bytes());
+        for i in 0..130 {
+            s.macros[404 + i * 4..408 + i * 4].copy_from_slice(&[10, 0, 4, 0xB0]);
+        }
+    }
+    let mut k = ready(&sim);
+    let backup = k.snapshot().unwrap().clone();
+    assert_eq!(backup.macros()[0].len(), 130);
+    // Kept as they are, they are no reason to fail.
+    k.apply_keymap(Layer::Base, [(A, KeyAction::key(0x05))]).unwrap();
+    assert_eq!(k.restore(&backup, None).unwrap().written, ["base layer"]);
+    // Changed, they cannot be written back: nothing is, the keymap included.
+    k.apply_keymap(Layer::Base, [(A, KeyAction::key(0x05))]).unwrap();
+    k.write_macros(&[]).unwrap();
+    let n = writes(&sim);
+    let err = k.restore(&backup, None).unwrap_err();
+    assert!(matches!(err, AaError::TooLarge { entries: 130, .. }), "{err}");
+    assert_eq!(writes(&sim), n, "planned before anything was sent");
+}
+
+#[test]
+fn a_backup_without_its_colour_asks_for_it_before_writing() {
+    let sim = Sim::ak980();
+    sim.state().set_effect_by_another_tool(pink_static());
+    let mut k = ready(&sim);
+    let backup = k.snapshot().unwrap().clone();
+    assert_eq!(backup.effect_color, None);
+    k.apply_keymap(Layer::Base, [(A, KeyAction::key(0x05))]).unwrap();
+    k.apply_effect(&red_breath()).unwrap();
+    let n = writes(&sim);
+    assert!(matches!(k.restore(&backup, None), Err(AaError::ColorUnknown)));
+    assert_eq!(writes(&sim), n, "nothing written, the keymap included");
+    let r = k.restore(&backup, Some(PINK)).unwrap();
+    assert_eq!(r.written, ["base layer", "effect"]);
+    assert_eq!(sim.state().effect, pink_static());
+    // Mode and levels already match: the effect is left alone.
+    assert!(k.restore(&backup, None).unwrap().written.is_empty());
+}
+
+#[test]
+fn a_backup_from_another_keyboard_or_broken_is_refused() {
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
     let mut other = k.snapshot().unwrap().clone();
     other.info.0[14] = 0x2C;
     other.device = DeviceInfo::parse(&other.info.0).unwrap().into();
-    assert!(matches!(k.restore(&other), Err(AaError::NotSane(_))));
+    assert!(matches!(k.restore(&other, None), Err(AaError::NotSane(_))));
     let mut broken = k.snapshot().unwrap().clone();
     broken.per_key.0.pop();
-    assert!(matches!(k.restore(&broken), Err(AaError::NotSane(_))));
+    assert!(matches!(k.restore(&broken, None), Err(AaError::NotSane(_))));
+    assert_eq!(writes(&sim), 0);
 }
 
 #[test]
@@ -662,10 +1092,14 @@ fn backups_are_json_with_hex_strings() {
     let snap = keyboard(&sim).read_all().unwrap();
     let json = serde_json::to_string(&snap).unwrap();
     assert!(json.contains("\"info\":\"4000000c450c398001"), "{}", &json[..80]);
+    assert!(json.contains("\"effect_color\":{\"color\":[0,128,255],\"color_mode\":0}"), "{json}");
     let back: AaSnapshot = serde_json::from_str(&json).unwrap();
     assert_eq!(back, snap);
     assert!(serde_json::from_str::<AaSnapshot>(&json.replace("\"info\":\"40", "\"info\":\"4")).is_err());
     assert!(serde_json::from_str::<AaSnapshot>(&json.replace("\"info\":\"40", "\"info\":\"zz")).is_err());
+    // A backup without the colour field reads as "colour unknown".
+    let old = json.replace(",\"effect_color\":{\"color\":[0,128,255],\"color_mode\":0}", "");
+    assert_eq!(serde_json::from_str::<AaSnapshot>(&old).unwrap().effect_color, None);
 }
 
 // ------------------------------------------------------------------ the simulator's own checks
@@ -689,6 +1123,19 @@ fn the_simulator_catches_a_new_firmware_function() {
     keymap::set_entry(&mut table, 49, [0x0D, 0, 0, 1]);
     for ch in frame::chunks(512, 0, true) {
         let w = frame::wire(&frame::request(cmd::SET_KEYMAP, &ch, 0, &table[ch.offset..]));
+        let _ = port.write(&w);
+    }
+}
+
+#[test]
+#[should_panic(expected = "before the previous answer was read")]
+fn the_simulator_catches_a_screen_packet_sent_too_early() {
+    let sim = Sim::ak980();
+    let mut port = sim.display();
+    let blob = kb_protocol::aa::screen::blob(&ScreenAnimation::still(test_pattern()));
+    for i in 0..2 {
+        let mut w = vec![0u8; screen::WIRE_LEN];
+        w[1..].copy_from_slice(&screen::packet(&blob, i, 16));
         let _ = port.write(&w);
     }
 }

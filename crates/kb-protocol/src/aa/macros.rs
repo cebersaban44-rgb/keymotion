@@ -156,7 +156,12 @@ pub fn encode(slots: &[Vec<AaMacroEntry>]) -> Result<MacroImage, CodecError> {
     Ok(MacroImage { table, blocks })
 }
 
-/// The address of every slot's block (0 = none).
+/// Whether a table entry names no macro: 0, or erased flash (`FF FF FF FF`).
+pub fn is_none(pointer: u32) -> bool {
+    pointer == 0 || pointer == u32::MAX
+}
+
+/// The address of every slot's block (0 = none; see [`is_none`]).
 pub fn pointers(table: &[u8]) -> Vec<u32> {
     table.chunks_exact(4).take(MAX_MACROS).map(|p| u32::from_le_bytes([p[0], p[1], p[2], p[3]])).collect()
 }
@@ -191,6 +196,7 @@ mod tests {
         assert_eq!(img.blocks, [0x04, 0x00, 0x00, 0x00, 0x0A, 0x00, 0x04, 0xB0, 0x00, 0x00, 0x04, 0x30]);
         assert_eq!(pointers(&img.table)[0], 400);
         assert_eq!(header_entries(&img.blocks[..4]), 2);
+        assert!(is_none(0) && is_none(u32::MAX) && !is_none(400));
         let back = decode_entries(&img.blocks[4..]);
         assert_eq!(to_steps(&back).unwrap(), steps);
     }

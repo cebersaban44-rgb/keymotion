@@ -90,6 +90,8 @@ pub enum Blocked {
     NewEntry { slot: u8, page: u8 },
     #[error("keymap slot {slot}: firmware function {id} (reset, test or mode switch) is never written")]
     DangerousFunc { slot: u8, id: u32 },
+    #[error("keymap slot {slot}: its factory function is firmware function {id}, which is never brought back")]
+    FactoryFunc { slot: u8, id: u32 },
     #[error("slot {0} (end of the table) must stay as read")]
     Tail(u8),
     #[error("per-key slot {0} must start with its own index")]
@@ -203,13 +205,22 @@ fn screen_packet(p: &[u8]) -> Result<(), Blocked> {
     Ok(())
 }
 
-/// A keymap write may change a slot only to an entry this project produces
-/// (pages 0, 1, 2, 3 and 6); FUNC (0x0D), FUNC_V2 (≥ 0x80), host-program
-/// (5) and combo (7) entries, and any other page, are only ever kept where
-/// the fresh read had them. Slots 126–127 (where some boards keep an
-/// `AA 55` tail) never change.
-pub fn guard_keymap(fresh: &[u8], new: &[u8]) -> Result<(), Blocked> {
+/// A keymap write may change a slot only to an entry this crate encodes
+/// itself ([`keymap::decode`] gives an action): the factory function
+/// `00 00 00 00`, "disabled", and well-formed keyboard, consumer, mouse
+/// and macro entries. FUNC (0x0D), FUNC_V2 (≥ 0x80), host-program (5) and
+/// combo (7) entries, any other page, and parameters the encoder would
+/// refuse are only ever kept where the fresh read had them. Slots 126–127
+/// (where some boards keep an `AA 55` tail) never change.
+///
+/// `factory` is the layer's factory table when known (`1C` for the Fn
+/// layer). A slot set to `00 00 00 00` gets its factory function back, so
+/// that is refused where the factory entry is a firmware function.
+pub fn guard_keymap(fresh: &[u8], new: &[u8], factory: Option<&[u8]>) -> Result<(), Blocked> {
     tables(fresh, new)?;
+    if let Some(f) = factory {
+        tables(f, new)?;
+    }
     for slot in 0..keymap::SLOTS {
         let at = slot * 4;
         let (f, n) = (&fresh[at..at + 4], &new[at..at + 4]);
@@ -224,13 +235,14 @@ pub fn guard_keymap(fresh: &[u8], new: &[u8]) -> Result<(), Blocked> {
         if let Some(id) = keymap::func_ids(entry).into_iter().find(|id| keymap::DANGEROUS_FUNC.contains(id)) {
             return Err(Blocked::DangerousFunc { slot, id });
         }
-        let ours = match n[0] {
-            keymap::page::DEFAULT => entry == [0; 4],
-            keymap::page::MOUSE | keymap::page::KEYBOARD | keymap::page::CONSUMER | keymap::page::MACRO => true,
-            _ => false,
-        };
-        if !ours {
+        if !matches!(keymap::decode(entry), keymap::Binding::Action(_)) {
             return Err(Blocked::NewEntry { slot, page: n[0] });
+        }
+        if entry == [0; 4] {
+            if let Some(back) = factory.map(|f| keymap::entry(f, slot)).filter(|&e| keymap::is_func(e)) {
+                let id = keymap::func_ids(back).first().copied().unwrap_or(0);
+                return Err(Blocked::FactoryFunc { slot, id });
+            }
         }
     }
     Ok(())
@@ -426,41 +438,81 @@ mod tests {
         new[8..12].copy_from_slice(&[6, 1, 1, 3]);
         new[12..16].copy_from_slice(&[1, 1, 2, 0]);
         new[34 * 4..34 * 4 + 4].copy_from_slice(&[0, 0, 0, 0]); // a FUNC slot back to default
-        assert_eq!(guard_keymap(&fresh, &new), Ok(()));
+        assert_eq!(guard_keymap(&fresh, &new, None), Ok(()));
         // A FUNC introduced, moved or changed.
         let mut new = fresh;
         new[0..4].copy_from_slice(&[0x0D, 0, 0, 7]);
-        assert_eq!(guard_keymap(&fresh, &new), Err(Blocked::NewEntry { slot: 0, page: 0x0D }));
+        assert_eq!(guard_keymap(&fresh, &new, None), Err(Blocked::NewEntry { slot: 0, page: 0x0D }));
         let mut new = fresh;
         new[0..4].copy_from_slice(&[0x0D, 0, 0, 1]);
-        assert_eq!(guard_keymap(&fresh, &new), Err(Blocked::DangerousFunc { slot: 0, id: 1 }));
+        assert_eq!(guard_keymap(&fresh, &new, None), Err(Blocked::DangerousFunc { slot: 0, id: 1 }));
         for id in keymap::DANGEROUS_FUNC {
             let mut new = fresh;
             let [_, a, b, c] = id.to_be_bytes();
             new[40..44].copy_from_slice(&[0x0D, a, b, c]);
-            assert_eq!(guard_keymap(&fresh, &new), Err(Blocked::DangerousFunc { slot: 10, id }), "{id}");
+            assert_eq!(guard_keymap(&fresh, &new, None), Err(Blocked::DangerousFunc { slot: 10, id }), "{id}");
         }
         // FUNC_V2 4096 (factory reset) and other FUNC_V2 entries.
         let mut new = fresh;
         new[40..44].copy_from_slice(&[0x90, 0x00, 0, 0]);
-        assert_eq!(guard_keymap(&fresh, &new), Err(Blocked::DangerousFunc { slot: 10, id: 4096 }));
+        assert_eq!(guard_keymap(&fresh, &new, None), Err(Blocked::DangerousFunc { slot: 10, id: 4096 }));
         let mut new = fresh;
         new[40..44].copy_from_slice(&[0x80, 0x00, 0x20, 0x00]);
-        assert_eq!(guard_keymap(&fresh, &new), Err(Blocked::NewEntry { slot: 10, page: 0x80 }));
+        assert_eq!(guard_keymap(&fresh, &new, None), Err(Blocked::NewEntry { slot: 10, page: 0x80 }));
         // Host programs (page 5, including the "04 xx" disable code), combos.
         for page in [5u8, 7, 4, 8, 14] {
             let mut new = fresh;
             new[40..44].copy_from_slice(&[page, 3, 0, 0]);
-            assert_eq!(guard_keymap(&fresh, &new), Err(Blocked::NewEntry { slot: 10, page }));
+            assert_eq!(guard_keymap(&fresh, &new, None), Err(Blocked::NewEntry { slot: 10, page }));
+        }
+        // Parameters the encoder refuses on pages it produces.
+        for bad in [
+            [6u8, 200, 0, 0],
+            [6, 1, 7, 0],
+            [6, 1, 0, 3],
+            [1, 5, 0xFF, 0xFF],
+            [1, 1, 3, 0],
+            [2, 0, 4, 0x7F],
+            [3, 0, 0, 0],
+        ] {
+            let mut new = fresh;
+            new[40..44].copy_from_slice(&bad);
+            assert_eq!(
+                guard_keymap(&fresh, &new, None),
+                Err(Blocked::NewEntry { slot: 10, page: bad[0] }),
+                "{bad:02X?}"
+            );
         }
         // A non-zero default entry, the tail slots, wrong lengths.
         let mut new = fresh;
         new[40..44].copy_from_slice(&[0, 1, 0, 0]);
-        assert!(guard_keymap(&fresh, &new).is_err());
+        assert!(guard_keymap(&fresh, &new, None).is_err());
         let mut new = fresh;
         new[510] = 0;
-        assert_eq!(guard_keymap(&fresh, &new), Err(Blocked::Tail(127)));
-        assert_eq!(guard_keymap(&fresh[..508], &fresh), Err(Blocked::TableLength(508)));
+        assert_eq!(guard_keymap(&fresh, &new, None), Err(Blocked::Tail(127)));
+        assert_eq!(guard_keymap(&fresh[..508], &fresh, None), Err(Blocked::TableLength(508)));
+    }
+
+    #[test]
+    fn the_factory_function_of_a_slot_is_not_brought_back() {
+        // Fn layer: factory reset on Space, battery on Backspace; the user
+        // has put ordinary keys there.
+        let factory = table();
+        let mut fresh = factory;
+        fresh[83 * 4..83 * 4 + 4].copy_from_slice(&[2, 0, 0x2C, 0]);
+        fresh[34 * 4..34 * 4 + 4].copy_from_slice(&[2, 0, 0x1A, 0]);
+        fresh[0..4].copy_from_slice(&[2, 0, 0x29, 0]);
+        for (slot, id) in [(83u8, 1u32), (34, 7)] {
+            let mut new = fresh;
+            keymap::set_entry(&mut new, slot, [0; 4]);
+            assert_eq!(guard_keymap(&fresh, &new, Some(&factory)), Err(Blocked::FactoryFunc { slot, id }));
+            assert_eq!(guard_keymap(&fresh, &new, None), Ok(()), "without the factory table it cannot know");
+        }
+        // A slot whose factory entry is an ordinary key may go back to it.
+        let mut new = fresh;
+        new[0..4].copy_from_slice(&[0; 4]);
+        assert_eq!(guard_keymap(&fresh, &new, Some(&factory)), Ok(()));
+        assert_eq!(guard_keymap(&fresh, &new, Some(&factory[..100])), Err(Blocked::TableLength(100)));
     }
 
     #[test]
