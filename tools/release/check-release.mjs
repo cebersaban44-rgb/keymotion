@@ -11,7 +11,8 @@
 // A pre-release (1.3.0-rc.1) is only on GitHub and needs none of the last two.
 //
 // release.yml and store.yml run it first on a release tag, so a tag without
-// the text fails in seconds; CI runs it on a pull request into main; and
+// the text fails in seconds; CI runs it on a pull request into main whose
+// version has no tag yet; and
 // tools/release/tag.mjs runs it before it tags.
 //
 // Usage: node tools/release/check-release.mjs                  the version in the app's files

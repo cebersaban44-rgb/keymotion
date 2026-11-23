@@ -104,11 +104,18 @@ jobs:
 
       # The Submit job sends the tag's What's new files: they, and the rest
       # of the release's text, must be written (release.yml checks it too).
+      # A tag from before the check (v1.1.0 and older) has neither the check
+      # nor What's new files; its package is built again as it was.
       - name: The release text is written
         if: ${{ !inputs.test }}
         env:
           TAG: ${{ inputs.tag }}
-        run: node tools/release/check-release.mjs --tag "$TAG"
+        run: |
+          if [ ! -f tools/release/check-release.mjs ]; then
+            echo "$TAG is older than tools/release/check-release.mjs: no release text to check."
+            exit 0
+          fi
+          node tools/release/check-release.mjs --tag "$TAG"
 
       - name: Store script tests
         run: node --test "tools/store/*.test.mjs"

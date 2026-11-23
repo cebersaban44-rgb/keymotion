@@ -274,6 +274,25 @@ test("submit: a failure after the submission is made leaves it, never deleted", 
   assert.equal(immediate.calls.some((c) => c.url === UPLOAD_URL), false);
 });
 
+test("submit: a submission made without an upload address or id is reported as left behind", async () => {
+  const made = (created) =>
+    fakeStore({
+      "GET /": { id: STORE_APP_ID, lastPublishedApplicationSubmission: { id: "100" } },
+      "GET /submissions/100": copy("100"),
+      "POST /submissions": created,
+    });
+  const noUrl = made(copy("200", { fileUploadUrl: undefined }));
+  await assert.rejects(
+    submit({ client: client(noUrl), msix: MSIX, notes: NOTES, log: () => {} }),
+    /without an id or an upload address\nSubmission 200 was made and is left as it is/,
+  );
+  assert.deepEqual(noUrl.api(), ["GET /", "GET /submissions/100", "POST /submissions"]);
+  await assert.rejects(
+    submit({ client: client(made({ status: "PendingCommit" })), msix: MSIX, notes: NOTES, log: () => {} }),
+    /\nA new submission \(the Store gave no id\) was made and is left as it is/,
+  );
+});
+
 test("submit: a commit that runs too long stops waiting", async () => {
   let t = 0;
   const store = fakeStore({

@@ -112,7 +112,7 @@ A version comes out on GitHub and in the Microsoft Store the same day, so that a
 
 2. **Write the text** where the skeletons are: the version's section of the release notes page and its `description` line, in every language, and `store/whats-new/1.2.0.<lang>.txt`: plain text of at most 1500 characters, about what the Store copy gets (leave out the GitHub copy's own update options). `node tools/release/check-release.mjs` passes once nothing is left. Open the pull request into `develop`.
 
-3. **Merge `develop` into `main`** with the release pull request. CI runs `check-release.mjs` on every pull request into `main`, so a skeleton can't reach the site.
+3. **Merge `develop` into `main`** with the release pull request. CI runs `check-release.mjs` on every pull request into `main` whose version has no tag yet, so a skeleton can't reach the site.
 
 4. **Tag `main`** on your computer, after `git switch main` and `git pull`:
 

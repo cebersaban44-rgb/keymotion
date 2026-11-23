@@ -267,9 +267,9 @@ export async function submit({ client, msix, notes, log = console.log, sleep = s
   prepareSubmission(await client.getSubmission(lastId), { packageFile: msix.name, notes });
 
   const created = await client.createSubmission();
-  if (!created?.id || !created.fileUploadUrl) throw new Error("the Store made a submission without an id or an upload address");
-  log(`Made submission ${created.id} (a copy of ${lastId}).`);
   try {
+    if (!created?.id || !created.fileUploadUrl) throw new Error("the Store made a submission without an id or an upload address");
+    log(`Made submission ${created.id} (a copy of ${lastId}).`);
     const updated = await client.updateSubmission(created.id, prepareSubmission(created, { packageFile: msix.name, notes }));
     if (updated?.targetPublishMode && updated.targetPublishMode !== "Manual") {
       throw new Error(`the submission says targetPublishMode ${updated.targetPublishMode}, not Manual: it would publish by itself`);
@@ -291,8 +291,9 @@ export async function submit({ client, msix, notes, log = console.log, sleep = s
     log(`Submission ${created.id}: ${status}.`);
     return { id: created.id, status };
   } catch (e) {
+    const which = created?.id ? `Submission ${created.id}` : "A new submission (the Store gave no id)";
     e.message +=
-      `\nSubmission ${created.id} was made and is left as it is (this script never deletes one). ` +
+      `\n${which} was made and is left as it is (this script never deletes one). ` +
       "In Partner Center, finish it there, or delete it and run the Submit job again.";
     throw e;
   }

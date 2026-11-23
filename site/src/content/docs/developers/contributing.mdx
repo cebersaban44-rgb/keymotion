@@ -90,7 +90,7 @@ CI (`.github/workflows/ci.yml`) runs on every pull request to `develop` or `main
 | No vendor files (see [below](#vendor-files)) | `node tools/check-vendor-files.mjs` |
 | The version number agrees in all three files | `node tools/check-version.mjs` |
 | Tests of the release scripts | `node --test "tools/release/*.test.mjs"` |
-| A pull request into `main` has its release text written: changelogs, release notes, the Store's "What's new" | `node tools/release/check-release.mjs` |
+| A pull request into `main` with a version that has no tag yet has its release text written: changelogs, release notes, the Store's "What's new" | `node tools/release/check-release.mjs` |
 | TypeScript type check and the interface build | `pnpm --dir app build` |
 | ESLint, where a single warning fails | `pnpm --dir app lint` |
 | rustfmt | `cargo fmt --all -- --check` |

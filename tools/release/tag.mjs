@@ -47,6 +47,26 @@ export function backMerge(version) {
   };
 }
 
+/**
+ * Makes the annotated tag and pushes it by its full ref. When the push
+ * fails, the local tag is deleted again, so the next run doesn't stop on
+ * "already exists here"; if that fails too, the command to do it is printed.
+ */
+export function tagAndPush({ tag, version, git, push, log = console.log }) {
+  git("tag", "-a", tag, "-m", `Keymotion ${version}`);
+  try {
+    push(`refs/tags/${tag}`);
+  } catch (e) {
+    try {
+      git("tag", "-d", tag);
+      log(`The push failed, so the local tag ${tag} was deleted again. Fix the cause and run this again.`);
+    } catch {
+      log(`The push failed. Delete the local tag before running this again: git tag -d ${tag}`);
+    }
+    throw e;
+  }
+}
+
 const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 const gh = (...args) => execFileSync("gh", args, { cwd: root, encoding: "utf8" }).trim();
 
@@ -77,13 +97,17 @@ function main() {
   const pr = backMerge(version);
   console.log(`Ready: ${tag} on main (${state.head.slice(0, 7)}).`);
   if (dry) {
-    console.log(`Dry run. Would run:\n  git tag -a ${tag} -m "Keymotion ${version}"\n  git push origin ${tag}`);
+    console.log(`Dry run. Would run:\n  git tag -a ${tag} -m "Keymotion ${version}"\n  git push origin refs/tags/${tag}`);
     console.log(`  gh pr create --base develop --head main --title "${pr.title}"`);
     return;
   }
 
-  git("tag", "-a", tag, "-m", `Keymotion ${version}`);
-  execFileSync("git", ["push", "origin", tag], { cwd: root, stdio: "inherit" });
+  tagAndPush({
+    tag,
+    version,
+    git,
+    push: (ref) => execFileSync("git", ["push", "origin", ref], { cwd: root, stdio: "inherit" }),
+  });
   console.log(`Pushed ${tag}: release.yml builds the installer and the Store package (GitHub › Actions).`);
 
   const open = gh("pr", "list", "--base", "develop", "--head", "main", "--state", "open", "--json", "url", "--jq", ".[0].url");

@@ -90,7 +90,7 @@ CI (`.github/workflows/ci.yml`), `develop` ya da `main`'e açılan her PR'da ve 
 | Üretici dosyası yok (aşağıda) | `node tools/check-vendor-files.mjs` |
 | Sürüm numarası üç dosyada da aynı | `node tools/check-version.mjs` |
 | Sürüm betiklerinin testleri | `node --test "tools/release/*.test.mjs"` |
-| `main`'e açılan PR'ın sürüm metinleri yazılmış: değişiklik listeleri, sürüm notları, Store'un "Yenilikler" metni | `node tools/release/check-release.mjs` |
+| `main`'e açılan ve henüz etiketi olmayan bir sürüm getiren PR'ın sürüm metinleri yazılmış: değişiklik listeleri, sürüm notları, Store'un "Yenilikler" metni | `node tools/release/check-release.mjs` |
 | TypeScript tip denetimi ve arayüzün derlenmesi | `pnpm --dir app build` |
 | Tek bir uyarının bile kırmızı yaptığı ESLint | `pnpm --dir app lint` |
 | rustfmt | `cargo fmt --all -- --check` |

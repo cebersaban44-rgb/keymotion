@@ -66,13 +66,23 @@ jobs:
       - name: Versions agree
         run: node tools/check-version.mjs
 
-      # A pull request into main is a release: its CHANGELOG sections,
-      # release notes pages and Store What's new must be written, not the
-      # skeletons tools/release/prepare.mjs made (pages.yml publishes the
-      # site from main, and the tag build checks the same).
+      # A pull request into main with a new version is a release: its
+      # CHANGELOG sections, release notes pages and Store What's new must be
+      # written, not the skeletons tools/release/prepare.mjs made (pages.yml
+      # publishes the site from main, and the tag build checks the same). A
+      # version whose tag is already on GitHub was released before (a fix to
+      # the guide, say): there is nothing new to check.
       - name: Release text is written (pull requests into main)
         if: github.base_ref == 'main'
-        run: node tools/release/check-release.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(node -p "require('./app/src-tauri/tauri.conf.json').version")"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$version" --silent 2>/dev/null; then
+            echo "v$version is already released: this pull request makes no new release, so there is no release text to check."
+          else
+            node tools/release/check-release.mjs
+          fi
 
       # The scripts the release (release.yml), site (pages.yml) and Store
       # (store.yml) workflows use, and the checks above (with the app's

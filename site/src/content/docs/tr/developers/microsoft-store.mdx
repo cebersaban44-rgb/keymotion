@@ -112,7 +112,7 @@ Bir sürüm GitHub'da ve Microsoft Store'da aynı gün çıkar; böylece bir num
 
 2. **Metinleri yazın:** iskeletlerin olduğu yerlere. Her dilde sürüm notları sayfasındaki sürüm bölümü ve sayfanın `description` satırı; ayrıca `store/whats-new/1.2.0.<dil>.txt`: en çok 1500 karakterlik düz metin, Store kopyasına gelenler hakkında (GitHub kopyasının kendi güncelleme seçeneklerini yazmayın). Yazılacak bir şey kalmayınca `node tools/release/check-release.mjs` geçer. PR'ı `develop`'a açın.
 
-3. **`develop`'u `main`'e birleştirin:** sürüm PR'ıyla. CI, `main`'e açılan her PR'da `check-release.mjs`'i çalıştırır; böylece bir iskelet siteye ulaşamaz.
+3. **`develop`'u `main`'e birleştirin:** sürüm PR'ıyla. CI, `main`'e açılan ve sürümünün henüz etiketi olmayan her PR'da `check-release.mjs`'i çalıştırır; böylece bir iskelet siteye ulaşamaz.
 
 4. **`main`'i etiketleyin:** kendi bilgisayarınızda, `git switch main` ve `git pull`'dan sonra:
 
