@@ -41,6 +41,6 @@ agentsMayEdit: boolean,
  */
 hideInGame: boolean, 
 /**
- * Screen cards each agent may show in an hour (1–20).
+ * Screen cards all agents together may show in an hour (1–20).
  */
 screenPerHour: number, signals: AgentSignalLooks, usageLimit: AgentUsageLimit, sessions: AgentSessions, away: AgentAway, unanswered: AgentUnanswered, progress: AgentProgress, longTask: AgentLongTask, night: AgentNight, helper: AgentHelper, };

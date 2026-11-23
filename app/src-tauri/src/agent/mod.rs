@@ -153,6 +153,9 @@ pub struct ScreenNow {
     pub ready: Result<(), AgentError>,
     /// The live mode is on: cards may go up by themselves.
     pub live: bool,
+    /// A meeting's or a reminder's card holds the screen: they rank above
+    /// agents' cards, as above the focus timer's, a game's and the song's.
+    pub held: bool,
 }
 
 /// Profile writes by all agents together in any 24 hours.
@@ -182,6 +185,8 @@ const MAX_PATTERN_AGENTS: usize = 32;
 const MAX_PATTERN_BYTES: usize = 16 * 1024;
 const MAX_PATTERNS_BYTES: usize = 512 * 1024;
 const PATTERNS_FILE: &str = "agent-patterns.json";
+/// The field of [`PATTERNS_FILE`] the agents' patterns are kept under.
+const PATTERNS_FIELD: &str = "agents";
 
 /// The agents' saved scenes: agent → name → scene.
 type Patterns = std::collections::BTreeMap<String, std::collections::BTreeMap<String, SceneArgs>>;
@@ -325,6 +330,9 @@ pub trait Host: Send + Sync {
     /// of `minutes` instead of the user's sequence.
     fn focus_control(&self, action: FocusAction, minutes: Option<u16>) -> Result<FocusDone, String>;
     fn profiles(&self) -> Result<ProfilesNow, String>;
+    /// The user has changes in Keymotion that are not on the keyboard yet
+    /// (a per-key design being painted): closing the window would ask.
+    fn unsaved_changes(&self) -> bool;
     /// Write `profile`'s lighting to the keyboard on the cable (the write
     /// guard applies). Whether it was written (`false`: it had it).
     fn write_lighting(&self, profile: &Profile) -> Result<bool, WriteError>;
@@ -338,8 +346,10 @@ pub trait Host: Send + Sync {
     fn screen(&self) -> ScreenNow;
     /// Ask the page to draw an agent's card.
     fn request_card(&self, card: &AgentCard);
-    /// Hand a drawn card to the live mode.
-    fn submit_card(&self, anim: ScreenAnimation, name: &str) -> Result<(), String>;
+    /// Hand a drawn card to the live mode: whether it took the place of an
+    /// agent's card still waiting there (that one never goes up now). A
+    /// meeting's or a reminder's card holding the screen refuses it.
+    fn submit_card(&self, anim: ScreenAnimation, name: &str) -> Result<bool, String>;
     /// Agents' cards in the live mode now.
     fn cards_on_screen(&self) -> OnScreen;
     /// The user's own picture comes back after `ms`, unless another card
@@ -473,7 +483,12 @@ impl Core {
     /// The saved patterns, from the host: each checked again (one that no
     /// longer checks is left out); a file of another shape is kept aside.
     fn with_patterns(self: Arc<Self>) -> Arc<Self> {
-        let Some(value) = self.host.load_json(PATTERNS_FILE) else { return self };
+        let Some(mut value) = self.host.load_json(PATTERNS_FILE) else { return self };
+        // Under `agents` (see `store_patterns`); a file from before kept
+        // them at the top.
+        if let Some(agents) = value.get_mut(PATTERNS_FIELD).map(Value::take) {
+            value = agents;
+        }
         let Ok(mut all) = serde_json::from_value::<Patterns>(value) else {
             tracing::warn!("{PATTERNS_FILE} is not a list of patterns; kept aside");
             self.host.set_aside_json(PATTERNS_FILE);
@@ -494,9 +509,13 @@ impl Core {
     }
 
     /// Write the patterns (called with their lock held, so an older copy is
-    /// never written last).
+    /// never written last). The agents' names are theirs to choose, so they
+    /// go under one field of their own: at the top of the file a name such
+    /// as `version` would clash with the file's own fields, and the next
+    /// start would set every agent's patterns aside.
     fn store_patterns(&self, all: &Patterns) -> Result<(), AgentError> {
         let value = serde_json::to_value(all)
+            .map(|agents| json!({ PATTERNS_FIELD: agents }))
             .map_err(|e| AgentError::new(ErrorCode::Internal, format!("Patterns not written: {e}")))?;
         self.host
             .save_json(PATTERNS_FILE, &value)
@@ -828,6 +847,23 @@ impl Core {
                     return Err(AgentError::new(ErrorCode::BusyFlashWrite, "The keyboard's memory is being written.")
                         .with_retry_after(Duration::from_secs(5)));
                 }
+                // As the per-app profiles: never over the user's unsaved
+                // lighting, never during a game that wants the keyboard left
+                // alone.
+                if self.host.unsaved_changes() {
+                    return Err(AgentError::new(
+                        ErrorCode::WriteBlocked,
+                        "Keymotion did not write the keyboard: the user has changes in Keymotion that are not saved yet.",
+                    )
+                    .with_hint("The user saves or drops them in Keymotion; do not retry until then."));
+                }
+                if self.host.quiet() != Quiet::Off {
+                    return Err(AgentError::new(
+                        ErrorCode::WriteBlocked,
+                        "Keymotion did not write the keyboard: a game is running and the user asked Keymotion to leave the keyboard alone while playing.",
+                    )
+                    .with_hint("Try again after the game."));
+                }
                 let agent = agent_of(call.source.as_str()).to_string();
                 // The slot is taken before the write, under the lock, and
                 // given back when nothing was written.
@@ -1092,7 +1128,19 @@ impl Core {
             return Err(AgentError::new(ErrorCode::PermissionOff, "The live screen is off in Keymotion.")
                 .with_hint("Only the user can turn it on, in Keymotion › Screen › Live screen. Do not retry."));
         }
+        if screen.held {
+            return Err(Self::screen_held());
+        }
         Ok(())
+    }
+
+    /// A meeting's or a reminder's card has the screen.
+    fn screen_held() -> AgentError {
+        AgentError::new(
+            ErrorCode::WriteBlocked,
+            "The keyboard's screen shows a meeting's or a reminder's card; agents' cards wait until it is gone.",
+        )
+        .with_hint("Try again later; the light commands still work meanwhile.")
     }
 
     /// `card`: a card on the keyboard's screen.
@@ -1140,7 +1188,10 @@ impl Core {
                 }
                 let show_ms = kb_agent::values::duration_ms(c.duration);
                 let name = Self::card_name(c.title.as_deref(), c.text.as_deref());
-                let id = book.start(content, show_ms, &name, now);
+                let (id, never_written) = book.start(content, show_ms, &name, now);
+                if let Some(old) = never_written {
+                    l.cards.give_back(&old);
+                }
                 l.cards.take(&agent, &id, wall);
                 self.store_limits(&l);
                 (id, l.cards.count(wall, HOUR_MS), l.cards.count_for(&agent, wall, HOUR_MS))
@@ -1247,7 +1298,10 @@ impl Core {
                 return;
             }
             let content = cards::content_id(&[b"long", agent.as_bytes(), &minutes.to_le_bytes(), &now.to_le_bytes()]);
-            let id = book.start(content, show_ms, &format!("Agent: done in {minutes} min"), now);
+            let (id, never_written) = book.start(content, show_ms, &format!("Agent: done in {minutes} min"), now);
+            if let Some(old) = never_written {
+                l.cards.give_back(&old);
+            }
             l.cards.take(&agent, &id, wall);
             self.store_limits(&l);
             id
@@ -1274,14 +1328,25 @@ impl Core {
         let now = self.host.mono_ms();
         let name = lock(&self.cards).drawn(id, now)?;
         let sent = self.host.submit_card(anim, &name);
-        if let Err(e) = &sent {
-            if lock(&self.cards).failed(id, &format!("The live screen did not take it: {e}")) {
-                self.give_card_back(id);
+        match &sent {
+            // It took the place of the card replaced before it, which was
+            // still waiting there: that one never goes up.
+            Ok(true) => {
+                let dropped = lock(&self.cards).orphan_dropped();
+                if let Some(old) = dropped {
+                    self.give_card_back(&old);
+                }
+            }
+            Ok(false) => {}
+            Err(e) => {
+                if lock(&self.cards).failed(id, &format!("The live screen did not take it: {e}")) {
+                    self.give_card_back(id);
+                }
             }
         }
         self.cards_moved.notify_all();
         self.wake();
-        sent
+        sent.map(|_| ())
     }
 
     /// The page could not draw card `id`.
@@ -1716,6 +1781,14 @@ struct AppHost {
     conflict: Mutex<Option<(Instant, Option<&'static str>)>>,
 }
 
+impl AppHost {
+    /// A meeting's or a reminder's card holds the screen (it is on it, or
+    /// on its way).
+    fn higher_holds(live: &crate::live::LiveHandle) -> bool {
+        live.held_by(crate::calendar::SOURCE) || live.held_by(crate::reminders::SOURCE)
+    }
+}
+
 impl Host for AppHost {
     fn mono_ms(&self) -> u64 {
         self.started.elapsed().as_millis() as u64
@@ -1877,6 +1950,10 @@ impl Host for AppHost {
         Ok(ProfilesNow { profiles, current })
     }
 
+    fn unsaved_changes(&self) -> bool {
+        crate::unsaved_changes(&self.app)
+    }
+
     fn write_lighting(&self, profile: &Profile) -> Result<bool, WriteError> {
         let model = crate::usb_model(&self.app).ok_or(WriteError::NoUsb)?;
         let current = crate::profile_current(&self.app, &model).map_err(WriteError::Failed)?;
@@ -1913,18 +1990,24 @@ impl Host for AppHost {
         } else {
             Err(AgentError::new(ErrorCode::Unsupported, "This keyboard has no screen."))
         };
-        let live = self.app.try_state::<Arc<crate::live::LiveHandle>>().is_some_and(|l| l.enabled());
-        ScreenNow { ready, live }
+        let live = self.app.try_state::<Arc<crate::live::LiveHandle>>();
+        let held = live.as_ref().is_some_and(|l| Self::higher_holds(l));
+        ScreenNow { ready, live: live.is_some_and(|l| l.enabled()), held }
     }
 
     fn request_card(&self, card: &AgentCard) {
         let _ = self.app.emit(EVENT_AGENT_CARD, card);
     }
 
-    fn submit_card(&self, anim: ScreenAnimation, name: &str) -> Result<(), String> {
+    fn submit_card(&self, anim: ScreenAnimation, name: &str) -> Result<bool, String> {
         use tauri::Manager;
         let live = self.app.try_state::<Arc<crate::live::LiveHandle>>().ok_or("the live screen is not running")?;
-        live.submit(anim, CARD_SOURCE, name).map(|_| ())
+        // A meeting's or a reminder's card came while this one was drawn:
+        // it is not replaced, nor is it if it still waits for the budget.
+        if Self::higher_holds(&live) {
+            return Err("a meeting's or a reminder's card has the screen".into());
+        }
+        live.submit_over_own(anim, CARD_SOURCE, name)
     }
 
     fn cards_on_screen(&self) -> OnScreen {
@@ -2219,6 +2302,10 @@ mod tests {
         write_ms: AtomicU64,
         /// The focus timer is running already.
         focus_running: AtomicBool,
+        /// The user has unsaved changes in Keymotion.
+        unsaved: AtomicBool,
+        /// A meeting's or a reminder's card holds the screen.
+        held: AtomicBool,
     }
 
     /// A per-key profile for the keyboard on the cable: Esc red, F1 blue.
@@ -2278,6 +2365,8 @@ mod tests {
                 write_fails: Mutex::new(None),
                 write_ms: AtomicU64::new(0),
                 focus_running: AtomicBool::new(false),
+                unsaved: AtomicBool::new(false),
+                held: AtomicBool::new(false),
             })
         }
 
@@ -2355,6 +2444,9 @@ mod tests {
         fn profiles(&self) -> Result<ProfilesNow, String> {
             Ok(lock(&self.profiles).clone())
         }
+        fn unsaved_changes(&self) -> bool {
+            self.unsaved.load(Ordering::SeqCst)
+        }
         fn write_lighting(&self, profile: &Profile) -> Result<bool, WriteError> {
             std::thread::sleep(Duration::from_millis(self.write_ms.load(Ordering::SeqCst)));
             if let Some(e) = lock(&self.write_fails).clone() {
@@ -2368,16 +2460,21 @@ mod tests {
         }
         fn screen(&self) -> ScreenNow {
             let ready = if self.screen_ok.load(Ordering::SeqCst) { Ok(()) } else { Err(needs_usb()) };
-            ScreenNow { ready, live: self.live_on.load(Ordering::SeqCst) }
+            ScreenNow { ready, live: self.live_on.load(Ordering::SeqCst), held: self.held.load(Ordering::SeqCst) }
         }
         fn request_card(&self, card: &AgentCard) {
             lock(&self.cards).push(card.clone());
         }
-        fn submit_card(&self, _anim: ScreenAnimation, name: &str) -> Result<(), String> {
+        fn submit_card(&self, _anim: ScreenAnimation, name: &str) -> Result<bool, String> {
+            if self.held.load(Ordering::SeqCst) {
+                return Err("a meeting's card has the screen".into());
+            }
             lock(&self.submitted).push(name.to_string());
             let mut on = lock(&self.on_screen);
+            // An agent's card waiting there is replaced (the newest wins).
+            let replaced = on.waiting;
             on.waiting = true;
-            Ok(())
+            Ok(replaced)
         }
         fn cards_on_screen(&self) -> OnScreen {
             *lock(&self.on_screen)
@@ -2847,8 +2944,10 @@ mod tests {
         // The same card again: nothing to send.
         assert_eq!(call(&core, "tests", with_picture).unwrap()["skipped"], "same_content");
         assert_eq!(lock(&fake.cards).len(), 1);
-        // Another one from another name, then the hour is full (two
-        // allowed, for all agents together).
+        // The page draws it: it goes to the live mode. Another one from
+        // another name, then the hour is full (two allowed, for all agents
+        // together).
+        core.card_drawn(answer["id"].as_str().unwrap(), anim()).unwrap();
         let second = call(&core, "other-agent:s", card("Second", true)).unwrap();
         assert_eq!((second["sent_this_hour"].clone(), second["agent_sent_this_hour"].clone()), (json!(2), json!(1)));
         let e = call(&core, "a-third-name", card("Third", true)).unwrap_err();
@@ -2995,6 +3094,83 @@ mod tests {
         call(&core, "claude-code:a1", hook("done")).unwrap();
         assert_eq!(lock(&fake.cards).len(), 1);
         assert_eq!(lock(&core.limits).cards.count(core.wall(), HOUR_MS), 1);
+        // A meeting's card on the screen: no card, nothing counted.
+        core.set_card_drawer(true);
+        fake.held.store(true, Ordering::SeqCst);
+        call(&core, "claude-code:a1", hook("busy")).unwrap();
+        fake.advance(12 * 60_000);
+        call(&core, "claude-code:a1", hook("done")).unwrap();
+        assert_eq!(lock(&fake.cards).len(), 1);
+        assert_eq!(lock(&core.limits).cards.count(core.wall(), HOUR_MS), 1);
+    }
+
+    fn card_id(answer: Result<Value, AgentError>) -> String {
+        answer.unwrap()["id"].as_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn a_card_replaced_before_it_went_up_gives_its_count_back() {
+        let fake = Fake::new();
+        let core = core_with(&fake, AgentSettings { enabled: true, screen: true, ..AgentSettings::default() });
+        let count = || lock(&core.limits).cards.count(core.wall(), HOUR_MS);
+        // Card 1 is still being drawn when card 2 comes: card 1 is never
+        // written.
+        let first = card_id(call(&core, "tests", card("One", true)));
+        let second = card_id(call(&core, "other:1", card("Two", true)));
+        assert_eq!(count(), 1, "card 1 gave its count back");
+        assert!(core.card_drawn(&first, anim()).is_err(), "its late drawing is not sent");
+        // Card 2 waits for the budget; card 3 takes its place there.
+        core.card_drawn(&second, anim()).unwrap();
+        let third = card_id(call(&core, "tests", card("Three", true)));
+        assert_eq!(count(), 2);
+        core.card_drawn(&third, anim()).unwrap();
+        assert_eq!(count(), 1, "card 2 never goes up: its count is back too");
+        assert_eq!(lock(&fake.submitted).len(), 2);
+    }
+
+    #[test]
+    fn a_meetings_or_reminders_card_keeps_the_screen_from_agents_cards() {
+        let fake = Fake::new();
+        let core = core_with(&fake, AgentSettings { enabled: true, screen: true, ..AgentSettings::default() });
+        fake.held.store(true, Ordering::SeqCst);
+        let e = call(&core, "tests", card("Build passed", true)).unwrap_err();
+        assert_eq!((e.code, e.exit_code()), (ErrorCode::WriteBlocked, 77));
+        assert!(e.message.contains("meeting"), "{e:?}");
+        assert!(lock(&fake.cards).is_empty());
+        // The meeting's card comes while an agent's card is drawn: that one
+        // is not handed over (nor does it replace the meeting's card waiting
+        // for the budget), and its count goes back.
+        fake.held.store(false, Ordering::SeqCst);
+        let id = card_id(call(&core, "tests", card("Build passed", true)));
+        fake.held.store(true, Ordering::SeqCst);
+        assert!(core.card_drawn(&id, anim()).is_err());
+        assert!(lock(&fake.submitted).is_empty());
+        assert_eq!(lock(&core.limits).cards.count(core.wall(), HOUR_MS), 0);
+    }
+
+    #[test]
+    fn a_profile_is_not_written_over_unsaved_changes_or_in_a_quiet_game() {
+        let fake = Fake::new();
+        let core = core_with(&fake, AgentSettings { enabled: true, profiles: true, ..AgentSettings::default() });
+        let writes = || lock(&core.limits).profile_writes.count(core.wall(), DAY_MS);
+        // The user paints a per-key design and has not saved it.
+        fake.unsaved.store(true, Ordering::SeqCst);
+        let e = call(&core, "tests", profile("apply", Some("p1"), true)).unwrap_err();
+        assert_eq!((e.code, e.exit_code()), (ErrorCode::WriteBlocked, 77));
+        assert!(e.message.contains("not saved"), "{e:?}");
+        fake.unsaved.store(false, Ordering::SeqCst);
+        // A game that wants the keyboard left alone.
+        for quiet in [Quiet::All, Quiet::ButReminders] {
+            *lock(&fake.quiet) = quiet;
+            let e = call(&core, "tests", profile("apply", Some("p1"), true)).unwrap_err();
+            assert_eq!(e.code, ErrorCode::WriteBlocked);
+            assert!(e.message.contains("game"), "{e:?}");
+        }
+        assert!(lock(&fake.wrote).is_empty());
+        assert_eq!(writes(), 0, "nothing counted");
+        *lock(&fake.quiet) = Quiet::Off;
+        assert_eq!(call(&core, "tests", profile("apply", Some("p1"), true)).unwrap()["changed"], true);
+        assert_eq!(writes(), 1);
     }
 
     fn frame_has(fake: &Fake, key: &str) -> Option<kb_protocol::sonix::Rgb> {
@@ -3117,7 +3293,7 @@ mod tests {
         // A saved pattern is kept in its plain form.
         call(&core, "a0", Command::Scene(scene_args(Some("one"), false))).unwrap();
         let file = lock(&fake.files)[PATTERNS_FILE].clone();
-        assert_eq!(file["a0"]["one"]["steps"][0]["color"], "#ff0000");
+        assert_eq!(file[PATTERNS_FIELD]["a0"]["one"]["steps"][0]["color"], "#ff0000");
         // 32 agent names at most; the 33rd is told, not asked to retry.
         for i in 1..32 {
             fake.advance(60);
@@ -3126,6 +3302,35 @@ mod tests {
         let e = call(&core, "a32", Command::Scene(scene_args(Some("one"), false))).unwrap_err();
         assert_eq!((e.code, e.exit_code()), (ErrorCode::BadValue, 65));
         assert!(e.hint.is_some());
+    }
+
+    #[test]
+    fn an_agent_named_like_a_field_of_the_file_keeps_everyones_patterns() {
+        let fake = Fake::new();
+        let core = core_with(&fake, AgentSettings { enabled: true, ..AgentSettings::default() });
+        call(&core, "claude-code", Command::Scene(scene_args(Some("one"), false))).unwrap();
+        fake.advance(60);
+        call(&core, "version:abc", Command::Scene(scene_args(Some("two"), false))).unwrap();
+        // The names go under a field of their own: the file's own fields
+        // (`version`, written around it on disk) never meet them.
+        let file = lock(&fake.files)[PATTERNS_FILE].clone();
+        assert_eq!(file.as_object().unwrap().keys().collect::<Vec<_>>(), [PATTERNS_FIELD]);
+        assert!(file[PATTERNS_FIELD]["version"]["two"].is_object());
+        // After a restart both agents still have theirs.
+        let restarted = core_with(&fake, AgentSettings { enabled: true, ..AgentSettings::default() });
+        let list = |source: &str| {
+            call(&restarted, source, Command::Pattern(PatternArgs { action: "list".into(), ..Default::default() }))
+                .unwrap()["patterns"][0]["name"]
+                .clone()
+        };
+        assert_eq!((list("claude-code"), list("version")), (json!("one"), json!("two")));
+        // A file from before kept them at the top: still read.
+        let fake = Fake::new();
+        lock(&fake.files).insert(PATTERNS_FILE.into(), file[PATTERNS_FIELD].clone());
+        let core = core_with(&fake, AgentSettings { enabled: true, ..AgentSettings::default() });
+        let mine =
+            call(&core, "claude-code", Command::Pattern(PatternArgs { action: "list".into(), ..Default::default() }));
+        assert_eq!(mine.unwrap()["patterns"][0]["name"], "one");
     }
 
     #[test]

@@ -431,6 +431,18 @@ impl LiveHandle {
     /// A finished card from a source. Ignored while the live mode is off
     /// or when the GIF page already shows exactly this content.
     pub fn submit(&self, anim: ScreenAnimation, source: &str, name: &str) -> Result<LiveState, String> {
+        self.put(anim, source, name)?;
+        self.state()
+    }
+
+    /// [`Self::submit`], saying whether the card took the place of one from
+    /// the same source that was still waiting (that one never goes up now).
+    pub fn submit_over_own(&self, anim: ScreenAnimation, source: &str, name: &str) -> Result<bool, String> {
+        Ok(self.put(anim, source, name)?.is_some_and(|old| old.source == source))
+    }
+
+    /// [`Self::submit`]'s work: the waiting card this one replaced, if any.
+    fn put(&self, anim: ScreenAnimation, source: &str, name: &str) -> Result<Option<LiveItem>, String> {
         let content = crate::screen_lib::content_id(&kb_protocol::sonix::screen::blob_unpadded(&anim));
         {
             let lib = self.library.lock().map_err(|_| "screen library unavailable")?;
@@ -439,29 +451,29 @@ impl LiveHandle {
             }
             if lib.live_is_showing(&content) {
                 tracing::debug!(%source, "live card unchanged; not uploaded again");
-                drop(lib);
-                return self.state();
+                return Ok(None);
             }
         }
-        {
+        let replaced = {
             let mut rt = self.rt.lock().map_err(|_| "live state unavailable")?;
             if rt.pending.as_ref().is_some_and(|p| p.content == content) {
-                drop(rt);
-                return self.state();
+                return Ok(None);
             }
             // A return that is due stays: if this card has to wait for the
             // budget, the old card should not stay on the screen meanwhile.
             // The newest card wins.
-            rt.pending = Some(Pending {
-                anim,
-                content,
-                item: LiveItem { source: source.to_string(), name: crate::screen_lib::clean_name(name) },
-            });
-        }
+            rt.pending
+                .replace(Pending {
+                    anim,
+                    content,
+                    item: LiveItem { source: source.to_string(), name: crate::screen_lib::clean_name(name) },
+                })
+                .map(|p| p.item)
+        };
         tracing::info!(%source, "live card waiting");
         self.wake();
         self.emit();
-        self.state()
+        Ok(replaced)
     }
 
     /// A manual upload used the budget.
