@@ -15,6 +15,18 @@ says so.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-23
+
+Keymotion 1.2.1 brings 1.2.0 to the Microsoft Store. Nothing changes for
+the copy from GitHub.
+
+### Fixed
+
+- **Microsoft Store:** the Store package now brings `keymotion-cli` as a
+  command of Keymotion itself, the way the Store accepts it, so 1.2.0's
+  features reach the Store copy too. Nothing changes for the copy from
+  GitHub.
+
 ## [1.2.0] - 2026-11-23
 
 Keymotion has a new look in the style of Windows 11, and new tools: music
@@ -380,7 +392,8 @@ The first release. It supports the AJAZZ AK980 PRO on Windows.
   something goes wrong, the supported keyboards and the ones that could come
   next, and pages for developers. Settings › About opens it.
 
-[Unreleased]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.0...develop
+[Unreleased]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.1...develop
+[1.2.1]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.1
 [1.2.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.0
 [1.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.1.0
 [1.0.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.0.0

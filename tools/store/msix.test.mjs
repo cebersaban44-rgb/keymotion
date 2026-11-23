@@ -79,19 +79,25 @@ test("the manifest keeps what the app relies on", () => {
   assert.match(manifest, /Executable="keymotion\.exe"/);
 });
 
-test("keymotion-cli is a console app with its alias, the app keeps its id", () => {
+test("keymotion-cli is a console alias of the one application, the app keeps its id", () => {
   const apps = [...manifest.matchAll(/<Application Id="(\w+)" Executable="([^"]+)"([^>]*)>/g)];
-  assert.deepEqual(apps.map((a) => [a[1], a[2]]), [["Keymotion", "keymotion.exe"], ["Cli", "keymotion-cli.exe"]]);
+  // One application: a second one without a Start menu entry is a
+  // "headless app", which Partner Center refuses without a waiver
+  // (1.2.0's package, 23 Nov 2026).
+  assert.deepEqual(apps.map((a) => [a[1], a[2]]), [["Keymotion", "keymotion.exe"]]);
+  assert.doesNotMatch(manifest, /AppListEntry="none"/);
   // keymotion-cli starts the app by the id "Keymotion".
   const launch = readFileSync(join(root, "crates", "keymotion-cli", "src", "launch.rs"), "utf8");
   assert.equal(/pub const APP_ID: &str = "([^"]+)"/.exec(launch)?.[1], apps[0][1]);
-  // A console program, no tile, nothing in the Start menu.
-  assert.match(apps[1][3], /desktop4:Subsystem="console"/);
-  const cli = manifest.slice(manifest.indexOf('<Application Id="Cli"'));
-  assert.match(cli, /AppListEntry="none"/);
-  assert.match(cli, /<uap5:AppExecutionAlias desktop4:Subsystem="console">/);
+  // The alias runs keymotion-cli.exe, a console program (as wt.exe in
+  // Windows Terminal's package).
+  const cli = /<uap5:Extension Category="windows\.appExecutionAlias"([^>]*)>([\s\S]*?)<\/uap5:Extension>/.exec(manifest);
+  assert.ok(cli, "the alias extension");
+  assert.match(cli[1], /Executable="keymotion-cli\.exe"/);
+  assert.match(cli[1], /EntryPoint="Windows\.FullTrustApplication"/);
+  assert.match(cli[2], /<uap5:AppExecutionAlias desktop4:Subsystem="console">/);
   // The alias is where the app and the hooks look for it.
-  const alias = /<uap5:ExecutionAlias Alias="([^"]+)" \/>/.exec(cli)?.[1];
+  const alias = /<uap5:ExecutionAlias Alias="([^"]+)" \/>/.exec(cli[2])?.[1];
   assert.equal(alias, "keymotion-cli.exe");
   const apps_rs = readFileSync(join(root, "app", "src-tauri", "src", "agent", "apps.rs"), "utf8");
   assert.ok(apps_rs.includes("Microsoft\\WindowsApps\\" + alias), "app/src-tauri/src/agent/apps.rs");
