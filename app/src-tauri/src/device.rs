@@ -825,14 +825,90 @@ impl Drop for FlashWriteGuard {
     }
 }
 
+/// Cancelling screen uploads, each by its id: the one that runs stops
+/// before its next part ("AA"; "04 xx" cannot stop and finishes), one still
+/// waiting its turn does not start. A cancel never reaches another upload.
+#[derive(Default)]
+pub struct UploadCancels(Mutex<UploadQueue>);
+
+#[derive(Default)]
+struct UploadQueue {
+    /// The upload that runs, and its stop flag.
+    running: Option<(String, Arc<AtomicBool>)>,
+    /// Uploads sent to the actor and not started yet; `true`: cancelled.
+    waiting: Vec<(String, bool)>,
+}
+
+impl UploadCancels {
+    fn lock(&self) -> std::sync::MutexGuard<'_, UploadQueue> {
+        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// An upload with this id was sent to the actor.
+    fn queued(&self, id: &str) {
+        self.lock().waiting.push((id.to_string(), false));
+    }
+
+    /// It will not start after all (the actor did not take it).
+    fn unqueued(&self, id: &str) {
+        let mut q = self.lock();
+        if let Some(i) = q.waiting.iter().position(|(w, _)| w == id) {
+            q.waiting.remove(i);
+        }
+    }
+
+    /// Stop the upload with this id: the one that runs, else the first one
+    /// waiting. Nothing else.
+    pub fn cancel(&self, id: &str) -> bool {
+        let mut q = self.lock();
+        if let Some((running, stop)) = &q.running {
+            if running == id {
+                stop.store(true, Ordering::SeqCst);
+                return true;
+            }
+        }
+        match q.waiting.iter_mut().find(|(w, cancelled)| w == id && !*cancelled) {
+            Some((_, cancelled)) => {
+                *cancelled = true;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The actor starts the upload with this id: its stop flag, or `None`
+    /// when it was cancelled while it waited.
+    fn start(&self, id: &str) -> Option<Arc<AtomicBool>> {
+        let mut q = self.lock();
+        let cancelled = match q.waiting.iter().position(|(w, _)| w == id) {
+            Some(i) => q.waiting.remove(i).1,
+            None => false,
+        };
+        if cancelled {
+            return None;
+        }
+        let stop = Arc::new(AtomicBool::new(false));
+        q.running = Some((id.to_string(), stop.clone()));
+        Some(stop)
+    }
+
+    fn ended(&self) {
+        self.lock().running = None;
+    }
+}
+
+/// A screen upload stopped before it began.
+pub const ERR_UPLOAD_CANCELLED: &str = "screen upload cancelled before it started";
+
 pub struct DeviceHandle {
     pub snapshot: Arc<Mutex<Snapshot>>,
     /// The flash write in progress (close guard, shutdown hold).
     pub flash: FlashState,
     tx: Sender<Request>,
-    /// Set to stop the screen upload that runs ("AA" keyboards stop before
-    /// their next part; "04 xx" ones cannot stop and finish).
-    upload_cancel: Arc<AtomicBool>,
+    uploads: Arc<UploadCancels>,
+    /// An "AA" keyboard is held in per-key mode by live lights (or a crash
+    /// note waits): closing has something to put back.
+    aa_hold: Arc<AtomicBool>,
 }
 
 impl DeviceHandle {
@@ -840,9 +916,10 @@ impl DeviceHandle {
         self.tx.send(r).map_err(|_| "device actor stopped".to_string())
     }
 
-    /// Stop the screen upload that runs, if any.
-    pub fn cancel_upload(&self) {
-        self.upload_cancel.store(true, Ordering::SeqCst);
+    /// Stop the screen upload with this id, running or waiting; whether
+    /// there was one.
+    pub fn cancel_upload(&self, id: &str) -> bool {
+        self.uploads.cancel(id)
     }
 
     /// The record id of the keyboard on the cable that takes writes: the
@@ -856,8 +933,12 @@ impl DeviceHandle {
     }
 
     /// The app is closing: give the keyboard its own effect back if live
-    /// lights hold it ("AA"), waiting at most `wait`.
+    /// lights hold it ("AA"), waiting at most `wait`. Nothing to put back
+    /// ("04 xx", no keyboard, nothing held): returns at once.
     pub fn closing(&self, wait: Duration) {
+        if !self.aa_hold.load(Ordering::SeqCst) {
+            return;
+        }
         let (tx, rx) = mpsc::channel();
         if self.send(Request::Closing(tx)).is_ok() && rx.recv_timeout(wait).is_err() {
             tracing::warn!("closing: the keyboard did not finish in time");
@@ -874,7 +955,10 @@ impl DeviceHandle {
     /// Upload to the screen and wait (long) for the outcome.
     pub fn upload_screen(&self, id: String, anim: ScreenAnimation) -> ScreenUploadResult {
         let (tx, rx) = mpsc::channel();
+        self.uploads.queued(&id);
+        let label = id.clone();
         if let Err(e) = self.send(Request::UploadScreen { id, anim: Box::new(anim), reply: tx }) {
+            self.uploads.unqueued(&label);
             return ScreenUploadResult { record_id: None, flash_written: false, error: Some(e) };
         }
         rx.recv_timeout(SCREEN_UPLOAD_TIMEOUT).unwrap_or_else(|_| ScreenUploadResult {
@@ -915,8 +999,9 @@ pub fn spawn(
     let (tx, rx) = mpsc::channel();
     let shared = snapshot.clone();
     let actor_flash = flash.clone();
-    let upload_cancel = Arc::new(AtomicBool::new(false));
-    let actor_cancel = upload_cancel.clone();
+    let uploads = Arc::new(UploadCancels::default());
+    let aa_hold = Arc::new(AtomicBool::new(false));
+    let (actor_uploads, actor_hold) = (uploads.clone(), aa_hold.clone());
     std::thread::Builder::new()
         .name("device-actor".into())
         .spawn(move || {
@@ -927,11 +1012,12 @@ pub fn spawn(
             }
             actor.flash = actor_flash;
             actor.screen_hook = screen_hook;
-            actor.upload_cancel = actor_cancel;
+            actor.uploads = actor_uploads;
+            actor.aa_hold = actor_hold;
             actor.run(rx)
         })
         .expect("spawn device actor");
-    DeviceHandle { snapshot, flash, tx, upload_cancel }
+    DeviceHandle { snapshot, flash, tx, uploads, aa_hold }
 }
 
 /// The open command channel of the keyboard on the cable.
@@ -964,8 +1050,14 @@ struct Actor {
     shared: Arc<Mutex<Snapshot>>,
     /// Where keyboards come from: the HID subsystem, or the simulator.
     ports: Ports,
-    /// Stops the screen upload that runs (DeviceHandle::cancel_upload).
-    upload_cancel: Arc<AtomicBool>,
+    /// Cancels of screen uploads (DeviceHandle::cancel_upload).
+    uploads: Arc<UploadCancels>,
+    /// Told to DeviceHandle: an "AA" keyboard has something to put back
+    /// when the app closes.
+    aa_hold: Arc<AtomicBool>,
+    /// The app is closing (`Request::Closing`): no live frame, mirror,
+    /// clock sync or driver work any more.
+    closed: bool,
     /// The driver's own work ([`Driver::next_due`]) is not looked at again
     /// before this (it had nothing it could do).
     driver_rest_until: Option<Instant>,
@@ -1062,7 +1154,9 @@ impl Actor {
             shared,
             // Set by `spawn`.
             ports: Ports::Hid(None),
-            upload_cancel: Arc::new(AtomicBool::new(false)),
+            uploads: Arc::new(UploadCancels::default()),
+            aa_hold: Arc::new(AtomicBool::new(false)),
+            closed: false,
             driver_rest_until: None,
             programs: running_conflict,
             peers: Vec::new(),
@@ -1118,7 +1212,7 @@ impl Actor {
             } else if !self.streaming() {
                 self.end_live();
             }
-            if self.mirror.is_some() && !self.streaming() && now >= self.next_mirror {
+            if self.mirror.is_some() && !self.closed && !self.streaming() && now >= self.next_mirror {
                 self.send_mirror();
                 self.next_mirror = Instant::now() + MIRROR_EVERY;
             }
@@ -1127,7 +1221,7 @@ impl Actor {
             }
             if let Some((due, attempts)) = self.clock_due {
                 // Not during a game that wants the keyboard left alone.
-                if now >= due && self.quiet == Quiet::Off {
+                if now >= due && self.quiet == Quiet::Off && !self.closed {
                     self.clock_due = None;
                     match self.sync_clock() {
                         Ok(()) => {}
@@ -1143,6 +1237,9 @@ impl Actor {
                 }
             }
 
+            // Before waiting: what this turn did (a switch by a frame, a
+            // request's write) is known to the handle while the actor sleeps.
+            self.note_hold();
             if waiting.is_empty() {
                 let frames = if self.streaming() {
                     Some(self.next_live)
@@ -1160,6 +1257,13 @@ impl Actor {
             }
             self.handle_waiting(&rx, &mut waiting);
         }
+    }
+
+    /// Tell [`DeviceHandle::closing`] whether an "AA" keyboard has
+    /// something to put back.
+    fn note_hold(&self) {
+        let holds = self.command.as_ref().and_then(|c| c.driver.aa()).is_some_and(crate::aa::AaDriver::holds_keyboard);
+        self.aa_hold.store(holds, Ordering::SeqCst);
     }
 
     /// Handle one turn's requests ([`next_batch`]) out of those waiting
@@ -1346,9 +1450,13 @@ impl Actor {
     }
 
     /// The "AA" driver of the keyboard on the cable, when its channel is
-    /// open.
+    /// open: a handle left from another keyboard (another path, another
+    /// family) is not this keyboard's, and its state says nothing about it.
     fn aa_driver(&self) -> Option<&crate::aa::AaDriver> {
-        self.command.as_ref().and_then(|c| c.driver.aa())
+        let c = self.command.as_ref()?;
+        let current = Some(&c.path) == self.command_path.as_ref()
+            && self.usb.as_ref().is_some_and(|u| u.protocol() == c.driver.protocol());
+        current.then(|| c.driver.aa()).flatten()
     }
 
     /// Why the keyboard on the cable is read-only, if it is ("AA").
@@ -1390,6 +1498,9 @@ impl Actor {
     /// When the open driver has work of its own ("AA": the effect back
     /// after live lights or a crash, a read again).
     fn driver_due(&self) -> Option<Instant> {
+        if self.closed {
+            return None;
+        }
         let due = self.command.as_ref()?.driver.next_due()?;
         Some(self.driver_rest_until.map_or(due, |rest| due.max(rest)))
     }
@@ -1410,9 +1521,15 @@ impl Actor {
         }
     }
 
-    /// The app is closing: the "AA" arm gives the keyboard its own effect
+    /// The app is closing: for the rest of the run nothing streams, mirrors
+    /// or syncs any more, and the "AA" arm gives the keyboard its own effect
     /// back now if live lights hold it.
     fn closing(&mut self) {
+        self.closed = true;
+        self.live = None;
+        self.layers = Layers::default();
+        self.mirror = None;
+        self.clock_due = None;
         if self.aa_driver().is_none() {
             return;
         }
@@ -1469,7 +1586,7 @@ impl Actor {
                 let saved = backup.snapshot.effect()?;
                 self.app_effect().filter(|a| a.same_settings(&saved)).map(|a| a.color_part())
             });
-        let report = self.with_command(|d| d.restore(&backup.snapshot, color))?;
+        let report = self.with_command(|d| d.restore(&backup.snapshot, color, Some(file)))?;
         tracing::info!(written = ?report.written, kept = report.kept.len(), %file, "keyboard backup restored");
         self.next_enumerate = Instant::now();
         Ok(report.into())
@@ -1485,6 +1602,23 @@ impl Actor {
     /// it, and the progress callback gets only numbers.
     fn upload_screen(&mut self, id: &str, anim: &ScreenAnimation) -> ScreenUploadResult {
         let record_id = self.usb.as_ref().map(|k| k.record_id.clone());
+        // Cancelled while it waited its turn: it does not start.
+        let Some(cancel) = self.uploads.start(id) else {
+            tracing::info!(label = id, "screen upload cancelled before it started");
+            return ScreenUploadResult { record_id, flash_written: false, error: Some(ERR_UPLOAD_CANCELLED.into()) };
+        };
+        let r = self.upload_screen_now(id, anim, record_id, &cancel);
+        self.uploads.ended();
+        r
+    }
+
+    fn upload_screen_now(
+        &mut self,
+        id: &str,
+        anim: &ScreenAnimation,
+        record_id: Option<String>,
+        cancel: &AtomicBool,
+    ) -> ScreenUploadResult {
         let fail = |record_id: Option<String>, flash_written: bool, e: String| ScreenUploadResult {
             record_id,
             flash_written,
@@ -1515,8 +1649,6 @@ impl Actor {
         let mut last = Instant::now() - SCREEN_PROGRESS_EVERY;
         let mut started = false;
         let started_at = Instant::now();
-        self.upload_cancel.store(false, Ordering::SeqCst);
-        let cancel = self.upload_cancel.clone();
         let r = self.with_command(|d| {
             d.upload_screen(
                 &mut display,
@@ -1530,7 +1662,7 @@ impl Actor {
                         let _ = app.emit(EVENT_SCREEN_PROGRESS, p);
                     }
                 },
-                &cancel,
+                cancel,
             )
         });
         let _ = (self.screen_hook)(ScreenWriteStep::Ended { flash_written: r.is_ok() || started, ok: r.is_ok() });
@@ -1740,9 +1872,10 @@ impl Actor {
         }
     }
 
-    /// A live frame is being streamed (preview or background layer).
+    /// A live frame is being streamed (preview or background layer); never
+    /// once the app is closing.
     fn streaming(&self) -> bool {
-        self.live.is_some() || self.has_layer()
+        !self.closed && (self.live.is_some() || self.has_layer())
     }
 
     fn has_layer(&self) -> bool {
@@ -1750,7 +1883,7 @@ impl Actor {
     }
 
     fn send_live(&mut self) {
-        if self.command_path.is_none() {
+        if self.command_path.is_none() || self.closed {
             return;
         }
         // Live frames leave nothing on the keyboard: they never wait, not
@@ -1818,6 +1951,12 @@ impl Actor {
 
     fn send_mirror(&mut self) {
         if self.command_path.is_none() {
+            return;
+        }
+        // An "AA" keyboard waiting for an update, silent or in its quiet
+        // time after a cut upload is not asked four times a second; its
+        // background read asks at its own pace.
+        if self.aa_driver().is_some_and(|d| !d.mirror_ready()) {
             return;
         }
         let cal = self.calibration;
@@ -1931,7 +2070,9 @@ impl Actor {
         self.wired = wired;
         self.indicators =
             usb.map(|k| k.model.indicators.iter().map(|i| (i.led, i.color)).collect()).unwrap_or_default();
-        if self.command_path.is_none() {
+        // A handle on a path that is gone (another keyboard took the cable,
+        // or this one came back on another path) goes with it.
+        if self.command.as_ref().is_some_and(|c| Some(&c.path) != self.command_path.as_ref()) {
             self.command = None;
         }
         let device = self.refresh_device_report();
@@ -2912,6 +3053,185 @@ mod tests {
             let name = crate::aa::backups::save(&crate::aa::backups::dir(&dir.0), &other).unwrap();
             let e = call(&mut a, |reply| Request::RestoreKeyboard { file: name, color: None, reply }).unwrap_err();
             assert_eq!(e, ERR_BACKUP_OTHER_KEYBOARD);
+        }
+
+        // ------------------------------------------------------------ review of #195
+
+        fn errors_noted(a: &Actor) -> usize {
+            a.aa_driver().map_or(0, |d| d.diagnostics().iter().filter(|l| l.starts_with("error at")).count())
+        }
+
+        #[test]
+        fn a_handle_left_from_another_keyboard_says_nothing_about_the_one_on_the_cable() {
+            let dir = TempDir::new("actor-stale-handle");
+            let (mut a, _) = actor(&dir.0, "update-pending");
+            assert_eq!(a.read_only(), Some(ReadOnly::UpdatePending));
+            // The "04 xx" AK980 PRO takes the cable before a listing in
+            // between drops the "AA" handle.
+            let model = Sim::model();
+            let ff13 = model.modes.iter().find(|m| model.protocol_of(m) == Protocol::SonixFf13).unwrap();
+            a.usb = Some(UsbKeyboard { model, mode: ff13, record_id: "ajazz-ak980-pro".into() });
+            a.command_path = Some("ff13-command".into());
+            assert_eq!(a.read_only(), None);
+            a.firmware_confirmed = a.usb_firmware;
+            let block = a.gate_block(WriteKind::Memory);
+            assert!(
+                !matches!(block, Some(WriteBlock::NotSane(_) | WriteBlock::UpdatePending | WriteBlock::NoBackup(_))),
+                "{block:?}"
+            );
+
+            // A listing drops a handle whose path is gone.
+            let dir = TempDir::new("actor-gone-path");
+            let (mut a, _) = actor(&dir.0, "");
+            a.command.as_mut().expect("opened when listed").path = "gone".into();
+            a.enumerate();
+            assert!(a.command.as_ref().is_none_or(|c| c.path != "gone"));
+        }
+
+        #[test]
+        fn closing_waits_only_when_an_aa_keyboard_is_held() {
+            let (tx, _rx) = mpsc::channel();
+            let h = DeviceHandle {
+                snapshot: Arc::default(),
+                flash: FlashState::new(Ui(None)),
+                tx,
+                uploads: Arc::default(),
+                aa_hold: Arc::new(AtomicBool::new(false)),
+            };
+            let t = Instant::now();
+            h.closing(Duration::from_secs(2));
+            assert!(t.elapsed() < Duration::from_millis(500), "nothing held: no wait");
+            h.aa_hold.store(true, Ordering::SeqCst);
+            let t = Instant::now();
+            h.closing(Duration::from_millis(300));
+            assert!(t.elapsed() >= Duration::from_millis(300), "held: it waits for the actor");
+
+            // The actor says when it holds one.
+            let dir = TempDir::new("actor-hold");
+            let (mut a, _) = actor(&dir.0, "");
+            a.handle(Request::ConfirmFirmware("3.01".into()));
+            a.note_hold();
+            assert!(!a.aa_hold.load(Ordering::SeqCst));
+            a.handle(Request::SetLayer(LightLayer::Gauges, Some(frame(&[(1, 9)], 1.0))));
+            a.send_live();
+            a.note_hold();
+            assert!(a.aa_hold.load(Ordering::SeqCst));
+            let (tx, rx) = mpsc::channel();
+            a.handle(Request::Closing(tx));
+            rx.try_recv().unwrap();
+            a.note_hold();
+            assert!(!a.aa_hold.load(Ordering::SeqCst));
+        }
+
+        #[test]
+        fn closing_ends_the_stream_for_good() {
+            let dir = TempDir::new("actor-closed");
+            let (mut a, sim) = actor(&dir.0, "");
+            a.handle(Request::ConfirmFirmware("3.01".into()));
+            a.handle(Request::SetLayer(LightLayer::Gauges, Some(frame(&[(1, 9)], 1.0))));
+            a.send_live();
+            assert_eq!(sim.state().effect[0], kb_protocol::aa::effect::MODE_PER_KEY);
+            let (tx, rx) = mpsc::channel();
+            a.handle(Request::Closing(tx));
+            rx.try_recv().unwrap();
+            assert_eq!(sim.state().effect[0], 1);
+            let writes_before = sim.state().sent(cmd::SET_EFFECT).len();
+            // A layer that still comes, and the next turns of the loop.
+            a.handle(Request::SetLayer(LightLayer::Gauges, Some(frame(&[(1, 7)], 1.0))));
+            assert!(!a.streaming());
+            a.send_live();
+            a.handle(Request::SetLive(Some(frame(&[(1, 5)], 1.0))));
+            a.send_live();
+            assert_eq!(sim.state().effect[0], 1);
+            assert_eq!(sim.state().sent(cmd::SET_EFFECT).len(), writes_before);
+            assert_eq!(a.driver_due(), None);
+        }
+
+        #[test]
+        fn a_cancel_reaches_only_its_own_upload() {
+            let dir = TempDir::new("actor-cancel");
+            let (mut a, sim) = actor(&dir.0, "");
+            a.handle(Request::ConfirmFirmware("3.01".into()));
+            // Two uploads wait their turn; the second is cancelled.
+            a.uploads.queued("first");
+            a.uploads.queued("second");
+            assert!(a.uploads.cancel("second"));
+            assert!(!a.uploads.cancel("never-sent"));
+            let r = upload(&mut a, "first");
+            assert_eq!(r.error, None, "the one not cancelled runs to its end");
+            let parts = sim.state().screen.len();
+            let r = upload(&mut a, "second");
+            assert_eq!(r.error.as_deref(), Some(ERR_UPLOAD_CANCELLED));
+            assert!(!r.flash_written);
+            assert_eq!(sim.state().screen.len(), parts, "it did not start");
+            // The one that runs stops before its next part.
+            let uploads = a.uploads.clone();
+            a.screen_hook = Box::new(move |step: ScreenWriteStep<'_>| {
+                if let ScreenWriteStep::Starting { label, .. } = step {
+                    uploads.cancel(label);
+                }
+                Ok(())
+            });
+            let r = upload(&mut a, "third");
+            assert!(r.error.as_deref().is_some_and(|e| e.starts_with("screen upload cancelled after 0 of")), "{r:?}");
+            // Nothing left waiting or running.
+            assert!(!a.uploads.cancel("first") && !a.uploads.cancel("third"));
+        }
+
+        #[test]
+        fn the_mirror_leaves_a_silent_or_waiting_keyboard_alone() {
+            for faults in ["silent", "update-pending"] {
+                let dir = TempDir::new(&format!("actor-mirror-{faults}"));
+                let (mut a, sim) = actor(&dir.0, faults);
+                a.handle(Request::SetMirror(Some(MirrorExpect::default())));
+                let sent = sim.state().packets.len();
+                let errors = errors_noted(&a);
+                for _ in 0..3 {
+                    a.send_mirror();
+                }
+                assert_eq!(sim.state().packets.len(), sent, "{faults}: nothing asked");
+                assert_eq!(errors_noted(&a), errors, "{faults}: nothing noted");
+            }
+            // A keyboard that answers is mirrored.
+            let dir = TempDir::new("actor-mirror-ok");
+            let (mut a, sim) = actor(&dir.0, "");
+            a.handle(Request::SetMirror(Some(MirrorExpect::default())));
+            let sent = sim.state().packets.len();
+            a.send_mirror();
+            assert!(sim.state().packets.len() > sent);
+        }
+
+        #[test]
+        fn the_running_actor_tells_the_handle_when_it_holds_a_keyboard() {
+            let dir = TempDir::new("actor-run-hold");
+            let path = dir.0.clone();
+            let hold = Arc::new(AtomicBool::new(false));
+            let flag = hold.clone();
+            let (tx, rx) = mpsc::channel();
+            // The actor holds the HID subsystem type, which stays on its own
+            // thread: made there, as `spawn` does.
+            let running = std::thread::spawn(move || {
+                let (mut a, _) = actor(&path, "");
+                a.aa_hold = flag;
+                a.run(rx);
+            });
+            let wait_for = |want: bool| {
+                let since = Instant::now();
+                while hold.load(Ordering::SeqCst) != want && since.elapsed() < Duration::from_secs(5) {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                hold.load(Ordering::SeqCst) == want
+            };
+            tx.send(Request::ConfirmFirmware("3.01".into())).unwrap();
+            tx.send(Request::SetLayer(LightLayer::Gauges, Some(frame(&[(1, 9)], 1.0)))).unwrap();
+            // Frames switch it; no further request comes.
+            assert!(wait_for(true), "the handle hears it while frames stream");
+            let (done, answered) = mpsc::channel();
+            tx.send(Request::Closing(done)).unwrap();
+            answered.recv_timeout(Duration::from_secs(5)).unwrap();
+            assert!(wait_for(false), "nothing held after closing");
+            drop(tx);
+            running.join().unwrap();
         }
     }
 }

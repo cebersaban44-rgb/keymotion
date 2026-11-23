@@ -300,11 +300,17 @@ impl<C: FeaturePort> Driver<C> {
         }
     }
 
-    /// Write an "AA" backup back ([`crate::aa::AaDriver::restore`]).
-    pub fn restore(&mut self, backup: &kb_core::aa::AaSnapshot, color: Option<EffectColor>) -> Result<RestoreReport> {
+    /// Write an "AA" backup back ([`crate::aa::AaDriver::restore`]);
+    /// `source`, the backup's file, is never pruned.
+    pub fn restore(
+        &mut self,
+        backup: &kb_core::aa::AaSnapshot,
+        color: Option<EffectColor>,
+        source: Option<&str>,
+    ) -> Result<RestoreReport> {
         match self {
             Self::Ff13(_) => Err(Error::Refused("this keyboard has no backup to restore".into())),
-            Self::Aa(d) => d.restore(backup, color),
+            Self::Aa(d) => d.restore(backup, color, source),
         }
     }
 
@@ -474,6 +480,11 @@ fn connect_aa(port: AaPort, usb: UsbIdentity, target: &OpenTarget<'_>) -> std::r
     let aa = AaTarget { record_id: target.record_id.clone(), usb, data_dir: target.data_dir.clone() };
     let mut d = AaDriver::new(port, target.model, aa)?;
     d.connect(target.app_effect);
+    // A channel the read left unusable is not kept: the next operation
+    // opens it again.
+    if let Some(e) = d.take_reopen() {
+        return Err(e.to_string());
+    }
     Ok(Driver::Aa(Box::new(d)))
 }
 
@@ -625,6 +636,7 @@ pub mod family {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kb_core::aa::sim::Sim;
     use kb_core::sonix::DriverError;
     use kb_protocol::sonix::keymap::KeyAction;
     use kb_protocol::sonix::macros::StepKind;
@@ -942,5 +954,23 @@ mod tests {
         let found = kb_core::detect(&[iface], &[]);
         let k = found.first().expect("a keyboard");
         assert_eq!(family::record_id(&k.model.id, k.protocol()), k.record_id());
+    }
+
+    #[test]
+    fn an_aa_channel_the_first_read_left_dead_is_not_kept() {
+        let sim = Sim::ak980();
+        let target = OpenTarget {
+            protocol: Protocol::AjazzAa,
+            model: Sim::model(),
+            record_id: "ajazz-ak980-pro.aa".into(),
+            data_dir: None,
+            app_effect: None,
+        };
+        let port = crate::aa::tests::Dying { port: sim.command(), left: 3 };
+        let e = connect_aa(AaPort::new(port), Sim::usb(), &target).err().expect("not kept");
+        assert!(e.contains("the handle died"), "{e}");
+        // A channel that reads: kept.
+        let sim = Sim::ak980();
+        assert!(connect_aa(AaPort::new(sim.command()), Sim::usb(), &target).is_ok());
     }
 }

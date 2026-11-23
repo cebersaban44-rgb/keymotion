@@ -376,6 +376,9 @@ fn closing_puts_the_effect_back_without_the_hold() {
     assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
     assert!(armed_note(&dir.0).is_none());
     // Refused: the note stays for the next connect.
+    let dir = TempDir::new("closing-refused");
+    let sim = Sim::ak980();
+    let mut d = driver(&sim, Some(&dir.0));
     d.live_starting(&go()).unwrap();
     d.closing(&no(&several)).unwrap();
     assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
@@ -566,7 +569,7 @@ fn restore_writes_the_backup_back_and_says_what_it_did() {
     d.write_macros(&[vec![MacroStep::new(StepKind::KeyDown, 4, 20), MacroStep::new(StepKind::KeyUp, 4, 20)]]).unwrap();
 
     let mut d = Driver::<kb_transport::hid::HidChannel>::Aa(Box::new(d));
-    let report = d.restore(&first.snapshot, None).unwrap();
+    let report = d.restore(&first.snapshot, None, None).unwrap();
     for section in ["base layer", "effect", "macros"] {
         assert!(report.written.contains(&section), "{section}: {:?}", report.written);
     }
@@ -593,13 +596,13 @@ fn a_restore_without_the_effects_colour_needs_one() {
     assert_eq!(first.snapshot.effect_color, None);
     d.apply_effect(&effect(2, [255, 0, 0])).unwrap();
     let writes_before = writes(&sim);
-    let e = d.restore(&first.snapshot, None).unwrap_err();
+    let e = d.restore(&first.snapshot, None, None).unwrap_err();
     assert!(e.to_string().contains("does not report its effect colour"), "{e}");
     assert_eq!(writes(&sim), writes_before, "refused before anything was written");
     assert_eq!(backups_in(&dir.0).len(), 1, "no backup kept for a restore that did not happen");
     // With the colour given, it goes.
     let color = EffectColor { color: [0x00, 0x80, 0xFF], color_mode: 0 };
-    let report = d.restore(&first.snapshot, Some(color)).unwrap();
+    let report = d.restore(&first.snapshot, Some(color), None).unwrap();
     assert!(report.written.contains(&"effect"));
     assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
 }
@@ -736,6 +739,7 @@ fn backups_keep_the_first_and_the_newest() {
     for _ in 0..7 {
         let b = backups::KeyboardBackup::new(&t, backups::Reason::BeforeRestore, snap.clone());
         saved.push(backups::save(&backups::dir(&dir.0), &b).unwrap());
+        backups::prune(&backups::dir(&dir.0), t.usb, &[]);
     }
     let names: Vec<String> = backups_in(&dir.0).into_iter().map(|(n, _)| n).collect();
     assert_eq!(names.len(), backups::KEPT);
@@ -745,6 +749,7 @@ fn backups_keep_the_first_and_the_newest() {
     let other = AaTarget { usb: UsbIdentity { pid: 0x8009, release: 0x0301 }, ..t };
     let b = backups::KeyboardBackup::new(&other, backups::Reason::FirstConnect, snap);
     backups::save(&backups::dir(&dir.0), &b).unwrap();
+    backups::prune(&backups::dir(&dir.0), other.usb, &[]);
     assert_eq!(backups_in(&dir.0).len(), backups::KEPT + 1);
     // Only backup names are opened.
     for bad in ["../keymap.json", "aa-8039-0301-x.json", "aa-8039-0301-1.json/..", "keymap.json"] {
@@ -768,4 +773,415 @@ fn the_diagnostics_hold_no_keymap_macro_or_colour_content() {
         assert!(text.contains(part), "{part}:\n{text}");
     }
     assert!(!text.contains("12 34 56") && !text.contains("123456"), "{text}");
+}
+
+// ---------------------------------------------------------------- review of #195
+
+fn names(dir: &Path) -> Vec<String> {
+    backups_in(dir).into_iter().map(|(n, _)| n).collect()
+}
+
+fn later() -> Instant {
+    Instant::now() + LIVE_HOLD + Duration::from_secs(1)
+}
+
+fn effect_writes(sim: &Sim) -> usize {
+    sim.state().sent(cmd::SET_EFFECT).len()
+}
+
+/// A channel whose USB handle dies after `left` more writes: every write
+/// from then on fails as a stalled one does.
+pub(crate) struct Dying {
+    pub port: kb_core::aa::sim::SimPort,
+    pub left: usize,
+}
+
+impl OutputPort for Dying {
+    fn write(&mut self, report: &[u8]) -> kb_core::aa::Result<usize> {
+        if self.left == 0 {
+            return Err(AaError::Transport(kb_transport::TransportError::Refused("the handle died")));
+        }
+        self.left -= 1;
+        self.port.write(report)
+    }
+    fn read(&mut self, timeout_ms: u32) -> kb_core::aa::Result<Option<Vec<u8>>> {
+        self.port.read(timeout_ms)
+    }
+}
+
+/// A keyboard whose per-key mode reads back with another speed than was
+/// written (a firmware that normalises it): the switch lands, and its
+/// read-back differs.
+struct Normalising(kb_core::aa::sim::SimPort);
+
+impl OutputPort for Normalising {
+    fn write(&mut self, report: &[u8]) -> kb_core::aa::Result<usize> {
+        self.0.write(report)
+    }
+    fn read(&mut self, timeout_ms: u32) -> kb_core::aa::Result<Option<Vec<u8>>> {
+        use kb_protocol::aa::frame;
+        Ok(self.0.read(timeout_ms)?.map(|mut r| {
+            let at = usize::from(r.len() == frame::WIRE_LEN && r[0] == 0);
+            let data = at + frame::HEADER_LEN;
+            if r[at] == frame::REPLY && r[at + 1] == cmd::EFFECT && r[data] == aa_effect::MODE_PER_KEY {
+                r[data + 10] = r[data + 10] % 5 + 1;
+            }
+            r
+        }))
+    }
+}
+
+/// A keyboard that sends a status notice (`55 FA`) before every reply.
+struct Noticing(kb_core::aa::sim::SimPort, bool);
+
+impl OutputPort for Noticing {
+    fn write(&mut self, report: &[u8]) -> kb_core::aa::Result<usize> {
+        self.1 = true;
+        self.0.write(report)
+    }
+    fn read(&mut self, timeout_ms: u32) -> kb_core::aa::Result<Option<Vec<u8>>> {
+        if std::mem::take(&mut self.1) {
+            let mut r = vec![0u8; 64];
+            r[..3].copy_from_slice(&[0x55, 0xFA, 0x01]);
+            return Ok(Some(r));
+        }
+        self.0.read(timeout_ms)
+    }
+}
+
+#[test]
+fn a_refused_restore_removes_no_backup_and_the_first_stays_first() {
+    let dir = TempDir::new("restore-prune");
+    let sim = Sim::ak980();
+    sim.state().set_effect_by_another_tool(FACTORY_EFFECT);
+    let mut d = driver(&sim, Some(&dir.0));
+    let bdir = backups::dir(&dir.0);
+    let (first, first_backup) = backups_in(&dir.0).remove(0);
+    let t = target(Some(&dir.0));
+    let snap = d.kb.snapshot().unwrap().clone();
+    // One saved while the PC clock said earlier than at the first connect.
+    let mut early = backups::KeyboardBackup::new(&t, backups::Reason::BeforeRestore, snap.clone());
+    early.saved_at_ms = first_backup.saved_at_ms - 60_000;
+    let early = backups::save(&bdir, &early).unwrap();
+    let others: Vec<String> = (0..3)
+        .map(|_| {
+            let b = backups::KeyboardBackup::new(&t, backups::Reason::BeforeRestore, snap.clone());
+            backups::save(&bdir, &b).unwrap()
+        })
+        .collect();
+    let all = names(&dir.0);
+    assert_eq!(all.len(), backups::KEPT);
+    assert_eq!(all[0], early, "it sorts before the first");
+    assert_eq!(backups::first_of(&bdir, Sim::usb()), Some(first.clone()), "the first by why it was taken");
+
+    // The backup's effect colour is unknown and the keyboard's effect
+    // differs: refused before anything is written, and nothing is pruned.
+    d.apply_effect(&effect(2, [255, 0, 0])).unwrap();
+    let source = others[0].clone();
+    let restoring = backups::load(&bdir, &source).unwrap();
+    let e = d.restore(&restoring.snapshot, None, Some(&source)).unwrap_err();
+    assert!(e.to_string().contains("does not report its effect colour"), "{e}");
+    assert_eq!(names(&dir.0), all, "a refused restore removes no backup");
+
+    // The try again with a colour goes: the file restored and the first stay.
+    let color = EffectColor { color: [0x00, 0x80, 0xFF], color_mode: 0 };
+    d.restore(&restoring.snapshot, Some(color), Some(&source)).unwrap();
+    let after = names(&dir.0);
+    assert_eq!(after.len(), backups::KEPT, "{after:?}");
+    assert!(after.contains(&first) && after.contains(&source), "{after:?}");
+    assert!(!after.contains(&early), "the oldest other one went: {after:?}");
+}
+
+#[test]
+fn a_live_note_is_only_for_the_keyboard_that_wrote_it() {
+    let dir = TempDir::new("note-identity");
+    let a = Sim::ak980();
+    {
+        let mut d = driver(&a, Some(&dir.0));
+        d.live_starting(&go()).unwrap();
+        // The app ends here.
+    }
+    assert!(armed_note(&dir.0).is_some());
+
+    // Another AK980 PRO on the same firmware, kept in per-key mode by its
+    // user: nothing is written to it, and the note stays for the first.
+    let b = Sim::ak980();
+    {
+        let mut s = b.state();
+        aa_keymap::set_entry(&mut s.keymap, aa("a"), [aa_keymap::page::KEYBOARD, 0, 0x05, 0]);
+        s.effect[0] = aa_effect::MODE_PER_KEY;
+        s.effect[8] = 0;
+    }
+    let shown = b.state().effect;
+    let mut d = driver(&b, Some(&dir.0));
+    assert_eq!(d.next_due(), None, "nothing to put back on it");
+    d.run_due(Instant::now(), &go()).unwrap();
+    assert!(b.state().sent(cmd::SET_EFFECT).is_empty());
+    assert_eq!(b.state().effect, shown);
+    assert!(armed_note(&dir.0).is_some(), "not its note");
+    // Nor does one in an effect of its own drop it.
+    let c = Sim::ak980();
+    aa_keymap::set_entry(&mut c.state().keymap, aa("b"), [aa_keymap::page::KEYBOARD, 0, 0x06, 0]);
+    let _ = driver(&c, Some(&dir.0));
+    assert!(armed_note(&dir.0).is_some(), "not its note either");
+
+    // The first keyboard comes back: its effect goes back.
+    let mut d = driver(&a, Some(&dir.0));
+    d.run_due(Instant::now(), &go()).unwrap();
+    assert_eq!(a.state().effect[..12], FACTORY_EFFECT[..12]);
+    assert!(armed_note(&dir.0).is_none());
+
+    // After a crash the user chose a live mode on the keyboard itself: it
+    // stays, and the note goes.
+    let dir = TempDir::new("note-own-choice");
+    let a = Sim::ak980();
+    {
+        let mut d = driver(&a, Some(&dir.0));
+        d.live_starting(&go()).unwrap();
+    }
+    a.state().effect[0] = 20;
+    let writes_before = effect_writes(&a);
+    let mut d = driver(&a, Some(&dir.0));
+    d.run_due(Instant::now(), &go()).unwrap();
+    assert_eq!(a.state().effect[0], 20);
+    assert_eq!(effect_writes(&a), writes_before);
+    assert!(armed_note(&dir.0).is_none());
+}
+
+#[test]
+fn nothing_is_switched_once_the_app_is_closing() {
+    let dir = TempDir::new("closed");
+    let sim = Sim::ak980();
+    let mut d = driver(&sim, Some(&dir.0));
+    d.live_starting(&go()).unwrap();
+    assert!(d.holds_keyboard());
+    d.closing(&go()).unwrap();
+    assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
+    assert!(!d.holds_keyboard());
+    // Frames that still come do not switch it again.
+    let writes_before = effect_writes(&sim);
+    d.live_starting(&go()).unwrap();
+    d.live_frame(vec![(led("esc"), [1, 1, 1])], &go()).unwrap();
+    assert_eq!(effect_writes(&sim), writes_before);
+    assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
+    assert!(armed_note(&dir.0).is_none());
+}
+
+#[test]
+fn a_read_again_during_live_lights_puts_nothing_back_meanwhile() {
+    let dir = TempDir::new("reread-armed");
+    let sim = Sim::ak980();
+    let mut d = driver(&sim, Some(&dir.0));
+    d.live_starting(&go()).unwrap();
+    d.live_frame(vec![(led("esc"), [1, 1, 1])], &go()).unwrap();
+    let writes_before = effect_writes(&sim);
+    // The keyboard reports a reset with the next reply: what was known is
+    // stale, and the background reads it again.
+    let next = sim.state().packets.len() + 1;
+    sim.state().faults.reset_before = Some(next);
+    let _ = d.live_frame(vec![(led("esc"), [2, 2, 2])], &go());
+    assert!(d.stale(), "the reset closed the gate");
+    d.read_at = None;
+    d.run_due(Instant::now(), &go()).unwrap();
+    assert!(!d.stale(), "read again");
+    assert_eq!(effect_writes(&sim), writes_before, "nothing put back while frames come");
+    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
+    assert!(d.status().live_armed);
+    // The stream ends: after the hold the effect goes back, once.
+    d.live_frame(vec![(led("esc"), [3, 3, 3])], &go()).unwrap();
+    d.live_stopped();
+    d.run_due(later(), &go()).unwrap();
+    assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
+    assert_eq!(effect_writes(&sim), writes_before + 1);
+}
+
+#[test]
+fn levels_a_keyboard_reads_out_of_range_go_back_in_range() {
+    let dir = TempDir::new("levels");
+    let sim = Sim::ak980();
+    {
+        // What sibling boards and AJAZZ's hub leave: brightness 6, speed 0.
+        let mut s = sim.state();
+        s.effect[9] = 6;
+        s.effect[10] = 0;
+    }
+    let mut d = driver(&sim, Some(&dir.0));
+    assert_eq!(d.read_only(), None);
+    d.live_starting(&go()).unwrap();
+    assert!(d.status().live_armed, "{:?}", d.status().live_lights_off);
+    let back = AaEffect::decode(&armed_note(&dir.0).unwrap().effect.0).unwrap();
+    assert_eq!((back.mode, back.brightness, back.speed), (1, 5, 1));
+    d.live_stopped();
+    d.run_due(later(), &go()).unwrap();
+    let e = sim.state().effect;
+    assert_eq!((e[0], e[9], e[10]), (1, 5, 1));
+}
+
+#[test]
+fn a_backup_before_a_restore_during_live_lights_holds_the_users_effect() {
+    let dir = TempDir::new("restore-armed");
+    let sim = Sim::ak980();
+    let mut d = driver(&sim, Some(&dir.0));
+    let (_, first) = backups_in(&dir.0).remove(0);
+    d.live_starting(&go()).unwrap();
+    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
+    d.restore(&first.snapshot, None, None).unwrap();
+    let (_, before) = backups_in(&dir.0).into_iter().find(|(_, b)| b.reason == backups::Reason::BeforeRestore).unwrap();
+    let factory = AaEffect::decode(&FACTORY_EFFECT).unwrap();
+    assert_eq!(before.snapshot.effect().unwrap().mode, 1, "not the per-key mode live lights hold");
+    assert_eq!(before.snapshot.effect_color, Some(factory.color_part().into()));
+}
+
+#[test]
+fn a_failed_switch_is_not_tried_again_with_every_frame() {
+    let dir = TempDir::new("arm-retry");
+    let sim = Sim::ak980();
+    let mut d = driver(&sim, Some(&dir.0));
+    // The keyboard echoes the switch but keeps its effect.
+    sim.state().faults.ignore_writes = Some(cmd::SET_EFFECT);
+    let e = d.live_starting(&go()).unwrap_err();
+    assert!(e.to_string().contains("differs"), "{e}");
+    assert_eq!(effect_writes(&sim), 1);
+    for _ in 0..5 {
+        d.live_starting(&go()).unwrap();
+        d.live_frame(vec![(led("esc"), [1, 1, 1])], &go()).unwrap();
+    }
+    assert_eq!(effect_writes(&sim), 1, "the next try waits");
+    assert!(matches!(d.status().live_lights_off, Some(LiveLightsOff::Failed { .. })));
+    assert!(armed_note(&dir.0).is_none(), "the keyboard did not change");
+    // Each failure in a row waits longer.
+    if let Live::Off { retry_at, .. } = &mut d.live {
+        *retry_at = Some(Instant::now());
+    }
+    d.live_frame(vec![], &go()).unwrap_err();
+    assert_eq!(effect_writes(&sim), 2);
+    match &d.live {
+        Live::Off { retry_at: Some(t), .. } => assert!(*t > Instant::now() + ARM_RETRY + Duration::from_secs(20)),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_switch_that_lands_but_reads_back_otherwise_still_puts_the_effect_back() {
+    let open = |sim: &Sim, dir: &Path| {
+        let mut d = AaDriver::new(AaPort::new(Normalising(sim.command())), Sim::model(), target(Some(dir))).unwrap();
+        d.connect(None);
+        d
+    };
+    let dir = TempDir::new("arm-landed");
+    let sim = Sim::ak980();
+    let mut d = open(&sim, &dir.0);
+    d.live_starting(&go()).unwrap();
+    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY, "the switch landed");
+    assert!(d.status().live_armed);
+    d.live_frame(vec![(led("esc"), [3, 3, 3])], &go()).unwrap();
+    assert!(sim.state().frames.last().unwrap().1, "frames show");
+    d.live_stopped();
+    d.run_due(later(), &go()).unwrap();
+    assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
+    assert!(armed_note(&dir.0).is_none());
+
+    // A crash after such a switch: the note holds what the keyboard shows.
+    let dir = TempDir::new("arm-landed-crash");
+    let sim = Sim::ak980();
+    {
+        let mut d = open(&sim, &dir.0);
+        d.live_starting(&go()).unwrap();
+    }
+    let mut d = open(&sim, &dir.0);
+    assert!(d.next_due().is_some());
+    d.run_due(Instant::now(), &go()).unwrap();
+    assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
+}
+
+#[test]
+fn an_effect_chosen_on_the_keyboard_during_the_hold_stays() {
+    let mut chosen = FACTORY_EFFECT;
+    chosen[0] = 4;
+    let dir = TempDir::new("hold-chosen");
+    let sim = Sim::ak980();
+    let mut d = driver(&sim, Some(&dir.0));
+    d.live_starting(&go()).unwrap();
+    d.live_stopped();
+    sim.state().set_effect_by_another_tool(chosen);
+    let writes_before = effect_writes(&sim);
+    d.run_due(later(), &go()).unwrap();
+    assert_eq!(sim.state().effect[0], 4);
+    assert_eq!(effect_writes(&sim), writes_before);
+    assert!(armed_note(&dir.0).is_none());
+    assert!(!d.status().live_armed);
+    assert_eq!(d.next_due(), None);
+
+    // Closing the app, too.
+    let dir = TempDir::new("closing-chosen");
+    let sim = Sim::ak980();
+    let mut d = driver(&sim, Some(&dir.0));
+    d.live_starting(&go()).unwrap();
+    sim.state().set_effect_by_another_tool(chosen);
+    let writes_before = effect_writes(&sim);
+    d.closing(&go()).unwrap();
+    assert_eq!(sim.state().effect[0], 4);
+    assert_eq!(effect_writes(&sim), writes_before);
+}
+
+#[test]
+fn live_lights_wait_out_the_quiet_time_after_a_cut_upload() {
+    let dir = TempDir::new("quiet-arm");
+    let sim = Sim::ak980();
+    sim.state().upload_quiet = Duration::from_millis(100);
+    let mut d = driver(&sim, Some(&dir.0));
+    d.keyboard_mut().set_upload_cooldown(Duration::from_millis(250));
+    let anim = ScreenAnimation::still(screen::test_pattern());
+    let cancel = AtomicBool::new(false);
+    let mut display = AaPort::new(sim.display());
+    let progress = |done, _| {
+        if done == 2 {
+            cancel.store(true, Ordering::SeqCst);
+        }
+    };
+    d.upload_screen(&mut display, &anim, progress, &cancel).unwrap_err();
+    let status = d.status();
+    d.live_starting(&go()).unwrap();
+    for _ in 0..5 {
+        d.live_frame(vec![(led("esc"), [1, 1, 1])], &go()).unwrap();
+        assert_eq!(d.status(), status, "nothing changes for the UI meanwhile");
+    }
+    assert!(!d.diagnostics().iter().any(|l| l.contains("no commands for another")), "no error noted");
+    assert!(sim.state().sent(cmd::SET_EFFECT).is_empty());
+    // Once it is over (not 30 s later), the next frame switches.
+    std::thread::sleep(Duration::from_millis(300));
+    d.live_frame(vec![(led("esc"), [1, 1, 1])], &go()).unwrap();
+    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
+}
+
+#[test]
+fn a_channel_the_full_read_left_dead_is_handed_back_to_be_opened_again() {
+    let dir = TempDir::new("dead-channel");
+    let sim = Sim::ak980();
+    let port = Dying { port: sim.command(), left: 3 };
+    let mut d = AaDriver::new(AaPort::new(port), Sim::model(), target(Some(&dir.0))).unwrap();
+    d.connect(None);
+    assert!(d.take_reopen().is_some_and(|e| e.needs_reopen()));
+    // A write: the read again fails the same way, and the actor hears it
+    // as a transport error (it drops the handle), not as "does not look
+    // as expected".
+    let e = d.apply_effect(&effect(2, [1, 2, 3])).unwrap_err();
+    assert!(e.is_transport(), "{e}");
+}
+
+#[test]
+fn replies_that_queue_up_on_an_idle_keyboard_still_count() {
+    let mut w = ConflictWatch::default();
+    let t = Instant::now();
+    w.note(t, 0);
+    // Asked again only after a minute, with 25 replies nobody asked for.
+    assert!(w.note(t + CONFLICT_WINDOW + Duration::from_secs(1), 25) && w.suspected);
+
+    // The keyboard's own notices are not another program.
+    let dir = TempDir::new("notices");
+    let sim = Sim::ak980();
+    let mut d = AaDriver::new(AaPort::new(Noticing(sim.command(), false)), Sim::model(), target(Some(&dir.0))).unwrap();
+    d.connect(None);
+    assert!(d.kb.notices_reported() >= CONFLICT_THRESHOLD, "{}", d.kb.notices_reported());
+    assert!(!d.status().other_program_suspected);
 }

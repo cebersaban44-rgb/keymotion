@@ -277,14 +277,17 @@ async fn screen_upload(
 /// asked (`screen_ack_clock_page`).
 const ERR_CLOCK_PAGE: &str = "screen upload would replace the keyboard's clock page; not acknowledged";
 
-/// Stop the screen upload that runs: an "AA" keyboard stops before its next
+/// Stop the screen upload of library item `id` (what `screen_upload` was
+/// given), and no other. Running: an "AA" keyboard stops before its next
 /// part, and its screen stays incomplete until the next upload ("04 xx"
-/// keyboards cannot stop and finish). The upload's call then fails with
-/// "screen upload cancelled after N of M parts".
+/// keyboards cannot stop and finish); the upload's call then fails with
+/// "screen upload cancelled after N of M parts". Still waiting its turn: it
+/// does not start, and fails with "screen upload cancelled before it
+/// started". Returns whether there was such an upload.
 #[tauri::command]
-fn screen_upload_cancel(device: Device<'_>) {
-    tracing::debug!("ipc: screen_upload_cancel");
-    device.cancel_upload();
+fn screen_upload_cancel(device: Device<'_>, id: String) -> bool {
+    tracing::debug!(%id, "ipc: screen_upload_cancel");
+    device.cancel_upload(&id)
 }
 
 /// The user said yes to losing the clock page of the keyboard with this
