@@ -70,7 +70,7 @@ jobs:
       # (store.yml) workflows use, and the checks above (with the app's
       # message engine they share).
       - name: Release, site, Store and check script tests
-        run: node --test "tools/*.test.mjs" "tools/release/*.test.mjs" "tools/site/*.test.mjs" "tools/store/*.test.mjs"
+        run: node --test "tools/*.test.mjs" "tools/release/*.test.mjs" "tools/site/*.test.mjs" "tools/store/*.test.mjs" "tools/screenshots/guard.test.mjs"
 
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:

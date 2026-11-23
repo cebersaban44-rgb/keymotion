@@ -17,31 +17,31 @@ export const L = (lang, en, tr) => (lang === "tr" ? tr : en);
 /** The app's text for `key` in the current language. */
 export const t = (page, key, vars) => page.evaluate(([k, v]) => window.__keymotionT(k, v ?? undefined), [key, vars ?? null]);
 
-const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+export const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** An element by its role and the app's text for `key`. `start` matches
  *  names that begin with the text (a card with a second line, say). */
-async function find(page, role, key, { vars, start = false, within } = {}) {
+export async function find(page, role, key, { vars, start = false, within } = {}) {
   const text = await t(page, key, vars);
   const name = start ? new RegExp(`^\\s*${escape(text)}`) : text;
   return (within ?? page).getByRole(role, { name, exact: !start }).first();
 }
-const button = (page, key, opts) => find(page, "button", key, opts);
-async function click(page, key, opts = {}) {
+export const button = (page, key, opts) => find(page, "button", key, opts);
+export async function click(page, key, opts = {}) {
   const el = await find(page, opts.role ?? "button", key, opts);
   await el.click();
   await page.waitForTimeout(opts.wait ?? 350);
 }
 
 /** Open a page of the app as the sidebar does. */
-async function go(page, id, wait = 800) {
+export async function go(page, id, wait = 800) {
   await page.evaluate((p) => {
     window.__keymotionStore.getState().setPage(p);
     document.querySelector("main").scrollTo({ top: 0, behavior: "instant" });
   }, id);
   await page.waitForTimeout(wait);
 }
-async function openScreen(page, tab, wait = 900) {
+export async function openScreen(page, tab, wait = 900) {
   await page.evaluate((p) => {
     window.__keymotionStore.getState().openScreen(p);
     document.querySelector("main").scrollTo({ top: 0, behavior: "instant" });
@@ -50,7 +50,7 @@ async function openScreen(page, tab, wait = 900) {
 }
 
 /** Scroll the page so `locator` sits `offset` px below the top of the window. */
-async function scrollTo(page, locator, offset = 28) {
+export async function scrollTo(page, locator, offset = 28) {
   await locator.evaluate((el, off) => {
     const main = document.querySelector("main");
     const top = el.getBoundingClientRect().top - main.getBoundingClientRect().top + main.scrollTop - off;
@@ -58,7 +58,7 @@ async function scrollTo(page, locator, offset = 28) {
   }, offset);
   await page.waitForTimeout(350);
 }
-async function scrollToBottom(page) {
+export async function scrollToBottom(page) {
   await page.evaluate(() => {
     const main = document.querySelector("main");
     main.scrollTo({ top: main.scrollHeight, behavior: "instant" });
@@ -67,7 +67,7 @@ async function scrollToBottom(page) {
 }
 
 /** The open dialog with a margin of the dimmed page around it. */
-const dialogClip =
+export const dialogClip =
   (pad = 40, selector = "[role=dialog]") =>
   async (page) => {
     const box = await page.locator(selector).first().boundingBox();
@@ -83,7 +83,7 @@ const dialogClip =
   };
 
 /** Wait until an element with this text shows. */
-async function waitText(page, key, opts = {}) {
+export async function waitText(page, key, opts = {}) {
   const text = await t(page, key, opts.vars);
   await page.getByText(text, { exact: opts.exact ?? false }).first().waitFor({ timeout: opts.timeout ?? 10_000 });
 }
@@ -100,7 +100,7 @@ async function saveEffect(page, effect = "fx.8") {
 }
 
 /** Reminders › Add reminder › `template`, an optional new title, Next, Save. */
-async function addReminder(page, template, title) {
+export async function addReminder(page, template, title) {
   await go(page, "reminders");
   await click(page, "reminder.add");
   await click(page, template, { start: true, wait: 500 });
@@ -121,13 +121,13 @@ async function addCalendar(page) {
 }
 
 /** System gauges › Show on keys. */
-async function gaugesOn(page) {
+export async function gaugesOn(page) {
   await go(page, "gauges");
   await click(page, "gauges.on", { role: "switch", wait: 600 });
 }
 
 /** Music mode › Show on keys. */
-async function musicOn(page) {
+export async function musicOn(page) {
   await go(page, "music");
   await click(page, "music.on", { role: "switch", wait: 600 });
 }
@@ -152,6 +152,8 @@ async function busyOverview(page, { lang }) {
 export const SHOTS = [
   // Getting started and basics
   { name: "welcome", mock: "none", page: "overview" },
+  // An AK980 PRO on AJAZZ's firmware 769.
+  { name: "welcome-new-firmware", mock: "fw769", page: "overview" },
   // Every tile: the window as tall as the page.
   {
     name: "overview",
@@ -302,7 +304,8 @@ export const SHOTS = [
     page: "screen",
     screenTab: "visuals",
     steps: async (page) => {
-      await click(page, "sc.src.textGo", { wait: 900 });
+      await page.locator('[data-tile="text"]').click();
+      await page.waitForTimeout(900);
       await click(page, "sc.tx.t.name", { role: "radio", wait: 700 });
       await scrollTo(page, await studioSteps(page), 44);
     },
@@ -323,11 +326,14 @@ export const SHOTS = [
     name: "screen-match-lights",
     page: "screen",
     screenTab: "visuals",
-    clip: dialogClip(28, "[role=dialog] > .card"),
+    clip: dialogClip(28, "[role=dialog] .dlg"),
     steps: async (page) => {
       await makeCard(page, "sc.tx.t.mountain", "save", "sc.tx.pal.sunset");
-      const row = page.locator("[data-library-item]", { hasText: await t(page, "sc.tx.sample.mountain.t") }).first();
-      await click(page, "sc.lm.action", { within: row, wait: 900 });
+      // A card just saved is chosen already; Match lights is in the command bar.
+      const item = page.locator("[data-library-item]", { hasText: await t(page, "sc.tx.sample.mountain.t") }).first();
+      const pick = item.locator("button").first();
+      if ((await pick.getAttribute("aria-pressed")) !== "true") await pick.click();
+      await click(page, "sc.lm.action", { within: page.locator("[data-library-bar]"), wait: 900 });
       await click(page, "sc.lm.gradient", { role: "radio", start: true, wait: 900 });
     },
   },
@@ -537,13 +543,13 @@ export const SHOTS = [
 ];
 
 /** The Screen page's library card. */
-const libraryCard = (page) => page.locator("section", { has: page.locator("[data-library]") }).last();
+export const libraryCard = (page) => page.locator("section", { has: page.locator("[data-library]") }).last();
 
 /** The Screen page's studio, by its first step's name ("Source"). */
-const studioSteps = async (page) => page.locator("main").getByText(await t(page, "sc.step.source"), { exact: true }).first();
+export const studioSteps = async (page) => page.locator("main").getByText(await t(page, "sc.step.source"), { exact: true }).first();
 
 /** Make the window as tall as the page, so all of it shows (up to `max`). */
-async function fitHeight(page, max = 1600) {
+export async function fitHeight(page, max = 1600) {
   const height = await page.evaluate(() => {
     const main = document.querySelector("main");
     return main.scrollHeight;
@@ -553,7 +559,7 @@ async function fitHeight(page, max = 1600) {
 }
 
 /** Screen › Live screen › on (and its one-time warning about the factory animation). */
-async function liveOn(page) {
+export async function liveOn(page) {
   await openScreen(page, "live");
   await click(page, "sc.live.mode", { role: "switch", wait: 700 });
   const ack = await button(page, "sc.live.ack.go");
@@ -563,9 +569,10 @@ async function liveOn(page) {
 
 /** Screen › Images › Make a card, `template`, Preview, then save it to the
  *  library or upload it. */
-async function makeCard(page, template, then, palette) {
+export async function makeCard(page, template, then, palette) {
   await openScreen(page, "visuals");
-  await click(page, "sc.src.textGo", { wait: 900 });
+  await page.locator('[data-tile="text"]').click();
+  await page.waitForTimeout(900);
   await click(page, template, { role: "radio", wait: 600 });
   // The colour themes' names follow a small "Aa" sample.
   if (palette) {
@@ -586,17 +593,17 @@ async function makeCard(page, template, then, palette) {
 }
 
 /** The plate around the big keyboard picture (Key mapping). */
-const keyboardCard = (page) => page.locator("section", { has: page.locator('[data-key="esc"]') }).last();
+export const keyboardCard = (page) => page.locator("section", { has: page.locator('[data-key="esc"]') }).last();
 
 /** Grow a rectangle by `pad` on every side. */
-const padded = (box, pad) => ({ x: box.x - pad, y: box.y - pad, width: box.width + 2 * pad, height: box.height + 2 * pad });
+export const padded = (box, pad) => ({ x: box.x - pad, y: box.y - pad, width: box.width + 2 * pad, height: box.height + 2 * pad });
 
 /** Settings › Color calibration, the card. */
-const calibrationCard = async (page) =>
+export const calibrationCard = async (page) =>
   page.locator("section").filter({ has: page.getByText(await t(page, "cal.title"), { exact: true }) }).first();
 
 /** Key mapping › Base layer: the number pad's "/" becomes Volume up. */
-async function volumeUpOnSlash(page) {
+export async function volumeUpOnSlash(page) {
   await page.locator('[data-key="kp-slash"]').first().click();
   await page.waitForTimeout(300);
   await click(page, "km.cat.media", { role: "radio", wait: 400 });
@@ -604,7 +611,7 @@ async function volumeUpOnSlash(page) {
 }
 
 /** Macros › Add, renamed, recorded: Shift+H, I, then a left click. */
-async function recordGreeting(page, { lang }) {
+export async function recordGreeting(page, { lang }) {
   await click(page, "mc.new", { wait: 500 });
   await page.getByLabel(await t(page, "mc.name"), { exact: true }).fill(L(lang, "Greeting", "Selamlama"));
   await click(page, "mc.record", { wait: 400 });
@@ -639,13 +646,13 @@ async function twoProfiles(page, { lang }) {
 }
 
 /** Game session › Notice games. */
-async function gamesOn(page) {
+export async function gamesOn(page) {
   await go(page, "games");
   await click(page, "games.on", { role: "switch", wait: 700 });
 }
 
 /** Game session's "Lights while playing" row. */
-const lightsRow = (page) => page.locator("[data-games] div.border-t > div").filter({ has: page.getByRole("radiogroup") }).first();
+export const lightsRow = (page) => page.locator("[data-games] div.border-t > div").filter({ has: page.getByRole("radiogroup") }).first();
 
 /** Lighting › Per-key color › `preset`, saved, then a profile `name` from it. */
 async function perKeyProfile(page, preset, name) {
