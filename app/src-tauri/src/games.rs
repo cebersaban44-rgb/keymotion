@@ -211,7 +211,10 @@ pub fn classify(front: &Front, marks: &[GameMark], known: &[KnownGame], launcher
     let path = front.path.as_deref()?;
     if let Some(m) = mark_for(marks, path) {
         return m.game.then(|| Detected {
-            key: path.to_lowercase(),
+            // The mark's own path, as the list of games has it: the same game
+            // after an update moves it to a new versioned folder (Roblox's
+            // `version-<hex>`, a Store app), not a new one.
+            key: m.path.to_lowercase(),
             name: m.name.clone(),
             source: GameSource::Mine,
             pid: front.pid,
@@ -326,18 +329,23 @@ impl Tracker {
     pub fn front(&mut self, now: f64, game: Option<Detected>) {
         match game {
             Some(g) if self.session.as_ref().is_some_and(|s| s.game.key == g.key) => {
-                // Back to the game of the session (it may have restarted).
+                // Back to the game of the session (it may have restarted), or
+                // another program of its folder: the game after its launcher.
+                // The session follows the program in front, so it lasts as
+                // long as the game, not the launcher it started from.
                 if let Some(s) = &mut self.session {
                     s.game.pid = g.pid;
+                    s.game.exe = g.exe;
+                    s.game.path = g.path;
                     s.missing_since = None;
                 }
                 self.candidate = None;
             }
-            Some(g) => {
-                if self.candidate.as_ref().is_none_or(|(c, _)| c.key != g.key) {
-                    self.candidate = Some((g, now));
-                }
-            }
+            Some(g) => match &mut self.candidate {
+                // The same game's other program: its time in front goes on.
+                Some((c, _)) if c.key == g.key => *c = g,
+                _ => self.candidate = Some((g, now)),
+            },
             None => self.candidate = None,
         }
     }
@@ -519,6 +527,9 @@ struct Inner {
     quiet_sent: Quiet,
     /// The session's game is not in front (Alt+Tab to other work).
     away: bool,
+    /// The first pass looked for a game card left on the screen from before
+    /// the app started.
+    startup_checked: bool,
     dirty: bool,
 }
 
@@ -591,6 +602,7 @@ impl GamesHandle {
             last_tick: 0.0,
             quiet_sent: Quiet::Off,
             away: false,
+            startup_checked: false,
             dirty: true,
         }));
         let (tx, rx) = mpsc::channel();
@@ -984,15 +996,24 @@ impl GamesHandle {
     /// One pass of the worker; returns how long to sleep.
     fn tick(&self, device: &DeviceHandle, meters: &mut Meters) -> Duration {
         let now = now_ms();
-        let (enabled, launchers, scan_due, lights_profile) = match self.inner.lock() {
-            Ok(i) => (
+        let (enabled, launchers, scan_due, lights_profile, first) = match self.inner.lock() {
+            Ok(mut i) => (
                 i.settings.enabled,
                 i.settings.launchers,
                 now >= i.next_scan,
                 i.settings.lights_profile.clone().filter(|_| i.settings.lights == GameLights::Profile),
+                !std::mem::replace(&mut i.startup_checked, true),
             ),
             Err(_) => return IDLE,
         };
+        // A game's card left on the screen from before the app started (it
+        // quit, or the computer shut down, during a session): no session
+        // runs now, so it is old news. The return planned for it is not kept
+        // across a restart, so plan it again.
+        if first && self.live.enabled() && self.live.has_card_from(SOURCE) {
+            tracing::info!("a game card from before the start is on the screen");
+            self.live.return_after(SOURCE, STALE_CARD_BACK);
+        }
         self.hub.want(WATCHER, enabled);
         if !enabled {
             return self.idle(device, now);
@@ -1566,6 +1587,53 @@ mod tests {
         assert!(matches!(t.tick(115_000.0, None), Some(Change::Ended(r)) if r.key == "a" && r.end_ms == 100_000.0));
         assert_eq!(t.tick(116_000.0, None), Some(Change::Started));
         assert_eq!(t.session.as_ref().unwrap().game.key, "b");
+    }
+
+    #[test]
+    fn a_session_started_on_the_launcher_follows_the_game() {
+        // A launcher's game: every program of its folder is the game.
+        let program = |exe: &str, pid| Detected {
+            exe: exe.into(),
+            path: format!(r"d:\games\ffxiv\{exe}"),
+            ..game(r"d:\games\ffxiv", pid)
+        };
+        // The launcher in front for a while, then the game: one session,
+        // kept by the game's program.
+        let mut t = Tracker::default();
+        t.front(0.0, Some(program("launcher.exe", 1)));
+        t.front(5_000.0, Some(program("game.exe", 2)));
+        assert_eq!(t.tick(15_000.0, None), Some(Change::Started), "counted from the launcher");
+        assert_eq!(t.session.as_ref().unwrap().game.exe, "game.exe");
+        // The launcher long enough to start the session, then the game.
+        let mut t = Tracker::default();
+        t.front(0.0, Some(program("launcher.exe", 1)));
+        assert_eq!(t.tick(15_000.0, None), Some(Change::Started));
+        t.front(60_000.0, Some(program("game.exe", 2)));
+        // The launcher closes; the game runs on.
+        assert_eq!(t.tick(65_000.0, Some(&procs(&[(2, "game.exe")]))), None);
+        assert_eq!(t.tick(80_000.0, Some(&procs(&[(2, "game.exe")]))), None);
+        assert!(t.session.is_some());
+        // The game closes: a launcher left open does not keep it going.
+        assert_eq!(t.tick(90_000.0, Some(&procs(&[(3, "launcher.exe")]))), None);
+        match t.tick(100_000.0, Some(&procs(&[(3, "launcher.exe")]))) {
+            Some(Change::Ended(r)) => assert_eq!((r.start_ms, r.end_ms), (0.0, 90_000.0)),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_hand_added_game_keeps_its_row_after_an_update() {
+        let versions = r"C:\Users\u\AppData\Local\Roblox\Versions";
+        let marks = [GameMark {
+            path: format!(r"{versions}\version-0a1b2c3d4e5f4a6b\RobloxPlayerBeta.exe"),
+            name: "Roblox".into(),
+            game: true,
+        }];
+        // Roblox updated itself into another folder.
+        let updated = format!(r"{versions}\version-9f8e7d6c5b4a3c2d\RobloxPlayerBeta.exe");
+        let g = classify(&front(4, &updated), &marks, &[], false).unwrap();
+        assert_eq!(g.key, marks[0].path.to_lowercase(), "the list's own row, with its time");
+        assert_eq!(g.path, updated, "the program that runs");
     }
 
     #[test]
