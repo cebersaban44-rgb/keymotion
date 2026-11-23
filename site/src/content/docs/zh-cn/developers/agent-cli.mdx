@@ -19,7 +19,7 @@ agent ──runs──▶ keymotion-cli ──named pipe──▶ Keymotion (age
 
 - `keymotion-cli` 从不打开键盘。它通过命名管道向正在运行的应用发送 JSON 消息，每行一条（[协议 1](#管道)，`crates/kb-agent`）；应用的设备 actor 始终是键盘唯一的所有者，灯光层和各项保护机制都由它掌管。一项测试确保 HID 栈、Tauri 和 tokio 不会进入这个工具（`crates/keymotion-cli/tests/dependencies.rs`）。
 - 智能体的灯光是应用中的一个灯光层：位于专注计时器、游戏灯光、音乐模式、系统指标和按应用切换的配置文件之上，位于警告、提醒及其波浪之下（[架构](/keymotion/developers/architecture/#from-a-click-to-a-hid-report)）。
-- 一切都只在 RAM 中：不会向键盘的存储写入任何内容，每个灯光都会自行结束，最长 2 小时。
+- 灯光只在 RAM 中：不会向键盘的存储写入任何内容，每个灯光都会自行结束，最长 2 小时。只有两个命令会写入存储，各自需要单独的权限和 `--write-flash`：`profile apply`（配置文件的灯光）和 `card`（屏幕）。
 - 工具的版本始终与应用相同（`version.workspace = true`）；`keymotion-cli --version` 会输出 `keymotion-cli 1.2.0 (protocol 1)`。
 
 ## 命令
@@ -34,7 +34,12 @@ agent ──runs──▶ keymotion-cli ──named pipe──▶ Keymotion (age
 | `clear` | 移除一个灯光（`--id`）或此来源的所有灯光。永远不会移除其他来源的灯光。 | 是 |
 | `log` | 应用最近接受或拒绝的智能体请求（`--limit`，默认 20，最多 200）：来源、命令、结果、ID，以及请求更改了哪些设置。 | 是 |
 | `settings get [key]` | 外观和行为设置（信号外观、进度条按键、夜间安静等），以及哪些设置键只能由用户更改。 | 是 |
-| `settings set <key> <value>` | 更改一项外观或行为设置，例如 `signals.done.color green`。用户会在应用的“最近操作”中看到这项更改，并可以撤销。智能体访问、各项权限、“允许智能体更改这些设置”、“游戏时隐藏智能体灯光”和屏幕的每小时上限只由用户决定：应用会拒绝这些更改（77）。 | 是 |
+| `settings set <key> <value>` | 更改一项外观或行为设置，例如 `signals.done.color green`。用户会在应用的“最近操作”中看到这项更改，并可以撤销。智能体访问、各项权限、“允许智能体更改这些设置”、“游戏时隐藏智能体灯光”、屏幕的每小时上限，以及长任务结束时是否显示卡片（`long_task.on`）只由用户决定：应用会拒绝这些更改（77）。智能体可以把 `long_task.after` 设为 10 分钟或更长，但不能更短（65）。 | 是 |
+| `focus start\|pause\|skip\|stop\|status` | 专注计时器。`start` 运行用户设置的时段序列；加上 `--for 50m` 则运行一个由整数分钟（1 到 180）组成的专注时段，不改动用户的设置；正在运行的计时器保持不变（`already_running`），已暂停的会继续（`resumed`）；此时不应用 `--for`：`minutes` 为 `null`，`minutes_not_applied` 说明原因。需要用户开启**使用专注计时器**权限；`status` 不需要。 | 是 |
+| `profile list` | 用户的配置文件（内置的 `Default` 排在最前）：ID、名称、包含的部分、灯光是效果还是逐键颜色、是否适用于这个键盘以及是否已在键盘上。 | 是 |
+| `profile show <name>` | 在 `--for` 指定的时间内（默认 60 秒）把配置文件的逐键灯光显示在按键上，只在内存中，作为智能体的一个灯光；图案没有包含的按键保持熄灭。效果无法从内存中绘制（69：改为写入）。可以按名称（不区分大小写）或 ID 指定。 | 是 |
+| `profile apply <name> --write-flash` | 把配置文件**只有灯光**的部分写入键盘，从不写入自定义按键、宏或屏幕。需要用户开启**保存配置文件的灯光**权限并加上 `--write-flash`（否则为 77）；写入保护同样适用（多个键盘、其他程序、未经测试的固件：`write_blocked`）。键盘上已经是这样时不写入（`changed: false`）。**所有智能体合计**，任意 24 小时内最多写入 10 次（智能体的名称由它自己声明，所以换个名称也绕不过去；重启后计数仍保留；超出时返回 75 和 `retry_after_ms`）。没有实际发生的写入不计数。 | 是 |
+| `card [text]` | 键盘屏幕上的一张卡片：文字（最多 60 个字符，分 2 行；`\n` 开始第二行）、`--title`（24）、`--image FILE`、`--color`、`--for`（30 秒到 2 小时，默认 5 分钟；之后换回用户自己的图片）。需要用户开启**向屏幕发送文字和图片**权限、`--write-flash`、通过 USB 数据线连接的带屏键盘、已开启的实时屏幕，并且应用启动后 Keymotion 的窗口至少加载过一次（卡片由它绘制；在此之前为 69）。**所有智能体合计**，每小时最多为用户设定的张数（默认 4；重启后计数仍保留；超出时为 75 和 `retry_after_ms`），并受实时屏幕上传额度的限制；相同的卡片不会再次发送（`skipped: same_content`）。`--wait 20s`（最多 60 秒）会在卡片显示到屏幕上时才返回。 | 是 |
 | `version` | 工具的版本和协议，以及应用运行时它的版本和协议。协议不匹配只会报告，不算失败。 | 否 |
 | `guide` | 一份写给智能体的简短指南（最多 60 行）：先运行什么、用法思路、取值、退出码。智能体读的是它，而不是本页。 | 否 |
 | `doctor` | 检查安装情况，无论发现什么都以 0 退出：工具本身、应用是否在运行并能应答、哪个程序在提供管道（应为 `keymotion.exe`）以及管道是否属于当前用户、版本和协议、智能体访问、键盘及其 USB 数据线、工具会如何启动应用、`keymotion-cli` 是否在 PATH 中或 Store 的别名文件夹中，以及工具是否在另一个打包应用的隔离环境中运行。 | 否 |
@@ -44,11 +49,20 @@ agent ──runs──▶ keymotion-cli ──named pipe──▶ Keymotion (age
 | `connections` | 每个智能体是否已安装、是否已连接；对 Codex 还会说明你是否已经信任这些钩子。 | 否 |
 | `hook claude-code\|codex` | 智能体在钩子事件上运行的命令：从 stdin 读取事件，不输出任何内容，始终以 0 退出（[钩子模式](#钩子模式)）。 | 事件需要亮灯时 |
 
-专注计时器、配置文件、屏幕卡片、场景以及在按键上拼出单词，会在之后的步骤中加入。
+场景、保存的图案以及在按键上拼出单词，会在之后的一个步骤中加入。
 
-{/* Docs pass: the agent CLI's step 7 (focus, profile, card commands; screen
-cards; "a long task done"; the limits for all agents together) is described
-in the English and Turkish pages and still needs translating here. */}
+### 屏幕卡片
+
+页面绘制智能体卡片的方式与绘制专注计时器或会议卡片相同（同样的字体和抖动处理），其余由应用完成：
+
+0. 页面表明自己正在监听：`agents_card_drawer_ready`（不带参数；停止时为 `{ ready: false }`）。在此之前，`card` 会被拒绝（`unsupported`，69，“open Keymotion's window once”），长任务也不会显示卡片；页面重新加载或窗口关闭都会重置这一状态。
+1. 检查 `card`（访问、权限、`--write-flash`、屏幕、实时屏幕、页面、每小时张数、相同卡片），然后应用请页面绘制：事件 `agent-card`，带 `AgentCard`（`id`、`kind`（`text` 或 `longTask`）、`title`、`text`、`image`、`color`、`minutes`、`label`、`showS`）。
+2. 页面绘制后交回：`agents_card_drawn`，图片作为请求体（与 `live_submit` 相同），请求头 `x-card: <id>`；或者 `agents_card_failed { id, error }`。15 秒内未绘制完成的卡片视为失败，不计数。
+3. 实时屏幕在自己的上传额度内上传它（来源 `agent`）：只有额度中还剩三次上传时才会上传，分别用于这张卡片、换回用户自己的图片，以及给会议或提醒留一次。`--for` 结束后，它会换回用户自己的图片。一次只处理一张卡片：较新的卡片会替换仍在途中的那张；如果较早的那张仍然显示到了屏幕上，或者重启前留下了一张，用户的图片也照样会换回来（在较早卡片的时长之后，或 30 秒后）。
+
+**图片**（`--image`）：PNG、JPEG、GIF 或 WebP，按文件开头的字节区分；最大 40 KiB，这样图片能放进一行协议消息；边长 8 到 2048 像素；页面会把它适配到 240×135。卡片是静态的：动图只显示第一帧。GIF 的各帧必须位于它自己声明的画面尺寸之内（渲染器会把画布扩大到帧的大小）。一帧就是屏幕最小的一次上传（16 个 4 KiB 的页），而且每张卡片在换回用户自己的图片时还要再上传一次，所以卡片适合用来通知新消息，每小时几张。keymotion-cli 在发送任何内容之前都会检查文件（不合适的图片返回 65），应用还会再检查一次。
+
+**长任务完成（F）。** 当用户允许智能体使用屏幕并保持“长任务完成”开启时（默认开启：10 分钟，卡片显示 5 分钟），编程应用中耗时至少这么久的一轮会在结束时显示一张卡片：`longTask`，带分钟数和项目文件夹名称；页面会用用户的语言写出它（“完成 · 14 分钟”）。它计入所有智能体合计的每小时张数，当这一小时的额度已满或页面无法绘制时会被跳过。开启或关闭只能由用户决定；智能体只能把“长任务”设得比 10 分钟更长。
 
 ### 通用选项
 
@@ -137,7 +151,7 @@ in the English and Turkish pages and still needs translating here. */}
 - **为什么有两种形式**。如果装有 Git Bash，Claude Code 会用 Git Bash 运行钩子的 `command`，否则用 PowerShell；而带引号的路径后面跟参数的写法，没有一种能在两者中得到相同的解释（PowerShell 拒绝带引号的路径后面跟其他词；在 Bash 中，`&` 会启动后台作业）。它的 `args` 形式直接运行程序本身，因此用户文件夹中的空格不会造成问题。Codex 0.166.0 通过 `powershell -NoProfile -Command` 运行每个钩子。路径按 PowerShell 的规则加引号，能让 PowerShell 结束引号字符串的五个字符（`'` 以及排版用的 `‘ ’ ‚ ‛`）都会写成两个，因此像 `O’Brien` 这样的文件夹也能正常使用。这行命令会先检查程序是否存在：卸载 Keymotion 后，Codex 的钩子既不执行任何操作，也不报告任何内容。PowerShell 无法检查的路径（只有名称）会改用 `Get-Command` 查找。
 - **Claude Code 2.1.139 或更新版本**。`args` 形式在 2.1.139 中加入；更旧的 Claude Code 会只运行程序本身，不带 `hook claude-code`。在 2.1.101 之前，遇到不认识的钩子事件会让它忽略整个设置文件。因此，`connect` 发现较旧的 Claude Code（`%USERPROFILE%\.local\bin` 中的 `claude.exe`，或 npm 包）时会拒绝连接，并提示更新；`connections` 也会给出同样的警告。钩子模式从不检查版本（以保持快速）。
 - **你的文件仍归你所有**。只接受严格的 JSON：无法读取的文件会被拒绝，并保持原样。你的键名和钩子保持原来的顺序，文件保持原来的缩进和换行符；我们的条目放在各自独立的分组中，排在最后。每次更改之前，都会保留一份文件原样的副本（`settings.json.before-keymotion`）。文件通过一个临时文件整体写入，临时文件先刷新到磁盘，再替换原文件；如果文件是一个链接，就写入链接指向的位置，链接本身保留。每个文件在写入之前都会重新读取一次：如果在 keymotion-cli 说明将要更改什么之后（比如你还在考虑时），智能体又修改了它，就会根据它现在的内容重新规划，并在终端中再次询问；永远不会根据旧的副本写入。不属于 Keymotion 的规则文件或技能会被拒绝。连接两次不会改变任何内容；从另一个 keymotion-cli 副本连接，会就地更新我们的条目。技能旁边的 `connection.json` 会记住连接时创建了什么，因此移除连接时只移除这些内容。
-- **Codex 规则**。Codex 在沙盒中运行智能体的命令，而沙盒无法访问 Keymotion 按用户创建的管道。`rules\keymotion.rules` 允许 `keymotion-cli status|keys|signal|light|progress|clear|log|settings|version|guide|doctor|start` 无需询问就在沙盒之外运行，无论是按名称调用，还是按这个 keymotion-cli 的完整路径调用（`host_executable`），而同名的其他程序都不行：代码仓库自带的副本会留在沙盒中。`connect`、`disconnect` 和 `hook` 不在规则中。已用 `codex execpolicy check --resolve-host-executables` 验证。
+- **Codex 规则**。Codex 在沙盒中运行智能体的命令，而沙盒无法访问 Keymotion 按用户创建的管道。`rules\keymotion.rules` 允许 `keymotion-cli status|keys|signal|light|progress|clear|log|settings|focus|profile|card|version|guide|doctor|start` 无需询问就在沙盒之外运行（每个命令仍需用户在 Keymotion 中授予的权限；这是规则的第 2 版，应用启动时会重写），无论是按名称调用，还是按这个 keymotion-cli 的完整路径调用（`host_executable`），而同名的其他程序都不行：代码仓库自带的副本会留在沙盒中。`connect`、`disconnect` 和 `hook` 不在规则中。已用 `codex execpolicy check --resolve-host-executables` 验证。
 - **技能**对两个智能体都相同，并且保持精简：工具就在这里；先运行 `keymotion-cli guide`（找不到 `keymotion-cli` 时使用完整路径）；如何告诉用户由你决定，预设信号可用可不用。它带有版本标记；应用启动时，如果自己的技能文件和 Codex 规则比当前版本旧，就会重写它们，而且只重写这些文件，只在它们所在的位置，并且仍指向它们原来指向的那个 keymotion-cli。
 
 `keymotion-cli connections --json` 会为每个智能体报告 `state`：`not_found`、`not_connected`、`connected`、`needs_approval`（Codex：有你尚未信任的钩子，从 Codex 的 `config.toml` 中读取，keymotion-cli 从不写入该文件）、`outdated`（我们的部分条目缺失，或指向另一个 keymotion-cli）或 `unreadable`；如果找到的 Claude Code 太旧，还会给出 `warning`。
