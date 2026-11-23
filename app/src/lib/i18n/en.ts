@@ -214,6 +214,8 @@ export const en = {
   "ag.err.protocolMismatch": "Not done: keymotion-cli and Keymotion are versions that don't fit together; update Keymotion.",
   "ag.err.unknownCommand": "Not done: this Keymotion doesn't know that command yet; update Keymotion.",
   "ag.err.other": "Not done.",
+  "ag.card.name": "Agent",
+  "ag.card.done": "Done",
   "ag.log.settingsKind": "Setting change",
   "ag.log.kept": "Kept, changed again since: {keys}",
   "ag.src.cli": "Command line",

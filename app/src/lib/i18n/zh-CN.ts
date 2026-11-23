@@ -215,6 +215,8 @@ export const zhCN: Partial<Messages> = {
   "ag.err.protocolMismatch": "未执行：keymotion-cli 与 Keymotion 的版本不匹配；需要更新 Keymotion。",
   "ag.err.unknownCommand": "未执行：这个版本的 Keymotion 还不认识这个命令；需要更新 Keymotion。",
   "ag.err.other": "未执行。",
+  "ag.card.name": "智能体",
+  "ag.card.done": "完成",
   "ag.log.settingsKind": "设置更改",
   "ag.log.kept": "之后又被更改过，因此保留：{keys}",
   "ag.src.cli": "命令行",
