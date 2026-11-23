@@ -1066,6 +1066,7 @@ mod tests {
             focus_done: 0,
             last: None,
             trying: false,
+            once: None,
         }
     }
 

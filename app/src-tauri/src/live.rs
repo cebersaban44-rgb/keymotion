@@ -160,9 +160,17 @@ impl Default for LiveStored {
 }
 
 /// Uploads a source's card leaves for the sources above it: the focus
-/// timer, a game and the song keep one for a reminder or a meeting.
+/// timer, a game and the song keep one for a reminder or a meeting. An
+/// agent's card keeps two: the upload that puts the user's own picture
+/// back after it, and one for a reminder or a meeting (it goes only with
+/// three in the budget).
 fn keep_for(source: &str) -> f64 {
-    if source == crate::pomodoro::SOURCE || source == crate::games::SOURCE || source == crate::now_playing::SOURCE {
+    if source == crate::agent::CARD_SOURCE {
+        2.0
+    } else if source == crate::pomodoro::SOURCE
+        || source == crate::games::SOURCE
+        || source == crate::now_playing::SOURCE
+    {
         1.0
     } else {
         0.0
@@ -542,6 +550,20 @@ impl LiveHandle {
     /// A card from `source` is on the GIF page.
     pub fn card_shown(&self, source: &str) -> bool {
         self.library.lock().map(|l| l.live_source_showing(source)).unwrap_or(false)
+    }
+
+    /// A card from `source` on the GIF page, a card from it waiting or
+    /// going there, and a return to the user's own picture planned for it
+    /// (or under way), read at one moment (the library, then the runtime,
+    /// in the worker's order).
+    pub fn card_status(&self, source: &str) -> (bool, bool, bool) {
+        let Ok(lib) = self.library.lock() else { return (false, false, false) };
+        let Ok(rt) = self.rt.lock() else { return (false, false, false) };
+        let shown = lib.live_source_showing(source);
+        let waiting = rt.pending.as_ref().is_some_and(|p| p.item.source == source)
+            || rt.uploading.as_ref().is_some_and(|u| u.source == source);
+        let back = rt.back.as_ref().is_some_and(|b| b.source == source) || rt.restore_auto.as_deref() == Some(source);
+        (shown, waiting, back)
     }
 
     /// A card from `source` waits or is going to the keyboard.
@@ -956,6 +978,25 @@ mod tests {
         // One more for the timer needs two: two hours on 24 a day.
         let wait = b.ms_until(t0, 1.0 + keep).unwrap();
         assert!((wait - 2.0 * H).abs() < 1.0, "{wait}");
+    }
+
+    #[test]
+    fn an_agents_card_goes_only_with_its_return_and_a_spare_in_the_budget() {
+        let keep = keep_for(crate::agent::CARD_SOURCE);
+        assert_eq!(keep, 2.0);
+        let mut b = Budget::default();
+        let t0 = 1_000_000.0;
+        while b.tokens(t0) > 3.0 {
+            assert!(b.try_take(t0));
+        }
+        assert_eq!(b.tokens(t0), 3.0);
+        assert!(b.try_take_keeping(t0, keep), "three: the card goes");
+        // Its return (the user's picture) then still leaves one for a
+        // reminder.
+        b.charge(t0);
+        assert_eq!(b.tokens(t0), 1.0);
+        assert!(!b.try_take_keeping(t0, keep), "the next card waits");
+        assert_eq!(b.ms_until(t0, 1.0), None, "a reminder can still go");
     }
 
     #[test]

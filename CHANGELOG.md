@@ -108,6 +108,15 @@ says so.
   and the recent actions, with **Undo** and, for a request that wasn't
   carried out, why. The privacy policy and the security policy say what
   agents pass on and what they can never change.
+  Three more things only with their own permission, each off at first:
+  agents can start, pause or stop the focus timer (also one block of their
+  own length, without changing your settings), show a profile's lighting
+  for a while or write it to the keyboard (its lighting only, at most 10
+  writes in any 24 hours for all agents together), and put a card with text
+  or a picture on the screen (at most 4 an hour for all agents together, as
+  you set it; your own picture comes back after it). With screen cards
+  allowed, a coding task that took 10 minutes or more says "Done · 14 min"
+  on the screen when it ends.
 
 ### Changed
 

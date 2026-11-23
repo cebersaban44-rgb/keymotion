@@ -291,6 +291,10 @@ pub enum Request {
         anim: Box<ScreenAnimation>,
         reply: mpsc::Sender<ScreenUploadResult>,
     },
+    /// Whether a write to the keyboard's memory would be refused now, and
+    /// why ([`write_gate`]), for a caller that answers with the reason (an
+    /// agent's `profile apply`). Reads only what the actor holds.
+    WriteBlocked(Reply<Option<WriteBlock>>),
 }
 
 /// What a frame request sets: the preview or one background layer.
@@ -334,7 +338,8 @@ impl Request {
             | Self::SetMirror(_)
             | Self::SetCalibration(_)
             | Self::ConfirmFirmware(_)
-            | Self::SetClockAuto(..) => false,
+            | Self::SetClockAuto(..)
+            | Self::WriteBlocked(_) => false,
         }
     }
 }
@@ -1111,6 +1116,9 @@ impl Actor {
             Request::DescribeUnsupported { id, reply } => {
                 let _ = reply.send(self.describe_unsupported(&id));
             }
+            Request::WriteBlocked(reply) => {
+                let _ = reply.send(Ok(self.gate_block(WriteKind::Memory)));
+            }
             Request::UploadScreen { id, anim, reply } => {
                 let _write = self.flash.begin(FlashWrite::Screen);
                 let _ = reply.send(self.upload_screen(&id, &anim));
@@ -1295,13 +1303,17 @@ impl Actor {
     /// write came from the background (the live mode, the clock sync on
     /// connect).
     fn gate(&self, kind: WriteKind) -> Result<(), String> {
-        // Without a keyboard on the cable the write fails on its own.
-        if self.command_path.is_none() {
-            return Ok(());
+        match self.gate_block(kind) {
+            Some(block) => Err(block.to_string()),
+            None => Ok(()),
         }
-        let Some(block) = write_gate(kind, self.wired, self.firmware_check(), running_conflict) else {
-            return Ok(());
-        };
+    }
+
+    /// [`Self::gate`]'s reason, as it is.
+    fn gate_block(&self, kind: WriteKind) -> Option<WriteBlock> {
+        // Without a keyboard on the cable the write fails on its own.
+        self.command_path.as_ref()?;
+        let block = write_gate(kind, self.wired, self.firmware_check(), running_conflict)?;
         match &block {
             WriteBlock::UnverifiedFirmware(v) => {
                 tracing::warn!(firmware = %v, ?kind, "write waits for the user: firmware not tested");
@@ -1310,7 +1322,7 @@ impl Actor {
             WriteBlock::SeveralKeyboards => tracing::warn!(keyboards = self.wired, "write refused: several keyboards"),
             WriteBlock::Program(_) => {}
         }
-        Err(block.to_string())
+        Some(block)
     }
 
     /// Run `f` against the wired command channel, opening it on demand.

@@ -17,9 +17,10 @@
 //!   * Codex (`hooks.json`): one line for its shell, PowerShell on Windows
 //!     ([`codex_command`]).
 //! * Codex only, a rule (`rules/keymotion.rules`) that lets the agent's own
-//!   keymotion-cli calls for lights and status run outside Codex's sandbox,
-//!   which cannot reach Keymotion's per-user pipe. Not `connect`,
-//!   `disconnect` or `hook`.
+//!   keymotion-cli calls run outside Codex's sandbox, which cannot reach
+//!   Keymotion's per-user pipe: lights and status, and the focus timer,
+//!   profiles and screen cards (each still behind the user's own permission
+//!   in Keymotion). Not `connect`, `disconnect` or `hook`.
 //! * One skill, the same text for both ([`skill_text`]): "keymotion-cli is
 //!   here; run `keymotion-cli guide` first". Keymotion rewrites its own copy
 //!   when it is outdated ([`refresh`]).
@@ -40,11 +41,11 @@ use crate::event::Agent;
 use crate::json::Json;
 
 /// The skill's version: [`refresh`] rewrites an older copy.
-pub const SKILL_VERSION: u32 = 1;
+pub const SKILL_VERSION: u32 = 2;
 /// The marker in our skill file, with its version after it.
 pub const SKILL_MARKER: &str = "keymotion-skill:";
 /// The Codex rule's version, and its marker.
-pub const RULES_VERSION: u32 = 1;
+pub const RULES_VERSION: u32 = 2;
 pub const RULES_MARKER: &str = "keymotion-rules:";
 /// The folder of our skill, under each agent's skills folder.
 pub const SKILL_DIR: &str = "keymotion";
@@ -704,8 +705,9 @@ and end by themselves.
   letter keys, a count on the number keys, a progress bar on the F row.
 - Put the command right after `keymotion-cli` (`keymotion-cli status --json`,
   not `keymotion-cli --json status`): Codex lets only that form reach the app.
-- Exit code 77 means agent access is off in Keymotion: tell the user (Keymotion
-  > Tools > AI agents) and do not retry.
+- Exit code 77 means the user has not allowed it in Keymotion (agent access, or
+  the permission a command needs): tell the user (Keymotion > Tools > AI
+  agents) and do not retry.
 ",
         path = cli.path_text()
     )
@@ -737,13 +739,15 @@ pub fn rules_text(cli: &Cli) -> String {
     let path = starlark_string(&cli.path_text());
     format!(
         "# {RULES_MARKER} {RULES_VERSION}. Written by Keymotion; changes made here do not last.
-# Lets the agent's own keymotion-cli calls for the keyboard's lights and status
-# run outside Codex's sandbox, which cannot reach Keymotion's per-user pipe.
-# Connecting or disconnecting a coding app is not among them: Codex still asks.
+# Lets the agent's own keymotion-cli calls (lights, status; the focus timer,
+# profiles and screen cards, each still behind the user's permission in
+# Keymotion) run outside Codex's sandbox, which cannot reach Keymotion's
+# per-user pipe. Connecting or disconnecting a coding app is not among them:
+# Codex still asks.
 prefix_rule(
     pattern = [[\"keymotion-cli\", \"keymotion-cli.exe\"], [{allowed}]],
     decision = \"allow\",
-    justification = \"Keymotion's keyboard lights: keymotion-cli talks to the Keymotion app over a pipe the sandbox cannot reach.\",
+    justification = \"Keymotion on the user's keyboard: keymotion-cli talks to the Keymotion app over a pipe the sandbox cannot reach.\",
 )
 host_executable(name = \"keymotion-cli\", paths = [{path}])
 "
@@ -767,9 +771,12 @@ fn starlark_string(text: &str) -> String {
 }
 
 /// keymotion-cli's commands the Codex rule lets out of the sandbox: lights,
-/// status and help. Later steps add theirs here (and [`RULES_VERSION`]).
-pub const ALLOWED_COMMANDS: [&str; 12] = [
-    "status", "keys", "signal", "light", "progress", "clear", "log", "settings", "version", "guide", "doctor", "start",
+/// the focus timer, profiles, screen cards, status and help (each still
+/// needs the user's permission in Keymotion). Later steps add theirs here
+/// (and [`RULES_VERSION`]; version 2 added focus, profile and card).
+pub const ALLOWED_COMMANDS: [&str; 15] = [
+    "status", "keys", "signal", "light", "progress", "clear", "log", "settings", "focus", "profile", "card", "version",
+    "guide", "doctor", "start",
 ];
 
 // ------------------------------------------------------------- planning

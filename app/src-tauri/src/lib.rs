@@ -407,6 +407,49 @@ fn agents_undo(agents: Agents<'_>, seq: u32) -> Result<AgentsState, String> {
     agents.undo(seq)
 }
 
+/// An agent's screen card, drawn by the page (`agent-card` event): the
+/// picture as the body (validated here), header `x-card` its id. It goes to
+/// the live mode like any card.
+#[tauri::command]
+fn agents_card_drawn(
+    agents: Agents<'_>,
+    live: Live<'_>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<LiveState, String> {
+    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
+        return Err("expected binary data".into());
+    };
+    let anim = kb_protocol::sonix::screen::from_blob(data).map_err(|e| e.to_string())?;
+    let id = request.headers().get("x-card").and_then(|v| v.to_str().ok()).unwrap_or("");
+    agents.card_drawn(id, anim)?;
+    live.state()
+}
+
+/// The page could not draw an agent's card (`error`, for the agent).
+#[tauri::command]
+fn agents_card_failed(agents: Agents<'_>, id: String, error: String) {
+    tracing::debug!(%id, "ipc: agents_card_failed");
+    agents.card_failed(&id, &error);
+}
+
+/// The page listens for `agent-card` and can draw agents' cards (`ready`
+/// left out or `true`), or stops (`false`). Until it says so, `card` is
+/// refused (`unsupported`, "open Keymotion's window once") and a long
+/// task puts no card up; a page that reloads or whose window closes is not
+/// ready until it says so again.
+#[tauri::command]
+fn agents_card_drawer_ready(agents: Agents<'_>, ready: Option<bool>) {
+    tracing::debug!(?ready, "ipc: agents_card_drawer_ready");
+    agents.card_drawer(ready.unwrap_or(true));
+}
+
+/// The page that drew agents' cards is gone (a reload, its window closed).
+fn agents_drawer_gone(app: &AppHandle) {
+    if let Some(agents) = app.try_state::<Arc<AgentHandle>>() {
+        agents.card_drawer(false);
+    }
+}
+
 /// Run an agents' setup step off the main thread (it reads and writes the
 /// coding apps' files, and PATH).
 async fn agents_blocking<T: Send + 'static>(
@@ -616,7 +659,7 @@ type Games<'a> = State<'a, Arc<GamesHandle>>;
 
 /// The keyboard on the USB cable (the only connection that takes settings
 /// and live frames).
-fn usb_model(app: &AppHandle) -> Option<String> {
+pub(crate) fn usb_model(app: &AppHandle) -> Option<String> {
     let device = app.try_state::<Arc<DeviceHandle>>()?;
     let snap = device.snapshot.lock().ok()?;
     snap.keyboards
@@ -1345,7 +1388,7 @@ fn backup_cancel(pending: State<'_, PendingImport>) {
 
 // ----------------------------------------------------------------- profiles
 
-fn lock_profiles(p: &Mutex<ProfileStore>) -> Result<std::sync::MutexGuard<'_, ProfileStore>, String> {
+pub(crate) fn lock_profiles(p: &Mutex<ProfileStore>) -> Result<std::sync::MutexGuard<'_, ProfileStore>, String> {
     p.lock().map_err(|_| "profiles unavailable".to_string())
 }
 
@@ -1356,7 +1399,7 @@ fn now_ms() -> f64 {
 /// What the keyboard of `model_id` has, as this computer recorded it: the
 /// keymap and macro records, the Lighting page's record, the library item
 /// on the GIF page (profiles.rs). Editors' unsaved drafts are not in it.
-fn profile_current(app: &AppHandle, model_id: &str) -> Result<profiles::Current, String> {
+pub(crate) fn profile_current(app: &AppHandle, model_id: &str) -> Result<profiles::Current, String> {
     let (keymap, macros) = {
         let device = app.state::<Arc<DeviceHandle>>();
         let snap = device.snapshot.lock().map_err(|_| "device state unavailable")?;
@@ -1560,9 +1603,9 @@ async fn profiles_import(app: AppHandle, request: tauri::ipc::Request<'_>) -> Re
 /// Writes of a profile load, through the device actor's requests: every
 /// check before a write applies (several keyboards, other programs,
 /// untested firmware) and each is announced as a flash write.
-struct DeviceWriter<'a> {
-    device: &'a DeviceHandle,
-    config_dir: Option<PathBuf>,
+pub(crate) struct DeviceWriter<'a> {
+    pub(crate) device: &'a DeviceHandle,
+    pub(crate) config_dir: Option<PathBuf>,
 }
 
 impl profiles::Writer for DeviceWriter<'_> {
@@ -1752,7 +1795,16 @@ pub fn run() {
         .manage(Arc::new(DriverGif::default()))
         .manage(PendingImport::default())
         .manage(LastExport::default())
+        .on_page_load(|webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Started {
+                agents_drawer_gone(webview.app_handle());
+            }
+        })
         .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                agents_drawer_gone(window.app_handle());
+                return;
+            }
             let tauri::WindowEvent::CloseRequested { api, .. } = event else { return };
             // Kept in the tray: hiding loses nothing, so nothing to ask.
             if tray::hide_on_close(window) {
@@ -1939,6 +1991,9 @@ pub fn run() {
             agents_connect,
             agents_disconnect_plan,
             agents_disconnect,
+            agents_card_drawn,
+            agents_card_failed,
+            agents_card_drawer_ready,
             pomodoro_state,
             pomodoro_control,
             pomodoro_configure,

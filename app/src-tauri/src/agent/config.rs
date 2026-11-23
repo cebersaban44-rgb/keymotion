@@ -4,9 +4,11 @@
 //!
 //! Agents may change the looks and the behaviour (owner's decision,
 //! 2026-11-22). Access, the permissions, "agents may change these
-//! settings", "hide while playing" and the screen's hourly limit are the
-//! user's alone ([`agent_may_set`]); the coding apps' connections are not
-//! settings at all.
+//! settings", "hide while playing", the screen's hourly limit and whether a
+//! long task puts a card up are the user's alone ([`agent_may_set`]); an
+//! agent may make "a long task" no shorter than 10 minutes
+//! ([`agent_may_set_to`]): each card writes the screen's memory. The coding
+//! apps' connections are not settings at all.
 
 use crate::dto::{AgentEffect, AgentLook, AgentNightMode, AgentProgressKeys, AgentSettings};
 use kb_agent::values::{format_duration, parse_duration, MAX_SIGNAL_DURATION};
@@ -20,7 +22,7 @@ const LOOKS: [&str; 6] =
 const LOOK_FIELDS: [&str; 5] = ["color", "effect", "speed", "duration", "until_answered"];
 
 /// Only the user changes these, in Keymotion.
-pub const USER_ONLY: [&str; 7] = [
+pub const USER_ONLY: [&str; 8] = [
     "enabled",
     "permissions.screen",
     "permissions.focus",
@@ -28,7 +30,11 @@ pub const USER_ONLY: [&str; 7] = [
     "agents_may_edit",
     "hide_in_game",
     "screen.per_hour",
+    "long_task.on",
 ];
+
+/// The shortest "long task" an agent may set, in seconds.
+pub const AGENT_LONG_TASK_MIN_S: u32 = 10 * 60;
 
 /// The other keys, in the order `settings_get` lists them.
 const OTHERS: [&str; 22] = [
@@ -88,6 +94,16 @@ pub fn keys() -> Vec<String> {
 /// Whether an agent may change `key` (with `agents_may_edit` on).
 pub fn agent_may_set(key: &str) -> bool {
     !USER_ONLY.contains(&key)
+}
+
+/// Whether an agent may set `key` to what `s` has now, past the key's own
+/// range: "a long task" no shorter than 10 minutes, so an agent cannot make
+/// every turn put a card up (each one a write to the screen's memory).
+pub fn agent_may_set_to(key: &str, s: &AgentSettings) -> Result<(), AgentError> {
+    if key == "long_task.after" && s.long_task.after_s < AGENT_LONG_TASK_MIN_S {
+        return Err(bad(key, "agents may set 10m or longer; only the user can make it shorter."));
+    }
+    Ok(())
 }
 
 /// `signals.done.color` → (`signals.done`, `color`).

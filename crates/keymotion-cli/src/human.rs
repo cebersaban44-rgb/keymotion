@@ -240,6 +240,92 @@ pub fn clear(data: &Value) -> String {
     }
 }
 
+/// The focus timer, after `focus …`.
+pub fn focus(data: &Value) -> String {
+    let f = &data["focus"];
+    let now = match (f["status"].as_str(), f["phase"].as_str(), f["remaining_s"].as_u64()) {
+        (Some(status), Some(phase), Some(left)) => {
+            format!("{} {}, {} left", printable(phase), printable(status), duration(left * 1000))
+        }
+        _ => "idle".to_string(),
+    };
+    let once = f["once"].as_u64().map(|m| format!(" (one block of {m}m)")).unwrap_or_default();
+    let line = match data["action"].as_str() {
+        None => format!("Focus timer: {now}{once}."),
+        Some(_) if flag(data, "already_running") => format!("The focus timer runs already: {now}{once}."),
+        Some(_) if flag(data, "resumed") => format!("The focus timer goes on: {now}{once}."),
+        Some(action) => format!("Focus timer {}: {now}{once}.", printable(action)),
+    };
+    match data["minutes_not_applied"].as_str() {
+        Some(why) => format!("{line} --for was not applied: {}.", printable(why)),
+        None => line,
+    }
+}
+
+/// `profile list|show|apply`.
+pub fn profile(data: &Value) -> String {
+    if let Some(list) = data["profiles"].as_array() {
+        let lines: Vec<String> = list
+            .iter()
+            .map(|p| {
+                let mut line = format!("{}  {}", text(p, "id"), text(p, "name"));
+                if let Some(l) = p["lighting"].as_str() {
+                    line.push_str(&format!("  lighting: {}", if l == "per_key" { "per key" } else { "effect" }));
+                }
+                if flag(p, "lighting_on_keyboard") {
+                    line.push_str("  (on the keyboard)");
+                }
+                if p["fits"] == Value::Bool(false) {
+                    line.push_str("  (another model)");
+                }
+                line
+            })
+            .collect();
+        return lines.join("\n");
+    }
+    let name = text(data, "profile");
+    match data.get("changed") {
+        Some(Value::Bool(true)) => match (data["writes_in_24h"].as_u64(), data["writes_per_24h"].as_u64()) {
+            (Some(n), Some(max)) => {
+                format!("Wrote the lighting of {name} to the keyboard ({n} of {max} agent writes in 24 hours).")
+            }
+            _ => format!("Wrote the lighting of {name} to the keyboard."),
+        },
+        Some(Value::Bool(false)) => format!("The keyboard has the lighting of {name} already; nothing written."),
+        _ => match data["expires_in_ms"].as_u64() {
+            Some(ms) => format!("Showing the lighting of {name} for {}.", duration(ms)),
+            None => format!("Showing the lighting of {name}."),
+        },
+    }
+}
+
+/// `card`.
+pub fn card(data: &Value) -> String {
+    let id = text(data, "id");
+    if data["skipped"].as_str() == Some("same_content") {
+        return format!("Card {id} is this card already; nothing sent again.");
+    }
+    match data["state"].as_str() {
+        Some("shown") => format!("Card {id} is on the screen."),
+        Some("waiting") => format!("Card {id} waits for the screen (its budget, or a game)."),
+        _ => format!("Card {id} is on its way to the screen."),
+    }
+}
+
+/// What to know about a card just sent.
+pub fn card_warnings(data: &Value) -> Vec<String> {
+    let mut out = Vec::new();
+    if let (Some(sent), Some(per_hour)) = (data["sent_this_hour"].as_u64(), data["per_hour"].as_u64()) {
+        if sent >= per_hour {
+            out.push(format!("That was the last of {per_hour} cards this hour."));
+        }
+    }
+    if data["screen_budget"]["left"].as_u64() == Some(0) && data["shown"] != Value::Bool(true) {
+        out.push("The screen's budget is used up for now: the card goes up when it refills.".to_string());
+    }
+    out
+}
+
 /// The log, newest first; `now_ms` is the wall clock in Unix milliseconds.
 pub fn log(data: &Value, now_ms: f64) -> String {
     let entries = data["entries"].as_array().map(Vec::as_slice).unwrap_or_default();

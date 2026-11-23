@@ -13,7 +13,7 @@ light ends by itself (2h at most), or when you clear it.
 
 You decide how to tell the user things. The ready signals below are optional
 shortcuts; you may as well pick keys, colors, effects and timing yourself, with
-no setup. The user's only switch: Keymotion > Tools > AI agents > agent access.
+no setup. Only the user turns on agent access and each permission, in Keymotion.
 
 First
   keymotion-cli status --json       running? access on? keyboard? your lights
@@ -22,11 +22,7 @@ With --json, stdout is one JSON object: {"ok":true,"data":{...},"warnings":[]}
 or {"ok":false,"error":{"code":"...","message":"...","hint":"..."}}.
 
 Ready signals (the user picks the look; --color --effect --keys --for override)
-  keymotion-cli signal done         a task finished
-  keymotion-cli signal attention    you need the user: flashes, then pulses
-  keymotion-cli signal error        something failed
-  keymotion-cli signal info         a short note
-  keymotion-cli signal busy         working: clears your earlier signals
+  keymotion-cli signal done         also attention, error, info, busy
 
 Your own lights (ideas, not rules)
   keymotion-cli light --keys 1-3 --color red --for 10m
@@ -41,6 +37,15 @@ Your own lights (ideas, not rules)
       a bar on the F row, 0 to 100; send it again as work goes on
   keymotion-cli clear --id ask      that light off; plain clear: all of yours
 
+When the user allowed it (77 otherwise: tell the user, do not retry)
+  keymotion-cli focus start --for 50m
+      a 50-minute focus block on the user's timer; pause, skip, stop, status
+  keymotion-cli profile show "Night Owl" --for 30s
+      a profile's lights for a while; profile list; apply NAME --write-flash
+  keymotion-cli card "Deployed\n4 min" --title CI --write-flash
+      a card on the screen; --image FILE (PNG/JPEG/GIF/WebP, 40 KiB, still).
+      Each card writes the screen's memory: a few an hour, for real news.
+
 Values
   Keys: ids (esc, f1, w, 1), ranges (f1-f12, 1-3), groups (all, f-row, numbers,
     letters, wasd, arrows, numpad), comma-separated. keys lists them.
@@ -49,22 +54,18 @@ Values
     --speed 1-5. Blinking stays at 3 flashes a second or less.
   Time: --times N runs the effect N times; --for 500ms|30s|5m|1h. Unless told,
     a light lasts 60s and a bar 10m after its last update.
-  Ids: without --id, a command replaces your previous one of its kind (signal
-    done replaces signal done); give ids to keep up to 8 lights. --source NAME
-    (or KEYMOTION_SOURCE) names you; you can clear only your own lights.
+  Ids: --id keeps up to 8 lights apart; you can clear only your own lights.
 
-Your coding app may be connected (keymotion-cli connections): then "done",
-"waiting for you" and errors light by themselves. Add what they cannot say.
-More: log, settings get, settings set KEY VALUE (looks and behaviour; the user
-can undo it), doctor (setup problems), start. If Keymotion is not running,
-commands start it with no window (--no-start: they do not).
+If your coding app is connected, "done", "waiting for you" and errors light by
+themselves: add what they cannot say. More: log, settings get|set, doctor.
+Keymotion not running? Commands start it with no window (--no-start: not).
 
 Exit codes
   0 done    64 bad command line    65 bad value (color, key, time)
   69 not available: no app, no keyboard, or it needs the USB cable
   75 try again later (rate limit or timeout; see retry_after_ms)
   76 Keymotion and keymotion-cli differ: update the older one
-  77 not allowed (agent access off, a setting only the user may change):
+  77 not allowed (agent access off, a permission only the user may change):
      tell the user, do not retry      1 unexpected
 "#;
 
@@ -113,7 +114,15 @@ mod tests {
         // creative, not only `signal done`.
         assert!(GUIDE.contains("You decide how to tell the user things"));
         assert!(GUIDE.contains("optional"));
-        for idea in ["--keys 1-3 --color red", "--effect wave --times 1", "progress 40", "--effect pulse --for 30m"] {
+        for idea in [
+            "--keys 1-3 --color red",
+            "--effect wave --times 1",
+            "progress 40",
+            "--effect pulse --for 30m",
+            "focus start --for 50m",
+            "profile show",
+            "card \"Deployed",
+        ] {
             assert!(GUIDE.contains(idea), "{idea}");
         }
         for code in ["0 done", "64", "65", "69", "75", "76", "77"] {

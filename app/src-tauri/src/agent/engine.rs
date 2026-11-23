@@ -167,6 +167,16 @@ pub struct Lamp {
     /// Its LEDs and places, worked out for this model.
     leds: Vec<(u8, Place)>,
     leds_for: Option<String>,
+    /// A picture of its own: one colour per LED of `leds`, in the same
+    /// order (a profile's per-key design); `look.color` otherwise.
+    paint: Option<Vec<Rgb>>,
+}
+
+impl Lamp {
+    /// The colour of its `i`-th LED.
+    fn color_at(&self, i: usize) -> Rgb {
+        self.paint.as_ref().and_then(|p| p.get(i)).copied().unwrap_or(self.look.color)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -204,6 +214,8 @@ struct Session {
     /// Its number key's LEDs, for this model.
     digit: Vec<(u8, Place)>,
     digit_for: Option<String>,
+    /// When its turn began (the user's prompt), for "a long task done" (F).
+    turn_since: Option<u64>,
 }
 
 /// How a request goes in.
@@ -274,6 +286,12 @@ pub struct Engine {
 
 fn rgb(c: kb_agent::Color) -> Rgb {
     [c.r, c.g, c.b]
+}
+
+/// Lights cannot show for want of a keyboard on the cable, not for anything
+/// wrong with the request.
+fn is_unlit(e: &AgentError) -> bool {
+    matches!(e.code, ErrorCode::NeedsUsb | ErrorCode::NoKeyboard | ErrorCode::Unsupported)
 }
 
 impl Engine {
@@ -580,10 +598,16 @@ impl Engine {
             // The user stopped the turn: its question and its "working"
             // light go; what came before stays.
             HookEvent::Interrupted => {
+                if let Some(s) = self.sessions.get_mut(name) {
+                    s.turn_since = None;
+                }
                 let cleared = self.answer_all(name) + self.remove(name, |l| l.kind == Kind::Signal(SignalName::Busy));
                 json!({ "lit": false, "cleared": cleared })
             }
             HookEvent::Busy => {
+                if let Some(s) = self.sessions.get_mut(name) {
+                    s.turn_since = Some(now.mono);
+                }
                 let asked = self.answer_all(name);
                 let mut a = self.signal(
                     source,
@@ -615,24 +639,34 @@ impl Engine {
             }
             HookEvent::Done | HookEvent::Error => {
                 let cleared = self.answer_all(name);
+                let mut turn = None;
                 if let Some(s) = self.sessions.get_mut(name) {
                     s.failed = if hook.event == HookEvent::Error { hook.calls.clone() } else { Vec::new() };
+                    turn = s.turn_since.take().map(|t| now.mono.saturating_sub(t));
                 }
                 let signal = if hook.event == HookEvent::Done { "done" } else { "error" };
-                let mut a = self.signal(
-                    source,
-                    &SignalArgs { name: signal.into(), ..Default::default() },
-                    lights,
-                    now,
-                    id_out,
-                )?;
+                // Lit or not (no cable), the turn's length is the app's to
+                // know: a long task done may still put a card up (F).
+                let lit =
+                    self.signal(source, &SignalArgs { name: signal.into(), ..Default::default() }, lights, now, id_out);
+                let mut a = match lit {
+                    Ok(a) => a,
+                    Err(e) if hook.event == HookEvent::Done && turn.is_some() && is_unlit(&e) => {
+                        json!({ "lit": false, "shown": false, "unlit": e.code.as_str() })
+                    }
+                    Err(e) => return Err(e),
+                };
                 a["cleared"] = json!(cleared);
+                if hook.event == HookEvent::Done {
+                    a["turn_ms"] = json!(turn);
+                }
                 a
             }
             HookEvent::UsageLimit => {
                 let cleared = self.answer_all(name);
                 if let Some(s) = self.sessions.get_mut(name) {
                     s.failed.clone_from(&hook.calls);
+                    s.turn_since = None;
                 }
                 let mut a = if self.settings.usage_limit.on {
                     self.usage_limit(source, lights, now, id_out)?
@@ -689,6 +723,7 @@ impl Engine {
                     acked_until: None,
                     digit: Vec::new(),
                     digit_for: None,
+                    turn_since: None,
                 },
             );
         }
@@ -1036,6 +1071,7 @@ impl Engine {
             burst: None,
             leds: Vec::new(),
             leds_for: None,
+            paint: None,
         }
     }
 
@@ -1114,6 +1150,69 @@ impl Engine {
         applied
     }
 
+    // ------------------------------------------- requests the app carries out
+
+    /// Before a request the app carries out itself (`focus`, `profile`,
+    /// `card`) changes anything: access is on, and the source is within its
+    /// rate.
+    pub fn gate(&mut self, source: &SourceName, now: Now) -> Result<(), AgentError> {
+        if !self.settings.enabled {
+            return Err(AgentError::new(ErrorCode::AgentAccessOff, "Agent access is off in Keymotion.")
+                .with_hint("The user can turn it on in Keymotion › Tools › AI agents."));
+        }
+        self.admit(source.as_str(), None, now.mono).map(|_| ())
+    }
+
+    /// Log such a request, as `command` logs the others: a refusal at most
+    /// once a second per source.
+    pub fn note(
+        &mut self,
+        source: &SourceName,
+        command: &'static str,
+        error: Option<ErrorCode>,
+        id: Option<String>,
+        now: Now,
+    ) {
+        if error.is_some() {
+            let last = self.refusals.get(source.as_str()).copied();
+            if last.is_some_and(|t| now.mono.saturating_sub(t) < REFUSAL_LOG_EVERY_MS) {
+                return;
+            }
+            self.refusals.insert(source.as_str().to_string(), now.mono);
+        }
+        self.record(source.as_str(), command, error, id, Vec::new(), now);
+    }
+
+    /// A picture of the source's own on the keys (a profile's per-key
+    /// design): `keys` with their places and colours, on the keyboard of
+    /// `model`. It replaces the source's light `id`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn paint(
+        &mut self,
+        source: &SourceName,
+        id: &str,
+        keys: Vec<(u8, Place, Rgb)>,
+        model: &str,
+        for_ms: u64,
+        now: Now,
+    ) -> Result<Value, AgentError> {
+        let admit = self.admit(source.as_str(), Some(id), now.mono)?;
+        let color = keys.first().map_or([255, 255, 255], |k| k.2);
+        let mut lamp = self.lamp(
+            source.as_str(),
+            id,
+            Kind::Light,
+            Look::plain(color, Motion::Solid),
+            KeySpec::all(),
+            now.mono,
+            for_ms,
+        );
+        lamp.leds = keys.iter().map(|&(led, place, _)| (led, place)).collect();
+        lamp.paint = Some(keys.iter().map(|k| k.2).collect());
+        lamp.leds_for = Some(model.to_string());
+        Ok(self.put(lamp, admit, now.mono))
+    }
+
     // ------------------------------------------------------------ settings
 
     fn settings_set(
@@ -1143,6 +1242,7 @@ impl Engine {
                 ));
             }
             config::set(&mut next, key, value)?;
+            config::agent_may_set_to(key, &next)?;
             let after = config::get(&next, key).unwrap_or(Value::Null);
             if before != after {
                 found.push(Change { key: key.clone(), before, after });
@@ -1483,7 +1583,13 @@ impl Engine {
         let lamps = self.sources.values_mut().flat_map(|s| s.lamps.iter_mut().chain(s.queued.iter_mut()));
         for lamp in lamps.chain(self.missed.iter_mut()) {
             if lamp.leds_for.as_deref() != Some(index.model_id.as_str()) {
-                lamp.leds = index.resolve_lenient(&lamp.keys);
+                if lamp.paint.is_some() {
+                    // A picture made for another keyboard's LEDs.
+                    lamp.leds.clear();
+                    lamp.paint = Some(Vec::new());
+                } else {
+                    lamp.leds = index.resolve_lenient(&lamp.keys);
+                }
                 lamp.leds_for = Some(index.model_id.clone());
             }
         }
@@ -1534,9 +1640,9 @@ impl Engine {
         // the rest by rank.
         let tries = ranked.iter().take_while(|l| l.kind == Kind::Try).count();
         for lamp in &ranked[..tries] {
-            for &(led, place) in &lamp.leds {
+            for (i, &(led, place)) in lamp.leds.iter().enumerate() {
                 if taken.insert(led) {
-                    out.push((led, scale(lamp.look.color, self.level(lamp, now, place))));
+                    out.push((led, scale(lamp.color_at(i), self.level(lamp, now, place))));
                 }
             }
         }
@@ -1552,9 +1658,9 @@ impl Engine {
             if dim <= 0.0 {
                 continue;
             }
-            for &(led, place) in &lamp.leds {
+            for (i, &(led, place)) in lamp.leds.iter().enumerate() {
                 if taken.insert(led) {
-                    out.push((led, scale(lamp.look.color, self.level(lamp, now, place) * dim)));
+                    out.push((led, scale(lamp.color_at(i), self.level(lamp, now, place) * dim)));
                 }
             }
         }
@@ -2026,6 +2132,16 @@ mod tests {
             run(&mut e, "a", set(&[("night.from", json!("25:00"))]), 200).unwrap_err().code,
             ErrorCode::BadValue
         );
+        // F: only the user turns it on or off; an agent may make a long task
+        // no shorter than 10 minutes.
+        assert_eq!(
+            run(&mut e, "a", set(&[("long_task.on", json!(true))]), 300).unwrap_err().code,
+            ErrorCode::PermissionOff
+        );
+        let short = run(&mut e, "a", set(&[("long_task.after", json!("2m"))]), 300).unwrap_err();
+        assert_eq!(short.code, ErrorCode::BadValue);
+        assert!(run(&mut e, "a", set(&[("long_task.after", json!("15m"))]), 300).is_ok());
+        assert_eq!(e.settings().long_task.after_s, 15 * 60);
         // The user can say no to all of it.
         let mut s = *e.settings();
         s.agents_may_edit = false;
@@ -2518,6 +2634,64 @@ mod tests {
         let left: Vec<String> = e.infos(5_000, true).into_iter().filter(|i| i.source == A).map(|i| i.kind).collect();
         assert_eq!(left, ["usage_limit", "error"]);
         assert!(e.sessions(5_000).iter().all(|s| s.source != A));
+    }
+
+    #[test]
+    fn a_turn_says_how_long_it_took_when_it_is_done() {
+        let mut e = on();
+        run(&mut e, A, hook("session_start", &[]), 0).unwrap();
+        assert_eq!(run(&mut e, A, hook("done", &[]), 100).unwrap()["turn_ms"], Value::Null, "no prompt seen");
+        run(&mut e, A, hook("busy", &[]), 1_000).unwrap();
+        run(&mut e, A, hook("attention", &["c1"]), 2_000).unwrap();
+        assert_eq!(run(&mut e, A, hook("done", &[]), 61_000).unwrap()["turn_ms"], 60_000);
+        assert_eq!(run(&mut e, A, hook("done", &[]), 62_000).unwrap()["turn_ms"], Value::Null, "once");
+        // A turn that failed or was stopped is no task done.
+        run(&mut e, A, hook("busy", &[]), 70_000).unwrap();
+        run(&mut e, A, hook("interrupted", &[]), 80_000).unwrap();
+        assert_eq!(run(&mut e, A, hook("done", &[]), 90_000).unwrap()["turn_ms"], Value::Null);
+        // Without the cable the done cannot light, and still says how long.
+        run(&mut e, A, hook("busy", &[]), 100_000).unwrap();
+        let (unlit, _) = e.command(&src(A), hook("done", &[]), Err(usb()), at(700_000));
+        let unlit = unlit.unwrap();
+        assert_eq!((unlit["lit"].clone(), unlit["turn_ms"].clone()), (json!(false), json!(600_000)));
+    }
+
+    #[test]
+    fn a_picture_of_its_own_shows_each_key_in_its_colour() {
+        let mut e = on();
+        let index = index();
+        let places = index.resolve(&KeySpec::parse("esc,f1").unwrap()).unwrap();
+        let keys: Vec<(u8, Place, Rgb)> =
+            places.iter().zip([[255, 0, 0], [0, 0, 255]]).map(|(&(led, place), c)| (led, place, c)).collect();
+        let answer = e.paint(&src("tests"), "tests:profile", keys, &index.model_id, 5_000, at(0)).unwrap();
+        assert_eq!(answer["shown"], true);
+        assert_eq!(key_at(&e, "esc", 10), Some([255, 0, 0]));
+        assert_eq!(key_at(&e, "f1", 10), Some([0, 0, 255]));
+        assert_eq!(key_at(&e, "f2", 10), None);
+        assert_eq!(key_at(&e, "esc", 5_000), None, "its time is up");
+        // On another model's keyboard it shows nothing.
+        let places = index.resolve(&KeySpec::parse("esc").unwrap()).unwrap();
+        let keys = vec![(places[0].0, places[0].1, [9, 9, 9])];
+        e.paint(&src("tests"), "tests:profile", keys, "another-model", 5_000, at(6_000)).unwrap();
+        e.refresh_keys(&index);
+        assert_eq!(key_at(&e, "esc", 6_010), None);
+    }
+
+    #[test]
+    fn requests_the_app_carries_out_need_access_and_go_in_the_log() {
+        let mut off = Engine::new(AgentSettings::default());
+        assert_eq!(off.gate(&src("tests"), at(0)).unwrap_err().code, ErrorCode::AgentAccessOff);
+        let mut e = on();
+        for i in 0..RATE_PER_SECOND as u64 {
+            e.gate(&src("tests"), at(i)).unwrap();
+        }
+        assert_eq!(e.gate(&src("tests"), at(30)).unwrap_err().code, ErrorCode::RateLimited);
+        e.note(&src("tests"), "focus", None, None, at(40));
+        e.note(&src("tests"), "card", Some(ErrorCode::PermissionOff), None, at(50));
+        e.note(&src("tests"), "card", Some(ErrorCode::PermissionOff), None, at(60));
+        let log = e.log_entries();
+        assert_eq!(log.len(), 2, "a refusal at most once a second");
+        assert_eq!((log[0].command.as_str(), log[0].error.as_deref()), ("card", Some("permission_off")));
     }
 
     #[test]

@@ -28,9 +28,11 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
 
 use crate::error::{AgentError, ErrorCode};
+use crate::image::{self, ImageInfo};
 use crate::keys::KeySpec;
 use crate::values::{
     check_settings_key, check_text, is_request_id, signal_duration_ms, Color, Effect, SignalId, SignalName, SourceName,
+    MAX_CARD_LINES, MAX_CARD_TEXT_CHARS, MAX_CARD_TITLE_CHARS, MAX_SIGNAL_DURATION,
 };
 
 /// The newest protocol version this build speaks.
@@ -831,6 +833,273 @@ impl HookArgs {
     }
 }
 
+// ------------------------------------------------- focus, profile, card
+
+/// The longest focus block an agent may start, in minutes (the timer's own
+/// limit for a block).
+pub const MAX_FOCUS_MINUTES: u64 = 180;
+
+/// What `focus` does to the focus timer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FocusAction {
+    /// Start a series (with the user's sequence, or one block of `--for`),
+    /// or go on after a pause.
+    Start,
+    Pause,
+    /// End the current block now.
+    Skip,
+    Stop,
+    /// Read where it stands.
+    Status,
+}
+
+impl FocusAction {
+    pub const ALL: [FocusAction; 5] = [Self::Start, Self::Pause, Self::Skip, Self::Stop, Self::Status];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Pause => "pause",
+            Self::Skip => "skip",
+            Self::Stop => "stop",
+            Self::Status => "status",
+        }
+    }
+
+    pub fn parse(input: &str) -> Result<Self, AgentError> {
+        let s = input.trim();
+        Self::ALL.into_iter().find(|a| a.as_str().eq_ignore_ascii_case(s)).ok_or_else(|| {
+            AgentError::new(
+                ErrorCode::BadValue,
+                format!("'{}' is not a focus timer action.", crate::values::shown(input)),
+            )
+            .with_hint("Use start, pause, skip, stop or status.")
+        })
+    }
+
+    /// It changes the timer: the user's focus permission is needed.
+    pub const fn changes(self) -> bool {
+        !matches!(self, Self::Status)
+    }
+}
+
+/// `focus <action>`: the focus timer. As typed; [`FocusArgs::validate`]
+/// checks it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FocusArgs {
+    pub action: String,
+    /// `start` only: one focus block this long instead of the user's
+    /// sequence, without changing their settings. Whole minutes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub for_ms: Option<u64>,
+}
+
+/// A checked `focus`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Focus {
+    pub action: FocusAction,
+    /// A one-off block, in minutes (1 to [`MAX_FOCUS_MINUTES`]).
+    pub minutes: Option<u16>,
+}
+
+impl FocusArgs {
+    pub fn validate(&self) -> Result<Focus, AgentError> {
+        let action = FocusAction::parse(&self.action)?;
+        let minutes = match self.for_ms {
+            None => None,
+            Some(_) if action != FocusAction::Start => {
+                return Err(AgentError::new(ErrorCode::BadArgument, "Only focus start takes a duration."))
+            }
+            Some(ms) if ms == 0 || ms % 60_000 != 0 || ms > MAX_FOCUS_MINUTES * 60_000 => {
+                return Err(AgentError::new(
+                    ErrorCode::BadDuration,
+                    format!("The focus timer counts whole minutes: give 1m to {MAX_FOCUS_MINUTES}m."),
+                )
+                .with_hint("e.g. --for 50m or --for 1h"))
+            }
+            Some(ms) => Some((ms / 60_000) as u16),
+        };
+        Ok(Focus { action, minutes })
+    }
+}
+
+/// What `profile` does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProfileAction {
+    /// The user's profiles.
+    List,
+    /// A profile's lighting on the keys for a while, in working memory only.
+    Show,
+    /// A profile's lighting written to the keyboard (never its key mapping,
+    /// macros or screen).
+    Apply,
+}
+
+impl ProfileAction {
+    pub const ALL: [ProfileAction; 3] = [Self::List, Self::Show, Self::Apply];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::List => "list",
+            Self::Show => "show",
+            Self::Apply => "apply",
+        }
+    }
+
+    pub fn parse(input: &str) -> Result<Self, AgentError> {
+        let s = input.trim();
+        Self::ALL.into_iter().find(|a| a.as_str().eq_ignore_ascii_case(s)).ok_or_else(|| {
+            AgentError::new(ErrorCode::BadValue, format!("'{}' is not a profile action.", crate::values::shown(input)))
+                .with_hint("Use list, show or apply.")
+        })
+    }
+}
+
+/// A profile's name as the user gave it: at most this many characters.
+pub const MAX_PROFILE_NAME_CHARS: usize = 40;
+
+/// `profile list|show|apply`. As typed; [`ProfileArgs::validate`] checks
+/// it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ProfileArgs {
+    pub action: String,
+    /// `show` and `apply`: the profile, by its name (any case) or its id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// `show`: how long its lighting stays.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub for_ms: Option<u64>,
+    /// `apply`: the agent knows it writes the keyboard's memory.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub write_flash: bool,
+}
+
+/// A checked `profile`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Profile {
+    pub action: ProfileAction,
+    pub name: Option<String>,
+    pub duration: Option<Duration>,
+    pub write_flash: bool,
+}
+
+impl ProfileArgs {
+    pub fn validate(&self) -> Result<Profile, AgentError> {
+        let action = ProfileAction::parse(&self.action)?;
+        let name = match self.name.as_deref().map(str::trim) {
+            None | Some("") => None,
+            Some(name) => {
+                check_text(name, MAX_PROFILE_NAME_CHARS, 1)?;
+                Some(name.to_string())
+            }
+        };
+        match (action, &name) {
+            (ProfileAction::List, Some(_)) => {
+                return Err(AgentError::new(ErrorCode::BadArgument, "profile list takes no name."))
+            }
+            (ProfileAction::Show | ProfileAction::Apply, None) => {
+                return Err(AgentError::new(ErrorCode::BadArgument, "Name the profile.")
+                    .with_hint("keymotion-cli profile list shows them."))
+            }
+            _ => {}
+        }
+        if self.for_ms.is_some() && action != ProfileAction::Show {
+            return Err(AgentError::new(ErrorCode::BadArgument, "Only profile show takes a duration."));
+        }
+        if self.write_flash && action != ProfileAction::Apply {
+            return Err(AgentError::new(ErrorCode::BadArgument, "Only profile apply writes the keyboard's memory."));
+        }
+        let duration = self.for_ms.map(signal_duration_ms).transpose()?;
+        Ok(Profile { action, name, duration, write_flash: self.write_flash })
+    }
+}
+
+/// A screen card stays this long unless told otherwise…
+pub const DEFAULT_CARD_MS: u64 = 5 * 60_000;
+/// …and at least this long: each card is a write of the screen's memory.
+pub const MIN_CARD_MS: u64 = 30_000;
+/// The longest `card --wait`.
+pub const MAX_CARD_WAIT_MS: u64 = 60_000;
+
+/// `card`: a card on the keyboard's screen, with text, a picture, or both.
+/// As typed; [`CardArgs::validate`] checks it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CardArgs {
+    /// At most 60 characters on at most 2 lines.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// At most 24 characters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// A PNG, JPEG, GIF or WebP picture, base64 ([`crate::image`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    /// The card's accent colour.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// How long it stays before the user's own picture comes back.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub for_ms: Option<u64>,
+    /// The agent knows it writes the screen's memory.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub write_flash: bool,
+    /// Wait this long for the card to reach the screen before answering.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wait_ms: Option<u64>,
+}
+
+/// A checked `card`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Card {
+    pub text: Option<String>,
+    pub title: Option<String>,
+    /// The picture's bytes and what its header says.
+    pub image: Option<(Vec<u8>, ImageInfo)>,
+    pub color: Option<Color>,
+    pub duration: Duration,
+    pub write_flash: bool,
+    pub wait: Option<Duration>,
+}
+
+impl CardArgs {
+    pub fn validate(&self) -> Result<Card, AgentError> {
+        let line = |v: &Option<String>| v.as_deref().map(str::trim).filter(|t| !t.is_empty()).map(str::to_string);
+        let text = line(&self.text);
+        if let Some(t) = &text {
+            check_text(t, MAX_CARD_TEXT_CHARS, MAX_CARD_LINES)?;
+        }
+        let title = line(&self.title);
+        if let Some(t) = &title {
+            check_text(t, MAX_CARD_TITLE_CHARS, 1)?;
+        }
+        let image = self.image.as_deref().map(image::decode).transpose()?;
+        if text.is_none() && image.is_none() {
+            return Err(AgentError::new(ErrorCode::BadArgument, "A card needs text or a picture.")
+                .with_hint("e.g. keymotion-cli card \"Build passed\" --write-flash"));
+        }
+        let color = self.color.as_deref().map(Color::parse).transpose()?;
+        let ms = self.for_ms.unwrap_or(DEFAULT_CARD_MS);
+        let max = MAX_SIGNAL_DURATION.as_millis() as u64;
+        if !(MIN_CARD_MS..=max).contains(&ms) {
+            return Err(AgentError::new(
+                ErrorCode::BadDuration,
+                "A card stays from 30s to 2h: each card is a write of the screen's memory.",
+            ));
+        }
+        let wait = match self.wait_ms {
+            Some(ms) if ms > MAX_CARD_WAIT_MS => {
+                return Err(AgentError::new(ErrorCode::BadDuration, "Wait at most 60s for a card."))
+            }
+            Some(ms) => Some(Duration::from_millis(ms)),
+            None => None,
+        };
+        Ok(Card { text, title, image, color, duration: Duration::from_millis(ms), write_flash: self.write_flash, wait })
+    }
+}
+
 /// Every command of protocol v1, with its arguments as typed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
@@ -845,11 +1114,14 @@ pub enum Command {
     SettingsSet(SettingsSetArgs),
     Progress(ProgressArgs),
     Hook(HookArgs),
+    Focus(FocusArgs),
+    Profile(ProfileArgs),
+    Card(CardArgs),
 }
 
 impl Command {
     /// Every command name of this build.
-    pub const NAMES: [&'static str; 11] = [
+    pub const NAMES: [&'static str; 14] = [
         "hello",
         "status",
         "keys",
@@ -861,6 +1133,9 @@ impl Command {
         "settings_set",
         "progress",
         "hook",
+        "focus",
+        "profile",
+        "card",
     ];
 
     /// The `cmd` string.
@@ -877,6 +1152,9 @@ impl Command {
             Self::SettingsSet(_) => "settings_set",
             Self::Progress(_) => "progress",
             Self::Hook(_) => "hook",
+            Self::Focus(_) => "focus",
+            Self::Profile(_) => "profile",
+            Self::Card(_) => "card",
         }
     }
 
@@ -894,6 +1172,9 @@ impl Command {
             Self::SettingsSet(a) => serde_json::to_value(a),
             Self::Progress(a) => serde_json::to_value(a),
             Self::Hook(a) => serde_json::to_value(a),
+            Self::Focus(a) => serde_json::to_value(a),
+            Self::Profile(a) => serde_json::to_value(a),
+            Self::Card(a) => serde_json::to_value(a),
         };
         // Plain structs of strings and numbers always serialize to objects.
         match value {
@@ -921,6 +1202,9 @@ impl Command {
             "settings_set" => Self::SettingsSet(typed(cmd, args)?),
             "progress" => Self::Progress(typed(cmd, args)?),
             "hook" => Self::Hook(typed(cmd, args)?),
+            "focus" => Self::Focus(typed(cmd, args)?),
+            "profile" => Self::Profile(typed(cmd, args)?),
+            "card" => Self::Card(typed(cmd, args)?),
             _ => {
                 return Err(AgentError::new(
                     ErrorCode::UnknownCommand,
@@ -1117,6 +1401,24 @@ mod tests {
                 calls: vec!["3f9a0c1d2b4e5f60".into()],
             }),
             Command::Hook(HookArgs { event: "answered".into(), ..Default::default() }),
+            Command::Focus(FocusArgs { action: "start".into(), for_ms: Some(50 * 60_000) }),
+            Command::Focus(FocusArgs { action: "status".into(), for_ms: None }),
+            Command::Profile(ProfileArgs { action: "list".into(), ..Default::default() }),
+            Command::Profile(ProfileArgs {
+                action: "apply".into(),
+                name: Some("Gaming".into()),
+                write_flash: true,
+                ..Default::default()
+            }),
+            Command::Card(CardArgs {
+                text: Some("Build passed".into()),
+                title: Some("CI".into()),
+                image: Some(crate::image::encode(&crate::image::samples::png(240, 135, false))),
+                color: Some("green".into()),
+                for_ms: Some(60_000),
+                write_flash: true,
+                wait_ms: Some(10_000),
+            }),
         ];
         for (i, command) in commands.iter().enumerate() {
             let request = Request::new(1, i.to_string(), &source(), command);
@@ -1476,6 +1778,75 @@ mod tests {
         // An app of this version reads what a newer CLI adds.
         let args: Map<String, Value> = serde_json::from_str(r#"{"event":"done","tool":"Bash"}"#).unwrap();
         assert!(matches!(Command::from_parts("hook", &args), Ok(Command::Hook(_))));
+    }
+
+    #[test]
+    fn focus_args_are_checked() {
+        let focus = |action: &str, for_ms: Option<u64>| FocusArgs { action: action.into(), for_ms }.validate();
+        assert_eq!(focus("START", None).unwrap(), Focus { action: FocusAction::Start, minutes: None });
+        assert_eq!(focus("start", Some(50 * 60_000)).unwrap().minutes, Some(50));
+        assert_eq!(focus("start", Some(180 * 60_000)).unwrap().minutes, Some(180));
+        for ms in [0, 30_000, 90_000, 181 * 60_000] {
+            assert_eq!(focus("start", Some(ms)).unwrap_err().code, ErrorCode::BadDuration, "{ms}");
+        }
+        assert_eq!(focus("pause", Some(60_000)).unwrap_err().code, ErrorCode::BadArgument);
+        assert_eq!(focus("snooze", None).unwrap_err().code, ErrorCode::BadValue);
+        assert!(!FocusAction::Status.changes() && FocusAction::Stop.changes());
+    }
+
+    #[test]
+    fn profile_args_are_checked() {
+        let p = |action: &str, name: Option<&str>, for_ms: Option<u64>, write_flash: bool| {
+            ProfileArgs { action: action.into(), name: name.map(str::to_string), for_ms, write_flash }.validate()
+        };
+        assert_eq!(p("list", None, None, false).unwrap().action, ProfileAction::List);
+        let show = p("show", Some("  Gaming "), Some(30_000), false).unwrap();
+        assert_eq!((show.name.as_deref(), show.duration), (Some("Gaming"), Some(Duration::from_secs(30))));
+        assert!(p("apply", Some("Gaming"), None, true).unwrap().write_flash);
+        assert_eq!(p("list", Some("x"), None, false).unwrap_err().code, ErrorCode::BadArgument);
+        assert_eq!(p("show", None, None, false).unwrap_err().code, ErrorCode::BadArgument);
+        assert_eq!(p("apply", Some(" "), None, true).unwrap_err().code, ErrorCode::BadArgument);
+        assert_eq!(p("apply", Some("x"), Some(1000), true).unwrap_err().code, ErrorCode::BadArgument);
+        assert_eq!(p("show", Some("x"), None, true).unwrap_err().code, ErrorCode::BadArgument);
+        assert_eq!(p("show", Some(&"x".repeat(41)), None, false).unwrap_err().code, ErrorCode::TextTooLong);
+        assert_eq!(p("show", Some("x"), Some(3 * 60 * 60_000), false).unwrap_err().code, ErrorCode::BadDuration);
+        assert_eq!(p("delete", Some("x"), None, false).unwrap_err().code, ErrorCode::BadValue);
+    }
+
+    #[test]
+    fn card_args_are_checked() {
+        let text = |t: &str| CardArgs { text: Some(t.into()), ..Default::default() };
+        let card = text("Build passed").validate().unwrap();
+        assert_eq!((card.duration, card.write_flash, card.wait), (Duration::from_millis(DEFAULT_CARD_MS), false, None));
+        assert_eq!(text("two\nlines").validate().unwrap().text.as_deref(), Some("two\nlines"));
+        assert_eq!(text("a\nb\nc").validate().unwrap_err().code, ErrorCode::TextTooLong);
+        assert_eq!(text(&"x".repeat(61)).validate().unwrap_err().code, ErrorCode::TextTooLong);
+        assert_eq!(text("\u{1b}[31m").validate().unwrap_err().code, ErrorCode::BadText);
+        assert_eq!(text("  ").validate().unwrap_err().code, ErrorCode::BadArgument, "nothing to show");
+        let titled = CardArgs { title: Some("Only a title".into()), ..Default::default() };
+        assert_eq!(titled.validate().unwrap_err().code, ErrorCode::BadArgument);
+        let long_title = CardArgs { title: Some("x".repeat(25)), ..text("ok") };
+        assert_eq!(long_title.validate().unwrap_err().code, ErrorCode::TextTooLong);
+
+        let png = crate::image::samples::png(240, 135, false);
+        let pictured = CardArgs { image: Some(crate::image::encode(&png)), ..Default::default() };
+        let (bytes, info) = pictured.validate().unwrap().image.unwrap();
+        assert_eq!((bytes, info.width), (png, 240));
+        let junk = CardArgs { image: Some(crate::image::encode(b"not a picture")), ..Default::default() };
+        assert_eq!(junk.validate().unwrap_err().code, ErrorCode::BadValue);
+
+        for (ms, ok) in [(29_999, false), (30_000, true), (2 * 60 * 60_000, true), (2 * 60 * 60_000 + 1, false)] {
+            assert_eq!(CardArgs { for_ms: Some(ms), ..text("x") }.validate().is_ok(), ok, "{ms}");
+        }
+        assert!(CardArgs { wait_ms: Some(60_000), ..text("x") }.validate().is_ok());
+        assert_eq!(
+            CardArgs { wait_ms: Some(60_001), ..text("x") }.validate().unwrap_err().code,
+            ErrorCode::BadDuration
+        );
+        assert_eq!(
+            CardArgs { color: Some("teal-ish".into()), ..text("x") }.validate().unwrap_err().code,
+            ErrorCode::BadColor
+        );
     }
 
     fn call(session: &mut Session, line: &str) -> Response {

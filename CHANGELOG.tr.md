@@ -105,7 +105,15 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   numaralarını ve **Geri al**'lı son işlemleri ayarlar; yapılmayan bir
   isteğin nedenini de söyler. Gizlilik politikası ve güvenlik politikası,
   ajanların neyi ilettiğini ve neyi hiçbir zaman değiştiremeyeceğini
-  anlatır.
+  anlatır. Üç şey daha, yalnız kendi izniyle ve her biri başta kapalı:
+  ajanlar odak zamanlayıcısını başlatıp duraklatabilir ya da durdurabilir
+  (ayarlarınızı değiştirmeden kendi seçtikleri uzunlukta tek bir blok da),
+  bir profilin ışığını bir süre gösterebilir ya da klavyeye yazabilir
+  (yalnız ışığını; bütün ajanlar birlikte herhangi bir 24 saatte en çok 10
+  kez) ve ekrana yazılı ya da görselli bir kart koyabilir (bütün ajanlar
+  birlikte saatte en çok 4, sizin ayarladığınız kadar; sonra kendi
+  görseliniz geri gelir). Ekran kartlarına izin verdiyseniz 10 dakika ya da
+  daha uzun süren bir kodlama işi bitince ekranda "Bitti · 14 dk" yazar.
 
 ### Değişenler
 

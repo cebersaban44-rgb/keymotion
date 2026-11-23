@@ -19,11 +19,13 @@ use std::ffi::OsString;
 use clap::error::ErrorKind;
 use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use kb_agent::protocol::{
-    ClearArgs, KeysArgs, LightArgs, LogArgs, ProgressArgs, SettingsGetArgs, SettingsSetArgs, SignalArgs, StatusArgs,
+    CardArgs, ClearArgs, FocusArgs, KeysArgs, LightArgs, LogArgs, ProfileArgs, ProgressArgs, SettingsGetArgs,
+    SettingsSetArgs, SignalArgs, StatusArgs,
 };
 use kb_agent::values::{duration_ms, parse_duration};
 use kb_agent::{AgentError, Command, ErrorCode};
 use serde_json::Value;
+use std::path::PathBuf;
 
 /// `keymotion-cli --version`. The protocol number is checked against
 /// kb-agent's in the tests.
@@ -171,6 +173,14 @@ pub enum Cmd {
     /// Read or change the looks and behaviour of agents' lights
     #[command(subcommand)]
     Settings(SettingsCmd),
+    /// The focus timer: start (the user's sequence, or one block --for 50m), pause, skip, stop, status
+    #[command(subcommand)]
+    Focus(FocusCmd),
+    /// The user's profiles: list, show one's lighting for a while, apply its lighting (--write-flash)
+    #[command(subcommand)]
+    Profile(ProfileCmd),
+    /// A card on the keyboard's screen: text and/or a picture (--write-flash)
+    Card(CardCmd),
     /// keymotion-cli's version and protocol, and Keymotion's when it runs
     Version,
     /// A short guide for agents: what to run, examples, exit codes
@@ -308,6 +318,70 @@ pub struct LogCmd {
 }
 
 #[derive(Subcommand, Debug, Clone)]
+pub enum FocusCmd {
+    /// Start the user's sequence, or with --for one focus block; a paused timer goes on
+    Start {
+        /// One focus block this long instead (whole minutes: 25m, 50m, 1h; at most 3h)
+        #[arg(long = "for", value_name = "DURATION")]
+        for_: Option<String>,
+    },
+    /// Pause the timer
+    Pause,
+    /// End the current block now
+    Skip,
+    /// Stop the series
+    Stop,
+    /// Where the timer stands (needs no permission)
+    Status,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum ProfileCmd {
+    /// The user's profiles and what each holds
+    List,
+    /// A profile's per-key lighting on the keys for a while (working memory only)
+    Show {
+        /// Its name (any case) or id
+        name: String,
+        /// How long it stays: 30s, 5m (default 60s, at most 2h)
+        #[arg(long = "for", value_name = "DURATION")]
+        for_: Option<String>,
+    },
+    /// Write a profile's lighting to the keyboard (never its key mapping or macros)
+    Apply {
+        /// Its name (any case) or id
+        name: String,
+        /// Needed: this writes the keyboard's memory (the user must allow profile writes)
+        #[arg(long)]
+        write_flash: bool,
+    },
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct CardCmd {
+    /// The text: at most 60 characters on at most 2 lines (\n between them)
+    pub text: Option<String>,
+    /// A title above it, at most 24 characters
+    #[arg(long, value_name = "TEXT")]
+    pub title: Option<String>,
+    /// A picture: PNG, JPEG, GIF or WebP, at most 40 KiB (shown still; 240x135 fits the screen)
+    #[arg(long, value_name = "FILE")]
+    pub image: Option<PathBuf>,
+    /// An accent color for the card
+    #[arg(long, value_name = "COLOR")]
+    pub color: Option<String>,
+    /// How long it stays before the user's own picture comes back (default 5m; 30s to 2h)
+    #[arg(long = "for", value_name = "DURATION")]
+    pub for_: Option<String>,
+    /// Needed: a card writes the screen's memory (the user must allow screen cards)
+    #[arg(long)]
+    pub write_flash: bool,
+    /// Wait until it is on the screen (at most 60s; it may wait for the screen's budget)
+    #[arg(long, value_name = "DURATION")]
+    pub wait: Option<String>,
+}
+
+#[derive(Subcommand, Debug, Clone)]
 pub enum SettingsCmd {
     /// Every setting, or those under KEY (e.g. signals.done)
     Get { key: Option<String> },
@@ -362,6 +436,9 @@ impl Cmd {
             Self::Log(_) => "log",
             Self::Settings(SettingsCmd::Get { .. }) => "settings get",
             Self::Settings(SettingsCmd::Set { .. }) => "settings set",
+            Self::Focus(_) => "focus",
+            Self::Profile(_) => "profile",
+            Self::Card(_) => "card",
             Self::Version => "version",
             Self::Guide => "guide",
             Self::Doctor => "doctor",
@@ -451,9 +528,83 @@ impl Cmd {
                 args.validate()?;
                 Command::SettingsSet(args)
             }
+            Self::Focus(f) => {
+                let (action, for_) = match f {
+                    FocusCmd::Start { for_ } => ("start", for_.as_deref()),
+                    FocusCmd::Pause => ("pause", None),
+                    FocusCmd::Skip => ("skip", None),
+                    FocusCmd::Stop => ("stop", None),
+                    FocusCmd::Status => ("status", None),
+                };
+                let args = FocusArgs { action: action.into(), for_ms: for_ms(for_)? };
+                args.validate()?;
+                Command::Focus(args)
+            }
+            Self::Profile(p) => {
+                let args = match p {
+                    ProfileCmd::List => ProfileArgs { action: "list".into(), ..Default::default() },
+                    ProfileCmd::Show { name, for_ } => ProfileArgs {
+                        action: "show".into(),
+                        name: Some(name.clone()),
+                        for_ms: for_ms(for_.as_deref())?,
+                        write_flash: false,
+                    },
+                    ProfileCmd::Apply { name, write_flash } => ProfileArgs {
+                        action: "apply".into(),
+                        name: Some(name.clone()),
+                        for_ms: None,
+                        write_flash: *write_flash,
+                    },
+                };
+                args.validate()?;
+                Command::Profile(args)
+            }
+            Self::Card(c) => {
+                let image = c.image.as_deref().map(read_image).transpose()?;
+                let args = CardArgs {
+                    text: c.text.as_deref().map(unescape_lines),
+                    title: c.title.clone(),
+                    image,
+                    color: c.color.clone(),
+                    for_ms: for_ms(c.for_.as_deref())?,
+                    write_flash: c.write_flash,
+                    wait_ms: for_ms(c.wait.as_deref())?,
+                };
+                args.validate()?;
+                Command::Card(args)
+            }
         };
         Ok(Plan::Call(command))
     }
+}
+
+/// A card's text from the command line: `\n` (backslash, n) starts the
+/// second line, as typed in any shell.
+fn unescape_lines(text: &str) -> String {
+    text.replace("\\n", "\n")
+}
+
+/// A picture file for `card --image`, checked (format, size, sides) and
+/// as base64. Only its first 40 KiB and one byte are read.
+fn read_image(path: &std::path::Path) -> Result<String, AgentError> {
+    use std::io::Read;
+    let shown = path.display().to_string();
+    let file = std::fs::File::open(path).map_err(|e| {
+        AgentError::new(
+            ErrorCode::BadValue,
+            format!("The picture {} cannot be read: {e}.", kb_agent::values::shown(&shown)),
+        )
+    })?;
+    let mut bytes = Vec::new();
+    let limit = kb_agent::image::MAX_IMAGE_BYTES as u64 + 1;
+    file.take(limit).read_to_end(&mut bytes).map_err(|e| {
+        AgentError::new(
+            ErrorCode::BadValue,
+            format!("The picture {} cannot be read: {e}.", kb_agent::values::shown(&shown)),
+        )
+    })?;
+    kb_agent::image::check(&bytes)?;
+    Ok(kb_agent::image::encode(&bytes))
 }
 
 /// `status` as a command, for the places that ask the app for it.

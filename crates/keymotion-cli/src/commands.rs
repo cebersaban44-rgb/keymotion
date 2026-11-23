@@ -28,7 +28,17 @@ pub fn run(inv: Invocation, env: &Env) -> u8 {
         Plan::Connect { agent, yes, dry_run } => connect::run(env, agent, true, yes, dry_run, json),
         Plan::Disconnect { agent, yes, dry_run } => connect::run(env, agent, false, yes, dry_run, json),
         Plan::Connections => connect::connections(env),
-        plan => execute(&Ctx::new(&inv.global, env, log)?, plan),
+        plan => {
+            let mut ctx = Ctx::new(&inv.global, env, log)?;
+            // `card --wait`: the answer may take that long, unless the agent
+            // bounded the whole run with --timeout.
+            if let Plan::Call(Command::Card(args)) = &plan {
+                if let (Some(wait), false) = (args.wait_ms, ctx.timeout_given) {
+                    ctx.timeout = ctx.timeout.max(std::time::Duration::from_millis(wait + 5_000));
+                }
+            }
+            execute(&ctx, plan)
+        }
     });
     output::finish(json, quiet, name, result)
 }
@@ -67,6 +77,12 @@ fn call(ctx: &Ctx, command: Command) -> Result<Done, AgentError> {
         "log" => human::log(&data, now_ms()),
         "settings_get" => human::settings_get(&data),
         "settings_set" => human::settings_set(&data),
+        "focus" => human::focus(&data),
+        "profile" => human::profile(&data),
+        "card" => {
+            warnings.extend(human::card_warnings(&data));
+            human::card(&data)
+        }
         _ => String::new(),
     };
     Ok(Done { data, warnings, text })
