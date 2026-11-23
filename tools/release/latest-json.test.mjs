@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { STORE_URL, changelogSection, foldNotes, formatSize, latestJson, releaseAssetUrl, releaseBody } from "./latest-json.mjs";
+import { STORE_URL, changelogSection, foldNotes, formatSize, latestJson, releaseAssetUrl, releaseBody, unwrapNotes } from "./latest-json.mjs";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const script = join(root, "tools", "release", "latest-json.mjs");
@@ -205,6 +205,62 @@ test("foldNotes: a long list goes under <details>, the intro stays visible", () 
   // Without an intro the whole list is folded; without a list nothing is.
   assert.match(foldNotes(items(9)), /^<details>\n<summary>/);
   assert.equal(foldNotes("Just a sentence."), "Just a sentence.");
+});
+
+test("unwrapNotes: paragraphs and list items on one line, every other block as it is", () => {
+  const wrapped = [
+    "Keymotion has a new look in the style of Windows 11, and new",
+    "tools: music mode.",
+    "",
+    "### Added",
+    "",
+    "- **Music mode:** Tools › **Music mode** moves the key lights with the",
+    "  sound your PC plays.",
+    "  - nested item, its own line",
+    "    that wraps too",
+    "- **Game session:** notices when",
+    "  you play.",
+    "1. First step",
+    "   goes on.",
+    "",
+    "| a | b |",
+    "|---|---|",
+    "> [!NOTE]",
+    "> A quote",
+    "<details>",
+    "<summary>x</summary>",
+    "```",
+    "keymotion-cli spell",
+    "  DONE",
+    "```",
+  ].join("\n");
+  assert.equal(
+    unwrapNotes(wrapped),
+    [
+      "Keymotion has a new look in the style of Windows 11, and new tools: music mode.",
+      "",
+      "### Added",
+      "",
+      "- **Music mode:** Tools › **Music mode** moves the key lights with the sound your PC plays.",
+      "  - nested item, its own line that wraps too",
+      "- **Game session:** notices when you play.",
+      "1. First step goes on.",
+      "",
+      "| a | b |",
+      "|---|---|",
+      "> [!NOTE]",
+      "> A quote",
+      "<details>",
+      "<summary>x</summary>",
+      "```",
+      "keymotion-cli spell",
+      "  DONE",
+      "```",
+    ].join("\n"),
+  );
+  // The release text gets the joined lines.
+  const body = releaseBody({ notes: "- A long item that\n  wraps.", fileName: "s.exe", sha256: SHA });
+  assert.match(body, /\n- A long item that wraps\.\n/);
 });
 
 test("formatSize: megabytes with one decimal", () => {
