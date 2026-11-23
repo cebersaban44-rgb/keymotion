@@ -188,6 +188,12 @@ says so.
 - A keyboard with the AK980 PRO's USB identity and name but built
   differently inside showed up as an AK980 PRO on which every action failed.
   It now gets **Request support**, and nothing is sent to it.
+- **Lighting:** with **Preview on keyboard** on in **Per-key color**,
+  closing the window to the tray left the preview on the keys, over the
+  focus timer, reminders, music mode and the agents' lights. The preview
+  now waits while the window is closed and comes back when you open it.
+- **Screen:** a song, meeting or reminder title that ends in "…" is no
+  longer drawn at the smallest size.
 
 ## [1.1.0] - 2026-11-16
 

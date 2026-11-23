@@ -6,7 +6,8 @@
 // apps found, not connected), `?agents=on` (on and connected, Codex waiting
 // for its approval), `?agents=none` (neither app on this computer),
 // `?agents=stale` (the first approval finds a changed file and shows the
-// plan again).
+// plan again), `?agents=old` (Claude Code too old, no Codex: access stays
+// off).
 
 import { create } from "zustand";
 import type { AgentLook } from "../bindings/AgentLook";
@@ -82,7 +83,8 @@ interface AgentsStore {
   connections: AgentConnections | null;
   load: () => Promise<void>;
   loadConnections: () => Promise<void>;
-  /** Save a change to the settings (shown at once, the backend answers with the same). */
+  /** Save a change to the settings (shown at once, the backend answers with
+   *  the same; put back when it couldn't be saved). */
   configure: (patch: Partial<AgentSettings>) => Promise<void>;
   set: (state: AgentsState) => void;
   setConnections: (c: AgentConnections) => void;
@@ -98,7 +100,15 @@ export const useAgents = create<AgentsStore>((set, get) => ({
     if (!s) return;
     const settings = { ...s.settings, ...patch };
     set({ state: { ...s, settings } });
-    set({ state: await saveAgents(settings) });
+    try {
+      set({ state: await saveAgents(settings) });
+    } catch (e) {
+      // Not saved, and the backend changed nothing: show what is in force
+      // again (the access switch must not say Off while agents can still
+      // use the keyboard).
+      set({ state: await getAgents().catch(() => s) });
+      throw e;
+    }
   },
   set: (state) => set({ state }),
   setConnections: (connections) => set({ connections }),
@@ -124,6 +134,7 @@ const mock = (() => {
   const param = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("agents") : null;
   const on = param === "on";
   const none = param === "none";
+  const old = param === "old";
   let stale = param === "stale";
   const home = "C:\\Users\\you";
   const look = (color: [number, number, number], effect: AgentLook["effect"], durationS: number, untilAnswered = false): AgentLook => ({
@@ -205,8 +216,8 @@ const mock = (() => {
       hooks: on ? 16 : 0,
       hooksWanted: 16,
       trusted: null,
-      version: none ? null : "2.1.140",
-      tooOld: false,
+      version: none ? null : old ? "2.1.100" : "2.1.140",
+      tooOld: old,
       minVersion: "2.1.139",
       home: `${home}\\.claude`,
       hooksFile: `${home}\\.claude\\settings.json`,
@@ -217,8 +228,8 @@ const mock = (() => {
     codex: {
       app: "codex",
       name: "Codex",
-      found: !none,
-      state: none ? "notFound" : on ? "needsApproval" : "notConnected",
+      found: !none && !old,
+      state: none || old ? "notFound" : on ? "needsApproval" : "notConnected",
       hooks: on ? 10 : 0,
       hooksWanted: 10,
       trusted: on ? 0 : null,
@@ -246,6 +257,11 @@ const mock = (() => {
   const connections = (): AgentConnections => ({ apps: [apps.claudeCode, apps.codex], cli, path });
   const appPlan = (app: AgentApp, remove = false): AgentAppPlan => {
     const a = apps[app];
+    if (a.tooOld && !remove) {
+      // The backend's words (kb-hooks setup.rs): the installed version first.
+      const message = `Claude Code ${a.version} is installed (${home}\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code); Keymotion's hooks need ${a.minVersion} or newer. Update Claude Code (claude update), then connect again.`;
+      return { app, name: a.name, home: a.home, changes: [], commandLine: null, needsApproval: false, warnings: [], problem: { kind: "unsupported", message } };
+    }
     const action: AgentFileAction = remove ? "remove" : "create";
     const changes =
       app === "claudeCode"
@@ -303,13 +319,16 @@ const mock = (() => {
         return { applied: false, plan: plan(want), connected: [], failed: [], pathAdded: false, pathError: null, saveError: null, connections: connections(), state: state() };
       }
       const p = plan(want);
-      for (const a of p.apps) {
+      const failed = p.apps.filter((a) => a.problem);
+      const ok = p.apps.filter((a) => !a.problem);
+      for (const a of ok) {
         apps[a.app] = { ...apps[a.app], state: a.app === "codex" ? "needsApproval" : "connected", hooks: apps[a.app].hooksWanted, trusted: a.app === "codex" ? 0 : null, runs: cli.path };
       }
       const pathAdded = !path.onPath;
       path = { ...path, onPath: true };
-      settings = { ...settings, enabled: true };
-      return { applied: true, plan: null, connected: p.apps.map((a) => a.app), failed: [], pathAdded, pathError: null, saveError: null, connections: connections(), state: state() };
+      // As the backend: access stays off when every app failed.
+      if (ok.length > 0 || failed.length === 0) settings = { ...settings, enabled: true };
+      return { applied: true, plan: null, connected: ok.map((a) => a.app), failed, pathAdded, pathError: null, saveError: null, connections: connections(), state: state() };
     },
     disconnectPlan(app: AgentApp) {
       return appPlan(app, true);

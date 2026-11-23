@@ -185,6 +185,13 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 - AK980 PRO'nun USB kimliğini ve adını taşıyan ama içi farklı yapılmış bir
   klavye, her işlemin başarısız olduğu bir AK980 PRO gibi görünüyordu. Artık
   **Destek iste**'yi görüyor ve ona hiçbir şey gönderilmiyor.
+- **Işıklar:** **Tuş başına renk** sekmesinde **Klavyede önizle** açıkken
+  pencereyi kapattığınızda, Keymotion saatin yanında çalışırken önizleme
+  tuşlarda kalıyor; odak zamanlayıcısını, hatırlatıcıları, müzik modunu ve
+  ajan ışıklarını örtüyordu. Önizleme artık pencere kapalıyken bekliyor,
+  pencereyi açınca geri geliyor.
+- **Ekran:** "…" ile biten bir şarkı, toplantı ya da hatırlatıcı adı
+  artık en küçük boyutta çizilmiyor.
 
 ## [1.1.0] - 2026-11-16
 

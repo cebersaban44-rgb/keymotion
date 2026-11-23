@@ -251,12 +251,22 @@ function useTray() {
     let alive = true;
     const offs: (() => void)[] = [];
     const keep = (off: () => void) => (alive ? offs.push(off) : off());
-    isWindowShown().then(setWindowShown).catch(console.error);
-    onWindowShown(setWindowShown).then(keep);
+    // On screen: shown by the backend (not in the tray, not minimized) and
+    // not hidden to the page itself, where WebView2 says so.
+    let shown = true;
+    const update = () => setWindowShown(shown && document.visibilityState !== "hidden");
+    const fromBackend = (value: boolean) => {
+      shown = value;
+      update();
+    };
+    isWindowShown().then(fromBackend).catch(console.error);
+    onWindowShown(fromBackend).then(keep);
+    document.addEventListener("visibilitychange", update);
     onTrayProfile(requestProfile).then(keep);
     return () => {
       alive = false;
       offs.forEach((off) => off());
+      document.removeEventListener("visibilitychange", update);
     };
   }, [setWindowShown, requestProfile]);
 }
