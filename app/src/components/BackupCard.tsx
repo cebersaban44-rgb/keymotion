@@ -95,13 +95,13 @@ function sectionHint(info: BackupSectionInfo, screenNew: number, t: Translate) {
 
 /** Pages whose stores hold what an import replaced read it again. */
 async function refreshAfterImport(result: BackupImported) {
-  for (const k of result.keymaps) stageKeymapImport(k.modelId, k.state);
-  for (const m of result.macros) stageMacrosImport(m.modelId, m.slots);
+  for (const k of result.keymaps) stageKeymapImport(k.recordId, k.state);
+  for (const m of result.macros) stageMacrosImport(m.recordId, m.slots);
   await initLighting();
-  const modelId = useScreen.getState().modelId;
+  const recordId = useScreen.getState().recordId;
   const profilesModel = useProfiles.getState().modelId;
   const loads = [
-    modelId ? useScreen.getState().load(modelId) : Promise.resolve(),
+    recordId ? useScreen.getState().load(recordId) : Promise.resolve(),
     profilesModel ? useProfiles.getState().load(profilesModel) : Promise.resolve(),
     usePomodoro.getState().load(),
     useGauges.getState().load(),

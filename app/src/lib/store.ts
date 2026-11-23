@@ -159,3 +159,16 @@ export function focusRank(k: KeyboardInfo): number {
 export function useActiveKeyboard(): KeyboardInfo | null {
   return useApp((s) => [...s.keyboards].sort((a, b) => focusRank(a) - focusRank(b))[0] ?? null);
 }
+
+/**
+ * The record id of the keyboard of `modelId` the UI shows (focusRank): its
+ * keymap, macros and screen are kept per command family (the backend's
+ * `record_of`). The model id, the "04 xx" family's, while none is there.
+ */
+export function recordOf(modelId: string): string {
+  const shown = useApp
+    .getState()
+    .keyboards.filter((k) => k.modelId === modelId)
+    .sort((a, b) => focusRank(a) - focusRank(b))[0];
+  return shown?.recordId ?? modelId;
+}

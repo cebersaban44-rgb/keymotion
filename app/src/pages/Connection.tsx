@@ -41,7 +41,9 @@ const ROWS: Row[] = [
   { label: "conn.row.live", cell: (m, f) => (m === "usb" && f.includes("lighting") ? "yes" : "no") },
   {
     label: "conn.row.battery",
-    // No battery reading over USB; the last Bluetooth one is shown instead.
+    // Over USB a keyboard of the "04 xx" family reports no battery (its
+    // mode offers none): the last Bluetooth reading is shown instead. One
+    // that reports it there (KeyboardInfo.batteryOverUsb) offers it.
     cell: (m, f) => (f.includes("battery") ? "yes" : m === "usb" ? "last" : "no"),
   },
 ];

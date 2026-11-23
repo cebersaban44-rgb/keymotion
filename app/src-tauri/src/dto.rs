@@ -197,13 +197,138 @@ pub enum IssueKind {
     Idea,
 }
 
+/// The command family a keyboard speaks in the detected mode
+/// (`kb_devices::Protocol`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub enum KeyboardProtocol {
+    /// SONiX "04 xx" (feature reports on FF13).
+    #[serde(rename = "sonix-ff13")]
+    SonixFf13,
+    /// AJAZZ "AA" (AK980 PRO firmware 769 and others).
+    #[serde(rename = "ajazz-aa")]
+    AjazzAa,
+}
+
+impl From<kb_devices::Protocol> for KeyboardProtocol {
+    fn from(p: kb_devices::Protocol) -> Self {
+        match p {
+            kb_devices::Protocol::SonixFf13 => Self::SonixFf13,
+            kb_devices::Protocol::AjazzAa => Self::AjazzAa,
+        }
+    }
+}
+
+/// The steps a slider offers, `min` to `max`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct LevelRange {
+    pub min: u8,
+    pub max: u8,
+}
+
+/// How macros count against the keyboard's macro memory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub enum MacroBudgetRule {
+    /// "04 xx": `(steps + slots) × 8` bytes within `MacrosState.budget`.
+    #[serde(rename = "ff13")]
+    Ff13,
+    /// "AA": `(steps + slots) × 4` bytes within 512.
+    #[serde(rename = "aa512")]
+    Aa512,
+}
+
+/// What a screen upload may hold on this keyboard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ScreenFrameLimits {
+    pub max_frames: u32,
+    /// Frames proven on this kind of keyboard (more may not play).
+    pub proven_frames: u32,
+    /// Time one page of an upload takes.
+    pub page_ms: u32,
+}
+
+/// Key actions this keyboard takes besides the ones every keyboard does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct KeyActionSupport {
+    /// A key that does nothing.
+    pub disabled: bool,
+    /// A macro that plays while its key is held.
+    pub hold_macro: bool,
+    /// The double-click mouse action.
+    pub double_click: bool,
+}
+
+/// The keyboard's limits, for the controls that edit what it stores
+/// (driver.rs `family::limits`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct KeyboardLimits {
+    /// Brightness levels of effects and per-key designs (the app's 0–5
+    /// scale in every family).
+    pub brightness: LevelRange,
+    /// Effect speed levels.
+    pub speed: LevelRange,
+    pub macro_budget: MacroBudgetRule,
+    pub screen: ScreenFrameLimits,
+    pub key_actions: KeyActionSupport,
+}
+
+/// Whether the battery charges, as the keyboard reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+#[expect(dead_code, reason = "the \"AA\" driver reports it (device information); no driver does yet")]
+pub enum ChargeState {
+    Charging,
+    Full,
+}
+
+/// What a keyboard reports about itself on the cable (driver.rs
+/// `Driver::device_info`; the "AA" family's device information). The
+/// "04 xx" family reports nothing.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct DeviceReport {
+    /// Battery level (%).
+    pub battery: Option<u8>,
+    pub charge: Option<ChargeState>,
+    /// Frames its screen takes (the "AA" `tftMaxFrames`).
+    pub screen_max_frames: Option<u32>,
+    /// A firmware update was left unfinished: nothing may be written until
+    /// AJAZZ's tool completes it (the "AA" `firmwareStatus` 1).
+    pub update_pending: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct KeyboardInfo {
-    /// Stable identity: model id + connection.
+    /// Stable identity: record id + connection.
     pub key: String,
     pub model_id: String,
+    /// The command family of the detected mode.
+    pub protocol: KeyboardProtocol,
+    /// What the app keys this keyboard's records by (keymap, macros, what
+    /// its screen shows): the model id in the "04 xx" family, `<model>.aa`
+    /// in the "AA" family.
+    pub record_id: String,
+    pub limits: KeyboardLimits,
+    /// The battery level is read on the cable too (else the last Bluetooth
+    /// reading stands in there).
+    pub battery_over_usb: bool,
+    /// What the keyboard reports about itself on the cable; absent when it
+    /// reports nothing ("04 xx").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub device: Option<DeviceReport>,
     pub model_name: String,
     pub vendor: String,
     pub layout: String,
@@ -230,11 +355,35 @@ pub struct KeyboardInfo {
 }
 
 impl KeyboardInfo {
-    pub fn from_detected(k: &DetectedKeyboard, battery: Option<Battery>) -> Self {
+    /// `device`: what the keyboard reported about itself, if anything.
+    pub fn from_detected(k: &DetectedKeyboard, battery: Option<Battery>, device: Option<DeviceReport>) -> Self {
         let m: &Model = k.model;
+        let protocol = k.protocol();
+        // One entry per connection mode: the detected mode for this
+        // connection, the model file's first of each other kind.
+        let mut kinds: Vec<ConnectionKind> = Vec::new();
+        for mode in &m.modes {
+            if !kinds.contains(&mode.kind) {
+                kinds.push(mode.kind);
+            }
+        }
+        let modes = kinds
+            .into_iter()
+            .filter_map(|kind| if kind == k.connection { Some(k.mode) } else { m.mode(kind) })
+            .map(|mode| ModeInfo {
+                connection: mode.kind.into(),
+                features: kb_core::mode_capabilities(m, mode).into_iter().map(Feature::from).collect(),
+                verified: mode.verified,
+            })
+            .collect();
         Self {
             key: k.key(),
             model_id: m.id.clone(),
+            protocol: protocol.into(),
+            record_id: k.record_id(),
+            limits: crate::driver::family::limits(protocol, device.as_ref()),
+            battery_over_usb: crate::driver::family::battery_over_usb(protocol),
+            device,
             model_name: m.name.clone(),
             vendor: m.vendor.clone(),
             layout: m.layout.clone(),
@@ -246,15 +395,7 @@ impl KeyboardInfo {
             product: k.product.clone(),
             firmware: k.firmware.map(kb_devices::firmware_text),
             features: k.capabilities().into_iter().map(Feature::from).collect(),
-            modes: m
-                .modes
-                .iter()
-                .map(|mode| ModeInfo {
-                    connection: mode.kind.into(),
-                    features: kb_core::app_capabilities(m, mode.kind).into_iter().map(Feature::from).collect(),
-                    verified: mode.verified,
-                })
-                .collect(),
+            modes,
             has_command_channel: k.command.is_some(),
             has_display_channel: k.display.is_some(),
             ble_name: k.ble.as_ref().map(|b| b.name.clone()),
@@ -283,7 +424,10 @@ impl KeyboardInfo {
 
 #[cfg(test)]
 mod tests {
-    use super::{Connection, EffectInfo, GeometryInfo, KeyboardInfo, KeymapCatalog};
+    use super::{
+        Connection, EffectInfo, GeometryInfo, KeyActionSupport, KeyboardInfo, KeyboardProtocol, KeymapCatalog,
+        LevelRange, MacroBudgetRule, ScreenFrameLimits,
+    };
     use kb_core::detect::BlePeer;
     use kb_transport::hid::{Bus, HidInterface};
 
@@ -306,7 +450,7 @@ mod tests {
     /// The entry the tray and the UI show, out of what the app sees.
     fn shown(interfaces: &[HidInterface], ble: &[BlePeer]) -> Connection {
         let infos: Vec<KeyboardInfo> =
-            kb_core::detect(interfaces, ble).iter().map(|k| KeyboardInfo::from_detected(k, None)).collect();
+            kb_core::detect(interfaces, ble).iter().map(|k| KeyboardInfo::from_detected(k, None, None)).collect();
         infos.iter().min_by_key(|k| k.focus_rank()).expect("a keyboard").connection
     }
 
@@ -330,6 +474,34 @@ mod tests {
         // The cable comes first, whatever else is there.
         let cable = HidInterface { product: Some("AK980 PRO".into()), ..collection(0x8009, 0xFF13, Bus::Usb) };
         assert_eq!(shown(&[receiver, cable], &[peer(true)]), Connection::Usb);
+    }
+
+    #[test]
+    fn an_ff13_keyboard_reports_todays_limits() {
+        let cable = HidInterface { product: Some("AK980 PRO".into()), ..collection(0x8009, 0xFF13, Bus::Usb) };
+        let found = kb_core::detect(&[cable], &[]);
+        let info = KeyboardInfo::from_detected(&found[0], None, None);
+        assert_eq!(info.protocol, KeyboardProtocol::SonixFf13);
+        assert_eq!((info.record_id.as_str(), info.key.as_str()), ("ajazz-ak980-pro", "ajazz-ak980-pro:Usb"));
+        assert!(!info.battery_over_usb);
+        assert_eq!(info.device, None);
+        let l = info.limits;
+        assert_eq!((l.brightness, l.speed), (LevelRange { min: 0, max: 5 }, LevelRange { min: 0, max: 5 }));
+        assert_eq!(l.macro_budget, MacroBudgetRule::Ff13);
+        assert_eq!(l.screen, ScreenFrameLimits { max_frames: 140, proven_frames: 135, page_ms: 145 });
+        assert_eq!(l.key_actions, KeyActionSupport { disabled: true, hold_macro: true, double_click: true });
+        // One entry per connection, as before: what each mode offers.
+        let modes: Vec<(Connection, usize)> = info.modes.iter().map(|m| (m.connection, m.features.len())).collect();
+        assert_eq!(modes, vec![(Connection::Usb, 6), (Connection::Dongle, 0), (Connection::Bluetooth, 1)]);
+
+        let json = serde_json::to_value(&info).unwrap();
+        assert_eq!(json["protocol"], "sonix-ff13");
+        assert_eq!(json["recordId"], "ajazz-ak980-pro");
+        assert_eq!(json["batteryOverUsb"], false);
+        assert_eq!(json["limits"]["macroBudget"], "ff13");
+        assert_eq!(json["limits"]["screen"]["maxFrames"], 140);
+        assert_eq!(json["limits"]["keyActions"]["holdMacro"], true);
+        assert!(json.get("device").is_none(), "left out when the keyboard reports nothing");
     }
 
     /// Writes each model's geometry and the effect catalog for the UI's
@@ -1130,7 +1302,9 @@ pub struct ScreenItem {
     pub uploaded_ms: Option<f64>,
 }
 
-/// The panel and upload limits (kb-protocol `screen`).
+/// The panel and upload limits (kb-protocol `screen`). The frame limits
+/// and the time per page here are the "04 xx" family's; the connected
+/// keyboard's are in `KeyboardInfo.limits.screen`.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -1162,7 +1336,7 @@ impl ScreenLimits {
             min_delay_ms: s::MIN_DELAY as u32 * s::DELAY_UNIT_MS,
             max_delay_ms: s::MAX_DELAY as u32 * s::DELAY_UNIT_MS,
             still_delay_ms: s::STILL_DELAY as u32 * s::DELAY_UNIT_MS,
-            page_ms: 145,
+            page_ms: crate::driver::family::FF13_PAGE_MS,
             header_len: s::HEADER_LEN as u32,
             frame_bytes: s::FRAME_BYTES as u32,
             max_pages: s::MAX_PAGES as u32,
@@ -1193,6 +1367,10 @@ pub struct ScreenState {
     /// The last upload to the GIF page stopped partway (an error, a quit, a
     /// crash): the page holds part of it. `shown` is `null` meanwhile.
     pub incomplete: Option<ScreenIncomplete>,
+    /// The next upload may replace this keyboard's clock page for good, and
+    /// the user has not said yes yet (`screen_ack_clock_page`): the first
+    /// upload to an "AA" keyboard. Always `false` in the "04 xx" family.
+    pub clock_page_at_risk: bool,
 }
 
 /// An upload that was cut short (see [`ScreenState::incomplete`]).
@@ -1237,7 +1415,9 @@ pub struct MacrosState {
     pub slots: Vec<Option<MacroInfo>>,
     /// Unix ms of the last write; `null` when the app never wrote macros.
     pub written_ms: Option<f64>,
-    /// Memory limit: `(steps + slots) × 8` bytes may not exceed this.
+    /// Memory limit of the "04 xx" family: `(steps + slots) × 8` bytes may
+    /// not exceed this (`KeyboardInfo.limits.macroBudget` names the rule a
+    /// keyboard counts by).
     pub budget: u32,
     pub max_slots: u32,
     pub min_delay_ms: u16,

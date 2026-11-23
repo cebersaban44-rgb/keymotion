@@ -13,11 +13,10 @@ import {
 } from "react";
 import { Field, Segmented, Slider, Toggle } from "../../components/controls";
 import { percent, useT } from "../../lib/i18n";
+import { useScreenLimits } from "../../lib/screen";
 import {
   DEFAULT_FRAMING,
   H,
-  MAX_FRAMES,
-  PROVEN_FRAMES,
   W,
   openSource,
   outputCanvas,
@@ -167,14 +166,15 @@ export function FileFlow({
 
 function FileEditor({ source, onPrepared }: { source: Source; onPrepared: (p: Prepared) => void }) {
   const t = useT();
+  const screen = useScreenLimits();
   const still = source.kind === "image";
   const [framing, setFraming] = useState<Framing>(DEFAULT_FRAMING);
   const [timing, setTiming] = useState<Timing>(() => {
     // Animated images keep their own frames when they fit; longer ones and
     // videos are sampled at 10 fps (14 s fit in 140 frames).
-    const own = source.kind === "animated" && source.frameStarts.length <= MAX_FRAMES;
+    const own = source.kind === "animated" && source.frameStarts.length <= screen.maxFrames;
     const fps = own ? 0 : 10;
-    const maxMs = fps ? (MAX_FRAMES / fps) * 1000 : source.durationMs;
+    const maxMs = fps ? (screen.maxFrames / fps) * 1000 : source.durationMs;
     return { startMs: 0, endMs: Math.min(source.durationMs, maxMs), fps };
   });
   const [dither, setDither] = useState(source.kind !== "image");
@@ -183,7 +183,7 @@ function FileEditor({ source, onPrepared }: { source: Source; onPrepared: (p: Pr
   const [error, setError] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
 
-  const p = useMemo(() => plan(source, timing), [source, timing]);
+  const p = useMemo(() => plan(source, timing, screen.maxFrames), [source, timing, screen.maxFrames]);
   const loopMs = p.frames.reduce((a, f) => a + Math.max(2, Math.round(f.delayMs / 2) * 2), 0);
 
   // A change while preparing stops the run.
@@ -280,7 +280,7 @@ function FileEditor({ source, onPrepared }: { source: Source; onPrepared: (p: Pr
                   value={String(timing.fps)}
                   onChange={(v) => {
                     const fps = Number(v);
-                    const maxMs = fps ? (MAX_FRAMES / fps) * 1000 : source.durationMs;
+                    const maxMs = fps ? (screen.maxFrames / fps) * 1000 : source.durationMs;
                     setTiming({ ...timing, fps, endMs: Math.min(source.durationMs, timing.startMs + maxMs) });
                   }}
                   options={(source.kind === "video" ? FPS_VIDEO : FPS_ANIMATED).map((f) => ({
@@ -323,7 +323,7 @@ function FileEditor({ source, onPrepared }: { source: Source; onPrepared: (p: Pr
       <EditFooter frames={p.frames.length} loopMs={loopMs} preparing={preparing} onPreview={runPreview} />
 
       {p.clipped && <Hint tone="warn">{t("sc.warn.clipped")}</Hint>}
-      {p.frames.length > PROVEN_FRAMES && <Hint tone="note">{t("sc.warn.unproven")}</Hint>}
+      {p.frames.length > screen.provenFrames && <Hint tone="note">{t("sc.warn.unproven")}</Hint>}
       {error && <Hint tone="error">{error}</Hint>}
     </>
   );

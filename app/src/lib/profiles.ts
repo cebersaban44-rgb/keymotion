@@ -12,6 +12,7 @@ import { adoptKeymapRecord } from "./keymap";
 import { initLighting } from "./lighting";
 import { adoptMacrosRecord } from "./macros";
 import { useScreen } from "./screen";
+import { recordOf } from "./store";
 
 interface ProfilesStore {
   /** Model the list below was read for. */
@@ -178,9 +179,11 @@ export async function loadProfile(
  *  again; the parts written replace the editors' drafts. */
 async function readRecordsAgain(modelId: string, parts: ReadonlySet<ProfilePart>) {
   const jobs: Promise<unknown>[] = [useProfiles.getState().load(modelId)];
+  // Profiles fit by model; the records are the keyboard's (per family).
+  const record = recordOf(modelId);
   if (parts.has("lighting")) jobs.push(initLighting());
-  if (parts.has("keymap")) jobs.push(adoptKeymapRecord(modelId));
-  if (parts.has("macros")) jobs.push(adoptMacrosRecord(modelId));
+  if (parts.has("keymap")) jobs.push(adoptKeymapRecord(record));
+  if (parts.has("macros")) jobs.push(adoptMacrosRecord(record));
   await Promise.all(jobs.map((j) => j.catch(console.error)));
 }
 

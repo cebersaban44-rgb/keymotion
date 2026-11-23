@@ -17,6 +17,7 @@ import { NOW_PLAYING_SOURCE, fmtWait, useLive } from "../../lib/live";
 import { POMODORO_SOURCE, usePomodoro } from "../../lib/pomodoro";
 import { REMINDER_SOURCE, useReminders } from "../../lib/reminders";
 import { useApp } from "../../lib/store";
+import { useScreenLimits } from "../../lib/screen";
 import { uploadSeconds } from "../../lib/screenImport";
 import { calendarStatus } from "./CalendarPanel";
 import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useItemName, useNow } from "./common";
@@ -147,6 +148,7 @@ function fmtSoon(ms: number, units: { s: string; h: string; m: string }) {
 function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) {
   const t = useT();
   const name = useItemName();
+  const screen = useScreenLimits();
   const p = usePomodoro((x) => x.state);
   const cal = useCalendar((x) => x.state);
   const configureCal = useCalendar((x) => x.configure);
@@ -305,7 +307,7 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="truncate text-[13px] font-semibold">{name(s.own)}</span>
                 <span className="num text-[12px] text-ink-3">
-                  {t("sc.frames", { count: s.own.frames })} · {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(s.own.frames))}
+                  {t("sc.frames", { count: s.own.frames })} · {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(s.own.frames, screen.pageMs))}
                 </span>
                 {goingBack != null && (
                   <span className="flex items-center gap-1.5 text-[12px] text-signal" data-going-back>
@@ -422,6 +424,7 @@ function TurnOff({
 }) {
   const t = useT();
   const name = useItemName();
+  const screen = useScreenLimits();
   const [thumb, setThumb] = useState<Uint16Array | null>(null);
   useEffect(() => {
     let live = true;
@@ -469,7 +472,7 @@ function TurnOff({
           <div className="flex min-w-0 flex-col gap-0.5">
             <span className="truncate text-[13px] font-semibold">{name(restore)}</span>
             <span className="num text-[12px] text-ink-3">
-              {t("sc.frames", { count: restore.frames })} · {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(restore.frames))}
+              {t("sc.frames", { count: restore.frames })} · {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(restore.frames, screen.pageMs))}
             </span>
           </div>
         </div>

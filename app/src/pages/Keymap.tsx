@@ -1,6 +1,7 @@
 import { AlertTriangle, Ban, Info, Keyboard, Lock, Mouse, RotateCcw, Usb } from "lucide-react";
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { KeyActionInfo } from "../bindings/KeyActionInfo";
+import type { KeyActionSupport } from "../bindings/KeyActionSupport";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { KeyGeo } from "../bindings/KeyGeo";
 import type { KeymapCatalog } from "../bindings/KeymapCatalog";
@@ -47,8 +48,8 @@ export function Keymap({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
   const usb = kb.connection === "usb" && kb.hasCommandChannel && kb.features.includes("keymap");
   const catalog = useCatalog();
-  const { layer, setLayer, saved, selected, select, modelId, save, discard } = useKeymap();
-  const loaded = saved !== null && modelId === kb.modelId;
+  const { layer, setLayer, saved, selected, select, recordId, save, discard } = useKeymap();
+  const loaded = saved !== null && recordId === kb.recordId;
   const keys = kb.geometry?.keys ?? [];
   const selectedKey = keys.find((k) => k.led === selected) ?? null;
   const changed = useKeymap((s) => countChanges(s.draft, s.saved));
@@ -77,7 +78,13 @@ export function Keymap({ kb }: { kb: KeyboardInfo }) {
       <Plate kb={kb} layer={layer} catalog={catalog} onSelect={select} selected={selected} />
 
       <div className="grid grid-cols-1 items-start gap-5 @4xl:grid-cols-[minmax(0,1fr)_340px]">
-        <Picker layer={layer} catalog={catalog} keyGeo={selectedKey} disabled={!loaded} />
+        <Picker
+          layer={layer}
+          catalog={catalog}
+          keyGeo={selectedKey}
+          disabled={!loaded}
+          support={kb.limits.keyActions}
+        />
         <div className="flex flex-col gap-5 @4xl:sticky @4xl:top-4">
           <SelectedCard layer={layer} catalog={catalog} keyGeo={selectedKey} />
           <LayerCard layer={layer} />
@@ -192,11 +199,14 @@ function Picker({
   catalog,
   keyGeo,
   disabled,
+  support,
 }: {
   layer: KeymapLayer;
   catalog: KeymapCatalog | null;
   keyGeo: KeyGeo | null;
   disabled: boolean;
+  /** The actions this keyboard takes besides the common ones. */
+  support: KeyActionSupport;
 }) {
   const t = useT();
   const [category, setCategory] = useState<Category>("keys");
@@ -323,7 +333,9 @@ function Picker({
       {category === "mouse" && catalog && (
         <div className="grid grid-cols-3 gap-2">
           {[
-            ...catalog.mouse.map((b) => ({ a: { kind: "mouse", button: b } as KeyActionInfo, key: `mouse.${b}` })),
+            ...catalog.mouse
+              .filter((b) => b !== "double-click" || support.doubleClick)
+              .map((b) => ({ a: { kind: "mouse", button: b } as KeyActionInfo, key: `mouse.${b}` })),
             { a: { kind: "wheel", up: true } as KeyActionInfo, key: "wheel.up" },
             { a: { kind: "wheel", up: false } as KeyActionInfo, key: "wheel.down" },
           ].map(({ a, key }) => (
@@ -343,7 +355,15 @@ function Picker({
       )}
 
       {category === "macro" && (
-        <MacroPicker off={off} current={current} assign={assign} isCurrent={isCurrent} chip={chip} keyLed={keyGeo?.led} />
+        <MacroPicker
+          off={off}
+          current={current}
+          assign={assign}
+          isCurrent={isCurrent}
+          chip={chip}
+          keyLed={keyGeo?.led}
+          hold={support.holdMacro}
+        />
       )}
 
       {category === "special" && (
@@ -353,7 +373,9 @@ function Picker({
               { a: { kind: "default" }, label: "km.default", hint: "km.default.hint", icon: <RotateCcw size={15} /> },
               { a: { kind: "disabled" }, label: "km.disabled", hint: "km.disabled.hint", icon: <Ban size={15} /> },
             ] as { a: KeyActionInfo; label: MessageKey; hint: MessageKey; icon: ReactNode }[]
-          ).map(({ a, label, hint, icon }) => (
+          )
+            .filter(({ a }) => a.kind !== "disabled" || support.disabled)
+            .map(({ a, label, hint, icon }) => (
             <button
               key={label}
               type="button"
@@ -390,6 +412,7 @@ function MacroPicker({
   isCurrent,
   chip,
   keyLed,
+  hold,
 }: {
   off: boolean;
   current: KeyActionInfo | undefined;
@@ -397,6 +420,8 @@ function MacroPicker({
   isCurrent: (a: KeyActionInfo) => boolean;
   chip: (active: boolean) => string;
   keyLed: number | undefined;
+  /** The keyboard plays a macro while its key is held. */
+  hold: boolean;
 }) {
   const t = useT();
   const draft = useMacros((s) => s.draft);
@@ -455,7 +480,7 @@ function MacroPicker({
               assign({ ...current, mode: m, count: m === "times" ? Math.min(255, Math.max(1, count)) : 1 });
           }}
           disabled={off}
-          options={PLAY_MODES.map((p) => ({ value: p.value, label: t(p.label) }))}
+          options={PLAY_MODES.filter((p) => p.value !== "hold" || hold).map((p) => ({ value: p.value, label: t(p.label) }))}
         />
         {mode === "times" && (
           <label className="flex items-center gap-1.5 text-[12px] text-ink-2">

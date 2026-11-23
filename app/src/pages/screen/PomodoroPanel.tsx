@@ -59,6 +59,7 @@ import {
   type TemplateId,
 } from "../../lib/pomodoro";
 import { TRY_MS, fromHex, keyPositions, lightColors, tryColors, viewOf } from "../../lib/pomodoroLights";
+import { useScreenLimits } from "../../lib/screen";
 import { uploadSeconds } from "../../lib/screenImport";
 import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useItemName } from "./common";
 import { DontSend, SendNow } from "./LivePanel";
@@ -613,6 +614,7 @@ function EndChoice({
 }) {
   const t = useT();
   const name = useItemName();
+  const screen = useScreenLimits();
   return (
     <div className="flex flex-col gap-1.5" role="radiogroup" aria-label={t("pomo.end")} data-pomo-end>
       <span className="text-[13px] font-medium">{t("pomo.end")}</span>
@@ -640,7 +642,7 @@ function EndChoice({
               {c.id === "back" && own && (
                 <span className="text-[12px] text-ink-2">
                   {t("pomo.end.own")}: <span className="font-medium text-ink">{name(own)}</span> ({t("sc.uploadTime")}{" "}
-                  <span className="num">~{fmtSeconds(uploadSeconds(own.frames))}</span>)
+                  <span className="num">~{fmtSeconds(uploadSeconds(own.frames, screen.pageMs))}</span>)
                 </span>
               )}
             </span>

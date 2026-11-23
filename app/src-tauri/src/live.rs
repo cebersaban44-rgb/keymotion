@@ -791,8 +791,8 @@ impl LiveHandle {
             rt.restore_auto = None;
             match &result.error {
                 None => {
-                    let model = result.model_id.clone().unwrap_or_default();
-                    if let Err(e) = lib.uploaded(&model, &id) {
+                    let record = result.record_id.clone().unwrap_or_default();
+                    if let Err(e) = lib.uploaded(&record, &id) {
                         tracing::warn!("restore not recorded: {e}");
                     }
                     lib.live_mut().before = None;
@@ -874,8 +874,8 @@ impl LiveHandle {
             let now = now_ms();
             match &result.error {
                 None => {
-                    let model = result.model_id.clone().unwrap_or_default();
-                    if let Err(e) = lib.live_uploaded(&model, &job.anim, &job.content, &job.item) {
+                    let record = result.record_id.clone().unwrap_or_default();
+                    if let Err(e) = lib.live_uploaded(&record, &job.anim, &job.content, &job.item) {
                         tracing::warn!("live upload not recorded: {e}");
                     }
                     rt.last_error = None;

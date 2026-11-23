@@ -14,7 +14,7 @@ use crate::dto::{LiveItem, LiveRestore, ScreenIncomplete, ScreenItem, ScreenItem
 use crate::live::LiveStored;
 use kb_protocol::sonix::screen::{self, from_blob, ScreenAnimation};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -39,7 +39,8 @@ pub const NAME_MAX: usize = 60;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct Index {
     items: Vec<ScreenItem>,
-    /// Model id → id of the item its GIF page shows (as far as the app knows).
+    /// Record id (`DetectedKeyboard::record_id`: the model id in the "04 xx"
+    /// family) → id of the item its GIF page shows (as far as the app knows).
     shown: BTreeMap<String, String>,
     total_uploads: u32,
     /// Local date (YYYY-MM-DD) → uploads that day.
@@ -51,13 +52,19 @@ struct Index {
     /// (set before the first page, cleared when one finishes).
     #[serde(default)]
     incomplete: Option<IncompleteWrite>,
+    /// Record ids whose keyboard may lose its clock page with the first
+    /// upload, and the user said yes to that ([`ScreenLibrary::clock_page_at_risk`]).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    clock_page_ack: BTreeSet<String>,
 }
 
 /// See [`Index::incomplete`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct IncompleteWrite {
-    /// Model written to; empty when not known.
+    /// Record id written to (named for files from before command families:
+    /// the model id then, the same value in the "04 xx" family); empty when
+    /// not known.
     model_id: String,
     /// Library item to offer for uploading again.
     id: Option<String>,
@@ -136,6 +143,33 @@ impl ScreenLibrary {
         !self.has_factory() && self.index.shown.is_empty() && self.index.incomplete.is_none()
     }
 
+    /// The keyboard of `record_id` probably still has its clock page, and the
+    /// next upload may replace it for good (only a full reset brings it
+    /// back): its family's uploads do (driver.rs
+    /// `family::upload_replaces_clock`, plan K-13), the app never wrote its
+    /// screen, and the user has not said yes yet. Never in the "04 xx"
+    /// family, whose uploads go to the picture page.
+    pub fn clock_page_at_risk(&self, record_id: &str) -> bool {
+        self.clock_page_risk(record_id, crate::driver::family::protocol_of_record(record_id))
+    }
+
+    /// [`Self::clock_page_at_risk`] for a keyboard of `protocol`.
+    fn clock_page_risk(&self, record_id: &str, protocol: Option<kb_devices::Protocol>) -> bool {
+        protocol.is_some_and(crate::driver::family::upload_replaces_clock)
+            && !self.index.shown.contains_key(record_id)
+            && self.index.incomplete.as_ref().is_none_or(|w| w.model_id != record_id)
+            && !self.index.clock_page_ack.contains(record_id)
+    }
+
+    /// The user said yes to losing the clock page of the keyboard of
+    /// `record_id` ([`Self::clock_page_at_risk`]).
+    pub fn ack_clock_page(&mut self, record_id: &str) -> io::Result<()> {
+        if self.index.clock_page_ack.insert(record_id.to_string()) {
+            tracing::info!(record = record_id, "loss of the clock page acknowledged");
+        }
+        self.save_index()
+    }
+
     fn import_factory(&mut self) {
         if self.has_factory() {
             return;
@@ -192,11 +226,12 @@ impl ScreenLibrary {
     /// An upload is about to write the GIF page: until it ends the page
     /// counts as incomplete, on disk too (a crash or a quit leaves it so).
     /// `retry` is the library item to offer for uploading again.
-    pub fn write_starting(&mut self, model_id: Option<&str>, retry: Option<String>) {
+    /// `record_id`: the keyboard's.
+    pub fn write_starting(&mut self, record_id: Option<&str>, retry: Option<String>) {
         let before = self.index.incomplete.take();
         self.writing = Some(before);
         self.index.incomplete =
-            Some(IncompleteWrite { model_id: model_id.unwrap_or_default().to_string(), id: retry, at_ms: now_ms() });
+            Some(IncompleteWrite { model_id: record_id.unwrap_or_default().to_string(), id: retry, at_ms: now_ms() });
         if let Err(e) = self.save_index() {
             tracing::warn!("upload mark not saved: {e}");
         }
@@ -221,12 +256,13 @@ impl ScreenLibrary {
         }
     }
 
-    /// The cut-short upload for this model, if any (not while one runs).
-    fn incomplete_for(&self, model_id: &str) -> Option<&IncompleteWrite> {
+    /// The cut-short upload for this keyboard (record id), if any (not
+    /// while one runs).
+    fn incomplete_for(&self, record_id: &str) -> Option<&IncompleteWrite> {
         if self.writing.is_some() {
             return None;
         }
-        self.index.incomplete.as_ref().filter(|w| w.model_id.is_empty() || w.model_id == model_id)
+        self.index.incomplete.as_ref().filter(|w| w.model_id.is_empty() || w.model_id == record_id)
     }
 
     fn data_path(&self, id: &str) -> Option<PathBuf> {
@@ -333,13 +369,13 @@ impl ScreenLibrary {
         self.save_index()
     }
 
-    /// Record an upload the keyboard confirmed.
-    pub fn uploaded(&mut self, model_id: &str, id: &str) -> io::Result<()> {
+    /// Record an upload the keyboard (`record_id`) confirmed.
+    pub fn uploaded(&mut self, record_id: &str, id: &str) -> io::Result<()> {
         let now = now_ms();
         if let Some(item) = self.index.items.iter_mut().find(|i| i.id == id) {
             item.uploaded_ms = Some(now);
         }
-        self.index.shown.insert(model_id.to_string(), id.to_string());
+        self.index.shown.insert(record_id.to_string(), id.to_string());
         self.count_upload(true);
         self.save_index()
     }
@@ -421,11 +457,11 @@ impl ScreenLibrary {
         self.index.live.last_source.clone()
     }
 
-    /// Record a live card the keyboard confirmed and keep its data for
-    /// the preview of the GIF page.
+    /// Record a live card the keyboard (`record_id`) confirmed and keep its
+    /// data for the preview of the GIF page.
     pub fn live_uploaded(
         &mut self,
-        model_id: &str,
+        record_id: &str,
         anim: &ScreenAnimation,
         content: &str,
         item: &LiveItem,
@@ -437,16 +473,16 @@ impl ScreenLibrary {
             fs::write(&tmp, screen::blob_unpadded(anim))?;
             fs::rename(&tmp, &path)?;
         }
-        if !model_id.is_empty() {
+        if !record_id.is_empty() {
             // Remember what the live mode replaced (the first time only), so
             // it can be put back. Unknown means the factory animation the
             // keyboard shipped with, as far as the app can tell.
-            let prev = self.index.shown.get(model_id).cloned();
+            let prev = self.index.shown.get(record_id).cloned();
             if prev.as_deref() != Some(LIVE_ID) {
                 let factory = self.index.items.iter().find(|i| i.kind == ScreenItemKind::Factory).map(|i| i.id.clone());
                 self.index.live.before = prev.or(factory);
             }
-            self.index.shown.insert(model_id.to_string(), LIVE_ID.to_string());
+            self.index.shown.insert(record_id.to_string(), LIVE_ID.to_string());
         }
         let live = &mut self.index.live;
         live.last_content = Some(content.to_string());
@@ -457,7 +493,9 @@ impl ScreenLibrary {
         self.save_index()
     }
 
-    pub fn state(&self, model_id: &str) -> ScreenState {
+    /// The library, and what the GIF page of the keyboard of `record_id`
+    /// shows.
+    pub fn state(&self, record_id: &str) -> ScreenState {
         let mut items = self.index.items.clone();
         // Factory first, then Keymotion's own, then newest first.
         let rank = |k: ScreenItemKind| match k {
@@ -466,18 +504,19 @@ impl ScreenLibrary {
             _ => 0,
         };
         items.sort_by(|a, b| rank(b.kind).cmp(&rank(a.kind)).then(b.created_ms.total_cmp(&a.created_ms)));
-        let incomplete = self.incomplete_for(model_id).map(|w| ScreenIncomplete {
+        let incomplete = self.incomplete_for(record_id).map(|w| ScreenIncomplete {
             id: w.id.clone().filter(|id| items.iter().any(|i| &i.id == id)),
             at_ms: w.at_ms,
         });
         ScreenState {
             // A page holding part of an upload does not show the old item.
-            shown: if incomplete.is_some() { None } else { self.index.shown.get(model_id).cloned() },
+            shown: if incomplete.is_some() { None } else { self.index.shown.get(record_id).cloned() },
             items,
             uploads_today: self.index.uploads_by_day.get(&today()).copied().unwrap_or(0),
             uploads_total: self.index.total_uploads,
             limits: ScreenLimits::new(),
             incomplete,
+            clock_page_at_risk: self.clock_page_at_risk(record_id),
         }
     }
 }
@@ -572,6 +611,47 @@ mod tests {
             enc.write_frame(&f).unwrap();
         }
         gif
+    }
+
+    #[test]
+    fn only_an_aa_keyboards_first_upload_puts_its_clock_page_at_risk() {
+        use kb_devices::Protocol;
+        let dir = temp_dir("clock-page");
+        let mut lib = ScreenLibrary::open(Some(&dir));
+        // "04 xx": never, uploaded to or not; the library file is as before.
+        assert!(!lib.clock_page_at_risk("ajazz-ak980-pro"));
+        assert!(!lib.state("ajazz-ak980-pro").clock_page_at_risk);
+        assert!(!lib.clock_page_risk("m", Some(Protocol::SonixFf13)));
+        assert!(!lib.clock_page_risk("m", None), "unknown record");
+        lib.save_index().unwrap();
+        let text = fs::read_to_string(dir.join("screen").join(INDEX_FILE)).unwrap();
+        assert!(!text.contains("clockPage") && !text.contains("clock_page"), "{text}");
+
+        // "AA": until the first upload, or until the user said yes.
+        let aa = "m.aa";
+        assert!(lib.clock_page_risk(aa, Some(Protocol::AjazzAa)));
+        let a = lib.add("A", ScreenItemKind::Image, &ScreenAnimation::still(test_pattern())).unwrap();
+        lib.uploaded("m", &a.id).unwrap();
+        assert!(lib.clock_page_risk(aa, Some(Protocol::AjazzAa)), "the other family's upload does not count");
+        lib.write_starting(Some(aa), Some(a.id.clone()));
+        lib.write_ended(true, false);
+        assert!(!lib.clock_page_risk(aa, Some(Protocol::AjazzAa)), "a cut upload wrote the screen already");
+
+        let ack_dir = temp_dir("clock-page-ack");
+        let mut lib = ScreenLibrary::open(Some(&ack_dir));
+        assert!(lib.clock_page_risk(aa, Some(Protocol::AjazzAa)));
+        lib.ack_clock_page(aa).unwrap();
+        assert!(!lib.clock_page_risk(aa, Some(Protocol::AjazzAa)), "the user said yes");
+        let again = ScreenLibrary::open(Some(&ack_dir));
+        assert!(!again.clock_page_risk(aa, Some(Protocol::AjazzAa)), "kept on disk");
+        assert!(again.clock_page_risk("n.aa", Some(Protocol::AjazzAa)), "per keyboard record");
+
+        let mut lib = ScreenLibrary::open(Some(&temp_dir("clock-page-up")));
+        lib.uploaded(aa, &a.id).unwrap();
+        assert!(!lib.clock_page_risk(aa, Some(Protocol::AjazzAa)), "uploaded once: nothing left to lose");
+        for d in ["clock-page", "clock-page-ack", "clock-page-up"] {
+            let _ = fs::remove_dir_all(temp_dir(d));
+        }
     }
 
     #[test]

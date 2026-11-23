@@ -58,7 +58,7 @@ export function Lighting({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
   const { tab, setTab } = useLighting();
   const usb = kb.connection === "usb" && kb.hasCommandChannel;
-  const mirror = useMirror(usb && tab === "effects");
+  const mirror = useMirror(usb && tab === "effects", kb.protocol);
   const perKey = useLighting((s) => s.perKey);
   // The gauges draw the keys while on: the saved lighting does not show.
   const gaugesOn = useGauges((s) => !!s.state?.settings.enabled);
@@ -277,18 +277,34 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
               <div className="row row-tall">
                 <span className="flex items-baseline justify-between gap-3">
                   <span className="row-title">{t("light.brightness")}</span>
-                  <span className="num text-[13px] text-ink-2">{effect.brightness} / 5</span>
+                  <span className="num text-[13px] text-ink-2">
+                    {effect.brightness} / {kb.limits.brightness.max}
+                  </span>
                 </span>
-                <Steps label={t("light.brightness")} value={effect.brightness} onChange={(brightness) => setEffect({ brightness })} />
+                <Steps
+                  label={t("light.brightness")}
+                  value={effect.brightness}
+                  onChange={(brightness) => setEffect({ brightness })}
+                  min={kb.limits.brightness.min}
+                  max={kb.limits.brightness.max}
+                />
               </div>
             )}
             {current?.speed && (
               <div className="row row-tall">
                 <span className="flex items-baseline justify-between gap-3">
                   <span className="row-title">{t("light.speed")}</span>
-                  <span className="num text-[13px] text-ink-2">{effect.speed} / 5</span>
+                  <span className="num text-[13px] text-ink-2">
+                    {effect.speed} / {kb.limits.speed.max}
+                  </span>
                 </span>
-                <Steps label={t("light.speed")} value={effect.speed} onChange={(speed) => setEffect({ speed })} />
+                <Steps
+                  label={t("light.speed")}
+                  value={effect.speed}
+                  onChange={(speed) => setEffect({ speed })}
+                  min={kb.limits.speed.min}
+                  max={kb.limits.speed.max}
+                />
               </div>
             )}
             {current && current.directions > 0 && (
@@ -529,9 +545,22 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
       </div>
 
       <Rows>
-        <Row title={t("light.brightness")} desc={<span className="num">{perKeyBrightness} / 5</span>}>
+        <Row
+          title={t("light.brightness")}
+          desc={
+            <span className="num">
+              {perKeyBrightness} / {kb.limits.brightness.max}
+            </span>
+          }
+        >
           <div className="w-[264px] max-w-full">
-            <Steps label={t("light.brightness")} value={perKeyBrightness} onChange={setPerKeyBrightness} />
+            <Steps
+              label={t("light.brightness")}
+              value={perKeyBrightness}
+              onChange={setPerKeyBrightness}
+              min={kb.limits.brightness.min}
+              max={kb.limits.brightness.max}
+            />
           </div>
         </Row>
         <Row title={t("light.presets")}>

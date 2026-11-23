@@ -43,7 +43,7 @@ import {
   useProfiles,
   type StepState,
 } from "../lib/profiles";
-import { useScreen } from "../lib/screen";
+import { useScreen, useScreenLimits } from "../lib/screen";
 import { useApp } from "../lib/store";
 import { AutoProfiles } from "./ProfilesAuto";
 
@@ -87,7 +87,7 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
   const canWrite = kb.connection === "usb" && kb.hasCommandChannel;
   const state = useProfiles((s) => (s.modelId === modelId ? s.state : null));
   const uploading = useScreen((s) => s.upload !== null);
-  const pageMs = useScreen((s) => s.state?.limits.pageMs ?? 145);
+  const { pageMs } = useScreenLimits();
   const hasDrafts = useDrafts();
   const [flow, setFlow] = useState<Flow | null>(null);
   const [flowError, setFlowError] = useState<string | null>(null);
@@ -237,7 +237,7 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
     await act(async () => {
       const saved = await importProfile(await file.arrayBuffer());
       // The profile's picture went into the library.
-      useScreen.getState().load(modelId).catch(console.error);
+      useScreen.getState().load(kb.recordId).catch(console.error);
       return { ok: true, text: t("prof.import.done", { name: saved.name }) };
     });
   };
