@@ -55,7 +55,8 @@ const NEXT_SECTION = /^#{1,2}\s/;
 // the last section.
 const LINK_DEFINITION = /^\s{0,3}\[[^\]]+\]:\s*\S/;
 
-const isUnreleased = (label) => UNRELEASED.has(label.toLowerCase());
+/** Whether a CHANGELOG heading's label is the Unreleased one, in any language. */
+export const isUnreleased = (label) => UNRELEASED.has(label.toLowerCase());
 
 /** The body of the "## <label>" section, or null when there is none. */
 function section(markdown, matches) {
