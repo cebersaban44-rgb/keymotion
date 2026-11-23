@@ -141,13 +141,29 @@ pub enum AaError {
     ColorUnknown,
     #[error("a screen upload stopped part-way; no commands for another {wait_ms} ms")]
     UploadInterrupted { wait_ms: u64 },
+    /// A restore failed while writing `section`; `report` holds what was
+    /// written before it (complete sections only; `section` itself may be
+    /// partly written).
+    #[error("the restore stopped while writing the {section} ({}): {error}", wrote(.report))]
+    RestoreIncomplete { section: &'static str, report: RestoreReport, error: Box<AaError> },
+}
+
+fn wrote(report: &RestoreReport) -> String {
+    match report.written.as_slice() {
+        [] => "nothing written before".into(),
+        done => format!("already written: {}", done.join(", ")),
+    }
 }
 
 impl AaError {
     /// The channel that failed must be dropped and opened again before it
     /// is used (a write failed or stalled; hidapi keeps it pending).
     pub fn needs_reopen(&self) -> bool {
-        matches!(self, Self::Transport(_) | Self::ShortWrite { .. })
+        match self {
+            Self::Transport(_) | Self::ShortWrite { .. } => true,
+            Self::RestoreIncomplete { error, .. } => error.needs_reopen(),
+            _ => false,
+        }
     }
 }
 
@@ -406,6 +422,13 @@ pub struct RestoreReport {
 
 const RESET_REASON: &str = "the keyboard reported a reset (55 FC 05); read it again before writing";
 const NOTHING_READ: &str = "nothing has been read from the keyboard yet";
+const INFO_UNANSWERED: &str = "the device information (10) went unanswered; read it again before writing";
+
+/// The colour stored with per-key mode when the real one is unknown: white,
+/// one colour, the web hub's reset default. Per-key mode does not show it;
+/// it is what a later switch to a one-colour mode starts from, so it is a
+/// visible one rather than black.
+pub const NEUTRAL_COLOR: EffectColor = EffectColor { color: [0xFF, 0xFF, 0xFF], color_mode: 0 };
 const UNFINISHED_READ: &str = "the last full read of the keyboard did not finish";
 const UNFINISHED_WRITE: &str = "a write to the keyboard did not finish; read it again before writing";
 
@@ -432,6 +455,20 @@ fn keymap_matches(table: &[u8], back: &[u8], factory: &[u8]) -> bool {
             let (t, b) = (keymap::entry(table, s), keymap::entry(back, s));
             t == b || (t == [0; 4] && b == keymap::entry(factory, s))
         })
+}
+
+/// Note a restore section as written, or turn its failure into
+/// [`AaError::RestoreIncomplete`] with what was written before it.
+fn record(report: &mut RestoreReport, section: &'static str, r: Result<()>) -> Result<()> {
+    match r {
+        Ok(()) => {
+            report.written.push(section);
+            Ok(())
+        }
+        Err(error) => {
+            Err(AaError::RestoreIncomplete { section, report: std::mem::take(report), error: Box::new(error) })
+        }
+    }
 }
 
 /// An "AA" keyboard on its FF68 command channel.
@@ -511,19 +548,19 @@ impl<P: OutputPort> AaKeyboard<P> {
         self.effect
     }
 
-    /// Whether writes are allowed: a full read passed the sanity gate and
-    /// nothing has invalidated it since.
+    /// Whether writes are allowed: a full read passed the sanity gate,
+    /// nothing has invalidated it since, and the last device-information
+    /// request was answered.
     pub fn is_sane(&self) -> bool {
-        !self.update_pending && matches!(self.sanity, Some(Ok(())))
+        self.check_writable().is_ok()
     }
 
     /// Why writes are refused (empty when they are allowed).
     pub fn sanity_reasons(&self) -> Vec<String> {
-        match &self.sanity {
-            _ if self.update_pending => vec![AaError::UpdatePending.to_string()],
-            None => vec![NOTHING_READ.into()],
-            Some(Ok(())) => Vec::new(),
-            Some(Err(why)) => why.clone(),
+        match self.check_writable() {
+            Ok(()) => Vec::new(),
+            Err(AaError::NotSane(why)) => why,
+            Err(e) => vec![e.to_string()],
         }
     }
 
@@ -545,26 +582,26 @@ impl<P: OutputPort> AaKeyboard<P> {
         Ok(())
     }
 
-    /// The gate's verdict, without any I/O.
+    /// The gate's verdict, without any I/O; the one source for
+    /// [`Self::is_sane`], [`Self::sanity_reasons`] and every write. A
+    /// device-information request that went unanswered after the full read
+    /// (it clears what was known) closes the gate until one is answered.
     fn check_writable(&self) -> Result<()> {
         if self.update_pending {
             return Err(AaError::UpdatePending);
         }
         match &self.sanity {
-            Some(Ok(())) => Ok(()),
-            Some(Err(why)) => Err(AaError::NotSane(why.clone())),
             None => Err(AaError::NotSane(vec![NOTHING_READ.into()])),
+            Some(Err(why)) => Err(AaError::NotSane(why.clone())),
+            Some(Ok(())) if self.info.is_none() => Err(AaError::NotSane(vec![INFO_UNANSWERED.into()])),
+            Some(Ok(())) => Ok(()),
         }
     }
 
     /// Writes need the gate open (which needs a full read, device
     /// information included); refused without sending anything.
     fn ensure_writable(&mut self) -> Result<()> {
-        self.check_writable()?;
-        if self.info.is_none() {
-            return Err(AaError::NotSane(vec![NOTHING_READ.into()]));
-        }
-        Ok(())
+        self.check_writable()
     }
 
     /// After a screen upload stopped part-way: nothing on FF68 until the
@@ -773,6 +810,14 @@ impl<P: OutputPort> AaKeyboard<P> {
     /// What a read of the effect tells: the colour only when this driver
     /// wrote it (and mode and levels still match), or when the read-back is
     /// not the post-write quirk.
+    ///
+    /// Any read-back other than `FF FF FF` / colour mode 1 is taken as the
+    /// colour the keyboard holds. That rests on the captures (the quirk
+    /// appears after a write; before one, the factory colour reads back)
+    /// and is not verified on firmware 769 beyond them. The colour this
+    /// driver wrote is remembered for one session only: a reset notice
+    /// clears it ([`Self::after_io`]) and a reopened channel is a new
+    /// driver, which starts without it.
     fn interpret(&self, read: AaEffect) -> EffectRead {
         if let Some(w) = self.written.filter(|w| w.same_settings(&read)) {
             return EffectRead { effect: read.with_color(w.color_part()), color_known: true };
@@ -876,11 +921,11 @@ impl<P: OutputPort> AaKeyboard<P> {
 
     /// `current` in per-key mode (at `level` when given), its other fields
     /// kept. A colour the driver cannot trust is not written back: per-key
-    /// mode shows none, so black goes in its place.
+    /// mode shows none, so [`NEUTRAL_COLOR`] goes in its place.
     fn per_key_effect(current: EffectRead, level: Option<u8>) -> AaEffect {
         let mut e = current.effect.per_key();
         if !current.color_known {
-            e = e.with_color(EffectColor { color: [0, 0, 0], color_mode: 0 });
+            e = e.with_color(NEUTRAL_COLOR);
         }
         if let Some(level) = level {
             e.brightness = level;
@@ -1022,17 +1067,27 @@ impl<P: OutputPort> AaKeyboard<P> {
 
     /// Write a macro image so that no table entry ever names a block that is
     /// not completely written: an all-zero table first (no macros), then the
-    /// blocks from 400 (LAST on the final chunk), then the table. A failure
-    /// part-way leaves the old macros, none, or the new ones, never a
-    /// pointer into half-written blocks, and closes the gate. (AJAZZ's
-    /// WebHID driver writes the table first; each of these three writes is
-    /// one it sends, only the order differs.)
+    /// blocks from 400 (LAST on the final chunk), then the table, then the
+    /// final block chunk once more, unchanged, with LAST. A failure part-way
+    /// leaves the old macros, none, or the new ones, never a pointer into
+    /// half-written blocks, and closes the gate.
+    ///
+    /// AJAZZ's WebHID driver writes the table (no LAST) and then the blocks,
+    /// so its last packet is always the final block chunk with LAST, never a
+    /// table chunk. If the firmware commits or reloads the macro area on
+    /// LAST, a table written after the blocks would be left out; resending
+    /// that chunk (the very bytes the WebHID driver ends with) makes the
+    /// sequence end the same way. Beta check on a real AK980 PRO: write a
+    /// macro, unplug and replug, read it back, press it.
     fn put_macros(&mut self, img: &macros::MacroImage) -> Result<()> {
         let empty = vec![0u8; macros::TABLE_LEN];
         self.write_block(cmd::SET_MACROS, &empty, 0, false)?;
         if !img.blocks.is_empty() {
             self.write_block(cmd::SET_MACROS, &img.blocks, macros::BLOCKS_AT, true)?;
             self.write_block(cmd::SET_MACROS, &img.table, 0, false)?;
+            if let Some(last) = frame::chunks(img.blocks.len(), macros::BLOCKS_AT, true).pop() {
+                self.write_block(cmd::SET_MACROS, &img.blocks[last.offset..], last.addr, true)?;
+            }
         }
         let table = self.read_block(cmd::MACROS, macros::TABLE_LEN, 0, None)?;
         let blocks = match img.blocks.len() {
@@ -1071,9 +1126,9 @@ impl<P: OutputPort> AaKeyboard<P> {
     // ---------------------------------------------------------------- restore
 
     /// Build `layer` from `backup`, keeping the keyboard's entry where the
-    /// backup's could not be written (reported in `kept`): the Fn key, the
-    /// knob and the table tail always, and any slot the table guard refuses
-    /// on its own.
+    /// backup's could not be written: the Fn key, the knob and the table
+    /// tail always, and any slot the table guard refuses on its own. Every
+    /// slot kept with a backup entry that differs is reported in `kept`.
     fn plan_layer(
         &self,
         layer: Layer,
@@ -1083,9 +1138,19 @@ impl<P: OutputPort> AaKeyboard<P> {
         kept: &mut Vec<KeptSlot>,
     ) -> Vec<u8> {
         let mut table = backup.to_vec();
-        let always = self.layout.fn_slot().into_iter().chain(KNOB_SLOTS).chain(keymap::TAIL_SLOTS);
-        for slot in always {
-            keymap::set_entry(&mut table, slot, keymap::entry(fresh, slot));
+        let fixed = self
+            .layout
+            .fn_slot()
+            .into_iter()
+            .map(|s| (s, "the Fn key is never reassigned".to_string()))
+            .chain(KNOB_SLOTS.map(|s| (s, "the knob is never reassigned".to_string())))
+            .chain(keymap::TAIL_SLOTS.map(|s| (s, Blocked::Tail(s).to_string())));
+        for (slot, reason) in fixed {
+            let (want, now) = (keymap::entry(backup, slot), keymap::entry(fresh, slot));
+            if want != now {
+                keymap::set_entry(&mut table, slot, now);
+                kept.push(KeptSlot { layer, slot, led: self.layout.led(slot), backup: want, reason });
+            }
         }
         for slot in 0..keymap::SLOTS as u8 {
             let (want, now) = (keymap::entry(&table, slot), keymap::entry(fresh, slot));
@@ -1114,9 +1179,14 @@ impl<P: OutputPort> AaKeyboard<P> {
     ///
     /// The backup's effect colour is used when the backup knew it
     /// ([`AaSnapshot::effect_color`]), else `effect_color`. With neither,
-    /// the effect is left alone when its mode and levels already match, and
-    /// the restore is refused ([`AaError::ColorUnknown`]) when they don't.
-    /// Unchanged sections are not written. **Writes flash.**
+    /// the effect is left alone when its mode and levels already match; a
+    /// backup in per-key mode (128, which shows no effect colour) gets the
+    /// colour [`Self::arm_live`] would give it ([`NEUTRAL_COLOR`]); any
+    /// other restore is refused ([`AaError::ColorUnknown`]).
+    ///
+    /// Unchanged sections are not written. A write that fails returns
+    /// [`AaError::RestoreIncomplete`] with the sections written before it.
+    /// **Writes flash.**
     pub fn restore(&mut self, backup: &AaSnapshot, effect_color: Option<EffectColor>) -> Result<RestoreReport> {
         self.ensure_writable()?;
         check_sanity(backup, self.usb).map_err(AaError::NotSane)?;
@@ -1155,6 +1225,11 @@ impl<P: OutputPort> AaKeyboard<P> {
                 Some(e)
             }
             None if same_levels => None,
+            None if saved.mode == effect::MODE_PER_KEY => {
+                let e = Self::per_key_effect(EffectRead { effect: saved, color_known: false }, None);
+                e.encode()?;
+                Some(e)
+            }
             None => return Err(AaError::ColorUnknown),
         };
 
@@ -1168,26 +1243,26 @@ impl<P: OutputPort> AaKeyboard<P> {
         let saved_macros = backup.macros();
         let macro_image = if saved_macros == fresh_macros { None } else { Some(macros::encode(&saved_macros)?) };
 
-        // 3. Write.
+        // 3. Write; a failure says what was written before it.
         if base != fresh_base {
-            self.put_keymap(Layer::Base, &fresh_base, &base, &factory_base)?;
-            report.written.push("base layer");
+            let r = self.put_keymap(Layer::Base, &fresh_base, &base, &factory_base);
+            record(&mut report, "base layer", r)?;
         }
         if fn_layer != fresh_fn {
-            self.put_keymap(Layer::Fn, &fresh_fn, &fn_layer, &factory_fn)?;
-            report.written.push("Fn layer");
+            let r = self.put_keymap(Layer::Fn, &fresh_fn, &fn_layer, &factory_fn);
+            record(&mut report, "Fn layer", r)?;
         }
         if let Some(e) = effect {
-            self.put_effect(&e)?;
-            report.written.push("effect");
+            let r = self.put_effect(&e);
+            record(&mut report, "effect", r)?;
         }
         if per_key != fresh_per_key {
-            self.put_per_key(&fresh_per_key, &per_key)?;
-            report.written.push("per-key table");
+            let r = self.put_per_key(&fresh_per_key, &per_key);
+            record(&mut report, "per-key table", r)?;
         }
         if let Some(img) = macro_image {
-            self.put_macros(&img)?;
-            report.written.push("macros");
+            let r = self.put_macros(&img);
+            record(&mut report, "macros", r)?;
         }
         Ok(report)
     }
@@ -1198,8 +1273,8 @@ impl<P: OutputPort> AaKeyboard<P> {
     /// 20, 21 or 128, store it in mode 128 with everything else kept and
     /// return the effect it replaced (for [`Self::disarm_live`]; its colour
     /// may be unknown). A colour the driver cannot trust is not written: it
-    /// goes in as black, which per-key mode does not show. When to arm is
-    /// the caller's decision. **Writes flash.**
+    /// goes in as [`NEUTRAL_COLOR`], which per-key mode does not show. When
+    /// to arm is the caller's decision. **Writes flash.**
     pub fn arm_live(&mut self) -> Result<Option<EffectRead>> {
         self.ensure_writable()?;
         let current = self.read_effect()?;

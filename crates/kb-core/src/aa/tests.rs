@@ -228,6 +228,29 @@ fn a_corrupted_read_closes_the_gate() {
 }
 
 #[test]
+fn an_unanswered_device_information_closes_the_gate() {
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    sim.state().faults.silent_info = true;
+    assert!(matches!(k.device_info(), Err(AaError::Timeout { cmd: 0x10 })));
+    assert!(k.info().is_none());
+    // The verdict and the writes agree, and say why.
+    assert!(!k.is_sane());
+    let why = k.sanity_reasons();
+    assert!(why.len() == 1 && why[0].contains("went unanswered"), "{why:?}");
+    let n = sim.state().packets.len();
+    let r = k.apply_effect(&red_breath());
+    assert!(matches!(&r, Err(AaError::NotSane(w)) if *w == why), "{r:?}");
+    assert!(matches!(k.set_clock(&clock_time()), Err(AaError::NotSane(_))));
+    assert_eq!(sim.state().packets.len(), n, "nothing sent");
+    // Answered again, the gate opens again.
+    sim.state().faults.silent_info = false;
+    k.device_info().unwrap();
+    assert!(k.is_sane(), "{:?}", k.sanity_reasons());
+    k.apply_effect(&red_breath()).unwrap();
+}
+
+#[test]
 fn the_sanity_gate() {
     let sim = Sim::ak980();
     let good = keyboard(&sim).read_all().unwrap();
@@ -391,7 +414,10 @@ fn another_tools_colour_is_never_overwritten_with_the_readback() {
     let previous = k.arm_live().unwrap().expect("armed");
     assert!(!previous.color_known);
     assert_eq!(previous.color(), None);
-    assert_eq!(sim.state().effect[..4], [128, 0, 0, 0], "the read-back white is not written");
+    // Not the read-back's white rainbow: white, one colour, chosen.
+    let s = sim.state().effect;
+    assert_eq!((s[..4].to_vec(), s[8]), (vec![128, 0xFF, 0xFF, 0xFF], 0), "the neutral colour");
+    assert_eq!(k.current_effect().unwrap().color(), Some(NEUTRAL_COLOR), "written, so known");
     // Disarming needs the colour; without it nothing is written.
     let n = writes(&sim);
     assert!(matches!(k.disarm_live(previous, None), Err(AaError::ColorUnknown)));
@@ -423,6 +449,26 @@ fn a_snapshot_keeps_the_colour_the_driver_knew() {
     let r = later.restore(&snap, None).unwrap();
     assert_eq!(r.written, ["effect"]);
     assert_eq!(sim.state().effect[..12], [7, 0xFF, 0x20, 0x00, 0xFF, 0, 0, 0, 0, 4, 1, 1]);
+}
+
+#[test]
+fn a_reset_forgets_the_colour_the_driver_wrote() {
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    k.apply_effect(&red_breath()).unwrap();
+    assert!(k.read_effect().unwrap().color_known);
+    // The keyboard resets while the effect is read: whatever it holds now,
+    // the colour written before is no longer vouched for.
+    let n = sim.state().packets.len();
+    sim.state().faults.reset_before = Some(n + 1);
+    let e = k.read_effect().unwrap();
+    assert_eq!(k.resets_reported(), 1);
+    assert!(!e.color_known);
+    assert_eq!(k.current_effect().unwrap().color(), None);
+    k.read_all().unwrap();
+    assert_eq!(k.snapshot().unwrap().effect_color, None);
+    let (_, known) = k.effect_settings().unwrap();
+    assert!(!known);
 }
 
 #[test]
@@ -690,13 +736,15 @@ fn the_a_macro() {
     assert_eq!(&s.macros[..4], &[0x90, 0x01, 0x00, 0x00], "pointer 400");
     assert_eq!(&s.macros[400..412], &[0x04, 0x00, 0x00, 0x00, 0x0A, 0x00, 0x04, 0xB0, 0x00, 0x00, 0x04, 0x30]);
     // An empty table (8 chunks, no LAST), the block (one chunk, LAST), the
-    // table (8 chunks, no LAST).
+    // table (8 chunks, no LAST), and the block's last chunk again, so the
+    // final packet is the one AJAZZ's WebHID driver ends with.
     let writes = s.sent(cmd::SET_MACROS);
-    assert_eq!(writes.len(), 17);
+    assert_eq!(writes.len(), 18);
     assert!(writes[..8].iter().all(|w| w[7] == 0 && w[9..].iter().all(|&b| b == 0)));
     assert_eq!(&writes[8][1..9], &[0xAA, 0x25, 12, 0x90, 0x01, 0, 1, 0]);
-    assert!(writes[9..].iter().all(|w| w[7] == 0));
+    assert!(writes[9..17].iter().all(|w| w[7] == 0 && u16::from_le_bytes([w[4], w[5]]) < 400), "the table, no LAST");
     assert_eq!(&writes[9][9..13], &[0x90, 0x01, 0x00, 0x00]);
+    assert_eq!(writes[17], writes[8], "byte for byte");
     drop(s);
     let back = k.read_macros().unwrap();
     assert_eq!(macros::to_steps(&back[0]).unwrap(), a_macro());
@@ -1023,6 +1071,80 @@ fn a_restore_keeps_entries_the_encoder_would_refuse() {
     assert_eq!(r.kept.iter().map(|s| (s.layer, s.slot)).collect::<Vec<_>>(), [(Layer::Base, 49)]);
     assert!(r.written.is_empty());
     assert_eq!(slot(&sim.state().keymap, 49), [0x02, 0x00, 0x04, 0x00]);
+}
+
+#[test]
+fn a_restore_reports_the_fn_key_knob_and_tail_it_keeps() {
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    let original = sim.state().clone();
+    let mut backup = k.snapshot().unwrap().clone();
+    let other = [0x02, 0x00, 0x05, 0x00];
+    for (fn_layer, s) in [(false, FN_AA), (false, 13), (true, 126)] {
+        let table = if fn_layer { &mut backup.fn_keymap.0 } else { &mut backup.keymap.0 };
+        assert_ne!(slot(table, s), other);
+        keymap::set_entry(table, s, other);
+    }
+    let r = k.restore(&backup, None).unwrap();
+    assert!(r.written.is_empty(), "nothing else differs");
+    let kept: Vec<(Layer, u8, [u8; 4])> = r.kept.iter().map(|s| (s.layer, s.slot, s.backup)).collect();
+    assert_eq!(kept, [(Layer::Base, FN_AA, other), (Layer::Base, 13, other), (Layer::Fn, 126, other)]);
+    assert_eq!(r.kept[0].led, Some(FN));
+    assert!(r.kept[0].reason.contains("Fn key"), "{}", r.kept[0].reason);
+    assert!(r.kept[1].reason.contains("knob"), "{}", r.kept[1].reason);
+    assert!(r.kept[2].reason.contains("126"), "{}", r.kept[2].reason);
+    let s = sim.state();
+    assert_eq!((&s.keymap, &s.fn_keymap), (&original.keymap, &original.fn_keymap));
+}
+
+#[test]
+fn a_restore_that_fails_part_way_says_what_it_wrote() {
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    let backup = k.snapshot().unwrap().clone();
+    k.apply_keymap(Layer::Base, [(A, KeyAction::key(0x05))]).unwrap();
+    k.apply_keymap(Layer::Fn, [(W, KeyAction::Consumer(0xE9))]).unwrap();
+    k.apply_effect(&red_breath()).unwrap();
+    sim.state().faults.ignore_writes = Some(cmd::SET_EFFECT);
+    let err = k.restore(&backup, None).unwrap_err();
+    let AaError::RestoreIncomplete { section, report, error } = &err else { panic!("{err:?}") };
+    assert_eq!((*section, report.written.as_slice()), ("effect", &["base layer", "Fn layer"][..]));
+    assert!(matches!(**error, AaError::Readback { what: "effect" }));
+    assert!(!err.needs_reopen());
+    assert!(err.to_string().contains("already written: base layer, Fn layer"), "{err}");
+    assert_eq!(sim.state().keymap, backup.keymap.0, "the base layer is back");
+
+    // A stalled first write: nothing written, and the channel must go.
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    let backup = k.snapshot().unwrap().clone();
+    let n = sim.state().packets.len();
+    k.restore(&backup, None).unwrap();
+    let reads = sim.state().packets.len() - n;
+    k.apply_keymap(Layer::Base, [(A, KeyAction::key(0x05))]).unwrap();
+    let n = sim.state().packets.len();
+    sim.state().faults.fail_write = Some(n + reads + 1);
+    let err = k.restore(&backup, None).unwrap_err();
+    assert!(
+        matches!(&err, AaError::RestoreIncomplete { section: "base layer", report, .. } if report.written.is_empty()),
+        "{err:?}"
+    );
+    assert!(err.needs_reopen(), "{err}");
+}
+
+#[test]
+fn a_per_key_backup_without_its_colour_gets_the_neutral_one() {
+    // Per-key mode set with AJAZZ's tool: the colour reads back as the quirk.
+    let sim = Sim::ak980();
+    sim.state().set_effect_by_another_tool([128, 0xFF, 0x69, 0xB4, 0xFF, 0, 0, 0, 0, 3, 3, 0, 0, 0, 0xAA, 0x55]);
+    let mut k = ready(&sim);
+    let backup = k.snapshot().unwrap().clone();
+    assert_eq!(backup.effect_color, None);
+    k.apply_effect(&red_breath()).unwrap();
+    let r = k.restore(&backup, None).unwrap();
+    assert_eq!(r.written, ["effect"]);
+    let s = sim.state().effect;
+    assert_eq!((s[..4].to_vec(), s[8], s[9]), (vec![128, 0xFF, 0xFF, 0xFF], 0, 3), "per-key mode, white, level 3");
 }
 
 #[test]
