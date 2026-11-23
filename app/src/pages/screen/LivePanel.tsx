@@ -92,7 +92,7 @@ export function LivePanel({ usb }: { usb: boolean }) {
           <button
             type="button"
             onClick={() => setClosing(true)}
-            className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[13px] font-semibold text-signal hover:bg-signal/10"
+            className="btn-secondary is-accent"
           >
             <RotateCcw size={14} /> {t("sc.live.offRestore")}
           </button>
@@ -229,7 +229,7 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
             <button
               type="button"
               onClick={() => setPage("calendar")}
-              className="h-8 rounded-lg border border-line px-3 text-[12px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+              className="btn-secondary btn-sm"
               data-calendar-open
             >
               {t("calendar.layer.open")}
@@ -256,7 +256,7 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
             <button
               type="button"
               onClick={() => setPage("reminders")}
-              className="h-8 rounded-lg border border-line px-3 text-[12px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+              className="btn-secondary btn-sm"
               data-reminder-open
             >
               {t("reminder.layer.open")}
@@ -318,7 +318,7 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
                 <button
                   type="button"
                   onClick={() => set({ restore: true })}
-                  className="ml-auto flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[13px] font-semibold text-signal hover:bg-signal/10"
+                  className="btn-secondary is-accent ml-auto"
                   data-own-back
                 >
                   <RotateCcw size={14} /> {t("sc.live.own.back")}
@@ -440,14 +440,14 @@ function TurnOff({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center dlg-smoke p-6"
       role="dialog"
       aria-modal
       aria-labelledby="live-off-title"
     >
-      <motion.div initial={{ scale: 0.97, y: 8 }} animate={{ scale: 1, y: 0 }} className="card flex w-[500px] flex-col gap-4 p-6">
+      <motion.div initial={{ scale: 0.97, y: 8 }} animate={{ scale: 1, y: 0 }} className="dlg flex w-[500px] max-w-full flex-col gap-4 p-6">
         <div className="flex items-start justify-between gap-3">
-          <h2 id="live-off-title" className="font-display text-[22px] font-semibold">
+          <h2 id="live-off-title" className="subtitle">
             {alreadyOff ? t("sc.live.restoreTitle") : t("sc.live.offTitle")}
           </h2>
           <button
@@ -533,7 +533,7 @@ export function DontSend() {
       type="button"
       onClick={() => dropWaiting().catch(console.error)}
       title={t("sc.live.dontSend.hint")}
-      className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+      className="btn-secondary btn-sm shrink-0"
       data-dont-send
     >
       <X size={13} /> {t("sc.live.dontSend")}
@@ -550,7 +550,7 @@ export function SendNow() {
       type="button"
       onClick={() => sendNow().catch(console.error)}
       title={t("sc.live.sendNow.hint")}
-      className="ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-signal/50 px-2.5 text-[12px] font-semibold text-signal hover:bg-signal/10"
+      className="btn-secondary btn-sm is-accent ml-auto shrink-0"
       data-send-now
     >
       <Upload size={13} /> {t("sc.live.sendNow")}

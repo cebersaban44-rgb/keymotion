@@ -335,7 +335,7 @@ export function UpdateDialog() {
     <AnimatePresence>
       {open && st && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-6 backdrop-blur-[2px]"
+          className="fixed inset-0 z-50 flex items-center justify-center dlg-smoke p-6"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -345,7 +345,7 @@ export function UpdateDialog() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="update-title"
-            className="card flex w-full max-w-[480px] flex-col gap-4 p-6"
+            className="dlg flex w-full max-w-[480px] flex-col gap-4 p-6"
             initial={{ opacity: 0, y: 8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 4, scale: 0.98 }}
@@ -353,7 +353,7 @@ export function UpdateDialog() {
             data-update-dialog={st.kind}
           >
             <div className="flex flex-col gap-1">
-              <h2 id="update-title" className="font-display text-[20px] leading-tight font-semibold">
+              <h2 id="update-title" className="subtitle">
                 {t("update.dialog.title", { version: version ?? "" })}
               </h2>
               <p className="num text-[12.5px] text-ink-2">

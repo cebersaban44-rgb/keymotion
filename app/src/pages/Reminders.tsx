@@ -142,7 +142,7 @@ export function Reminders({ kb }: { kb: KeyboardInfo }) {
               <button
                 type="button"
                 onClick={() => setPage("screen")}
-                className="h-8 rounded-lg border border-line px-3 text-[12px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+                className="btn-secondary btn-sm"
               >
                 {t("reminder.liveOff.go")}
               </button>
@@ -194,7 +194,7 @@ export function Reminders({ kb }: { kb: KeyboardInfo }) {
                   setDone(null);
                   setEditing({ draft: null, step: 0 });
                 }}
-                className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[13px] font-semibold text-signal hover:bg-signal/10"
+                className="btn-secondary is-accent"
                 data-reminder-add
               >
                 <Plus size={14} /> {t("reminder.add")}
@@ -372,7 +372,7 @@ function Row({
             onClick={() => void trial.run()}
             disabled={trial.busy}
             title={t("reminder.try.hint")}
-            className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12px] text-ink-2 hover:bg-surface-2 hover:text-ink disabled:opacity-60"
+            className="btn-secondary btn-sm"
             data-reminder-try
           >
             {trial.busy && <Loader2 size={12} className="animate-spin" />}
@@ -414,12 +414,12 @@ function Row({
           <button
             type="button"
             onClick={() => remove(r.id).catch(console.error)}
-            className="h-8 rounded-lg border border-danger/50 px-3 text-danger hover:bg-danger/10"
+            className="btn-secondary is-danger"
             data-reminder-remove-yes
           >
             {t("reminder.remove")}
           </button>
-          <button type="button" onClick={() => setAsking(false)} className="h-8 rounded-lg border border-line px-3 text-ink-2 hover:bg-surface-2">
+          <button type="button" onClick={() => setAsking(false)} className="btn-secondary">
             {t("gauges.cancel")}
           </button>
         </div>
@@ -527,7 +527,7 @@ function Editor({
         <button
           type="button"
           onClick={onCancel}
-          className="flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-[12px] text-ink-2 hover:bg-surface-2"
+          className="btn-secondary"
           data-reminder-cancel
         >
           <X size={13} /> {t("gauges.cancel")}
@@ -576,7 +576,7 @@ function Editor({
                 setError(null);
                 setStep((step - 1) as Step);
               }}
-              className="h-9 rounded-lg border border-line px-3 text-[13px] text-ink-2 hover:bg-surface-2"
+              className="btn-secondary"
               data-reminder-back
             >
               {t("reminder.back")}
@@ -590,7 +590,7 @@ function Editor({
                 if (bad) setError(bad);
                 else setStep(2);
               }}
-              className="h-9 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink hover:brightness-110"
+              className="btn-primary"
               data-reminder-forward
             >
               {t("reminder.nextStep")}
@@ -600,7 +600,7 @@ function Editor({
               type="button"
               onClick={() => void submit()}
               disabled={busy}
-              className="flex h-9 items-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink hover:brightness-110"
+              className="btn-primary"
               data-reminder-save
             >
               {busy && <Loader2 size={14} className="animate-spin" />} {t("reminder.save")}
@@ -862,7 +862,7 @@ function HowForm({ r, patch }: { r: Reminder; patch: (p: Partial<Reminder>) => v
         <button
           type="button"
           onClick={() => tryReminderLight(r.color, r.sound).catch(console.error)}
-          className="h-8 rounded-lg border border-line px-3 text-[12px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+          className="btn-secondary btn-sm"
           data-reminder-try-light
         >
           {t("reminder.try")}
@@ -934,7 +934,7 @@ function CardPreview({ r }: { r: Reminder }) {
               <button
                 type="button"
                 onClick={() => void tryOnKeyboard()}
-                className="flex h-9 items-center gap-2 rounded-lg border border-signal/50 px-3 text-[13px] font-semibold text-signal hover:bg-signal/10"
+                className="btn-secondary is-accent"
                 data-reminder-try-card
               >
                 {sent === "sending" ? <Loader2 size={14} className="animate-spin" /> : <BellRing size={14} />} {t("reminder.preview.try")}

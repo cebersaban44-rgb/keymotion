@@ -1,19 +1,23 @@
-import { AlertTriangle, Check, ChevronDown, Clock3, Images, Info, Library, Loader2, Palette, Pencil, Radio, Search, Trash2, Upload, Usb, X, type LucideIcon } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Clock3, FileImage, Images, Info, Loader2, Palette, Pencil, Radio, Search, Trash2, Type, Upload, Usb, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { ScreenItem } from "../bindings/ScreenItem";
 import { percent, useT, type MessageKey } from "../lib/i18n";
 import { builtIn, useScreen } from "../lib/screen";
-import { uploadSeconds, type Source } from "../lib/screenImport";
+import { openSource, uploadSeconds, type Source } from "../lib/screenImport";
+import { InfoBar, Tabs } from "../components/controls";
 import { useApp, type ScreenTab } from "../lib/store";
 import {
   DriverBackup,
+  FramePlayer,
   GifPicture,
+  Hint,
+  errorKey,
+  loadFrames,
+  pickThumb,
   LibraryConfirm,
   RetryUpload,
-  Stepper,
-  Thumb,
   fmtSeconds,
   remaining,
   useGifPage,
@@ -22,19 +26,14 @@ import {
   useNow,
   type Done,
 } from "./screen/common";
-import { FileFlow, FileTile } from "./screen/FileFlow";
+import { ACCEPT, FileFlow } from "./screen/FileFlow";
 import { LivePanel } from "./screen/LivePanel";
 import { MatchLightsDialog } from "./screen/MatchLights";
-import { SlideFlow, SlideTile } from "./screen/SlideFlow";
-import { TextFlow, TextTile } from "./screen/TextFlow";
+import { SlideFlow } from "./screen/SlideFlow";
+import { TextFlow } from "./screen/TextFlow";
 import { friendlyError } from "../lib/errors";
 
 // -------------------------------------------------------------- the page
-
-const TABS: { id: ScreenTab; label: MessageKey; icon: LucideIcon }[] = [
-  { id: "visuals", label: "sc.tab.visuals", icon: Images },
-  { id: "live", label: "sc.tab.live", icon: Radio },
-];
 
 /**
  * The Screen page in two tabs: "Görseller" (make a visual, and the library
@@ -57,45 +56,30 @@ export function Screen({ kb }: { kb: KeyboardInfo }) {
   }, [kb.modelId, loaded]);
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-wrap items-end justify-between gap-6">
-        <div>
-          <h1 className="page-title">{t("sc.title")}</h1>
-          <p className="page-desc">{t("sc.desc")}</p>
-        </div>
-        <div role="tablist" aria-label={t("sc.title")} className="inline-flex rounded-lg border border-line bg-bg-raise p-1">
-          {TABS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              role="tab"
-              type="button"
-              aria-selected={tab === id}
-              onClick={() => setTab(id)}
-              className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-[13px] transition-colors ${
-                tab === id ? "bg-surface-2 text-ink shadow-[inset_0_0_0_1px_var(--line)]" : "text-ink-2 hover:text-ink"
-              }`}
-              data-screen-tab={id}
-            >
-              <Icon size={14} className={tab === id ? "text-signal" : "text-ink-3"} />
-              {t(label)}
-            </button>
-          ))}
-        </div>
+    <div className="flex flex-col gap-5">
+      <header>
+        <h1 className="page-title">{t("sc.title")}</h1>
+        <p className="page-desc">{t("sc.desc")}</p>
+        <Tabs<ScreenTab>
+          className="mt-3.5"
+          label={t("sc.title")}
+          value={tab}
+          onChange={setTab}
+          data="screen-tab"
+          options={[
+            { value: "visuals", label: t("sc.tab.visuals"), icon: Images, data: "screen-tab" },
+            { value: "live", label: t("sc.tab.live"), icon: Radio, data: "screen-tab" },
+          ]}
+        />
       </header>
 
-      {!usb && (
-        <div className="flex items-center gap-3 rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-[13px]">
-          <Usb size={16} className="text-signal" />
-          {t("sc.needsUsb")}
-        </div>
-      )}
+      {!usb && <InfoBar tone="warn" icon={<Usb size={20} strokeWidth={1.6} />} title={t("sc.needsUsb")} data="usb" />}
 
       <KeyboardScreens usb={usb} />
 
       {/* Kept mounted on other tabs, so a visual being made is not lost. */}
-      <div className={tab === "visuals" ? "flex flex-col gap-6" : "hidden"}>
-        <Studio kb={kb} usb={usb} loaded={loaded} />
-        <LibraryCard kb={kb} usb={usb} />
+      <div className={tab === "visuals" ? "flex flex-col gap-5" : "hidden"}>
+        <Library kb={kb} usb={usb} loaded={loaded} />
       </div>
       {tab === "live" && <LivePanel usb={usb} />}
     </div>
@@ -177,19 +161,30 @@ export function ClockPage() {
   );
 }
 
-function Panel({ label, sub, empty, children }: { label: string; sub: string; empty?: boolean; children: ReactNode }) {
+/** A picture in the keyboard's black frame, with its name and a note under it. */
+function Panel({
+  label,
+  sub,
+  empty,
+  className = "",
+  children,
+}: {
+  label: string;
+  sub: string;
+  empty?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
   return (
-    <figure className="flex flex-col gap-2">
-      <div
-        className={`relative aspect-[240/135] w-full overflow-hidden rounded-lg ${
-          empty ? "border border-dashed border-line-strong bg-surface-2/50" : "bg-black shadow-[0_0_0_6px_#0b0c0e,0_0_0_7px_var(--line)]"
-        }`}
-      >
-        {children}
+    <figure className={`flex min-w-0 flex-col ${className}`}>
+      <div className={`rounded-lg p-2 ${empty ? "border border-dashed border-line-strong" : "bg-[#040507] shadow-[0_0_0_1px_rgb(0_0_0/0.6),inset_0_1px_0_rgb(255_255_255/0.08)]"}`}>
+        <div className={`relative aspect-[240/135] w-full overflow-hidden rounded-[2px] ${empty ? "" : "bg-black"}`}>{children}</div>
       </div>
-      <figcaption className="flex items-baseline justify-between gap-2 px-1">
-        <span className="text-[13px] font-medium">{label}</span>
-        <span className="text-[11px] text-ink-3">{sub}</span>
+      <figcaption className="mt-2.5 flex items-baseline justify-between gap-3">
+        <span className="text-[13px] font-semibold">{label}</span>
+        <span className="truncate text-[12px] text-ink-2" title={sub}>
+          {sub}
+        </span>
       </figcaption>
     </figure>
   );
@@ -202,35 +197,37 @@ function KeyboardScreens({ usb }: { usb: boolean }) {
   const { waiting } = gif;
 
   return (
-    <section className="card grid grid-cols-[1fr_1fr_minmax(220px,0.8fr)] items-start gap-6 p-5">
-      <Panel label={t("sc.page.home")} sub={t("sc.page.home.sub")}>
-        <ClockPage />
-      </Panel>
+    <section className="card grid grid-cols-1 gap-6 p-5 @3xl:grid-cols-[minmax(0,496px)_minmax(0,1fr)]" data-screen-pages>
       <Panel label={t("sc.page.gif")} empty={!gif.item && !gif.showsLive} sub={gif.caption}>
         <GifPicture gif={gif} />
       </Panel>
-      <div className="flex flex-col gap-3 text-[13px] text-ink-2">
-        <IncompleteLine usb={usb} />
-        {waiting && (
-          <p className="flex gap-2" data-gif-waiting>
-            <Clock3 size={14} className="mt-0.5 shrink-0 text-warn" />
-            <span>{t("sc.page.gif.waiting", { name: waiting.name })}</span>
+      <div className="flex min-w-0 flex-col gap-4">
+        <Panel label={t("sc.page.home")} sub={t("sc.page.home.sub")} className="max-w-[256px]">
+          <ClockPage />
+        </Panel>
+        <div className="flex flex-col gap-2.5 text-[13px] text-ink-2">
+          <IncompleteLine usb={usb} />
+          {waiting && (
+            <p className="flex gap-2" data-gif-waiting>
+              <Clock3 size={14} className="mt-0.5 shrink-0 text-warn" />
+              <span>{t("sc.page.gif.waiting", { name: waiting.name })}</span>
+            </p>
+          )}
+          {state && (
+            <p className="num text-[13px] font-semibold text-ink" title={t("sc.wear.hint")} data-upload-counts>
+              {t("sc.uploads.counts", { count: state.uploadsToday, total: state.uploadsTotal })}
+            </p>
+          )}
+          <p className="flex gap-2">
+            <Info size={14} className="mt-0.5 shrink-0 text-signal" />
+            <span>{t("sc.pages.note")}</span>
           </p>
-        )}
-        {state && (
-          <p className="num text-[12px] text-ink-3" title={t("sc.wear.hint")} data-upload-counts>
-            {t("sc.uploads.counts", { count: state.uploadsToday, total: state.uploadsTotal })}
+          <p className="flex gap-2">
+            <Check size={14} className="mt-0.5 shrink-0 text-ok" />
+            <span>{t("sc.pages.safe")}</span>
           </p>
-        )}
-        <p className="flex gap-2">
-          <Info size={14} className="mt-0.5 shrink-0 text-signal" />
-          <span>{t("sc.pages.note")}</span>
-        </p>
-        <p className="flex gap-2">
-          <Check size={14} className="mt-0.5 shrink-0 text-ok" />
-          <span>{t("sc.pages.safe")}</span>
-        </p>
-        <FactoryLine />
+          <FactoryLine />
+        </div>
       </div>
     </section>
   );
@@ -314,103 +311,14 @@ function FactoryLine() {
   );
 }
 
-// ------------------------------------------------------------- the studio
+// ------------------------------------------------------ studio + library
 
 type Flow = { kind: "file"; source: Source } | { kind: "text" } | { kind: "slides" };
 
-/** Step 1 picks a source; each source runs steps 2–4 in its own flow and
- *  comes back here with what it did. */
-function Studio({ kb, usb, loaded }: { kb: KeyboardInfo; usb: boolean; loaded: boolean }) {
-  const t = useT();
-  const [flow, setFlow] = useState<Flow | null>(null);
-  const [done, setDone] = useState<Done | null>(null);
-  const [matching, setMatching] = useState(false);
-  const doneItem = useScreen((s) => (done?.id ? (s.state?.items.find((i) => i.id === done.id) ?? null) : null));
-  const fileSource = flow?.kind === "file" ? flow.source : null;
-
-  // The decoded file holds bitmaps and decoders; free them when it goes.
-  useEffect(() => () => fileSource?.dispose(), [fileSource]);
-
-  const start = (f: Flow) => {
-    setDone(null);
-    setFlow(f);
-  };
-  const finish = (d: Done) => {
-    setFlow(null);
-    setDone(d);
-  };
-  const common = { usb, loaded, onCancel: () => setFlow(null), onFinished: finish };
-
-  if (flow?.kind === "file") return <FileFlow key={flow.source.name + flow.source.durationMs} source={flow.source} {...common} />;
-  if (flow?.kind === "text") return <TextFlow {...common} />;
-  if (flow?.kind === "slides") return <SlideFlow {...common} />;
-
-  return (
-    <section className="card flex flex-col gap-4 p-5">
-      <Stepper step={1} />
-      <AnimatePresence>
-        {done && (
-          <motion.div
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            role="status"
-            className="flex items-start gap-3 rounded-lg border border-ok/30 bg-ok/10 px-4 py-3"
-          >
-            <Check size={18} className="mt-0.5 shrink-0 text-ok" />
-            <div className="flex-1 text-[13px]">
-              <div className="font-semibold">
-                {t(done.kind === "uploaded" ? "sc.done.uploaded" : "sc.done.saved", { name: done.name })}
-                {done.seconds != null && <span className="num ml-2 font-normal text-ink-3">{fmtSeconds(done.seconds)}</span>}
-              </div>
-              <div className="text-ink-2">{done.kind === "uploaded" ? t("sc.done.uploadedHint") : t("sc.done.savedHint")}</div>
-              {doneItem && kb.geometry && (
-                <button
-                  type="button"
-                  onClick={() => setMatching(true)}
-                  className="mt-2 flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-[12px] font-medium hover:bg-surface-2"
-                >
-                  <Palette size={13} /> {t("sc.lm.action")}
-                </button>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => setDone(null)}
-              aria-label={t("sc.close")}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-ink-3 hover:bg-surface hover:text-ink"
-            >
-              <X size={14} />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <div>
-        <h2 className="font-display text-[22px] font-semibold">
-          {done ? t("sc.src.titleNext") : t("sc.src.title")}
-        </h2>
-        <p className="mt-1 max-w-[70ch] text-[13px] text-ink-2">{t("sc.src.body")}</p>
-      </div>
-      <div className="grid grid-cols-3 gap-4">
-        <FileTile onOpened={(source) => start({ kind: "file", source })} />
-        <TextTile onStart={() => start({ kind: "text" })} />
-        <SlideTile onStart={() => start({ kind: "slides" })} />
-      </div>
-      <AnimatePresence>
-        {matching && doneItem && <MatchLightsDialog kb={kb} item={doneItem} onClose={() => setMatching(false)} />}
-      </AnimatePresence>
-    </section>
-  );
-}
-
-// --------------------------------------------------------------- library
-
 /** Shown at first; more come in steps, so a large library stays light
- *  (every card loads its picture). */
+ *  (every tile loads its picture). */
 const LIBRARY_PAGE = 6;
 const LIBRARY_MORE = 12;
-/** A search box once the library is this big. */
-const LIBRARY_SEARCH_FROM = 12;
 /** One empty list, so the library memo stays put before the library is known. */
 const NO_ITEMS: readonly ScreenItem[] = [];
 type LibraryFilter = "all" | "image" | "animation";
@@ -420,19 +328,49 @@ const LIBRARY_FILTERS: { id: LibraryFilter; label: MessageKey }[] = [
   { id: "animation", label: "sc.lib.filter.animation" },
 ];
 
-function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
+/** A library item's representative frame, as large as its tile. */
+function LibraryThumb({ item }: { item: ScreenItem }) {
+  const [f, setF] = useState<Uint16Array | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadFrames(item.id, item.frames === 1).then((d) => live && setF(pickThumb(d.frames)), console.error);
+    return () => {
+      live = false;
+    };
+  }, [item.id, item.frames]);
+  return f ? <FramePlayer frames={[f]} delaysMs={[100]} className="h-full w-full bg-black" /> : <div className="h-full w-full bg-black" />;
+}
+
+/**
+ * The library in the Photos app's way: a picture grid, a filter and a
+ * search box in its heading, and one command bar. The bar makes a new
+ * visual (a picture or video, a text card, a slide show: each runs steps
+ * 2–4 in its own flow right here and comes back with what it did) and acts
+ * on the picture chosen in the grid (upload, match the lights, rename,
+ * remove). A file dropped on the library opens like "Picture or video".
+ */
+function Library({ kb, usb, loaded }: { kb: KeyboardInfo; usb: boolean; loaded: boolean }) {
   const t = useT();
   const name = useItemName();
   const state = useScreen((s) => s.state);
   const upload = useScreen((s) => s.upload);
+  const [flow, setFlow] = useState<Flow | null>(null);
+  const [done, setDone] = useState<Done | null>(null);
+  const [matching, setMatching] = useState<ScreenItem | null>(null);
   const [confirmItem, setConfirmItem] = useState<ScreenItem | null>(null);
-  const [matchItem, setMatchItem] = useState<ScreenItem | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const [kind, setKind] = useState<LibraryFilter>("all");
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(LIBRARY_PAGE);
+  const [over, setOver] = useState(false);
+  const [opening, setOpening] = useState<number | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const doneItem = useScreen((s) => (done?.id ? (s.state?.items.find((i) => i.id === done.id) ?? null) : null));
+  const fileSource = flow?.kind === "file" ? flow.source : null;
   const all = state?.items ?? NO_ITEMS;
   const shownId = state?.shown;
   // What the keyboard shows first, then the factory animation, then newest.
@@ -446,8 +384,35 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
   }, [all, kind, query, shownId, name]);
   const visible = items.slice(0, limit);
   const rest = items.length - visible.length;
+  const selected = all.find((i) => i.id === selectedId) ?? null;
   useEffect(() => setLimit(LIBRARY_PAGE), [kind, query]);
+  useEffect(() => setDeleting(false), [selectedId]);
+  // The decoded file holds bitmaps and decoders; free them when it goes.
+  useEffect(() => () => fileSource?.dispose(), [fileSource]);
 
+  const start = (f: Flow) => {
+    setDone(null);
+    setNotice(null);
+    setFlow(f);
+  };
+  const finish = (d: Done) => {
+    setFlow(null);
+    setDone(d);
+    if (d.id) setSelectedId(d.id);
+  };
+  const openFile = async (file: File) => {
+    setOpenError(null);
+    setOpening(0);
+    try {
+      const src = await openSource(file, (p) => setOpening(p));
+      setOpening(null);
+      start({ kind: "file", source: src });
+    } catch (e) {
+      console.error(e);
+      setOpening(null);
+      setOpenError(t(errorKey(e)));
+    }
+  };
   const runUpload = async (it: ScreenItem) => {
     setConfirmItem(null);
     setNotice(null);
@@ -458,202 +423,276 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
       setNotice({ ok: false, text: friendlyError(e, t) });
     }
   };
+  const common = { usb, loaded, onCancel: () => setFlow(null), onFinished: finish };
+
+  if (flow?.kind === "file") return <FileFlow key={flow.source.name + flow.source.durationMs} source={flow.source} {...common} />;
+  if (flow?.kind === "text") return <TextFlow {...common} />;
+  if (flow?.kind === "slides") return <SlideFlow {...common} />;
+
+  const cut = !!selected && state?.incomplete?.id === selected.id;
+  const busy = !!selected && upload?.id === selected.id;
+  const own = !!selected && !builtIn(selected.kind);
 
   return (
-    <section className="card flex flex-col gap-3 p-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2 px-1">
-        <div className="flex items-center gap-2">
-          <Library size={14} className="text-ink-3" />
-          <div className="eyebrow">{t("sc.library")}</div>
-          <span className="num text-[11px] text-ink-3">{all.length}</span>
-        </div>
-        <span className="text-[12px] text-ink-3">{t("sc.library.note")}</span>
-      </div>
-      {all.length > LIBRARY_PAGE && (
-        <div className="flex flex-wrap items-center gap-2 px-1">
-          <div role="radiogroup" aria-label={t("sc.library")} className="inline-flex rounded-lg border border-line bg-bg-raise p-0.5">
+    <section
+      className={`flex flex-col rounded-lg transition-shadow ${over ? "shadow-[0_0_0_2px_var(--signal)]" : ""}`}
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        setOver(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        const f = e.dataTransfer.files[0];
+        if (f) void openFile(f);
+      }}
+      data-studio
+    >
+      <h2 className="section-title flex-wrap">
+        <span>
+          {t("sc.library")}
+          <span className="count num">{all.length}</span>
+        </span>
+        <span className="flex flex-wrap items-center gap-2.5 font-normal">
+          <span role="radiogroup" aria-label={t("sc.library")} className="seg">
             {LIBRARY_FILTERS.map((f) => (
-              <button
-                key={f.id}
-                type="button"
-                role="radio"
-                aria-checked={kind === f.id}
-                onClick={() => setKind(f.id)}
-                className={`rounded-md px-3 py-1 text-[12px] ${
-                  kind === f.id ? "bg-surface-2 text-ink shadow-[inset_0_0_0_1px_var(--line)]" : "text-ink-2 hover:text-ink"
-                }`}
-              >
+              <button key={f.id} type="button" role="radio" aria-checked={kind === f.id} onClick={() => setKind(f.id)}>
                 {t(f.label)}
               </button>
             ))}
-          </div>
-          {all.length > LIBRARY_SEARCH_FROM && (
-            <label className="flex h-8 min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-line bg-bg-raise px-2.5 sm:max-w-[320px]">
-              <Search size={13} className="text-ink-3" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t("sc.lib.search")}
-                aria-label={t("sc.lib.search")}
-                className="min-w-0 flex-1 bg-transparent text-[13px] outline-none"
-              />
-              {query && (
-                <button type="button" onClick={() => setQuery("")} aria-label={t("sc.close")} className="text-ink-3 hover:text-ink">
-                  <X size={13} />
-                </button>
-              )}
-            </label>
-          )}
+          </span>
+          <label className="relative flex h-8 w-[220px] items-center">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("sc.lib.search")}
+              aria-label={t("sc.lib.search")}
+              className="nav-search h-8 w-full rounded-md border border-line bg-bg-raise pr-8 pl-3 text-[13px] outline-none placeholder:text-ink-3"
+            />
+            {query ? (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                aria-label={t("sc.close")}
+                className="absolute right-1 grid h-6 w-6 place-items-center rounded-[3px] text-ink-2 hover:bg-[var(--subtle-hover)]"
+              >
+                <X size={13} />
+              </button>
+            ) : (
+              <Search size={13} className="pointer-events-none absolute right-2.5 text-ink-2" aria-hidden />
+            )}
+          </label>
+        </span>
+      </h2>
+
+      {/* One command bar: make a new visual, or act on the chosen one. */}
+      <div role="toolbar" aria-label={t("sc.library")} className="cmdbar" data-library-bar>
+        <button type="button" className="cb" disabled={opening !== null} onClick={() => fileInput.current?.click()} data-tile="file">
+          {opening !== null ? <Loader2 size={16} className="animate-spin" /> : <FileImage size={16} strokeWidth={1.5} />}
+          {opening !== null ? t("sc.drop.opening", { percent: percent(Math.round(opening * 100)) }) : t("sc.src.file")}
+        </button>
+        <input
+          ref={fileInput}
+          type="file"
+          hidden
+          accept={ACCEPT}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) void openFile(f);
+          }}
+        />
+        <button type="button" className="cb" onClick={() => start({ kind: "text" })} data-tile="text">
+          <Type size={16} strokeWidth={1.5} />
+          {t("sc.src.text")}
+        </button>
+        <button type="button" className="cb" onClick={() => start({ kind: "slides" })} data-tile="slides">
+          <Images size={16} strokeWidth={1.5} />
+          {t("sc.src.slides")}
+        </button>
+        <span className="sep" aria-hidden />
+        <button
+          type="button"
+          className="cb acc"
+          disabled={!selected || !usb || !!upload}
+          title={!usb ? t("sc.needsUsbShort") : selected?.kind === "factory" ? t("sc.factory.restoreHint") : undefined}
+          onClick={() => selected && setConfirmItem(selected)}
+          data-library-upload
+        >
+          {busy ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} strokeWidth={1.5} />}
+          {cut ? t("sc.incomplete.action") : selected?.kind === "factory" ? t("sc.factory.restore") : t("sc.upload.short")}
+        </button>
+        {kb.geometry && (
+          <button type="button" className="cb" disabled={!selected} onClick={() => selected && setMatching(selected)}>
+            <Palette size={16} strokeWidth={1.5} />
+            {t("sc.lm.action")}
+          </button>
+        )}
+        <button type="button" className="cb" disabled={!own} onClick={() => selected && setEditing(selected.id)}>
+          <Pencil size={16} strokeWidth={1.5} />
+          {t("sc.rename")}
+        </button>
+        <button
+          type="button"
+          className={`cb ${deleting ? "danger" : ""}`}
+          disabled={!own || busy}
+          onBlur={() => setDeleting(false)}
+          onClick={() => {
+            if (!selected) return;
+            if (!deleting) return setDeleting(true);
+            setDeleting(false);
+            const id = selected.id;
+            setSelectedId(null);
+            useScreen.getState().remove(id).catch((x) => setNotice({ ok: false, text: friendlyError(x, t) }));
+          }}
+        >
+          <Trash2 size={16} strokeWidth={1.5} />
+          {deleting ? t("sc.remove.confirm") : t("sc.remove")}
+        </button>
+        {selected && (
+          <span className="r num" aria-live="polite">
+            {t("sc.lib.selected", { count: 1 })}
+          </span>
+        )}
+      </div>
+      <p className="mt-2.5 mb-3.5 text-[12px] text-ink-2">
+        {t("sc.library.note")} {t("sc.src.body")}
+      </p>
+
+      {openError && (
+        <div className="mb-3">
+          <Hint tone="error">{openError}</Hint>
         </div>
       )}
+      <AnimatePresence>
+        {done && (
+          <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mb-3">
+            <InfoBar
+              tone="ok"
+              live
+              title={
+                <>
+                  {t(done.kind === "uploaded" ? "sc.done.uploaded" : "sc.done.saved", { name: done.name })}
+                  {done.seconds != null && <span className="num ml-2 font-normal text-ink-2">{fmtSeconds(done.seconds)}</span>}
+                </>
+              }
+              actions={
+                <>
+                  {doneItem && kb.geometry && (
+                    <button type="button" onClick={() => setMatching(doneItem)} className="btn-secondary btn-sm">
+                      <Palette size={13} /> {t("sc.lm.action")}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setDone(null)}
+                    aria-label={t("sc.close")}
+                    className="btn-subtle btn-sm !px-2"
+                  >
+                    <X size={14} />
+                  </button>
+                </>
+              }
+            >
+              {done.kind === "uploaded" ? t("sc.done.uploadedHint") : t("sc.done.savedHint")}
+            </InfoBar>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {notice && (
-        <p className={`flex items-start gap-2 px-1 text-[13px] ${notice.ok ? "text-ok" : "text-danger"}`} role="status">
-          {notice.ok ? <Check size={14} className="mt-0.5 shrink-0" /> : <X size={14} className="mt-0.5 shrink-0" />}
-          {notice.text}
-        </p>
+        <div className="mb-3">
+          <InfoBar tone={notice.ok ? "ok" : "error"} live title={notice.text} />
+        </div>
       )}
-      {all.length === 0 && <p className="px-1 pb-1 text-[13px] text-ink-3">{t("sc.library.empty")}</p>}
-      {all.length > 0 && items.length === 0 && <p className="px-1 pb-1 text-[13px] text-ink-3">{t("sc.lib.none")}</p>}
-      <ul className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-2" data-library>
+
+      {all.length === 0 && <p className="pb-1 text-[13px] text-ink-2">{t("sc.library.empty")}</p>}
+      {all.length > 0 && items.length === 0 && <p className="pb-1 text-[13px] text-ink-2">{t("sc.lib.none")}</p>}
+      <ul className="grid grid-cols-2 gap-x-3 gap-y-[18px] @3xl:grid-cols-3" data-library>
         {visible.map((it) => {
           const onKeyboard = state?.shown === it.id;
-          const cut = state?.incomplete?.id === it.id;
-          const busy = upload?.id === it.id;
+          const isCut = state?.incomplete?.id === it.id;
+          const chosen = it.id === selectedId;
           return (
-            <li
-              key={it.id}
-              data-library-item={it.id}
-              className={`flex gap-3 rounded-lg border p-3 transition-colors ${
-                onKeyboard ? "border-ok/40 bg-ok/5" : cut ? "border-warn/40 bg-warn/5" : "border-line hover:bg-surface-2/60"
-              }`}
-            >
-              <Thumb item={it} />
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                {editing === it.id ? (
-                  <input
-                    autoFocus
-                    defaultValue={it.name}
-                    maxLength={60}
-                    aria-label={t("sc.rename")}
-                    onBlur={(e) => {
-                      setEditing(null);
-                      const v = e.target.value.trim();
-                      if (v && v !== it.name) useScreen.getState().rename(it.id, v).catch((x) => setNotice({ ok: false, text: friendlyError(x, t) }));
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                      if (e.key === "Escape") setEditing(null);
-                    }}
-                    className="h-7 rounded-md border border-signal bg-bg-raise px-2 text-[13px] outline-none"
-                  />
-                ) : (
-                  <span className="truncate text-[13px] font-semibold" title={name(it)}>
-                    {name(it)}
+            <li key={it.id} data-library-item={it.id} className="flex min-w-0 flex-col gap-1.5">
+              <button
+                type="button"
+                aria-pressed={chosen}
+                aria-label={name(it)}
+                onClick={() => setSelectedId(chosen ? null : it.id)}
+                className={`relative aspect-[240/135] overflow-hidden rounded-md transition-shadow ${
+                  chosen ? "shadow-[0_0_0_2px_var(--signal)]" : "shadow-[0_0_0_1px_var(--line)] hover:shadow-[0_0_0_1px_var(--line-strong)]"
+                }`}
+              >
+                <LibraryThumb item={it} />
+                {chosen && (
+                  <span className="absolute top-2 right-2 grid h-5 w-5 place-items-center rounded bg-signal text-signal-ink shadow" aria-hidden>
+                    <Check size={13} strokeWidth={2.4} />
                   </span>
                 )}
-                <span className="num text-[11px] text-ink-3">
-                  {t("sc.frames", { count: it.frames })}
-                  {it.frames > 1 ? ` · ${t("sc.loop")} ${fmtSeconds(it.loopMs / 1000)}` : ""}
+              </button>
+              {editing === it.id ? (
+                <input
+                  autoFocus
+                  defaultValue={it.name}
+                  maxLength={60}
+                  aria-label={t("sc.rename")}
+                  onBlur={(e) => {
+                    setEditing(null);
+                    const v = e.target.value.trim();
+                    if (v && v !== it.name) useScreen.getState().rename(it.id, v).catch((x) => setNotice({ ok: false, text: friendlyError(x, t) }));
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    if (e.key === "Escape") setEditing(null);
+                  }}
+                  className="mt-1 h-8 rounded-md border border-line bg-bg-raise px-2 text-[14px] outline-none"
+                />
+              ) : (
+                <span className="mt-1 truncate text-[14px]" title={name(it)}>
+                  {name(it)}
                 </span>
-                <span className="num text-[11px] text-ink-3">
-                  {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(it.frames))}
-                </span>
-                <span className="flex gap-1.5 pt-1">
-                  {it.kind === "factory" && (
-                    <span className="rounded-full bg-surface-2 px-2 py-px text-[11px] text-ink-2">{t("sc.badge.factory")}</span>
-                  )}
-                  {it.kind === "keymotion" && (
-                    <span className="rounded-full bg-surface-2 px-2 py-px text-[11px] text-ink-2">{t("sc.badge.keymotion")}</span>
-                  )}
-                  {onKeyboard && (
-                    <span className="rounded-full bg-ok/15 px-2 py-px text-[11px] text-ok">{t("sc.badge.onKeyboard")}</span>
-                  )}
-                  {cut && (
-                    <span className="rounded-full bg-warn/15 px-2 py-px text-[11px] text-warn">{t("sc.incomplete.badge")}</span>
-                  )}
-                </span>
-              </div>
-              <div className="flex flex-col items-end justify-between gap-2">
-                <button
-                  type="button"
-                  disabled={!usb || !!upload}
-                  title={!usb ? t("sc.needsUsbShort") : it.kind === "factory" ? t("sc.factory.restoreHint") : undefined}
-                  onClick={() => setConfirmItem(it)}
-                  className="flex h-8 items-center gap-1.5 rounded-lg border border-signal/40 px-2.5 text-[12px] font-medium text-signal hover:bg-signal/10 disabled:opacity-35"
-                >
-                  {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-                  {cut ? t("sc.incomplete.action") : it.kind === "factory" ? t("sc.factory.restore") : t("sc.upload.short")}
-                </button>
-                <div className="flex gap-1">
-                  {kb.geometry && (
-                    <button
-                      type="button"
-                      title={t("sc.lm.action")}
-                      aria-label={t("sc.lm.action")}
-                      onClick={() => setMatchItem(it)}
-                      className="flex h-7 w-7 items-center justify-center rounded-md text-ink-3 hover:bg-surface hover:text-ink"
-                    >
-                      <Palette size={13} />
-                    </button>
-                  )}
-                  {!builtIn(it.kind) && (
-                    <button
-                      type="button"
-                      title={t("sc.rename")}
-                      aria-label={t("sc.rename")}
-                      onClick={() => setEditing(it.id)}
-                      className="flex h-7 w-7 items-center justify-center rounded-md text-ink-3 hover:bg-surface hover:text-ink"
-                    >
-                      <Pencil size={13} />
-                    </button>
-                  )}
-                  {!builtIn(it.kind) && (
-                    <button
-                      type="button"
-                      title={deleting === it.id ? t("sc.remove.confirm") : t("sc.remove")}
-                      aria-label={deleting === it.id ? t("sc.remove.confirm") : t("sc.remove")}
-                      disabled={busy}
-                      onBlur={() => setDeleting(null)}
-                      onClick={() => {
-                        if (deleting !== it.id) return setDeleting(it.id);
-                        setDeleting(null);
-                        useScreen.getState().remove(it.id).catch((x) => setNotice({ ok: false, text: friendlyError(x, t) }));
-                      }}
-                      className={`flex h-7 items-center justify-center gap-1 rounded-md px-1.5 text-[12px] ${
-                        deleting === it.id ? "bg-danger/15 text-danger" : "text-ink-3 hover:bg-surface hover:text-danger"
-                      }`}
-                    >
-                      <Trash2 size={13} />
-                      {deleting === it.id && t("sc.remove.confirmShort")}
-                    </button>
-                  )}
-                </div>
-              </div>
+              )}
+              <span className="num text-[12px] text-ink-2">
+                {t("sc.frames", { count: it.frames })}
+                {it.frames > 1 ? ` · ${t("sc.loop")} ${fmtSeconds(it.loopMs / 1000)}` : ""} · {t("sc.uploadTime")} ~
+                {fmtSeconds(uploadSeconds(it.frames))}
+              </span>
+              <span className="flex flex-wrap gap-1.5">
+                {onKeyboard && (
+                  <span className="flex h-[22px] items-center gap-1.5 rounded-full bg-ok/15 px-2 text-[12px]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-ok" aria-hidden />
+                    {t("sc.badge.onKeyboard")}
+                  </span>
+                )}
+                {it.kind === "factory" && (
+                  <span className="flex h-[22px] items-center rounded-full bg-[var(--subtle-sel)] px-2 text-[12px]">{t("sc.badge.factory")}</span>
+                )}
+                {it.kind === "keymotion" && (
+                  <span className="flex h-[22px] items-center rounded-full bg-[var(--subtle-sel)] px-2 text-[12px]">{t("sc.badge.keymotion")}</span>
+                )}
+                {isCut && (
+                  <span className="flex h-[22px] items-center rounded-full bg-warn/15 px-2 text-[12px] text-warn">{t("sc.incomplete.badge")}</span>
+                )}
+              </span>
             </li>
           );
         })}
       </ul>
       {(rest > 0 || limit > LIBRARY_PAGE) && (
-        <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+        <div className="flex flex-wrap items-center justify-center gap-2 pt-4">
           {rest > 0 && (
-            <button
-              type="button"
-              onClick={() => setLimit((n) => n + LIBRARY_MORE)}
-              className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] text-ink-2 hover:bg-surface-2 hover:text-ink"
-              data-library-more
-            >
+            <button type="button" onClick={() => setLimit((n) => n + LIBRARY_MORE)} className="btn-secondary" data-library-more>
               <ChevronDown size={14} /> {t("sc.lib.more")}
-              <span className="num text-ink-3">
-                · {t("sc.lib.left", { count: rest })}
-              </span>
+              <span className="num text-ink-2">· {t("sc.lib.left", { count: rest })}</span>
             </button>
           )}
           {limit > LIBRARY_PAGE && (
-            <button
-              type="button"
-              onClick={() => setLimit(LIBRARY_PAGE)}
-              className="h-8 rounded-lg px-3 text-[13px] text-ink-3 hover:bg-surface-2 hover:text-ink"
-            >
+            <button type="button" onClick={() => setLimit(LIBRARY_PAGE)} className="btn-subtle">
               {t("sc.lib.less")}
             </button>
           )}
@@ -663,7 +702,7 @@ function LibraryCard({ kb, usb }: { kb: KeyboardInfo; usb: boolean }) {
         {confirmItem && (
           <LibraryConfirm item={confirmItem} onCancel={() => setConfirmItem(null)} onConfirm={() => runUpload(confirmItem)} />
         )}
-        {matchItem && <MatchLightsDialog kb={kb} item={matchItem} onClose={() => setMatchItem(null)} />}
+        {matching && <MatchLightsDialog kb={kb} item={matching} onClose={() => setMatching(null)} />}
       </AnimatePresence>
     </section>
   );
@@ -695,7 +734,7 @@ export function ScreenUploadToast() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 12 }}
-          className="card fixed right-6 bottom-6 z-40 flex w-[340px] flex-col gap-2 p-4 shadow-xl"
+          className="flyout fixed right-6 bottom-6 z-40 flex w-[340px] flex-col gap-2 p-4"
           role="status"
         >
           <div className="flex items-center gap-2 text-[13px] font-semibold">

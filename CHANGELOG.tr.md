@@ -109,6 +109,13 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   şeridiyle başlıyor (ekranı, camdaki resim ve son ayarlanan parlaklığıyla
   döner düğme), sonra klavye, sonra Keymotion'ın yaptığı her iş için bir
   satır; hatırlatıcılar ve sistem göstergeleri orada açılıp kapanabiliyor.
+  **Işıklar** efektleri bir galeride, ayarlarını satırlarda gösteriyor;
+  **Yön** bir liste. **Ekran** GIF sayfasını büyük, saat sayfasını yanında
+  gösteriyor; kütüphane tek komut çubuklu bir resim ızgarası: bir görseli
+  seçmek için tıklayın, sonra **Yükle**, **Işıkları eşleştir**, **Yeniden
+  adlandır** ya da **Sil**. **Görsel ya da video**, **Yazı kartı** ve
+  **Slayt gösterisi** aynı çubukta; bir dosya kütüphanenin üzerine
+  bırakılabiliyor. Ayarlar, pencereler ve öteki sayfalar da aynı görünüşte.
 - Yazmadan önce resmî yazılımı ya da SignalRGB'yi bulmak için kullanılan
   çalışan programlar listesi artık hiçbir programı açmıyor.
 - **Tanıma:** AJAZZ AK980 PRO olarak yalnızca USB adında, denenen klavyenin

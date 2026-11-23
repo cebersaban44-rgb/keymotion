@@ -134,7 +134,7 @@ export function DriverBackup({ onDone }: { onDone?: () => void }) {
         type="button"
         onClick={run}
         disabled={busy}
-        className="flex h-8 w-fit items-center gap-1.5 rounded-lg border border-signal/50 px-3 text-[12px] font-semibold text-signal hover:bg-signal/10 disabled:opacity-50"
+        className="btn-secondary btn-sm is-accent w-fit"
         data-driver-backup
       >
         {busy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
@@ -372,7 +372,7 @@ export function StudioFrame({
           type="button"
           onClick={onCancel}
           disabled={locked}
-          className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink disabled:opacity-40"
+          className="btn-secondary"
         >
           <X size={14} /> {t("sc.cancel")}
         </button>
@@ -656,7 +656,7 @@ export function RetryUpload({ item, usb, onDone }: { item: ScreenItem; usb: bool
         disabled={!usb || !!upload}
         title={!usb ? t("sc.needsUsbShort") : undefined}
         onClick={() => setConfirm(true)}
-        className="flex h-8 w-fit items-center gap-1.5 rounded-lg bg-signal px-3 text-[12px] font-semibold text-signal-ink disabled:opacity-40"
+        className="btn-primary w-fit"
         data-retry-upload
       >
         {upload?.id === item.id ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
@@ -702,12 +702,12 @@ export function ConfirmUpload({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center dlg-smoke p-6"
       role="dialog"
       aria-modal
     >
-      <motion.div initial={{ scale: 0.97, y: 8 }} animate={{ scale: 1, y: 0 }} className="card flex w-[480px] flex-col gap-4 p-6">
-        <h2 className="font-display text-[22px] font-semibold">{t("sc.confirm.title")}</h2>
+      <motion.div initial={{ scale: 0.97, y: 8 }} animate={{ scale: 1, y: 0 }} className="dlg flex w-[480px] max-w-full flex-col gap-4 p-6">
+        <h2 className="subtitle">{t("sc.confirm.title")}</h2>
         <div className="flex gap-4">
           <FramePlayer frames={[preview]} delaysMs={[100]} className="h-[68px] w-[120px] shrink-0 rounded-md bg-black" />
           <div className="num flex flex-col gap-0.5 text-[13px] text-ink-2">

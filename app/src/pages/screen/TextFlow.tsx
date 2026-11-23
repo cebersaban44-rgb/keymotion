@@ -149,7 +149,7 @@ export function TextTile({ onStart }: { onStart: () => void }) {
       <button
         type="button"
         onClick={onStart}
-        className="flex items-center gap-2 rounded-lg border border-signal/50 px-4 py-2 text-[13px] font-semibold text-signal hover:bg-signal/10"
+        className="btn-secondary is-accent"
       >
         <Type size={15} /> {t("sc.src.textGo")}
       </button>

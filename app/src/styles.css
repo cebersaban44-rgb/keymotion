@@ -422,6 +422,20 @@ button.row:disabled {
   background: var(--subtle-sel);
   color: var(--ink-2);
 }
+/* A smaller button for toolbars and dense lists; text in the accent or
+   the error colour for the actions that need to stand out. */
+.btn-sm {
+  height: 28px;
+  padding: 0 10px;
+  gap: 6px;
+  font-size: 13px;
+}
+.btn-secondary.is-accent {
+  color: var(--signal);
+}
+.btn-secondary.is-danger {
+  color: var(--danger);
+}
 .btn-primary:disabled,
 .btn-secondary:disabled,
 .btn-subtle:disabled {
@@ -733,6 +747,65 @@ select option {
 }
 .infobar[data-tone="ok"] {
   background: color-mix(in srgb, var(--ok) 10%, var(--surface));
+}
+
+/* ------------------------------------------------------------------
+   Command bar (Windows' CommandBar): one row of commands with icons, the
+   main one in the accent colour, a separator between groups.
+   ------------------------------------------------------------------ */
+.cmdbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.cmdbar .cb {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: 4px;
+  font-size: 13px;
+  white-space: nowrap;
+  color: var(--ink);
+  transition: background-color 83ms linear;
+}
+.cmdbar .cb:hover:not(:disabled) {
+  background: var(--subtle-hover);
+}
+.cmdbar .cb:active:not(:disabled) {
+  background: var(--subtle-sel);
+}
+.cmdbar .cb:disabled {
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+.cmdbar .cb.acc:not(:disabled) {
+  background: var(--signal);
+  color: var(--signal-ink);
+}
+.cmdbar .cb.acc:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--signal) 90%, var(--bg));
+}
+.cmdbar .cb.danger:not(:disabled) {
+  color: var(--danger);
+}
+.cmdbar .sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 6px;
+  background: var(--line-strong);
+}
+.cmdbar .r {
+  margin-left: auto;
+  padding-right: 10px;
+  font-size: 12px;
+  color: var(--ink-2);
 }
 
 /* ------------------------------------------------------------------

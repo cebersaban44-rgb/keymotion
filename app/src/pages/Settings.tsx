@@ -41,14 +41,14 @@ export function Settings() {
   };
 
   return (
-    <div className="flex max-w-[760px] flex-col gap-6">
-      <header className="flex flex-col gap-2">
+    <div className="flex max-w-[1000px] flex-col gap-6">
+      <header>
         <h1 className="page-title">{t("nav.settings")}</h1>
         <p className="page-desc">{t("settings.desc")}</p>
       </header>
 
-      <section className="card px-5 py-1">
-        <div className="eyebrow pt-4 pb-1">{t("settings.appearance")}</div>
+      <section className="rows">
+        <h2 className="section-title">{t("settings.appearance")}</h2>
         <Row label={t("settings.theme")}>
           <Segmented
             label={t("settings.theme")}
@@ -73,8 +73,8 @@ export function Settings() {
 
       <BackupCard onImported={() => setImports((n) => n + 1)} />
 
-      <section className="card px-5 py-1">
-        <div className="eyebrow pt-4 pb-1">{t("settings.about")}</div>
+      <section className="rows">
+        <h2 className="section-title">{t("settings.about")}</h2>
         <UpdateRows />
         <Row label={t("settings.backdrop")}>
           <span className="num text-[13px] text-ink-2" title={env && env.osBuild > 0 ? t("settings.build", { build: env.osBuild }) : undefined}>
@@ -131,10 +131,7 @@ export function Settings() {
             {t("data.open")}
           </button>
         </Row>
-        <div className="flex flex-col gap-0.5 border-t border-line py-4">
-          <span className="text-[13.5px]">{t("data.privacy")}</span>
-          <p className="text-[12.5px] text-ink-2">{t(store ? "data.privacy.body.store" : "data.privacy.body")}</p>
-        </div>
+        <Row label={t("data.privacy")} hint={t(store ? "data.privacy.body.store" : "data.privacy.body")} />
       </section>
     </div>
   );
