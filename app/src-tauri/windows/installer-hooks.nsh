@@ -44,7 +44,11 @@
 ;   - a new setup run over the installed one, whose "already installed" page
 ;     runs the old uninstaller first (without /UPDATE): the setup sets
 ;     KEYMOTION_SETUP_REPLACES in its environment as its window opens, and
-;     the old uninstaller, started by it, sees it;
+;     the old uninstaller, started by it, sees it. It keeps its
+;     keymotion-cli as bin\keymotion-cli.replaced.exe: should the setup end
+;     without installing (cancelled on a later page, or failed), the setup
+;     takes the connections and PATH entry away with it
+;     (kmEndWithoutInstalling); once installed, the file goes;
 ;   - an uninstall run as another Windows user (another administrator, by
 ;     elevation): that account's settings are not the ones the connections
 ;     and PATH entry are in. Keymotion's own record of the installation
@@ -73,6 +77,49 @@
 Function kmSetupGUIInit
   System::Call 'kernel32::SetEnvironmentVariable(t "KEYMOTION_SETUP_REPLACES", t "1") i'
   Call kmImagesGUIInit
+FunctionEnd
+
+; Cancel on any page of the setup (MUI's .onUserAbort).
+!define MUI_CUSTOMFUNCTION_ABORT kmEndWithoutInstalling
+
+; The setup ends without installing: cancelled, or failed (.onInstFailed).
+; If its "already installed" page had the installed copy uninstalled first,
+; that uninstaller left the connections and PATH entry for this setup and
+; kept its keymotion-cli as keymotion-cli.replaced.exe (see above). With
+; that copy gone, they go now, as its uninstaller would have taken them,
+; by that keymotion-cli at the path they name (--if-this-copy); with the
+; copy still there (its uninstall did not finish), the file goes back. The
+; copy's folder is Tauri's record of the installation, which this setup
+; rewrites only once it installs (the folder page may have changed
+; $INSTDIR). This file is included before Tauri defines MANUPRODUCTKEY and
+; MAINBINARYNAME, so their values are written out here.
+Function kmEndWithoutInstalling
+  Push $R9
+  ReadRegStr $R9 HKCU "Software\Keymotion\Keymotion" ""
+  ${If} $R9 == ""
+    StrCpy $R9 $INSTDIR
+  ${EndIf}
+  ${If} ${FileExists} "$R9\bin\keymotion-cli.replaced.exe"
+    ${IfNot} ${FileExists} "$R9\bin\keymotion-cli.exe"
+      Rename "$R9\bin\keymotion-cli.replaced.exe" "$R9\bin\keymotion-cli.exe"
+    ${EndIf}
+    Delete "$R9\bin\keymotion-cli.replaced.exe"
+    ${IfNot} ${FileExists} "$R9\keymotion.exe"
+    ${AndIf} ${FileExists} "$R9\bin\keymotion-cli.exe"
+      nsExec::Exec /TIMEOUT=15000 '"$R9\bin\keymotion-cli.exe" disconnect claude-code --yes --if-this-copy'
+      Pop $0
+      nsExec::Exec /TIMEOUT=15000 '"$R9\bin\keymotion-cli.exe" disconnect codex --yes --if-this-copy'
+      Pop $0
+      nsExec::Exec /TIMEOUT=15000 '"$R9\bin\keymotion-cli.exe" path remove'
+      Pop $0
+      Delete "$R9\bin\keymotion-cli.exe"
+      RMDir "$R9\bin"
+      RMDir "$R9"
+      DeleteRegKey /ifempty HKCU "Software\Keymotion\UserPath"
+    ${EndIf}
+  ${EndIf}
+  ClearErrors
+  Pop $R9
 FunctionEnd
 
 ; keymotion-cli renamed out of the way by this setup (below), to put back
@@ -126,7 +173,8 @@ Var kmCliMoved
 !macroend
 
 ; The setup failed (cancelled at "Keymotion is running", or a file could not
-; be written): the keymotion-cli moved out of the way goes back.
+; be written): the keymotion-cli moved out of the way goes back, and what
+; a replaced copy left for this setup is dealt with.
 Function .onInstFailed
   ${If} $kmCliMoved != ""
   ${AndIf} ${FileExists} "$kmCliMoved"
@@ -135,7 +183,14 @@ Function .onInstFailed
       Rename "$kmCliMoved" "$INSTDIR\bin\keymotion-cli.exe"
     ${EndIf}
   ${EndIf}
+  Call kmEndWithoutInstalling
 FunctionEnd
+
+; Installed: the keymotion-cli a replaced copy kept is not needed any more.
+!macro NSIS_HOOK_POSTINSTALL
+  Delete "$INSTDIR\bin\keymotion-cli.replaced.exe"
+  ClearErrors
+!macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
   ; Keymotion closed first, as Tauri's check right after this asks: a
@@ -156,9 +211,18 @@ FunctionEnd
     nsExec::Exec /TIMEOUT=15000 '"$INSTDIR\bin\keymotion-cli.exe" path remove'
     Pop $0
   ${EndIf}
+  !insertmacro kmDeleteOldClis
+  Delete "$INSTDIR\bin\keymotion-cli.replaced.exe"
+  ; A new setup takes this copy's place: its keymotion-cli stays, renamed,
+  ; until the setup has installed (kmEndWithoutInstalling).
+  ${If} $UpdateMode <> 1
+  ${AndIf} $R9 == "1"
+  ${AndIf} $R8 == $INSTDIR
+    Rename "$INSTDIR\bin\keymotion-cli.exe" "$INSTDIR\bin\keymotion-cli.replaced.exe"
+  ${EndIf}
+  ClearErrors
   Pop $R9
   Pop $R8
-  !insertmacro kmDeleteOldClis
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL

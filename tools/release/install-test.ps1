@@ -22,6 +22,8 @@ The scenarios run in this order, each on what the one before left:
   f  Uninstall while Keymotion runs
   g  Upgrade from the last published release
   h  keymotion://background starts Keymotion without a window
+  i  A setup cancelled after it replaced the installed copy leaves no hooks
+     or PATH entry naming the deleted keymotion-cli
 
 Each prints PASS, FAIL or SKIP with what it saw, and the table goes to the
 job's summary ($GITHUB_STEP_SUMMARY). The exit code is 1 when a scenario
@@ -134,24 +136,32 @@ public static class KmNative {
     [StructLayout(LayoutKind.Sequential)] struct RECT { public int Left, Top, Right, Bottom; }
     [DllImport("ntdll.dll")] public static extern int NtSuspendProcess(IntPtr process);
     [DllImport("ntdll.dll")] public static extern int NtResumeProcess(IntPtr process);
+    [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr w, IntPtr l);
 
-    // The visible top-level windows of a process, as "class 'title' WxH".
-    public static List<string> VisibleWindows(int pid) {
-        var found = new List<string>();
+    // The visible top-level windows of a process.
+    public static List<IntPtr> VisibleWindowHandles(int pid) {
+        var found = new List<IntPtr>();
         EnumWindows((h, l) => {
             uint owner;
             GetWindowThreadProcessId(h, out owner);
-            if (owner == (uint)pid && IsWindowVisible(h)) {
-                var title = new StringBuilder(256);
-                GetWindowTextW(h, title, 256);
-                var cls = new StringBuilder(256);
-                GetClassNameW(h, cls, 256);
-                RECT r;
-                GetWindowRect(h, out r);
-                found.Add(String.Format("{0} '{1}' {2}x{3}", cls, title, r.Right - r.Left, r.Bottom - r.Top));
-            }
+            if (owner == (uint)pid && IsWindowVisible(h)) found.Add(h);
             return true;
         }, IntPtr.Zero);
+        return found;
+    }
+
+    // The same, as "class 'title' WxH".
+    public static List<string> VisibleWindows(int pid) {
+        var found = new List<string>();
+        foreach (var h in VisibleWindowHandles(pid)) {
+            var title = new StringBuilder(256);
+            GetWindowTextW(h, title, 256);
+            var cls = new StringBuilder(256);
+            GetClassNameW(h, cls, 256);
+            RECT r;
+            GetWindowRect(h, out r);
+            found.Add(String.Format("{0} '{1}' {2}x{3}", cls, title, r.Right - r.Left, r.Bottom - r.Top));
+        }
         return found;
     }
 }
@@ -864,6 +874,7 @@ Invoke-Scenario 'd' 'Manual reinstall keeps the connections and PATH' {
     $pathAfter = Get-UserPath
     Confirm-That ($pathAfter.Raw -ceq $path.Raw -and $pathAfter.Kind -eq $path.Kind -and @(Get-BinEntries $pathAfter.Raw).Count -eq 1) 'PATH is as it was, bin on it' "$($pathAfter.Kind) $($pathAfter.Raw)"
     Confirm-That (Test-SameDir "$(Get-RegValue $UserPathRecordKey 'PathAdded')" $Bin) "Keymotion's PATH record stays (a later uninstall still takes bin off)" "PathAdded = $(Get-RegValue $UserPathRecordKey 'PathAdded')"
+    Confirm-That (-not (Test-Path -LiteralPath (Join-Path $Bin 'keymotion-cli.replaced.exe'))) "the keymotion-cli the old uninstaller kept for a cancel is gone once installed" (@(Get-ChildItem -Name -LiteralPath $Bin) -join ', ')
     $run = Get-RegValue 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' 'Keymotion'
     Add-Note "start-with-Windows Run value after the reinstall: $(if ($run) { $run } else { 'none' })"
     $script:Headline = "setup /P ran the old uninstaller (scheme removed) yet hooks, skills, rule and PATH ($(@(Get-BinEntries $pathAfter.Raw).Count) bin entry, record kept) are unchanged"
@@ -1031,6 +1042,65 @@ Invoke-Scenario 'h' 'keymotion://background starts Keymotion without a window' {
     Stop-App
     $script:Headline = "Start-Process keymotion://background: Keymotion ran with no visible window; $control"
     Save-State 'h'
+}
+
+Invoke-Scenario 'i' 'A setup cancelled after it replaced the installed copy' {
+    Stop-App
+    if (-not (Test-Path -LiteralPath $AppExe)) {
+        $code = Invoke-Setup $Installer @('/S')
+        Confirm-That ($code -eq 0) 'installed (setup /S)' "exit code $code"
+    }
+    Start-AppWithCdp | Out-Null
+    Enable-AgentAccess | Out-Null
+    Stop-App
+    $claude = Get-HookFacts $Claude.Settings 'claude-code' $CliExe
+    $codex = Get-HookFacts $Codex.Hooks 'codex' $CliExe
+    Confirm-That ($claude.Mine -gt 0 -and $codex.Mine -gt 0 -and @(Get-BinEntries (Get-UserPath).Raw).Count -eq 1) 'connected to both through the app, bin on PATH' "Claude Code $($claude.Mine), Codex $($codex.Mine) hooks run bin"
+
+    # "Uninstall before installing" on the new setup's "already installed"
+    # page: it runs the installed copy's uninstaller with
+    # KEYMOTION_SETUP_REPLACES, which it sets as its window opens.
+    $env:KEYMOTION_SETUP_REPLACES = '1'
+    try {
+        $code = Invoke-Uninstall @('/S')
+    } finally {
+        Remove-Item Env:KEYMOTION_SETUP_REPLACES -ErrorAction SilentlyContinue
+    }
+    $kept = Join-Path $Bin 'keymotion-cli.replaced.exe'
+    Confirm-That ($code -eq 0 -and -not (Test-Path -LiteralPath $AppExe) -and (Test-Path -LiteralPath $kept)) 'the replaced copy is gone and keeps its keymotion-cli for the new setup' "exit code $code; keymotion.exe there: $(Test-Path -LiteralPath $AppExe); $([IO.Path]::GetFileName($kept)) there: $(Test-Path -LiteralPath $kept)"
+    $claude = Get-HookFacts $Claude.Settings 'claude-code' $CliExe
+    Confirm-That ($claude.Mine -gt 0 -and @(Get-BinEntries (Get-UserPath).Raw).Count -eq 1) 'its connections and PATH entry wait for the new setup' "Claude Code $($claude.Mine) hooks run bin"
+
+    # The user cancels the new setup (Cancel on its first page).
+    $psi = [Diagnostics.ProcessStartInfo]::new($Installer)
+    $psi.UseShellExecute = $false
+    $setup = [Diagnostics.Process]::Start($psi)
+    $window = [IntPtr]::Zero
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    while ($window -eq [IntPtr]::Zero -and -not $setup.HasExited -and $clock.Elapsed.TotalSeconds -lt 60) {
+        $handles = @([KmNative]::VisibleWindowHandles($setup.Id))
+        if ($handles.Count) { $window = $handles[0] } else { Start-Sleep -Milliseconds 500 }
+    }
+    if ($window -eq [IntPtr]::Zero) {
+        if (-not $setup.HasExited) { $setup.Kill() }
+        Skip-Scenario "the setup showed no window on this runner within 60 s, so it could not be cancelled"
+    }
+    Start-Sleep -Seconds 2
+    [KmNative]::PostMessage($window, 0x0111, [IntPtr]2, [IntPtr]::Zero) | Out-Null # WM_COMMAND IDCANCEL
+    $ended = $setup.WaitForExit(60000)
+    if (-not $ended) { $setup.Kill() }
+    Confirm-That $ended 'Cancel ends the setup' "exit code $(if ($ended) { $setup.ExitCode } else { 'none (killed)' })"
+
+    $claude = Get-HookFacts $Claude.Settings 'claude-code' $CliExe
+    $codex = Get-HookFacts $Codex.Hooks 'codex' $CliExe
+    Confirm-That ($claude.Total -eq 0 -and $codex.Total -eq 0) "no hook is left running the deleted keymotion-cli" "Claude Code $($claude.Total), Codex $($codex.Total) left"
+    Confirm-That (-not (Test-Path -LiteralPath $Claude.SkillDir) -and -not (Test-Path -LiteralPath $Codex.SkillDir) -and -not (Test-Path -LiteralPath $Codex.Rule)) 'the skills and the Codex rule are gone' ''
+    Confirm-That ((Get-UserView $Claude.Settings) -ceq $script:ClaudeUser -and (Get-UserView $Codex.Hooks) -ceq $script:CodexUser) "the user's own settings stay" ''
+    $path = Get-UserPath
+    Confirm-That ($path.Raw -ceq $PathSeed.Raw -and $path.Kind -eq $PathSeed.Kind -and -not (Test-Path -LiteralPath $UserPathRecordKey)) "PATH is exactly the user's again, Keymotion's record gone" "$($path.Kind) $($path.Raw)"
+    Confirm-That (-not (Test-Path -LiteralPath $InstallDir)) 'nothing of Keymotion is left in its folder' $(if (Test-Path -LiteralPath $InstallDir) { (Get-ChildItem -Recurse -Name -LiteralPath $InstallDir) -join ', ' } else { $InstallDir })
+    $script:Headline = 'the replaced copy kept its keymotion-cli; Cancel in the new setup took the hooks, skills, rule and PATH entry away and left no files'
+    Save-State 'i'
 }
 
 # ------------------------------------------------------------------ results
