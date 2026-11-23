@@ -94,7 +94,6 @@ $AumidKey = 'HKCU:\Software\Classes\AppUserModelId\dev.keymotion'
 $Alias = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\keymotion-cli.exe'
 $AppData = Join-Path $env:APPDATA 'dev.keymotion'
 $AppLogs = Join-Path $env:LOCALAPPDATA 'dev.keymotion\logs'
-$CdpPort = 9223
 # What tauri-plugin-updater runs the new setup with, for an app started
 # without arguments.
 $UpdaterArgs = @('/P', '/UPDATE', '/R', '/ARGS')
@@ -147,6 +146,17 @@ public static class KmNative {
             if (owner == (uint)pid && IsWindowVisible(h)) found.Add(h);
             return true;
         }, IntPtr.Zero);
+        return found;
+    }
+
+    // Those at least minSize wide and high.
+    public static List<IntPtr> BigWindowHandles(int pid, int minSize) {
+        var found = new List<IntPtr>();
+        foreach (var h in VisibleWindowHandles(pid)) {
+            RECT r;
+            GetWindowRect(h, out r);
+            if (r.Right - r.Left >= minSize && r.Bottom - r.Top >= minSize) found.Add(h);
+        }
         return found;
     }
 
@@ -396,110 +406,88 @@ function Get-SchemeCommand { Get-RegValue $SchemeCommandKey '' }
 
 function Get-InstalledVersion { Get-RegValue $UninstallKey 'DisplayVersion' }
 
-# ------------------------------------------------------- the app, over CDP
+# ------------------------------------------- the app, through UI Automation
 
-# Runtime.evaluate in Keymotion's page (WebView2's DevTools protocol).
-function Invoke-Cdp([string]$Expression, [int]$TimeoutSec = 60) {
-    $targets = Invoke-RestMethod -Uri "http://127.0.0.1:$CdpPort/json/list" -TimeoutSec 5
-    $page = @($targets | Where-Object { $_.type -eq 'page' -and $_.url -match 'tauri\.localhost' }) | Select-Object -First 1
-    if (-not $page) { throw "no Keymotion page among WebView2's targets: $(@($targets | ForEach-Object { $_.url }) -join ', ')" }
-    $ws = [System.Net.WebSockets.ClientWebSocket]::new()
-    $cts = [System.Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds($TimeoutSec))
-    try {
-        $ws.ConnectAsync([Uri]$page.webSocketDebuggerUrl, $cts.Token).GetAwaiter().GetResult()
-        $request = @{ id = 1; method = 'Runtime.evaluate'; params = @{ expression = $Expression; awaitPromise = $true; returnByValue = $true } } |
-            ConvertTo-Json -Depth 5 -Compress
-        $bytes = [Text.Encoding]::UTF8.GetBytes($request)
-        $ws.SendAsync([ArraySegment[byte]]::new($bytes), [System.Net.WebSockets.WebSocketMessageType]::Text, $true, $cts.Token).GetAwaiter().GetResult()
-        $buffer = [byte[]]::new(65536)
-        while ($true) {
-            $stream = [IO.MemoryStream]::new()
-            do {
-                $got = $ws.ReceiveAsync([ArraySegment[byte]]::new($buffer), $cts.Token).GetAwaiter().GetResult()
-                $stream.Write($buffer, 0, $got.Count)
-            } until ($got.EndOfMessage)
-            $message = [Text.Encoding]::UTF8.GetString($stream.ToArray()) | ConvertFrom-Json -AsHashtable -Depth 100
-            if ($message.Contains('id') -and $message['id'] -eq 1) { break }
-        }
-    } finally {
-        $ws.Dispose()
-        $cts.Dispose()
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+
+# Keymotion's main window, as UI Automation sees it.
+function Get-AppWindow([Diagnostics.Process]$Process, [int]$TimeoutSec = 90) {
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    while (-not $Process.HasExited -and $clock.Elapsed.TotalSeconds -lt $TimeoutSec) {
+        $big = @([KmNative]::BigWindowHandles($Process.Id, 100))
+        if ($big.Count) { return [System.Windows.Automation.AutomationElement]::FromHandle($big[0]) }
+        Start-Sleep -Milliseconds 500
     }
-    if ($message.Contains('error')) { throw "CDP: $($message['error'] | ConvertTo-Json -Compress)" }
-    $result = $message['result']
-    if ($result.Contains('exceptionDetails')) { throw "the page threw: $($result['exceptionDetails'] | ConvertTo-Json -Compress -Depth 5)" }
-    $result['result']['value']
+    $state = if ($Process.HasExited) { "it ended with exit code $($Process.ExitCode)" } else { 'it runs' }
+    throw "Keymotion showed no window within $TimeoutSec s ($state)"
 }
 
-# One of the app's Tauri commands, as its pages call them.
-function Invoke-AppCommand([string]$Command, [hashtable]$Arguments = @{}) {
-    $json = $Arguments | ConvertTo-Json -Depth 20 -Compress
-    $expression = "(async () => { try { return JSON.stringify({ ok: true, value: await window.__TAURI_INTERNALS__.invoke('$Command', $json) }); } catch (e) { return JSON.stringify({ ok: false, error: String((e && e.message) || e) }); } })()"
-    $answer = (Invoke-Cdp $expression) | ConvertFrom-Json -AsHashtable -Depth 100
-    if (-not $answer['ok']) { throw "$Command failed in the app: $($answer['error'])" }
-    $answer['value']
-}
-
-# WebView2's own per-program setting for extra browser arguments (the
-# registry twin of WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS).
-$WebView2ArgsKey = 'HKCU:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
-
-# Why the DevTools port does not answer, for the failure message.
-function Get-CdpDiagnosis {
-    $webviews = @(Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" | Where-Object { $_.CommandLine -match 'dev\.keymotion' })
-    $withPort = @($webviews | Where-Object { $_.CommandLine -match 'remote-debugging-port' })
-    $browser = @($webviews | Where-Object { $_.CommandLine -notmatch '--type=' }) | Select-Object -First 1
-    $listening = @(Get-NetTCPConnection -State Listen -LocalPort $CdpPort -ErrorAction SilentlyContinue)
-    $activePort = Join-Path $env:LOCALAPPDATA 'dev.keymotion\EBWebView\DevToolsActivePort'
-    $active = if (Test-Path -LiteralPath $activePort) { (Get-Content -Raw -LiteralPath $activePort) -replace '\s+', ' ' } else { 'none' }
-    $line = if ($browser) { "$($browser.CommandLine)".Substring(0, [math]::Min(400, "$($browser.CommandLine)".Length)) } else { 'no browser process' }
-    "WebView2 processes: $($webviews.Count), with --remote-debugging-port: $($withPort.Count); port $CdpPort listening: $($listening.Count); DevToolsActivePort: $active; browser: $line"
-}
-
-# Keymotion started as a user starts it, with WebView2's DevTools port open
-# for this test.
-function Start-AppWithCdp {
-    Stop-App
-    $arg = "--remote-debugging-port=$CdpPort"
-    New-Item -Force -Path $WebView2ArgsKey | Out-Null
-    Set-ItemProperty -LiteralPath $WebView2ArgsKey -Name 'keymotion.exe' -Value $arg
-    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $arg
-    try {
-        # With its own environment block, not through the shell.
-        $psi = [Diagnostics.ProcessStartInfo]::new($AppExe)
-        $psi.UseShellExecute = $false
-        $psi.WorkingDirectory = $InstallDir
-        $psi.Environment['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'] = $arg
-        $p = [Diagnostics.Process]::Start($psi)
-        $lastError = 'no answer yet'
-        $clock = [Diagnostics.Stopwatch]::StartNew()
-        $ready = $false
-        while (-not $ready -and -not $p.HasExited -and $clock.Elapsed.TotalSeconds -lt 120) {
-            try {
-                $ready = (Invoke-Cdp 'typeof window.__TAURI_INTERNALS__?.invoke' -TimeoutSec 5) -eq 'function'
-                if (-not $ready) { $lastError = '__TAURI_INTERNALS__.invoke is not there yet' }
-            } catch {
-                $lastError = $_.Exception.Message
-            }
-            if (-not $ready) { Start-Sleep -Seconds 1 }
-        }
-        if (-not $ready) {
-            $alive = if ($p.HasExited) { "it ended with exit code $($p.ExitCode)" } else { 'it runs' }
-            throw "Keymotion's page did not answer over WebView2's DevTools port within 120 s ($alive; last: $lastError; $(Get-CdpDiagnosis))"
-        }
-    } finally {
-        Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue
-        Remove-ItemProperty -LiteralPath $WebView2ArgsKey -Name 'keymotion.exe' -ErrorAction SilentlyContinue
+# The first element under $Root named one of $Names (an ARIA label or a
+# button's text), waiting for the page to draw it.
+function Find-UiElement($Root, [string[]]$Names, [int]$TimeoutSec = 30) {
+    $conditions = [System.Windows.Automation.Condition[]]@($Names | ForEach-Object {
+            [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, $_)
+        })
+    $condition = if ($conditions.Count -gt 1) { [System.Windows.Automation.OrCondition]::new($conditions) } else { $conditions[0] }
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    while ($clock.Elapsed.TotalSeconds -lt $TimeoutSec) {
+        $found = $Root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+        if ($found) { return $found }
+        Start-Sleep -Milliseconds 500
     }
-    $p
+    $null
 }
 
-# Agent access on, as the AI agents page turns it on: the plan, then the
-# user's approval of that plan.
+# Some names in the window, for a failure message.
+function Get-UiNames($Root) {
+    $all = $Root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+    $names = foreach ($e in $all) { $n = $e.Current.Name; if ($n) { $n } }
+    (@($names | Select-Object -Unique -First 40) -join ' | ')
+}
+
+# Press it, as a click would.
+function Invoke-UiElement($Element) {
+    $pattern = $null
+    if ($Element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { $pattern.Invoke(); return }
+    if ($Element.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) { $pattern.Toggle(); return }
+    throw "'$($Element.Current.Name)' can be neither invoked nor toggled"
+}
+
+# On or Off, for a switch.
+function Get-ToggleState($Element) {
+    $pattern = $null
+    if ($Element.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) { return $pattern.Current.ToggleState.ToString() }
+    if ($Element.Current.AriaProperties -match 'checked=true') { 'On' } else { 'Off' }
+}
+
+function Wait-UiElement($Root, [string[]]$Names, [string]$Why, [int]$TimeoutSec = 30) {
+    $found = Find-UiElement $Root $Names $TimeoutSec
+    if (-not $found) { throw "no '$($Names -join "' or '")' in Keymotion's window $Why (it shows: $(Get-UiNames $Root))" }
+    $found
+}
+
+# Agent access on, as a user turns it on: Keymotion started, Tools > AI
+# agents, the "Agents may use the keyboard" switch (off first if it is on),
+# "Connect and turn on" in the dialog that lists what it adds, then OK.
+# Keymotion keeps running; the caller closes it.
 function Enable-AgentAccess {
-    $plan = Invoke-AppCommand 'agents_connect_plan'
-    $outcome = Invoke-AppCommand 'agents_connect' @{ token = $plan['token'] }
-    [pscustomobject]@{ Plan = $plan; Outcome = $outcome }
+    Stop-App
+    $p = Start-Process -FilePath $AppExe -PassThru
+    $null = $p.Handle
+    $window = Get-AppWindow $p
+    Invoke-UiElement (Wait-UiElement $window @('AI agents') 'to open the AI agents page' 60)
+    $switch = Wait-UiElement $window @('Agents may use the keyboard') 'on the AI agents page'
+    if ((Get-ToggleState $switch) -eq 'On') {
+        Invoke-UiElement $switch
+        Wait-Until 15 { (Get-ToggleState (Find-UiElement $window @('Agents may use the keyboard') 5)) -eq 'Off' } | Out-Null
+        $switch = Wait-UiElement $window @('Agents may use the keyboard') 'after turning access off'
+    }
+    Invoke-UiElement $switch
+    $dialog = Wait-UiElement $window @('Turning on agent access') 'after the switch was turned on'
+    Invoke-UiElement (Wait-UiElement $dialog @('Connect and turn on', 'Connect') 'in the dialog')
+    Invoke-UiElement (Wait-UiElement $window @('OK') 'after approving' 60)
+    $on = Wait-Until 15 { (Get-ToggleState (Find-UiElement $window @('Agents may use the keyboard') 5)) -eq 'On' }
+    [pscustomobject]@{ Process = $p; On = $on }
 }
 
 # ------------------------------------------------- the coding agents' files
@@ -760,16 +748,13 @@ Invoke-Scenario 'a' 'Fresh silent install' {
     $scheme = Get-SchemeCommand
     Add-Note "keymotion: scheme right after installing: $(if ($scheme) { $scheme } else { 'not registered (the app registers it at its first start)' })"
 
-    # The user opens Keymotion and turns agent access on (AI agents page).
-    $app = Start-AppWithCdp
+    # The user opens Keymotion and turns agent access on (AI agents page);
+    # no coding app is on this machine yet.
+    $access = Enable-AgentAccess
+    Confirm-That $access.On 'the AI agents page turns agent access on (the switch, "Connect and turn on", OK)' "switch on: $($access.On)"
     $scheme = Get-SchemeCommand
     Confirm-That ("$scheme" -like "*$AppExe*") 'the keymotion: URL scheme opens the installed app (registered at its first start)' "$scheme"
-    $aumid = Test-Path -LiteralPath $AumidKey
-    Add-Note "notifications' AppUserModelId registered: $aumid"
-    $access = Enable-AgentAccess
-    $planDir = if ($access.Plan['path']) { $access.Plan['path']['dir'] } else { '(none)' }
-    Confirm-That (Test-SameDir "$planDir" $Bin) 'the AI agents page offers the bin folder for PATH' "plan: $planDir; coding apps not found: $(@($access.Plan['notFound']) -join ', ')"
-    Confirm-That ($access.Outcome['applied'] -and $access.Outcome['pathAdded']) 'turning agent access on puts bin on PATH' "applied $($access.Outcome['applied']), pathAdded $($access.Outcome['pathAdded']), pathError $($access.Outcome['pathError'])"
+    Add-Note "notifications' AppUserModelId registered: $(Test-Path -LiteralPath $AumidKey)"
     Stop-App
 
     $after = Get-UserPath
@@ -891,11 +876,11 @@ Invoke-Scenario 'c' 'Silent uninstall' {
 Invoke-Scenario 'd' 'Manual reinstall keeps the connections and PATH' {
     $code = Invoke-Setup $Installer @('/S')
     Confirm-That ($code -eq 0) 'installed again (setup /S)' "exit code $code"
-    Start-AppWithCdp | Out-Null
+    # The user turns agent access on in the app: it connects Claude Code and
+    # Codex (taking Codex over from the other copy) and puts bin on PATH.
     $access = Enable-AgentAccess
-    $connected = @($access.Outcome['connected'])
-    Confirm-That ($connected.Count -eq 2 -and $access.Outcome['pathAdded']) 'the app connects Claude Code and Codex and puts bin on PATH' "connected: $($connected -join ', '); failed: $(@($access.Outcome['failed']).Count); pathAdded $($access.Outcome['pathAdded'])"
     Stop-App
+    Confirm-That ($access.On -and @(Get-BinEntries (Get-UserPath).Raw).Count -eq 1) 'the AI agents page turns access on and puts bin on PATH' "switch on: $($access.On)"
     $conn = Get-Connections
     Confirm-That ($conn['claude-code']['state'] -eq 'connected' -and ([string]$conn['codex']['runs']).IndexOf("'$CliExe'", [StringComparison]::OrdinalIgnoreCase) -ge 0) 'both run this copy now' "Claude Code $(Format-Connection $conn['claude-code']); Codex $(Format-Connection $conn['codex'])"
     $snapshot = Get-ConnectionSnapshot
@@ -1094,9 +1079,9 @@ Invoke-Scenario 'i' 'A setup cancelled after it replaced the installed copy' {
         $code = Invoke-Setup $Installer @('/S')
         Confirm-That ($code -eq 0) 'installed (setup /S)' "exit code $code"
     }
-    Start-AppWithCdp | Out-Null
-    Enable-AgentAccess | Out-Null
+    $access = Enable-AgentAccess
     Stop-App
+    Confirm-That $access.On 'the AI agents page turns agent access on' "switch on: $($access.On)"
     $claudeHooks = Get-HookFacts $Claude.Settings 'claude-code' $CliExe
     $codexHooks = Get-HookFacts $Codex.Hooks 'codex' $CliExe
     Confirm-That ($claudeHooks.Mine -gt 0 -and $codexHooks.Mine -gt 0 -and @(Get-BinEntries (Get-UserPath).Raw).Count -eq 1) 'connected to both through the app, bin on PATH' "Claude Code $($claudeHooks.Mine), Codex $($codexHooks.Mine) hooks run bin"
