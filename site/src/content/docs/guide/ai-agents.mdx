@@ -29,7 +29,7 @@ Turning **Agents may use the keyboard** off stops every agent at once; the conne
 
 Each app shows how it stands: **Connected**, **Waiting for your approval in Codex once**, **Not connected**, **Not on this computer**, or **Too old** when Claude Code is older than version 2.1.139 and needs `claude update`. The arrow on the right shows its folder and files, and **Remove connection**, which takes away only what Keymotion added.
 
-Before you uninstall Keymotion, click **Remove connection** for each connected app. Claude Code calls Keymotion's command-line tool directly: once Keymotion is gone, it reports a hook error on every event until the connection is removed. Codex checks first and stays quiet.
+Keymotion from GitHub removes its connections itself when you uninstall it. Before you uninstall the Microsoft Store copy, click **Remove connection** for each connected app: Windows removes Store apps without letting them clean up, and Claude Code calls Keymotion's command-line tool directly, so once Keymotion is gone it reports a hook error on every event until the connection is removed. Codex checks first and stays quiet.
 
 ## How the keyboard tells you
 

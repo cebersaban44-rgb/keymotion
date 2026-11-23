@@ -85,7 +85,7 @@ says so.
   translations were made with AI help and wait for a review by native
   speakers: corrections are welcome. In Chinese the keyboard is called
   黑爵 AK980 V2（带屏版）, the name it is sold under in China.
-- **AI coding agents (in the works, not in the installer yet):**
+- **AI coding agents:**
   `keymotion-cli` lets Claude Code, Codex and scripts light the keys: a
   finished task, a question waiting for you, an error, a progress bar, or
   anything an agent makes of keys, colors and effects. `keymotion-cli
@@ -107,7 +107,11 @@ says so.
   signals, whether agents may change these settings, the session numbers
   and the recent actions, with **Undo** and, for a request that wasn't
   carried out, why. The privacy policy and the security policy say what
-  agents pass on and what they can never change.
+  agents pass on and what they can never change. `keymotion-cli` comes
+  with Keymotion: the installer from GitHub puts it in a `bin` folder of its
+  own, and uninstalling removes Keymotion's connections to Claude Code and
+  Codex and its folder from your PATH; the Microsoft Store copy brings it as
+  a command you can type in any terminal.
   Three more things only with their own permission, each off at first:
   agents can start, pause or stop the focus timer (also one block of their
   own length, without changing your settings), show a profile's lighting
