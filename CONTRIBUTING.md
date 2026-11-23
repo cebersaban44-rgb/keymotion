@@ -1,6 +1,6 @@
 # Contributing to Keymotion
 
-Thanks for helping. You can write in English or Turkish (*Türkçe yazabilirsiniz*).
+Thanks for helping. Issues and discussions can be written in English, Turkish, Russian or Chinese (*Türkçe yazabilirsiniz. Можно писать по-русски. 可以用中文填写。*). Code, commit messages and pull request descriptions stay in English.
 
 The full guide, with setup steps and how the code is organised, is on the site: [Contributing](https://cebersaban44-rgb.github.io/keymotion/developers/contributing/) ([Türkçe](https://cebersaban44-rgb.github.io/keymotion/tr/developers/contributing/)).
 

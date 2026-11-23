@@ -158,7 +158,9 @@ says so.
   that isn't supported yet. The welcome page, the pane on the left and the
   tray menu say it has AJAZZ's new firmware, that Keymotion sends nothing to
   it and that support is planned for a later update, with a link to the FAQ.
-  **Request support** stays.
+  **Request support** stays. Any other keyboard that isn't supported yet now
+  shows its name in the pane on the left instead of "Waiting for a
+  keyboard", and the welcome page says that one is plugged in.
 - **Untested firmware:** on a firmware version that hasn't been tested with
   Keymotion, the keyboard clock waits for your go-ahead too, both the sync
   on connect and **Sync now**. Keymotion asks the same question as before

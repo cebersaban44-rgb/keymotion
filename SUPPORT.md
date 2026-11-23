@@ -1,8 +1,8 @@
 # Getting help
 
-*Türkçe yazabilirsiniz.*
+*Türkçe yazabilirsiniz. Можно писать по-русски. 可以用中文填写。*
 
-1. **Read the guide.** The [user guide](https://cebersaban44-rgb.github.io/keymotion/) ([Türkçe](https://cebersaban44-rgb.github.io/keymotion/tr/)) covers every page of the app. [Questions and answers](https://cebersaban44-rgb.github.io/keymotion/help/faq/) and [If something goes wrong](https://cebersaban44-rgb.github.io/keymotion/help/recovery/) answer the most common problems.
+1. **Read the guide.** The [user guide](https://cebersaban44-rgb.github.io/keymotion/) ([Türkçe](https://cebersaban44-rgb.github.io/keymotion/tr/), [Русский](https://cebersaban44-rgb.github.io/keymotion/ru/), [简体中文](https://cebersaban44-rgb.github.io/keymotion/zh-cn/)) covers every page of the app. [Questions and answers](https://cebersaban44-rgb.github.io/keymotion/help/faq/) and [If something goes wrong](https://cebersaban44-rgb.github.io/keymotion/help/recovery/) answer the most common problems.
 2. **Ask a question** in [Discussions](https://github.com/cebersaban44-rgb/keymotion/discussions/categories/q-a).
 3. **Found a bug?** Use the [bug form](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=bug.yml). The app's **Settings** page copies the diagnostic information it asks for.
 4. **Another keyboard?** Use the [keyboard form](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml).
