@@ -2938,6 +2938,41 @@ mod tests {
     }
 
     #[test]
+    fn a_fast_scene_never_flashes_a_key_too_fast() {
+        let fake = Fake::new();
+        let core = core_with(&fake, AgentSettings { enabled: true, ..AgentSettings::default() });
+        // Esc red and dark every 50 ms (ten flashes a second), for 3 s.
+        let step = |color: &str| kb_agent::protocol::SceneStepArgs {
+            keys: Some("esc".into()),
+            color: color.into(),
+            for_ms: Some(50),
+            ..Default::default()
+        };
+        let args = SceneArgs {
+            steps: vec![step("red"), step("off")],
+            repeat: Some(0),
+            for_ms: Some(3_000),
+            ..Default::default()
+        };
+        call(&core, "tests", Command::Scene(args)).unwrap();
+        let mut w = Worker::default();
+        let mut times = Vec::new();
+        for _ in 0..60 {
+            let before = lock(&fake.frames).len();
+            core.tick(&mut w);
+            if lock(&fake.frames).len() > before {
+                times.push(fake.mono_ms());
+            }
+            fake.advance(50);
+        }
+        let led = KeyIndex::for_model("ajazz-ak980-pro").unwrap().keys().iter().find(|k| k.id == "esc").unwrap().led;
+        let changes = key_changes(&fake, &times, led);
+        let most = changes.iter().map(|&t| changes.iter().filter(|&&u| u >= t && u < t + 1000).count()).max();
+        assert!(most.unwrap_or(0) <= effects::MAX_CHANGES, "{changes:?}");
+        assert!(changes.len() >= 6, "it still blinks, at the safe rate: {changes:?}");
+    }
+
+    #[test]
     fn the_same_key_twice_goes_dark_in_between() {
         let s = kb_agent::protocol::SpellArgs { text: "OO".into(), speed: Some(3), ..Default::default() }
             .validate()

@@ -2243,6 +2243,15 @@ mod tests {
         let v = saved.validate().unwrap();
         assert_eq!((v.save.as_deref(), v.play), (Some("deploy-done"), false));
         assert_eq!(saved.to_pattern(), SceneArgs { steps: twice.steps.clone(), repeat: Some(3), ..Default::default() });
+        // Two hours at most, however it runs.
+        let long = SceneArgs {
+            steps: vec![step("f1", "red", Some(540_000), Some(60_000))],
+            repeat: Some(100),
+            ..Default::default()
+        };
+        assert_eq!(long.validate().unwrap().duration, MAX_SIGNAL_DURATION);
+        let too_long = SceneArgs { for_ms: Some(MAX_SIGNAL_DURATION.as_millis() as u64 + 1), ..twice.clone() };
+        assert_eq!(too_long.validate().unwrap_err().code, ErrorCode::BadDuration);
 
         let code = |a: SceneArgs| a.validate().unwrap_err().code;
         assert_eq!(code(SceneArgs::default()), ErrorCode::BadArgument);
