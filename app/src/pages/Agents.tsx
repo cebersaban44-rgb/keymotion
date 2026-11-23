@@ -309,7 +309,9 @@ function ConnectFlow({ flow, onCancel, onApprove, onDone }: { flow: Flow; onCanc
             </ul>
             {plan.path.error && <p className="ml-4 text-danger">{t("ag.done.pathError", { message: plan.path.error })}</p>}
             {details && (
-              <code className="mono mt-1 ml-4 text-[12px] break-all text-ink-2 select-text">{t("ag.details.path", { path: plan.path.dir })}</code>
+              <div className="mt-1 ml-4 text-[12px] text-ink-2 select-text">
+                <Detail label={t("ag.details.path")} value={plan.path.dir} />
+              </div>
             )}
           </div>
         )}
@@ -455,10 +457,22 @@ function fileLine(c: AgentFileChange, t: Translate): string | null {
 
 /** A file under Details: what it is and where. */
 function fileDetail(c: AgentFileChange, t: Translate): string {
-  if (c.kind === "hooks") return t("ag.details.hooks", { count: c.hooks ?? 0, path: c.path });
-  if (c.kind === "skill") return t("ag.details.skill", { path: c.path });
-  if (c.kind === "rule") return t("ag.details.rule", { path: c.path });
-  return t("ag.details.note", { path: c.path });
+  if (c.kind === "hooks") return t("ag.details.hooks", { count: c.hooks ?? 0 });
+  if (c.kind === "skill") return t("ag.details.skill");
+  if (c.kind === "rule") return t("ag.details.rule");
+  return t("ag.details.note");
+}
+
+/** A label in the interface font, then a path or command line in the code font. */
+function Detail({ label, value }: { label: string; value: string }) {
+  const locale = useApp((s) => s.locale);
+  return (
+    <span className="block">
+      {label}
+      {locale === "zh-CN" ? "" : " "}
+      <code className="mono break-all">{value}</code>
+    </span>
+  );
 }
 
 function PlanApp({ plan, details }: { plan: AgentAppPlan; details: boolean }) {
@@ -481,11 +495,11 @@ function PlanApp({ plan, details }: { plan: AgentAppPlan; details: boolean }) {
         <div className="mt-1.5 ml-4 flex flex-col gap-1 text-[12px] text-ink-2 select-text">
           {plan.changes.map((c) => (
             <span key={c.path} className="flex flex-col">
-              <code className="mono break-all">{fileDetail(c, t)}</code>
-              {c.backup && <span>{t("ag.details.backup", { path: c.backup })}</span>}
+              <Detail label={fileDetail(c, t)} value={c.path} />
+              {c.backup && <Detail label={t("ag.details.backup")} value={c.backup} />}
             </span>
           ))}
-          {plan.commandLine && <code className="mono break-all">{t("ag.details.runs", { line: plan.commandLine })}</code>}
+          {plan.commandLine && <Detail label={t("ag.details.runs")} value={plan.commandLine} />}
           {plan.warnings.map((w) => (
             <span key={w} lang="en">
               {w}
@@ -555,10 +569,10 @@ function AppRow({
     >
       <div className="flex flex-col gap-1 text-[12px] text-ink-2 select-text">
         {app.version && <span>{t("ag.details.version", { version: app.version })}</span>}
-        <code className="mono break-all">{t("ag.details.folder", { path: app.home })}</code>
+        <Detail label={t("ag.details.folder")} value={app.home} />
         {app.found && <code className="mono break-all">{app.hooksFile}</code>}
         {app.found && <code className="mono break-all">{app.skillFile}</code>}
-        {app.runs && <code className="mono break-all">{t("ag.details.runs", { line: app.runs })}</code>}
+        {app.runs && <Detail label={t("ag.details.runs")} value={app.runs} />}
         {app.error && <span className="text-danger">{app.error}</span>}
       </div>
       {linked && (
@@ -973,19 +987,46 @@ const COMMAND_NAME: Record<string, MessageKey> = {
 };
 
 /** Why an agent's request was not carried out, in plain words. */
-const ERROR_TEXT: Record<string, MessageKey> = {
-  agent_access_off: "ag.err.accessOff",
-  needs_usb: "ag.err.needsUsb",
-  no_keyboard: "ag.err.noKeyboard",
-  rate_limited: "ag.err.rateLimited",
-  permission_off: "ag.err.permissionOff",
-  budget_exhausted: "ag.err.budget",
-  write_blocked: "ag.err.writeBlocked",
-  bad_value: "ag.err.badRequest",
-  bad_argument: "ag.err.badRequest",
-  bad_color: "ag.err.badRequest",
-  unknown_key: "ag.err.badRequest",
-};
+const ERROR_CODES = new Set([
+  "internal",
+  "bad_argument",
+  "bad_color",
+  "bad_duration",
+  "bad_effect",
+  "bad_keys",
+  "unknown_key",
+  "bad_signal",
+  "bad_source",
+  "bad_id",
+  "bad_value",
+  "bad_text",
+  "text_too_long",
+  "too_large",
+  "app_not_running",
+  "no_keyboard",
+  "needs_usb",
+  "unsupported",
+  "pipe_not_trusted",
+  "rate_limited",
+  "budget_exhausted",
+  "busy_flash_write",
+  "timeout",
+  "connection_lost",
+  "protocol_mismatch",
+  "unknown_command",
+  "bad_request",
+  "bad_response",
+  "agent_access_off",
+  "permission_off",
+  "write_flash_flag_missing",
+  "write_blocked",
+]);
+
+/** A refusal in plain words; a code a newer keymotion-cli adds falls back to "Not done.". */
+function errorText(code: string, t: Translate): string {
+  if (!ERROR_CODES.has(code)) return t("ag.err.other");
+  return t(`ag.err.${code.replace(/_(\w)/g, (_, c: string) => c.toUpperCase())}` as MessageKey);
+}
 
 type ValueKind = "color" | "effect" | "duration" | "bool" | "speed" | "time" | "keys" | "nightMode" | "number";
 
@@ -1133,7 +1174,10 @@ function LogRow({
           const { label, kind } = settingName(c.key, t);
           return (
             <span key={c.key} className="flex flex-wrap items-center gap-x-1.5" data-log-change={c.key}>
-              <span>{label}:</span>
+              <span>
+                {label}
+                {locale === "zh-CN" ? "：" : ":"}
+              </span>
               <SettingValue kind={kind} value={c.before} />
               <ArrowRight size={12} aria-label="→" />
               <SettingValue kind={kind} value={c.after} />
@@ -1141,7 +1185,7 @@ function LogRow({
           );
         })}
       {!settingsChange && look && !e.error && <span className="block">{lookLine(look, t, span)}</span>}
-      {e.error && <span className="block">{t(ERROR_TEXT[e.error] ?? "ag.err.other")}</span>}
+      {e.error && <span className="block">{errorText(e.error, t)}</span>}
       {e.kept.length > 0 && (
         <span className="block">{t("ag.log.kept", { keys: e.kept.map((k) => settingName(k, t).label).join(", ") })}</span>
       )}

@@ -160,6 +160,7 @@ const mock = (() => {
   const now = Date.now();
   let log: AgentsState["log"] = on
     ? [
+        { seq: 5, atMs: now - 60_000, source: "claude-code:3f9a0c1d", command: "light", error: "busy_flash_write", id: null, changes: [], undone: false, kept: [] },
         {
           seq: 4,
           atMs: now - 2 * 60_000,
