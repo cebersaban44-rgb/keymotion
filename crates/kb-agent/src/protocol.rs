@@ -707,10 +707,13 @@ pub enum HookEvent {
     /// The session ended: its question and its number go; what it ended
     /// with (done, an error) stays its time.
     SessionEnd,
+    /// The user stopped the turn: the session's question and its "working"
+    /// light go; what came before (done, an error) stays.
+    Interrupted,
 }
 
 impl HookEvent {
-    pub const ALL: [HookEvent; 9] = [
+    pub const ALL: [HookEvent; 10] = [
         Self::SessionStart,
         Self::Busy,
         Self::Attention,
@@ -720,6 +723,7 @@ impl HookEvent {
         Self::UsageLimit,
         Self::Helper,
         Self::SessionEnd,
+        Self::Interrupted,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -733,6 +737,7 @@ impl HookEvent {
             Self::UsageLimit => "usage_limit",
             Self::Helper => "helper",
             Self::SessionEnd => "session_end",
+            Self::Interrupted => "interrupted",
         }
     }
 
@@ -743,10 +748,17 @@ impl HookEvent {
         })
     }
 
-    /// Whether it may light something: when the app is not running, only
-    /// these are worth starting it for.
+    /// Whether it may light something.
     pub const fn lights(self) -> bool {
         matches!(self, Self::Attention | Self::Done | Self::Error | Self::UsageLimit | Self::Helper)
+    }
+
+    /// Whether it is worth starting Keymotion for, when it is not running:
+    /// what the user should learn even if the app was closed. Not a helper
+    /// agent's end (H, off unless the user turned it on), nor an answer, a
+    /// new prompt or a session's start or end.
+    pub const fn starts_app(self) -> bool {
+        matches!(self, Self::Attention | Self::Done | Self::Error | Self::UsageLimit)
     }
 }
 
@@ -1422,6 +1434,8 @@ mod tests {
         }
         let lit: Vec<&str> = HookEvent::ALL.iter().filter(|e| e.lights()).map(|e| e.as_str()).collect();
         assert_eq!(lit, ["attention", "done", "error", "usage_limit", "helper"]);
+        let starting: Vec<&str> = HookEvent::ALL.iter().filter(|e| e.starts_app()).map(|e| e.as_str()).collect();
+        assert_eq!(starting, ["attention", "done", "error", "usage_limit"]);
         let hook = HookArgs {
             event: "Attention".into(),
             agent: Some("Codex".into()),

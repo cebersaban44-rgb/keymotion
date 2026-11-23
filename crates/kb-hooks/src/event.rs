@@ -187,12 +187,8 @@ fn codex(p: &Payload, session: Option<&str>) -> Option<(HookEvent, Vec<String>)>
         // the same turn failing again changes nothing (the engine), and a
         // request of that turn that goes through takes the failure away.
         "PostModelRequest" if p.status.as_deref() == Some("failed") => {
-            let text = p.error.as_ref().and_then(Value::as_str).unwrap_or_default().to_lowercase();
-            let event = if CODEX_USAGE_LIMITS.iter().any(|m| text.contains(m)) {
-                HookEvent::UsageLimit
-            } else {
-                HookEvent::Error
-            };
+            let text = p.error.as_ref().and_then(Value::as_str).unwrap_or_default();
+            let event = if codex_usage_limit(text) { HookEvent::UsageLimit } else { HookEvent::Error };
             (event, calls(&[failure_key(session, p)]))
         }
         "PostModelRequest" if p.status.as_deref() == Some("completed") => {
@@ -200,7 +196,7 @@ fn codex(p: &Payload, session: Option<&str>) -> Option<(HookEvent, Vec<String>)>
         }
         "PostModelRequest" => return None,
         // The user stopped the turn: whatever it waited for is moot.
-        "Interrupt" => (HookEvent::Busy, vec![]),
+        "Interrupt" => (HookEvent::Interrupted, vec![]),
         "Stop" => (HookEvent::Done, vec![]),
         "SubagentStop" => (HookEvent::Helper, vec![]),
         "SessionEnd" => (HookEvent::SessionEnd, vec![]),
@@ -213,6 +209,25 @@ fn codex(p: &Payload, session: Option<&str>) -> Option<(HookEvent, Vec<String>)>
 /// credits and spend caps, an overloaded service.
 pub const CODEX_USAGE_LIMITS: [&str; 7] =
     ["usage limit", "rate limit", "out of credits", "spend cap", "quota exceeded", "at capacity", "high demand"];
+
+/// Whether a Codex error message means "come back later" (behaviour A):
+/// one of [`CODEX_USAGE_LIMITS`], or Codex giving up its retries on a rate
+/// limit (429) or a server's error (5xx), as Claude Code's `rate_limit` and
+/// `server_error` are A too.
+pub fn codex_usage_limit(message: &str) -> bool {
+    let text = message.to_lowercase();
+    if CODEX_USAGE_LIMITS.iter().any(|m| text.contains(m)) {
+        return true;
+    }
+    // "exceeded retry limit, last status: 429 Too Many Requests[, request id: …]"
+    let Some(at) = text.find("exceeded retry limit") else { return false };
+    let status = text[at..]
+        .split("last status:")
+        .nth(1)
+        .and_then(|rest| rest.trim_start().get(..3))
+        .and_then(|code| code.parse::<u16>().ok());
+    matches!(status, Some(429) | Some(500..=599))
+}
 
 fn calls(keys: &[Option<String>]) -> Vec<String> {
     keys.iter().flatten().cloned().collect()
@@ -484,7 +499,7 @@ mod tests {
         let ran = cx("PostToolUse", json!({"tool_name": "Bash", "tool_use_id": "call_1", "tool_input": {"command": "ls"}, "tool_response": "x"}))
             .unwrap();
         assert!(ask.1.iter().any(|k| ran.1.contains(k)), "the call names it too");
-        assert_eq!(cx("Interrupt", json!({})).unwrap().0, HookEvent::Busy);
+        assert_eq!(cx("Interrupt", json!({})).unwrap().0, HookEvent::Interrupted);
         assert_eq!(
             cx("Stop", json!({"stop_hook_active": false, "last_assistant_message": null})).unwrap().0,
             HookEvent::Done
@@ -513,7 +528,23 @@ mod tests {
             assert_eq!(failed.1, through.1, "the turn's next request takes it away: {text}");
             assert_ne!(failed.1, next.1, "its next attempt does not: {text}");
         }
-        for text in ["exceeded retry limit, last status: 500", "context window exceeded", ""] {
+        // Retries given up on a rate limit or a server's error: A, as Claude
+        // Code's rate_limit and server_error.
+        for text in [
+            "exceeded retry limit, last status: 429 Too Many Requests",
+            "exceeded retry limit, last status: 503 Service Unavailable, request id: req_1",
+            "exceeded retry limit, last status: 529",
+        ] {
+            let failed = cx("PostModelRequest", json!({"status": "failed", "error": text})).unwrap();
+            assert_eq!(failed.0, HookEvent::UsageLimit, "{text}");
+        }
+        for text in [
+            "exceeded retry limit, last status: 401 Unauthorized",
+            "exceeded retry limit",
+            "unexpected status 401 Unauthorized: Missing bearer",
+            "context window exceeded",
+            "",
+        ] {
             let failed = cx("PostModelRequest", json!({"status": "failed", "error": text})).unwrap();
             assert_eq!(failed.0, HookEvent::Error, "{text}");
         }

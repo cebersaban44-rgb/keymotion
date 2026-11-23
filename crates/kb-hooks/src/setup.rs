@@ -234,18 +234,44 @@ impl Cli {
     }
 }
 
-/// Codex's line for its shell (PowerShell on Windows; `cmd.exe` only when
-/// no shell is known): the plain path when it needs no quotes, which both
-/// read alike; otherwise PowerShell's call operator with the path in single
-/// quotes.
+/// Codex's line for its shell, PowerShell (Codex 0.166.0 runs every hook
+/// with `powershell -NoProfile -Command`). Its final form, fixed now: Codex
+/// asks the user to trust a hook again when its line changes.
+///
+/// It runs keymotion-cli only while it is there: after Keymotion was
+/// uninstalled the line does nothing and ends with 0, instead of failing on
+/// every event. By its full path: `if (Test-Path -LiteralPath '<path>') {
+/// & '<path>' hook codex }`; by a bare name (on PATH): the same with
+/// `Get-Command`. The path goes in single quotes, each of PowerShell's five
+/// single-quote characters doubled ([`ps_quoted`]).
 pub fn codex_command(cli: &Cli) -> String {
     let path = cli.path_text();
-    let plain = !path.is_empty() && path.chars().all(|c| c.is_ascii_alphanumeric() || "\\:._-".contains(c));
-    if plain {
-        format!("{path} hook codex")
+    let quoted = ps_quoted(&path);
+    if cli.path.is_absolute() {
+        format!("if (Test-Path -LiteralPath {quoted}) {{ & {quoted} hook codex }}")
     } else {
-        format!("& '{}' hook codex", path.replace('\'', "''"))
+        format!("if (Get-Command {quoted} -ErrorAction SilentlyContinue) {{ & {quoted} hook codex }}")
     }
+}
+
+/// PowerShell's single-quote characters: it reads each of them as a single
+/// quote (`'`, `‘`, `’`, `‚`, `‛`), so a user folder named O’Brien ends a
+/// string quoted with `'`.
+pub const PS_SINGLE_QUOTES: [char; 5] = ['\'', '\u{2018}', '\u{2019}', '\u{201A}', '\u{201B}'];
+
+/// `text` as a PowerShell single-quoted string: inside one, a single-quote
+/// character is written twice.
+pub fn ps_quoted(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('\'');
+    for c in text.chars() {
+        out.push(c);
+        if PS_SINGLE_QUOTES.contains(&c) {
+            out.push(c);
+        }
+    }
+    out.push('\'');
+    out
 }
 
 /// The hook entry for `agent`, as it goes in the file.
@@ -286,7 +312,10 @@ pub fn is_ours(agent: Agent, handler: &Json) -> bool {
         .map(|a| a.iter().filter_map(Json::as_str).collect())
         .unwrap_or_default();
     let tail = format!("hook {}", agent.id());
-    args == ["hook", agent.id()] || command.trim_end().trim_end_matches(['"', '\'']).ends_with(&tail)
+    // Any form we ever wrote: `<path> hook codex`, `& '<path>' hook codex`,
+    // `if (…) { & '<path>' hook codex }`.
+    let line = command.trim_end().trim_end_matches(['"', '\'', '}', ' ']);
+    args == ["hook", agent.id()] || line.ends_with(&tail)
 }
 
 // ---------------------------------------------------------------- errors
@@ -298,6 +327,9 @@ pub enum ErrorKind {
     Invalid,
     /// Reading or writing failed.
     Io,
+    /// A file changed after the plan was made (the agent wrote its settings
+    /// meanwhile): nothing was written; plan again from the file as it is.
+    Changed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -316,6 +348,13 @@ impl SetupError {
 
     fn io(path: &Path, e: std::io::Error) -> Self {
         SetupError { kind: ErrorKind::Io, message: format!("{}: {e}", path.display()) }
+    }
+
+    fn changed(path: &Path) -> Self {
+        SetupError {
+            kind: ErrorKind::Changed,
+            message: format!("{} changed while Keymotion was getting ready; nothing was written.", path.display()),
+        }
     }
 }
 
@@ -648,7 +687,7 @@ and end by themselves.
 
 - Before you use it the first time, run `keymotion-cli guide`: it lists this
   version's commands, values and exit codes. If `keymotion-cli` is not found,
-  run it by its full path: `{path}`
+  {SKILL_PATH_LEAD}{path}`
 - You decide how to tell the user things. Keymotion already lights \"done\",
   \"waiting for you\" and errors by itself, from the coding app's own events;
   the ready signals (`keymotion-cli signal done`) are optional shortcuts. You
@@ -662,6 +701,9 @@ and end by themselves.
         path = cli.path_text()
     )
 }
+
+/// Before the keymotion-cli path in the skill ([`skill_cli_path`]).
+const SKILL_PATH_LEAD: &str = "run it by its full path: `";
 
 /// The version in one of our skill files; `None` when the file is not ours.
 pub fn skill_version(text: &str) -> Option<u32> {
@@ -772,9 +814,13 @@ pub fn plan_connect(agent: Agent, homes: &Homes, cli: &Cli) -> Result<Plan, Setu
     if agent == Agent::Codex {
         let rules = homes.rules_file();
         made.rules_dir = !homes.rules_dir().is_dir();
+        let rules_before = read_text(&rules)?;
+        if rules_before.as_deref().is_some_and(|t| marker_version(t, RULES_MARKER).is_none()) {
+            return Err(SetupError::invalid(&rules, "is a rules file that is not Keymotion's"));
+        }
         edits.push(Edit {
             path: rules.clone(),
-            before: read_text(&rules)?,
+            before: rules_before,
             after: Some(rules_text(cli)),
             summary: format!("a rule that lets keymotion-cli {} out of the sandbox", ALLOWED_COMMANDS.join(", ")),
             backup: false,
@@ -863,6 +909,16 @@ pub fn plan_disconnect(agent: Agent, homes: &Homes) -> Result<Plan, SetupError> 
             backup: false,
         });
     }
+    let stopped = skill_dir.join(STOPPED_FILE);
+    if let Some(text) = read_text(&stopped)? {
+        edits.push(Edit {
+            path: stopped,
+            before: Some(text),
+            after: None,
+            summary: "remove the note that Keymotion was closed".into(),
+            backup: false,
+        });
+    }
     let mut remove_dirs = vec![skill_dir];
     if agent == Agent::Codex {
         let rules = homes.rules_file();
@@ -886,21 +942,27 @@ pub fn plan_disconnect(agent: Agent, homes: &Homes) -> Result<Plan, SetupError> 
 
 // ------------------------------------------------------------- applying
 
-/// Carry `plan` out: each changed file written whole through a temporary
-/// file beside it (a copy kept first, once, of another program's file),
-/// removed files removed, then our emptied folders.
+/// Carry `plan` out. Every file is read again first: if one is not as the
+/// plan found it (the agent wrote its settings meanwhile), nothing is
+/// written and the error is [`ErrorKind::Changed`]: plan again. Then each
+/// changed file is written whole through a temporary file beside it (a
+/// fresh copy of another program's file kept first, `<file>.before-
+/// keymotion`), removed files are removed, then our emptied folders.
 pub fn apply(plan: &Plan) -> Result<(), SetupError> {
+    for edit in plan.changes() {
+        if read_text(&edit.path)? != edit.before {
+            return Err(SetupError::changed(&edit.path));
+        }
+    }
     for edit in plan.changes() {
         match &edit.after {
             Some(text) => {
                 if let Some(dir) = edit.path.parent() {
                     std::fs::create_dir_all(dir).map_err(|e| SetupError::io(dir, e))?;
                 }
-                if edit.backup && edit.before.is_some() {
+                if let (true, Some(before)) = (edit.backup, &edit.before) {
                     let backup = with_suffix(&edit.path, BACKUP_SUFFIX);
-                    if !backup.exists() {
-                        std::fs::copy(&edit.path, &backup).map_err(|e| SetupError::io(&backup, e))?;
-                    }
+                    write_atomic(&backup, before)?;
                 }
                 write_atomic(&edit.path, text)?;
             }
@@ -924,15 +986,27 @@ fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
     path.with_file_name(name)
 }
 
-/// Write `text` to `path` whole: a temporary file beside it, then a rename
-/// over it, tried again for a moment while another program (the agent
-/// itself, watching its settings) holds the file open.
+/// Write `text` to `path` whole: a temporary file beside it, flushed to
+/// the disk, then a rename over it, tried again for a moment while another
+/// program (the agent itself, watching its settings) holds the file open.
+/// A link (a dotfiles setup) is written through: the file it points to is
+/// replaced, the link stays.
 fn write_atomic(path: &Path, text: &str) -> Result<(), SetupError> {
-    let tmp = with_suffix(path, &format!(".keymotion-{}.tmp", std::process::id()));
-    std::fs::write(&tmp, text).map_err(|e| SetupError::io(&tmp, e))?;
+    let is_link = std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink());
+    let target = if is_link { std::fs::canonicalize(path).map_err(|e| SetupError::io(path, e))? } else { path.to_path_buf() };
+    let tmp = with_suffix(&target, &format!(".keymotion-{}.tmp", std::process::id()));
+    let written = std::fs::File::create(&tmp).and_then(|mut f| {
+        use std::io::Write;
+        f.write_all(text.as_bytes())?;
+        f.sync_all()
+    });
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(SetupError::io(&tmp, e));
+    }
     let mut last = None;
     for _ in 0..20 {
-        match std::fs::rename(&tmp, path) {
+        match std::fs::rename(&tmp, &target) {
             Ok(()) => return Ok(()),
             Err(e) => {
                 last = Some(e);
@@ -1189,25 +1263,149 @@ fn default_codex_timeout(event: &str) -> u32 {
 /// Store copy's, say, while a development build runs), and connecting again
 /// is what moves it. Our files only, never the agents' settings. The files
 /// rewritten.
-pub fn refresh(homes: &Homes, cli: &Cli) -> Vec<PathBuf> {
+pub fn refresh(homes: &Homes) -> Vec<PathBuf> {
     let mut done = Vec::new();
-    let skill = skill_text(cli);
     for agent in Agent::ALL {
         let path = homes.skill_file(agent);
-        if let Ok(text) = std::fs::read_to_string(&path) {
-            if skill_version(&text).is_some_and(|v| v < SKILL_VERSION) && write_atomic(&path, &skill).is_ok() {
-                done.push(path);
-            }
+        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        if !skill_version(&text).is_some_and(|v| v < SKILL_VERSION) {
+            continue;
+        }
+        // The keymotion-cli the file names stays: the copy that connected.
+        let Some(cli) = skill_cli_path(&text) else { continue };
+        if write_atomic(&path, &skill_text(&Cli { path: cli, kind: CliKind::Installed })).is_ok() {
+            done.push(path);
         }
     }
     let rules = homes.rules_file();
     if let Ok(text) = std::fs::read_to_string(&rules) {
         let outdated = marker_version(&text, RULES_MARKER).is_some_and(|v| v < RULES_VERSION);
-        if outdated && write_atomic(&rules, &rules_text(cli)).is_ok() {
-            done.push(rules);
+        if let (true, Some(cli)) = (outdated, rules_cli_path(&text)) {
+            if write_atomic(&rules, &rules_text(&Cli { path: cli, kind: CliKind::Installed })).is_ok() {
+                done.push(rules);
+            }
         }
     }
     done
+}
+
+/// The keymotion-cli one of our skill files names.
+pub fn skill_cli_path(text: &str) -> Option<PathBuf> {
+    let at = text.find(SKILL_PATH_LEAD)? + SKILL_PATH_LEAD.len();
+    let path = &text[at..text[at..].find('`')? + at];
+    (!path.trim().is_empty()).then(|| PathBuf::from(path))
+}
+
+/// The keymotion-cli our Codex rule names (its `host_executable` path).
+pub fn rules_cli_path(text: &str) -> Option<PathBuf> {
+    let lead = "paths = [\"";
+    let at = text.find(lead)? + lead.len();
+    let mut out = String::new();
+    let mut chars = text[at..].chars();
+    loop {
+        match chars.next()? {
+            '"' => break,
+            '\\' => match chars.next()? {
+                'n' => out.push('\n'),
+                c => out.push(c),
+            },
+            c => out.push(c),
+        }
+    }
+    (!out.is_empty()).then(|| PathBuf::from(out))
+}
+
+// ------------------------------------------------- "Keymotion was closed"
+
+/// Beside our skill: Keymotion was closed by the user, or agent access is
+/// off. Hook events then do not start Keymotion (the owner's decision,
+/// 2026-11-23: "if I closed it, it stays closed"); the agent's own commands
+/// still do.
+///
+/// Why there: the hook may run inside another app's package box (the
+/// Claude and ChatGPT desktop apps are MSIX packages), and so may the Store
+/// copy of Keymotion. Inside a box, AppData and HKCU writes go to that
+/// package's own folder: a note the Store copy left in AppData would never
+/// reach a hook, and one a boxed hook wrote would never leave its box. The
+/// rest of the user's folder is shared by all (measured 2026-11-23 from the
+/// Claude desktop app's box: its writes to `%USERPROFILE%\.x` were seen
+/// outside, its writes to `%LOCALAPPDATA%` were not). Our skill folders are
+/// there, and exist exactly while an agent is connected.
+pub const STOPPED_FILE: &str = "stopped.json";
+
+/// Why hooks should not start Keymotion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stopped {
+    /// "Quit" in the tray menu: until Keymotion runs again, or the user
+    /// signs in again (Windows restarted, signed out).
+    Quit,
+    /// Agent access is off: until it is on.
+    AccessOff,
+}
+
+impl Stopped {
+    fn as_str(self) -> &'static str {
+        match self {
+            Stopped::Quit => "quit",
+            Stopped::AccessOff => "access_off",
+        }
+    }
+}
+
+/// The skill folders of the connected agents (ours, with our skill in it).
+fn connected_dirs(homes: &Homes) -> Vec<PathBuf> {
+    Agent::ALL
+        .iter()
+        .map(|a| homes.skill_dir(*a))
+        .filter(|d| std::fs::read_to_string(d.join("SKILL.md")).ok().as_deref().and_then(skill_version).is_some())
+        .collect()
+}
+
+/// Note that hooks should not start Keymotion, in every connected agent's
+/// skill folder. `logon` is the sign-in's id (`kb_winsys::pipe::
+/// current_logon_id`): a quit counts for that sign-in only. The files
+/// written.
+pub fn mark_stopped(homes: &Homes, why: Stopped, logon: Option<u64>) -> Vec<PathBuf> {
+    let text = serde_json::to_string_pretty(&json!({
+        "about": "Written by Keymotion: hook events do not start Keymotion while this file is here.",
+        "reason": why.as_str(),
+        "logon": logon.map(|l| format!("{l:x}")),
+    }))
+    .unwrap_or_default()
+        + "\n";
+    let mut done = Vec::new();
+    for dir in connected_dirs(homes) {
+        let path = dir.join(STOPPED_FILE);
+        if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) && write_atomic(&path, &text).is_ok() {
+            done.push(path);
+        }
+    }
+    done
+}
+
+/// Hooks may start Keymotion again. The files removed.
+pub fn clear_stopped(homes: &Homes) -> Vec<PathBuf> {
+    Agent::ALL
+        .iter()
+        .map(|a| homes.skill_dir(*a).join(STOPPED_FILE))
+        .filter(|p| std::fs::remove_file(p).is_ok())
+        .collect()
+}
+
+/// Whether `agent`'s hooks should leave Keymotion closed: access is off, or
+/// the user quit it in this sign-in (`logon`). A missing or unreadable note
+/// means no: Keymotion is just not running (a restart, never started).
+pub fn hooks_stopped(homes: &Homes, agent: Agent, logon: Option<u64>) -> bool {
+    let Ok(text) = std::fs::read_to_string(homes.skill_dir(agent).join(STOPPED_FILE)) else { return false };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else { return false };
+    match v["reason"].as_str() {
+        Some("access_off") => true,
+        Some("quit") => {
+            let noted = v["logon"].as_str().and_then(|l| u64::from_str_radix(l, 16).ok());
+            noted.is_some() && noted == logon
+        }
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -1326,7 +1524,7 @@ mod tests {
         let v = Json::parse(&read(&settings)).unwrap();
         assert_eq!(v.get("hooks").unwrap().get("Stop").unwrap().as_array().unwrap().len(), 2);
         assert!(read(&settings).contains("elsewhere"));
-        assert_eq!(read(&with_suffix(&settings, BACKUP_SUFFIX)), USERS_OWN, "the first copy stays");
+        assert_eq!(read(&with_suffix(&settings, BACKUP_SUFFIX)), text, "a fresh copy before each write");
 
         // Disconnect: the file as the user had it, the skill folder gone.
         disconnect(Agent::ClaudeCode, &homes).unwrap();
@@ -1427,7 +1625,7 @@ mod tests {
         let stop = &v.get("hooks").unwrap().get("Stop").unwrap().as_array().unwrap()[0];
         let handler = &stop.get("hooks").unwrap().as_array().unwrap()[0];
         let line = handler.get("command").and_then(Json::as_str).unwrap();
-        assert_eq!(line, format!("& '{}' hook codex", cli.path_text()));
+        assert_eq!(line, format!("if (Test-Path -LiteralPath '{0}') {{ & '{0}' hook codex }}", cli.path_text()));
         assert!(stop.get("matcher").is_none());
         assert!(read(&homes.rules_file()).contains("prefix_rule("));
         assert_eq!(skill_version(&read(&homes.skill_file(Agent::Codex))), Some(SKILL_VERSION));
@@ -1502,26 +1700,46 @@ mod tests {
     }
 
     #[test]
-    fn the_hook_line_never_needs_quotes_it_cannot_have() {
-        let plain = Cli {
+    fn the_codex_line_quotes_every_single_quote_powershell_knows() {
+        let alias = Cli {
             path: PathBuf::from(r"C:\Users\saban\AppData\Local\Microsoft\WindowsApps\keymotion-cli.exe"),
             kind: CliKind::Store,
         };
         assert_eq!(
-            codex_command(&plain),
-            r"C:\Users\saban\AppData\Local\Microsoft\WindowsApps\keymotion-cli.exe hook codex"
+            codex_command(&alias),
+            r"if (Test-Path -LiteralPath 'C:\Users\saban\AppData\Local\Microsoft\WindowsApps\keymotion-cli.exe') { & 'C:\Users\saban\AppData\Local\Microsoft\WindowsApps\keymotion-cli.exe' hook codex }"
         );
         let spaced =
             Cli { path: PathBuf::from(r"C:\Users\Ana María\bin\keymotion-cli.exe"), kind: CliKind::Installed };
-        assert_eq!(codex_command(&spaced), r"& 'C:\Users\Ana María\bin\keymotion-cli.exe' hook codex");
-        let quote = Cli { path: PathBuf::from(r"C:\Users\O'Neil\bin\keymotion-cli.exe"), kind: CliKind::Installed };
-        assert_eq!(codex_command(&quote), r"& 'C:\Users\O''Neil\bin\keymotion-cli.exe' hook codex");
+        assert!(codex_command(&spaced).contains(r"& 'C:\Users\Ana María\bin\keymotion-cli.exe' hook codex }"));
+        // ' ‘ ’ ‚ ‛: PowerShell ends a single-quoted string at each of them.
+        for q in PS_SINGLE_QUOTES {
+            let cli = Cli { path: PathBuf::from(format!(r"C:\Users\O{q}Neil\bin\keymotion-cli.exe")), kind: CliKind::Installed };
+            let line = codex_command(&cli);
+            assert!(line.contains(&format!(r"'C:\Users\O{q}{q}Neil\bin\keymotion-cli.exe'")), "{line}");
+        }
+        assert_eq!(ps_quoted("a’b'c"), "'a’’b''c'");
+        // On PATH, by its bare name.
+        let bare = Cli { path: PathBuf::from("keymotion-cli"), kind: CliKind::Installed };
+        assert_eq!(
+            codex_command(&bare),
+            "if (Get-Command 'keymotion-cli' -ErrorAction SilentlyContinue) { & 'keymotion-cli' hook codex }"
+        );
         assert_eq!(
             command_line(Agent::ClaudeCode, &spaced),
             r#""C:\Users\Ana María\bin\keymotion-cli.exe" hook claude-code"#
         );
-        // Ours, whichever form.
-        for line in [&codex_command(&plain), &codex_command(&spaced), "\"C:\\x\\keymotion-cli.exe\" hook codex"] {
+        // Ours, whichever form we ever wrote.
+        let older = [
+            r"C:\x\keymotion-cli.exe hook codex",
+            r"& 'C:\x y\keymotion-cli.exe' hook codex",
+            "\"C:\\x\\keymotion-cli.exe\" hook codex",
+        ];
+        for line in [codex_command(&alias), codex_command(&spaced), codex_command(&bare)]
+            .iter()
+            .map(String::as_str)
+            .chain(older)
+        {
             assert!(is_ours(Agent::Codex, &Json::Object(vec![("command".into(), Json::str(line))])), "{line}");
             assert!(!is_ours(Agent::ClaudeCode, &Json::Object(vec![("command".into(), Json::str(line))])), "{line}");
         }
@@ -1548,29 +1766,148 @@ mod tests {
     }
 
     #[test]
-    fn refresh_rewrites_only_our_outdated_files() {
+    fn refresh_rewrites_only_our_outdated_files_and_keeps_their_path() {
         let home = temp_home();
         let homes = Homes::with(&home, None, None);
         let cli = cli(&home);
-        assert!(refresh(&homes, &cli).is_empty(), "not connected: nothing");
+        assert!(refresh(&homes).is_empty(), "not connected: nothing");
         connect(Agent::ClaudeCode, &homes, &cli).unwrap();
         connect(Agent::Codex, &homes, &cli).unwrap();
-        assert!(refresh(&homes, &cli).is_empty(), "up to date");
-        let dev = Cli { path: home.join("target").join("keymotion-cli.exe"), kind: CliKind::Dev };
-        assert!(refresh(&homes, &dev).is_empty(), "another copy's connection stays as it is");
+        assert!(refresh(&homes).is_empty(), "up to date");
         let skill = homes.skill_file(Agent::Codex);
-        std::fs::write(
-            &skill,
-            read(&skill).replace(&format!("{SKILL_MARKER} {SKILL_VERSION}"), &format!("{SKILL_MARKER} 0")),
-        )
-        .unwrap();
-        std::fs::write(homes.rules_file(), format!("# {RULES_MARKER} 0\n")).unwrap();
-        let done = refresh(&homes, &cli);
-        assert_eq!(done, [skill.clone(), homes.rules_file()]);
+        assert_eq!(skill_cli_path(&read(&skill)), Some(cli.path.clone()));
+        assert_eq!(rules_cli_path(&read(&homes.rules_file())), Some(cli.path.clone()));
+        let old = |t: String, m: &str, v: u32| t.replace(&format!("{m} {v}"), &format!("{m} 0"));
+        std::fs::write(&skill, old(read(&skill), SKILL_MARKER, SKILL_VERSION)).unwrap();
+        let rules = homes.rules_file();
+        std::fs::write(&rules, old(read(&rules), RULES_MARKER, RULES_VERSION)).unwrap();
+        let done = refresh(&homes);
+        assert_eq!(done, [skill.clone(), rules.clone()]);
+        // Brought up to date for the keymotion-cli it named, whoever runs.
         assert_eq!(read(&skill), skill_text(&cli));
-        // A skill the user wrote in our folder is not ours to rewrite.
+        assert_eq!(read(&rules), rules_text(&cli));
+        // A skill the user wrote in our folder is not ours to rewrite; nor
+        // an old one whose path cannot be read.
         std::fs::write(&skill, "mine").unwrap();
-        assert!(refresh(&homes, &cli).is_empty());
+        std::fs::write(&rules, format!("# {RULES_MARKER} 0\n")).unwrap();
+        assert!(refresh(&homes).is_empty());
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn a_file_that_changed_since_the_plan_is_not_overwritten() {
+        let home = temp_home();
+        let homes = Homes::with(&home, None, None);
+        std::fs::create_dir_all(&homes.claude).unwrap();
+        let settings = homes.hooks_file(Agent::ClaudeCode);
+        std::fs::write(&settings, USERS_OWN).unwrap();
+        let plan = plan_connect(Agent::ClaudeCode, &homes, &cli(&home)).unwrap();
+        // Claude Code writes its settings while the user reads the plan
+        // (/model, /permissions).
+        let theirs = USERS_OWN.replace("\"opus\"", "\"sonnet\"");
+        std::fs::write(&settings, &theirs).unwrap();
+        let e = apply(&plan).unwrap_err();
+        assert_eq!(e.kind, ErrorKind::Changed, "{}", e.message);
+        assert_eq!(read(&settings), theirs, "their change stays");
+        assert!(!homes.skill_dir(Agent::ClaudeCode).exists(), "nothing of the plan was written");
+        // Planned again from the file as it is: both.
+        apply(&plan_connect(Agent::ClaudeCode, &homes, &cli(&home)).unwrap()).unwrap();
+        let text = read(&settings);
+        assert!(text.contains("\"sonnet\"") && text.contains("keymotion-cli.exe"), "{text}");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn a_read_only_file_is_left_as_it_was() {
+        let home = temp_home();
+        let homes = Homes::with(&home, None, None);
+        std::fs::create_dir_all(&homes.claude).unwrap();
+        let settings = homes.hooks_file(Agent::ClaudeCode);
+        std::fs::write(&settings, USERS_OWN).unwrap();
+        let mut perms = std::fs::metadata(&settings).unwrap().permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(&settings, perms.clone()).unwrap();
+        let e = connect(Agent::ClaudeCode, &homes, &cli(&home)).unwrap_err();
+        assert_eq!(e.kind, ErrorKind::Io, "{}", e.message);
+        assert_eq!(read(&settings), USERS_OWN);
+        let left: Vec<String> = std::fs::read_dir(&homes.claude)
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.file_name().to_string_lossy().into_owned()))
+            .collect();
+        assert!(left.iter().all(|n| !n.ends_with(".tmp")), "no temporary file left: {left:?}");
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        std::fs::set_permissions(&settings, perms).unwrap();
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn a_linked_settings_file_is_written_through_the_link() {
+        let home = temp_home();
+        let homes = Homes::with(&home, None, None);
+        std::fs::create_dir_all(&homes.claude).unwrap();
+        let dotfiles = home.join("dotfiles");
+        std::fs::create_dir_all(&dotfiles).unwrap();
+        let real = dotfiles.join("claude-settings.json");
+        std::fs::write(&real, USERS_OWN).unwrap();
+        let settings = homes.hooks_file(Agent::ClaudeCode);
+        if let Err(e) = std::os::windows::fs::symlink_file(&real, &settings) {
+            // Creating links needs Developer Mode or an administrator.
+            eprintln!("skipped: no symbolic link here ({e})");
+            let _ = std::fs::remove_dir_all(&home);
+            return;
+        }
+        connect(Agent::ClaudeCode, &homes, &cli(&home)).unwrap();
+        assert!(std::fs::symlink_metadata(&settings).unwrap().file_type().is_symlink(), "the link stays");
+        assert!(read(&real).contains("keymotion-cli.exe"), "the file it points to has our hooks");
+        disconnect(Agent::ClaudeCode, &homes).unwrap();
+        assert!(std::fs::symlink_metadata(&settings).unwrap().file_type().is_symlink());
+        assert_eq!(read(&real), USERS_OWN);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn a_rules_file_that_is_not_ours_is_refused() {
+        let home = temp_home();
+        let homes = Homes::with(&home, None, None);
+        std::fs::create_dir_all(homes.rules_dir()).unwrap();
+        let mine = "prefix_rule(pattern=[\"git\"], decision=\"allow\")\n";
+        std::fs::write(homes.rules_file(), mine).unwrap();
+        let e = connect(Agent::Codex, &homes, &cli(&home)).unwrap_err();
+        assert_eq!(e.kind, ErrorKind::Invalid);
+        assert_eq!(read(&homes.rules_file()), mine);
+        assert!(!homes.hooks_file(Agent::Codex).exists());
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn a_closed_keymotion_is_noted_beside_the_skill() {
+        let home = temp_home();
+        let homes = Homes::with(&home, None, None);
+        let logon = Some(0x1234_5678);
+        assert!(mark_stopped(&homes, Stopped::Quit, logon).is_empty(), "nothing connected, nothing written");
+        assert!(!home.join(".claude").exists() && !home.join(".agents").exists());
+        connect(Agent::ClaudeCode, &homes, &cli(&home)).unwrap();
+        assert!(!hooks_stopped(&homes, Agent::ClaudeCode, logon));
+        assert_eq!(mark_stopped(&homes, Stopped::Quit, logon), [homes.skill_dir(Agent::ClaudeCode).join(STOPPED_FILE)]);
+        assert!(hooks_stopped(&homes, Agent::ClaudeCode, logon));
+        // A quit counts for that sign-in only: after a restart, Keymotion is
+        // just not running.
+        assert!(!hooks_stopped(&homes, Agent::ClaudeCode, Some(0x9999)));
+        assert!(!hooks_stopped(&homes, Agent::ClaudeCode, None));
+        assert!(!hooks_stopped(&homes, Agent::Codex, logon), "not connected");
+        // Access off counts whatever the sign-in.
+        mark_stopped(&homes, Stopped::AccessOff, logon);
+        assert!(hooks_stopped(&homes, Agent::ClaudeCode, Some(0x9999)));
+        assert_eq!(clear_stopped(&homes).len(), 1);
+        assert!(!hooks_stopped(&homes, Agent::ClaudeCode, logon));
+        // Unreadable: as if it were not there.
+        std::fs::write(homes.skill_dir(Agent::ClaudeCode).join(STOPPED_FILE), "{ not json").unwrap();
+        assert!(!hooks_stopped(&homes, Agent::ClaudeCode, logon));
+        // Disconnecting takes it away with the skill.
+        mark_stopped(&homes, Stopped::AccessOff, logon);
+        disconnect(Agent::ClaudeCode, &homes).unwrap();
+        assert!(!homes.skill_dir(Agent::ClaudeCode).exists());
         let _ = std::fs::remove_dir_all(&home);
     }
 
