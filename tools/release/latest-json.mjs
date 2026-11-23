@@ -58,6 +58,17 @@ const LINK_DEFINITION = /^\s{0,3}\[[^\]]+\]:\s*\S/;
 /** Whether a CHANGELOG heading's label is the Unreleased one, in any language. */
 export const isUnreleased = (label) => UNRELEASED.has(label.toLowerCase());
 
+/**
+ * Whether a version is a pre-release (1.3.0-beta.1): a "-" after the three
+ * numbers. The one definition the release scripts share (check-release.mjs
+ * passes it on). The workflows look for a "-" anywhere in the version
+ * (release.yml: `*-*` and `contains(github.ref_name, '-')`); they agree
+ * because tools/check-version.mjs lets a version be only X.Y.Z or
+ * X.Y.Z-<pre-release>, without build metadata ("+…"). A pre-release is only
+ * on GitHub, marked as a pre-release, and never GitHub's latest release.
+ */
+export const isPrerelease = (version) => /^\d+\.\d+\.\d+-/.test(version);
+
 /** The body of the "## <label>" section, or null when there is none. */
 function section(markdown, matches) {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
@@ -225,7 +236,7 @@ export function releaseBody({ notes, fileName, sha256, size, preface, repository
   if (!/^[0-9a-f]{64}$/.test(sha256 ?? "")) throw new Error(`not a SHA-256: ${JSON.stringify(sha256)}`);
   const parts = [];
   if (preface) parts.push(`> ${preface}`);
-  const prerelease = /^\d+\.\d+\.\d+-/.test(version ?? "");
+  const prerelease = isPrerelease(version ?? "");
   const store = Boolean(version) && !prerelease;
   if (repository && version) {
     const url = releaseAssetUrl({ repository, version, fileName });

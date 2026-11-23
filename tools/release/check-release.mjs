@@ -25,7 +25,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import { SKELETON_MARKER, readWhatsNew } from "../store/whats-new.mjs";
-import { changelogSection } from "./latest-json.mjs";
+import { changelogSection, isPrerelease } from "./latest-json.mjs";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 
@@ -39,14 +39,12 @@ const IDENTIFIER = "(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)";
 /** A pre-release version as prepare.mjs makes them: 1.3.0-beta.1 (no build metadata). */
 export const PRERELEASE_VERSION = new RegExp(`^\\d+\\.\\d+\\.\\d+-${IDENTIFIER}(?:\\.${IDENTIFIER})*$`);
 
-/**
- * Whether a version is a pre-release (1.3.0-beta.1): a "-" after the three
- * numbers, as release.yml and store.yml tell them apart. A pre-release is
- * only on GitHub, marked as a pre-release, and never GitHub's latest release.
- */
-export const isPrerelease = (version) => /^\d+\.\d+\.\d+-/.test(version);
+// Whether a version is a pre-release (1.3.0-beta.1): defined once, in
+// latest-json.mjs, which this file builds on.
+export { isPrerelease };
 
-const CHANGELOG_FILE = /^CHANGELOG(?:\.[A-Za-z]{2,3}(?:-[A-Za-z0-9]+)*)?\.md$/;
+/** CHANGELOG.md and its translations (CHANGELOG.tr.md, CHANGELOG.zh-CN.md). */
+export const CHANGELOG_FILE = /^CHANGELOG(?:\.[A-Za-z]{2,3}(?:-[A-Za-z0-9]+)*)?\.md$/;
 
 /** CHANGELOG.md first, then its translations (CHANGELOG.ru.md, …). */
 export function changelogFiles(root) {

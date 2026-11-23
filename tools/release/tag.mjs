@@ -17,10 +17,11 @@
 // A pre-release (1.3.0-beta.1; docs site: developers/contributing, "Beta
 // (pre-release)") is tagged on its beta/* branch instead, which is never
 // merged anywhere. There the checks are: the branch is beta/*, HEAD is its
-// tip on GitHub, origin/main is in it (a beta has everything released), CI
-// has passed on HEAD, and its CHANGELOG sections are written. release.yml
-// then drafts a GitHub pre-release, with no Store package, and nothing is
-// merged back.
+// tip on GitHub, and tools/release/check-beta.mjs's rules (origin/main is
+// in it, it changes only the version and the CHANGELOGs since develop, CI's
+// "Build and test" job passed on HEAD), and its CHANGELOG sections are
+// written. release.yml then checks the tag's commit again and drafts a
+// GitHub pre-release, with no Store package; nothing is merged back.
 //
 // Both stay on a computer: only the repository's admins may make v* tags
 // (the "Release tags" ruleset), and CI doesn't run on a pull request opened
@@ -32,6 +33,7 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
+import { betaProblems, changedSinceDevelop, ciRuns, ciState, notPrepared } from "./check-beta.mjs";
 import { appVersion, isPrerelease, releaseProblems } from "./check-release.mjs";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
@@ -39,19 +41,8 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 /** The branches a pre-release is tagged on. */
 export const BETA_BRANCH = /^beta\/[^/]+$/;
 
-/**
- * CI's state on a commit from its runs (`gh run list --json status,conclusion`):
- * "passed" when a run succeeded, "running" while one runs, "failed" when all
- * finished without success, "none" when there is no run.
- */
-export function ciState(runs) {
-  if (runs.some((r) => r.conclusion === "success")) return "passed";
-  if (runs.some((r) => r.status !== "completed")) return "running";
-  return runs.length ? "failed" : "none";
-}
-
 /** What keeps `state` from being tagged: an empty list when nothing does. */
-export function tagProblems({ branch, clean, head, remoteHead, tagLocal, tagRemote, version, mainIsAncestor, ci }) {
+export function tagProblems({ branch, clean, head, remoteHead, tagLocal, tagRemote, version, mainIsAncestor, unprepared, ci }) {
   const problems = [];
   const short = (sha) => sha?.slice(0, 7);
   if (isPrerelease(version)) {
@@ -61,12 +52,8 @@ export function tagProblems({ branch, clean, head, remoteHead, tagLocal, tagRemo
     if (!clean) problems.push("the working tree has changes: commit or remove them first");
     if (!remoteHead) problems.push(`${branch} is not on GitHub: git push -u origin ${branch}`);
     else if (head !== remoteHead) problems.push(`HEAD (${short(head)}) is not origin/${branch} (${short(remoteHead)}): push it (git push), or pull what is missing`);
-    if (!mainIsAncestor) {
-      problems.push(`origin/main is not in ${branch}: a pre-release must have everything already released. Merge main back into develop and cut the beta again`);
-    }
-    if (ci === "running") problems.push(`CI is still running on HEAD (${short(head)}): tag once it is green (GitHub › Actions › CI)`);
-    else if (ci === "failed") problems.push(`CI failed on HEAD (${short(head)}): fix it on develop and cut the beta again`);
-    else if (ci !== "passed") problems.push(`CI has not run on HEAD (${short(head)}): push the branch, CI runs on beta/* branches`);
+    // Always judged here: a state without CI's answer is not green.
+    problems.push(...betaProblems({ branch, at: `HEAD (${short(head)})`, mainIsAncestor, unprepared, ci: ci ?? "none" }));
   } else {
     if (branch !== "main") problems.push(`the branch is ${branch}, not main (git switch main && git pull)`);
     if (!clean) problems.push("the working tree has changes: commit or remove them first");
@@ -145,8 +132,10 @@ function main() {
     tagRemote: git("ls-remote", "--tags", "origin", `refs/tags/${tag}`) !== "",
   };
   if (prerelease) {
+    git("fetch", "--quiet", "origin", "develop");
     state.mainIsAncestor = gitYes("merge-base", "--is-ancestor", "origin/main", "HEAD");
-    state.ci = ciState(JSON.parse(gh("run", "list", "--workflow", "ci.yml", "--commit", head, "--json", "status,conclusion")));
+    state.unprepared = notPrepared(changedSinceDevelop(git, head));
+    state.ci = ciState(ciRuns(gh, head));
   }
   const problems = [...tagProblems(state), ...releaseProblems(root, version).problems];
   if (problems.length) {

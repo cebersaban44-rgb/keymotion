@@ -10,7 +10,15 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { SKELETON_MARKER, STORE_LANGUAGES } from "../store/whats-new.mjs";
-import { changelogFiles, isPrerelease, PRERELEASE_VERSION, releaseNotesPages, releaseNotesSection, releaseProblems } from "./check-release.mjs";
+import {
+  changelogFiles,
+  isPrerelease,
+  PRERELEASE_VERSION,
+  RELEASE_VERSION,
+  releaseNotesPages,
+  releaseNotesSection,
+  releaseProblems,
+} from "./check-release.mjs";
 import {
   addNotesSection,
   bumpKind,
@@ -476,6 +484,35 @@ test("CLI: a pre-release leaves Unreleased and the site and Store files alone; t
   );
   assert.match(read(dir, "site/src/content/docs/about/release-notes.mdx"), /## Keymotion 1\.2\.0\n\n\{\/\* TODO\(release\)/);
   assert.ok(existsSync(join(dir, "store/whats-new/1.2.0.en.txt")));
+});
+
+test("check-version: a version is X.Y.Z or a pre-release, never with build metadata", (t) => {
+  const dir = fixture(t);
+  const checkVersion = join(dir, "tools", "check-version.mjs");
+  const files = ["Cargo.toml", "crates/other/Cargo.toml", "app/package.json", "app/src-tauri/tauri.conf.json", "Cargo.lock"];
+  const original = Object.fromEntries(files.map((f) => [f, read(dir, f)]));
+  const withVersion = (version) => {
+    for (const f of files) writeFileSync(join(dir, f), original[f].replaceAll("1.1.0", version));
+    return spawnSync(process.execPath, [checkVersion], { encoding: "utf8", env });
+  };
+  for (const version of ["1.2.0", "1.2.0-beta.1", "1.2.0-rc.10", "1.2.0-alpha"]) {
+    const ok = withVersion(version);
+    assert.equal(ok.status, 0, `${version}: ${ok.stdout}`);
+    // Every version check-version takes is one the release scripts take, and the other way round.
+    assert.ok(RELEASE_VERSION.test(version) || PRERELEASE_VERSION.test(version), version);
+  }
+  // Build metadata would make a "-" in it a pre-release for the workflows
+  // (contains '-') and not for the scripts (isPrerelease): refused.
+  for (const version of ["1.2.0+build.1", "1.2.0+build-1", "1.2.0-beta.1+exp"]) {
+    const res = withVersion(version);
+    assert.equal(res.status, 1, version);
+    assert.match(res.stdout, /has build metadata \("\+…"\), which Keymotion's versions don't use/, version);
+  }
+  for (const version of ["1.2.0-beta.01", "1.2.0-", "1.2.0-beta..1", "1.2"]) {
+    const res = withVersion(version);
+    assert.equal(res.status, 1, version);
+    assert.match(res.stdout, /is not X\.Y\.Z or a pre-release such as X\.Y\.Z-beta\.1/, version);
+  }
 });
 
 test("check-release: skeletons fail until the text is written", (t) => {
