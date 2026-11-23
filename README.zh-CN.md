@@ -53,7 +53,7 @@
   <br>
   <sub>键盘场景由 AI 生成；应用的页面和键盘屏幕上显示的内容都是真实的。</sub>
   <br>
-  <b>36 秒有声视频（英文）：<a href="https://youtu.be/LvGvyJFhPIE">在 YouTube 上观看</a></b>
+  <b>49 秒有声视频（英文）：<a href="https://youtu.be/7IcBu2ERSzA">在 YouTube 上观看</a></b>
 </p>
 
 <p align="center">
