@@ -57,6 +57,16 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 
+/// Someone serves the pipe `name` (whoever it is): nothing is opened, no
+/// connection taken from the server.
+pub fn exists(name: &str) -> bool {
+    let wide_name = wide(name);
+    // SAFETY: NUL-terminated name. A pipe with every instance busy is there
+    // too (the wait timed out).
+    unsafe { WaitNamedPipeW(PCWSTR(wide_name.as_ptr()), 1) }.as_bool()
+        || is(&io::Error::last_os_error(), ERROR_SEM_TIMEOUT)
+}
+
 /// The most connections a server takes at once.
 pub const MAX_INSTANCES: u32 = 4;
 /// The pipe's buffer size each way (advisory for Windows).
@@ -145,6 +155,35 @@ pub fn current_user_sid() -> io::Result<String> {
     // SAFETY: the API returned a NUL-terminated string it allocated with
     // LocalAlloc; it is read once and freed once.
     Ok(unsafe { take_local_string(text) })
+}
+
+/// The logon this process belongs to (its token's authentication id): a
+/// new one with every sign-in, and after every restart. keymotion-cli uses
+/// it to tell "the user quit Keymotion in this sign-in" from "since then
+/// Windows restarted" (`kb_hooks::setup::hooks_stopped`).
+pub fn current_logon_id() -> io::Result<u64> {
+    use windows::Win32::Security::{TokenStatistics, TOKEN_STATISTICS};
+    let mut raw = HANDLE::default();
+    // SAFETY: the current-process pseudo handle needs no closing; valid out
+    // pointer.
+    unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut raw) }.map_err(win_err)?;
+    // SAFETY: a token handle just opened, owned from here on.
+    let token = unsafe { OwnedHandle::from_raw_handle(raw.0) };
+    let mut stats = TOKEN_STATISTICS::default();
+    let mut size = 0u32;
+    // SAFETY: `stats` is a TOKEN_STATISTICS of the size given.
+    unsafe {
+        GetTokenInformation(
+            handle(&token),
+            TokenStatistics,
+            Some((&mut stats as *mut TOKEN_STATISTICS).cast()),
+            std::mem::size_of::<TOKEN_STATISTICS>() as u32,
+            &mut size,
+        )
+    }
+    .map_err(win_err)?;
+    let id = stats.AuthenticationId;
+    Ok((u64::from(id.HighPart as u32) << 32) | u64::from(id.LowPart))
 }
 
 /// The logon session (Remote Desktop / fast user switching) this process
@@ -1147,6 +1186,23 @@ mod tests {
         assert!(sid.starts_with("S-1-"), "{sid}");
         assert!(sid.bytes().all(|b| b.is_ascii_digit() || b == b'-' || b == b'S'), "{sid}");
         current_session_id().unwrap();
+        let logon = current_logon_id().unwrap();
+        assert_ne!(logon, 0);
+        assert_eq!(current_logon_id().unwrap(), logon, "the same for the whole sign-in");
+    }
+
+    #[test]
+    fn a_served_pipe_is_seen_without_taking_a_connection() {
+        let name = unique_name();
+        assert!(!exists(&name));
+        let server = serve(&name, echo).unwrap();
+        assert!(exists(&name));
+        assert_eq!(server.connections(), 0);
+        let mut client = PipeClient::connect(&name, WAIT).unwrap();
+        assert_eq!(client.request("still", WAIT).unwrap(), "echo:still");
+        drop(client);
+        server.stop();
+        assert!(!exists(&name));
     }
 
     #[test]

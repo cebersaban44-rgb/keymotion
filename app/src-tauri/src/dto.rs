@@ -3399,6 +3399,25 @@ pub struct AgentServer {
     pub connections: u32,
 }
 
+/// A coding agent's session, known from its hooks (B: its number lights
+/// on the number row while it waits, with two or more sessions).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AgentSessionInfo {
+    /// 1 to 9, in the order the sessions first reached Keymotion; `None`
+    /// when all nine were taken.
+    pub number: Option<u8>,
+    /// Its source, e.g. `claude-code:3f9a0c1d`.
+    pub source: String,
+    /// `claude-code` or `codex`.
+    pub agent: Option<String>,
+    /// The project folder's name.
+    pub label: Option<String>,
+    /// It waits for the user now.
+    pub waiting: bool,
+}
+
 /// The agents page's state (`agents` event payload).
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -3407,6 +3426,8 @@ pub struct AgentsState {
     pub settings: AgentSettings,
     /// Every agent's lights now, highest rank first.
     pub signals: Vec<AgentSignalInfo>,
+    /// The coding agents' sessions, by number.
+    pub sessions: Vec<AgentSessionInfo>,
     /// The last agent requests, newest first.
     pub log: Vec<AgentLogEntry>,
     pub server: AgentServer,

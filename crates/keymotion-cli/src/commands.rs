@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use crate::cli::{self, Env, Invocation, Plan};
 use crate::output::{self, Done, Logger};
 use crate::session::{self, Ctx, IfNotRunning, Started};
-use crate::{doctor, guide, human};
+use crate::{connect, doctor, guide, hook, human};
 
 /// Run a command line clap took; the exit code.
 pub fn run(inv: Invocation, env: &Env) -> u8 {
@@ -15,9 +15,19 @@ pub fn run(inv: Invocation, env: &Env) -> u8 {
     let quiet = inv.global.quiet;
     let name = inv.command.name();
     let log = Logger::new(inv.global.log, quiet);
-    let result = inv.command.plan().and_then(|plan| match plan {
+    let plan = inv.command.plan();
+    // Hook mode through clap (`--json hook codex`): still nothing printed,
+    // and 0 (`main` reads plain `hook` before clap).
+    if let Ok(Plan::Hook { agent, deliver }) = &plan {
+        hook::run(agent, deliver.as_deref(), env);
+        return kb_agent::exit::OK;
+    }
+    let result = plan.and_then(|plan| match plan {
         // Needs nothing, so a wrong KEYMOTION_SOURCE does not hide it.
         Plan::Guide => Ok(Done::new(guide::data(), guide::GUIDE)),
+        Plan::Connect { agent, yes, dry_run } => connect::run(env, agent, true, yes, dry_run, json),
+        Plan::Disconnect { agent, yes, dry_run } => connect::run(env, agent, false, yes, dry_run, json),
+        Plan::Connections => connect::connections(env),
         plan => execute(&Ctx::new(&inv.global, env, log)?, plan),
     });
     output::finish(json, quiet, name, result)
@@ -31,6 +41,9 @@ fn execute(ctx: &Ctx, plan: Plan) -> Result<Done, AgentError> {
         Plan::Guide => Ok(Done::new(guide::data(), guide::GUIDE)),
         Plan::Doctor => Ok(doctor::run(ctx)),
         Plan::Start => start(ctx),
+        Plan::Hook { .. } | Plan::Connect { .. } | Plan::Disconnect { .. } | Plan::Connections => {
+            Err(AgentError::new(ErrorCode::Internal, "This command is run elsewhere."))
+        }
     }
 }
 

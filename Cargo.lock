@@ -2126,6 +2126,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "kb-hooks"
+version = "1.1.0"
+dependencies = [
+ "kb-agent",
+ "kb-winsys",
+ "serde",
+ "serde_json",
+ "sha2",
+ "toml 1.2.1+spec-1.1.0",
+]
+
+[[package]]
 name = "kb-protocol"
 version = "1.1.0"
 dependencies = [
@@ -2172,6 +2184,7 @@ dependencies = [
  "kb-agent",
  "kb-core",
  "kb-devices",
+ "kb-hooks",
  "kb-protocol",
  "kb-transport",
  "kb-winsys",
@@ -2196,6 +2209,7 @@ version = "1.1.0"
 dependencies = [
  "clap",
  "kb-agent",
+ "kb-hooks",
  "kb-winsys",
  "serde_json",
  "toml 1.2.1+spec-1.1.0",

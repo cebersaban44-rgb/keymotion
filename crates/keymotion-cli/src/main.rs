@@ -5,10 +5,13 @@
 //!   pipe to the running Keymotion app, whose device actor stays the
 //!   keyboard's only owner (`tests/dependencies.rs` keeps the HID stack,
 //!   Tauri and tokio out of this crate).
-//! * Results go to stdout, diagnostics to stderr; it never asks anything
-//!   and never reads stdin. Human output is short English; `--json` (or
-//!   `KEYMOTION_OUTPUT=json`) prints exactly one JSON object, on success
-//!   and on failure ([`output`]).
+//! * Results go to stdout, diagnostics to stderr. It reads stdin only in
+//!   hook mode (the agent's event) and asks only in `connect` and
+//!   `disconnect` at a terminal. Human output is short English; `--json`
+//!   (or `KEYMOTION_OUTPUT=json`) prints exactly one JSON object, on
+//!   success and on failure ([`output`]).
+//! * Hook mode (`keymotion-cli hook claude-code|codex`) is read before
+//!   clap: whatever comes, it prints nothing and exits with 0 ([`hook`]).
 //! * Exit codes are kb-agent's (`kb_agent::exit`): 0, 1, 64, 65, 69, 75,
 //!   76, 77, never 2. A Claude Code or Codex hook that exits with 2 makes
 //!   the agent keep going, or refuses a permission. clap's own usage error
@@ -28,8 +31,12 @@ mod cli;
 #[cfg(windows)]
 mod commands;
 #[cfg(windows)]
+mod connect;
+#[cfg(windows)]
 mod doctor;
 mod guide;
+#[cfg(windows)]
+mod hook;
 mod human;
 #[cfg(windows)]
 mod launch;
@@ -46,8 +53,13 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg(windows)]
 fn main() -> ExitCode {
+    let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    if args.get(1).is_some_and(|a| a == "hook") {
+        hook::main(&args[2..]);
+        return ExitCode::from(kb_agent::exit::OK);
+    }
     let env = cli::Env::read();
-    let code = match cli::parse(std::env::args_os(), &env) {
+    let code = match cli::parse(args, &env) {
         // --help and --version.
         cli::Parsed::Print { json, clap } => output::print_help(json, &clap),
         cli::Parsed::Usage { json, command, error, clap } => {

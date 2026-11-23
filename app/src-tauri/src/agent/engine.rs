@@ -25,6 +25,21 @@
 //!   Never what an agent's user typed: the protocol carries no such text.
 //! * Each light's LEDs are worked out once, when it comes, and again only
 //!   when another keyboard model is in use ([`Engine::refresh_keys`]).
+//! * Coding agents' hooks (`hook`): each session is a source of its own
+//!   (`claude-code:3f9a0c1d`) and gets a number, 1 to 9, in the order it
+//!   first reached Keymotion (a number no live session holds is free again).
+//!   A question (`attention`) stays until it is answered when its look says
+//!   so (`until_answered`, the default): the tool calls it waits for are
+//!   kept, and it goes when the last one is answered, or when the turn
+//!   ends. With two or more live sessions, a waiting session's number lights
+//!   on its number key (B). A usage limit has its own look (A), and a helper
+//!   agent's end a short wave on the F row (H).
+//! * A question goes out as soon as the user touches the keyboard or the
+//!   mouse after its first flashes showed (the owner's decision,
+//!   2026-11-23): whoever is at the computer has seen it. Only while the
+//!   lights show (not hidden by a game, not off for the night). Its
+//!   session's number (B) stays on until the question is answered, so the
+//!   user still sees which session waits.
 //!
 //! Time is in milliseconds of a steady clock (`Now::mono`); the log shows
 //! the wall clock.
@@ -32,13 +47,15 @@
 use crate::agent::config;
 use crate::agent::effects::{burst_level, scale, Look, Motion, Place, BURST_MS};
 use crate::agent::keys::KeyIndex;
-use crate::dto::{AgentLogEntry, AgentLook, AgentProgressKeys, AgentSettingChange, AgentSettings, AgentSignalInfo};
-use kb_agent::protocol::{ClearArgs, LightArgs, ProgressArgs, SettingsSetArgs, SignalArgs};
+use crate::dto::{
+    AgentLogEntry, AgentLook, AgentProgressKeys, AgentSessionInfo, AgentSettingChange, AgentSettings, AgentSignalInfo,
+};
+use kb_agent::protocol::{ClearArgs, HookArgs, LightArgs, ProgressArgs, SettingsSetArgs, SignalArgs};
 use kb_agent::values::duration_ms;
-use kb_agent::{AgentError, Command, ErrorCode, KeyGroup, KeySpec, SignalId, SignalName, SourceName};
+use kb_agent::{AgentError, Command, ErrorCode, HookEvent, KeyGroup, KeySpec, SignalId, SignalName, SourceName};
 use kb_protocol::sonix::Rgb;
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
 pub const MAX_PER_SOURCE: usize = 8;
 /// Sources with lights at once.
@@ -59,6 +76,23 @@ const MAX_MISSED: usize = 8;
 pub const MISSED_KEEP_MS: u64 = 12 * 60 * 60 * 1000;
 /// A source's refusals go in the log at most this often.
 const REFUSAL_LOG_EVERY_MS: u64 = 1000;
+/// Coding agents' sessions known at once (B)…
+pub const MAX_SESSIONS: usize = 32;
+/// …and the numbers they get: one per number key.
+pub const SESSION_NUMBERS: u8 = 9;
+/// A session not heard of for this long is forgotten, and its number goes
+/// to the next one (a session that crashed never says it ended).
+pub const SESSION_KEEP_MS: u64 = 12 * 60 * 60 * 1000;
+/// Tool calls one session may have waiting at once.
+const MAX_PENDING: usize = 16;
+/// A session counts as live (for its number and for B) this long after it
+/// was last heard of, or while its question is open.
+pub const SESSION_LIVE_MS: u64 = 30 * 60_000;
+/// Input sooner than this after a question showed (and before its opening
+/// flashes ended) was already on its way: it does not put the question out.
+pub const ACK_GRACE_MS: u64 = 1_000;
+/// A helper agent's wave (H) runs once across the F row at this speed.
+const HELPER_SPEED: u32 = 4;
 
 /// Now, on both clocks.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -80,6 +114,10 @@ pub enum Kind {
     /// A signal that ended while the user was away, flashing once on their
     /// return.
     Back,
+    /// A coding agent stopped at its usage limit (A).
+    UsageLimit,
+    /// A coding agent's helper agent finished (H).
+    Helper,
 }
 
 impl Kind {
@@ -90,6 +128,8 @@ impl Kind {
             Self::Progress => "progress",
             Self::Try => "try",
             Self::Back => "back",
+            Self::UsageLimit => "usage_limit",
+            Self::Helper => "helper",
         }
     }
 
@@ -99,7 +139,7 @@ impl Kind {
             Self::Try => 5,
             Self::Signal(SignalName::Attention) => 4,
             Self::Back => 3,
-            Self::Signal(SignalName::Error) => 2,
+            Self::Signal(SignalName::Error) | Self::UsageLimit => 2,
             _ => 1,
         }
     }
@@ -137,6 +177,33 @@ struct Source {
     queued: Vec<Lamp>,
     /// When its counted requests came, in the last second.
     requests: VecDeque<u64>,
+}
+
+/// A coding agent's session, known from its hooks.
+#[derive(Debug, Clone, PartialEq)]
+struct Session {
+    agent: Option<String>,
+    /// Its project folder's name.
+    label: Option<String>,
+    /// 1 to [`SESSION_NUMBERS`], in the order sessions first came; `None`
+    /// when every number was taken.
+    number: Option<u8>,
+    last_seen: u64,
+    /// What its question waits for: one entry per tool call, each by the
+    /// keys that name it (its id, its content, its turn).
+    pending: Vec<BTreeSet<String>>,
+    /// A question with no call of its own waits: any answer ends it.
+    open: bool,
+    /// The keys of the turn whose failure shows: the agent going on with
+    /// that turn (Codex retrying a request) takes the failure away.
+    failed: Vec<String>,
+    /// The user's input put its question out before it was answered: the
+    /// session still waits (its number stays on, B) until this time, the
+    /// question's own end.
+    acked_until: Option<u64>,
+    /// Its number key's LEDs, for this model.
+    digit: Vec<(u8, Place)>,
+    digit_for: Option<String>,
 }
 
 /// How a request goes in.
@@ -194,6 +261,13 @@ pub struct Engine {
     /// Nobody has touched the computer for `away.after`.
     away: bool,
     missed: Vec<Lamp>,
+    /// Coding agents' sessions, by source.
+    sessions: BTreeMap<String, Session>,
+    /// When the user last touched the keyboard or the mouse.
+    last_input: Option<u64>,
+    /// Since when the lights show (not hidden by a game, the night, a
+    /// missing cable); `None` while they do not.
+    visible_since: Option<u64>,
     /// Something the page shows changed.
     dirty: bool,
 }
@@ -284,6 +358,9 @@ impl Engine {
                     Ok(data) if data["queued"] == json!(true) => false,
                     // Nothing to clear (a hook that clears after every step).
                     Ok(data) if data["cleared"] == json!(0) && name == "clear" => false,
+                    // A hook event that changed no light: a session starting, an
+                    // answer with nothing waiting, a tool call after another.
+                    Ok(data) if name == "hook" && data["lit"] != json!(true) && data["cleared"] == json!(0) => false,
                     Ok(_) => true,
                     // Refusals at most once a second per source: an agent whose
                     // access is off, or that keeps sending a bad request, does
@@ -325,6 +402,7 @@ impl Engine {
             Command::Light(args) => self.light(source, &args, lights, now, id),
             Command::Progress(args) => self.progress(source, &args, lights, now, id),
             Command::Clear(args) => self.clear(source, &args, id),
+            Command::Hook(args) => self.hook(source, &args, lights, now, id),
             Command::SettingsSet(args) => {
                 let result = self.settings_set(source, &args, now, changes);
                 effects.settings = result.is_ok() && !changes.is_empty();
@@ -461,6 +539,421 @@ impl Engine {
         Ok(answer)
     }
 
+    // --------------------------------------------------------------- hooks
+
+    /// A coding agent's hook event, from the session `source`.
+    fn hook(
+        &mut self,
+        source: &SourceName,
+        args: &HookArgs,
+        lights: Result<&KeyIndex, AgentError>,
+        now: Now,
+        id_out: &mut Option<String>,
+    ) -> Result<Value, AgentError> {
+        let hook = args.validate()?;
+        let name = source.as_str();
+        if hook.event == HookEvent::SessionEnd {
+            // Nobody is left to answer its question; what it finished or
+            // where it failed stays its time (a headless run ends its
+            // session right after its last turn).
+            let cleared = self.answer_all(name);
+            if self.sessions.remove(name).is_some() {
+                self.dirty = true;
+            }
+            return Ok(json!({ "lit": false, "cleared": cleared }));
+        }
+        let known = self.sessions.contains_key(name);
+        let session = self.session(name, now.mono)?;
+        if let Some(agent) = hook.agent.as_ref().map(|a| a.as_str().to_string()) {
+            session.agent = Some(agent);
+        }
+        let relabeled = hook.label.is_some() && hook.label != session.label;
+        if relabeled {
+            session.label.clone_from(&hook.label);
+        }
+        if relabeled || !known {
+            self.dirty = true;
+        }
+        let number = self.sessions.get(name).and_then(|s| s.number);
+        let mut answer = match hook.event {
+            HookEvent::SessionStart | HookEvent::SessionEnd => json!({ "lit": false, "cleared": 0 }),
+            // The user stopped the turn: its question and its "working"
+            // light go; what came before stays.
+            HookEvent::Interrupted => {
+                let cleared = self.answer_all(name) + self.remove(name, |l| l.kind == Kind::Signal(SignalName::Busy));
+                json!({ "lit": false, "cleared": cleared })
+            }
+            HookEvent::Busy => {
+                let asked = self.answer_all(name);
+                let mut a = self.signal(
+                    source,
+                    &SignalArgs { name: "busy".into(), ..Default::default() },
+                    lights,
+                    now,
+                    id_out,
+                )?;
+                a["cleared"] = json!(asked + a["cleared"].as_u64().unwrap_or(0) as usize);
+                a
+            }
+            HookEvent::Attention => self.ask(source, &hook.calls, lights, now, id_out)?,
+            HookEvent::Answered => {
+                let mut cleared = self.answer(name, &hook.calls);
+                let retried = self.sessions.get_mut(name).is_some_and(|s| {
+                    hook.calls.iter().any(|c| s.failed.contains(c)) && !std::mem::take(&mut s.failed).is_empty()
+                });
+                if retried {
+                    cleared +=
+                        self.remove(name, |l| matches!(l.kind, Kind::Signal(SignalName::Error) | Kind::UsageLimit));
+                }
+                json!({ "lit": false, "cleared": cleared, "waiting": self.waiting_calls(name) })
+            }
+            // The same turn failing again (Codex trying a request again and
+            // again): the failure that shows goes on as it was, with no new
+            // blinks.
+            HookEvent::Error | HookEvent::UsageLimit if self.fails_again(name, &hook.calls, now.mono) => {
+                json!({ "lit": true, "kept": true, "cleared": 0 })
+            }
+            HookEvent::Done | HookEvent::Error => {
+                let cleared = self.answer_all(name);
+                if let Some(s) = self.sessions.get_mut(name) {
+                    s.failed = if hook.event == HookEvent::Error { hook.calls.clone() } else { Vec::new() };
+                }
+                let signal = if hook.event == HookEvent::Done { "done" } else { "error" };
+                let mut a = self.signal(
+                    source,
+                    &SignalArgs { name: signal.into(), ..Default::default() },
+                    lights,
+                    now,
+                    id_out,
+                )?;
+                a["cleared"] = json!(cleared);
+                a
+            }
+            HookEvent::UsageLimit => {
+                let cleared = self.answer_all(name);
+                if let Some(s) = self.sessions.get_mut(name) {
+                    s.failed.clone_from(&hook.calls);
+                }
+                let mut a = if self.settings.usage_limit.on {
+                    self.usage_limit(source, lights, now, id_out)?
+                } else {
+                    self.signal(
+                        source,
+                        &SignalArgs { name: "error".into(), ..Default::default() },
+                        lights,
+                        now,
+                        id_out,
+                    )?
+                };
+                a["cleared"] = json!(cleared);
+                a
+            }
+            HookEvent::Helper => self.helper(source, lights, now, id_out)?,
+        };
+        answer["session"] = json!(number);
+        Ok(answer)
+    }
+
+    /// `name`'s session, known from now on: it gets the lowest free number.
+    fn session(&mut self, name: &str, now: u64) -> Result<&mut Session, AgentError> {
+        if !self.sessions.contains_key(name) {
+            if self.sessions.len() >= MAX_SESSIONS {
+                // The one heard of longest ago, unless it has lights.
+                let oldest = self
+                    .sessions
+                    .iter()
+                    .filter(|(source, _)| self.sources.get(*source).is_none_or(|s| s.lamps.is_empty()))
+                    .min_by_key(|(_, s)| s.last_seen)
+                    .map(|(source, _)| source.clone());
+                match oldest {
+                    Some(source) => {
+                        self.sessions.remove(&source);
+                    }
+                    None => {
+                        return Err(AgentError::new(ErrorCode::RateLimited, "Too many agent sessions at once.")
+                            .with_retry_after(std::time::Duration::from_secs(10)))
+                    }
+                }
+            }
+            let number = self.free_number(name, now);
+            self.sessions.insert(
+                name.to_string(),
+                Session {
+                    agent: None,
+                    label: None,
+                    number,
+                    last_seen: now,
+                    pending: Vec::new(),
+                    open: false,
+                    failed: Vec::new(),
+                    acked_until: None,
+                    digit: Vec::new(),
+                    digit_for: None,
+                },
+            );
+        }
+        if self.sessions.get(name).is_some_and(|s| s.number.is_none()) {
+            let number = self.free_number(name, now);
+            if let Some(s) = self.sessions.get_mut(name) {
+                s.number = number;
+                s.digit_for = None;
+            }
+        }
+        let session = self.sessions.get_mut(name).expect("just made sure it is there");
+        session.last_seen = now;
+        Ok(session)
+    }
+
+    /// The lowest number no live session (but `name`) holds; a session that
+    /// is not live any more gives its number up for it.
+    fn free_number(&mut self, name: &str, now: u64) -> Option<u8> {
+        let held: HashSet<u8> = self
+            .sessions
+            .iter()
+            .filter(|(source, s)| source.as_str() != name && self.live(source, s, now))
+            .filter_map(|(_, s)| s.number)
+            .collect();
+        let number = (1..=SESSION_NUMBERS).find(|n| !held.contains(n))?;
+        for (source, s) in &mut self.sessions {
+            if source != name && s.number == Some(number) {
+                s.number = None;
+                s.digit.clear();
+                s.digit_for = None;
+            }
+        }
+        Some(number)
+    }
+
+    /// Heard of lately, or its question is open.
+    fn live(&self, source: &str, s: &Session, now: u64) -> bool {
+        now.saturating_sub(s.last_seen) < SESSION_LIVE_MS || self.waits(source, now)
+    }
+
+    /// The session waits for the user: its calls are kept, and its question
+    /// lights, unless it is up already (it then goes on as it was, with no
+    /// new flashes).
+    fn ask(
+        &mut self,
+        source: &SourceName,
+        calls: &[String],
+        lights: Result<&KeyIndex, AgentError>,
+        now: Now,
+        id_out: &mut Option<String>,
+    ) -> Result<Value, AgentError> {
+        let name = source.as_str();
+        let id = SignalId::default_for(source, SignalName::Attention).as_str().to_string();
+        let mut seen = None;
+        if let Some(s) = self.sessions.get_mut(name) {
+            let keys: BTreeSet<String> = calls.iter().cloned().collect();
+            let new = if keys.is_empty() {
+                // A question with no call of its own, unless it is the
+                // notification that backs up a call's question already here.
+                let new = s.pending.is_empty() && !s.open;
+                if s.pending.is_empty() {
+                    s.open = true;
+                }
+                new
+            } else if !s.pending.contains(&keys) {
+                if s.pending.len() >= MAX_PENDING {
+                    s.pending.remove(0);
+                }
+                s.pending.push(keys);
+                true
+            } else {
+                false
+            };
+            if new {
+                s.acked_until = None;
+            } else {
+                // The user's input put this question out already: asked
+                // again (the notification that backs it up), it stays out.
+                seen = s.acked_until.filter(|until| now.mono < *until);
+            }
+            if let (Some(n), Ok(index)) = (s.number, lights.as_ref()) {
+                if s.digit_for.as_deref() != Some(index.model_id.as_str()) {
+                    s.digit = KeySpec::parse(&n.to_string()).map(|k| index.resolve_lenient(&k)).unwrap_or_default();
+                    s.digit_for = Some(index.model_id.clone());
+                }
+            }
+        }
+        if let Some(until) = seen {
+            *id_out = Some(id.clone());
+            let expires = until - now.mono;
+            return Ok(
+                json!({ "id": id, "shown": false, "lit": false, "kept": true, "expires_in_ms": expires, "cleared": 0 }),
+            );
+        }
+        let up = self.sources.get(name).and_then(|s| s.lamps.iter().find(|l| l.id == id && l.until > now.mono));
+        if let Some(lamp) = up {
+            let expires = lamp.until.saturating_sub(now.mono);
+            *id_out = Some(id.clone());
+            let shown = self.shown(now.mono).contains(&(name.to_string(), id.clone()));
+            self.dirty = true;
+            return Ok(
+                json!({ "id": id, "shown": shown, "lit": true, "kept": true, "expires_in_ms": expires, "cleared": 0 }),
+            );
+        }
+        let mut answer =
+            self.signal(source, &SignalArgs { name: "attention".into(), ..Default::default() }, lights, now, id_out)?;
+        answer["cleared"] = json!(0);
+        Ok(answer)
+    }
+
+    /// What `calls` name was answered: each waiting call one of these keys
+    /// names. None given: everything the session waits for, its questions
+    /// with no call of their own too (an MCP form, a notification's
+    /// question); a call's answer does not end those (a helper agent's tool
+    /// call finishing says nothing of a form that waits). When nothing waits
+    /// any more, the session's question goes, if its look stays until
+    /// answered. How many lights went.
+    fn answer(&mut self, name: &str, calls: &[String]) -> usize {
+        let Some(s) = self.sessions.get_mut(name) else { return 0 };
+        if calls.is_empty() {
+            s.pending.clear();
+            s.open = false;
+        } else {
+            s.pending.retain(|keys| !calls.iter().any(|c| keys.contains(c)));
+        }
+        if !s.pending.is_empty() || s.open {
+            return 0;
+        }
+        s.acked_until = None;
+        if !self.settings.signals.attention.until_answered {
+            return 0;
+        }
+        self.remove(name, |l| l.kind == Kind::Signal(SignalName::Attention))
+    }
+
+    /// The turn ended (or a new one began): nothing of `name`'s session waits
+    /// any more, and its question goes whatever its look.
+    fn answer_all(&mut self, name: &str) -> usize {
+        if let Some(s) = self.sessions.get_mut(name) {
+            s.pending.clear();
+            s.open = false;
+            s.failed.clear();
+            s.acked_until = None;
+        }
+        self.remove(name, |l| l.kind == Kind::Signal(SignalName::Attention))
+    }
+
+    /// `name`'s session fails again where its failure shows: the same keys,
+    /// and its error or usage-limit light still up.
+    fn fails_again(&self, name: &str, calls: &[String], now: u64) -> bool {
+        !calls.is_empty()
+            && self.sessions.get(name).is_some_and(|s| s.failed == calls)
+            && self.sources.get(name).is_some_and(|s| {
+                s.lamps
+                    .iter()
+                    .any(|l| l.until > now && matches!(l.kind, Kind::Signal(SignalName::Error) | Kind::UsageLimit))
+            })
+    }
+
+    fn waiting_calls(&self, name: &str) -> usize {
+        self.sessions.get(name).map_or(0, |s| s.pending.len() + usize::from(s.open))
+    }
+
+    /// A: the usage limit's own look.
+    fn usage_limit(
+        &mut self,
+        source: &SourceName,
+        lights: Result<&KeyIndex, AgentError>,
+        now: Now,
+        id_out: &mut Option<String>,
+    ) -> Result<Value, AgentError> {
+        let id = format!("{}:usage_limit", source.as_str());
+        *id_out = Some(id.clone());
+        let chosen = self.settings.usage_limit.look;
+        let admit = self.admit(source.as_str(), Some(&id), now.mono)?;
+        let Some(look) = Look::of_effect(chosen.color, chosen.effect, chosen.speed) else {
+            return Ok(json!({ "id": id, "shown": false, "lit": false }));
+        };
+        let index = lights?;
+        let keys = KeySpec::all();
+        let leds = index.resolve(&keys)?;
+        let for_ms = u64::from(chosen.duration_s) * 1000;
+        let mut lamp = self.lamp(source.as_str(), &id, Kind::UsageLimit, look, keys, now.mono, for_ms);
+        lamp.leds = leds;
+        lamp.leds_for = Some(index.model_id.clone());
+        Ok(self.put(lamp, admit, now.mono))
+    }
+
+    /// H: one short wave across the F row, when the user turned it on.
+    fn helper(
+        &mut self,
+        source: &SourceName,
+        lights: Result<&KeyIndex, AgentError>,
+        now: Now,
+        id_out: &mut Option<String>,
+    ) -> Result<Value, AgentError> {
+        let id = format!("{}:helper", source.as_str());
+        if !self.settings.helper.on {
+            return Ok(json!({ "id": id, "shown": false, "lit": false, "cleared": 0 }));
+        }
+        *id_out = Some(id.clone());
+        let admit = self.admit(source.as_str(), Some(&id), now.mono)?;
+        let index = lights?;
+        let keys = KeySpec::parse(KeyGroup::FRow.as_str()).unwrap_or_default();
+        let leds = index.resolve(&keys)?;
+        let effect = kb_agent::Effect::new(kb_agent::EffectKind::Wave, None, Some(HELPER_SPEED), Some(1))?;
+        let for_ms = effect.run_time().map_or(2_000, duration_ms);
+        let look = Look::plain(self.settings.helper.color, Motion::of(&effect));
+        let mut lamp = self.lamp(source.as_str(), &id, Kind::Helper, look, keys, now.mono, for_ms);
+        lamp.leds = leds;
+        lamp.leds_for = Some(index.model_id.clone());
+        let mut answer = self.put(lamp, admit, now.mono);
+        answer["cleared"] = json!(0);
+        Ok(answer)
+    }
+
+    /// The sessions for the page and `status`, by number.
+    pub fn sessions(&self, now: u64) -> Vec<AgentSessionInfo> {
+        let mut out: Vec<AgentSessionInfo> = self
+            .sessions
+            .iter()
+            .map(|(source, s)| AgentSessionInfo {
+                number: s.number,
+                source: source.clone(),
+                agent: s.agent.clone(),
+                label: s.label.clone(),
+                waiting: self.waits(source, now),
+            })
+            .collect();
+        out.sort_by_key(|s| (s.number.is_none(), s.number));
+        out
+    }
+
+    /// `source`'s question is up.
+    fn asks(&self, source: &str, now: u64) -> bool {
+        self.sources
+            .get(source)
+            .is_some_and(|s| s.lamps.iter().any(|l| l.kind == Kind::Signal(SignalName::Attention) && l.until > now))
+    }
+
+    /// `source`'s session waits for the user: its question is up, or the
+    /// user's input put it out before it was answered (until the question's
+    /// own end).
+    fn waits(&self, source: &str, now: u64) -> bool {
+        self.asks(source, now)
+            || self
+                .sessions
+                .get(source)
+                .is_some_and(|s| s.acked_until.is_some_and(|until| now < until) && (!s.pending.is_empty() || s.open))
+    }
+
+    /// B: the number keys of the sessions that wait, when two or more
+    /// sessions are live and the user wants them.
+    fn session_digits(&self, now: u64) -> Vec<(u8, Place)> {
+        let live = self.sessions.iter().filter(|(source, s)| s.number.is_some() && self.live(source, s, now)).count();
+        if !self.settings.sessions.on || live < 2 {
+            return Vec::new();
+        }
+        self.sessions
+            .iter()
+            .filter(|(source, s)| s.number.is_some() && self.waits(source, now))
+            .flat_map(|(_, s)| s.digit.iter().copied())
+            .collect()
+    }
+
     fn clear(
         &mut self,
         source: &SourceName,
@@ -506,6 +999,10 @@ impl Engine {
             }
         }
         self.missed.clear();
+        for s in self.sessions.values_mut() {
+            s.pending.clear();
+            s.open = false;
+        }
         self.dirty = true;
         gone
     }
@@ -883,11 +1380,66 @@ impl Engine {
             self.dirty = true;
         }
         self.refusals.retain(|_, t| now.saturating_sub(*t) < REFUSAL_LOG_EVERY_MS);
+        let before = self.sessions.len();
+        let sources = &self.sources;
+        self.sessions.retain(|name, s| {
+            now.saturating_sub(s.last_seen) < SESSION_KEEP_MS || sources.get(name).is_some_and(|x| !x.lamps.is_empty())
+        });
+        if before != self.sessions.len() {
+            self.dirty = true;
+        }
+    }
+
+    /// Whether the lights show now (a game may hide them, the night put
+    /// them off, the cable be missing): input counts against a question only
+    /// while they do.
+    pub fn set_visible(&mut self, visible: bool, now: u64) {
+        match (visible, self.visible_since) {
+            (true, None) => self.visible_since = Some(now),
+            (false, Some(_)) => self.visible_since = None,
+            _ => {}
+        }
     }
 
     /// The user's input (`idle_ms` since the last one). Coming back flashes
-    /// what came meanwhile, once.
+    /// what came meanwhile, once. Input after a question showed puts it out
+    /// ([`Engine::acknowledge`]).
     pub fn observe_idle(&mut self, idle_ms: Option<u64>, now: u64) {
+        if let Some(ms) = idle_ms {
+            self.last_input = Some(now.saturating_sub(ms));
+        }
+        self.see_away(idle_ms, now);
+        self.acknowledge(now);
+    }
+
+    /// Questions the user's input answered: input once the question showed
+    /// on the keys (the lights visible, its opening flashes over, the flash
+    /// of the user's return over) and [`ACK_GRACE_MS`] passed. Its session
+    /// keeps waiting (B) until it is answered.
+    fn acknowledge(&mut self, now: u64) {
+        let (Some(input), Some(visible)) = (self.last_input, self.visible_since) else { return };
+        let mut seen = Vec::new();
+        for s in self.sources.values() {
+            for l in s.lamps.iter().filter(|l| l.kind == Kind::Signal(SignalName::Attention) && l.until > now) {
+                let shown = l.since.max(visible).max(l.burst.unwrap_or(0));
+                let grace = ACK_GRACE_MS.max(l.look.intro_ms()) + l.burst.map_or(0, |_| BURST_MS);
+                if !l.while_away && input > shown.saturating_add(grace) {
+                    seen.push((l.source.clone(), l.until));
+                }
+            }
+        }
+        for (source, until) in seen {
+            self.remove(&source, |l| l.kind == Kind::Signal(SignalName::Attention));
+            if let Some(s) = self.sessions.get_mut(&source) {
+                if !s.pending.is_empty() || s.open {
+                    s.acked_until = Some(until);
+                }
+            }
+            self.dirty = true;
+        }
+    }
+
+    fn see_away(&mut self, idle_ms: Option<u64>, now: u64) {
         let away = idle_ms.is_some_and(|ms| ms >= u64::from(self.settings.away.after_s) * 1000);
         if away == self.away {
             return;
@@ -935,6 +1487,12 @@ impl Engine {
                 lamp.leds_for = Some(index.model_id.clone());
             }
         }
+        for s in self.sessions.values_mut() {
+            if let Some(n) = s.number.filter(|_| s.digit_for.as_deref() != Some(index.model_id.as_str())) {
+                s.digit = KeySpec::parse(&n.to_string()).map(|k| index.resolve_lenient(&k)).unwrap_or_default();
+                s.digit_for = Some(index.model_id.clone());
+            }
+        }
     }
 
     /// The brightness of `lamp` on the key at `place` at `now`.
@@ -971,7 +1529,25 @@ impl Engine {
     pub fn frame(&self, now: u64, night: f32) -> Vec<(u8, Rgb)> {
         let mut taken = HashSet::new();
         let mut out = Vec::new();
-        for lamp in self.ranked(now) {
+        let ranked = self.ranked(now);
+        // The page's try first, then the waiting sessions' numbers (B), then
+        // the rest by rank.
+        let tries = ranked.iter().take_while(|l| l.kind == Kind::Try).count();
+        for lamp in &ranked[..tries] {
+            for &(led, place) in &lamp.leds {
+                if taken.insert(led) {
+                    out.push((led, scale(lamp.look.color, self.level(lamp, now, place))));
+                }
+            }
+        }
+        if night > 0.0 {
+            for (led, _) in self.session_digits(now) {
+                if taken.insert(led) {
+                    out.push((led, scale(self.settings.sessions.color, night)));
+                }
+            }
+        }
+        for lamp in &ranked[tries..] {
             let dim = if lamp.kind == Kind::Try { 1.0 } else { night };
             if dim <= 0.0 {
                 continue;
@@ -1700,6 +2276,356 @@ mod tests {
         s.enabled = false;
         e.set_settings(s);
         assert!(!e.busy());
+    }
+
+    fn hook(event: &str, calls: &[&str]) -> Command {
+        Command::Hook(HookArgs {
+            event: event.into(),
+            agent: Some("claude-code".into()),
+            label: Some("klavye".into()),
+            calls: calls.iter().map(|c| c.to_string()).collect(),
+        })
+    }
+
+    const A: &str = "claude-code:aaaa0001";
+    const B: &str = "claude-code:bbbb0002";
+
+    fn asks(e: &Engine, source: &str, ms: u64) -> bool {
+        e.infos(ms, true).iter().any(|i| i.source == source && i.kind == "attention")
+    }
+
+    #[test]
+    fn a_question_stays_until_its_calls_are_answered() {
+        let mut e = on();
+        assert_eq!(run(&mut e, A, hook("busy", &[]), 0).unwrap()["session"], 1);
+        let up = run(&mut e, A, hook("attention", &["c1"]), 100).unwrap();
+        assert_eq!((up["lit"].clone(), up["id"].clone()), (json!(true), json!(format!("{A}:attention"))));
+        // A second question while it is up: kept as it was, no new flashes.
+        let kept = run(&mut e, A, hook("attention", &["c2"]), 5_000).unwrap();
+        assert_eq!(kept["kept"], true);
+        let since = e.lamps().find(|l| l.kind == Kind::Signal(SignalName::Attention)).unwrap().since;
+        assert_eq!(since, 100);
+        // Another tool call finishing (parallel calls) answers nothing.
+        assert_eq!(run(&mut e, A, hook("answered", &["other"]), 6_000).unwrap()["cleared"], 0);
+        assert!(asks(&e, A, 6_000));
+        assert_eq!(run(&mut e, A, hook("answered", &["c1"]), 7_000).unwrap()["waiting"], 1);
+        assert!(asks(&e, A, 7_000), "c2 still waits");
+        let gone = run(&mut e, A, hook("answered", &["c2"]), 8_000).unwrap();
+        assert_eq!((gone["cleared"].clone(), gone["waiting"].clone()), (json!(1), json!(0)));
+        assert!(!asks(&e, A, 8_000));
+        // A question with no call of its own goes only with an answer naming
+        // no call: another call finishing (a helper agent's, say) is no answer.
+        run(&mut e, A, hook("attention", &[]), 9_000).unwrap();
+        assert_eq!(run(&mut e, A, hook("answered", &["whatever"]), 9_400).unwrap()["cleared"], 0);
+        assert!(asks(&e, A, 9_400));
+        assert_eq!(run(&mut e, A, hook("answered", &[]), 9_500).unwrap()["cleared"], 1);
+        // A call is named by any of its keys (Codex: the call or its turn).
+        run(&mut e, A, hook("attention", &["call-x", "turn-1"]), 9_600).unwrap();
+        run(&mut e, A, hook("attention", &["call-y", "turn-1"]), 9_700).unwrap();
+        assert_eq!(run(&mut e, A, hook("answered", &["call-x"]), 9_800).unwrap()["waiting"], 1);
+        assert_eq!(run(&mut e, A, hook("answered", &["turn-1"]), 9_900).unwrap()["cleared"], 1);
+        // An answer naming no call answers them all.
+        run(&mut e, A, hook("attention", &["c3"]), 10_000).unwrap();
+        run(&mut e, A, hook("attention", &["c4"]), 10_100).unwrap();
+        assert_eq!(run(&mut e, A, hook("answered", &[]), 10_200).unwrap()["cleared"], 1);
+        // At most 30 minutes, whatever happens.
+        run(&mut e, A, hook("attention", &["c5"]), 20_000).unwrap();
+        e.prune(20_000 + 30 * 60_000);
+        assert!(!asks(&e, A, 20_000 + 30 * 60_000));
+    }
+
+    #[test]
+    fn the_notification_backing_a_question_up_is_no_second_question() {
+        let mut e = on();
+        run(&mut e, A, hook("attention", &["c1"]), 0).unwrap();
+        assert_eq!(run(&mut e, A, hook("attention", &[]), 3_000).unwrap()["kept"], true);
+        assert_eq!(run(&mut e, A, hook("answered", &["c1"]), 4_000).unwrap()["cleared"], 1);
+        assert!(!asks(&e, A, 4_000));
+    }
+
+    /// When the question's first flashes are over (the owner: "about a
+    /// second").
+    fn shown_after(e: &Engine, since: u64) -> u64 {
+        let intro = e.lamps().find(|l| l.kind == Kind::Signal(SignalName::Attention)).unwrap().look.intro_ms();
+        since + ACK_GRACE_MS.max(intro)
+    }
+
+    #[test]
+    fn touching_the_keyboard_once_the_question_showed_puts_it_out() {
+        let mut e = on();
+        e.set_visible(true, 0);
+        run(&mut e, A, hook("attention", &["c1"]), 1_000).unwrap();
+        let shown = shown_after(&e, 1_000);
+        // Input before the question, or while it opens: it stays.
+        e.observe_idle(Some(shown - 500), shown);
+        assert!(asks(&e, A, shown));
+        e.observe_idle(Some(0), shown);
+        assert!(asks(&e, A, shown), "typing on while it opens is no answer");
+        // Input after: out, and no flash again five minutes later (D).
+        e.observe_idle(Some(0), shown + 1);
+        assert!(!asks(&e, A, shown + 1));
+        assert_eq!(key_at(&e, "esc", 5 * 60_000), None);
+        // The session still waits for its answer; asked again (the
+        // notification behind the question), it stays out.
+        assert!(e.sessions(shown + 1)[0].waiting);
+        assert_eq!(run(&mut e, A, hook("attention", &[]), shown + 2_000).unwrap()["lit"], false);
+        assert_eq!(run(&mut e, A, hook("attention", &["c1"]), shown + 2_100).unwrap()["lit"], false);
+        assert!(!asks(&e, A, shown + 2_100));
+        run(&mut e, A, hook("answered", &["c1"]), shown + 3_000).unwrap();
+        assert!(!e.sessions(shown + 3_000)[0].waiting);
+        // A new question lights again.
+        run(&mut e, A, hook("attention", &["c2"]), shown + 4_000).unwrap();
+        assert!(asks(&e, A, shown + 4_000));
+
+        // Lights nobody can see (a game hides them, the night put them off,
+        // no cable): input is no answer; once they show, it is.
+        let mut e = on();
+        run(&mut e, A, hook("attention", &["c1"]), 0).unwrap();
+        e.observe_idle(Some(0), 10_000);
+        assert!(asks(&e, A, 10_000));
+        e.set_visible(true, 20_000);
+        e.observe_idle(Some(0), 20_500);
+        assert!(asks(&e, A, 20_500));
+        let shown = shown_after(&e, 20_000);
+        e.observe_idle(Some(0), shown + 1);
+        assert!(!asks(&e, A, shown + 1));
+        e.set_visible(false, shown + 2);
+        run(&mut e, A, hook("attention", &["c2"]), shown + 3).unwrap();
+        e.observe_idle(Some(0), shown + 60_000);
+        assert!(asks(&e, A, shown + 60_000));
+
+        // Coming back to the computer is no answer: the flash of the return
+        // runs first.
+        let mut e = on();
+        e.set_visible(true, 0);
+        let away = u64::from(e.settings().away.after_s) * 1000;
+        e.observe_idle(Some(away), away);
+        run(&mut e, A, hook("attention", &["c1"]), away + 1_000).unwrap();
+        let back = away + 60_000;
+        e.observe_idle(Some(0), back);
+        assert!(asks(&e, A, back), "the input that brought the user back");
+        e.observe_idle(Some(0), back + BURST_MS);
+        assert!(asks(&e, A, back + BURST_MS));
+        let after = shown_after(&e, back + BURST_MS) + 1;
+        e.observe_idle(Some(0), after);
+        assert!(!asks(&e, A, after));
+    }
+
+    #[test]
+    fn with_two_sessions_a_question_put_out_keeps_its_number_lit() {
+        let mut e = on();
+        e.set_visible(true, 0);
+        let white = e.settings().sessions.color;
+        run(&mut e, B, hook("busy", &[]), 0).unwrap();
+        assert_eq!(run(&mut e, A, hook("attention", &["c1"]), 100).unwrap()["session"], 2);
+        let t = shown_after(&e, 100) + 1;
+        e.observe_idle(Some(0), t);
+        assert!(!asks(&e, A, t));
+        assert_eq!(key_at(&e, "2", t), Some(white), "its number, steady");
+        assert_eq!(key_at(&e, "2", t + 700), Some(white));
+        assert_eq!(key_at(&e, "esc", t), None, "the rest of the keyboard is dark");
+        run(&mut e, A, hook("answered", &["c1"]), t + 1_000).unwrap();
+        assert_eq!(key_at(&e, "2", t + 1_000), None);
+    }
+
+    #[test]
+    fn a_session_quiet_for_half_an_hour_does_not_count_for_the_numbers() {
+        let mut e = on();
+        let white = e.settings().sessions.color;
+        run(&mut e, B, hook("busy", &[]), 0).unwrap();
+        run(&mut e, A, hook("attention", &["c1"]), SESSION_LIVE_MS).unwrap();
+        let t = SESSION_LIVE_MS + 2_000;
+        assert!(["1", "2"].iter().all(|k| key_at(&e, k, t) != Some(white)), "one live session: no numbers");
+    }
+
+    #[test]
+    fn an_interrupted_turn_takes_its_question_and_working_light_away() {
+        let mut e = on();
+        let mut s = *e.settings();
+        s.signals.busy.effect = AgentEffect::Pulse;
+        e.set_settings(s);
+        assert_eq!(run(&mut e, A, hook("busy", &[]), 0).unwrap()["lit"], true);
+        run(&mut e, A, hook("attention", &["c1"]), 100).unwrap();
+        run(&mut e, B, hook("done", &[]), 100).unwrap();
+        let stop = run(&mut e, A, hook("interrupted", &[]), 200).unwrap();
+        assert_eq!((stop["lit"].clone(), stop["cleared"].clone()), (json!(false), json!(2)));
+        assert!(e.infos(200, true).iter().all(|i| i.source != A));
+        assert!(!e.sessions(200).iter().any(|s| s.waiting));
+        assert_eq!(ids(&e, 200), [format!("{B}:done")], "another session's light stays");
+        // What the turn ended with before stays.
+        run(&mut e, A, hook("error", &[]), 300).unwrap();
+        assert_eq!(run(&mut e, A, hook("interrupted", &[]), 400).unwrap()["cleared"], 0);
+        assert!(e.infos(400, true).iter().any(|i| i.source == A && i.kind == "error"));
+    }
+
+    #[test]
+    fn until_answered_off_keeps_the_question_its_full_time() {
+        let mut e = on();
+        let mut s = *e.settings();
+        s.signals.attention.until_answered = false;
+        s.signals.attention.duration_s = 60;
+        e.set_settings(s);
+        run(&mut e, A, hook("attention", &["c1"]), 0).unwrap();
+        assert_eq!(run(&mut e, A, hook("answered", &["c1"]), 1_000).unwrap()["cleared"], 0);
+        assert!(asks(&e, A, 59_000));
+        e.prune(60_000);
+        assert!(!asks(&e, A, 60_000));
+        // The end of the turn takes it away all the same.
+        run(&mut e, A, hook("attention", &["c1"]), 70_000).unwrap();
+        let done = run(&mut e, A, hook("done", &[]), 71_000).unwrap();
+        assert_eq!((done["cleared"].clone(), done["id"].clone()), (json!(1), json!(format!("{A}:done"))));
+        assert!(!asks(&e, A, 71_000));
+    }
+
+    #[test]
+    fn a_turn_begins_with_busy_and_ends_with_done_error_or_a_usage_limit() {
+        let mut e = on();
+        run(&mut e, A, hook("attention", &["c1"]), 0).unwrap();
+        let busy = run(&mut e, A, hook("busy", &[]), 1_000).unwrap();
+        assert_eq!((busy["lit"].clone(), busy["cleared"].clone()), (json!(false), json!(1)));
+        assert!(e.infos(1_000, true).is_empty());
+        run(&mut e, A, hook("error", &[]), 2_000).unwrap();
+        assert_eq!(e.infos(2_000, true)[0].kind, "error");
+        // A: its own look, purple and slow, over every key.
+        let limit = run(&mut e, A, hook("usage_limit", &[]), 3_000).unwrap();
+        assert_eq!(limit["id"], format!("{A}:usage_limit"));
+        let info = e.infos(3_000, true).into_iter().find(|i| i.kind == "usage_limit").unwrap();
+        assert_eq!((info.color, info.keys.as_str()), (e.settings().usage_limit.look.color, "all"));
+        assert_eq!(info.expires_in_ms, 30.0 * 60_000.0);
+        // A turned off: an error like any other.
+        let mut s = *e.settings();
+        s.usage_limit.on = false;
+        e.set_settings(s);
+        let plain = run(&mut e, B, hook("usage_limit", &[]), 4_000).unwrap();
+        assert_eq!(plain["id"], format!("{B}:error"));
+        // The same turn failing again and again (Codex retrying): kept as
+        // it is, no new blinks.
+        run(&mut e, B, hook("error", &["fail-7"]), 4_050).unwrap();
+        let again = run(&mut e, B, hook("error", &["fail-7"]), 4_080).unwrap();
+        assert_eq!(again["kept"], true);
+        let since = e.lamps().find(|l| l.source == B && l.kind == Kind::Signal(SignalName::Error)).unwrap().since;
+        assert_eq!(since, 4_050);
+        // A failure of a turn the agent goes on with (a retried request) goes.
+        run(&mut e, B, hook("error", &["turn-7"]), 4_100).unwrap();
+        assert_eq!(run(&mut e, B, hook("answered", &["turn-6"]), 4_200).unwrap()["cleared"], 0);
+        assert_eq!(run(&mut e, B, hook("answered", &["turn-7"]), 4_300).unwrap()["cleared"], 1);
+        assert!(e.infos(4_300, true).iter().all(|i| i.source != B));
+        // The session ends: its question and its number go; what it ended
+        // with stays its time (a headless run ends right after its turn).
+        run(&mut e, A, hook("attention", &["c9"]), 4_500).unwrap();
+        let end = run(&mut e, A, hook("session_end", &[]), 5_000).unwrap();
+        assert_eq!(end["cleared"], 1);
+        let left: Vec<String> = e.infos(5_000, true).into_iter().filter(|i| i.source == A).map(|i| i.kind).collect();
+        assert_eq!(left, ["usage_limit", "error"]);
+        assert!(e.sessions(5_000).iter().all(|s| s.source != A));
+    }
+
+    #[test]
+    fn sessions_are_numbered_in_the_order_they_came() {
+        let mut e = on();
+        assert_eq!(run(&mut e, A, hook("session_start", &[]), 0).unwrap()["session"], 1);
+        assert_eq!(run(&mut e, B, hook("busy", &[]), 10).unwrap()["session"], 2);
+        assert_eq!(run(&mut e, A, hook("busy", &[]), 20).unwrap()["session"], 1, "a session keeps its number");
+        let list = e.sessions(20);
+        assert_eq!(
+            list.iter().map(|s| (s.number, s.label.as_deref(), s.agent.as_deref())).collect::<Vec<_>>(),
+            [(Some(1), Some("klavye"), Some("claude-code")), (Some(2), Some("klavye"), Some("claude-code"))]
+        );
+        // The first ends; the next new session takes its number.
+        run(&mut e, A, hook("session_end", &[]), 30).unwrap();
+        assert_eq!(run(&mut e, "codex:cccc0003", hook("session_start", &[]), 40).unwrap()["session"], 1);
+        // Nine numbers; the tenth session has none.
+        for i in 0..8u64 {
+            run(&mut e, &format!("codex:d{i}"), hook("session_start", &[]), 50 + i).unwrap();
+        }
+        let tenth = run(&mut e, "codex:last", hook("session_start", &[]), 100).unwrap();
+        assert_eq!(tenth["session"], Value::Null);
+        // Half an hour on, nobody else heard of: the lowest number is free
+        // again, and the one who held it takes the next it finds.
+        let later = 100 + SESSION_LIVE_MS;
+        assert_eq!(run(&mut e, "codex:last", hook("busy", &[]), later).unwrap()["session"], 1);
+        assert_eq!(run(&mut e, "codex:cccc0003", hook("busy", &[]), later + 1).unwrap()["session"], 2);
+        // A quiet session whose question is still up (the user gave
+        // questions an hour) keeps its number.
+        let mut s = *e.settings();
+        s.signals.attention.duration_s = 60 * 60;
+        e.set_settings(s);
+        run(&mut e, "codex:d0", hook("attention", &["q"]), later + 2).unwrap();
+        let much_later = later + 2 + 45 * 60_000;
+        assert_eq!(run(&mut e, "codex:e1", hook("busy", &[]), much_later).unwrap()["session"], 1);
+        assert_eq!(run(&mut e, "codex:e2", hook("busy", &[]), much_later).unwrap()["session"], 2);
+        assert_eq!(run(&mut e, "codex:e3", hook("busy", &[]), much_later).unwrap()["session"], 4, "d0 waits on 3");
+        // Sessions not heard of for twelve hours are forgotten.
+        e.prune(much_later + SESSION_KEEP_MS);
+        assert!(e.sessions(much_later + SESSION_KEEP_MS).is_empty());
+        // Session starts and answers with nothing to answer stay out of the log.
+        assert!(e.log_entries().iter().all(|l| l.command == "hook" && l.id.is_some()), "{:?}", e.log_entries());
+    }
+
+    #[test]
+    fn with_two_sessions_the_waiting_ones_number_lights() {
+        let mut e = on();
+        run(&mut e, A, hook("attention", &["c1"]), 0).unwrap();
+        let white = e.settings().sessions.color;
+        // One session: the question alone, on every key.
+        assert_ne!(key_at(&e, "1", 2_000), Some(white));
+        // Two sessions: the waiting one's number key in white, over the question.
+        run(&mut e, B, hook("busy", &[]), 100).unwrap();
+        assert_eq!(key_at(&e, "1", 2_000), Some(white));
+        assert_ne!(key_at(&e, "2", 2_000), Some(white));
+        assert!(e.sessions(2_000)[0].waiting && !e.sessions(2_000)[1].waiting);
+        run(&mut e, B, hook("attention", &[]), 200).unwrap();
+        assert_eq!((key_at(&e, "1", 2_000), key_at(&e, "2", 2_000)), (Some(white), Some(white)));
+        // Answered: the number goes with the question.
+        run(&mut e, A, hook("answered", &["c1"]), 2_100).unwrap();
+        assert_ne!(key_at(&e, "1", 2_200), Some(white));
+        assert_eq!(key_at(&e, "2", 2_200), Some(white));
+        // Turned off: no numbers.
+        let mut s = *e.settings();
+        s.sessions.on = false;
+        e.set_settings(s);
+        assert_ne!(key_at(&e, "2", 2_200), Some(white));
+        // Night quiet dims them like the rest; "off" takes them away.
+        let mut s = *e.settings();
+        s.sessions.on = true;
+        e.set_settings(s);
+        let faint = e.frame(2_200, 0.5).into_iter().find(|k| k.0 == led("2")).map(|k| k.1);
+        assert_eq!(faint, Some(scale(white, 0.5)));
+        assert!(e.frame(2_200, 0.0).is_empty());
+    }
+
+    #[test]
+    fn a_helper_agent_finishing_waves_once_when_the_user_wants_it() {
+        let mut e = on();
+        let off = run(&mut e, A, hook("helper", &[]), 0).unwrap();
+        assert_eq!(off["lit"], false, "H is off by default");
+        assert!(e.infos(0, true).is_empty());
+        let mut s = *e.settings();
+        s.helper.on = true;
+        e.set_settings(s);
+        let wave = run(&mut e, A, hook("helper", &[]), 1_000).unwrap();
+        assert_eq!(wave["id"], format!("{A}:helper"));
+        let info = e.infos(1_000, true).into_iter().next().unwrap();
+        assert_eq!((info.kind.as_str(), info.keys.as_str()), ("helper", "f-row"));
+        assert!(info.expires_in_ms <= 2_000.0, "{}", info.expires_in_ms);
+        // A question keeps its F row under the wave.
+        run(&mut e, A, hook("attention", &[]), 1_100).unwrap();
+        assert_eq!(e.infos(1_200, true)[0].kind, "attention");
+    }
+
+    #[test]
+    fn hook_events_need_access_and_are_checked() {
+        let mut e = Engine::new(AgentSettings::default());
+        assert_eq!(run(&mut e, A, hook("attention", &[]), 0).unwrap_err().code, ErrorCode::AgentAccessOff);
+        let mut e = on();
+        let bad = Command::Hook(HookArgs { event: "teleport".into(), ..Default::default() });
+        assert_eq!(run(&mut e, A, bad, 0).unwrap_err().code, ErrorCode::BadValue);
+        // Without the cable, a question still clears what came before.
+        run(&mut e, A, hook("done", &[]), 0).unwrap();
+        let (r, _) = e.command(&src(A), hook("busy", &[]), Err(usb()), at(100));
+        assert_eq!(r.unwrap()["cleared"], 1);
+        let (r, _) = e.command(&src(A), hook("attention", &["c1"]), Err(usb()), at(200));
+        assert_eq!(r.unwrap_err().code, ErrorCode::NeedsUsb);
     }
 
     #[test]

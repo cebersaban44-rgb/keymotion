@@ -40,11 +40,45 @@ pub fn running(name: &str) -> bool {
     sys::running(name)
 }
 
+/// The named mutex `name`, held (open) until this is dropped: while any
+/// program holds it, [`running`] says so. Used as a sign, never waited on.
+#[derive(Debug)]
+pub struct Held(#[allow(dead_code)] sys::Handle);
+
+/// Hold the named mutex `name`; `true` with it when another program held it
+/// already. `None` when it cannot be made (not ours to open).
+pub fn hold(name: &str) -> Option<(Held, bool)> {
+    sys::hold(name).map(|(h, existed)| (Held(h), existed))
+}
+
 #[cfg(windows)]
 mod sys {
     use windows::core::HSTRING;
-    use windows::Win32::Foundation::{CloseHandle, ERROR_ACCESS_DENIED};
-    use windows::Win32::System::Threading::{OpenMutexW, SYNCHRONIZATION_SYNCHRONIZE};
+    use windows::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ACCESS_DENIED, ERROR_ALREADY_EXISTS, HANDLE};
+    use windows::Win32::System::Threading::{CreateMutexW, OpenMutexW, SYNCHRONIZATION_SYNCHRONIZE};
+
+    #[derive(Debug)]
+    pub struct Handle(HANDLE);
+
+    // SAFETY: a mutex handle may be closed from any thread.
+    unsafe impl Send for Handle {}
+    unsafe impl Sync for Handle {}
+
+    impl Drop for Handle {
+        fn drop(&mut self) {
+            // SAFETY: the handle CreateMutexW gave, closed once.
+            let _ = unsafe { CloseHandle(self.0) };
+        }
+    }
+
+    pub fn hold(name: &str) -> Option<(Handle, bool)> {
+        // SAFETY: a NUL-terminated name that outlives the call; no
+        // security attributes (the session's defaults: this user's).
+        let handle = unsafe { CreateMutexW(None, false, &HSTRING::from(name)) }.ok()?;
+        // SAFETY: read right after the call that set it.
+        let existed = unsafe { GetLastError() } == ERROR_ALREADY_EXISTS;
+        Some((Handle(handle), existed))
+    }
 
     pub fn running(name: &str) -> bool {
         // SAFETY: a NUL-terminated name that outlives the call.
@@ -62,8 +96,15 @@ mod sys {
 
 #[cfg(not(windows))]
 mod sys {
+    #[derive(Debug)]
+    pub struct Handle;
+
     pub fn running(_name: &str) -> bool {
         false
+    }
+
+    pub fn hold(_name: &str) -> Option<(Handle, bool)> {
+        None
     }
 }
 
@@ -103,6 +144,19 @@ mod tests {
     #[test]
     fn no_one_holds_an_unknown_mutex() {
         assert!(!running("keymotion-test-no-such-mutex-7f3a"));
+    }
+
+    #[test]
+    fn a_held_mutex_runs_until_its_last_holder_lets_go() {
+        let name = format!(r"Local\keymotion-test-held-{}", std::process::id());
+        let (first, existed) = hold(&name).unwrap();
+        assert!(!existed && running(&name));
+        let (second, existed) = hold(&name).unwrap();
+        assert!(existed);
+        drop(first);
+        assert!(running(&name));
+        drop(second);
+        assert!(!running(&name));
     }
 
     /// Prints what this computer has; `--nocapture` shows it.

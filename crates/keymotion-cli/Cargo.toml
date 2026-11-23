@@ -20,6 +20,7 @@ test-pipe = []
 [dependencies]
 clap.workspace = true
 kb-agent.workspace = true
+kb-hooks.workspace = true
 serde_json.workspace = true
 
 [target.'cfg(windows)'.dependencies]

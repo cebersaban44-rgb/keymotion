@@ -118,6 +118,10 @@ pub trait Host: Send + Sync {
     fn send(&self, request: Request);
     fn save(&self, settings: &AgentSettings) -> Result<(), String>;
     fn publish(&self, state: &AgentsState);
+    /// Tell the coding agents' hooks whether they may start Keymotion
+    /// (`kb_hooks::setup::mark_stopped`): `Some` when the user quit it or
+    /// turned agent access off, `None` when they may again.
+    fn note_stopped(&self, why: Option<kb_hooks::setup::Stopped>);
 }
 
 #[derive(Default)]
@@ -234,6 +238,12 @@ impl Core {
         Ok(index)
     }
 
+    /// The agents' lights can be seen on the keys now (dimmed for the night
+    /// or not).
+    fn shows(&self, s: &AgentSettings) -> bool {
+        matches!(self.lights_now(s), AgentLights::Shown | AgentLights::NightDim)
+    }
+
     /// How the lights show now, as far as the keyboard, a game and the
     /// night go.
     fn lights_now(&self, s: &AgentSettings) -> AgentLights {
@@ -279,8 +289,10 @@ impl Core {
         let now = self.now();
         let lights = self.lights();
         let idle = self.host.idle_ms();
+        let visible = lights.is_ok() && self.shows(&self.settings());
         let (result, effects, settings) = {
             let mut e = lock(&self.engine);
+            e.set_visible(visible, now.mono);
             e.observe_idle(idle, now.mono);
             e.prune(now.mono);
             let (result, effects) = e.command(call.source, command, lights.as_deref().map_err(Clone::clone), now);
@@ -342,13 +354,27 @@ impl Core {
             Quiet::ButReminders => "but_reminders",
             Quiet::All => "all",
         };
-        let signals: Vec<Value> = {
+        let (signals, sessions): (Vec<Value>, Vec<Value>) = {
             let index = self.lights().ok();
             let mut e = lock(&self.engine);
             if let Some(index) = &index {
                 e.refresh_keys(index);
             }
-            e.infos(now.mono, index.is_some())
+            let sessions = e
+                .sessions(now.mono)
+                .into_iter()
+                .map(|s| {
+                    json!({
+                        "number": s.number,
+                        "source": s.source,
+                        "agent": s.agent,
+                        "label": s.label,
+                        "waiting": s.waiting,
+                    })
+                })
+                .collect();
+            let signals = e
+                .infos(now.mono, index.is_some())
                 .into_iter()
                 .filter(|i| i.kind != "try")
                 .map(|i| {
@@ -362,7 +388,8 @@ impl Core {
                         "percent": i.percent,
                     })
                 })
-                .collect()
+                .collect();
+            (signals, sessions)
         };
         json!({
             "app": { "running": true, "version": self.info.version, "channel": self.info.channel, "protocol": protocol },
@@ -379,6 +406,7 @@ impl Core {
             "quiet": quiet,
             "focus": self.host.focus(),
             "signals": signals,
+            "sessions": sessions,
             "screen_budget": self.host.screen_budget(),
             "flash_write": self.host.flash_write(),
             "conflict": self.host.conflict(),
@@ -476,14 +504,21 @@ impl Core {
     pub fn state(&self) -> AgentsState {
         let now = self.host.mono_ms();
         let index = self.lights().ok();
-        let (settings, signals, log) = {
+        let (settings, signals, sessions, log) = {
             let mut e = lock(&self.engine);
             if let Some(index) = &index {
                 e.refresh_keys(index);
             }
-            (*e.settings(), e.infos(now, index.is_some()), e.log_entries())
+            (*e.settings(), e.infos(now, index.is_some()), e.sessions(now), e.log_entries())
         };
-        AgentsState { lights: self.lights_now(&settings), settings, signals, log, server: self.server_state() }
+        AgentsState {
+            lights: self.lights_now(&settings),
+            settings,
+            signals,
+            sessions,
+            log,
+            server: self.server_state(),
+        }
     }
 
     /// The page saved its settings (any of them). They are written first
@@ -494,14 +529,35 @@ impl Core {
             let _saving = lock(&self.saving);
             self.host.save(&settings).map(|()| {
                 let mut e = lock(&self.engine);
-                if e.settings().enabled != settings.enabled {
+                let toggled = e.settings().enabled != settings.enabled;
+                if toggled {
                     tracing::info!(on = settings.enabled, "agent access");
                 }
                 e.set_settings(settings);
+                toggled
             })
         };
+        if let Ok(true) = written {
+            self.host.note_stopped((!settings.enabled).then_some(kb_hooks::setup::Stopped::AccessOff));
+        }
         self.wake();
-        written.map(|()| self.state())
+        written.map(|_| self.state())
+    }
+
+    /// The app starts: with access on, hooks may start it again; with it
+    /// off, they may not.
+    pub fn started(&self) {
+        let on = self.settings().enabled;
+        self.host.note_stopped((!on).then_some(kb_hooks::setup::Stopped::AccessOff));
+    }
+
+    /// The user chose "Quit" (`true`) or stayed after all (`false`): hooks
+    /// leave a Keymotion the user quit closed. Nothing changes while access
+    /// is off (that note stays).
+    pub fn quitting(&self, quit: bool) {
+        if self.settings().enabled {
+            self.host.note_stopped(quit.then_some(kb_hooks::setup::Stopped::Quit));
+        }
     }
 
     /// "Try on the keyboard": `look` on `keys` (default every key).
@@ -558,6 +614,7 @@ impl Core {
         };
         let (frame, lit, waiting, dirty) = {
             let mut e = lock(&self.engine);
+            e.set_visible(index.is_some() && !hidden && night > 0.0, now);
             e.observe_idle(idle, now);
             e.prune(now);
             e.apply_queued(now);
@@ -742,6 +799,38 @@ impl Host for AppHost {
     fn publish(&self, state: &AgentsState) {
         let _ = self.app.emit(EVENT_AGENTS, state);
     }
+
+    fn note_stopped(&self, why: Option<kb_hooks::setup::Stopped>) {
+        let Some(homes) = kb_hooks::setup::Homes::from_env() else { return };
+        let done = match why {
+            Some(why) => {
+                let logon = kb_winsys::pipe::current_logon_id().ok();
+                kb_hooks::setup::mark_stopped(&homes, why, logon)
+            }
+            None => kb_hooks::setup::clear_stopped(&homes),
+        };
+        if !done.is_empty() {
+            tracing::info!(stopped = why.is_some(), files = done.len(), "agent hooks told whether to start Keymotion");
+        }
+    }
+}
+
+/// At start, off the main thread: the skill (and Codex rule) Keymotion put
+/// in a connected agent's folders is brought up to this version's, if it is
+/// older (`kb_hooks::setup::refresh`: only our own files, only where they
+/// are); and the hooks learn whether they may start Keymotion.
+fn on_start(core: Arc<Core>) {
+    let spawned = std::thread::Builder::new().name("agents-start".into()).spawn(move || {
+        if let Some(homes) = kb_hooks::setup::Homes::from_env() {
+            for path in kb_hooks::setup::refresh(&homes) {
+                tracing::info!(file = %path.display(), "agent skill brought up to date");
+            }
+        }
+        core.started();
+    });
+    if let Err(e) = spawned {
+        tracing::warn!("agent start check not started: {e}");
+    }
 }
 
 /// The agents (managed Tauri state).
@@ -768,6 +857,7 @@ impl AgentHandle {
         let info = ServerInfo { version: app.package_info().version.to_string(), channel };
         let host = Arc::new(AppHost { app, device, config_dir, started: Instant::now(), conflict: Mutex::new(None) });
         let core = Core::new(host, settings, info, true);
+        on_start(core.clone());
         let (tx, rx) = mpsc::channel();
         *lock(&core.wake) = Some(tx);
         let worker = core.clone();
@@ -806,6 +896,11 @@ impl AgentHandle {
     pub fn undo(&self, seq: u32) -> Result<AgentsState, String> {
         self.core.undo(seq)
     }
+
+    /// "Quit" in the tray (`true`), or the user stayed after all (`false`).
+    pub fn quitting(&self, quit: bool) {
+        self.core.quitting(quit);
+    }
 }
 
 #[cfg(all(test, windows))]
@@ -826,6 +921,8 @@ mod tests {
         frames: Mutex<Vec<Option<LiveFrame>>>,
         in_quiet: Mutex<Vec<bool>>,
         saved: Mutex<Vec<AgentSettings>>,
+        /// What the hooks were told (`note_stopped`).
+        stopped: Mutex<Vec<Option<kb_hooks::setup::Stopped>>>,
         published: AtomicU64,
         idle: Mutex<Option<u64>>,
         /// Saving fails (a full disk).
@@ -844,6 +941,7 @@ mod tests {
                 frames: Mutex::new(Vec::new()),
                 in_quiet: Mutex::new(Vec::new()),
                 saved: Mutex::new(Vec::new()),
+                stopped: Mutex::new(Vec::new()),
                 published: AtomicU64::new(0),
                 idle: Mutex::new(Some(0)),
                 save_fails: AtomicBool::new(false),
@@ -911,6 +1009,9 @@ mod tests {
         }
         fn publish(&self, _: &AgentsState) {
             self.published.fetch_add(1, Ordering::SeqCst);
+        }
+        fn note_stopped(&self, why: Option<kb_hooks::setup::Stopped>) {
+            lock(&self.stopped).push(why);
         }
     }
 
@@ -1132,6 +1233,58 @@ mod tests {
         core.tick(&mut w);
         assert_eq!(fake.last_frame(), None);
         assert!(core.state().signals.is_empty());
+    }
+
+    #[test]
+    fn a_key_pressed_once_the_question_showed_puts_it_out() {
+        let (fake, core, _server, name) = setup(AgentSettings { enabled: true, ..AgentSettings::default() });
+        let mut cli = client(&name, "tests");
+        *lock(&fake.idle) = Some(60_000);
+        cli.call(&signal("attention")).unwrap();
+        let mut w = Worker::default();
+        core.tick(&mut w);
+        fake.advance(5_000);
+        core.tick(&mut w);
+        assert!(fake.last_frame().is_some(), "nobody touched anything");
+        // Hidden while a game runs: a key pressed then is no answer.
+        *lock(&fake.quiet) = Quiet::All;
+        *lock(&fake.idle) = Some(0);
+        fake.advance(100);
+        core.tick(&mut w);
+        *lock(&fake.idle) = Some(60_000);
+        *lock(&fake.quiet) = Quiet::Off;
+        fake.advance(100);
+        core.tick(&mut w);
+        assert!(!core.state().signals.is_empty());
+        // Shown again for a while, a key pressed: it goes.
+        fake.advance(5_000);
+        core.tick(&mut w);
+        *lock(&fake.idle) = Some(0);
+        fake.advance(100);
+        core.tick(&mut w);
+        assert!(core.state().signals.is_empty());
+        assert_eq!(fake.last_frame(), None);
+    }
+
+    #[test]
+    fn the_hooks_learn_when_keymotion_must_stay_closed() {
+        use kb_hooks::setup::Stopped;
+        let fake = Fake::new();
+        let info = ServerInfo { version: "1.2.0".into(), channel: Channel::Dev };
+        let core = Core::new(fake.clone(), AgentSettings::default(), info, false);
+        core.started();
+        core.quitting(true);
+        let on = AgentSettings { enabled: true, ..AgentSettings::default() };
+        core.save(on).unwrap();
+        core.save(on).unwrap();
+        core.quitting(true);
+        core.quitting(false);
+        core.save(AgentSettings::default()).unwrap();
+        assert_eq!(
+            *lock(&fake.stopped),
+            [Some(Stopped::AccessOff), None, Some(Stopped::Quit), None, Some(Stopped::AccessOff)],
+            "access off at start; quitting with access off changes nothing; saving without a change says nothing"
+        );
     }
 
     #[test]

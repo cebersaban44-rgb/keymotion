@@ -13,6 +13,7 @@ license = "MIT OR Apache-2.0"
 kb-agent = { path = "crates/kb-agent" }
 kb-core = { path = "crates/kb-core" }
 kb-devices = { path = "crates/kb-devices" }
+kb-hooks = { path = "crates/kb-hooks" }
 kb-protocol = { path = "crates/kb-protocol" }
 kb-transport = { path = "crates/kb-transport" }
 kb-winsys = { path = "crates/kb-winsys" }

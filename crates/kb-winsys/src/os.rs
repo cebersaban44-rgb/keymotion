@@ -48,6 +48,13 @@ pub fn windows_release() -> Option<WindowsRelease> {
     sys::windows_release()
 }
 
+/// A program's file version (its version resource), `[major, minor, build,
+/// revision]`: what Explorer shows as "File version". `None` without one.
+/// keymotion-cli reads Claude Code's this way, without starting it.
+pub fn file_version(path: &std::path::Path) -> Option<[u16; 4]> {
+    sys::file_version(path)
+}
+
 #[cfg(windows)]
 mod sys {
     use super::{product_of, WindowsRelease};
@@ -101,6 +108,43 @@ mod sys {
         err.is_ok().then_some(value)
     }
 
+    pub fn file_version(path: &std::path::Path) -> Option<[u16; 4]> {
+        use windows::Win32::Storage::FileSystem::{
+            GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW, VS_FIXEDFILEINFO,
+        };
+        let path = HSTRING::from(path.as_os_str());
+        // SAFETY: a NUL-terminated path; no handle is asked for.
+        let size = unsafe { GetFileVersionInfoSizeW(&path, None) };
+        if size == 0 {
+            return None;
+        }
+        let mut data = vec![0u8; size as usize];
+        // SAFETY: a buffer of the size the API asked for.
+        unsafe { GetFileVersionInfoW(&path, None, size, data.as_mut_ptr().cast()) }.ok()?;
+        let mut info: *mut core::ffi::c_void = std::ptr::null_mut();
+        let mut len = 0u32;
+        // SAFETY: `data` holds the version resource just read; the API
+        // points `info` into it, alive while `data` is.
+        let found = unsafe { VerQueryValueW(data.as_ptr().cast(), w!("\\"), &mut info, &mut len) };
+        if !found.as_bool() || info.is_null() || (len as usize) < std::mem::size_of::<VS_FIXEDFILEINFO>() {
+            return None;
+        }
+        // SAFETY: checked above: `info` points at a VS_FIXEDFILEINFO inside
+        // `data`, which may not be aligned for it.
+        let fixed = unsafe { std::ptr::read_unaligned(info.cast::<VS_FIXEDFILEINFO>()) };
+        if fixed.dwSignature != 0xFEEF_04BD {
+            return None;
+        }
+        let hi = |v: u32| (v >> 16) as u16;
+        let lo = |v: u32| (v & 0xFFFF) as u16;
+        Some([
+            hi(fixed.dwFileVersionMS),
+            lo(fixed.dwFileVersionMS),
+            hi(fixed.dwFileVersionLS),
+            lo(fixed.dwFileVersionLS),
+        ])
+    }
+
     pub fn windows_release() -> Option<WindowsRelease> {
         let build: u32 = text("CurrentBuildNumber")?.parse().ok()?;
         Some(WindowsRelease {
@@ -120,11 +164,24 @@ mod sys {
     pub fn windows_release() -> Option<WindowsRelease> {
         None
     }
+
+    pub fn file_version(_path: &std::path::Path) -> Option<[u16; 4]> {
+        None
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn a_programs_file_version_is_read() {
+        let root = std::path::PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into()));
+        let v = file_version(&root.join(r"System32\cmd.exe")).expect("cmd.exe has a version");
+        assert!(v[0] >= 6 && v[2] > 0, "{v:?}");
+        assert_eq!(file_version(&root.join("no-such-program.exe")), None);
+    }
 
     #[test]
     fn describes_the_release_like_windows_does() {
