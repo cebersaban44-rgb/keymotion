@@ -62,44 +62,64 @@ pub(crate) fn windows_zone(name: &str) -> Option<TimeZone> {
     TimeZone::get(iana).ok()
 }
 
-/// Windows zone names (Outlook) → IANA (CLDR windowsZones, main territory).
+/// Windows zone names (Outlook) → IANA: CLDR's
+/// `common/supplemental/windowsZones.xml`, every `territory="001"` entry
+/// in its order (typeVersion 2021a; the same table jiff 0.2.41 carries).
+/// The IANA names are CLDR's, old ones included (`Asia/Calcutta`); the
+/// bundled time zone data knows them all (tested).
 const WINDOWS_ZONES: &[(&str, &str)] = &[
     ("Dateline Standard Time", "Etc/GMT+12"),
     ("UTC-11", "Etc/GMT+11"),
+    ("Aleutian Standard Time", "America/Adak"),
     ("Hawaiian Standard Time", "Pacific/Honolulu"),
+    ("Marquesas Standard Time", "Pacific/Marquesas"),
     ("Alaskan Standard Time", "America/Anchorage"),
-    ("Pacific Standard Time (Mexico)", "America/Tijuana"),
     ("UTC-09", "Etc/GMT+9"),
+    ("Pacific Standard Time (Mexico)", "America/Tijuana"),
     ("UTC-08", "Etc/GMT+8"),
     ("Pacific Standard Time", "America/Los_Angeles"),
     ("US Mountain Standard Time", "America/Phoenix"),
-    ("Mountain Standard Time (Mexico)", "America/Chihuahua"),
+    ("Mountain Standard Time (Mexico)", "America/Mazatlan"),
     ("Mountain Standard Time", "America/Denver"),
+    ("British Columbia Standard Time", "America/Vancouver"),
+    ("Yukon Standard Time", "America/Whitehorse"),
+    ("Alberta Standard Time", "America/Edmonton"),
     ("Central America Standard Time", "America/Guatemala"),
+    ("Central Standard Time", "America/Chicago"),
+    ("Easter Island Standard Time", "Pacific/Easter"),
     ("Central Standard Time (Mexico)", "America/Mexico_City"),
     ("Canada Central Standard Time", "America/Regina"),
-    ("Central Standard Time", "America/Chicago"),
+    ("Manitoba Standard Time", "America/Winnipeg"),
     ("SA Pacific Standard Time", "America/Bogota"),
+    ("Eastern Standard Time (Mexico)", "America/Cancun"),
     ("Eastern Standard Time", "America/New_York"),
-    ("Venezuela Standard Time", "America/Caracas"),
+    ("Haiti Standard Time", "America/Port-au-Prince"),
+    ("Cuba Standard Time", "America/Havana"),
+    ("US Eastern Standard Time", "America/Indianapolis"),
+    ("Turks And Caicos Standard Time", "America/Grand_Turk"),
     ("Paraguay Standard Time", "America/Asuncion"),
     ("Atlantic Standard Time", "America/Halifax"),
+    ("Venezuela Standard Time", "America/Caracas"),
+    ("Central Brazilian Standard Time", "America/Cuiaba"),
     ("SA Western Standard Time", "America/La_Paz"),
     ("Pacific SA Standard Time", "America/Santiago"),
     ("Newfoundland Standard Time", "America/St_Johns"),
+    ("Tocantins Standard Time", "America/Araguaina"),
     ("E. South America Standard Time", "America/Sao_Paulo"),
-    ("Argentina Standard Time", "America/Buenos_Aires"),
     ("SA Eastern Standard Time", "America/Cayenne"),
+    ("Argentina Standard Time", "America/Buenos_Aires"),
     ("Greenland Standard Time", "America/Godthab"),
     ("Montevideo Standard Time", "America/Montevideo"),
+    ("Magallanes Standard Time", "America/Punta_Arenas"),
+    ("Saint Pierre Standard Time", "America/Miquelon"),
     ("Bahia Standard Time", "America/Bahia"),
     ("UTC-02", "Etc/GMT+2"),
-    ("Mid-Atlantic Standard Time", "Etc/GMT+2"),
     ("Azores Standard Time", "Atlantic/Azores"),
     ("Cape Verde Standard Time", "Atlantic/Cape_Verde"),
     ("UTC", "Etc/UTC"),
     ("GMT Standard Time", "Europe/London"),
     ("Greenwich Standard Time", "Atlantic/Reykjavik"),
+    ("Sao Tome Standard Time", "Africa/Sao_Tome"),
     ("Morocco Standard Time", "Africa/Casablanca"),
     ("W. Europe Standard Time", "Europe/Berlin"),
     ("Central Europe Standard Time", "Europe/Budapest"),
@@ -112,20 +132,21 @@ const WINDOWS_ZONES: &[(&str, &str)] = &[
     ("Egypt Standard Time", "Africa/Cairo"),
     ("E. Europe Standard Time", "Europe/Chisinau"),
     ("Syria Standard Time", "Asia/Damascus"),
+    ("West Bank Standard Time", "Asia/Hebron"),
     ("South Africa Standard Time", "Africa/Johannesburg"),
     ("FLE Standard Time", "Europe/Kiev"),
     ("Israel Standard Time", "Asia/Jerusalem"),
+    ("South Sudan Standard Time", "Africa/Juba"),
     ("Kaliningrad Standard Time", "Europe/Kaliningrad"),
     ("Sudan Standard Time", "Africa/Khartoum"),
     ("Libya Standard Time", "Africa/Tripoli"),
     ("Namibia Standard Time", "Africa/Windhoek"),
-    ("Turkey Standard Time", "Europe/Istanbul"),
     ("Arabic Standard Time", "Asia/Baghdad"),
+    ("Turkey Standard Time", "Europe/Istanbul"),
     ("Arab Standard Time", "Asia/Riyadh"),
     ("Belarus Standard Time", "Europe/Minsk"),
     ("Russian Standard Time", "Europe/Moscow"),
     ("E. Africa Standard Time", "Africa/Nairobi"),
-    ("Volgograd Standard Time", "Europe/Volgograd"),
     ("Iran Standard Time", "Asia/Tehran"),
     ("Arabian Standard Time", "Asia/Dubai"),
     ("Astrakhan Standard Time", "Europe/Astrakhan"),
@@ -134,44 +155,61 @@ const WINDOWS_ZONES: &[(&str, &str)] = &[
     ("Mauritius Standard Time", "Indian/Mauritius"),
     ("Saratov Standard Time", "Europe/Saratov"),
     ("Georgian Standard Time", "Asia/Tbilisi"),
+    ("Volgograd Standard Time", "Europe/Volgograd"),
     ("Caucasus Standard Time", "Asia/Yerevan"),
     ("Afghanistan Standard Time", "Asia/Kabul"),
     ("West Asia Standard Time", "Asia/Tashkent"),
     ("Ekaterinburg Standard Time", "Asia/Yekaterinburg"),
     ("Pakistan Standard Time", "Asia/Karachi"),
-    ("India Standard Time", "Asia/Kolkata"),
+    ("Qyzylorda Standard Time", "Asia/Qyzylorda"),
+    ("India Standard Time", "Asia/Calcutta"),
     ("Sri Lanka Standard Time", "Asia/Colombo"),
-    ("Nepal Standard Time", "Asia/Kathmandu"),
-    ("Central Asia Standard Time", "Asia/Almaty"),
+    ("Nepal Standard Time", "Asia/Katmandu"),
+    ("Central Asia Standard Time", "Asia/Bishkek"),
     ("Bangladesh Standard Time", "Asia/Dhaka"),
     ("Omsk Standard Time", "Asia/Omsk"),
-    ("Myanmar Standard Time", "Asia/Yangon"),
+    ("Myanmar Standard Time", "Asia/Rangoon"),
     ("SE Asia Standard Time", "Asia/Bangkok"),
-    ("N. Central Asia Standard Time", "Asia/Novosibirsk"),
+    ("Altai Standard Time", "Asia/Barnaul"),
+    ("W. Mongolia Standard Time", "Asia/Hovd"),
     ("North Asia Standard Time", "Asia/Krasnoyarsk"),
+    ("N. Central Asia Standard Time", "Asia/Novosibirsk"),
+    ("Tomsk Standard Time", "Asia/Tomsk"),
     ("China Standard Time", "Asia/Shanghai"),
     ("North Asia East Standard Time", "Asia/Irkutsk"),
     ("Singapore Standard Time", "Asia/Singapore"),
     ("W. Australia Standard Time", "Australia/Perth"),
     ("Taipei Standard Time", "Asia/Taipei"),
     ("Ulaanbaatar Standard Time", "Asia/Ulaanbaatar"),
+    ("Aus Central W. Standard Time", "Australia/Eucla"),
+    ("Transbaikal Standard Time", "Asia/Chita"),
     ("Tokyo Standard Time", "Asia/Tokyo"),
+    ("North Korea Standard Time", "Asia/Pyongyang"),
     ("Korea Standard Time", "Asia/Seoul"),
     ("Yakutsk Standard Time", "Asia/Yakutsk"),
     ("Cen. Australia Standard Time", "Australia/Adelaide"),
     ("AUS Central Standard Time", "Australia/Darwin"),
     ("E. Australia Standard Time", "Australia/Brisbane"),
     ("AUS Eastern Standard Time", "Australia/Sydney"),
+    ("West Pacific Standard Time", "Pacific/Port_Moresby"),
     ("Tasmania Standard Time", "Australia/Hobart"),
     ("Vladivostok Standard Time", "Asia/Vladivostok"),
+    ("Lord Howe Standard Time", "Australia/Lord_Howe"),
+    ("Bougainville Standard Time", "Pacific/Bougainville"),
+    ("Russia Time Zone 10", "Asia/Srednekolymsk"),
     ("Magadan Standard Time", "Asia/Magadan"),
+    ("Norfolk Standard Time", "Pacific/Norfolk"),
+    ("Sakhalin Standard Time", "Asia/Sakhalin"),
     ("Central Pacific Standard Time", "Pacific/Guadalcanal"),
-    ("UTC+12", "Etc/GMT-12"),
+    ("Russia Time Zone 11", "Asia/Kamchatka"),
     ("New Zealand Standard Time", "Pacific/Auckland"),
+    ("UTC+12", "Etc/GMT-12"),
     ("Fiji Standard Time", "Pacific/Fiji"),
+    ("Chatham Islands Standard Time", "Pacific/Chatham"),
     ("UTC+13", "Etc/GMT-13"),
     ("Tonga Standard Time", "Pacific/Tongatapu"),
     ("Samoa Standard Time", "Pacific/Apia"),
+    ("Line Islands Standard Time", "Pacific/Kiritimati"),
 ];
 
 #[cfg(test)]
@@ -203,5 +241,26 @@ mod tests {
         assert_eq!(offset(choose(&warsaw, Some(tokyo), july)), 120);
         // A Windows name in any case.
         assert_eq!(name(windows_zone("turkey standard time").unwrap()).as_deref(), Some("Europe/Istanbul"));
+    }
+
+    #[test]
+    fn every_windows_name_opens_a_zone_with_windows_offsets() {
+        for (w, iana) in WINDOWS_ZONES {
+            assert!(windows_zone(w).is_some(), "{w} → {iana}");
+        }
+        // Zones whose old IANA match moved: La Paz and Mazatlán stay at
+        // -07:00 (Chihuahua went to -06:00 in 2022), Bishkek at +06:00
+        // (Almaty went to +05:00 in 2024). An Outlook meeting at 10:00 there
+        // is at 17:00 and 04:00 UTC.
+        let january = jiff::civil::date(2027, 1, 15).at(12, 0, 0, 0).to_zoned(TimeZone::UTC).unwrap().timestamp();
+        let hours = |w: &str| windows_zone(w).unwrap().to_offset(january).seconds() / 3600;
+        assert_eq!(hours("Mountain Standard Time (Mexico)"), -7);
+        assert_eq!(hours("Central Asia Standard Time"), 6);
+        // Zones with summer time that used to fall back to a fixed offset.
+        let july = jiff::civil::date(2026, 7, 1).at(12, 0, 0, 0).to_zoned(TimeZone::UTC).unwrap().timestamp();
+        let summer = |w: &str| windows_zone(w).unwrap().to_offset(july).seconds() / 60;
+        assert_eq!(summer("US Eastern Standard Time"), -4 * 60);
+        assert_eq!(summer("Cuba Standard Time"), -4 * 60);
+        assert_eq!(summer("Aleutian Standard Time"), -9 * 60);
     }
 }

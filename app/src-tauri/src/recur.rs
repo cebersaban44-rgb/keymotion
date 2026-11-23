@@ -23,9 +23,12 @@
 //!   may go to ±5 for MONTHLY and ±53 for YEARLY (`rrule`: -4 and -52).
 //!
 //! A series walks at most [`MAX_PERIODS`] periods from its start (a daily
-//! repeat for over 500 years, an hourly one for 22): a rule that would take
-//! longer, such as a secondly one started decades ago, stops there, so a
-//! hostile feed cannot keep the calendar busy.
+//! repeat for over 500 years, an hourly one for 22) and works out at most
+//! [`MAX_INSTANCES`] times on the way: a rule that would take longer, such
+//! as a secondly one started decades ago, stops there, so a hostile feed
+//! cannot keep the calendar busy. A rule that asks for more than
+//! [`MAX_TIMES_A_DAY`] times of day (every hour, minute and second listed)
+//! is not read at all.
 
 use jiff::civil::{Date, DateTime, Time};
 use jiff::tz::TimeZone;
@@ -38,6 +41,14 @@ use std::str::FromStr;
 const MAX_EMPTY: u32 = 100_000;
 /// Periods a series walks at most from its start.
 pub const MAX_PERIODS: u32 = 200_000;
+/// Times a series works out at most from its start, those before the span
+/// and those a period holds at once included: a period of a year with
+/// every day and every second (31 million) never fills the memory, and a
+/// long walk never takes minutes.
+pub const MAX_INSTANCES: u32 = 1_000_000;
+/// The most times of day a daily, weekly, monthly or yearly rule may ask
+/// for (BYHOUR × BYMINUTE × BYSECOND): once a minute all day.
+const MAX_TIMES_A_DAY: usize = 1_440;
 /// Years a rule may reach.
 const YEARS: std::ops::RangeInclusive<i32> = -10_000..=10_000;
 
@@ -268,6 +279,12 @@ impl Rule {
         }
         if self.by_second.is_empty() && self.freq < Freq::Secondly {
             self.by_second = vec![wall.second() as u8];
+        }
+        // Each day of a period gets every one of these times.
+        if self.freq < Freq::Hourly
+            && self.by_hour.len() * self.by_minute.len() * self.by_second.len() > MAX_TIMES_A_DAY
+        {
+            return Err("too many times a day".into());
         }
         self.by_month_day.sort_unstable();
         self.by_month_day.dedup();
@@ -775,6 +792,8 @@ struct Starts<'a> {
     left: Option<u32>,
     /// Periods walked so far.
     walked: u32,
+    /// Times worked out so far (at most [`MAX_INSTANCES`]).
+    made: u32,
     done: bool,
 }
 
@@ -803,6 +822,7 @@ impl<'a> Starts<'a> {
             ready: VecDeque::new(),
             left: rule.count,
             walked: 0,
+            made: 0,
             done: false,
         };
         me.rebuild();
@@ -979,9 +999,11 @@ impl<'a> Starts<'a> {
         out
     }
 
-    /// Keeps `t` if the rule reached it; true when the rule is over.
+    /// Keeps `t` if the rule reached it; true when the rule is over (or the
+    /// series has worked out [`MAX_INSTANCES`] times).
     fn keep(&mut self, t: Timestamp) -> bool {
-        if self.until.is_some_and(|u| t > u) {
+        self.made += 1;
+        if self.made > MAX_INSTANCES || self.until.is_some_and(|u| t > u) {
             return true;
         }
         if t >= self.start {
@@ -1291,5 +1313,27 @@ mod tests {
         let minutely = series("FREQ=MINUTELY", &start(IST, 2026, 1, 1, 9, 0));
         assert!(minutely.between(&[], &[], span.0, span.1, 99).is_empty());
         assert_eq!(minutely.starts().count(), MAX_PERIODS as usize);
+    }
+
+    #[test]
+    fn a_hostile_rule_cannot_ask_for_millions_of_times() {
+        let list = |n: u8| (0..n).map(|v| v.to_string()).collect::<Vec<_>>().join(",");
+        let (hours, minutes, seconds) = (list(24), list(60), list(60));
+        let s = start("UTC", 1900, 1, 1, 0, 0);
+        let check = |r: &str| r.parse::<Rule>().and_then(|r| r.validate(&s, false)).map(|_| ());
+        // Every second of every day, every day of a year: not read (the
+        // calendar shows the first instance only).
+        let all = format!("BYHOUR={hours};BYMINUTE={minutes};BYSECOND={seconds}");
+        assert_eq!(check(&format!("FREQ=DAILY;{all}")).unwrap_err(), "too many times a day");
+        assert!(check(&format!("FREQ=YEARLY;BYDAY=MO,TU,WE,TH,FR,SA,SU;{all}")).is_err());
+        // Once a minute all day is still a rule.
+        assert!(check(&format!("FREQ=DAILY;BYHOUR={hours};BYMINUTE={minutes}")).is_ok());
+        // An hourly one with every minute and second (3 600 an hour) from
+        // 1900: its periods are few enough, its times are not; the walk
+        // stops after a million.
+        let hourly = series(&format!("FREQ=HOURLY;BYMINUTE={minutes};BYSECOND={seconds}"), &s);
+        assert_eq!(hourly.starts().count(), MAX_INSTANCES as usize);
+        let now = start("UTC", 2026, 11, 2, 0, 0).timestamp();
+        assert!(hourly.between(&[], &[], now, now, 9).is_empty());
     }
 }

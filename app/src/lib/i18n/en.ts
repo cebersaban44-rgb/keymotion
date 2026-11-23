@@ -212,6 +212,7 @@ export const en = {
   "ag.err.unsupported": "Not done: the keyboard or this copy of Keymotion can't do that.",
   "ag.err.pipeNotTrusted": "Not done: the connection didn't lead to your own Keymotion, so nothing was sent.",
   "ag.err.busyFlashWrite": "Not done: the keyboard's memory was being written; the agent can try again later.",
+  "ag.err.notNow": "Not done for now: a meeting or reminder card was on the screen, a game was running, or you had unsaved changes; the agent can try again later.",
   "ag.err.timeout": "Not done: no answer came in time.",
   "ag.err.connectionLost": "Not done: Keymotion closed before it answered.",
   "ag.err.protocolMismatch": "Not done: keymotion-cli and Keymotion are versions that don't fit together; update Keymotion.",

@@ -211,7 +211,8 @@ function main() {
   // resources.pri: lets Windows pick each logo's size and contrast.
   const makepri = sdkTool("makepri.exe");
   const priconfig = join(out, "priconfig.xml");
-  run(makepri, ["createconfig", "/cf", priconfig, "/dq", "en-US_tr-TR", "/pv", "10.0.0", "/o"]);
+  // The languages AppxManifest.xml's <Resources> declares.
+  run(makepri, ["createconfig", "/cf", priconfig, "/dq", "en-US_tr-TR_ru-RU_zh-CN", "/pv", "10.0.0", "/o"]);
   writeFileSync(priconfig, singlePackageConfig(readFileSync(priconfig, "utf8")));
   run(makepri, ["new", "/pr", layout, "/cf", priconfig, "/mn", join(layout, "AppxManifest.xml"), "/of", join(layout, "resources.pri"), "/o"]);
 

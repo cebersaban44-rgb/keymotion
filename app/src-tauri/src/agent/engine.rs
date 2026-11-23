@@ -10,9 +10,10 @@
 //!   for the user (`attention`) over an `error` over the newest. Lights on
 //!   different keys show together.
 //! * A source may make [`RATE_PER_SECOND`] requests a second. Beyond that a
-//!   light that replaces one of its own waits in a queue, only the newest
-//!   per id, and the worker puts it up when the source is within the rate
-//!   again ([`Engine::apply_queued`]); anything else is `rate_limited`.
+//!   light that replaces one it has now waits in a queue, only the newest
+//!   per id (so at most [`MAX_PER_SOURCE`]), and the worker puts it up when
+//!   the source is within the rate again ([`Engine::apply_queued`]);
+//!   anything else is `rate_limited`.
 //! * "While you were away" (C): a signal that came while nobody was at the
 //!   computer flashes once when the user is back, even if its time ran out
 //!   meanwhile (for up to [`MISSED_KEEP_MS`]). "Unanswered" (D): a question
@@ -498,8 +499,13 @@ impl Engine {
         if s.take(now) {
             return Ok(Admit::Now);
         }
-        if id.is_some_and(|id| s.lamps.iter().chain(&s.queued).any(|l| l.id == id)) {
-            return Ok(Admit::Queue);
+        // Only a light the source has now waits for its replacement, and
+        // never more than its own number of lights: ever-new ids sent past
+        // the rate cannot pile up.
+        if let Some(id) = id.filter(|id| s.lamps.iter().any(|l| l.id == *id)) {
+            if s.queued.len() < MAX_PER_SOURCE || s.queued.iter().any(|l| l.id == id) {
+                return Ok(Admit::Queue);
+            }
         }
         let wait = 1000 - now.saturating_sub(*s.requests.front().unwrap_or(&now)).min(1000);
         Err(AgentError::new(ErrorCode::RateLimited, format!("More than {RATE_PER_SECOND} requests a second."))
@@ -1176,6 +1182,9 @@ impl Engine {
                     let oldest = s.lamps.iter().enumerate().min_by_key(|(_, l)| l.order).map(|(i, _)| i).unwrap_or(0);
                     evicted.push(s.lamps.remove(oldest).id);
                 }
+                // A replacement still waiting for a light pushed out goes
+                // with it.
+                s.queued.retain(|l| !evicted.contains(&l.id));
                 s.lamps.push(lamp);
                 false
             }
@@ -2081,6 +2090,32 @@ mod tests {
         }
         let refused = e.log_entries().len() - before;
         assert!(refused <= 1, "{refused} entries");
+    }
+
+    #[test]
+    fn only_a_light_the_source_has_waits_and_one_pushed_out_leaves_the_queue() {
+        let mut e = on();
+        // Twelve new lights, then one replaced again and again: twenty in
+        // the second, the newest eight kept (x among them).
+        for i in 0..12 {
+            run(&mut e, "a", light(&format!("k{i}"), "red"), i).unwrap();
+        }
+        for i in 12..RATE_PER_SECOND as u64 {
+            run(&mut e, "a", light("x", "red"), i).unwrap();
+        }
+        // Past the rate: x waits; k0, pushed out earlier, is refused (it
+        // would never be replaced, only pile up).
+        assert_eq!(run(&mut e, "a", light("x", "blue"), 100).unwrap()["queued"], true);
+        assert_eq!(run(&mut e, "a", light("k0", "blue"), 100).unwrap_err().code, ErrorCode::RateLimited);
+        assert_eq!(e.sources["a"].queued.len(), 1);
+        // A second later eight new lights push out the rest, x too: its
+        // waiting replacement goes with it.
+        for i in 0..MAX_PER_SOURCE as u64 {
+            run(&mut e, "a", light(&format!("n{i}"), "red"), 1_020 + i).unwrap();
+        }
+        assert!(!ids(&e, 1_100).contains(&"x".to_string()));
+        assert!(e.sources["a"].queued.is_empty());
+        assert_eq!(e.apply_queued(2_100), 0);
     }
 
     #[test]

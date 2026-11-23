@@ -64,7 +64,7 @@ More: log, settings get|set, doctor. Keymotion starts unseen (--no-start: not).
 Exit codes
   0 done  1 unexpected  64 bad command line  65 bad value (color, key, time)
   69 not available: no app, no keyboard, or it needs the USB cable
-  75 try again later (rate limit or timeout; see retry_after_ms)
+  75 try again later (rate limit, timeout, not_now; see retry_after_ms)
   76 Keymotion and keymotion-cli differ: update the older one
   77 not allowed (access or a permission is off): tell the user, do not retry
 "#;

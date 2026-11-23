@@ -116,6 +116,10 @@ error_codes! {
     BudgetExhausted = "budget_exhausted" => TEMPORARY;
     /// The keyboard's memory is being written; try again later.
     BusyFlashWrite = "busy_flash_write" => TEMPORARY;
+    /// Keymotion holds it back for now: a meeting's or a reminder's card has
+    /// the screen, a game wants the keyboard left alone, or the user has
+    /// changes not saved yet. Try again later.
+    NotNow = "not_now" => TEMPORARY;
     /// No answer in time.
     Timeout = "timeout" => TEMPORARY;
     /// The app closed the connection before answering (it is quitting or
@@ -244,6 +248,7 @@ mod tests {
             (RateLimited, 75),
             (BudgetExhausted, 75),
             (BusyFlashWrite, 75),
+            (NotNow, 75),
             (Timeout, 75),
             (ConnectionLost, 75),
             (ProtocolMismatch, 76),

@@ -35,6 +35,9 @@
 //!   descriptor (`pipe`, Windows only).
 //! * The user's own PATH, for the GitHub copy's `keymotion-cli` folder
 //!   ([`user_path`]): read, added to, taken from, nothing else changed.
+//! * Whether a file `keymotion-cli` is asked to read stays on this computer
+//!   ([`local`]): what a drive letter stands for, what kind of link a
+//!   folder is, without following it or reaching the network.
 //!
 //! Types holding COM or PDH handles are not `Send`: make them on the thread
 //! that uses them.
@@ -46,6 +49,7 @@ pub mod copies;
 pub mod foreground;
 pub mod games;
 pub mod icon;
+pub mod local;
 pub mod loopback;
 pub mod os;
 pub mod package;

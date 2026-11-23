@@ -1095,6 +1095,7 @@ const ERROR_CODES = new Set([
   "rate_limited",
   "budget_exhausted",
   "busy_flash_write",
+  "not_now",
   "timeout",
   "connection_lost",
   "protocol_mismatch",

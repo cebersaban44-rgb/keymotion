@@ -213,6 +213,7 @@ export const zhCN: Partial<Messages> = {
   "ag.err.unsupported": "未执行：键盘或这个 Keymotion 副本无法做到。",
   "ag.err.pipeNotTrusted": "未执行：该连接不是通往你自己的 Keymotion，因此没有发送任何内容。",
   "ag.err.busyFlashWrite": "未执行：当时正在写入键盘存储；智能体稍后可以再试。",
+  "ag.err.notNow": "暂未执行：当时屏幕上有会议或提醒卡片、正在玩游戏，或你有未保存的更改；智能体稍后可以再试。",
   "ag.err.timeout": "未执行：未及时收到回应。",
   "ag.err.connectionLost": "未执行：Keymotion 在回应前关闭了。",
   "ag.err.protocolMismatch": "未执行：keymotion-cli 与 Keymotion 的版本不匹配；需要更新 Keymotion。",
