@@ -5,7 +5,7 @@ description: Bir klavye modelinin nasıl tanımlandığı, tanımanın nasıl ç
 
 import { Aside, Steps } from "@astrojs/starlight/components";
 
-Keymotion bugün AJAZZ AK980 PRO'yu destekliyor. Birçok klavye aynı SONiX altyapısı üzerine kurulu ve aynı komut ailesini konuşuyor görünüyor; bu yüzden bunlar aday klavyelerdir ve [Desteklenen klavyeler](/keymotion/tr/help/keyboards/) sayfasında listelenir. Hiçbiri, o klavyede denenmeden desteklenmiş sayılmaz; çünkü bir klavyeyi güvende tutan ayrıntılar, örneğin kimlikleri, ekran boyutu ve kare sınırı, modelden modele değişir.
+Keymotion bugün AJAZZ AK980 PRO'yu iki komut ailesinde de destekliyor: 1.06 klavye yazılımının "04 xx" ailesi ve 769 klavye yazılımının "AA" ailesi ([Protokol ayrıntıları](/keymotion/tr/developers/protocol/)). Birçok klavye aynı SONiX altyapısı üzerine kurulu ve bu ailelerden birini konuşuyor görünüyor; bu yüzden bunlar aday klavyelerdir ve [Desteklenen klavyeler](/keymotion/tr/help/keyboards/) sayfasında listelenir. Hiçbiri, o klavyede denenmeden desteklenmiş sayılmaz; çünkü bir klavyeyi güvende tutan ayrıntılar, örneğin kimlikleri, ekran boyutu ve kare sınırı, modelden modele değişir.
 
 ## Başka bir klavyeniz varsa
 
@@ -40,7 +40,7 @@ Her model, [`crates/kb-devices/models/`](https://github.com/cebersaban44-rgb/key
 id = "ajazz-ak980-pro"          # dosya adıyla aynı olmalı
 name = "AJAZZ AK980 PRO"
 vendor = "AJAZZ"
-protocol = "sonix-ff13"
+protocol = "sonix-ff13"         # kendi ailesini belirtmeyen her modun ailesi
 layout = "98"
 key_count = 97
 has_knob = true
@@ -50,7 +50,7 @@ has_side_light = true
 width = 240
 height = 135
 pixel_format = "rgb565-le"
-verified = false
+verified = true
 
 [[modes]]
 kind = "usb"
@@ -64,6 +64,17 @@ verified = true
 verified_firmware = [0x0106]
 
 [[modes]]
+kind = "usb"
+protocol = "ajazz-aa"           # bu modun kendi ailesi
+vid = 0x0C45
+pid = 0x8039
+product_contains = "AK980 PRO"
+command_usage_page = 0xFF68
+display_usage_page = 0xFF67
+capabilities = ["lighting", "per-key-rgb", "keymap", "macros", "screen", "clock", "battery"]
+verified = false                # henüz `verified_firmware` yok
+
+[[modes]]
 kind = "bluetooth"
 vid = 0x0C45
 pid = 0xFEFE
@@ -73,6 +84,7 @@ verified = true
 
 [[indicators]]
 led = 32
+aa = 29
 name = "Num Lock"
 color = [255, 255, 255]
 verified = true
@@ -84,8 +96,8 @@ source = "…"                    # konumların nereden geldiği
 screen = { x = 16.5, y = 0.0, w = 3.0, h = 1.0 }
 knob = { x = 19.5, y = 0.0, d = 1.0 }
 keys = [
-  { id = "esc", label = "Esc", led = 1, hid = 0x29, x = 0.0, y = 0.0 },
-  { id = "f1", label = "F1", led = 2, hid = 0x3A, x = 2.0, y = 0.0 },
+  { id = "esc", label = "Esc", led = 1, aa = 0, hid = 0x29, x = 0.0, y = 0.0 },
+  { id = "f1", label = "F1", led = 2, aa = 1, hid = 0x3A, x = 2.0, y = 0.0 },
   # … her tuş için bir satır
 ]
 ```
@@ -93,25 +105,30 @@ keys = [
 | Alan | Anlamı |
 |---|---|
 | `id`, `name`, `vendor` | Modelin kimliği. `id` dosya adıyla aynı olmalıdır. |
-| `protocol`, `layout`, `key_count`, `has_knob`, `has_side_light` | Klavyenin türü. `key_count`, `geometry` içindeki tuş sayısına eşit olmalıdır. |
+| `protocol`, `layout`, `key_count`, `has_knob`, `has_side_light` | Klavyenin türü. `protocol`, kendi ailesini belirtmeyen her modun komut ailesidir: `sonix-ff13` ("04 xx") ya da `ajazz-aa` ("AA"). `key_count`, `geometry` içindeki tuş sayısına eşit olmalıdır. |
 | `[screen]` | Panelin boyutu ve piksel biçimi. |
-| `[[modes]]` | Her bağlantı için bir girdi: `kind` (`usb`, `dongle` ya da `bluetooth`), `vid` ve `pid` ile bağlantıyı ayrıca tanımlayan alanlar: `product_contains` (USB ürün adında geçmesi gereken, büyük-küçük harf ayırmayan bir parça), üreticiye özel kanallar için `command_usage_page` ve `display_usage_page`, Bluetooth için `ble_name_prefix`. |
-| `capabilities` | Klavyenin o modda sunduğu özellikler: `lighting`, `per-key-rgb`, `keymap`, `macros`, `options`, `screen`, `clock`, `battery`. Uygulama bunlardan yalnızca o modda gerçekten sürdüklerini sunar (`kb_core::app_capabilities`). |
+| `[[modes]]` | Her bağlantı ve komut ailesi için bir girdi: `kind` (`usb`, `dongle` ya da `bluetooth`), modelinkinden farklıysa modun kendi `protocol` değeri, `vid` ve `pid` ile bağlantıyı ayrıca tanımlayan alanlar: `product_contains` (USB ürün adında geçmesi gereken, büyük-küçük harf ayırmayan bir parça), üreticiye özel kanallar için `command_usage_page` ve `display_usage_page`, Bluetooth için `ble_name_prefix`. Bir bağlantının, aynı kimliklerin ve adın arkasında bile, her aile için bir modu olabilir. |
+| `capabilities` | Klavyenin o modda sunduğu özellikler: `lighting`, `per-key-rgb`, `keymap`, `macros`, `options`, `screen`, `clock`, `battery`. Uygulama bunlardan yalnızca o modda gerçekten sürdüklerini sunar (`kb_core::app_capabilities`): kabloda `battery` yalnızca pili bildiren "AA" ailesinde, `options` ise henüz hiçbir ailede sunulmaz. |
 | `verified` | Yalnızca bu projede gerçek bir klavyede ölçülen bilgiler için `true`. |
-| `verified_firmware` | Her yazmanın denendiği klavye yazılımı sürümleri (`bcdDevice`). Başka bir sürümde uygulama, her oturumda ilk yazmadan önce kullanıcıya bir kez sorar. |
-| `[[indicators]]` | Klavye yazılımının kendi yaktığı ışıklar (Num Lock, Fn): LED'i, ne gösterdiği ve rengi. |
-| `[geometry]` | Klavyenin bir fotoğrafından tuş birimi cinsinden ölçülen fiziksel düzen; kaynağı `source` alanına yazılır. Ekran, topuz ve her tuş: `id`, `label`, `led` numarası (bu ailede aynı zamanda tuşun tuş atama numarası), varsayılan `hid` usage'ı, konumu ve boyutu. |
+| `verified_firmware` | Modun sunduğu her yazmanın gerçek bir klavyede denendiği klavye yazılımı sürümleri (`bcdDevice`). Her modun kendi listesi vardır; bir "AA" modunun listesi "04 xx" modu hakkında hiçbir şey söylemez. Başka bir sürümde uygulama, her oturumda ilk yazmadan önce kullanıcıya bir kez sorar. |
+| `[[indicators]]` | Klavye yazılımının kendi yaktığı ışıklar (Num Lock, Fn): LED'i, modelin bir "AA" modu varsa `aa` numarası, ne gösterdiği ve rengi. |
+| `[geometry]` | Klavyenin bir fotoğrafından tuş birimi cinsinden ölçülen fiziksel düzen; kaynağı `source` alanına yazılır. Ekran, topuz ve her tuş: `id`, `label`, `led` numarası ("04 xx" ailesinde aynı zamanda tuşun tuş atama numarası), `aa` numarası, varsayılan `hid` usage'ı, konumu ve boyutu. |
 
 Bilinmeyen alanlar reddedilir; bu sayede bir yazım hatası görmezden gelinmez, testleri kırmızı yapar.
 
-Bir dosya eklemek için onu `crates/kb-devices/src/lib.rs` içindeki `MODEL_SOURCES` listesine (kimliğe göre sıralı) ekleyin ve `cargo test --workspace` çalıştırın. Testler her modeli okur ve geometrisini denetler: tuş sayısı, yinelenen LED numarası, tuş kimliği ya da HID usage'ı olmaması, her tuşun çerçevenin içinde kalması ve hiçbir iki tuşun üst üste binmemesi. Aynı çalışma `app/src/bindings/geometry-<id>.json` dosyasını yazar; onu modelle birlikte commit'leyin.
+Bir dosya eklemek için onu `crates/kb-devices/src/lib.rs` içindeki `MODEL_SOURCES` listesine (kimliğe göre sıralı) ekleyin ve `cargo test --workspace` çalıştırın. Testler her modeli okur ve geometrisini denetler: tuş sayısı, yinelenen LED numarası, tuş kimliği ya da HID usage'ı olmaması, her tuşun çerçevenin içinde kalması ve hiçbir iki tuşun üst üste binmemesi. Bir mod "AA" konuşuyorsa her tuşun, hepsi farklı ve 128'den küçük bir `aa` numarası, her göstergenin de tuşunun `aa` numarası olmalıdır. Aynı çalışma `app/src/bindings/geometry-<id>.json` dosyasını yazar; onu modelle birlikte commit'leyin.
+
+### `aa` sütunu
+
+"AA" ailesinde tuş atama yuvaları ve tuş başına renk girdileri başka türlü numaralanır: Esc 1 değil 0, Enter 85 değil 76, Fn 96 değil 85'tir ve aradaki fark sabit bir kayma değildir. Bu yüzden "AA" modu olan bir modelin her tuşunun bir `aa` numarası, her göstergenin de üzerinde durduğu tuşun `aa` numarası olmalıdır. Uygulama tuşları her yerde, kayıtlarda, profillerde ve canlı karelerde, `led` numarasıyla anmayı sürdürür; "AA" sürücüsü numaraları kendi sınırında çevirir (`kb_core::aa::AaLayout`). Böylece aynı profil iki aileye de uyar. AK980 PRO'nun `aa` numaraları, 97 tuşun hepsinde aynı olan AJAZZ'ın kendi tuş tablolarından alındı; gerçek bir "AA" klavyede denetlenmeyi hâlâ bekliyorlar.
 
 ### Dosyanın yetmediği durumlar
 
-Aynı komut ailesini, aynı paket boyutlarıyla ve aynı 240×135 ekranla konuşan bir model için dosyası yeter. Geri kalan her şey kod ister ve aynı özenle incelenir:
+İki aileden birini AK980 PRO'yla tam olarak aynı biçimde, aynı paket boyutlarıyla ve aynı 240×135 ekranla konuşan bir model için dosyası yeter. Geri kalan her şey kod ister ve aynı özenle incelenir:
 
 - başka bir ekran boyutu, piksel düzeni ya da kare sınırı (`kb-protocol`'deki ekran biçimi bugün AK980 PRO'ya göre sabittir),
-- başka bir komut ailesi ya da tanımlayıcı şekli (`kb-protocol`'de yeni bir modül ve `kb-core`'da onun sürücüsü),
+- "AA" ailesinde başka topuz yuvaları ya da başka bir makro belleği boyutu (`kb_core::aa` AK980 PRO'nunkileri kullanır),
+- başka bir komut ailesi ya da tanımlayıcı şekli (`kb-protocol`'de yeni bir modül, `kb-core`'da onun sürücüsü ve uygulamanın `Driver`'ında onun kolu, [Mimari](/keymotion/tr/developers/architecture/#uygulamada-komut-aileleri)),
 - henüz sürücüsü olmayan 2.4 GHz alıcı.
 
 ## Tanıma nasıl çalışır
@@ -120,18 +137,37 @@ Cihaz aktörü her 2 saniyede bir HID koleksiyonlarını listeler ve her birini 
 
 1. **VID ve PID** bir modla eşleşmelidir.
 2. **Veri yolu.** USB ve alıcı modları yalnızca USB veri yolunda, Bluetooth yalnızca Bluetooth veri yolunda eşleşir.
-3. **Ürün adı.** Mod `product_contains` belirtiyorsa USB ürün adı bunu içermelidir.
-4. **Görev.** Koleksiyonun usage page'i onun komut kanalı mı, ekran kanalı mı yoksa uygulamanın yalnızca saydığı standart bir koleksiyon mu (klavye, medya tuşları, fare) olduğunu belirler.
+3. **Ürün adı.** USB ürün adı modun `product_contains` değerini içermelidir. Bir USB modu bunu her zaman belirtmek zorundadır; ürün adı bildirmeyen bir klavye de hiçbir USB moduyla eşleşmez: önyükleyicisindeki bir SONiX denetleyicisi klavyenin kimliklerini koruyup adını bırakabilir ve ona hiçbir şey gönderilmemelidir.
+4. **Görev.** Koleksiyonun usage page'i, modun ailesinde onun komut kanalı mı, ekran kanalı mı yoksa uygulamanın yalnızca saydığı standart bir koleksiyon mu (klavye, medya tuşları, fare) olduğunu belirler. `FF68`, "04 xx" ailesinde ekran kanalı, "AA" ailesinde komut kanalıdır.
 5. **Bluetooth.** Eşleştirilmiş bir Bluetooth LE aygıtı adına göre eşleştirilir (`ble_name_prefix`).
 
-Uygulama kablodaki her üreticiye özel kanalın rapor tanımlayıcısının şeklini de denetler (`kb_core::shape`). Tanımlayıcıyı Windows'un sakladığı yerden okur, yani klavyeye hiçbir şey göndermez: komut kanalında rapor kimliği olmayan 64 baytlık feature ve output raporları, ekran kanalında 4096 baytlık bir output raporu olmalıdır. Kimliği ve adı eşleşip şekli farklı olan klavye model sayılmaz; desteklenmeyenler arasında **Destek iste** ile listelenir (`kb_core::classify`). Kanal açılırken şekil yeniden denetlenir; farklıysa kanal kullanılmaz ve hiçbir şey gönderilmez.
+Uygulama kablodaki her üreticiye özel kanalın rapor tanımlayıcısının şeklini de denetler (`kb_core::shape`). Tanımlayıcıyı Windows'un sakladığı yerden okur, yani klavyeye hiçbir şey göndermez. Her ailenin kendi şekilleri vardır ve bunlar hiçbir zaman çakışmaz:
+
+| Aile | Komut kanalı | Ekran kanalı |
+|---|---|---|
+| "04 xx" (`sonix-ff13`) | rapor kimliği olmayan 64 baytlık feature ve output raporları | 4096 baytlık bir output raporu |
+| "AA" (`ajazz-aa`) | 64 baytlık output ve giriş raporları, feature raporu yok, rapor kimliği yok | 4104 baytlık bir output raporu ve 64 baytlık bir giriş raporu, rapor kimliği yok |
+
+Kimliği ve adı eşleşip şekli modelin hiçbir ailesine uymayan klavye model sayılmaz; desteklenmeyenler arasında **Destek iste** ile listelenir (`kb_core::classify`). Kanal açılırken şekil yeniden denetlenir; farklıysa kanal kullanılmaz ve hiçbir şey gönderilmez.
+
+### Aile nasıl seçilir
+
+Bir koleksiyon birden çok modla eşleşebilir: aynı kimliklerin ve adın arkasında iki aile (AJAZZ'ın araçları `8009` üzerinde "AA" konuşan AK980 PRO'ları da tanır) ya da kabloda ve alıcıda aynı kimlikler. `kb_core::classify` rapor tanımlayıcılarıyla karar verir:
+
+1. Her aile, her USB kimliğinin arkasında ayrı ayrı değerlendirilir. Kanallarından birinin şekli farklıysa ya da klavye, modelin başka bir ailesinin kanalını o ailenin şekliyle taşıyorsa o aile elenir.
+2. Ardından her koleksiyon, elenmemiş ve şekli uyan kanalı en çok olan aileye gider; eşitlikte model dosyasında önce gelene.
+3. Bir kablo moduyla eşleşen koleksiyon yalnızca bir kablo moduna gider; aynı kimliklerin arkasındaki bir alıcı moduna hiçbir zaman.
+4. Bütün aileler elenirse klavye **Destek iste** ile listelenir ve ona hiçbir şey gönderilmez.
+5. Bir tanımlayıcı okunamazsa ilk eşleşen aile geçerli kalır; kanal açılırken bir şey gönderilmeden önce şekil denetlenir.
+
+Böyle bulunan mod, sonrasındaki her şeye karar verir: klavye yazılımı denetimine, sunulan özelliklere, uygulamanın açtığı sürücüye ([Mimari](/keymotion/tr/developers/architecture/#uygulamada-komut-aileleri)) ve klavyenin ayarlarının altında tutulduğu kayıtlara.
 
 ### Neden bu kadar sıkı
 
 - `0C45:8009` ve `0C45:800A` SONiX'in genel amaçlı kimlikleridir ve birçok farklı klavye bunları taşır. AK820 PRO, AK980 PRO'nun kimliklerini taşır ama adı farklıdır; testler onun eşleşmediğinden emin olur.
-- Bu kimlikleri taşıyan bazı klavyeler başka bir komut ailesi konuşur. Bunlardan birinde AK980 PRO'nun kullandığı ekran yükleme komutu, ekrandaki görsel yuvasını siliyor. Ad ve şekil denetimleri komutları bu klavyelerden uzak tutar.
+- Aynı kimlikler ve aynı ad iki aileyi de gösterebilir. "AA" ailesinden benzer bir klavyede "04 xx" ekran yükleme komutu kayıtlı görseli sildi. Şekil denetimi her ailenin komutlarını öteki ailenin klavyelerinden uzak tutar.
 - `FEFE`, AK980 PRO'da 2.4 GHz alıcının kimliğidir; başka bir klavyede ise Bluetooth'un. Bu yüzden karar veri yoluna bakılarak verilir.
-- Kendini yalnızca "USB KEYBOARD" diye tanıtan bir klavye adından tanınamaz; bu yüzden hiç kendiliğinden tanınmaz.
+- Kendini yalnızca "USB KEYBOARD" diye tanıtan bir klavye adından tanınamaz; bu yüzden hiç kendiliğinden tanınmaz. Önyükleyicisinde olabilecek, adını bildirmeyen bir klavye de tanınmaz.
 - Kabloda aynı modelden iki klavye varsa uygulama kalıcı belleğe yazmayı reddeder; çünkü kullanıcının hangisini kastettiğini bilemez.
 
 SONiX'in üretici kimliğini taşıyan ya da adında "AJAZZ" geçen, standart bir klavye koleksiyonu olan ve hiçbir modelle eşleşmeyen klavye desteklenmeyenler arasında listelenir; **Destek iste** düğmesi buradan gelir (`kb_core::unknown_keyboards`). Adıyla bir modele uyup şekliyle uymayan klavye de oraya düşer.
@@ -144,7 +180,7 @@ Bir model yalnızca o klavyeden alınmış ölçümlerle eklenir. Her ölçüm t
 
 1. **Kimlik.** Her bağlantı modunda VID, PID, üretici ve ürün adları, veri yolu, Bluetooth adı ve klavye yazılımının sürümü. Bunların çoğunu **Destek iste** toplar.
 
-2. **Tanımlayıcı şekli.** Her HID koleksiyonu ve rapor tanımlayıcısı. Komut koleksiyonu 64 baytlık şekle, ekran koleksiyonu (varsa) 4096 baytlık şekle sahip olmalıdır. Değilse klavye başka bir aile konuşuyordur: burada durun.
+2. **Tanımlayıcı şekli.** Her HID koleksiyonu ve rapor tanımlayıcısı. Komut ve ekran koleksiyonları iki aileden birinin şekline sahip olmalıdır (yukarıdaki tablo); model dosyasındaki modun hangi aileyi alacağına bu karar verir. İkisine de uymuyorsa klavye, Keymotion'ın sürücüsü olmayan bir aile konuşuyordur ve onunla başka bir şey ölçülemez: **Destek iste**, incelemek için gerekenleri gönderir.
 
 3. **Yalnızca okuma.** Bir daldaki taslak model dosyasıyla (henüz `verified_firmware` olmadan) klavyenin kendiliğinden gönderdiği raporları dinleyin (`kb listen`, hiçbir şey göndermez), sonra renk geri okumasının (`kb read-colors`) AK980 PRO'daki gibi cevap verdiğini denetleyin.
 
@@ -158,7 +194,13 @@ Bir model yalnızca o klavyeden alınmış ölçümlerle eklenir. Her ölçüm t
 
 </Steps>
 
+3–6. adımlar yalnızca "04 xx" ailesini konuşan `kb`'yi kullanır. Bir "AA" klavye aynı sırayla uygulama üzerinden ölçülür; uygulamanın sürücüsü bu sıraya zaten uyar: ilk isteği cihaz bilgisidir, tam bir okuma tutarlılık kapısından geçmeden hiçbir şey yazmaz, canlı kareler için önce tuş başına renk modu gerekir ve ekran en sona kalır (["AA" ailesi](/keymotion/tr/developers/protocol/#aa-ailesi-klavye-yazılımı-769)).
+
 Ancak bundan sonra model, ölçülen bilgiler için `verified = true` alır ve denenmiş klavye yazılımı `verified_firmware` listesine girer. Aynı PR'da [Desteklenen klavyeler](/keymotion/tr/help/keyboards/) sayfasını ve `CHANGELOG.md`'yi de güncelleyin.
+
+### Bir "AA" modu için `verified_firmware` ne demek
+
+Öteki ailedekiyle aynı şey: modun sunduğu her yazma, o klavye yazılımı sürümüne sahip gerçek bir klavyede denendi ve ardından ayarlar geri yazıldı. Listedeki bir sürüm, kullanıcıyı yalnızca bir oturumdaki ilk yazmadan önceki sorudan kurtarır. Güvenlik denetimi, tutarlılık kapısı (klavyenin cihaz bilgisindeki sürümün USB'nin bildirdiğiyle aynı olduğunu da denetler) ve yazma kapısının geri kalanı yine aynen geçerlidir. AK980 PRO'nun "AA" modu henüz hiçbir sürüm listelemiyor: 769 klavye yazılımı (`0x0301`) listeye ancak betadaki gerçek klavye denemelerinden sonra girer.
 
 ## Güvenlik
 
@@ -168,5 +210,5 @@ Bir AULA F108 Pro'da kare sınırını aşan bir ekran animasyonu klavyenin kend
 
 - Kendinize ait bir klavyede deneyin; başkasınınsa yalnızca sahibinin onayıyla. Yazılanlar kalıcı belleğe gider.
 - Yalnızca RAM'e giden adımları önce, kalıcı belleğe yazmayı en sona bırakın. Ekran yüklemeleri belleği yıpratır; onları az tutun.
-- `kb`'yi kullanmadan önce resmi yazılımı, SignalRGB'yi, OpenRGB'yi ve Keymotion'ı kapatın. Aynı anda komut gönderen iki program birbirinin oturumunu bozar.
-- [Katkıda bulunma](/keymotion/tr/developers/contributing/) sayfasındaki klavyeyle çalışma kurallarını aklınızda tutun; AK980 PRO'da neyin ölçüldüğü [Protokol ayrıntıları](/keymotion/tr/developers/protocol/) sayfasında.
+- `kb`'yi kullanmadan önce resmi yazılımı, SignalRGB'yi, OpenRGB'yi ve Keymotion'ı, bir "AA" klavyeyi denemeden önce de tarayıcıdaki AJAZZ web araçlarını kapatın. Aynı anda komut gönderen iki program birbirinin oturumunu bozar.
+- [Katkıda bulunma](/keymotion/tr/developers/contributing/) sayfasındaki klavyeyle çalışma kurallarını aklınızda tutun; AK980 PRO'da neyin ölçüldüğü ve "AA" ailesinde neyin hâlâ açık olduğu [Protokol ayrıntıları](/keymotion/tr/developers/protocol/) sayfasında.

@@ -5,7 +5,7 @@ description: How a keyboard model is described, how detection works and why it i
 
 import { Aside, Steps } from "@astrojs/starlight/components";
 
-Keymotion supports the AJAZZ AK980 PRO today. Many keyboards are built on the same SONiX platform and appear to speak the same command family, so they are candidates: [Supported keyboards](/keymotion/help/keyboards/) lists them. None of them is supported until it has been tested on that keyboard, because the details that keep a keyboard safe, such as its IDs, its screen size and its frame limit, differ from model to model.
+Keymotion supports the AJAZZ AK980 PRO today, in both of its command families: the "04 xx" family of firmware 1.06 and the "AA" family of firmware 769 ([Protocol reference](/keymotion/developers/protocol/)). Many keyboards are built on the same SONiX platform and appear to speak one of these families, so they are candidates: [Supported keyboards](/keymotion/help/keyboards/) lists them. None of them is supported until it has been tested on that keyboard, because the details that keep a keyboard safe, such as its IDs, its screen size and its frame limit, differ from model to model.
 
 ## If you have another keyboard
 
@@ -40,7 +40,7 @@ Each model is one TOML file in [`crates/kb-devices/models/`](https://github.com/
 id = "ajazz-ak980-pro"          # must match the file name
 name = "AJAZZ AK980 PRO"
 vendor = "AJAZZ"
-protocol = "sonix-ff13"
+protocol = "sonix-ff13"         # the family of every mode that names none
 layout = "98"
 key_count = 97
 has_knob = true
@@ -50,7 +50,7 @@ has_side_light = true
 width = 240
 height = 135
 pixel_format = "rgb565-le"
-verified = false
+verified = true
 
 [[modes]]
 kind = "usb"
@@ -64,6 +64,17 @@ verified = true
 verified_firmware = [0x0106]
 
 [[modes]]
+kind = "usb"
+protocol = "ajazz-aa"           # this mode's own family
+vid = 0x0C45
+pid = 0x8039
+product_contains = "AK980 PRO"
+command_usage_page = 0xFF68
+display_usage_page = 0xFF67
+capabilities = ["lighting", "per-key-rgb", "keymap", "macros", "screen", "clock", "battery"]
+verified = false                # no `verified_firmware` yet
+
+[[modes]]
 kind = "bluetooth"
 vid = 0x0C45
 pid = 0xFEFE
@@ -73,6 +84,7 @@ verified = true
 
 [[indicators]]
 led = 32
+aa = 29
 name = "Num Lock"
 color = [255, 255, 255]
 verified = true
@@ -84,8 +96,8 @@ source = "…"                    # where the positions come from
 screen = { x = 16.5, y = 0.0, w = 3.0, h = 1.0 }
 knob = { x = 19.5, y = 0.0, d = 1.0 }
 keys = [
-  { id = "esc", label = "Esc", led = 1, hid = 0x29, x = 0.0, y = 0.0 },
-  { id = "f1", label = "F1", led = 2, hid = 0x3A, x = 2.0, y = 0.0 },
+  { id = "esc", label = "Esc", led = 1, aa = 0, hid = 0x29, x = 0.0, y = 0.0 },
+  { id = "f1", label = "F1", led = 2, aa = 1, hid = 0x3A, x = 2.0, y = 0.0 },
   # … one entry for every key
 ]
 ```
@@ -93,25 +105,30 @@ keys = [
 | Field | Meaning |
 |---|---|
 | `id`, `name`, `vendor` | The model's identity. `id` must equal the file name. |
-| `protocol`, `layout`, `key_count`, `has_knob`, `has_side_light` | What kind of keyboard it is. `key_count` must equal the number of keys in `geometry`. |
+| `protocol`, `layout`, `key_count`, `has_knob`, `has_side_light` | What kind of keyboard it is. `protocol` is the command family, `sonix-ff13` ("04 xx") or `ajazz-aa` ("AA"), of every mode that doesn't name its own. `key_count` must equal the number of keys in `geometry`. |
 | `[screen]` | Panel size and pixel format. |
-| `[[modes]]` | One entry per connection: `kind` (`usb`, `dongle` or `bluetooth`), `vid` and `pid`, and what identifies it further: `product_contains` (a case-insensitive part of the USB product name), `command_usage_page` and `display_usage_page` for the vendor channels, `ble_name_prefix` for Bluetooth. |
-| `capabilities` | What the keyboard offers in that mode: `lighting`, `per-key-rgb`, `keymap`, `macros`, `options`, `screen`, `clock`, `battery`. The app offers only those it drives in that mode (`kb_core::app_capabilities`). |
+| `[[modes]]` | One entry per connection and command family: `kind` (`usb`, `dongle` or `bluetooth`), the mode's own `protocol` when it differs from the model's, `vid` and `pid`, and what identifies it further: `product_contains` (a case-insensitive part of the USB product name), `command_usage_page` and `display_usage_page` for the vendor channels, `ble_name_prefix` for Bluetooth. A connection can have one mode per family, even behind the same IDs and name. |
+| `capabilities` | What the keyboard offers in that mode: `lighting`, `per-key-rgb`, `keymap`, `macros`, `options`, `screen`, `clock`, `battery`. The app offers only those it drives in that mode (`kb_core::app_capabilities`): on the cable, `battery` only in the "AA" family, which reports it, and `options` in neither family yet. |
 | `verified` | `true` only for facts measured on a real keyboard in this project. |
-| `verified_firmware` | Firmware versions (`bcdDevice`) on which every write was tested. On any other version the app asks the user once per session before the first write. |
-| `[[indicators]]` | Lights the firmware draws itself (Num Lock, Fn): the LED, what it shows and its color. |
-| `[geometry]` | The physical layout in key units, measured from a photo of the keyboard, with its `source` noted: the screen, the knob, and every key with an `id`, a `label`, its `led` index (on this family also the key's keymap index), its default `hid` usage and its position and size. |
+| `verified_firmware` | Firmware versions (`bcdDevice`) on which every write the mode offers was tested on a real keyboard. Each mode has its own list, so an "AA" mode's list says nothing about the "04 xx" mode's. On any other version the app asks the user once per session before the first write. |
+| `[[indicators]]` | Lights the firmware draws itself (Num Lock, Fn): the LED, its `aa` index when the model has an "AA" mode, what it shows and its color. |
+| `[geometry]` | The physical layout in key units, measured from a photo of the keyboard, with its `source` noted: the screen, the knob, and every key with an `id`, a `label`, its `led` index (in the "04 xx" family also the key's keymap index), its `aa` index, its default `hid` usage and its position and size. |
 
 Unknown fields are rejected, so a typo fails the tests instead of being ignored.
 
-To add a file, list it in `MODEL_SOURCES` in `crates/kb-devices/src/lib.rs` (kept sorted by id) and run `cargo test --workspace`. The tests parse every model and check its geometry: the key count, no duplicate LED indices, key ids or HID usages, every key inside the outline and no two keys overlapping. The same run writes `app/src/bindings/geometry-<id>.json`; commit it with the model.
+To add a file, list it in `MODEL_SOURCES` in `crates/kb-devices/src/lib.rs` (kept sorted by id) and run `cargo test --workspace`. The tests parse every model and check its geometry: the key count, no duplicate LED indices, key ids or HID usages, every key inside the outline and no two keys overlapping. When a mode speaks "AA", every key must have an `aa` index, all different and below 128, and every indicator the `aa` of its key. The same run writes `app/src/bindings/geometry-<id>.json`; commit it with the model.
+
+### The `aa` column
+
+In the "AA" family, keymap slots and per-key entries are numbered differently: Esc is 0 rather than 1, Enter 76 rather than 85, Fn 85 rather than 96, and the difference is not a fixed shift. So every key of a model with an "AA" mode needs its `aa` index, and each indicator the `aa` of the key it sits on. The app keeps naming keys by their `led` number everywhere, in records, profiles and live frames alike, and the "AA" driver translates at its edge (`kb_core::aa::AaLayout`), so the same profile fits both families. The AK980 PRO's `aa` indices come from AJAZZ's own key tables, which agree on all 97 keys; they still wait to be checked on a real "AA" keyboard.
 
 ### When a file isn't enough
 
-A model that speaks the same command family, with the same packet sizes and the same 240×135 screen, needs only its file. Anything else needs code, reviewed with the same care:
+A model that speaks one of the two families exactly as the AK980 PRO does, with the same packet sizes and the same 240×135 screen, needs only its file. Anything else needs code, reviewed with the same care:
 
 - another screen size, pixel layout or frame limit (the screen format in `kb-protocol` is fixed to the AK980 PRO's today),
-- another command family or descriptor shape (a new module in `kb-protocol` and its driver in `kb-core`),
+- in the "AA" family, other knob slots or another macro memory size (`kb_core::aa` keeps the AK980 PRO's),
+- another command family or descriptor shape (a new module in `kb-protocol`, its driver in `kb-core` and its arm in the app's `Driver`, [Architecture](/keymotion/developers/architecture/#command-families-in-the-app)),
 - the 2.4 GHz receiver, which has no driver yet.
 
 ## How detection works
@@ -120,18 +137,37 @@ The device actor lists the HID collections every 2 seconds and matches each one 
 
 1. **VID and PID** must match a mode.
 2. **Bus.** USB and receiver modes match only on the USB bus, Bluetooth only on the Bluetooth bus.
-3. **Product name.** If the mode declares `product_contains`, the USB product name must contain it.
-4. **Role.** The collection's usage page decides whether it is the command channel, the screen channel or a standard collection (keyboard, media keys, mouse), which the app only counts.
+3. **Product name.** The USB product name must contain the mode's `product_contains`. A USB mode always needs one, and a keyboard that reports no product name never matches a USB mode: a SONiX controller in its bootloader can keep the keyboard's IDs and drop its name, and nothing may be sent to it.
+4. **Role.** The collection's usage page decides, in the mode's family, whether it is the command channel, the screen channel or a standard collection (keyboard, media keys, mouse), which the app only counts. `FF68` is the screen channel in the "04 xx" family and the command channel in the "AA" family.
 5. **Bluetooth.** A paired Bluetooth LE device is matched by its name (`ble_name_prefix`).
 
-The app also checks the shape of each cable channel's report descriptor (`kb_core::shape`), as Windows keeps it, so reading it sends nothing to the keyboard: the command channel must have 64-byte feature and output reports without report IDs, the screen channel a 4096-byte output report. A keyboard whose IDs and name match but whose shape is different is not the model: it is listed as unsupported, with **Request support** (`kb_core::classify`). The shape is checked again when a channel is opened; if it is different, the channel is not used and nothing is sent.
+The app also checks the shape of each cable channel's report descriptor (`kb_core::shape`), as Windows keeps it, so reading it sends nothing to the keyboard. Each family has its own shapes, and they never overlap:
+
+| Family | Command channel | Screen channel |
+|---|---|---|
+| "04 xx" (`sonix-ff13`) | 64-byte feature and output reports, no report IDs | a 4096-byte output report |
+| "AA" (`ajazz-aa`) | 64-byte output and input reports, no feature report, no report IDs | a 4104-byte output report and a 64-byte input report, no report IDs |
+
+A keyboard whose IDs and name match but whose shapes fit none of the model's families is not the model: it is listed as unsupported, with **Request support** (`kb_core::classify`). The shape is checked again when a channel is opened; if it is different, the channel is not used and nothing is sent.
+
+### How the family is chosen
+
+One collection can match several modes: the same IDs and name behind two families (AJAZZ's tools know "AA" AK980 PRO keyboards on `8009` too), or the same IDs on the cable and on the receiver. `kb_core::classify` decides with the report descriptors:
+
+1. Each family is judged behind each USB ID. It is ruled out when one of its channels has another shape, or when the keyboard carries a channel of another of the model's families with that family's shape.
+2. Each collection then goes to a family that is not ruled out and has the most channels whose shape fits; on a tie, the first in the model file.
+3. A collection that matches a cable mode only ever goes to a cable mode, never to a receiver mode behind the same IDs.
+4. When every family is ruled out, the keyboard is listed with **Request support**, and nothing is sent to it.
+5. When a descriptor can't be read, the first matching family stands, and opening the channel checks the shape before anything is sent.
+
+The mode found this way decides everything after: the firmware check, the capabilities on offer, the driver the app opens ([Architecture](/keymotion/developers/architecture/#command-families-in-the-app)) and the records the keyboard's settings are kept under.
 
 ### Why it is strict
 
 - `0C45:8009` and `0C45:800A` are SONiX's general-purpose IDs, and many different keyboards carry them. An AK820 PRO has the AK980 PRO's IDs but another name, and the tests make sure it doesn't match.
-- Some keyboards with those IDs speak a different command family. On one of them, the screen upload command the AK980 PRO uses erases the screen's picture slot. The name check and the shape check keep commands away from them.
+- The same IDs and the same name can stand for both families. On a related keyboard of the "AA" family, the "04 xx" screen upload command erased the stored picture. The shape check keeps each family's commands away from the other's keyboards.
 - `FEFE` is the AK980 PRO's 2.4 GHz receiver, but another keyboard's Bluetooth ID, so the bus decides.
-- A keyboard that calls itself only "USB KEYBOARD" can't be recognised by name, so it isn't recognised automatically at all.
+- A keyboard that calls itself only "USB KEYBOARD" can't be recognised by name, so it isn't recognised automatically at all. Neither is one that reports no name, which may be in its bootloader.
 - With two identical keyboards on the cable, the app refuses to write to permanent memory, because it can't tell which one the user means.
 
 A keyboard that has SONiX's vendor ID, or "AJAZZ" in its name, has a standard keyboard collection and matches no model is listed as unsupported, which is where **Request support** comes from (`kb_core::unknown_keyboards`). So is a keyboard that matches a model by name but not by shape.
@@ -144,7 +180,7 @@ A model is added only with measurements from that keyboard. Each one is written 
 
 1. **Identity.** VID, PID, manufacturer and product names, the bus in every connection mode, the Bluetooth name, and the firmware version. **Request support** collects most of it.
 
-2. **Descriptor shape.** Every HID collection and its report descriptor. The command collection must have the 64-byte shape and the screen collection, if there is one, the 4096-byte shape. If not, the keyboard speaks another family: stop here.
+2. **Descriptor shape.** Every HID collection and its report descriptor. The command and screen collections must have the shapes of one of the two families (the table above); that decides which family the model file's mode gets. If they fit neither, the keyboard speaks a family Keymotion has no driver for, and nothing further can be measured with it: **Request support** sends what is needed to look into it.
 
 3. **Reading only.** With a draft model file on a branch (no `verified_firmware` yet), listen for reports the keyboard sends on its own (`kb listen`, which sends nothing), then check that the color read-back (`kb read-colors`) answers as it does on the AK980 PRO.
 
@@ -158,7 +194,13 @@ A model is added only with measurements from that keyboard. Each one is written 
 
 </Steps>
 
+Steps 3 to 6 use `kb`, which speaks the "04 xx" family only. An "AA" keyboard is measured in the same order through the app, whose driver keeps to it by design: the device information is its first request, it writes nothing before a full read has passed its sanity gate, live frames need per-key mode first, and the screen comes last ([The "AA" family](/keymotion/developers/protocol/#the-aa-family-firmware-769)).
+
 Only then does the model get `verified = true` for what was measured, and its tested firmware in `verified_firmware`. Update [Supported keyboards](/keymotion/help/keyboards/) and `CHANGELOG.md` in the same pull request.
+
+### What `verified_firmware` means for an "AA" mode
+
+The same as in the other family: every write the mode offers was tested on a real keyboard with that firmware version, and its settings were put back afterwards. A version on the list only spares the user the question before the first write of a session. The guard, the sanity gate (which also checks that the version in the keyboard's device information is the one USB reports) and the rest of the write gate apply all the same. The AK980 PRO's "AA" mode lists no version yet: firmware 769 (`0x0301`) goes on the list only after the beta's tests on real keyboards.
 
 ## Safety
 
@@ -168,5 +210,5 @@ On an AULA F108 Pro, a screen animation past its frame limit overwrote the keybo
 
 - Test on a keyboard you own, and only with the owner's consent if it's someone else's. Writes go to permanent memory.
 - Keep RAM-only steps first and writes to permanent memory last. Screen uploads wear the flash, so keep them few.
-- Close the official software, SignalRGB, OpenRGB and Keymotion before you use `kb`. Two programs sending commands at once break each other's sessions.
-- Keep the rules in [Contributing](/keymotion/developers/contributing/#working-with-the-keyboard) in mind, and see the [protocol reference](/keymotion/developers/protocol/) for what has been measured on the AK980 PRO.
+- Close the official software, SignalRGB, OpenRGB and Keymotion before you use `kb`, and AJAZZ's web tools in the browser before you try an "AA" keyboard. Two programs sending commands at once break each other's sessions.
+- Keep the rules in [Contributing](/keymotion/developers/contributing/#working-with-the-keyboard) in mind, and see the [protocol reference](/keymotion/developers/protocol/) for what has been measured on the AK980 PRO, and what is still open in the "AA" family.
