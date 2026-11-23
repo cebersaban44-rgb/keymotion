@@ -27,8 +27,11 @@ import { useUnsaved } from "./lib/unsaved";
 import { connectionKey, modelNames, tNow, useT, type MessageKey } from "./lib/i18n";
 import { useKeymap } from "./lib/keymap";
 import { useLayout } from "./lib/layout";
+import { startAgentCards } from "./lib/agentCards";
 import { startLive } from "./lib/live";
 import {
+  agentCard,
+  agentCardWords,
   calendarCard,
   calendarWords,
   gameStartCard,
@@ -151,6 +154,7 @@ function useLiveScreen() {
     [],
   );
   useEffect(() => startReminders((card) => reminderCard(card, reminderWords(tNow, useApp.getState().locale))), []);
+  useEffect(() => startAgentCards((card) => agentCard(card, agentCardWords(tNow, useApp.getState().locale))), []);
   useEffect(
     () =>
       startGames(async (card) => {

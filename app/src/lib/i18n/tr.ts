@@ -207,6 +207,8 @@ export const tr: Messages = {
   "ag.err.protocolMismatch": "Yapılmadı: keymotion-cli ile Keymotion'ın sürümleri birbirine uymuyor; Keymotion'ı güncelleyin.",
   "ag.err.unknownCommand": "Yapılmadı: bu Keymotion o komutu henüz bilmiyor; Keymotion'ı güncelleyin.",
   "ag.err.other": "Yapılmadı.",
+  "ag.card.name": "Ajan",
+  "ag.card.done": "Bitti",
   "ag.log.settingsKind": "Ayar değişikliği",
   "ag.log.kept": "Sonradan yine değiştiği için kaldı: {keys}",
   "ag.src.cli": "Komut satırı",

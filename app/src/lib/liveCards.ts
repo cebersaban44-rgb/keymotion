@@ -1,6 +1,7 @@
 // Live cards drawn for the keyboard screen (phase C). Same rules as the
 // text cards: fonts loaded first, background dithered, text sharp.
 
+import type { AgentCard } from "../bindings/AgentCard";
 import type { CalendarCard } from "../bindings/CalendarCard";
 import type { GameCard } from "../bindings/GameCard";
 import type { PomodoroCard } from "../bindings/PomodoroCard";
@@ -859,4 +860,307 @@ export async function gameSummaryCard(c: GameCard, w: GameWords): Promise<Prepar
 
   const px565 = compose565(bg.getImageData(0, 0, W, H).data, fg.getImageData(0, 0, W, H).data, true);
   return { frames: [px565], delaysMs: [STILL_DELAY_MS], name: `${w.name} · ${c.name} · ${time}`, kind: "image" };
+}
+
+// ---------------------------------------------------------------- agents
+
+/** Words the agents' cards need, in the UI language. */
+export interface AgentCardWords {
+  locale: string;
+  /** Name of the feature, for the card's name in the app. */
+  name: string;
+  done: string;
+  hours: string;
+  minutes: string;
+  less: string;
+}
+
+export function agentCardWords(tNow: (key: MessageKey) => string, locale: string): AgentCardWords {
+  return {
+    locale,
+    name: tNow("ag.card.name"),
+    done: tNow("ag.card.done"),
+    hours: tNow("games.time.hours"),
+    minutes: tNow("games.time.minutes"),
+    less: tNow("games.time.less"),
+  };
+}
+
+/** An agent's card when it chose no colour: Keymotion's orange. */
+const AGENT_TONE: [number, number, number] = [255, 154, 85];
+const PICTURE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+
+/**
+ * An agent's words as plain text for the canvas: never read as markup (they
+ * are only ever drawn with `fillText`), control and direction-changing
+ * characters left out, line breaks kept, and at most `max` characters.
+ */
+export function agentText(s: string | null | undefined, max: number): string {
+  if (!s) return "";
+  const hidden = (c: number) =>
+    c < 0x20 ||
+    (c >= 0x7f && c <= 0x9f) ||
+    c === 0x200b ||
+    c === 0x200e ||
+    c === 0x200f ||
+    (c >= 0x202a && c <= 0x202e) ||
+    (c >= 0x2066 && c <= 0x2069) ||
+    c === 0xfeff;
+  const chars = Array.from(s.replace(/\r\n?/g, "\n").replace(/\t/g, " ")).filter(
+    (ch) => ch === "\n" || !hidden(ch.codePointAt(0)!),
+  );
+  return Array.from(chars.join("").trim()).slice(0, max).join("");
+}
+
+/** The agent's picture, decoded (an animated one gives its first frame). */
+async function agentPicture(c: AgentCard): Promise<ImageBitmap | null> {
+  const img = c.image;
+  if (!img) return null;
+  if (!PICTURE_TYPES.has(img.mime)) throw new Error(`unsupported picture type ${img.mime}`);
+  let bytes: Uint8Array<ArrayBuffer>;
+  try {
+    const bin = atob(img.data);
+    bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  } catch {
+    throw new Error("the picture's data is not valid base64");
+  }
+  try {
+    return await createImageBitmap(new Blob([bytes], { type: img.mime }));
+  } catch {
+    throw new Error("the picture could not be decoded");
+  }
+}
+
+/**
+ * The picture inside a box, whole (letterboxed), centred. A small picture
+ * that grows at least twice (pixel art, an icon) is scaled by whole steps
+ * without smoothing and drawn on the text layer, so its edges stay sharp;
+ * a photo is smoothed and dithered with the background.
+ */
+function drawPicture(
+  bg: CanvasRenderingContext2D,
+  fg: CanvasRenderingContext2D,
+  bmp: ImageBitmap,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
+  const k = Math.min(w / bmp.width, h / bmp.height);
+  if (k >= 2) {
+    const s = Math.floor(k);
+    const dw = bmp.width * s;
+    const dh = bmp.height * s;
+    fg.save();
+    fg.imageSmoothingEnabled = false;
+    fg.drawImage(bmp, Math.round(x + (w - dw) / 2), Math.round(y + (h - dh) / 2), dw, dh);
+    fg.restore();
+    return;
+  }
+  const dw = bmp.width * k;
+  const dh = bmp.height * k;
+  bg.save();
+  bg.imageSmoothingEnabled = true;
+  bg.imageSmoothingQuality = "high";
+  bg.drawImage(bmp, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+  bg.restore();
+}
+
+/** Paragraphs (the agent's line breaks) wrapped to `maxW`, at most `max`
+ *  lines in all; the last one ends in "…" when text is left over. */
+function paragraphs(ctx: CanvasRenderingContext2D, text: string, maxW: number, max: number): string[] {
+  const out: string[] = [];
+  const parts = text.split("\n").filter((p) => p.trim());
+  for (let i = 0; i < parts.length && out.length < max; i++) {
+    out.push(...lines(ctx, parts[i]!, maxW, max - out.length));
+    if (out.length >= max && i < parts.length - 1) {
+      const last = out[max - 1]!;
+      if (!last.endsWith("…")) out[max - 1] = lines(ctx, `${last} …`, maxW, 1)[0] ?? last;
+    }
+  }
+  return out.slice(0, max);
+}
+
+/** The largest size from `max` down to `min` at which `text` fits in
+ *  `rows` lines without being cut. */
+function fitLines(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  font: (px: number) => string,
+  maxW: number,
+  rows: number,
+  max: number,
+  min: number,
+) {
+  let px = max;
+  let ls: string[] = [];
+  for (; px >= min; px--) {
+    ctx.font = font(px);
+    ls = paragraphs(ctx, text, maxW, rows);
+    if (!ls.some((l) => l.endsWith("…")) || px === min) break;
+  }
+  return { px: Math.max(px, min), lines: ls };
+}
+
+/** Lines drawn inside a clip of the area they may use. */
+function drawLines(
+  ctx: CanvasRenderingContext2D,
+  ls: string[],
+  x: number,
+  y: number,
+  step: number,
+  clip: [number, number, number, number],
+) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(...clip);
+  ctx.clip();
+  for (const l of ls) {
+    ctx.fillText(l, x, y);
+    y += step;
+  }
+  ctx.restore();
+}
+
+/** A ring with a check mark (a long task's card). */
+function drawCheck(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 0.42, cy + r * 0.02);
+  ctx.lineTo(cx - r * 0.1, cy + r * 0.34);
+  ctx.lineTo(cx + r * 0.45, cy - r * 0.3);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** The live cards' background: the colour fading, a stripe on the left. */
+function agentLayers(tone: [number, number, number]) {
+  const { bg, fg } = makeLayers();
+  const grad = bg.createLinearGradient(0, 0, W * 0.6, H);
+  grad.addColorStop(0, rgb(tone, 0.34));
+  grad.addColorStop(1, rgb(tone, 0.07));
+  bg.fillStyle = grad;
+  bg.fillRect(0, 0, W, H);
+  fg.clearRect(0, 0, W, H);
+  fg.textBaseline = "alphabetic";
+  fg.textAlign = "left";
+  fg.fillStyle = rgb(tone);
+  fg.fillRect(0, 0, 4, H);
+  return { bg, fg };
+}
+
+/**
+ * An agent's card (`agent-card`), in the live cards' style: a stripe and a
+ * background in the agent's colour, its title in that colour, its text in
+ * white as large as fits, and its picture whole. A long task's card (F)
+ * says "Done" and how long it took, with the project folder above.
+ */
+export async function agentCard(c: AgentCard, w: AgentCardWords): Promise<Prepared> {
+  const tone = c.color ?? AGENT_TONE;
+  const light = tone.map((v) => Math.round(v + (255 - v) * 0.45)) as [number, number, number];
+  if (c.kind === "longTask") return longTaskCard(c, w, tone, light);
+
+  const title = agentText(c.title, 48).replace(/\n/g, " ");
+  const text = agentText(c.text, 160);
+  const bmp = await agentPicture(c);
+  await fonts(`${title} ${text}`);
+  const { bg, fg } = agentLayers(tone);
+
+  if (bmp && !title && !text) {
+    // The picture alone: as large as the screen allows.
+    drawPicture(bg, fg, bmp, 4, 0, W - 4, H);
+    bmp.close();
+  } else if (bmp) {
+    // The picture on the left, the words beside it.
+    const size = 104;
+    const px = 14;
+    const py = Math.round((H - size) / 2);
+    bg.save();
+    bg.beginPath();
+    bg.roundRect(px, py, size, size, 8);
+    bg.fillStyle = rgb(tone, 0.16);
+    bg.fill();
+    bg.clip();
+    drawPicture(bg, fg, bmp, px, py, size, size);
+    bg.restore();
+    bmp.close();
+    const left = px + size + 12;
+    const maxW = W - left - 10;
+    let top = py;
+    if (title) {
+      fg.fillStyle = rgb(light);
+      fitFont(fg, title, (p) => `700 ${p}px ${DISPLAY}`, maxW, 15, 10);
+      drawLines(fg, lines(fg, title, maxW, 1), left, top + 13, 0, [left, 0, maxW, top + 20]);
+      top += 24;
+    }
+    if (text) {
+      const fit = fitLines(fg, text, (p) => `600 ${p}px ${SANS}`, maxW, title ? 4 : 5, 15, 10);
+      fg.fillStyle = "#ffffff";
+      drawLines(fg, fit.lines, left, top + fit.px, Math.round(fit.px * 1.22), [left, top, maxW, H - top - 4]);
+    }
+  } else {
+    // Words only: the title above, the text large.
+    const left = 16;
+    const maxW = W - left - 12;
+    if (title && text) {
+      fg.fillStyle = rgb(light);
+      fitFont(fg, title, (p) => `700 ${p}px ${DISPLAY}`, maxW, 17, 11);
+      drawLines(fg, lines(fg, title, maxW, 1), left, 30, 0, [left, 0, maxW, 40]);
+    }
+    const body = text || title;
+    const top = title && text ? 42 : 10;
+    const fit = fitLines(fg, body, (p) => `700 ${p}px ${DISPLAY}`, maxW, 3, 26, 12);
+    const step = Math.round(fit.px * 1.15);
+    const block = step * (fit.lines.length - 1) + fit.px;
+    const y = Math.round(top + (H - 8 - top - block) / 2 + fit.px * 0.85);
+    fg.fillStyle = "#ffffff";
+    drawLines(fg, fit.lines, left, y, step, [left, top, maxW, H - top - 2]);
+  }
+
+  const px565 = compose565(bg.getImageData(0, 0, W, H).data, fg.getImageData(0, 0, W, H).data, true);
+  const first = (title || text.split("\n")[0] || "").trim();
+  return { frames: [px565], delaysMs: [STILL_DELAY_MS], name: first ? `${w.name} · ${first}` : w.name, kind: "image" };
+}
+
+/** Behaviour F: a long task finished. "Done", how long it took, and the
+ *  project folder; it stays true however long it shows. */
+async function longTaskCard(
+  c: AgentCard,
+  w: AgentCardWords,
+  tone: [number, number, number],
+  light: [number, number, number],
+): Promise<Prepared> {
+  // A folder's name, as it is written (in capitals "keymotion" would
+  // become "KEYMOTİON" in Turkish).
+  const label = agentText(c.label, 64).replace(/\n/g, " ");
+  const length = playTime(Math.max(0, c.minutes ?? 0) * 60_000, w);
+  await fonts(`${label} ${w.done} ${length}`);
+  const { bg, fg } = agentLayers(tone);
+  drawCheck(fg, W - 38, 46, 20, rgb(light));
+
+  const left = 16;
+  const maxW = W - left - 12;
+  const beside = maxW - 56;
+  if (label) {
+    fg.fillStyle = rgb(light);
+    fitFont(fg, label, (px) => `600 ${px}px ${SANS}`, beside, 11, 8);
+    drawLines(fg, lines(fg, label, beside, 1), left, 25, 0, [left, 0, beside, 32]);
+  }
+  fg.fillStyle = "#ffffff";
+  fitFont(fg, w.done, (px) => `700 ${px}px ${DISPLAY}`, beside, 32, 18);
+  drawLines(fg, [w.done], left, 70, 0, [left, 30, beside, 50]);
+  fg.fillStyle = rgb(light);
+  fitFont(fg, length, (px) => `700 ${px}px ${DISPLAY}`, maxW, 24, 14);
+  drawLines(fg, [length], left, 108, 0, [left, 80, maxW, 40]);
+
+  const px565 = compose565(bg.getImageData(0, 0, W, H).data, fg.getImageData(0, 0, W, H).data, true);
+  return { frames: [px565], delaysMs: [STILL_DELAY_MS], name: `${w.done} · ${length}`, kind: "image" };
 }

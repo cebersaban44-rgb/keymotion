@@ -218,6 +218,8 @@ export const ru: Partial<Messages> = {
   "ag.err.protocolMismatch": "Не выполнено: версии keymotion-cli и Keymotion не подходят друг к другу; обновите Keymotion.",
   "ag.err.unknownCommand": "Не выполнено: эта версия Keymotion ещё не знает такой команды; обновите Keymotion.",
   "ag.err.other": "Не выполнено.",
+  "ag.card.name": "Агент",
+  "ag.card.done": "Готово",
   "ag.log.settingsKind": "Изменение настройки",
   "ag.log.kept": "Оставлено, так как с тех пор менялось: {keys}",
   "ag.src.cli": "Командная строка",
