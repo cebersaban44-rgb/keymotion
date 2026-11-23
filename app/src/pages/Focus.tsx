@@ -5,6 +5,7 @@
 // without the live mode; the live mode lists it as one of its sources.
 
 import { Usb } from "lucide-react";
+import { InfoBar } from "../components/controls";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import { useT } from "../lib/i18n";
 import { PomodoroPanel } from "./screen/PomodoroPanel";
@@ -19,10 +20,7 @@ export function Focus({ kb }: { kb: KeyboardInfo }) {
         <p className="page-desc">{t("pomo.body")}</p>
       </header>
       {!usb && (
-        <div className="flex items-center gap-3 rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-[13px]">
-          <Usb size={16} className="text-signal" />
-          {t("pomo.noUsb")}
-        </div>
+        <InfoBar tone="warn" icon={<Usb size={20} strokeWidth={1.6} />} title={t("pomo.noUsb")} data="usb" />
       )}
       <PomodoroPanel kb={kb} usb={usb} />
     </div>

@@ -115,6 +115,13 @@ says so.
   knob with the brightness it was last set to), then the keyboard, then
   one row for each thing Keymotion does; reminders and the system gauges
   can be switched on and off right there.
+  **Lighting** shows the effects as a gallery and their settings as rows,
+  with **Direction** as a list. **Screen** shows the GIF page large and the
+  clock page beside it; the library is a picture grid with one command
+  bar: click a picture to choose it, then **Upload**, **Match lights**,
+  **Rename** or **Delete**. **Image or video**, **Text card** and
+  **Slideshow** are in the same bar, and a file can be dropped on the
+  library. Settings, dialogs and the other pages follow the same look.
 - The list of running programs, used to find the official software or
   SignalRGB before a write, no longer opens any program.
 - **Recognition:** only a keyboard whose USB name includes "AK980 PRO", as

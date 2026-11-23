@@ -6,7 +6,7 @@ import type { KeymapLayer } from "../bindings/KeymapLayer";
 import type { MacroInfo } from "../bindings/MacroInfo";
 import type { MacroStepInfo } from "../bindings/MacroStepInfo";
 import { ActionBar } from "../components/ActionBar";
-import { Segmented } from "../components/controls";
+import { InfoBar, Segmented } from "../components/controls";
 import { hidFromCode } from "../lib/hidCodes";
 import { getKeymapCatalog } from "../lib/ipc";
 import { decimal, percent, useAgo, useT, type MessageKey } from "../lib/i18n";
@@ -77,10 +77,7 @@ export function Macros({ kb }: { kb: KeyboardInfo }) {
       </header>
 
       {!usb && (
-        <div className="flex items-center gap-3 rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-[13px]">
-          <Usb size={16} className="text-signal" />
-          {t("mc.needsUsb")}
-        </div>
+        <InfoBar tone="warn" icon={<Usb size={20} strokeWidth={1.6} />} title={t("mc.needsUsb")} data="usb" />
       )}
 
       <div className="grid grid-cols-[240px_minmax(0,1fr)] items-start gap-5 @3xl:grid-cols-[280px_minmax(0,1fr)]">
@@ -92,7 +89,7 @@ export function Macros({ kb }: { kb: KeyboardInfo }) {
                 type="button"
                 disabled={!loaded || full}
                 onClick={() => create(`${t("mc.newName")} ${draft.filter(Boolean).length + 1}`)}
-                className="flex items-center gap-1.5 rounded-lg bg-signal px-2.5 py-1 text-[12px] font-semibold text-signal-ink disabled:opacity-40"
+                className="btn-primary"
               >
                 <Plus size={13} />
                 {t("mc.new")}
@@ -395,7 +392,7 @@ function Editor({
               type="button"
               disabled={recording}
               onClick={() => addClick(m.mask)}
-              className="flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface-2 px-2.5 text-[12px] text-ink-2 hover:text-ink disabled:opacity-40"
+              className="btn-secondary btn-sm"
             >
               <MousePointerClick size={13} aria-hidden />
               {t(m.key)}
@@ -507,7 +504,7 @@ function Editor({
           <button
             type="button"
             onClick={() => setPage("keymap")}
-            className="rounded-lg border border-line px-2 py-1 text-ink-2 hover:text-ink"
+            className="btn-secondary"
           >
             {t("mc.bind")}
           </button>

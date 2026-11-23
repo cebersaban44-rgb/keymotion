@@ -77,15 +77,15 @@ export function MatchLightsDialog({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center dlg-smoke p-6"
       role="dialog"
       aria-modal
       aria-labelledby="lm-title"
     >
-      <motion.div initial={{ scale: 0.97, y: 8 }} animate={{ scale: 1, y: 0 }} className="card flex w-[800px] max-w-[94vw] flex-col gap-4 p-6">
+      <motion.div initial={{ scale: 0.97, y: 8 }} animate={{ scale: 1, y: 0 }} className="dlg flex w-[800px] max-w-[94vw] flex-col gap-4 p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 id="lm-title" className="font-display text-[22px] font-semibold">
+            <h2 id="lm-title" className="subtitle">
               {t("sc.lm.title")}
             </h2>
             <p className="mt-1 text-[13px] text-ink-2">{t("sc.lm.body")}</p>

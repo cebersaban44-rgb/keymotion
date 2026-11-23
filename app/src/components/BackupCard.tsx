@@ -40,18 +40,18 @@ const SECTION_LABEL: Record<BackupSection, MessageKey> = {
   profiles: "nav.profiles",
 };
 
-export const secondaryButton =
-  "flex h-9 shrink-0 items-center gap-2 rounded-lg border border-line bg-bg-raise px-3.5 text-[13px] text-ink transition-colors hover:border-line-strong disabled:cursor-not-allowed disabled:opacity-40";
+export const secondaryButton = "btn-secondary shrink-0";
 
 /** A settings row: name and an optional one-line explanation, the control on the right. */
+/** One setting as a Windows Settings row: its name and a line under it, the control on the right. */
 export function Row({ label, hint, children }: { label: string; hint?: string; children?: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-6 border-t border-line py-4 first:border-t-0">
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-[13.5px]">{label}</span>
-        {hint && <span className="text-[12.5px] text-ink-2">{hint}</span>}
+    <div className="row">
+      <div className="row-text">
+        <span className="row-title">{label}</span>
+        {hint && <span className="row-desc">{hint}</span>}
       </div>
-      {children}
+      {children && <div className="row-end">{children}</div>}
     </div>
   );
 }
@@ -182,8 +182,8 @@ export function BackupCard({ onImported }: { onImported: () => void }) {
   };
 
   return (
-    <section className="card px-5 py-1">
-      <div className="eyebrow pt-4 pb-1">{t("data.backup")}</div>
+    <section className="rows">
+      <h2 className="section-title">{t("data.backup")}</h2>
       <Row label={t("data.export")} hint={t("data.export.hint")}>
         <button type="button" onClick={doExport} disabled={exporting} className={secondaryButton}>
           {exporting && <Loader2 size={14} className="animate-spin" />}
@@ -309,7 +309,7 @@ function ImportDialog({
 
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-6 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center dlg-smoke p-6"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -320,14 +320,14 @@ function ImportDialog({
         aria-modal="true"
         aria-labelledby="import-title"
         aria-describedby="import-body"
-        className="card flex max-h-full w-full max-w-[520px] flex-col gap-5 overflow-y-auto p-6"
+        className="dlg flex max-h-full w-full max-w-[520px] flex-col gap-5 overflow-y-auto p-6"
         initial={{ opacity: 0, y: 8, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 4, scale: 0.98 }}
         transition={{ duration: 0.18, ease: "easeOut" }}
       >
         <div className="flex flex-col gap-1.5">
-          <h2 id="import-title" className="font-display text-[20px] leading-tight font-semibold">
+          <h2 id="import-title" className="subtitle">
             {t("data.import.title")}
           </h2>
           <p id="import-body" className="text-[13px] leading-relaxed text-ink-2">
@@ -380,7 +380,7 @@ function ImportDialog({
             type="button"
             onClick={restore}
             disabled={busy || chosen.length === 0}
-            className="flex h-9 items-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+            className="btn-primary"
           >
             {busy && <Loader2 size={14} className="animate-spin" />}
             {busy ? t("data.import.restoring") : t("data.import.restore")}

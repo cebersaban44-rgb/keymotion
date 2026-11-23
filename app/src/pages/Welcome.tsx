@@ -56,7 +56,7 @@ export function Welcome() {
                 model: k.name ?? undefined,
               })
             }
-            className="flex h-9 items-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink transition-transform active:scale-[0.98]"
+            className="btn-primary"
           >
             {t("unsupported.request")}
           </button>

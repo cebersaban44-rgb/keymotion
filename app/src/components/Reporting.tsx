@@ -187,7 +187,7 @@ export function ReportDialog({ request, onClose }: { request: ReportRequest; onC
 
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-6 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center dlg-smoke p-6"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -199,7 +199,7 @@ export function ReportDialog({ request, onClose }: { request: ReportRequest; onC
         aria-modal="true"
         aria-labelledby="report-title"
         aria-describedby="report-body"
-        className="card flex max-h-full w-full max-w-[560px] flex-col gap-4 p-6"
+        className="dlg flex max-h-full w-full max-w-[560px] flex-col gap-4 p-6"
         initial={{ opacity: 0, y: 8, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 4, scale: 0.98 }}
@@ -211,7 +211,7 @@ export function ReportDialog({ request, onClose }: { request: ReportRequest; onC
             <MessageSquareWarning size={19} />
           </span>
           <div className="flex flex-col gap-1.5">
-            <h2 id="report-title" className="font-display text-[20px] leading-tight font-semibold">
+            <h2 id="report-title" className="subtitle">
               {t(keyboard ? "report.keyboard.title" : "report.title")}
             </h2>
             <p id="report-body" className="text-[13px] leading-relaxed text-ink-2">
@@ -264,7 +264,7 @@ export function ReportDialog({ request, onClose }: { request: ReportRequest; onC
             type="button"
             onClick={() => copy("copied")}
             disabled={text === null}
-            className="flex h-9 items-center gap-2 rounded-lg border border-line bg-bg-raise px-3.5 text-[13px] text-ink transition-colors hover:border-line-strong disabled:opacity-50"
+            className="btn-secondary"
           >
             {done === "copied" ? <Check size={14} /> : <Copy size={14} />}
             {t("report.copy")}
@@ -274,7 +274,7 @@ export function ReportDialog({ request, onClose }: { request: ReportRequest; onC
             type="button"
             onClick={() => copy("opened")}
             disabled={text === null}
-            className="flex h-9 items-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink transition-transform active:scale-[0.98] disabled:opacity-50"
+            className="btn-primary"
             data-report-send
           >
             {t("report.send")}

@@ -7,7 +7,7 @@ import type { KeymapCatalog } from "../bindings/KeymapCatalog";
 import type { KeyUsageGroup } from "../bindings/KeyUsageGroup";
 import type { KeymapLayer } from "../bindings/KeymapLayer";
 import { ActionBar } from "../components/ActionBar";
-import { Segmented } from "../components/controls";
+import { InfoBar, Segmented, Tabs } from "../components/controls";
 import { KeyboardView, type Legend } from "../components/KeyboardView";
 import { getKeymapCatalog } from "../lib/ipc";
 import { useAgo, useT, type MessageKey } from "../lib/i18n";
@@ -54,35 +54,24 @@ export function Keymap({ kb }: { kb: KeyboardInfo }) {
   const changed = useKeymap((s) => countChanges(s.draft, s.saved));
 
   return (
-    <div className="@container flex flex-col gap-6">
-      <header className="flex items-end justify-between gap-6">
-        <div>
-          <h1 className="page-title">{t("nav.keymap")}</h1>
-          <p className="page-desc">{t("km.eyebrow")}</p>
-        </div>
-        <div role="tablist" className="inline-flex rounded-lg border border-line bg-bg-raise p-1">
-          {(["base", "fn"] as const).map((id) => (
-            <button
-              key={id}
-              role="tab"
-              type="button"
-              aria-selected={layer === id}
-              onClick={() => setLayer(id)}
-              className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-[13px] transition-colors ${
-                layer === id ? "bg-surface-2 text-ink shadow-[inset_0_0_0_1px_var(--line)]" : "text-ink-2 hover:text-ink"
-              }`}
-            >
-              {t(id === "base" ? "km.layer.base" : "km.layer.fn")}
-            </button>
-          ))}
-        </div>
+    <div className="@container flex flex-col gap-5">
+      <header>
+        <h1 className="page-title">{t("nav.keymap")}</h1>
+        <p className="page-desc">{t("km.eyebrow")}</p>
+        <Tabs
+          className="mt-3.5"
+          label={t("nav.keymap")}
+          value={layer}
+          onChange={setLayer}
+          options={[
+            { value: "base", label: t("km.layer.base") },
+            { value: "fn", label: t("km.layer.fn") },
+          ]}
+        />
       </header>
 
       {!usb && (
-        <div className="flex items-center gap-3 rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-[13px]">
-          <Usb size={16} className="text-signal" />
-          {t("km.needsUsb")}
-        </div>
+        <InfoBar tone="warn" icon={<Usb size={20} strokeWidth={1.6} />} title={t("km.needsUsb")} data="usb" />
       )}
 
       <Plate kb={kb} layer={layer} catalog={catalog} onSelect={select} selected={selected} />
@@ -444,7 +433,7 @@ function MacroPicker({
         <button
           type="button"
           onClick={() => setPage("macros")}
-          className="shrink-0 rounded-lg border border-line px-2.5 py-1 text-[12px] text-ink-2 hover:text-ink"
+          className="btn-secondary shrink-0"
         >
           {t("km.macro.go")}
         </button>
