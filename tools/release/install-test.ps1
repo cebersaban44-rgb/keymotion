@@ -423,12 +423,16 @@ function Get-AppWindow([Diagnostics.Process]$Process, [int]$TimeoutSec = 90) {
 }
 
 # The first element under $Root named one of $Names (an ARIA label or a
-# button's text), waiting for the page to draw it.
-function Find-UiElement($Root, [string[]]$Names, [int]$TimeoutSec = 30) {
+# button's text), waiting for the page to draw it; -Button: buttons only.
+function Find-UiElement($Root, [string[]]$Names, [int]$TimeoutSec = 30, [switch]$Button) {
     $conditions = [System.Windows.Automation.Condition[]]@($Names | ForEach-Object {
             [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, $_)
         })
     $condition = if ($conditions.Count -gt 1) { [System.Windows.Automation.OrCondition]::new($conditions) } else { $conditions[0] }
+    if ($Button) {
+        $isButton = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
+        $condition = [System.Windows.Automation.AndCondition]::new([System.Windows.Automation.Condition[]]@($condition, $isButton))
+    }
     $clock = [Diagnostics.Stopwatch]::StartNew()
     while ($clock.Elapsed.TotalSeconds -lt $TimeoutSec) {
         $found = $Root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
@@ -453,41 +457,42 @@ function Invoke-UiElement($Element) {
     throw "'$($Element.Current.Name)' can be neither invoked nor toggled"
 }
 
-# On or Off, for a switch.
-function Get-ToggleState($Element) {
-    $pattern = $null
-    if ($Element.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) { return $pattern.Current.ToggleState.ToString() }
-    if ($Element.Current.AriaProperties -match 'checked=true') { 'On' } else { 'Off' }
-}
-
-function Wait-UiElement($Root, [string[]]$Names, [string]$Why, [int]$TimeoutSec = 30) {
-    $found = Find-UiElement $Root $Names $TimeoutSec
+function Wait-UiElement($Root, [string[]]$Names, [string]$Why, [int]$TimeoutSec = 30, [switch]$Button) {
+    $found = Find-UiElement $Root $Names $TimeoutSec -Button:$Button
     if (-not $found) { throw "no '$($Names -join "' or '")' in Keymotion's window $Why (it shows: $(Get-UiNames $Root))" }
     $found
 }
 
 # Agent access on, as a user turns it on: Keymotion started, Tools > AI
-# agents, the "Agents may use the keyboard" switch (off first if it is on),
-# "Connect and turn on" in the dialog that lists what it adds, then OK.
-# Keymotion keeps running; the caller closes it.
+# agents, the "Agents may use the keyboard" switch, "Connect and turn on"
+# in the dialog that lists what it adds, then OK. The switch's state is not
+# readable here (no Toggle pattern), so a press that opens no dialog turned
+# access off, and the next one turns it on. Keymotion keeps running; the
+# caller closes it.
 function Enable-AgentAccess {
     Stop-App
     $p = Start-Process -FilePath $AppExe -PassThru
     $null = $p.Handle
     $window = Get-AppWindow $p
-    Invoke-UiElement (Wait-UiElement $window @('AI agents') 'to open the AI agents page' 60)
-    $switch = Wait-UiElement $window @('Agents may use the keyboard') 'on the AI agents page'
-    if ((Get-ToggleState $switch) -eq 'On') {
-        Invoke-UiElement $switch
-        Wait-Until 15 { (Get-ToggleState (Find-UiElement $window @('Agents may use the keyboard') 5)) -eq 'Off' } | Out-Null
-        $switch = Wait-UiElement $window @('Agents may use the keyboard') 'after turning access off'
+    $steps = [System.Collections.Generic.List[string]]::new()
+    Invoke-UiElement (Wait-UiElement $window @('AI agents') 'to open the AI agents page' 60 -Button)
+    $steps.Add('AI agents')
+    Invoke-UiElement (Wait-UiElement $window @('Agents may use the keyboard') 'on the AI agents page')
+    $steps.Add('switch')
+    $dialog = Find-UiElement $window @('Turning on agent access') 10
+    if (-not $dialog) {
+        $steps.Add('(it was on: off) switch')
+        Start-Sleep -Seconds 1
+        Invoke-UiElement (Wait-UiElement $window @('Agents may use the keyboard') 'after turning access off')
+        $dialog = Wait-UiElement $window @('Turning on agent access') 'after the switch was pressed again'
     }
-    Invoke-UiElement $switch
-    $dialog = Wait-UiElement $window @('Turning on agent access') 'after the switch was turned on'
-    Invoke-UiElement (Wait-UiElement $dialog @('Connect and turn on', 'Connect') 'in the dialog')
-    Invoke-UiElement (Wait-UiElement $window @('OK') 'after approving' 60)
-    $on = Wait-Until 15 { (Get-ToggleState (Find-UiElement $window @('Agents may use the keyboard') 5)) -eq 'On' }
-    [pscustomobject]@{ Process = $p; On = $on }
+    Invoke-UiElement (Wait-UiElement $dialog @('Connect and turn on', 'Connect') 'in the dialog' -Button)
+    $steps.Add('Connect and turn on')
+    $ok = Wait-UiElement $window @('OK') 'after approving' 60 -Button
+    $done = [bool](Find-UiElement $window @('Agent access is on') 2)
+    Invoke-UiElement $ok
+    $steps.Add('OK')
+    [pscustomobject]@{ Process = $p; On = $done; Steps = ($steps -join ' > ') }
 }
 
 # ------------------------------------------------- the coding agents' files
@@ -751,7 +756,7 @@ Invoke-Scenario 'a' 'Fresh silent install' {
     # The user opens Keymotion and turns agent access on (AI agents page);
     # no coding app is on this machine yet.
     $access = Enable-AgentAccess
-    Confirm-That $access.On 'the AI agents page turns agent access on (the switch, "Connect and turn on", OK)' "switch on: $($access.On)"
+    Confirm-That ($access.Steps -like '*> OK') 'the AI agents page turns agent access on' "$($access.Steps); 'Agent access is on' shown: $($access.On)"
     $scheme = Get-SchemeCommand
     Confirm-That ("$scheme" -like "*$AppExe*") 'the keymotion: URL scheme opens the installed app (registered at its first start)' "$scheme"
     Add-Note "notifications' AppUserModelId registered: $(Test-Path -LiteralPath $AumidKey)"
@@ -880,7 +885,7 @@ Invoke-Scenario 'd' 'Manual reinstall keeps the connections and PATH' {
     # Codex (taking Codex over from the other copy) and puts bin on PATH.
     $access = Enable-AgentAccess
     Stop-App
-    Confirm-That ($access.On -and @(Get-BinEntries (Get-UserPath).Raw).Count -eq 1) 'the AI agents page turns access on and puts bin on PATH' "switch on: $($access.On)"
+    Confirm-That (($access.Steps -like '*> OK') -and @(Get-BinEntries (Get-UserPath).Raw).Count -eq 1) 'the AI agents page turns access on and puts bin on PATH' "$($access.Steps); 'Agent access is on' shown: $($access.On)"
     $conn = Get-Connections
     Confirm-That ($conn['claude-code']['state'] -eq 'connected' -and ([string]$conn['codex']['runs']).IndexOf("'$CliExe'", [StringComparison]::OrdinalIgnoreCase) -ge 0) 'both run this copy now' "Claude Code $(Format-Connection $conn['claude-code']); Codex $(Format-Connection $conn['codex'])"
     $snapshot = Get-ConnectionSnapshot
@@ -1081,7 +1086,7 @@ Invoke-Scenario 'i' 'A setup cancelled after it replaced the installed copy' {
     }
     $access = Enable-AgentAccess
     Stop-App
-    Confirm-That $access.On 'the AI agents page turns agent access on' "switch on: $($access.On)"
+    Confirm-That ($access.Steps -like '*> OK') 'the AI agents page turns agent access on' "$($access.Steps); 'Agent access is on' shown: $($access.On)"
     $claudeHooks = Get-HookFacts $Claude.Settings 'claude-code' $CliExe
     $codexHooks = Get-HookFacts $Codex.Hooks 'codex' $CliExe
     Confirm-That ($claudeHooks.Mine -gt 0 -and $codexHooks.Mine -gt 0 -and @(Get-BinEntries (Get-UserPath).Raw).Count -eq 1) 'connected to both through the app, bin on PATH' "Claude Code $($claudeHooks.Mine), Codex $($codexHooks.Mine) hooks run bin"
