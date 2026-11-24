@@ -137,9 +137,15 @@ pub enum ReadOnly {
 impl fmt::Display for ReadOnly {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NotSane(why) => {
-                write!(f, "the keyboard does not look as expected, so nothing is written: {}", why.join("; "))
-            }
+            // Grouped: one reason per table entry can be a hundred or more.
+            Self::NotSane(why) => match crate::diagnostics::summarize_reasons(why) {
+                summary if summary.is_empty() => {
+                    write!(f, "the keyboard does not look as expected, so nothing is written")
+                }
+                summary => {
+                    write!(f, "the keyboard does not look as expected, so nothing is written: {}", summary.join("; "))
+                }
+            },
             Self::UpdatePending => {
                 write!(f, "the keyboard is waiting for a firmware update; nothing is read or written")
             }
@@ -148,10 +154,24 @@ impl fmt::Display for ReadOnly {
     }
 }
 
+impl ReadOnly {
+    /// Which of them, for the log (the reasons go there once, with the
+    /// read).
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::NotSane(_) => "not as expected",
+            Self::UpdatePending => "waiting for a firmware update",
+            Self::NoBackup(_) => "no backup",
+        }
+    }
+}
+
 impl From<&ReadOnly> for ReadOnlyReason {
     fn from(r: &ReadOnly) -> Self {
         match r {
-            ReadOnly::NotSane(reasons) => Self::NotSane { reasons: reasons.clone(), read_failed: false },
+            ReadOnly::NotSane(reasons) => {
+                Self::NotSane { reasons: crate::diagnostics::summarize_reasons(reasons), read_failed: false }
+            }
             ReadOnly::UpdatePending => Self::UpdatePending,
             ReadOnly::NoBackup(error) => Self::NoBackup { error: error.clone() },
         }
@@ -362,6 +382,9 @@ pub struct AaDriver {
     conflict: ConflictWatch,
     /// The last errors (Unix ms, text), for the diagnostics report.
     errors: VecDeque<(u64, String)>,
+    /// The last full read that failed the sanity check, as saved for the
+    /// developer ([`report::reads`]): its file, or why it was not saved.
+    kept_read: Option<Result<String, String>>,
 }
 
 impl AaDriver {
@@ -385,6 +408,7 @@ impl AaDriver {
             reopen: None,
             conflict,
             errors: VecDeque::new(),
+            kept_read: None,
         })
     }
 
@@ -422,7 +446,24 @@ impl AaDriver {
                     self.ensure_backup(&snap, app_effect);
                     self.look_at_armed_note(&snap);
                 } else {
-                    tracing::warn!(why = ?self.kb.sanity_reasons(), "\"AA\" keyboard read; read-only");
+                    let why = self.kb.sanity_reasons();
+                    self.kept_read = self
+                        .target
+                        .data_dir
+                        .as_deref()
+                        .map(|dir| report::reads::keep(dir, &self.target, &snap, &why).map_err(|e| e.to_string()));
+                    let kept = match &self.kept_read {
+                        Some(Ok(file)) => file.clone(),
+                        Some(Err(e)) => format!("not saved: {e}"),
+                        None => "not saved: no data folder".into(),
+                    };
+                    let summary = crate::diagnostics::summarize_reasons(&why).join("; ");
+                    tracing::warn!(
+                        reasons = why.len(),
+                        why = %crate::diagnostics::cut(&summary, 1_000),
+                        read = %kept,
+                        "\"AA\" keyboard read; read-only"
+                    );
                 }
             }
             Err(AaError::UpdatePending) => {
@@ -1568,10 +1609,16 @@ impl AaDriver {
         }
     }
 
-    /// The diagnostics report's section about this keyboard: device
-    /// information, the sanity check, the counters and the last errors. No
-    /// keymap, macro or colour content.
+    /// The diagnostics report's section about this keyboard (`report`):
+    /// each section of the last full read in a line (the device
+    /// information, the options and the effect whole), why writes are
+    /// refused, grouped, the counters, a hex excerpt of each table the
+    /// sanity check found fault with and the last errors. Never macro
+    /// contents; keymaps only by their entry pages unless one failed. The
+    /// most useful lines come first: the report cuts from the end.
     pub fn diagnostics(&self) -> Vec<String> {
+        use crate::diagnostics::{cut, summarize_reasons};
+        const LINE: usize = 300;
         let mut out = vec![format!(
             "{} on USB {:04X}, firmware {}",
             self.target.record_id,
@@ -1579,49 +1626,38 @@ impl AaDriver {
             kb_devices::firmware_text(self.target.usb.release)
         )];
         match self.kb.snapshot() {
-            Some(s) => {
-                out.push(format!("device information: {}", hex(&s.info.0)));
-                let d = &s.device;
-                out.push(format!(
-                    "parsed: vid {:04X} pid {:04X} version {:04X} product {:04X} work mode {} battery {} charge {} \
-                     macro space {} tft frames {} direction {} frame version {} lighting version {} firmware \
-                     status {} profile {}/{}",
-                    d.vid,
-                    d.pid,
-                    d.version,
-                    d.product,
-                    d.work_mode,
-                    d.battery_level,
-                    d.charge_status,
-                    d.macro_space_size,
-                    d.tft_max_frames,
-                    d.tft_direction,
-                    d.frame_version,
-                    d.lighting_version,
-                    d.firmware_status,
-                    d.current_profile,
-                    d.max_profile
-                ));
-                out.push(format!(
-                    "sections read: device information, options, base layer, Fn layer, factory Fn layer, effect, \
-                     per-key table, macro table and {} macro block(s)",
-                    s.macro_blocks.len()
-                ));
-            }
+            Some(s) => out.extend(report::section_lines(s)),
             None => match self.kb.info() {
                 Some(i) => out.push(format!("device information only: {i:?}")),
                 None => out.push("nothing read".into()),
             },
         }
+        let read_only = self.read_only();
+        let why: &[String] = match &read_only {
+            Some(ReadOnly::NotSane(why)) => why,
+            _ => &[],
+        };
+        let reasons = match why.len() {
+            0 => String::new(),
+            1 => " (1 reason)".into(),
+            n => format!(" ({n} reasons)"),
+        };
         out.push(match &self.read {
             Read::NotYet => "full read: not yet".into(),
             Read::Done { sane: true } => "full read: done, passed the sanity check".into(),
-            Read::Done { sane: false } => "full read: done, did not pass the sanity check".into(),
-            Read::Failed(e) => format!("full read: failed ({e})"),
+            Read::Done { sane: false } => format!("full read: done, did not pass the sanity check{reasons}"),
+            Read::Failed(e) => format!("full read: failed ({}){reasons}", cut(e, LINE)),
         });
-        out.push(match self.read_only() {
+        out.extend(summarize_reasons(why).into_iter().map(|l| format!("  {l}")));
+        match &self.kept_read {
+            Some(Ok(file)) => out.push(format!("failed read saved in the app's data folder: {file}")),
+            Some(Err(e)) => out.push(format!("failed read not saved: {}", cut(e, LINE))),
+            None => {}
+        }
+        out.push(match &read_only {
             None => "writes: allowed".into(),
-            Some(r) => format!("writes: refused ({r})"),
+            Some(ReadOnly::NotSane(_)) => "writes: refused, the keyboard does not look as expected (above)".into(),
+            Some(r) => format!("writes: refused ({})", cut(&r.to_string(), LINE)),
         });
         out.push(format!(
             "effect colour known: {}",
@@ -1640,18 +1676,21 @@ impl AaDriver {
                 if restore.is_some() { ", effect to put back" } else { "" },
                 if stopped.is_some() { ", hold running" } else { "" }
             ),
-            Live::Off { why, .. } => format!("live lights: not shown ({why:?})"),
+            Live::Off { why, .. } => format!("live lights: not shown ({})", cut(&format!("{why:?}"), LINE)),
         });
         if self.recover.is_some() {
             out.push("an effect waits to be put back after a crash".into());
         }
         out.push(match &self.backup {
             Some(Ok(f)) => format!("backup: {f}"),
-            Some(Err(e)) => format!("backup: failed ({e})"),
+            Some(Err(e)) => format!("backup: failed ({})", cut(e, LINE)),
             None => "backup: none yet".into(),
         });
+        if let Some(s) = self.kb.snapshot() {
+            out.extend(report::excerpts(s, why));
+        }
         for (at, e) in &self.errors {
-            out.push(format!("error at {at}: {e}"));
+            out.push(format!("error at {at}: {}", cut(e, LINE)));
         }
         out
     }
@@ -1786,10 +1825,6 @@ pub fn device_report(i: &DeviceInfo) -> DeviceReport {
         screen_max_frames: (i.tft_max_frames > 0).then_some(u32::from(i.tft_max_frames)),
         update_pending: i.update_pending(),
     }
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" ")
 }
 
 /// The live notes file: one note per keyboard left in per-key mode.
@@ -1997,6 +2032,8 @@ pub mod backups {
         }
     }
 }
+
+mod report;
 
 #[cfg(test)]
 pub(crate) mod tests;

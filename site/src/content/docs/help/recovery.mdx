@@ -132,7 +132,7 @@ Keymotion keeps each keyboard's first backup and its four newest, in the `keyboa
 On firmware 3.01, a notice at the top of the Overview, Connection, Lighting, Key mapping, Macros, Screen and Profiles pages says why Keymotion writes nothing to the keyboard, and the buttons that would write are off:
 
 - **Keymotion only reads this keyboard**, for one of two reasons:
-  - What the keyboard reports doesn't look as expected. Click **Report a problem** in the notice. It opens the report window with what Keymotion read from the keyboard, so we can find out why.
+  - What the keyboard reports doesn't look as expected. Click **Report a problem** in the notice. It opens the report window with what Keymotion read from the keyboard, so we can find out why. Keymotion also keeps that read in the `keyboard-reads` folder of its data folder, without your macros; we may ask you for the file.
   - Keymotion couldn't finish reading the keyboard. Close other programs that talk to the keyboard, such as AJAZZ's web page; Keymotion reads it again by itself.
 - **A firmware update was left unfinished**: finish the update with AJAZZ's keyboard tool first.
 - **The keyboard's backup couldn't be saved**: check that the disk has free space, then unplug the cable and plug it back in.
