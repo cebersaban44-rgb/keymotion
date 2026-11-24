@@ -13,6 +13,7 @@ import { AlertTriangle, Library, Radio, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { create } from "zustand";
+import { useAaKeyboard, useWriteBlock } from "../../lib/aa";
 import { useT } from "../../lib/i18n";
 import { useLive } from "../../lib/live";
 import { useScreen } from "../../lib/screen";
@@ -34,7 +35,10 @@ export function ScreenNotices() {
   // By itself only when a card waits for it, so it comes when it matters.
   const pending = useLive((s) => !!s.state?.pending);
   const { later, open } = useClockAsk();
-  const clock = needed && (open || (pending && !later));
+  // Not on a keyboard that takes no writes: no upload could follow the
+  // yes (the live tab says why instead).
+  const readOnly = useWriteBlock() !== null;
+  const clock = needed && !readOnly && (open || (pending && !later));
   return (
     <>
       <IncompleteNotice />
@@ -185,6 +189,7 @@ function FactoryLossDialog() {
   const answer = useLive((s) => s.answerFactory);
   // The backend asked, so no backup unless one was taken just now.
   const hasFactory = useScreen((s) => s.state?.items.some((i) => i.kind === "factory") ?? false);
+  const aa = useAaKeyboard();
   const [busy, setBusy] = useState(false);
   const cancel = () => void answer(false).catch(console.error);
   useEffect(() => {
@@ -229,12 +234,15 @@ function FactoryLossDialog() {
             <p className="flex gap-2 text-[13px] text-ink-2">
               <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" />
               <span>
-                {t("sc.live.ack.body")} {t("sc.factory.driverRestores")}
+                {t("sc.live.ack.body")} {!aa && t("sc.factory.driverRestores")}
               </span>
             </p>
-            <div className="pl-[22px]">
-              <DriverBackup />
-            </div>
+            {/* AJAZZ's old official driver doesn't know an "AA" keyboard's firmware. */}
+            {!aa && (
+              <div className="pl-[22px]">
+                <DriverBackup />
+              </div>
+            )}
           </>
         )}
         <div className="flex justify-end gap-2 pt-1">

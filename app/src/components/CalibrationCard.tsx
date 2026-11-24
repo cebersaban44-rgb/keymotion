@@ -7,6 +7,7 @@ import { decimal, percent, useT, type MessageKey } from "../lib/i18n";
 import { getCalibration, setCalibration, setLiveFrame } from "../lib/ipc";
 import { SWATCHES, toLedColors, type ColorMap } from "../lib/lighting";
 import { useActiveKeyboard } from "../lib/store";
+import { LiveLightsNotice } from "./KeyboardNotices";
 import { KeyboardView } from "./KeyboardView";
 import { Segmented, Slider, Toggle } from "./controls";
 import { friendlyError } from "../lib/errors";
@@ -224,6 +225,9 @@ export function CalibrationCard() {
         <p className="text-[12px] text-ink-3">
           {usb ? t(`cal.pattern.hint.${pattern}` as MessageKey) : t("cal.usbOnly")}
         </p>
+        {/* The pattern is live lighting: on an "AA" keyboard, why it may not
+            show on the keys (or when the keyboard's lighting comes back). */}
+        {live && <LiveLightsNotice />}
         {live && geometry && kb && (
           <div
             className="flex flex-col gap-3 rounded-lg border border-line p-5 pb-3.5"

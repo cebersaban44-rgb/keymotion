@@ -1,8 +1,10 @@
 import { create } from "zustand";
 import type { MacroBudgetRule } from "../bindings/MacroBudgetRule";
+import type { MacroFixed } from "../bindings/MacroFixed";
 import type { MacroInfo } from "../bindings/MacroInfo";
 import type { MacroStepInfo } from "../bindings/MacroStepInfo";
 import type { MacrosState } from "../bindings/MacrosState";
+import { freeMacroSlot } from "./aaText";
 import { applyMacros, getMacrosState } from "./ipc";
 
 /** Slot `i` is macro `i`; `null` is an unused slot. */
@@ -19,9 +21,17 @@ export interface MacroStore {
   /** Record id (`KeyboardInfo.recordId`) of the keyboards the state below
    *  belongs to. */
   recordId: string | null;
-  /** What the app last wrote to the keyboard (its own record); `null` until loaded. */
+  /** What the keyboard has: what the app last wrote ("04 xx"), or what the
+   *  keyboard itself holds ("AA", `readMs`); `null` until loaded. */
   saved: Slots | null;
   writtenMs: number | null;
+  /** Macros made in another program that Keymotion can neither show nor
+   *  change ("AA" family): their slots stay as they are, and a save keeps
+   *  them. */
+  fixed: MacroFixed[];
+  /** When `saved` was read from the keyboard itself; `null`: the app's own
+   *  record. */
+  readMs: number | null;
   limits: MacroLimits;
   /** Edits being made; equals `saved` when nothing is pending. */
   draft: Slots;
@@ -92,6 +102,8 @@ export const useMacros = create<MacroStore>((set, get) => {
   const record = (state: MacrosState) => ({
     saved: trim(state.slots),
     writtenMs: state.writtenMs,
+    fixed: state.fixed,
+    readMs: state.readMs,
     limits: {
       budget: state.budget,
       maxSlots: state.maxSlots,
@@ -110,6 +122,8 @@ export const useMacros = create<MacroStore>((set, get) => {
     recordId: null,
     saved: null,
     writtenMs: null,
+    fixed: [],
+    readMs: null,
     limits: DEFAULT_LIMITS,
     draft: [],
     selected: null,
@@ -120,16 +134,20 @@ export const useMacros = create<MacroStore>((set, get) => {
       update({
         recordId,
         ...r,
-        draft: same ? clone(kept.draft as Slots) : clone(r.saved),
+        draft: same ? withoutFixed(clone(kept.draft as Slots), r.fixed) : clone(r.saved),
         selected: same ? (kept.selected ?? null) : null,
       });
     },
     select: (selected) => update({ selected }),
     create: (name) => {
-      const { draft, limits } = get();
-      let slot = draft.indexOf(null);
-      if (slot === -1) slot = draft.length;
-      if (slot >= limits.maxSlots) return null;
+      const { draft, limits, fixed } = get();
+      // Not into a slot that holds a macro made in another program.
+      const slot = freeMacroSlot(
+        draft,
+        fixed.map((f) => f.slot),
+        limits.maxSlots,
+      );
+      if (slot === null) return null;
       const next = draft.slice();
       next[slot] = { name, steps: [] };
       update({ draft: next, selected: slot });
@@ -162,8 +180,9 @@ export const useMacros = create<MacroStore>((set, get) => {
  * on the Macros page.
  */
 export function stageMacrosImport(recordId: string, slots: Slots) {
-  const draft = clone(trim(slots));
-  if (useMacros.getState().recordId === recordId) useMacros.setState({ draft, selected: null });
+  const store = useMacros.getState();
+  const draft = withoutFixed(clone(trim(slots)), store.recordId === recordId ? store.fixed : []);
+  if (store.recordId === recordId) useMacros.setState({ draft, selected: null });
   persist({ modelId: recordId, draft, selected: null });
 }
 
@@ -175,9 +194,21 @@ export async function adoptMacrosRecord(recordId: string) {
   const state = await getMacrosState(recordId);
   const saved = trim(state.slots);
   const store = useMacros.getState();
-  if (store.recordId === recordId && store.saved && dirtySlots({ saved: store.saved, draft: saved }).length === 0) return;
+  const sameFixed = JSON.stringify(store.fixed) === JSON.stringify(state.fixed);
+  if (store.recordId === recordId && store.saved && sameFixed && dirtySlots({ saved: store.saved, draft: saved }).length === 0) {
+    // Read again, the same macros: only the time changes.
+    useMacros.setState({ readMs: state.readMs });
+    return;
+  }
   if (store.recordId === recordId) {
-    useMacros.setState({ saved, writtenMs: state.writtenMs, draft: clone(saved), selected: null });
+    useMacros.setState({
+      saved,
+      writtenMs: state.writtenMs,
+      fixed: state.fixed,
+      readMs: state.readMs,
+      draft: clone(saved),
+      selected: null,
+    });
   }
   persist({ modelId: recordId, draft: clone(saved), selected: null });
 }
@@ -204,10 +235,18 @@ export function dirtySlots(s: Pick<MacroStore, "saved" | "draft">): number[] {
 /** Bytes of keyboard memory the macros need, by the keyboard's rule
  *  (`KeyboardInfo.limits.macroBudget`): `(steps + slots) × 8` in the "04 xx"
  *  family, `(steps + slots) × 4` in the "AA" family. */
-export function budgetUsed(slots: Slots, rule: MacroBudgetRule = "ff13"): number {
+export function budgetUsed(slots: Slots, rule: MacroBudgetRule = "ff13", fixed: readonly MacroFixed[] = []): number {
   const used = trim(slots);
-  const steps = used.reduce((n, m) => n + (m?.steps.length ?? 0), 0);
-  return (steps + used.length) * (rule === "aa512" ? 4 : 8);
+  // Macros made in another program take memory too (and are kept).
+  const steps = used.reduce((n, m) => n + (m?.steps.length ?? 0), 0) + fixed.reduce((n, f) => n + f.steps, 0);
+  const macros = used.filter((m) => m !== null).length + fixed.length;
+  return rule === "aa512" ? (steps + macros) * 4 : (steps + used.length) * 8;
+}
+
+/** Slots without the macros made in another program (never changed from
+ *  here). */
+function withoutFixed(slots: Slots, fixed: readonly MacroFixed[]): Slots {
+  return trim(slots.map((m, i) => (fixed.some((f) => f.slot === i) ? null : m)));
 }
 
 /** The keyboard's macro memory in bytes: the record's (`MacrosState.budget`,

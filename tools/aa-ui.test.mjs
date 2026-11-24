@@ -1,21 +1,26 @@
 // node --test tools/aa-ui.test.mjs
 // What the app makes of the "AA" driver's English texts (the AK980 PRO on
 // firmware 3.01): the sections a restore wrote, why it left a key as it
-// was, and the numbers in the upload's cancel and wait messages
-// (app/src/lib/aaText.ts; Node runs the TypeScript file as it is). The
+// was, the numbers in the upload's cancel and wait messages, and which
+// message each of its errors gets (app/src/lib/aaText.ts and
+// errorRules.ts; Node runs the TypeScript files as they are). The
 // texts are the backend's (kb_core::aa, app/src-tauri/src/aa.rs); a change
 // there shows up here.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   betaIssue,
+  freeMacroSlot,
   keptWhy,
+  liveNoticeKind,
+  notSaneBody,
   restoredPart,
   restoredParts,
+  restoreHeldBy,
   untestedFirmware,
-  uploadCancelledAt,
-  uploadWaitSeconds,
+  withoutFixed,
 } from "../app/src/lib/aaText.ts";
+import { EXPECTED, errorRule, uploadCancelledAt, uploadWaitSeconds } from "../app/src/lib/errorRules.ts";
 
 test("every section a restore writes has a name, in the order shown", () => {
   for (const [name, part] of [
@@ -66,4 +71,60 @@ test("the beta's issue form names the model and firmware as the docs do", () => 
     model: "AJAZZ AK980 PRO firmware 3.01",
   });
   assert.deepEqual(betaIssue("AJAZZ AK980 PRO", null), { title: "[Keyboard] AJAZZ AK980 PRO", model: "AJAZZ AK980 PRO" });
+});
+
+test("the AA driver's failures say what to do, not 'something went wrong'", () => {
+  for (const [raw, key] of [
+    ["no answer to command 0x13", "err.noAnswer"],
+    ["keyboard write failed: no answer to command 0x12", "err.noAnswer"],
+    ["only 32 of 64 bytes were written", "err.noAnswer"],
+    ["the effect read back differs from what was written", "err.verify"],
+    ["the keymap read back differs from what was written", "err.verify"],
+    ["channel not usable: the device was removed", "err.noKeyboard"],
+    // The restore's own failure stays first: only part of it is back.
+    ["the restore stopped while writing the macros (already written: base layer): no answer to command 0x15", "err.aa.restoreStopped"],
+    ["the keyboard does not look as expected, so nothing is written: no answer to command 0x10", "err.aa.notSane"],
+  ]) {
+    assert.equal(errorRule(raw).key, key, raw);
+  }
+});
+
+test("a request the keyboard did not answer in time may still happen", () => {
+  const r = errorRule("keyboard did not answer in time");
+  assert.equal(r.key, "err.busy");
+  assert.ok(EXPECTED.has("err.busy"), "no problem report for a busy keyboard");
+});
+
+test("macros that don't fit say how much they need, before 'too large'", () => {
+  const raw = "invalid value: 3 macros with 200 steps take 812 bytes; the keyboard takes 512 (and at most 99 macros)";
+  assert.deepEqual(errorRule(raw), { key: "err.aa.macroMemory", vars: { bytes: 812, limit: 512 } });
+  assert.ok(EXPECTED.has("err.aa.macroMemory"));
+  assert.equal(errorRule("something else").key, "err.generic");
+});
+
+test("a read that did not finish is not a report-worthy check failure", () => {
+  assert.equal(notSaneBody(true), "aa.ro.notSane.read");
+  assert.equal(notSaneBody(false), "aa.ro.notSane.body");
+});
+
+test("'comes back in about 30 seconds' only when something goes back", () => {
+  assert.equal(liveNoticeKind({ liveLightsOff: null, liveArmed: true, liveRestores: true }), "armed");
+  // Per-key lighting saved from Keymotion: nothing was switched.
+  assert.equal(liveNoticeKind({ liveLightsOff: null, liveArmed: true, liveRestores: false }), null);
+  assert.equal(liveNoticeKind({ liveLightsOff: null, liveArmed: false, liveRestores: false }), null);
+  assert.equal(liveNoticeKind({ liveLightsOff: { kind: "read-only" }, liveArmed: false, liveRestores: false }), "off");
+});
+
+test("no restore while the keyboard takes no writes or an upload runs", () => {
+  assert.equal(restoreHeldBy("only read", true), "read-only");
+  assert.equal(restoreHeldBy(null, true), "upload");
+  assert.equal(restoreHeldBy(null, false), null);
+});
+
+test("macros and keys set in another program are left alone", () => {
+  // Slot 1 holds a macro made elsewhere: a new one takes slot 2.
+  assert.equal(freeMacroSlot([{ name: "a" }], [1], 100), 2);
+  assert.equal(freeMacroSlot([{ name: "a" }, null, null], [], 100), 1);
+  assert.equal(freeMacroSlot([null], [0], 1), null);
+  assert.deepEqual(withoutFixed({ 3: "x", 7: "y" }, [7]), { 3: "x" });
 });

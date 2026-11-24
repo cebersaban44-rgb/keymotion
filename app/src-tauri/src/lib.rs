@@ -306,11 +306,14 @@ fn screen_ack_clock_page(library: Library<'_>, live: Live<'_>, record_id: String
 }
 
 /// The backups of "AA" keyboards in the data folder, oldest first: one
-/// from before Keymotion first wrote to the keyboard, one before every
-/// restore (`matches`: of the keyboard on the cable, so restorable).
+/// taken at the keyboard's first connection, one before every restore
+/// (`matches`: of the keyboard on the cable, so restorable). Files only,
+/// off the UI thread and without the device actor (busy for minutes during
+/// a screen upload).
 #[tauri::command]
-fn keyboard_backups(device: Device<'_>) -> Result<Vec<dto::KeyboardBackupInfo>, String> {
-    device.call(Request::KeyboardBackups)
+async fn keyboard_backups(device: Device<'_>) -> Result<Vec<dto::KeyboardBackupInfo>, String> {
+    let handle = device.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || handle.keyboard_backups()).await.map_err(|e| e.to_string())
 }
 
 /// Write a backup back to the "AA" keyboard on the cable (flash writes,
@@ -329,9 +332,13 @@ async fn keyboard_backup_restore(
     tracing::debug!(%file, has_color = color.is_some(), "ipc: keyboard_backup_restore");
     let color = color.as_deref().map(dto::parse_hex).transpose()?.map(|c| (c, rainbow.unwrap_or(false)));
     let handle = device.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || handle.call(|reply| Request::RestoreKeyboard { file, color, reply }))
-        .await
-        .map_err(|e| e.to_string())?
+    // Behind a screen upload the restore waits its turn (minutes): it is
+    // not reported as failed while it may still run.
+    tauri::async_runtime::spawn_blocking(move || {
+        handle.call_waiting(device::RESTORE_WAIT, |reply| Request::RestoreKeyboard { file, color, reply })
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Whether AJAZZ's official driver left a copy of the factory animation on

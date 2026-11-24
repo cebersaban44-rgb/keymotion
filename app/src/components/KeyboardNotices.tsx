@@ -12,12 +12,12 @@
 import { Cable, FlaskConical, Lightbulb, MessageSquareWarning, RadioTower } from "lucide-react";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import { aaStatusOf } from "../lib/aa";
-import { betaIssue, untestedFirmware } from "../lib/aaText";
+import { betaIssue, liveNoticeKind, notSaneBody, untestedFirmware } from "../lib/aaText";
 import { friendlyError } from "../lib/errors";
 import { useT, type MessageKey } from "../lib/i18n";
 import { openIssue } from "../lib/ipc";
 import { useReport } from "../lib/report";
-import { askFirmwareAgain } from "../lib/safety";
+import { askFirmwareAgain, useSafety } from "../lib/safety";
 import { useActiveKeyboard, useApp } from "../lib/store";
 import { InfoBar } from "./controls";
 
@@ -36,15 +36,19 @@ export function KeyboardNotices({ kb }: { kb: KeyboardInfo }) {
   if (!status) return null;
   const ro = status.readOnly;
   const text = ro ? READ_ONLY[ro.kind] : null;
+  // A read that did not finish says what to try (the background reads
+  // again); data that failed the check asks for a report.
+  const readFailed = ro?.kind === "not-sane" && ro.readFailed;
+  const body = ro?.kind === "not-sane" ? notSaneBody(ro.readFailed) : text?.body;
   return (
     <>
-      {ro && text && (
+      {ro && text && body && (
         <InfoBar
           tone="warn"
           title={t(text.title)}
-          data={`aa-read-only-${ro.kind}`}
+          data={`aa-read-only-${ro.kind}${readFailed ? "-read" : ""}`}
           actions={
-            ro.kind === "not-sane" ? (
+            ro.kind === "not-sane" && !readFailed ? (
               <button
                 type="button"
                 className="btn-secondary"
@@ -63,7 +67,7 @@ export function KeyboardNotices({ kb }: { kb: KeyboardInfo }) {
             ) : undefined
           }
         >
-          <span className="block max-w-[80ch]">{t(text.body)}</span>
+          <span className="block max-w-[80ch]">{t(body)}</span>
         </InfoBar>
       )}
       {status.otherProgramSuspected && (
@@ -87,10 +91,12 @@ export function LiveLightsNotice() {
   const kb = useActiveKeyboard();
   const setPage = useApp((s) => s.setPage);
   const page = useApp((s) => s.page);
+  const confirmed = useSafety((s) => s.confirmed);
   const status = aaStatusOf(kb);
   if (!status) return null;
   const off = status.liveLightsOff;
-  if (off) {
+  const kind = liveNoticeKind(status);
+  if (kind === "off" && off) {
     const title = t("aa.live.off.title");
     switch (off.kind) {
       case "color-unknown":
@@ -125,7 +131,9 @@ export function LiveLightsNotice() {
             title={title}
             data="aa-live-blocked"
             actions={
-              version ? (
+              // Not once the user said yes to this firmware: the note goes
+              // with the next look.
+              version && !confirmed.includes(version) ? (
                 <button
                   type="button"
                   className="btn-secondary"
@@ -144,16 +152,17 @@ export function LiveLightsNotice() {
         );
       }
       case "failed":
+        // It tries again by itself: no "try again" from the driver's error.
         return (
           <InfoBar tone="warn" title={title} data="aa-live-failed">
-            <span className="block max-w-[80ch]">
-              {t("aa.live.failed")} {friendlyError(off.error, t, true)}
-            </span>
+            <span className="block max-w-[80ch]">{t("aa.live.failed")}</span>
           </InfoBar>
         );
     }
   }
-  if (!status.liveArmed) return null;
+  // "Comes back in about 30 seconds" only when Keymotion switched the
+  // keyboard and has its effect to put back.
+  if (kind !== "armed") return null;
   return (
     <InfoBar icon={<Cable size={20} strokeWidth={1.6} />} title={t("aa.live.armed.title")} data="aa-live-armed">
       <span className="block max-w-[80ch]">{t("aa.live.armed.body")}</span>

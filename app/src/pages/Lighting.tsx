@@ -23,7 +23,7 @@ import { ColorPicker, InfoBar, Row, Rows, Segmented, Steps, Tabs, Toggle } from 
 import { EffectThumb } from "../components/EffectThumb";
 import { KeyboardView, type KeyAction } from "../components/KeyboardView";
 import { KeyboardNotices, LiveLightsNotice } from "../components/KeyboardNotices";
-import { useWriteBlock } from "../lib/aa";
+import { aaStatusOf, useWriteBlock } from "../lib/aa";
 import { getLightingCatalog, setLiveFrame } from "../lib/ipc";
 import { useT, type MessageKey } from "../lib/i18n";
 import {
@@ -188,11 +188,16 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
   const effects = catalog.filter((e) => e.id !== 0);
   const blocked = useWriteBlock(kb);
   const off = catalog.find((e) => e.id === 0);
-  // Unknown until the app stores an effect once; then whatever differs.
+  // Unknown until the app stores an effect once; then whatever differs. An
+  // "AA" keyboard whose colour Keymotion doesn't know needs one save for
+  // live lighting, even of the same effect.
+  const colorUnknown = aaStatusOf(kb)?.liveLightsOff?.kind === "color-unknown";
   const changes = !appliedEffect
     ? t("bar.notSaved")
     : sameEffect(effect, appliedEffect)
-      ? null
+      ? colorUnknown
+        ? t("bar.saveForLive")
+        : null
       : t("bar.effectChanged");
 
   const card = (fx: EffectInfo) => {

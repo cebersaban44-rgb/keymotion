@@ -3,6 +3,7 @@ import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Row } from "./components/controls";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { RestoreToast } from "./components/KeyboardBackups";
 import { Reporting } from "./components/Reporting";
 import { Sidebar } from "./components/Sidebar";
 import { UnsavedDialog } from "./components/UnsavedDialog";
@@ -53,7 +54,7 @@ import { startReminders } from "./lib/reminders";
 import { startUpdates, useUpdates } from "./lib/updates";
 import { UpdateDialog, UpdateStrip } from "./components/Updates";
 import { useMacros } from "./lib/macros";
-import { followAutoWrites } from "./lib/profiles";
+import { followAutoWrites, followKeyboardRecords } from "./lib/profiles";
 import { useScreen } from "./lib/screen";
 import { followSelectWidths } from "./lib/selectWidth";
 import { OFFLINE_KEYBOARD } from "./lib/offline";
@@ -138,6 +139,8 @@ function useKeyboardRecords() {
   }, [recordId]);
   // A profile written by the per-app profiles: those records are read again.
   useEffect(() => (modelId ? followAutoWrites(modelId) : undefined), [modelId]);
+  // An "AA" keyboard's keys and macros, as the keyboard holds them.
+  useEffect(() => (modelId ? followKeyboardRecords(modelId) : undefined), [modelId]);
 }
 
 /** Words of the Pomodoro cards in the current language. */
@@ -424,6 +427,7 @@ export default function App() {
         </main>
       </div>
       <ScreenUploadToast />
+      <RestoreToast />
       <SafetyDialogs />
       <ScreenNotices />
       <Reporting />

@@ -298,8 +298,14 @@ pub enum ChargeState {
 #[ts(export)]
 pub enum ReadOnlyReason {
     /// Its answers did not look as expected, or the full read did not
-    /// finish (`reasons`: English, for the diagnostics report).
-    NotSane { reasons: Vec<String> },
+    /// finish (`reasons`: English, for the diagnostics report;
+    /// `readFailed`: the read did not finish, which the background tries
+    /// again, rather than data that failed the check).
+    NotSane {
+        reasons: Vec<String>,
+        #[serde(rename = "readFailed")]
+        read_failed: bool,
+    },
     /// A firmware update was left unfinished: AJAZZ's tool has to finish it.
     UpdatePending,
     /// The backup of its settings could not be saved (`error`: English).
@@ -335,9 +341,12 @@ pub struct AaStatus {
     pub read_only: Option<ReadOnlyReason>,
     /// Set: live lights do not show on it, and why.
     pub live_lights_off: Option<LiveLightsOff>,
-    /// Live lights hold it in per-key mode now; its own effect comes back
-    /// 30 s after they end.
+    /// Live lights hold it in per-key mode now.
     pub live_armed: bool,
+    /// Live lights switched it to per-key mode: its own effect comes back
+    /// about 30 s after they end. False while it was in a live mode before
+    /// (per-key lighting saved from Keymotion): nothing goes back.
+    pub live_restores: bool,
     /// Replies nobody asked for keep coming: another program (AJAZZ's web
     /// page?) seems to talk to the keyboard. Nothing is blocked.
     pub other_program_suspected: bool,
@@ -396,7 +405,7 @@ pub struct KeptKey {
 }
 
 /// What a restore wrote.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct KeyboardRestoreResult {
@@ -404,6 +413,10 @@ pub struct KeyboardRestoreResult {
     /// "effect", "per-key table", "macros"); unchanged ones are not.
     pub written: Vec<String>,
     pub kept: Vec<KeptKey>,
+    /// The effect the keyboard shows now, as the Lighting page's record
+    /// holds one, when its colour is known; `null`: not known (or per-key
+    /// mode), so the record is not either.
+    pub effect: Option<EffectRequest>,
 }
 
 impl From<kb_core::aa::RestoreReport> for KeyboardRestoreResult {
@@ -423,6 +436,7 @@ impl From<kb_core::aa::RestoreReport> for KeyboardRestoreResult {
                     reason: k.reason,
                 })
                 .collect(),
+            effect: None,
         }
     }
 }
@@ -1229,6 +1243,10 @@ pub struct KeymapLayerState {
     /// Unix ms of the last write; `null` when the app never wrote this
     /// layer (taken to be the factory default).
     pub written_ms: Option<f64>,
+    /// LEDs of keys set to something the app can neither show nor write
+    /// (a firmware function, a combo, set in AJAZZ's tool...): shown as
+    /// such, never changed by a save ("AA" family; empty otherwise).
+    pub fixed: Vec<u8>,
 }
 
 impl From<&StoredLayer> for KeymapLayerState {
@@ -1236,23 +1254,28 @@ impl From<&StoredLayer> for KeymapLayerState {
         Self {
             assignments: l.actions().into_iter().map(|(led, a)| KeyAssignment { led, action: a.into() }).collect(),
             written_ms: l.written_ms.map(|ms| ms as f64),
+            fixed: l.fixed.clone(),
         }
     }
 }
 
-/// What the app last wrote to a model's keymap. The keyboard cannot report
-/// its keymap, so this is the app's own record.
+/// A keyboard's keymap: what the app last wrote ("04 xx", which cannot
+/// report it), or what the keyboard itself holds ("AA", `readMs`).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, TS)]
 #[ts(export)]
 pub struct KeymapState {
     pub base: KeymapLayerState,
     #[serde(rename = "fn")]
     pub fn_layer: KeymapLayerState,
+    /// When the layers were read from the keyboard (Unix ms); `null`: they
+    /// are the app's own record.
+    #[serde(rename = "readMs")]
+    pub read_ms: Option<f64>,
 }
 
 impl From<&StoredKeymap> for KeymapState {
     fn from(k: &StoredKeymap) -> Self {
-        Self { base: (&k.base).into(), fn_layer: (&k.fn_layer).into() }
+        Self { base: (&k.base).into(), fn_layer: (&k.fn_layer).into(), read_ms: k.read_ms.map(|ms| ms as f64) }
     }
 }
 
@@ -1565,12 +1588,31 @@ pub struct MacrosState {
     pub max_slots: u32,
     pub min_delay_ms: u16,
     pub max_name: u32,
+    /// Macros the keyboard holds that the app's steps cannot express (made
+    /// in another program): shown as such, never changed by a save ("AA"
+    /// family; empty otherwise).
+    pub fixed: Vec<MacroFixed>,
+    /// When the macros were read from the keyboard (Unix ms); `null`: they
+    /// are the app's own record.
+    pub read_ms: Option<f64>,
+}
+
+/// A macro slot kept as the keyboard has it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct MacroFixed {
+    pub slot: u8,
+    /// Its steps as the keyboard counts them (macro memory).
+    pub steps: u16,
 }
 
 impl From<&StoredMacros> for MacrosState {
     fn from(m: &StoredMacros) -> Self {
         use kb_protocol::sonix::macros::{BUDGET, MAX_MACROS, MIN_DELAY_MS};
         Self {
+            fixed: m.fixed.iter().map(|f| MacroFixed { slot: f.slot, steps: f.entries }).collect(),
+            read_ms: m.read_ms.map(|ms| ms as f64),
             slots: m.slots.iter().map(|s| s.as_ref().map(MacroInfo::from)).collect(),
             written_ms: m.written_ms.map(|ms| ms as f64),
             budget: BUDGET as u32,

@@ -1071,9 +1071,17 @@ impl<P: OutputPort> AaKeyboard<P> {
     /// Replace every macro: `slots[i]` is macro `i`, an empty one is none.
     /// **Writes flash.**
     pub fn write_macros(&mut self, slots: &[Vec<MacroStep>]) -> Result<()> {
-        self.ensure_writable()?;
         let entries = slots.iter().map(|s| macros::from_steps(s)).collect::<std::result::Result<Vec<_>, _>>()?;
-        let img = macros::encode(&entries)?;
+        self.write_macro_entries(&entries)
+    }
+
+    /// Replace every macro with entries as the keyboard keeps them:
+    /// `slots[i]` is macro `i`, an empty one is none. A macro read from the
+    /// keyboard that the app's steps cannot express goes back this way,
+    /// byte for byte. **Writes flash.**
+    pub fn write_macro_entries(&mut self, slots: &[Vec<AaMacroEntry>]) -> Result<()> {
+        self.ensure_writable()?;
+        let img = macros::encode(slots)?;
         self.put_macros(&img)
     }
 

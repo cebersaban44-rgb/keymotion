@@ -13,4 +13,10 @@ assignments: Array<KeyAssignment>,
  * Unix ms of the last write; `null` when the app never wrote this
  * layer (taken to be the factory default).
  */
-writtenMs: number | null, };
+writtenMs: number | null, 
+/**
+ * LEDs of keys set to something the app can neither show nor write
+ * (a firmware function, a combo, set in AJAZZ's tool...): shown as
+ * such, never changed by a save ("AA" family; empty otherwise).
+ */
+fixed: Array<number>, };

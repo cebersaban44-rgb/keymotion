@@ -1,8 +1,8 @@
 // What the app says about a keyboard of AJAZZ's "AA" family (the AK980 PRO
 // on firmware 3.01, "769"), worked out from the backend's English texts:
-// the sections a restore wrote, why it left a key as it was, and the
-// numbers in the screen upload's cancel and wait messages. The words for
-// the user are in the dictionaries (lib/i18n); this file only tells which.
+// the sections a restore wrote, why it left a key as it was, and what the
+// read-only and live-lights notices say. The words for the user are in the
+// dictionaries (lib/i18n); this file only tells which.
 //
 // No imports: tools/aa-ui.test.mjs runs this file in Node.
 
@@ -42,19 +42,6 @@ export function keptWhy(reason: string): KeptWhy {
   return "other";
 }
 
-/** "screen upload cancelled after 399 of 586 parts": how far it got. */
-export function uploadCancelledAt(raw: string): { done: number; total: number } | null {
-  const m = /screen upload cancelled after (\d+) of (\d+) parts/i.exec(raw);
-  return m ? { done: Number(m[1]), total: Number(m[2]) } : null;
-}
-
-/** "a screen upload stopped part-way; no commands for another 4200 ms":
- *  the wait in whole seconds, at least 1. */
-export function uploadWaitSeconds(raw: string): number | null {
-  const m = /no commands for another (\d+) ms/i.exec(raw);
-  return m ? Math.max(1, Math.ceil(Number(m[1]) / 1000)) : null;
-}
-
 /** The firmware version a live-lights block waits on ("untested keyboard
  *  firmware 3.01"), when that is the reason. */
 export function untestedFirmware(reason: string): string | null {
@@ -66,4 +53,50 @@ export function untestedFirmware(reason: string): string | null {
 export function betaIssue(model: string, firmware: string | null): { title: string; model: string } {
   const name = firmware ? `${model} firmware ${firmware}` : model;
   return { title: `[Keyboard] ${name}`, model: name };
+}
+
+/** The read-only notice's body when what the keyboard reported did not
+ *  look as expected: a read that did not finish (another program holding
+ *  the keyboard? the background reads again) tells what to try; data that
+ *  failed the check asks for a report. */
+export function notSaneBody(readFailed: boolean): "aa.ro.notSane.read" | "aa.ro.notSane.body" {
+  return readFailed ? "aa.ro.notSane.read" : "aa.ro.notSane.body";
+}
+
+/** What the live-lights notice says, from `AaStatus`: why live lighting
+ *  doesn't show, that the keyboard's own lighting comes back about 30
+ *  seconds after it ends (only when Keymotion switched it and has something
+ *  to put back), or nothing. */
+export function liveNoticeKind(s: {
+  liveLightsOff: unknown;
+  liveArmed: boolean;
+  liveRestores: boolean;
+}): "off" | "armed" | null {
+  if (s.liveLightsOff) return "off";
+  return s.liveArmed && s.liveRestores ? "armed" : null;
+}
+
+/** Why a backup can't be put back now: the keyboard takes no writes, or a
+ *  screen upload runs (the restore would wait minutes behind it). */
+export function restoreHeldBy(readOnly: string | null, uploading: boolean): "read-only" | "upload" | null {
+  if (readOnly) return "read-only";
+  return uploading ? "upload" : null;
+}
+
+/** The first macro slot a new macro can take: not used, and not holding a
+ *  macro made in another program (`fixed`, kept as the keyboard has it);
+ *  `null` when none is left. */
+export function freeMacroSlot(slots: readonly unknown[], fixed: readonly number[], max: number): number | null {
+  for (let i = 0; i < max; i++) {
+    if ((slots[i] ?? null) === null && !fixed.includes(i)) return i;
+  }
+  return null;
+}
+
+/** A layer of keys without the ones set in another program (`fixed`):
+ *  Keymotion neither shows nor changes them. */
+export function withoutFixed<T>(layer: Record<number, T>, fixed: readonly number[]): Record<number, T> {
+  const out: Record<number, T> = {};
+  for (const [led, v] of Object.entries(layer)) if (!fixed.includes(Number(led))) out[Number(led)] = v;
+  return out;
 }

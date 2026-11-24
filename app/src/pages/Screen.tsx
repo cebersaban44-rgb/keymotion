@@ -8,7 +8,7 @@ import { builtIn, useScreen, useScreenLimits } from "../lib/screen";
 import { openSource, uploadSeconds, type Source } from "../lib/screenImport";
 import { InfoBar, Tabs } from "../components/controls";
 import { KeyboardNotices } from "../components/KeyboardNotices";
-import { useWriteBlock } from "../lib/aa";
+import { useAaKeyboard, useWriteBlock } from "../lib/aa";
 import { useApp, type ScreenTab } from "../lib/store";
 import {
   CancelUpload,
@@ -281,6 +281,8 @@ function FactoryLine() {
   const t = useT();
   const hasFactory = useHasFactory();
   const driver = useScreen((s) => s.driver);
+  // AJAZZ's old official driver doesn't know an "AA" keyboard's firmware.
+  const aa = useAaKeyboard();
   const keymotion = useScreen((s) => s.state?.items.find((i) => i.kind === "keymotion") ?? null);
   /** Bring Keymotion's animation into view in the library, its upload
    *  button focused (uploading still asks first). */
@@ -292,8 +294,8 @@ function FactoryLine() {
   };
   const [backedUp, setBackedUp] = useState(false);
   useEffect(() => {
-    if (!hasFactory) useScreen.getState().findDriver();
-  }, [hasFactory]);
+    if (!hasFactory && !aa) useScreen.getState().findDriver();
+  }, [hasFactory, aa]);
   if (hasFactory) {
     return backedUp ? (
       <p className="flex gap-2" role="status">
@@ -307,12 +309,15 @@ function FactoryLine() {
       <p className="flex gap-2">
         <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" />
         <span>
-          {t("sc.factory.missing")} {t(driver === "found" ? "sc.factory.driverFound" : "sc.factory.driverRestores")}
+          {t("sc.factory.missing")}
+          {!aa && <> {t(driver === "found" ? "sc.factory.driverFound" : "sc.factory.driverRestores")}</>}
         </span>
       </p>
-      <div className="pl-[22px]">
-        <DriverBackup onDone={() => setBackedUp(true)} />
-      </div>
+      {!aa && (
+        <div className="pl-[22px]">
+          <DriverBackup onDone={() => setBackedUp(true)} />
+        </div>
+      )}
       {keymotion && (
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-[22px]" data-keymotion-offer>
           <span>{t("sc.keymotion.offer")}</span>

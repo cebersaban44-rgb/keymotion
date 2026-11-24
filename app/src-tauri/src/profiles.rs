@@ -319,7 +319,7 @@ impl ProfileKeymap {
 
     /// The actions of `layer`, for a write.
     pub fn actions(&self, layer: Layer) -> Vec<(u8, KeyAction)> {
-        StoredLayer { entries: self.layer(layer).clone(), written_ms: None }.actions().into_iter().collect()
+        StoredLayer { entries: self.layer(layer).clone(), ..Default::default() }.actions().into_iter().collect()
     }
 
     /// Keys that differ from the factory layout, both layers.
@@ -333,7 +333,7 @@ impl ProfileKeymap {
         let mut out = Self::default();
         for layer in [Layer::Base, Layer::Fn] {
             let src = self.layer(layer);
-            let actions = StoredLayer { entries: src.clone(), written_ms: None }.actions();
+            let actions = StoredLayer { entries: src.clone(), ..Default::default() }.actions();
             if actions.len() != src.len() {
                 return None;
             }
@@ -358,7 +358,7 @@ fn macros_checked(slots: Vec<Option<StoredMacro>>) -> Option<Vec<Option<StoredMa
         .into_iter()
         .map(|m| m.map(|m| StoredMacro { name: m.name.trim().chars().take(MACRO_NAME_MAX).collect(), steps: m.steps }))
         .collect();
-    let image = StoredMacros { slots: slots.clone(), written_ms: None }.image_slots();
+    let image = StoredMacros { slots: slots.clone(), ..Default::default() }.image_slots();
     kb_protocol::sonix::macros::macro_image(&image).ok()?;
     Some(slots)
 }

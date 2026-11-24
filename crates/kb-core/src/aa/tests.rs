@@ -759,6 +759,26 @@ fn the_a_macro() {
 }
 
 #[test]
+fn macro_entries_the_steps_cannot_express_go_back_byte_for_byte() {
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    // A wheel turn (button 255, as AJAZZ writes it) and a 2 ms pause: no
+    // app step holds either.
+    let wheel = vec![
+        AaMacroEntry { delay_ms: 2, code: 0xFF, flag: macros::flag::MOUSE_DOWN },
+        AaMacroEntry { delay_ms: 0, code: 0xFF, flag: macros::flag::MOUSE_UP },
+    ];
+    assert!(macros::to_steps(&wheel).is_none());
+    let a = macros::from_steps(&a_macro()).unwrap();
+    k.write_macro_entries(&[a.clone(), Vec::new(), wheel.clone()]).unwrap();
+    let back = k.read_macros().unwrap();
+    assert_eq!(back[0], a);
+    assert!(back[1].is_empty());
+    assert_eq!(back[2], wheel);
+    assert_eq!(k.snapshot().unwrap().macros()[2], wheel);
+}
+
+#[test]
 fn a_macro_write_that_fails_part_way_leaves_no_dangling_pointer() {
     let sim = Sim::ak980();
     let mut k = ready(&sim);

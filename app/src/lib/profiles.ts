@@ -201,6 +201,21 @@ export function followAutoWrites(modelId: string): () => void {
   };
 }
 
+/** An "AA" keyboard reports its keymap and macros, and the backend keeps
+ *  the records in step with it (device.rs `sync_aa_records`, which sends
+ *  "keyboard-records-changed"): when it connects with keys or macros set
+ *  elsewhere, after a restore, after any save. The Key mapping and Macros
+ *  pages and the profile list read them again. */
+export function followKeyboardRecords(modelId: string): () => void {
+  if (import.meta.env.DEV && !inTauri) return () => {};
+  const off = listen<string>("keyboard-records-changed", () => {
+    void readRecordsAgain(modelId, new Set<ProfilePart>(["keymap", "macros"]));
+  });
+  return () => {
+    off.then((f) => f()).catch(console.error);
+  };
+}
+
 async function uploadPicture(p: ProfileInfo) {
   const screen = useScreen.getState();
   const item = screen.state?.items.find((i) => i.id === p.screen?.id);

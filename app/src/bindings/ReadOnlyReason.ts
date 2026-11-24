@@ -4,4 +4,4 @@
  * Why Keymotion writes nothing to the "AA" keyboard on the cable. Every
  * write refuses with the matching backend error (device.rs `WriteBlock`).
  */
-export type ReadOnlyReason = { "kind": "not-sane", reasons: Array<string>, } | { "kind": "update-pending" } | { "kind": "no-backup", error: string, };
+export type ReadOnlyReason = { "kind": "not-sane", reasons: Array<string>, readFailed: boolean, } | { "kind": "update-pending" } | { "kind": "no-backup", error: string, };

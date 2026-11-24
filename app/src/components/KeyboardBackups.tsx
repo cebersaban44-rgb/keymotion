@@ -1,28 +1,33 @@
 // The Connection page's list of an "AA" keyboard's backups (the AK980 PRO on
-// firmware 3.01): Keymotion saves one before it first writes to the
-// keyboard and one before every restore (lib/aa.ts). A backup of the
-// keyboard on the cable can be put back, in visible steps with a Cancel:
+// firmware 3.01): Keymotion saves one at the keyboard's first connection
+// and one before every restore (lib/aa.ts). A backup of the keyboard on the
+// cable can be put back, in visible steps with a Cancel (lib/aa.ts
+// `RestoreFlow`), never while a screen upload runs (it would wait minutes
+// behind it).
 //
-//   1. What comes back (and what doesn't) → Restore
-//   2. The lighting's colour, only when the backup doesn't know it and the
-//      keyboard refused without one → Restore
-//   3. Done: what was put back, the keys left as they are → OK, and the
-//      list again with "the backup is back on the keyboard".
-//
-// After a restore the app's own records (Lighting, Key mapping, Macros)
-// still hold what Keymotion last saved; the done step says so rather than
-// pretend the pages show the keyboard.
+// The flow lives in a store: a restore goes on when the user opens another
+// page or the cable drops, and its outcome waits on this page and in a
+// notice over the others (RestoreToast). After a restore, the Key mapping
+// and Macros pages show what the keyboard has, and the Lighting page its
+// effect when the colour is known.
 
 import { ArchiveRestore, Check, CircleAlert, History, Loader2, X } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { KeyboardBackupInfo } from "../bindings/KeyboardBackupInfo";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
-import type { KeyboardRestoreResult } from "../bindings/KeyboardRestoreResult";
-import { getKeyboardBackups, restoreKeyboardBackup, writeBlock } from "../lib/aa";
-import { keptWhy, restoredParts, type KeptWhy, type RestoredPart } from "../lib/aaText";
+import {
+  closeRestore,
+  getKeyboardBackups,
+  runRestore,
+  useRestore,
+  useUploadRunning,
+  writeBlock,
+  type RestoreFlow,
+} from "../lib/aa";
+import { keptWhy, restoredParts, restoreHeldBy, type KeptWhy, type RestoredPart } from "../lib/aaText";
 import { friendlyError } from "../lib/errors";
 import { intlTag, useT, type MessageKey } from "../lib/i18n";
-import { useLighting } from "../lib/lighting";
 import { useApp } from "../lib/store";
 import { ColorPicker, InfoBar, Toggle } from "./controls";
 
@@ -44,24 +49,31 @@ const KEPT: Record<KeptWhy, MessageKey> = {
 };
 
 type Step = "check" | "color" | "done";
+type Flow = RestoreFlow;
 
-type Flow =
-  | { step: "check"; backup: KeyboardBackupInfo; busy: boolean; error: string | null }
-  | { step: "color"; backup: KeyboardBackupInfo; busy: boolean; error: string | null; color: string; rainbow: boolean }
-  | { step: "done"; backup: KeyboardBackupInfo; result: KeyboardRestoreResult; askedColor: boolean };
-
-/** The keyboard refused a restore for want of the effect's colour. */
-const COLOR_NEEDED = /does not report its effect colou?r/i;
+function useWhen() {
+  const locale = useApp((s) => s.locale);
+  return (ms: number) => new Date(ms).toLocaleString(intlTag(locale), { dateStyle: "medium", timeStyle: "short" });
+}
 
 export function KeyboardBackups({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
-  const locale = useApp((s) => s.locale);
+  const when = useWhen();
   const [list, setList] = useState<KeyboardBackupInfo[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [flow, setFlow] = useState<Flow | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const flow = useRestore((s) => s.flow);
+  const restored = useRestore((s) => s.restored);
+  const listVersion = useRestore((s) => s.listVersion);
   const titleRef = useRef<HTMLHeadingElement>(null);
-  const blocked = writeBlock(kb, t);
+  const uploading = useUploadRunning();
+  const held = restoreHeldBy(writeBlock(kb, t), uploading);
+  const blocked = held === "read-only" ? writeBlock(kb, t) : held === "upload" ? t("aa.bk.uploadBusy") : null;
+
+  // On screen: the outcome shows here, not over the page.
+  useEffect(() => {
+    useRestore.setState((s) => ({ listShown: s.listShown + 1 }));
+    return () => useRestore.setState((s) => ({ listShown: s.listShown - 1 }));
+  }, []);
 
   const reload = useCallback(() => {
     getKeyboardBackups().then(
@@ -75,41 +87,11 @@ export function KeyboardBackups({ kb }: { kb: KeyboardInfo }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Again when the keyboard's backup changes (the first one is saved
-  // when the keyboard is first read).
-  useEffect(reload, [reload, kb.aaStatus?.backup]);
-
-  const when = (ms: number) => new Date(ms).toLocaleString(intlTag(locale), { dateStyle: "medium", timeStyle: "short" });
-
-  const run = async (f: Extract<Flow, { step: "check" | "color" }>) => {
-    setFlow({ ...f, busy: true, error: null });
-    const color = f.step === "color" ? { color: f.color, rainbow: f.rainbow } : undefined;
-    try {
-      const result = await restoreKeyboardBackup(f.backup.file, color);
-      setFlow({ step: "done", backup: f.backup, result, askedColor: f.step === "color" });
-      reload();
-    } catch (e) {
-      const raw = e instanceof Error ? e.message : String(e);
-      if (f.step === "check" && COLOR_NEEDED.test(raw)) {
-        // Nothing was written: the same backup goes again with a colour.
-        const known = useLighting.getState().appliedEffect;
-        setFlow({
-          step: "color",
-          backup: f.backup,
-          busy: false,
-          error: null,
-          color: known?.color ?? "#ffffff",
-          rainbow: false,
-        });
-        return;
-      }
-      setFlow({ ...f, busy: false, error: friendlyError(e, t) });
-      reload();
-    }
-  };
+  // when the keyboard is first read) and after every restore.
+  useEffect(reload, [reload, kb.aaStatus?.backup, listVersion]);
 
   const close = (done?: KeyboardBackupInfo) => {
-    setFlow(null);
-    if (done) setNotice(t("aa.rs.doneNotice", { date: when(done.savedAtMs) }));
+    closeRestore(done);
     window.setTimeout(() => titleRef.current?.focus(), 0);
   };
 
@@ -123,14 +105,19 @@ export function KeyboardBackups({ kb }: { kb: KeyboardInfo }) {
       </h2>
       <p className="max-w-[80ch] text-[13px] text-ink-2">{t("aa.bk.desc")}</p>
 
-      {notice && !flow && (
+      {restored && !flow && (
         <InfoBar
           tone="ok"
           live
-          title={notice}
+          title={t("aa.rs.doneNotice", { date: when(restored.savedAtMs) })}
           data="aa-restored"
           actions={
-            <button type="button" onClick={() => setNotice(null)} aria-label={t("report.close")} className="btn-subtle btn-sm !px-2">
+            <button
+              type="button"
+              onClick={() => useRestore.setState({ restored: null })}
+              aria-label={t("report.close")}
+              className="btn-subtle btn-sm !px-2"
+            >
               <X size={14} />
             </button>
           }
@@ -139,13 +126,13 @@ export function KeyboardBackups({ kb }: { kb: KeyboardInfo }) {
       {loadError && <InfoBar tone="error" title={loadError} />}
 
       {flow ? (
-        <RestoreFlow
+        <RestoreFlowView
           kb={kb}
           flow={flow}
           date={when(flow.backup.savedAtMs)}
           blocked={blocked}
-          onChange={setFlow}
-          onRun={run}
+          onChange={(f) => useRestore.setState({ flow: f })}
+          onRun={(f) => runRestore(f, kb, t)}
           onClose={close}
         />
       ) : list && shown.length === 0 ? (
@@ -169,10 +156,7 @@ export function KeyboardBackups({ kb }: { kb: KeyboardInfo }) {
                   className="btn-secondary btn-sm"
                   disabled={!!blocked || kb.connection !== "usb"}
                   title={blocked ?? undefined}
-                  onClick={() => {
-                    setNotice(null);
-                    setFlow({ step: "check", backup: b, busy: false, error: null });
-                  }}
+                  onClick={() => useRestore.setState({ restored: null, flow: { step: "check", backup: b, busy: false, error: null } })}
                   data-backup-restore
                 >
                   <ArchiveRestore size={14} aria-hidden />
@@ -183,12 +167,72 @@ export function KeyboardBackups({ kb }: { kb: KeyboardInfo }) {
           ))}
         </ul>
       )}
-      {!flow && blocked && list && list.some((b) => b.matches) && <p className="text-[12px] text-ink-3">{blocked}</p>}
+      {!flow && blocked && list && list.some((b) => b.matches) && (
+        <p className="text-[12px] text-ink-3" data-restore-held={held}>
+          {blocked}
+        </p>
+      )}
     </section>
   );
 }
 
-function RestoreFlow({
+/**
+ * A restore's progress or outcome over any page but the backup list: it
+ * goes on when the user leaves Connection or the cable drops, and what came
+ * of it (done, or stopped part-way) is not lost. "Show details" opens the
+ * Connection page, where the flow's step waits.
+ */
+export function RestoreToast() {
+  const t = useT();
+  const flow = useRestore((s) => s.flow);
+  const listShown = useRestore((s) => s.listShown > 0);
+  const setPage = useApp((s) => s.setPage);
+  // Above the upload's notice when one shows (an upload started meanwhile).
+  const uploading = useUploadRunning();
+  const busy = !!flow && flow.step !== "done" && flow.busy;
+  const error = flow && flow.step !== "done" && !flow.busy ? flow.error : null;
+  const failed = error !== null;
+  const done = flow?.step === "done";
+  const visible = !listShown && (busy || failed || done);
+  return (
+    <AnimatePresence>
+      {visible && flow && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 12 }}
+          className={`flyout fixed right-6 z-40 flex w-[340px] flex-col gap-2 p-4 ${uploading ? "bottom-[200px]" : "bottom-6"}`}
+          role="status"
+          data-restore-toast={busy ? "busy" : failed ? "failed" : "done"}
+        >
+          <div className="flex items-start gap-2 text-[13px] font-semibold">
+            {busy ? (
+              <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin text-signal" aria-hidden />
+            ) : failed ? (
+              <CircleAlert size={14} className="mt-0.5 shrink-0 text-danger" aria-hidden />
+            ) : (
+              <Check size={14} className="mt-0.5 shrink-0 text-ok" aria-hidden />
+            )}
+            <span>{busy ? t("aa.rs.toast.busy") : failed ? t("aa.rs.toast.failed") : t("aa.rs.done.title")}</span>
+          </div>
+          {error && <p className="text-[12px] text-ink-2">{error}</p>}
+          {!busy && (
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn-subtle btn-sm" onClick={() => closeRestore(done ? flow.backup : undefined)}>
+                {t("report.close")}
+              </button>
+              <button type="button" className="btn-secondary btn-sm" onClick={() => setPage("connection")}>
+                {t("aa.rs.toast.show")}
+              </button>
+            </div>
+          )}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function RestoreFlowView({
   kb,
   flow,
   date,
@@ -316,7 +360,7 @@ function RestoreFlow({
         )}
         <li className="flex items-start gap-2 text-ink-2">
           <span className="w-4 shrink-0" aria-hidden />
-          {t("aa.rs.pages")}
+          {t(flow.result.effect ? "aa.rs.pages" : "aa.rs.pages.noColor")}
         </li>
       </ul>
     );

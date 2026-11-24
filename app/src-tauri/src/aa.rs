@@ -31,12 +31,13 @@
 use crate::driver::Error;
 use crate::dto::{AaStatus, ChargeState, DeviceReport, LiveLightsOff, ReadOnlyReason};
 use kb_core::aa::{
-    levels_in_range, AaEffect, AaError, AaKeyboard, AaLayout, AaSnapshot, DeviceInfo, EffectColor, EffectRead, Hex,
-    OutputPort, RestoreReport, UsbIdentity,
+    levels_in_range, AaEffect, AaError, AaKeyboard, AaLayout, AaMacroEntry, AaSnapshot, Binding, DeviceInfo,
+    EffectColor, EffectRead, Hex, OutputPort, RestoreReport, UsbIdentity,
 };
 use kb_core::keymap::LayerMap;
 use kb_devices::Model;
 use kb_protocol::aa::keymap as aa_keymap;
+use kb_protocol::aa::macros as aa_macros;
 use kb_protocol::sonix::keymap::{KeyAction, Layer};
 use kb_protocol::sonix::macros::MacroStep;
 use kb_protocol::sonix::screen::ScreenAnimation;
@@ -150,7 +151,7 @@ impl fmt::Display for ReadOnly {
 impl From<&ReadOnly> for ReadOnlyReason {
     fn from(r: &ReadOnly) -> Self {
         match r {
-            ReadOnly::NotSane(reasons) => Self::NotSane { reasons: reasons.clone() },
+            ReadOnly::NotSane(reasons) => Self::NotSane { reasons: reasons.clone(), read_failed: false },
             ReadOnly::UpdatePending => Self::UpdatePending,
             ReadOnly::NoBackup(error) => Self::NoBackup { error: error.clone() },
         }
@@ -397,6 +398,11 @@ impl AaDriver {
         &self.target.record_id
     }
 
+    /// The effect the keyboard holds, from the last read or write.
+    pub fn effect_now(&self) -> Option<EffectRead> {
+        self.kb.current_effect()
+    }
+
     // ------------------------------------------------------------ connect
 
     /// Read everything (device information first) and run the sanity check;
@@ -459,6 +465,12 @@ impl AaDriver {
     /// Nothing reaches the keyboard now (the quiet time after a cut upload).
     fn quiet(&self, now: Instant) -> bool {
         self.quiet_until.is_some_and(|t| now < t)
+    }
+
+    /// The quiet time after a cut upload runs: every command is refused
+    /// on purpose (no failure).
+    pub fn in_quiet_time(&self) -> bool {
+        self.quiet(Instant::now())
     }
 
     /// Read again when a read did not finish or something since closed the
@@ -786,6 +798,12 @@ impl AaDriver {
     /// The user said yes to writes on this firmware (or something else
     /// that held arming back changed): live lights try again now.
     pub fn retry_live(&mut self) {
+        // A refusal by a gate (the untested firmware question) is over: the
+        // UI stops saying live lights wait for it, and the next frame asks
+        // the gate again.
+        if matches!(self.live, Live::Off { why: LiveOff::Blocked(_), .. }) {
+            self.live = Live::Idle;
+        }
         if let Live::Off { retry_at, .. } = &mut self.live {
             *retry_at = Some(Instant::now());
         }
@@ -1140,8 +1158,18 @@ impl AaDriver {
             if Some(led) == fn_led {
                 continue;
             }
-            let want = map.get(&led).copied().unwrap_or(KeyAction::Default);
             let now = now.bytes().ok();
+            // Set to something the app cannot show (a firmware function, a
+            // combo, AJAZZ's host program...) and not asked for: it stays
+            // ([`record_view`]; the Key mapping page shows it as kept).
+            if !map.contains_key(&led) {
+                if let (Some(n), Some(f)) = (now, factory.get(&led).copied()) {
+                    if record_view(n, f).is_none() {
+                        continue;
+                    }
+                }
+            }
+            let want = map.get(&led).copied().unwrap_or(KeyAction::Default);
             let same = match want {
                 KeyAction::Default => now.is_some() && now == factory.get(&led).copied(),
                 a => aa_keymap::encode(a).ok().is_some_and(|e| Some(e) == now),
@@ -1155,14 +1183,92 @@ impl AaDriver {
         Ok(changes)
     }
 
-    /// Replace every macro. **Writes flash.**
+    /// Replace every macro with `slots` (an empty one is none), except a
+    /// macro the keyboard holds that the app's steps cannot express: where
+    /// the app leaves its slot empty, it stays as it is (the Macros page
+    /// shows it as kept). **Writes flash.**
     pub fn write_macros(&mut self, slots: &[Vec<MacroStep>]) -> Result<(), Error> {
         self.writable()?;
-        let r = self.kb.write_macros(slots);
+        let fresh = self.kb.read_macros();
+        self.after_io();
+        let fresh = self.check(fresh)?;
+        let len = slots.len().max(fresh.iter().rposition(|m| !m.is_empty()).map_or(0, |i| i + 1));
+        let mut entries: Vec<Vec<AaMacroEntry>> = Vec::with_capacity(len);
+        for i in 0..len {
+            let wanted = slots.get(i).filter(|s| !s.is_empty());
+            let e = match (wanted, fresh.get(i)) {
+                (Some(steps), _) => self.check(aa_macros::from_steps(steps).map_err(AaError::from))?,
+                (None, Some(kept)) if !kept.is_empty() && lossless_steps(kept).is_none() => kept.clone(),
+                _ => Vec::new(),
+            };
+            entries.push(e);
+        }
+        while entries.last().is_some_and(Vec::is_empty) {
+            entries.pop();
+        }
+        let r = self.kb.write_macro_entries(&entries);
         self.after_io();
         let r = self.check(r);
         self.renote();
         r
+    }
+
+    /// What the keyboard holds in its keymap layers and macros, as the
+    /// app's records keep them, from the last read (writes update it). On
+    /// this family the keyboard, not the app's record, is the source of
+    /// truth: the Key mapping and Macros pages start from this. `None`
+    /// before a read that passed the sanity check.
+    pub fn contents(&self) -> Option<AaContents> {
+        if !self.kb.is_sane() {
+            return None;
+        }
+        let s = self.kb.snapshot()?;
+        let layout = self.kb.layout();
+        let full = |t: &Hex| t.0.len() == aa_keymap::LEN;
+        if !(full(&s.keymap) && full(&s.fn_keymap) && full(&s.default_fn)) {
+            return None;
+        }
+        let layer = |table: &[u8], factory: &[u8]| {
+            let mut out = LayerContents::default();
+            for k in layout.keys() {
+                if layout.is_protected(k.aa) {
+                    continue;
+                }
+                let (now, f) = (aa_keymap::entry(table, k.aa), aa_keymap::entry(factory, k.aa));
+                match record_view(now, f) {
+                    Some(None) => {}
+                    Some(Some(a)) => {
+                        out.actions.insert(k.led, a);
+                    }
+                    None => out.fixed.push(k.led),
+                }
+            }
+            out
+        };
+        let macros = s
+            .macros()
+            .into_iter()
+            .map(|e| match (e.is_empty(), lossless_steps(&e)) {
+                (true, _) => MacroContents::Empty,
+                (false, Some(steps)) => MacroContents::Steps(steps),
+                (false, None) => MacroContents::Fixed(e.len()),
+            })
+            .collect();
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        let blocks: Vec<u8> = s.macro_blocks.iter().flat_map(|b| b.bytes.0.iter().copied()).collect();
+        for part in [&s.keymap.0, &s.fn_keymap.0, &s.macro_table.0, &blocks] {
+            let len = (part.len() as u64).to_le_bytes();
+            for b in len.iter().chain(part.iter()) {
+                h ^= u64::from(*b);
+                h = h.wrapping_mul(0x0100_0000_01b3);
+            }
+        }
+        Some(AaContents {
+            base: layer(&s.keymap.0, layout.factory_base()),
+            fn_layer: layer(&s.fn_keymap.0, &s.default_fn.0),
+            macros,
+            fingerprint: h,
+        })
     }
 
     /// Set the keyboard clock.
@@ -1374,9 +1480,21 @@ impl AaDriver {
             Live::Idle => (false, None),
         };
         AaStatus {
-            read_only: self.read_only().as_ref().map(Into::into),
+            read_only: self.read_only().as_ref().map(|r| {
+                let mut shown = ReadOnlyReason::from(r);
+                // A read that did not finish (another program holding the
+                // keyboard?) is tried again; data that failed the check is
+                // worth a report.
+                if let ReadOnlyReason::NotSane { read_failed, .. } = &mut shown {
+                    *read_failed = matches!(self.read, Read::Failed(_));
+                }
+                shown
+            }),
             live_lights_off,
             live_armed,
+            // Armed on a keyboard that was in a live mode already (per-key
+            // lighting saved from Keymotion): nothing goes back.
+            live_restores: matches!(self.live, Live::Armed { restore: Some(_), .. }),
             other_program_suspected: self.conflict.suspected,
             backup: self.backup.as_ref().and_then(|b| b.as_ref().ok().cloned()),
             effect_color_known: self.kb.current_effect().is_some_and(|e| e.color_known),
@@ -1474,6 +1592,61 @@ impl AaDriver {
 
 /// The colour of `effect` as the app stored it: the app's effect, when its
 /// mode and levels are the keyboard's.
+/// One keymap layer as the keyboard holds it, for the app's records.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LayerContents {
+    /// Keys not at their factory function whose action the app's records
+    /// hold.
+    pub actions: LayerMap,
+    /// Keys set to something the app can neither show nor write (a
+    /// firmware function, a combo, an entry for AJAZZ's host program...):
+    /// every keymap write keeps them as they are.
+    pub fixed: Vec<u8>,
+}
+
+/// One macro slot as the keyboard holds it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MacroContents {
+    Empty,
+    /// Steps that go back to the very same bytes.
+    Steps(Vec<MacroStep>),
+    /// Entries the app's steps cannot express (a wheel turn, a pause under
+    /// 5 ms, an unknown flag), and how many: every macro write keeps them.
+    Fixed(usize),
+}
+
+/// What the keyboard holds in its keymap layers and macros
+/// ([`AaDriver::contents`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AaContents {
+    pub base: LayerContents,
+    pub fn_layer: LayerContents,
+    /// 100 slots.
+    pub macros: Vec<MacroContents>,
+    /// Changes whenever any of the above does.
+    pub fingerprint: u64,
+}
+
+/// A slot as the app's records see it: `Some(None)` its factory function
+/// (or `00`, which is the same), `Some(Some(a))` an action the records hold,
+/// `None` something they cannot (kept as the keyboard has it).
+fn record_view(now: [u8; 4], factory: [u8; 4]) -> Option<Option<KeyAction>> {
+    if now == factory || now == [0; 4] {
+        return Some(None);
+    }
+    match aa_keymap::decode(now) {
+        Binding::Action(a) if a != KeyAction::Default && a.encode().is_ok() => Some(Some(a)),
+        _ => None,
+    }
+}
+
+/// A macro's entries as the app's steps, when the steps give back the very
+/// same entries.
+fn lossless_steps(entries: &[AaMacroEntry]) -> Option<Vec<MacroStep>> {
+    let steps = aa_macros::to_steps(entries)?;
+    (aa_macros::from_steps(&steps).ok()? == entries).then_some(steps)
+}
+
 fn matching_color(effect: AaEffect, app: Option<AaEffect>) -> Option<EffectColor> {
     app.filter(|a| a.same_settings(&effect)).map(|a| a.color_part())
 }

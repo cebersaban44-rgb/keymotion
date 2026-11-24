@@ -19,6 +19,7 @@ import { REMINDER_SOURCE, useReminders } from "../../lib/reminders";
 import { useApp } from "../../lib/store";
 import { useScreenLimits } from "../../lib/screen";
 import { uploadSeconds } from "../../lib/screenImport";
+import { useWriteBlock } from "../../lib/aa";
 import { calendarStatus } from "./CalendarPanel";
 import { useClockAsk } from "./Safety";
 import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useItemName, useNow } from "./common";
@@ -37,6 +38,7 @@ export function LivePanel({ usb }: { usb: boolean }) {
   const drawError = useLive((x) => x.drawError);
   const configure = useLive((x) => x.configure);
   const [closing, setClosing] = useState(false);
+  const readOnly = useWriteBlock();
   useNow(); // refresh the waiting times
   if (!s) return null;
   const plan = PLANS.find((p) => p.id === s.plan) ?? PLANS[1]!;
@@ -92,9 +94,16 @@ export function LivePanel({ usb }: { usb: boolean }) {
             <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" aria-hidden />
             {t("sc.live.clock.waiting")}
           </span>
-          <button type="button" onClick={() => useClockAsk.setState({ later: false, open: true })} className="btn-secondary" data-live-clock-answer>
-            {t("sc.live.clock.answer")}
-          </button>
+          {readOnly ? (
+            // No upload could follow a yes: why not, instead of the question.
+            <span className="text-[12px] text-ink-2" data-live-clock-read-only>
+              {readOnly}
+            </span>
+          ) : (
+            <button type="button" onClick={() => useClockAsk.setState({ later: false, open: true })} className="btn-secondary" data-live-clock-answer>
+              {t("sc.live.clock.answer")}
+            </button>
+          )}
         </div>
       )}
       {!s.enabled && s.restore && (

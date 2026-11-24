@@ -18,7 +18,7 @@ import type { ScreenItem } from "../../bindings/ScreenItem";
 import { Field } from "../../components/controls";
 import { decimal, percent, tNow, useT, type MessageKey } from "../../lib/i18n";
 import { useLive } from "../../lib/live";
-import { useAaOnCable, useWriteBlock } from "../../lib/aa";
+import { useAaKeyboard, useAaOnCable, useWriteBlock } from "../../lib/aa";
 import { cancelUpload, itemData, useScreen, useScreenLimits } from "../../lib/screen";
 import {
   H,
@@ -755,6 +755,8 @@ export function ConfirmUpload({
   // hasn't said yes yet, so this question is the one about the clock page
   // too (asked once; `ackClockPage`).
   const clockAtRisk = !!state?.clockPageAtRisk;
+  // AJAZZ's old official driver doesn't know an "AA" keyboard's firmware.
+  const aa = useAaKeyboard();
   const [acking, setAcking] = useState(false);
   const [ackError, setAckError] = useState<string | null>(null);
   const go = async () => {
@@ -815,8 +817,8 @@ export function ConfirmUpload({
               <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" />
             )}
             <span className="flex flex-col gap-2">
-              {factory ? t("sc.confirm.factoryKept") : t("sc.confirm.noFactory")}
-              <DriverBackup />
+              {factory ? t("sc.confirm.factoryKept") : t(aa ? "sc.confirm.noFactory.aa" : "sc.confirm.noFactory")}
+              {!aa && <DriverBackup />}
             </span>
           </li>
           <li className="flex gap-2">

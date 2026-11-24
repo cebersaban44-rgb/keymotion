@@ -460,17 +460,32 @@ export async function getKeymapCatalog(): Promise<KeymapCatalog> {
 
 // Browser-only stand-in for the app's keymap record.
 let mockKeymap: KeymapState = {
-  base: { assignments: [], writtenMs: null },
-  fn: { assignments: [], writtenMs: null },
+  base: { assignments: [], writtenMs: null, fixed: [] },
+  fn: { assignments: [], writtenMs: null, fixed: [] },
+  readMs: null,
 };
 
+/** `?mock=aa769`: the keyboard reports its keymap and macros; with
+ *  `&aa=elsewhere`, B and macro M2 were set in AJAZZ's tool. */
+function mockAaRecords<T extends KeymapState | MacrosState>(state: T, fixed: (s: T) => T): T {
+  if (new URLSearchParams(location.search).get("mock") !== "aa769") return state;
+  const read = { ...state, readMs: Date.now() - 4 * 60_000 };
+  return new Set((new URLSearchParams(location.search).get("aa") ?? "").split(",")).has("elsewhere") ? fixed(read) : read;
+}
+
 /**
- * What the app last wrote to the keymap of the keyboards with this record
- * id (`KeyboardInfo.recordId`). The keyboard cannot report its keymap;
- * layers never written are the factory default.
+ * The keymap of the keyboards with this record id (`KeyboardInfo.recordId`):
+ * what the app last wrote ("04 xx", which can't report its keymap; layers
+ * never written are the factory default), or what the keyboard itself
+ * holds ("AA", `readMs`).
  */
 export function getKeymapState(recordId: string): Promise<KeymapState> {
-  if (import.meta.env.DEV && !inTauri) return Promise.resolve(mockKeymap);
+  if (import.meta.env.DEV && !inTauri) {
+    const b = mockKeyboards()[0]?.geometry?.keys.find((k) => k.id === "b")?.led;
+    return Promise.resolve(
+      mockAaRecords(mockKeymap, (s) => ({ ...s, base: { ...s.base, fixed: b === undefined ? [] : [b] } })),
+    );
+  }
   return invoke<KeymapState>("keymap_state", { recordId });
 }
 
@@ -482,8 +497,8 @@ export function applyKeymap(layer: KeymapLayer, assignments: KeyAssignment[]): P
   return flashWrite(async () => {
     if (import.meta.env.DEV && !inTauri) {
       await mockDelay(700);
-      mockKeymap = { ...mockKeymap, [layer]: { assignments, writtenMs: Date.now() } };
-      return mockKeymap;
+      mockKeymap = { ...mockKeymap, [layer]: { assignments, writtenMs: Date.now(), fixed: [] } };
+      return getKeymapState("");
     }
     return serial(() => invoke<KeymapState>("apply_keymap", { layer, assignments }));
   });
@@ -499,12 +514,17 @@ let mockMacros: MacrosState = {
   maxSlots: 100,
   minDelayMs: 10,
   maxName: 40,
+  fixed: [],
+  readMs: null,
 };
 
-/** What the app last wrote to the macros of the keyboards with this record
- *  id (`KeyboardInfo.recordId`), with the keyboard's limits. */
+/** The macros of the keyboards with this record id
+ *  (`KeyboardInfo.recordId`), with the keyboard's limits: what the app last
+ *  wrote ("04 xx"), or what the keyboard itself holds ("AA", `readMs`). */
 export function getMacrosState(recordId: string): Promise<MacrosState> {
-  if (import.meta.env.DEV && !inTauri) return Promise.resolve(mockMacros);
+  if (import.meta.env.DEV && !inTauri) {
+    return Promise.resolve(mockAaRecords(mockMacros, (s) => ({ ...s, fixed: [{ slot: 1, steps: 6 }] })));
+  }
   return invoke<MacrosState>("macros_state", { recordId });
 }
 
@@ -518,7 +538,7 @@ export function applyMacros(slots: (MacroInfo | null)[]): Promise<MacrosState> {
       await mockDelay(600);
       while (slots.length && slots[slots.length - 1] === null) slots = slots.slice(0, -1);
       mockMacros = { ...mockMacros, slots, writtenMs: Date.now() };
-      return mockMacros;
+      return getMacrosState("");
     }
     return serial(() => invoke<MacrosState>("apply_macros", { slots }));
   });
@@ -1182,7 +1202,11 @@ async function mockLoadProfilePart(modelId: string, id: string, part: ProfilePar
     }
   }
   if (part === "keymap" && p.keymap) {
-    mockKeymap = { base: { assignments: p.keymap.base, writtenMs: Date.now() }, fn: { assignments: p.keymap.fn, writtenMs: Date.now() } };
+    mockKeymap = {
+      base: { assignments: p.keymap.base, writtenMs: Date.now(), fixed: [] },
+      fn: { assignments: p.keymap.fn, writtenMs: Date.now(), fixed: [] },
+      readMs: null,
+    };
   }
   if (part === "macros" && p.macros) mockMacros = { ...mockMacros, slots: mockTrim(p.macros), writtenMs: Date.now() };
   return "written";
@@ -1248,19 +1272,22 @@ const AA_LIMITS: KeyboardInfo["limits"] = {
 /**
  * `?mock=aa769`: an AK980 PRO on AJAZZ's firmware 3.01 ("769") on the cable,
  * the "AA" family, as the simulator reports it. `&aa=` adds states, comma
- * separated: `insane`, `update`, `nobackup` (why nothing is written);
- * `color`, `untested`, `blocked`, `failed`, `armed` (live lights); `other`
+ * separated: `insane`, `notread`, `update`, `nobackup` (why nothing is
+ * written); `color`, `untested`, `blocked`, `failed`, `armed` (live lights;
+ * with `perkey`, armed on per-key lighting: nothing to put back); `other`
  * (another program talks to it); `charging`; `clock` (its clock page is at
  * risk: lib/screen.ts and live.ts); `nocolor` (a backup that doesn't know
  * its colour: lib/aa.ts); `cut` (the quiet time after a stopped upload:
- * lib/screen.ts).
+ * lib/screen.ts); `elsewhere` (a key and a macro set in AJAZZ's tool).
  */
 function mockAaKeyboard(): KeyboardInfo {
   const flags = new Set((new URLSearchParams(location.search).get("aa") ?? "").split(",").filter(Boolean));
   const features: KeyboardInfo["features"] = ["lighting", "per-key-rgb", "keymap", "macros", "screen", "clock", "battery"];
   const readOnly: AaStatus["readOnly"] = flags.has("insane")
-    ? { kind: "not-sane", reasons: ["keymap page 0x0E at slot 12 is not one this app knows"] }
-    : flags.has("update")
+    ? { kind: "not-sane", reasons: ["keymap page 0x0E at slot 12 is not one this app knows"], readFailed: false }
+    : flags.has("notread")
+      ? { kind: "not-sane", reasons: ["no answer to command 0x10"], readFailed: true }
+      : flags.has("update")
       ? { kind: "update-pending" }
       : flags.has("nobackup")
         ? { kind: "no-backup", error: "Access is denied. (os error 5)" }
@@ -1295,6 +1322,7 @@ function mockAaKeyboard(): KeyboardInfo {
       readOnly,
       liveLightsOff,
       liveArmed: !liveLightsOff && flags.has("armed"),
+      liveRestores: !liveLightsOff && flags.has("armed") && !flags.has("perkey"),
       otherProgramSuspected: flags.has("other"),
       backup: readOnly?.kind === "no-backup" ? null : "aa-8039-0301-1763500000000.json",
       effectColorKnown: !flags.has("color"),
