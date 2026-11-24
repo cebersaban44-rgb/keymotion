@@ -113,7 +113,7 @@ On your computer, in your Windows user folder:
 - settings and records in `%APPDATA%\dev.keymotion\`;
 - log files in `%LOCALAPPDATA%\dev.keymotion\logs\`.
 
-In **Settings**, under **About**, **Data folder** and **Log files** open them. Keymotion's records of your key mapping and macros are the only copy, because the keyboard can't report them. To keep a copy, open **Settings** and click **Export** under **Backup**: it saves everything in one file. The full list is in the [privacy policy](/keymotion/about/privacy/#where-your-data-lives).
+In **Settings**, under **About**, **Data folder** and **Log files** open them. Keymotion's records of your key mapping and macros are the only copy, because the keyboard can't report them; on AJAZZ's firmware 3.01, the keyboard reports them itself. To keep a copy, open **Settings** and click **Export** under **Backup**: it saves everything in one file. The full list is in the [privacy policy](/keymotion/about/privacy/#where-your-data-lives).
 
 ## Does Keymotion send data anywhere?
 
@@ -150,6 +150,7 @@ What to know on firmware 3.01:
 - **Keymotion backs up the keyboard first.** The first time it connects to the keyboard, before it can write anything, it saves a backup of the keyboard's settings: the key mapping on both layers, the lighting and the macros. Without the backup, it writes nothing. [If something goes wrong](/keymotion/help/recovery/#the-keyboards-backup-on-firmware-301) shows how to put it back.
 - **An upload may replace the keyboard's clock page.** Once a picture is uploaded to the screen, the keyboard's own clock page may come back only after a full reset of the keyboard (Fn+Space), which also erases your key mapping, macros and lighting. Keymotion asks you before the first upload.
 - **Live lighting switches the keyboard to its per-key mode for a while.** On this firmware, the keys show live lighting, such as music mode or the system gauges, only in per-key mode. Keymotion switches the keyboard to it and puts your own lighting back about 30 seconds after the live lighting ends. See [Lighting](/keymotion/guide/lighting/#on-firmware-301-beta).
+- **Key mapping and macros come from the keyboard itself.** The Key mapping and Macros pages show what the keyboard has, including keys and macros set in other programs such as AJAZZ's. Saving keeps the ones Keymotion can't show or change as they are.
 - **The battery level shows over the cable too**, because the keyboard reports it there.
 - **Close AJAZZ's keyboard tool while Keymotion runs.** It talks to the keyboard from your browser, where Keymotion can't see it, and the commands of two programs can mix up. If the keyboard sends answers that Keymotion didn't ask for, Keymotion says that another program seems to be talking to it.
 
