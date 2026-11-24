@@ -3,7 +3,7 @@
 // (`KeyboardInfo.aaStatus`), and its backups.
 //
 // - Read-only: nothing is written to it (what it reported doesn't look as
-//   expected, a firmware update was left unfinished, or its backup couldn't
+//   expected, it couldn't be read in full, or its backup couldn't
 //   be saved). Every page that writes says why and keeps its save off.
 // - Live lights: it shows them in any of its lighting modes, never saves
 //   them, and goes back to its own lighting by itself a few seconds after

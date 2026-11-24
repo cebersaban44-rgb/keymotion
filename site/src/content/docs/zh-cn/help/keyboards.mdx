@@ -39,12 +39,12 @@ Keymotion 在键盘固件 1.06 上经过测试；在其他版本上，它会在�
 
 - 在能够写入任何内容之前，它会先保存一份键盘设置的备份，之后可以用来恢复。
 - 第一次向键盘写入之前，它会先询问你，和对待任何未在 Keymotion 上测试过的固件一样。
-- 它写入的所有内容都会读回检查。键盘开机或重置后的一小段时间内会忽略写入，所以 Keymotion 会等一会儿再进行第一次写入。
-- 如果键盘报告的内容看起来不符合预期，Keymotion 不会向键盘写入任何内容，并会在页面顶部说明原因；参见[出现问题时](/keymotion/zh-cn/help/recovery/#keymotion-不向键盘写入任何内容时)。键盘上没有逐键颜色（例如固件更新或重置之后）是正常的，不会妨碍写入。
+- 它保存的每项设置（自定义按键、灯光、宏）都会读回检查。键盘开机或重置后的一小段时间内会忽略写入，所以 Keymotion 会等一会儿再进行第一次写入。
+- 如果键盘报告的内容看起来不符合预期，Keymotion 不会向键盘写入任何内容，并会在页面顶部说明原因；参见[出现问题时](/keymotion/zh-cn/help/recovery/#keymotion-不向键盘写入任何内容时)。键盘上没有逐键颜色（例如固件更新之后，或用黑爵网页工具重置之后）是正常的，不会妨碍写入。
 
 这个固件上有几处不同：上传到屏幕可能会替换键盘自带的时钟页；使用数据线时也能看到电量；“自定义按键”和“宏”页面显示键盘本身存储的内容；有几个按键选项不提供。[要安装黑爵最新的固件吗？](/keymotion/zh-cn/help/faq/#要安装黑爵最新的固件吗)逐一说明了这些不同。
 
-已经试过了？[告诉我们效果如何](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK980+PRO+firmware+3.01&model=AJAZZ+AK980+PRO+firmware+3.01)；“连接”页面上也有同一个链接。如果出了问题，请从**设置**发送报告：在**关于**部分的**反馈**旁边，单击**报告问题**。报告中包含 Keymotion 从键盘读取到的信息，但不包含你的按键、宏或颜色。
+已经试过了？[告诉我们效果如何](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK980+PRO+firmware+3.01&model=AJAZZ+AK980+PRO+firmware+3.01)；“连接”页面上也有同一个链接。如果出了问题，请从**设置**发送报告：在**关于**部分的**反馈**旁边，单击**报告问题**。报告中包含 Keymotion 从键盘读取到的信息，但从不包含你的宏的内容；对于看起来不符合预期的部分，会包含它开头和结尾的字节。
 
 装有 Keymotion 尚不认识的其他黑爵固件的 AK980 PRO 不会收到任何内容；Keymotion 会改为提供**申请适配**。
 

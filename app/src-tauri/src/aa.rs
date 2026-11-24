@@ -4,7 +4,7 @@
 //!
 //! * **Connect.** Opening the command channel reads everything
 //!   (`kb_core::aa::AaKeyboard::read_all`). A keyboard that does not pass
-//!   the sanity check, or waits for a firmware update, stays read-only
+//!   the sanity check, or could not be read in full, stays read-only
 //!   ([`ReadOnly`]). A sane one gets a backup of everything it holds saved
 //!   to the app's data folder ([`backups`]) before anything can be written;
 //!   no backup, no writes.

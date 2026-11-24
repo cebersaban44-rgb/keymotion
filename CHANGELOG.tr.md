@@ -36,13 +36,14 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   geçtiğinizde sürer ve nasıl bittiğini bir bildirim söyler.
   Yedek alınamazsa ya da klavyenin bildirdikleri beklendiği gibi görünmezse
   Keymotion klavyeye hiçbir şey yazmaz; yazacak her sayfa nedenini söyler.
-- **Denetlenen yazmalar (3.01 klavye yazılımı):** Keymotion klavyeye
-  yazdığı her şeyi geri okur. Klavye açıldıktan ya da sıfırlandıktan sonra
-  bir süre yazılanları yok saydığı için Keymotion ilk yazmadan önce bekler.
-  Tuş başına renkleri olmayan bir klavye, örneğin bir klavye yazılımı
-  güncellemesinden ya da sıfırlamadan sonra, olağandır ve Keymotion'ın
-  yazmasını engellemez. Yarıda kalan bir kaydetmeyi, örneğin kablo
-  çıktığında, bir sonraki kaydetme düzeltir.
+- **Denetlenen yazmalar (3.01 klavye yazılımı):** Keymotion kaydettiği her
+  ayarı (tuş atama, ışık, makrolar) geri okur. Klavye açıldıktan ya da
+  sıfırlandıktan sonra bir süre yazılanları yok saydığı için Keymotion ilk
+  yazmadan önce bekler. Tuş başına renkleri olmayan bir klavye, örneğin bir
+  klavye yazılımı güncellemesinden (ya da AJAZZ'ın web aracıyla yapılan bir
+  sıfırlamadan) sonra, olağandır ve Keymotion'ın yazmasını engellemez.
+  Yarıda kalan bir kaydetmeyi, örneğin kablo çıktığında, aynı şeyin bir
+  sonraki kaydı düzeltir.
 - **3.01 klavye yazılımında tuş atama ve makrolar:** bu yazılım tuş
   atamasını ve makrolarını bildirir; bu yüzden **Tuş atama** ve **Makrolar**
   sayfaları, geri yüklemeden sonra da, klavyede olanı gösterir. Başka bir
@@ -60,8 +61,9 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   önizle** ve kalibrasyonun test desenleri), eski klavye yazılımında olduğu
   gibi, klavyenin ışığı ne olursa olsun tuşlarda görünür. Hiçbiri klavyeye
   kaydedilmez: canlı ışıklar durunca klavyenin kendi ışığı yaklaşık 5
-  saniye sonra kendiliğinden geri gelir. Klavye yeni açıldığında ya da
-  sıfırlandığında canlı ışıklar birkaç saniye bekler; sayfalar bunu söyler.
+  saniye sonra kendiliğinden geri gelir. Keymotion klavyeye bağlandıktan
+  hemen sonra ya da klavye sıfırlandıktan sonra canlı ışıklar birkaç saniye
+  bekler; sayfalar bunu söyler.
 - **Saat sayfası (3.01 klavye yazılımı):** yükleme klavyenin kendi saat
   sayfasının yerini alabilir; saat sayfası o zaman ancak klavyenin tam
   sıfırlamasıyla (Fn+Boşluk) geri gelir. Keymotion ilk yüklemeden önce,

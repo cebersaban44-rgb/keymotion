@@ -39,12 +39,13 @@ says so.
   be saved, or when what the keyboard reports doesn't look as expected,
   Keymotion writes nothing to the keyboard and every page that would says
   why.
-- **Checked writes (firmware 3.01):** Keymotion reads back everything it
-  writes to the keyboard. The keyboard ignores writes for a moment after it
-  starts up or is reset, so Keymotion waits before its first write. A
-  keyboard without per-key colors, as after a firmware update or a reset,
-  is normal and doesn't keep Keymotion from writing. A save cut short, when
-  the cable comes out for example, is put right by the next save.
+- **Checked writes (firmware 3.01):** Keymotion reads back every setting it
+  saves (key mapping, lighting, macros). The keyboard ignores writes for a
+  moment after it starts up or is reset, so Keymotion waits before its first
+  write. A keyboard without per-key colors, as after a firmware update (or a
+  reset from AJAZZ's web tool), is normal and doesn't keep Keymotion from
+  writing. A save cut short, when the cable comes out for example, is put
+  right by the next save of the same thing.
 - **Key mapping and macros on firmware 3.01:** this firmware reports its key
   mapping and macros, so the **Key mapping** and **Macros** pages show
   what's on the keyboard, also after a restore. Keys and macros set in
@@ -61,8 +62,8 @@ says so.
   patterns) shows on the keys whatever the keyboard's lighting is, as on the
   older firmware. Nothing of it is saved on the keyboard: when it stops, the
   keyboard's own lighting comes back by itself about 5 seconds later. Just
-  after the keyboard was switched on or reset, live lighting waits a few
-  seconds, and the pages say so.
+  after Keymotion connects to the keyboard, or after the keyboard was reset,
+  live lighting waits a few seconds, and the pages say so.
 - **The clock page (firmware 3.01):** an upload may replace the keyboard's
   own clock page, which then comes back only after a full reset of the
   keyboard (Fn+Space). Keymotion asks before the first upload, the live
