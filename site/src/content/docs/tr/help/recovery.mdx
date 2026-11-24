@@ -121,7 +121,7 @@ Bir yedeği geri yüklemek için:
 
 Yedek geri yüklenirken başka sayfaları açabilirsiniz. O zaman bir bildirim "Klavye yedeği geri yükleniyor. Kabloyu çıkarmayın." der; sonunda da "Yedek klavyeye geri yüklendi" ya da **Ayrıntılar** düğmesiyle "Yedek geri yüklenmedi." der.
 
-Bundan sonra **Işıklar**, **Tuş atama** ve **Makrolar** sayfaları klavyede olanı gösterir. Keymotion yedeğin geri yüklediği ışığın rengini bilmiyorsa Işıklar sayfası onu henüz kaydedilmemiş olarak gösterir.
+Bundan sonra **Işıklar**, **Tuş atama** ve **Makrolar** sayfaları klavyede olanı gösterir. Keymotion yedeğin geri yüklediği ışığın rengini bilmiyorsa Işıklar sayfası onu henüz kaydedilmemiş olarak gösterir. Klavye ışığın kapalı olmasını ve tuş başına renkleri aynı biçimde bildirdiği için bir yedek ışığın bu ikisinden hangisi olduğunu bilmeyebilir; Keymotion o zaman yedekte renkli tuşlar varsa tuş başına renkleri, yoksa **Kapalı**'yı geri getirir.
 
 <Screenshot name="aa-restore-done" alt="Bitti adımı: Yedek klavyeye geri yüklendi, neyin geri yüklendiği, klavyede olduğu gibi bırakılan tuşlar ve Tamam düğmesi" />
 
@@ -134,10 +134,17 @@ Keymotion her klavyenin ilk yedeğini ve en yeni dört yedeğini, veri klasörü
 - **Keymotion bu klavyeyi yalnızca okuyor**, iki nedenden biriyle:
   - Klavyenin bildirdikleri beklendiği gibi görünmüyor. Uyarıdaki **Sorun bildir**'e tıklayın. Bildirim penceresi Keymotion'ın klavyeden okuduklarıyla açılır; böylece nedenini bulabiliriz. Keymotion bu okumayı veri klasöründeki `keyboard-reads` klasöründe de makrolarınız olmadan tutar; dosyayı sizden isteyebiliriz.
   - Keymotion klavyeyi okumayı bitiremedi. Klavyeyle konuşan diğer programları (örneğin AJAZZ'ın web sayfasını) kapatın; Keymotion klavyeyi kendiliğinden yeniden okur.
-- **Bir klavye yazılımı güncellemesi yarım kaldı**: önce güncellemeyi AJAZZ'ın klavye aracıyla bitirin.
 - **Klavyenin yedeği alınamadı**: diskte boş yer olduğundan emin olun, sonra kabloyu çıkarıp yeniden takın.
 
 <Screenshot name="aa-read-only" alt="Keymotion bu klavyeyi yalnızca okuyor uyarısı ve Sorun bildir düğmesiyle Işıklar sayfası; Klavyeye kaydet kapalı" />
+
+### Kaydetme yarıda kaldıysa
+
+3.01 klavye yazılımında Keymotion klavyeye kaydederken kablo çıkarsa kaydedilenin henüz ulaşmamış kısmı eksik kalır. Keymotion klavye geri gelince onu yeniden okur ve üzerinde olanı gösterir. Bir sonraki kaydetme her şeyi düzeltir:
+
+- **Tuş atama:** kaydetmenin ulaşmadığı tuşlar eskisi gibi çalışmayabilir. **Tuş atama** sayfasında o katmanda herhangi bir değişiklik yapıp (örneğin **Katmanı sıfırla** ile) **Klavyeye kaydet**'e tıklayın ya da bir yedeği geri yükleyin: böyle her tuş, Fn tuşu ve topuz da dahil, fabrika işlevine döner.
+- **Makrolar:** kaydetmenin ulaşmadığı makrolar boş görünür. Makrolarınızı **Makrolar** sayfasında yeniden kaydedin ya da bir yedeği geri yükleyin; bu, klavyenin makro listesini onarır.
+- **Tuş başına renkler:** kaydetmenin ulaşmadığı tuşlar sönük kalır. Tasarımınızı **Işıklar** sayfasında yeniden kaydedin.
 
 ## Yükleme yarıda kaldıysa
 

@@ -121,7 +121,7 @@ To put a backup back:
 
 You can open other pages while the backup goes back. A notice then says "Restoring the keyboard backup. Keep the cable plugged in.", and at the end "The backup is back on the keyboard" or "The backup wasn't restored." with **Show details**.
 
-Afterwards, the **Lighting**, **Key mapping** and **Macros** pages show what's on the keyboard. If Keymotion doesn't know the color of the lighting the backup put back, the Lighting page shows it as not saved yet.
+Afterwards, the **Lighting**, **Key mapping** and **Macros** pages show what's on the keyboard. If Keymotion doesn't know the color of the lighting the backup put back, the Lighting page shows it as not saved yet. The keyboard reports Off and per-key colors alike, so a backup may not know which of the two the lighting was; Keymotion then brings back per-key colors if the backup has keys with a color, and Off if it doesn't.
 
 <Screenshot name="aa-restore-done" alt="The Done step: The backup is back on the keyboard, what was put back, the keys left as the keyboard has them, and the OK button" />
 
@@ -134,10 +134,17 @@ On firmware 3.01, a notice at the top of the Overview, Connection, Lighting, Key
 - **Keymotion only reads this keyboard**, for one of two reasons:
   - What the keyboard reports doesn't look as expected. Click **Report a problem** in the notice. It opens the report window with what Keymotion read from the keyboard, so we can find out why. Keymotion also keeps that read in the `keyboard-reads` folder of its data folder, without your macros; we may ask you for the file.
   - Keymotion couldn't finish reading the keyboard. Close other programs that talk to the keyboard, such as AJAZZ's web page; Keymotion reads it again by itself.
-- **A firmware update was left unfinished**: finish the update with AJAZZ's keyboard tool first.
 - **The keyboard's backup couldn't be saved**: check that the disk has free space, then unplug the cable and plug it back in.
 
 <Screenshot name="aa-read-only" alt="The Lighting page with the notice Keymotion only reads this keyboard and its Report a problem button; Save to keyboard is off" />
+
+### A save was cut short
+
+On firmware 3.01, if the cable comes out while Keymotion saves to the keyboard, the part of the save that hadn't arrived yet is missing. Keymotion reads the keyboard again when it's back and shows what's on it. The next save puts things right:
+
+- **Key mapping:** keys the save didn't reach may not work as before. Make any change on that layer of the **Key mapping** page (**Reset layer**, for example) and click **Save to keyboard**, or restore a backup: every such key gets its factory function back, the Fn key and the knob included.
+- **Macros:** macros the save didn't reach show as empty. Save your macros again on the **Macros** page, or restore a backup; that repairs the keyboard's list of macros.
+- **Per-key colors:** keys the save didn't reach stay dark. Save your design again on the **Lighting** page.
 
 ## An upload was cut short
 

@@ -283,9 +283,8 @@ impl<C: FeaturePort> Driver<C> {
     }
 
     /// What the keyboard reports about itself (battery, charging, screen
-    /// limits, an unfinished firmware update). "04 xx" reports nothing and
-    /// nothing is sent: `None`. Asked only for a family that
-    /// [`family::reports_device`].
+    /// limits). "04 xx" reports nothing and nothing is sent: `None`. Asked
+    /// only for a family that [`family::reports_device`].
     pub fn device_info(&mut self) -> Result<Option<DeviceReport>> {
         match self {
             Self::Ff13(_) => Ok(None),
