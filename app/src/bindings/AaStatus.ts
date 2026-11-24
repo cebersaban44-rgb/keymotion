@@ -16,13 +16,13 @@ readOnly: ReadOnlyReason | null,
  */
 liveLightsOff: LiveLightsOff | null, 
 /**
- * Live lights hold it in per-key mode now.
+ * Always false: live lights switch nothing (firmware 769 shows them in
+ * any effect mode).
  */
 liveArmed: boolean, 
 /**
- * Live lights switched it to per-key mode: its own effect comes back
- * about 30 s after they end. False while it was in a live mode before
- * (per-key lighting saved from Keymotion): nothing goes back.
+ * Always false: nothing is put back after live lights (the keyboard
+ * shows its own effect again by itself about 5 s after the last frame).
  */
 liveRestores: boolean, 
 /**

@@ -2274,15 +2274,7 @@ pub fn run() {
         ])
         .build(context)
         .expect("error while building Keymotion")
-        .run(|app, event| {
-            if let tauri::RunEvent::Exit = event {
-                // Live lights may hold an "AA" keyboard in per-key mode:
-                // its own effect goes back before the app ends.
-                if let Some(device) = app.try_state::<Arc<DeviceHandle>>() {
-                    device.closing(Duration::from_secs(3));
-                }
-            }
-        });
+        .run(|_, _| {});
 }
 
 #[cfg(test)]

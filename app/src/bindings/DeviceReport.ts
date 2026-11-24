@@ -16,7 +16,7 @@ battery: number | null, charge: ChargeState | null,
  */
 screenMaxFrames: number | null, 
 /**
- * A firmware update was left unfinished: nothing may be written until
- * AJAZZ's tool completes it (the "AA" `firmwareStatus` 1).
+ * Always false: firmware 769 has no "waiting for an update" field (the
+ * WebHID driver's `firmwareStatus` is a fixed byte there).
  */
 updatePending: boolean, };

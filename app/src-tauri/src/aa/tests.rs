@@ -41,44 +41,6 @@ fn driver(sim: &Sim, dir: Option<&Path>) -> AaDriver {
     d
 }
 
-fn yes() -> Result<(), String> {
-    Ok(())
-}
-
-fn several() -> Result<(), String> {
-    Err("more than one keyboard on the USB cable".into())
-}
-
-fn untested() -> Result<(), String> {
-    Err("untested keyboard firmware 3.01".into())
-}
-
-/// The Memory gate says yes.
-fn go() -> LiveContext<'static> {
-    LiveContext { gate: Some(&yes), app_effect: None, arming: None }
-}
-
-/// The gate says no, for this reason.
-fn no(gate: Gate<'static>) -> LiveContext<'static> {
-    LiveContext { gate: Some(gate), app_effect: None, arming: None }
-}
-
-/// A gate that says yes and counts how often it was asked.
-struct Counting(std::cell::Cell<u32>);
-
-impl Counting {
-    fn new() -> Self {
-        Self(std::cell::Cell::new(0))
-    }
-    fn ask(&self) -> Result<(), String> {
-        self.0.set(self.0.get() + 1);
-        Ok(())
-    }
-    fn asked(&self) -> u32 {
-        self.0.get()
-    }
-}
-
 fn led(id: &str) -> u8 {
     Sim::model().geometry.as_ref().unwrap().keys.iter().find(|k| k.id == id).unwrap().led
 }
@@ -205,7 +167,7 @@ fn every_write_goes_through_the_arm() {
     let report = d.device_info().unwrap().expect("a report");
     assert_eq!(report.battery, Some(100));
     assert_eq!(report.charge, None, "charge status 2 means nothing sure");
-    assert_eq!(report.screen_max_frames, Some(140));
+    assert_eq!(report.screen_max_frames, Some(146), "firmware 769's own frame limit");
     assert!(!report.update_pending);
 
     // The screen, over its own channel, with progress.
@@ -272,237 +234,13 @@ fn only_the_keys_that_differ_are_written() {
     );
 }
 
-#[test]
-fn live_lights_switch_to_per_key_mode_and_back_after_the_hold() {
-    let dir = TempDir::new("live");
-    let sim = Sim::ak980();
-    let mut d = driver(&sim, Some(&dir.0));
-    let gate = Counting::new();
-    let ask = || gate.ask();
-    let counted = LiveContext { gate: Some(&ask), app_effect: None, arming: None };
-    d.live_starting(&counted).unwrap();
-    assert_eq!(gate.asked(), 1, "the switch is a memory write");
-    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
-    let note = armed_note(&dir.0).expect("noted before the switch");
-    assert_eq!(AaEffect::decode(&note.effect.0).unwrap().mode, 1, "the effect to put back");
-    assert!(d.status().live_armed);
-    assert!(d.status().live_restores, "its own effect comes back after the hold");
-    for _ in 0..3 {
-        d.live_frame(vec![(led("esc"), [9, 9, 9])], &counted).unwrap();
-    }
-    assert_eq!(gate.asked(), 1, "frames write nothing to memory: no gate");
-    assert!(sim.state().frames.last().expect("a frame").1, "shown");
-
-    // The stream ends: the hold runs, nothing changes yet.
-    d.live_stopped();
-    let due = d.next_due().expect("the effect goes back later");
-    assert!(due > Instant::now() + LIVE_HOLD - Duration::from_secs(2));
-    d.run_due(Instant::now(), &go()).unwrap();
-    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
-
-    // A stream within the hold calls it off, without a write.
-    let effect_writes = sim.state().sent(cmd::SET_EFFECT).len();
-    d.live_starting(&LiveContext::default()).unwrap();
-    assert_eq!(d.next_due(), None);
-    assert_eq!(sim.state().sent(cmd::SET_EFFECT).len(), effect_writes);
-    d.live_stopped();
-
-    // After the hold, a refusal waits and tries again later.
-    let later = Instant::now() + LIVE_HOLD + Duration::from_secs(1);
-    d.run_due(later, &no(&several)).unwrap();
-    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
-    assert!(d.next_due().unwrap() > later);
-
-    // The gate says yes: the user's effect, colour and all, and the note goes.
-    let much_later = later + Duration::from_secs(11);
-    d.run_due(much_later, &go()).unwrap();
-    assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
-    assert!(armed_note(&dir.0).is_none());
-    assert!(!d.status().live_armed);
-    assert_eq!(d.next_due(), None);
-}
-
-#[test]
-fn a_crash_leaves_a_note_and_the_next_connect_puts_the_effect_back() {
-    let dir = TempDir::new("crash");
-    let sim = Sim::ak980();
-    {
-        let mut d = driver(&sim, Some(&dir.0));
-        d.live_starting(&go()).unwrap();
-        // The app ends here (a crash, a pulled cable): no live_stopped.
-    }
-    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
-    assert!(armed_note(&dir.0).is_some());
-
-    let mut d = driver(&sim, Some(&dir.0));
-    assert!(d.next_due().is_some_and(|t| t <= Instant::now()));
-    // A refused gate (the firmware question unanswered) waits.
-    d.run_due(Instant::now(), &no(&untested)).unwrap();
-    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
-    assert!(armed_note(&dir.0).is_some());
-    // The user said yes.
-    d.retry_live();
-    d.run_due(Instant::now(), &go()).unwrap();
-    assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
-    assert!(armed_note(&dir.0).is_none());
-    assert_eq!(d.next_due(), None);
-}
-
-#[test]
-fn live_lights_that_run_at_connect_keep_the_noted_effect_for_later() {
-    let dir = TempDir::new("crash-live");
-    let sim = Sim::ak980();
-    {
-        let mut d = driver(&sim, Some(&dir.0));
-        d.live_starting(&go()).unwrap();
-    }
-    let mut d = driver(&sim, Some(&dir.0));
-    let effect_writes = sim.state().sent(cmd::SET_EFFECT).len();
-    d.live_starting(&go()).unwrap();
-    assert_eq!(sim.state().sent(cmd::SET_EFFECT).len(), effect_writes, "in per-key mode already");
-    d.live_stopped();
-    d.run_due(Instant::now() + LIVE_HOLD + Duration::from_secs(1), &go()).unwrap();
-    assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12], "the noted effect goes back");
-    assert!(armed_note(&dir.0).is_none());
-}
-
-#[test]
-fn closing_puts_the_effect_back_without_the_hold() {
-    let dir = TempDir::new("closing");
-    let sim = Sim::ak980();
-    let mut d = Driver::<kb_transport::hid::HidChannel>::Aa(Box::new(driver(&sim, Some(&dir.0))));
-    d.live_starting(&go()).unwrap();
-    d.live_stopped().unwrap();
-    d.closing(&go()).unwrap();
-    assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
-    assert!(armed_note(&dir.0).is_none());
-    // Refused: the note stays for the next connect.
-    let dir = TempDir::new("closing-refused");
-    let sim = Sim::ak980();
-    let mut d = driver(&sim, Some(&dir.0));
-    d.live_starting(&go()).unwrap();
-    d.closing(&no(&several)).unwrap();
-    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
-    assert!(armed_note(&dir.0).is_some());
-}
-
-#[test]
-fn an_unknown_colour_is_never_armed() {
-    let dir = TempDir::new("colour");
-    let sim = Sim::ak980();
-    sim.state().set_effect_by_another_tool(FACTORY_EFFECT);
-    let mut d = driver(&sim, Some(&dir.0));
-    let gate = Counting::new();
-    let ask = || gate.ask();
-    let counted = LiveContext { gate: Some(&ask), app_effect: None, arming: None };
-    d.live_starting(&counted).unwrap();
-    assert_eq!(sim.state().effect[0], 1, "not switched");
-    assert!(sim.state().sent(cmd::SET_EFFECT).is_empty());
-    assert_eq!(d.status().live_lights_off, Some(LiveLightsOff::ColorUnknown));
-    assert!(armed_note(&dir.0).is_none());
-    // Frames are dropped, not sent, and nobody is asked anything (no
-    // firmware question for a switch that cannot happen).
-    d.live_frame(vec![(led("esc"), [9, 9, 9])], &counted).unwrap();
-    assert!(sim.state().sent(cmd::REALTIME).is_empty());
-    assert_eq!(gate.asked(), 0);
-
-    // The app's record of another effect does not help.
-    let app = AaEffect::decode(&FACTORY_EFFECT).unwrap();
-    let other = move || Some(AaEffect { brightness: 2, ..app });
-    d.live_stopped();
-    d.live_starting(&LiveContext { gate: Some(&yes), app_effect: Some(&other), arming: None }).unwrap();
-    assert_eq!(sim.state().effect[0], 1);
-
-    // Its record of this very effect does: the colour it stored.
-    let same = move || Some(app);
-    d.live_stopped();
-    d.live_starting(&LiveContext { gate: Some(&yes), app_effect: Some(&same), arming: None }).unwrap();
-    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
-    let note = armed_note(&dir.0).unwrap();
-    assert_eq!(AaEffect::decode(&note.effect.0).unwrap().color_part(), app.color_part());
-    assert_eq!(d.status().live_lights_off, None);
-
-    // A colour Keymotion wrote itself is known.
-    let dir = TempDir::new("colour-own");
-    let sim = Sim::ak980();
-    sim.state().set_effect_by_another_tool(FACTORY_EFFECT);
-    let mut d = driver(&sim, Some(&dir.0));
-    d.apply_effect(&effect(2, [10, 20, 30])).unwrap();
-    d.live_starting(&go()).unwrap();
-    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
-}
-
-#[test]
-fn a_refused_gate_holds_live_lights_back() {
-    let dir = TempDir::new("gate");
-    let sim = Sim::ak980();
-    let mut d = driver(&sim, Some(&dir.0));
-    d.live_starting(&no(&untested)).unwrap();
-    assert_eq!(
-        d.status().live_lights_off,
-        Some(LiveLightsOff::Blocked { reason: "untested keyboard firmware 3.01".into() })
-    );
-    assert!(sim.state().sent(cmd::SET_EFFECT).is_empty());
-    assert!(armed_note(&dir.0).is_none());
-    // Not asked again right away (the question is not put again and again).
-    let gate = Counting::new();
-    let ask = || gate.ask();
-    d.live_frame(vec![], &LiveContext { gate: Some(&ask), app_effect: None, arming: None }).unwrap();
-    assert_eq!(gate.asked(), 0);
-    assert!(sim.state().sent(cmd::SET_EFFECT).is_empty());
-    // The user said yes: the refusal goes at once (the UI stops saying live
-    // lights wait for the answer), and the next frame switches.
-    d.retry_live();
-    assert_eq!(d.status().live_lights_off, None);
-    d.live_frame(vec![(led("esc"), [1, 1, 1])], &go()).unwrap();
-    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
-    assert!(sim.state().frames.last().unwrap().1);
-
-    // No gate at all: nothing is written, and the next frame tries again.
-    let sim = Sim::ak980();
-    let dir = TempDir::new("gate-unasked");
-    let mut d = driver(&sim, Some(&dir.0));
-    d.live_starting(&LiveContext::default()).unwrap();
-    assert!(sim.state().sent(cmd::SET_EFFECT).is_empty());
-    d.live_frame(vec![], &go()).unwrap();
-    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
-}
-
-#[test]
-fn the_users_own_write_is_what_comes_back() {
-    let dir = TempDir::new("own-write");
-    let sim = Sim::ak980();
-    let mut d = driver(&sim, Some(&dir.0));
-    d.live_starting(&go()).unwrap();
-    // A new effect saved while live lights run: written now, and no longer
-    // the old one is put back.
-    d.apply_effect(&effect(2, [255, 0, 0])).unwrap();
-    assert_eq!(sim.state().effect[0], 2);
-    assert!(armed_note(&dir.0).is_none());
-    // Frames that keep coming switch again, with the new effect to go back.
-    d.live_frame(vec![(led("esc"), [1, 1, 1])], &go()).unwrap();
-    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
-    d.live_stopped();
-    d.run_due(Instant::now() + LIVE_HOLD + Duration::from_secs(1), &go()).unwrap();
-    let e = sim.state().effect;
-    assert_eq!((e[0], [e[1], e[2], e[3]]), (2, [255, 0, 0]));
-    // A per-key design saved: it is the effect, nothing to put back.
-    d.live_starting(&go()).unwrap();
-    d.apply_per_key(vec![(led("esc"), [5, 5, 5])], 5).unwrap();
-    d.live_stopped();
-    d.run_due(Instant::now() + LIVE_HOLD + Duration::from_secs(1), &go()).unwrap();
-    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
-}
-
 /// Each way a keyboard does not look as expected, made in the simulator.
 fn misbehaving() -> Vec<(&'static str, Sim)> {
     let insane = Sim::ak980();
     insane.state().effect[0] = 99;
-    let pending = Sim::ak980();
-    pending.state().info[32] = 1;
     let silent = Sim::ak980();
     silent.state().faults.silent_info = true;
-    vec![("insane", insane), ("update pending", pending), ("silent", silent)]
+    vec![("insane", insane), ("silent", silent)]
 }
 
 #[test]
@@ -511,10 +249,7 @@ fn a_keyboard_that_does_not_look_right_is_read_only() {
         let dir = TempDir::new(&format!("read-only-{}", name.replace(' ', "-")));
         let mut d = driver(&sim, Some(&dir.0));
         let ro = d.read_only().unwrap_or_else(|| panic!("{name}: writable"));
-        match name {
-            "update pending" => assert_eq!(ro, ReadOnly::UpdatePending),
-            _ => assert!(matches!(&ro, ReadOnly::NotSane(why) if !why.is_empty()), "{name}: {ro:?}"),
-        }
+        assert!(matches!(&ro, ReadOnly::NotSane(why) if !why.is_empty()), "{name}: {ro:?}");
         let shown = d.status().read_only.unwrap();
         match (&ro, &shown) {
             (ReadOnly::NotSane(why), ReadOnlyReason::NotSane { reasons, read_failed }) => {
@@ -534,21 +269,26 @@ fn a_keyboard_that_does_not_look_right_is_read_only() {
         for e in refusals {
             assert_eq!(e.to_string(), d.read_only().unwrap().to_string(), "{name}");
         }
-        d.live_starting(&go()).unwrap();
-        assert_eq!(d.status().live_lights_off, Some(LiveLightsOff::ReadOnly), "{name}");
         assert_eq!(writes(&sim), 0, "{name}: nothing written");
         assert!(backups_in(&dir.0).is_empty(), "{name}: no backup of what does not look right");
     }
 
-    // Waiting for an update: the device information says so, not an error.
-    let sim = Sim::ak980();
-    sim.state().info[32] = 1;
-    let mut d = driver(&sim, None);
-    assert!(d.device_info().unwrap().update_pending);
-    assert_eq!(
-        d.read_only().unwrap().to_string(),
-        "the keyboard is waiting for a firmware update; nothing is read or written"
-    );
+    // What firmware 769 really holds is no reason: a per-key table of all
+    // 00 (issue #154, after AJAZZ's updater) or all FF, a 1 in byte 32.
+    for (name, prepare) in [
+        ("zeros", (|s: &mut kb_core::aa::sim::SimState| s.per_key.fill(0)) as fn(&mut kb_core::aa::sim::SimState)),
+        ("erased", |s| s.erased_per_key()),
+        ("byte 32", |s| s.info[32] = 1),
+    ] {
+        let sim = Sim::ak980();
+        prepare(&mut sim.state());
+        let dir = TempDir::new(&format!("writable-{}", name.replace(' ', "-")));
+        let mut d = driver(&sim, Some(&dir.0));
+        assert_eq!(d.read_only(), None, "{name}");
+        assert!(!d.device_info().unwrap().update_pending, "{name}");
+        d.apply_per_key(vec![(led("esc"), [1, 2, 3])], 5).unwrap();
+        assert_eq!(perkey::shown(&sim.state().per_key, aa("esc")), [1, 2, 3], "{name}");
+    }
 }
 
 #[test]
@@ -568,19 +308,6 @@ fn a_keyboard_that_answers_again_is_read_again_before_a_write() {
     assert_eq!(sim.state().effect[0], 2);
 }
 
-#[test]
-fn live_lights_on_a_keyboard_in_per_key_mode_put_nothing_back() {
-    let dir = TempDir::new("live-per-key");
-    let sim = Sim::ak980();
-    let mut d = driver(&sim, Some(&dir.0));
-    // Per-key lighting saved from Keymotion: the keyboard's own effect.
-    d.apply_effect(&effect(aa_effect::MODE_PER_KEY, [0, 0, 0])).unwrap();
-    d.live_starting(&go()).unwrap();
-    let status = d.status();
-    assert!(status.live_armed);
-    assert!(!status.live_restores, "nothing comes back: no \"about 30 seconds\" notice");
-}
-
 /// A wheel turn and a 2 ms pause, as AJAZZ's tool writes them: no app
 /// step holds either.
 fn wheel() -> Vec<AaMacroEntry> {
@@ -593,7 +320,7 @@ fn wheel() -> Vec<AaMacroEntry> {
 
 /// The keyboard's macro memory holding `slots`, as another tool left it.
 fn macros_written_elsewhere(sim: &Sim, slots: &[Vec<AaMacroEntry>]) {
-    let img = aa_macros::encode(slots).unwrap();
+    let img = aa_macros::encode(slots, aa_macros::CAPACITY).unwrap();
     let mut st = sim.state();
     st.macros.fill(0);
     st.macros[..img.table.len()].copy_from_slice(&img.table);
@@ -936,7 +663,8 @@ fn the_device_information_reports_what_is_known() {
     let r = device_report(&charging);
     assert_eq!((r.battery, r.charge, r.screen_max_frames), (Some(40), Some(ChargeState::Charging), Some(120)));
     assert_eq!(device_report(&DeviceInfo { battery_level: 0xFF, ..i }).battery, None);
-    assert!(device_report(&DeviceInfo { firmware_status: 1, ..i }).update_pending);
+    // No such field on firmware 769: never "waiting for an update".
+    assert!(!device_report(&DeviceInfo { firmware_status: 1, ..i }).update_pending);
 }
 
 #[test]
@@ -993,14 +721,6 @@ fn names(dir: &Path) -> Vec<String> {
     backups_in(dir).into_iter().map(|(n, _)| n).collect()
 }
 
-fn later() -> Instant {
-    Instant::now() + LIVE_HOLD + Duration::from_secs(1)
-}
-
-fn effect_writes(sim: &Sim) -> usize {
-    sim.state().sent(cmd::SET_EFFECT).len()
-}
-
 /// A channel whose USB handle dies after `left` more writes: every write
 /// from then on fails as a stalled one does.
 pub(crate) struct Dying {
@@ -1018,28 +738,6 @@ impl OutputPort for Dying {
     }
     fn read(&mut self, timeout_ms: u32) -> kb_core::aa::Result<Option<Vec<u8>>> {
         self.port.read(timeout_ms)
-    }
-}
-
-/// A keyboard whose per-key mode reads back with another speed than was
-/// written (a firmware that normalises it): the switch lands, and its
-/// read-back differs.
-struct Normalising(kb_core::aa::sim::SimPort);
-
-impl OutputPort for Normalising {
-    fn write(&mut self, report: &[u8]) -> kb_core::aa::Result<usize> {
-        self.0.write(report)
-    }
-    fn read(&mut self, timeout_ms: u32) -> kb_core::aa::Result<Option<Vec<u8>>> {
-        use kb_protocol::aa::frame;
-        Ok(self.0.read(timeout_ms)?.map(|mut r| {
-            let at = usize::from(r.len() == frame::WIRE_LEN && r[0] == 0);
-            let data = at + frame::HEADER_LEN;
-            if r[at] == frame::REPLY && r[at + 1] == cmd::EFFECT && r[data] == aa_effect::MODE_PER_KEY {
-                r[data + 10] = r[data + 10] % 5 + 1;
-            }
-            r
-        }))
     }
 }
 
@@ -1105,268 +803,6 @@ fn a_refused_restore_removes_no_backup_and_the_first_stays_first() {
 }
 
 #[test]
-fn a_live_note_is_only_for_the_keyboard_that_wrote_it() {
-    let dir = TempDir::new("note-identity");
-    let a = Sim::ak980();
-    {
-        let mut d = driver(&a, Some(&dir.0));
-        d.live_starting(&go()).unwrap();
-        // The app ends here.
-    }
-    assert!(armed_note(&dir.0).is_some());
-
-    // Another AK980 PRO on the same firmware, kept in per-key mode by its
-    // user: nothing is written to it, and the note stays for the first.
-    let b = Sim::ak980();
-    {
-        let mut s = b.state();
-        aa_keymap::set_entry(&mut s.keymap, aa("a"), [aa_keymap::page::KEYBOARD, 0, 0x05, 0]);
-        s.effect[0] = aa_effect::MODE_PER_KEY;
-        s.effect[8] = 0;
-    }
-    let shown = b.state().effect;
-    let mut d = driver(&b, Some(&dir.0));
-    assert_eq!(d.next_due(), None, "nothing to put back on it");
-    d.run_due(Instant::now(), &go()).unwrap();
-    assert!(b.state().sent(cmd::SET_EFFECT).is_empty());
-    assert_eq!(b.state().effect, shown);
-    assert!(armed_note(&dir.0).is_some(), "not its note");
-    // Nor does one in an effect of its own drop it.
-    let c = Sim::ak980();
-    aa_keymap::set_entry(&mut c.state().keymap, aa("b"), [aa_keymap::page::KEYBOARD, 0, 0x06, 0]);
-    let _ = driver(&c, Some(&dir.0));
-    assert!(armed_note(&dir.0).is_some(), "not its note either");
-
-    // The first keyboard comes back: its effect goes back.
-    let mut d = driver(&a, Some(&dir.0));
-    d.run_due(Instant::now(), &go()).unwrap();
-    assert_eq!(a.state().effect[..12], FACTORY_EFFECT[..12]);
-    assert!(armed_note(&dir.0).is_none());
-
-    // After a crash the user chose a live mode on the keyboard itself: it
-    // stays, and the note goes.
-    let dir = TempDir::new("note-own-choice");
-    let a = Sim::ak980();
-    {
-        let mut d = driver(&a, Some(&dir.0));
-        d.live_starting(&go()).unwrap();
-    }
-    a.state().effect[0] = 20;
-    let writes_before = effect_writes(&a);
-    let mut d = driver(&a, Some(&dir.0));
-    d.run_due(Instant::now(), &go()).unwrap();
-    assert_eq!(a.state().effect[0], 20);
-    assert_eq!(effect_writes(&a), writes_before);
-    assert!(armed_note(&dir.0).is_none());
-}
-
-#[test]
-fn nothing_is_switched_once_the_app_is_closing() {
-    let dir = TempDir::new("closed");
-    let sim = Sim::ak980();
-    let mut d = driver(&sim, Some(&dir.0));
-    d.live_starting(&go()).unwrap();
-    assert!(d.holds_keyboard());
-    d.closing(&go()).unwrap();
-    assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
-    assert!(!d.holds_keyboard());
-    // Frames that still come do not switch it again.
-    let writes_before = effect_writes(&sim);
-    d.live_starting(&go()).unwrap();
-    d.live_frame(vec![(led("esc"), [1, 1, 1])], &go()).unwrap();
-    assert_eq!(effect_writes(&sim), writes_before);
-    assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
-    assert!(armed_note(&dir.0).is_none());
-}
-
-#[test]
-fn a_read_again_during_live_lights_puts_nothing_back_meanwhile() {
-    let dir = TempDir::new("reread-armed");
-    let sim = Sim::ak980();
-    let mut d = driver(&sim, Some(&dir.0));
-    d.live_starting(&go()).unwrap();
-    d.live_frame(vec![(led("esc"), [1, 1, 1])], &go()).unwrap();
-    let writes_before = effect_writes(&sim);
-    // The keyboard reports a reset with the next reply: what was known is
-    // stale, and the background reads it again.
-    let next = sim.state().packets.len() + 1;
-    sim.state().faults.reset_before = Some(next);
-    let _ = d.live_frame(vec![(led("esc"), [2, 2, 2])], &go());
-    assert!(d.stale(), "the reset closed the gate");
-    d.read_at = None;
-    d.run_due(Instant::now(), &go()).unwrap();
-    assert!(!d.stale(), "read again");
-    assert_eq!(effect_writes(&sim), writes_before, "nothing put back while frames come");
-    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
-    assert!(d.status().live_armed);
-    // The stream ends: after the hold the effect goes back, once.
-    d.live_frame(vec![(led("esc"), [3, 3, 3])], &go()).unwrap();
-    d.live_stopped();
-    d.run_due(later(), &go()).unwrap();
-    assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
-    assert_eq!(effect_writes(&sim), writes_before + 1);
-}
-
-#[test]
-fn levels_a_keyboard_reads_out_of_range_go_back_in_range() {
-    let dir = TempDir::new("levels");
-    let sim = Sim::ak980();
-    {
-        // What sibling boards and AJAZZ's hub leave: brightness 6, speed 0.
-        let mut s = sim.state();
-        s.effect[9] = 6;
-        s.effect[10] = 0;
-    }
-    let mut d = driver(&sim, Some(&dir.0));
-    assert_eq!(d.read_only(), None);
-    d.live_starting(&go()).unwrap();
-    assert!(d.status().live_armed, "{:?}", d.status().live_lights_off);
-    let back = AaEffect::decode(&armed_note(&dir.0).unwrap().effect.0).unwrap();
-    assert_eq!((back.mode, back.brightness, back.speed), (1, 5, 1));
-    d.live_stopped();
-    d.run_due(later(), &go()).unwrap();
-    let e = sim.state().effect;
-    assert_eq!((e[0], e[9], e[10]), (1, 5, 1));
-}
-
-#[test]
-fn a_backup_before_a_restore_during_live_lights_holds_the_users_effect() {
-    let dir = TempDir::new("restore-armed");
-    let sim = Sim::ak980();
-    let mut d = driver(&sim, Some(&dir.0));
-    let (_, first) = backups_in(&dir.0).remove(0);
-    d.live_starting(&go()).unwrap();
-    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
-    d.restore(&first.snapshot, None, None).unwrap();
-    let (_, before) = backups_in(&dir.0).into_iter().find(|(_, b)| b.reason == backups::Reason::BeforeRestore).unwrap();
-    let factory = AaEffect::decode(&FACTORY_EFFECT).unwrap();
-    assert_eq!(before.snapshot.effect().unwrap().mode, 1, "not the per-key mode live lights hold");
-    assert_eq!(before.snapshot.effect_color, Some(factory.color_part().into()));
-}
-
-#[test]
-fn a_failed_switch_is_not_tried_again_with_every_frame() {
-    let dir = TempDir::new("arm-retry");
-    let sim = Sim::ak980();
-    let mut d = driver(&sim, Some(&dir.0));
-    // The keyboard echoes the switch but keeps its effect.
-    sim.state().faults.ignore_writes = Some(cmd::SET_EFFECT);
-    let e = d.live_starting(&go()).unwrap_err();
-    assert!(e.to_string().contains("differs"), "{e}");
-    assert_eq!(effect_writes(&sim), 1);
-    for _ in 0..5 {
-        d.live_starting(&go()).unwrap();
-        d.live_frame(vec![(led("esc"), [1, 1, 1])], &go()).unwrap();
-    }
-    assert_eq!(effect_writes(&sim), 1, "the next try waits");
-    assert!(matches!(d.status().live_lights_off, Some(LiveLightsOff::Failed { .. })));
-    assert!(armed_note(&dir.0).is_none(), "the keyboard did not change");
-    // Each failure in a row waits longer.
-    if let Live::Off { retry_at, .. } = &mut d.live {
-        *retry_at = Some(Instant::now());
-    }
-    d.live_frame(vec![], &go()).unwrap_err();
-    assert_eq!(effect_writes(&sim), 2);
-    match &d.live {
-        Live::Off { retry_at: Some(t), .. } => assert!(*t > Instant::now() + ARM_RETRY + Duration::from_secs(20)),
-        other => panic!("{other:?}"),
-    }
-}
-
-#[test]
-fn a_switch_that_lands_but_reads_back_otherwise_still_puts_the_effect_back() {
-    let open = |sim: &Sim, dir: &Path| {
-        let mut d = AaDriver::new(AaPort::new(Normalising(sim.command())), Sim::model(), target(Some(dir))).unwrap();
-        d.connect(None);
-        d
-    };
-    let dir = TempDir::new("arm-landed");
-    let sim = Sim::ak980();
-    let mut d = open(&sim, &dir.0);
-    d.live_starting(&go()).unwrap();
-    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY, "the switch landed");
-    assert!(d.status().live_armed);
-    d.live_frame(vec![(led("esc"), [3, 3, 3])], &go()).unwrap();
-    assert!(sim.state().frames.last().unwrap().1, "frames show");
-    d.live_stopped();
-    d.run_due(later(), &go()).unwrap();
-    assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
-    assert!(armed_note(&dir.0).is_none());
-
-    // A crash after such a switch: the note holds what the keyboard shows.
-    let dir = TempDir::new("arm-landed-crash");
-    let sim = Sim::ak980();
-    {
-        let mut d = open(&sim, &dir.0);
-        d.live_starting(&go()).unwrap();
-    }
-    let mut d = open(&sim, &dir.0);
-    assert!(d.next_due().is_some());
-    d.run_due(Instant::now(), &go()).unwrap();
-    assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
-}
-
-#[test]
-fn an_effect_chosen_on_the_keyboard_during_the_hold_stays() {
-    let mut chosen = FACTORY_EFFECT;
-    chosen[0] = 4;
-    let dir = TempDir::new("hold-chosen");
-    let sim = Sim::ak980();
-    let mut d = driver(&sim, Some(&dir.0));
-    d.live_starting(&go()).unwrap();
-    d.live_stopped();
-    sim.state().set_effect_by_another_tool(chosen);
-    let writes_before = effect_writes(&sim);
-    d.run_due(later(), &go()).unwrap();
-    assert_eq!(sim.state().effect[0], 4);
-    assert_eq!(effect_writes(&sim), writes_before);
-    assert!(armed_note(&dir.0).is_none());
-    assert!(!d.status().live_armed);
-    assert_eq!(d.next_due(), None);
-
-    // Closing the app, too.
-    let dir = TempDir::new("closing-chosen");
-    let sim = Sim::ak980();
-    let mut d = driver(&sim, Some(&dir.0));
-    d.live_starting(&go()).unwrap();
-    sim.state().set_effect_by_another_tool(chosen);
-    let writes_before = effect_writes(&sim);
-    d.closing(&go()).unwrap();
-    assert_eq!(sim.state().effect[0], 4);
-    assert_eq!(effect_writes(&sim), writes_before);
-}
-
-#[test]
-fn live_lights_wait_out_the_quiet_time_after_a_cut_upload() {
-    let dir = TempDir::new("quiet-arm");
-    let sim = Sim::ak980();
-    sim.state().upload_quiet = Duration::from_millis(100);
-    let mut d = driver(&sim, Some(&dir.0));
-    d.keyboard_mut().set_upload_cooldown(Duration::from_millis(250));
-    let anim = ScreenAnimation::still(screen::test_pattern());
-    let cancel = AtomicBool::new(false);
-    let mut display = AaPort::new(sim.display());
-    let progress = |done, _| {
-        if done == 2 {
-            cancel.store(true, Ordering::SeqCst);
-        }
-    };
-    d.upload_screen(&mut display, &anim, progress, &cancel).unwrap_err();
-    let status = d.status();
-    d.live_starting(&go()).unwrap();
-    for _ in 0..5 {
-        d.live_frame(vec![(led("esc"), [1, 1, 1])], &go()).unwrap();
-        assert_eq!(d.status(), status, "nothing changes for the UI meanwhile");
-    }
-    assert!(!d.diagnostics().iter().any(|l| l.contains("no commands for another")), "no error noted");
-    assert!(sim.state().sent(cmd::SET_EFFECT).is_empty());
-    // Once it is over (not 30 s later), the next frame switches.
-    std::thread::sleep(Duration::from_millis(300));
-    d.live_frame(vec![(led("esc"), [1, 1, 1])], &go()).unwrap();
-    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
-}
-
-#[test]
 fn a_channel_the_full_read_left_dead_is_handed_back_to_be_opened_again() {
     let dir = TempDir::new("dead-channel");
     let sim = Sim::ak980();
@@ -1400,117 +836,6 @@ fn replies_that_queue_up_on_an_idle_keyboard_still_count() {
 
 // ---------------------------------------------------------------- second check of #195
 
-/// A keyboard that, once switched to per-key mode, stops answering reads of
-/// its effect while `deaf` is set: the switch goes out and is echoed, its
-/// read-back never comes.
-struct LosesReadBack {
-    port: kb_core::aa::sim::SimPort,
-    deaf: std::sync::Arc<AtomicBool>,
-}
-
-impl OutputPort for LosesReadBack {
-    fn write(&mut self, report: &[u8]) -> kb_core::aa::Result<usize> {
-        use kb_protocol::aa::frame;
-        let data = 1 + frame::HEADER_LEN;
-        if report.len() > data && report[2] == cmd::SET_EFFECT && report[data] == aa_effect::MODE_PER_KEY {
-            self.deaf.store(true, Ordering::SeqCst);
-        }
-        self.port.write(report)
-    }
-    fn read(&mut self, timeout_ms: u32) -> kb_core::aa::Result<Option<Vec<u8>>> {
-        use kb_protocol::aa::frame;
-        let r = self.port.read(timeout_ms)?;
-        let effect_reply = r.as_ref().is_some_and(|r| {
-            let at = usize::from(r.len() == frame::WIRE_LEN && r[0] == 0);
-            r[at] == frame::REPLY && r[at + 1] == cmd::EFFECT
-        });
-        if effect_reply && self.deaf.load(Ordering::SeqCst) {
-            return Ok(None);
-        }
-        Ok(r)
-    }
-}
-
-#[test]
-fn a_switch_whose_read_back_is_lost_still_gets_its_effect_back() {
-    let dir = TempDir::new("arm-lost-readback");
-    let sim = Sim::ak980();
-    let deaf = std::sync::Arc::new(AtomicBool::new(false));
-    let port = LosesReadBack { port: sim.command(), deaf: deaf.clone() };
-    let mut d = AaDriver::new(AaPort::new(port), Sim::model(), target(Some(&dir.0))).unwrap();
-    d.connect(None);
-    d.live_starting(&go()).unwrap_err();
-    assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY, "the switch landed");
-    assert!(armed_note(&dir.0).is_some(), "the note stays: the switch may have landed");
-    // The keyboard answers again: the background looks, sees per-key mode
-    // and puts the effect back.
-    deaf.store(false, Ordering::SeqCst);
-    d.read_at = None;
-    d.run_due(Instant::now() + DISARM_RETRY + Duration::from_secs(1), &go()).unwrap();
-    assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
-    assert!(armed_note(&dir.0).is_none());
-}
-
-#[test]
-fn a_failed_switch_waits_across_streams_too() {
-    let dir = TempDir::new("arm-retry-streams");
-    let sim = Sim::ak980();
-    let mut d = driver(&sim, Some(&dir.0));
-    sim.state().faults.ignore_writes = Some(cmd::SET_EFFECT);
-    d.live_starting(&go()).unwrap_err();
-    assert_eq!(effect_writes(&sim), 1);
-    // Agents' lights start and stop often.
-    for _ in 0..5 {
-        d.live_stopped();
-        d.live_starting(&go()).unwrap();
-        d.live_frame(vec![(led("esc"), [1, 1, 1])], &go()).unwrap();
-    }
-    assert_eq!(effect_writes(&sim), 1, "each new stream waits too");
-    assert!(matches!(d.status().live_lights_off, Some(LiveLightsOff::Failed { .. })));
-}
-
-#[test]
-fn whoever_waits_for_closing_hears_of_a_switch_before_it_is_written() {
-    let dir = TempDir::new("arming");
-    let sim = Sim::ak980();
-    let mut d = driver(&sim, Some(&dir.0));
-    let told = std::cell::Cell::new(None);
-    let arming = || told.set(Some(effect_writes(&sim)));
-    let ctx = LiveContext { gate: Some(&yes), app_effect: None, arming: Some(&arming) };
-    d.live_starting(&ctx).unwrap();
-    assert_eq!(told.get(), Some(0), "told before the switch was written");
-    assert_eq!(effect_writes(&sim), 1);
-    // Frames on an armed keyboard switch nothing: nobody is told.
-    told.set(None);
-    d.live_frame(vec![(led("esc"), [1, 1, 1])], &ctx).unwrap();
-    assert_eq!(told.get(), None);
-}
-
-#[test]
-fn notes_of_keyboards_never_seen_again_do_not_pile_up() {
-    let dir = TempDir::new("notes-cap");
-    let keyboards: Vec<Sim> = (0..NOTES_KEPT + 3)
-        .map(|i| {
-            let sim = Sim::ak980();
-            let usage = 0x05 + i as u8;
-            aa_keymap::set_entry(&mut sim.state().keymap, aa("a"), [aa_keymap::page::KEYBOARD, 0, usage, 0]);
-            {
-                let mut d = driver(&sim, Some(&dir.0));
-                d.live_starting(&go()).unwrap();
-                // The app ends here; this keyboard is never seen again.
-            }
-            sim
-        })
-        .collect();
-    assert_eq!(armed_notes(&dir.0).len(), NOTES_KEPT);
-    // The newest stay: the last keyboard still gets its effect back.
-    let last = keyboards.last().unwrap();
-    let mut d = driver(last, Some(&dir.0));
-    d.run_due(Instant::now(), &go()).unwrap();
-    assert_eq!(last.state().effect[..12], FACTORY_EFFECT[..12]);
-    assert_eq!(armed_notes(&dir.0).len(), NOTES_KEPT - 1);
-}
-
 #[test]
 fn restores_that_stop_part_way_do_not_pile_up_backups() {
     let dir = TempDir::new("restore-incomplete");
@@ -1540,4 +865,118 @@ fn restores_that_stop_part_way_do_not_pile_up_backups() {
         assert_eq!(now.len(), backups::KEPT, "try {i}: {now:?}");
         assert!(now.contains(&first) && now.contains(&source), "try {i}: {now:?}");
     }
+}
+
+// ---------------------------------------------------------------- firmware 769 (beta.2)
+
+#[test]
+fn live_lights_switch_nothing_and_write_nothing() {
+    // Firmware 769 shows frames in any effect mode: no switch to per-key
+    // mode, no note, no hold, nothing put back.
+    let dir = TempDir::new("live");
+    let sim = Sim::ak980();
+    let mut d = driver(&sim, Some(&dir.0));
+    d.live_starting();
+    for _ in 0..3 {
+        d.live_frame(vec![(led("esc"), [9, 9, 9])]).unwrap();
+    }
+    let s = sim.state().clone();
+    assert!(s.frames.last().expect("a frame").1, "shown");
+    assert!(s.sent(cmd::SET_EFFECT).is_empty(), "the effect stays as it is");
+    assert_eq!(s.effect, FACTORY_EFFECT);
+    assert_eq!(writes(&sim), s.sent(cmd::REALTIME).len(), "frames only");
+    let status = d.status();
+    assert!(!status.live_armed && !status.live_restores && status.live_lights_off.is_none(), "{status:?}");
+    assert!(!dir.0.join("aa-live-armed.json").exists(), "no note on disk");
+    // The stream ends: nothing is due, nothing goes back.
+    d.live_stopped();
+    assert_eq!(d.next_due(), None);
+    d.run_due(&|| None).unwrap();
+    assert_eq!(sim.state().sent(cmd::SET_EFFECT).len(), 0);
+}
+
+#[test]
+fn live_lights_show_on_a_read_only_keyboard_too() {
+    // Frames store nothing: the sanity check, which guards flash, does not
+    // hold them back.
+    let dir = TempDir::new("live-read-only");
+    let sim = Sim::ak980();
+    sim.state().effect[0] = 99;
+    let mut d = driver(&sim, Some(&dir.0));
+    assert!(d.read_only().is_some());
+    d.live_starting();
+    d.live_frame(vec![(led("esc"), [9, 9, 9])]).unwrap();
+    assert!(sim.state().frames.last().is_some_and(|f| f.1));
+    assert_eq!(d.status().live_lights_off, None);
+    assert!(sim.state().sent(cmd::SET_EFFECT).is_empty());
+}
+
+#[test]
+fn live_lights_wait_while_the_keyboard_ignores_writes() {
+    // Just switched on (or reset): frames are held back, and the UI hears
+    // why, until the keyboard takes them.
+    let dir = TempDir::new("live-settling");
+    let sim = Sim::ak980();
+    let mut d = driver(&sim, Some(&dir.0));
+    d.keyboard_mut().set_settle(Duration::from_millis(150));
+    d.live_starting();
+    d.live_frame(vec![(led("esc"), [9, 9, 9])]).unwrap();
+    assert!(sim.state().sent(cmd::REALTIME).is_empty());
+    assert_eq!(d.status().live_lights_off, Some(LiveLightsOff::Blocked { reason: LIVE_SETTLING.into() }));
+    std::thread::sleep(Duration::from_millis(200));
+    d.live_frame(vec![(led("esc"), [9, 9, 9])]).unwrap();
+    assert!(sim.state().frames.last().is_some_and(|f| f.1));
+    assert_eq!(d.status().live_lights_off, None);
+}
+
+#[test]
+fn live_lights_wait_out_the_quiet_time_after_a_cut_upload() {
+    let dir = TempDir::new("quiet-live");
+    let sim = Sim::ak980();
+    sim.state().upload_quiet = Duration::from_millis(100);
+    let mut d = driver(&sim, Some(&dir.0));
+    d.keyboard_mut().set_upload_cooldown(Duration::from_millis(250));
+    let anim = ScreenAnimation::still(screen::test_pattern());
+    let cancel = AtomicBool::new(false);
+    let mut display = AaPort::new(sim.display());
+    let progress = |done, _| {
+        if done == 2 {
+            cancel.store(true, Ordering::SeqCst);
+        }
+    };
+    d.upload_screen(&mut display, &anim, progress, &cancel).unwrap_err();
+    let status = d.status();
+    d.live_starting();
+    for _ in 0..5 {
+        d.live_frame(vec![(led("esc"), [1, 1, 1])]).unwrap();
+        assert_eq!(d.status(), status, "nothing changes for the UI meanwhile");
+    }
+    assert!(!d.diagnostics().iter().any(|l| l.contains("no commands for another")), "no error noted");
+    assert!(sim.state().sent(cmd::REALTIME).is_empty());
+    // Once it is over (not 30 s later), the next frame shows.
+    std::thread::sleep(Duration::from_millis(300));
+    d.live_frame(vec![(led("esc"), [1, 1, 1])]).unwrap();
+    assert!(sim.state().frames.last().is_some_and(|f| f.1));
+}
+
+#[test]
+fn a_backup_keeps_the_effect_mode_the_app_knows() {
+    // Per-key colours saved from Keymotion in an earlier run: the keyboard
+    // reads mode 0, which off would read too. The app's lighting record
+    // says 128, and the first backup keeps that, not "off".
+    let dir = TempDir::new("backup-mode");
+    let sim = Sim::ak980();
+    let pk = [128, 0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0, 4, 3, 0, 0, 0, 0xAA, 0x55];
+    sim.state().set_effect_by_another_tool(pk);
+    let app = AaEffect::decode(&pk).unwrap();
+    let mut d = AaDriver::new(AaPort::new(sim.command()), Sim::model(), target(Some(&dir.0))).unwrap();
+    d.connect(Some(app));
+    let (_, b) = &backups_in(&dir.0)[0];
+    assert_eq!((b.snapshot.effect.0[0], b.snapshot.effect_mode), (0, Some(128)));
+    assert_eq!(b.snapshot.effect().unwrap().mode, 128);
+    // A record of another mode (or other levels) tells nothing.
+    let dir = TempDir::new("backup-mode-other");
+    let mut d = AaDriver::new(AaPort::new(sim.command()), Sim::model(), target(Some(&dir.0))).unwrap();
+    d.connect(Some(AaEffect { mode: 1, ..app }));
+    assert_eq!(backups_in(&dir.0)[0].1.snapshot.effect_mode, None);
 }

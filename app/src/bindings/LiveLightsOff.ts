@@ -2,7 +2,9 @@
 
 /**
  * Why live lights (gauges, music, games, agents, previews) do not show on
- * the "AA" keyboard: it shows them only in per-key mode, which the app
- * switches to and back (plan K-4).
+ * the "AA" keyboard. It shows them in any effect mode, and nothing is
+ * switched or put back: only `blocked` is sent, for the moment the
+ * keyboard ignores writes (just switched on or reset). The other kinds are
+ * no longer sent.
  */
 export type LiveLightsOff = { "kind": "color-unknown" } | { "kind": "read-only" } | { "kind": "blocked", reason: string, } | { "kind": "failed", error: string, };

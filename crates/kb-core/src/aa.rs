@@ -892,7 +892,7 @@ impl<P: OutputPort> AaKeyboard<P> {
             verdict = Err(why);
         }
         if let Err(why) = &verdict {
-            tracing::warn!(?why, "the keyboard did not pass the sanity gate; no writes");
+            tracing::warn!(reasons = why.len(), "the keyboard did not pass the sanity gate; no writes");
         }
         self.sanity = Some(verdict);
         self.snapshot = Some(snap.clone());

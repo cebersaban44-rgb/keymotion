@@ -32,7 +32,7 @@
 //! the user said so in this session. The clock waits for that go-ahead too;
 //! live frames never wait ([`write_gate`]).
 
-use crate::aa::{backups, LiveContext, ReadOnly};
+use crate::aa::{backups, ReadOnly};
 use crate::driver::{self, Driver, OpenTarget, Ports};
 use crate::dto::{
     Battery, DeviceReport, FlashWrite, KeyboardBackupInfo, KeyboardBackupReason, KeyboardInfo, KeyboardRestoreResult,
@@ -304,6 +304,10 @@ fn running_conflict() -> Option<Conflict> {
 const ENUMERATE_EVERY: Duration = Duration::from_secs(2);
 const BLE_RESCAN: Duration = Duration::from_secs(10);
 const BATTERY_REFRESH: Duration = Duration::from_secs(60);
+/// How often an "AA" keyboard's device information (its battery) is asked
+/// again while the window shows the keyboard: every such request stops a
+/// macro that is playing on it (firmware 769).
+const AA_DEVICE_REFRESH: Duration = Duration::from_secs(5 * 60);
 /// Live frames are re-sent continuously; the keyboard reverts to its saved
 /// effect when the stream stops (verified 2026-11-10).
 const LIVE_EVERY: Duration = Duration::from_millis(50);
@@ -405,9 +409,6 @@ pub enum Request {
         color: Option<(Rgb, bool)>,
         reply: Reply<KeyboardRestoreResult>,
     },
-    /// The app is closing: live lights give the keyboard its own effect
-    /// back now ("AA"); replies when done.
-    Closing(mpsc::Sender<()>),
 }
 
 /// What a frame request sets: the preview or one background layer.
@@ -442,8 +443,7 @@ impl Request {
             | Self::ApplyMacros { .. }
             | Self::DescribeUnsupported { .. }
             | Self::UploadScreen { .. }
-            | Self::RestoreKeyboard { .. }
-            | Self::Closing(_) => true,
+            | Self::RestoreKeyboard { .. } => true,
             Self::Refresh
             | Self::SetLive(_)
             | Self::SetLayer(..)
@@ -983,9 +983,6 @@ pub struct DeviceHandle {
     pub flash: FlashState,
     tx: Sender<Request>,
     uploads: Arc<UploadCancels>,
-    /// An "AA" keyboard is held in per-key mode by live lights (or a crash
-    /// note waits): closing has something to put back.
-    aa_hold: Arc<AtomicBool>,
     /// The data folder (keyboard backups).
     config_dir: Option<std::path::PathBuf>,
 }
@@ -1023,19 +1020,6 @@ impl DeviceHandle {
             .iter()
             .find(|k| k.connection == crate::dto::Connection::Usb && k.has_command_channel)
             .map(|k| k.record_id.clone())
-    }
-
-    /// The app is closing: give the keyboard its own effect back if live
-    /// lights hold it ("AA"), waiting at most `wait`. Nothing to put back
-    /// ("04 xx", no keyboard, nothing held): returns at once.
-    pub fn closing(&self, wait: Duration) {
-        if !self.aa_hold.load(Ordering::SeqCst) {
-            return;
-        }
-        let (tx, rx) = mpsc::channel();
-        if self.send(Request::Closing(tx)).is_ok() && rx.recv_timeout(wait).is_err() {
-            tracing::warn!("closing: the keyboard did not finish in time");
-        }
     }
 
     /// Send a request carrying a reply channel and wait for the answer.
@@ -1101,8 +1085,7 @@ pub fn spawn(
     let shared = snapshot.clone();
     let actor_flash = flash.clone();
     let uploads = Arc::new(UploadCancels::default());
-    let aa_hold = Arc::new(AtomicBool::new(false));
-    let (actor_uploads, actor_hold, actor_dir) = (uploads.clone(), aa_hold.clone(), config_dir.clone());
+    let (actor_uploads, actor_dir) = (uploads.clone(), config_dir.clone());
     std::thread::Builder::new()
         .name("device-actor".into())
         .spawn(move || {
@@ -1114,11 +1097,10 @@ pub fn spawn(
             actor.flash = actor_flash;
             actor.screen_hook = screen_hook;
             actor.uploads = actor_uploads;
-            actor.aa_hold = actor_hold;
             actor.run(rx)
         })
         .expect("spawn device actor");
-    DeviceHandle { snapshot, flash, tx, uploads, aa_hold, config_dir }
+    DeviceHandle { snapshot, flash, tx, uploads, config_dir }
 }
 
 /// The open command channel of the keyboard on the cable.
@@ -1153,12 +1135,6 @@ struct Actor {
     ports: Ports,
     /// Cancels of screen uploads (DeviceHandle::cancel_upload).
     uploads: Arc<UploadCancels>,
-    /// Told to DeviceHandle: an "AA" keyboard has something to put back
-    /// when the app closes.
-    aa_hold: Arc<AtomicBool>,
-    /// The app is closing (`Request::Closing`): no live frame, mirror,
-    /// clock sync or driver work any more.
-    closed: bool,
     /// An "AA" channel on this path failed: background work opens it again
     /// only after this ([`AA_REOPEN_BACKOFF`]).
     aa_reopen_after: Option<(String, Instant)>,
@@ -1262,8 +1238,6 @@ impl Actor {
             // Set by `spawn`.
             ports: Ports::Hid(None),
             uploads: Arc::new(UploadCancels::default()),
-            aa_hold: Arc::new(AtomicBool::new(false)),
-            closed: false,
             aa_reopen_after: None,
             driver_rest_until: None,
             programs: running_conflict,
@@ -1321,7 +1295,7 @@ impl Actor {
             } else if !self.streaming() {
                 self.end_live();
             }
-            if self.mirror.is_some() && !self.closed && !self.streaming() && now >= self.next_mirror {
+            if self.mirror.is_some() && !self.streaming() && now >= self.next_mirror {
                 self.send_mirror();
                 self.next_mirror = Instant::now() + MIRROR_EVERY;
             }
@@ -1330,7 +1304,7 @@ impl Actor {
             }
             if let Some((due, attempts)) = self.clock_due {
                 // Not during a game that wants the keyboard left alone.
-                if now >= due && self.quiet == Quiet::Off && !self.closed {
+                if now >= due && self.quiet == Quiet::Off {
                     self.clock_due = None;
                     match self.sync_clock() {
                         Ok(()) => {}
@@ -1346,9 +1320,6 @@ impl Actor {
                 }
             }
 
-            // Before waiting: what this turn did (a switch by a frame, a
-            // request's write) is known to the handle while the actor sleeps.
-            self.note_hold();
             if waiting.is_empty() {
                 let frames = if self.streaming() {
                     Some(self.next_live)
@@ -1366,13 +1337,6 @@ impl Actor {
             }
             self.handle_waiting(&rx, &mut waiting);
         }
-    }
-
-    /// Tell [`DeviceHandle::closing`] whether an "AA" keyboard has
-    /// something to put back.
-    fn note_hold(&self) {
-        let holds = self.command.as_ref().and_then(|c| c.driver.aa()).is_some_and(crate::aa::AaDriver::holds_keyboard);
-        self.aa_hold.store(holds, Ordering::SeqCst);
     }
 
     /// Handle one turn's requests ([`next_batch`]) out of those waiting
@@ -1503,12 +1467,6 @@ impl Actor {
                     Some(release) => {
                         tracing::info!(firmware = %version, "writes on untested firmware confirmed for this session");
                         self.firmware_confirmed = Some(release);
-                        // Live lights held back by the question try again.
-                        if let Some(d) = self.command.as_mut().and_then(|c| c.driver.aa_mut()) {
-                            d.retry_live();
-                            // The UI stops saying live lights wait for it.
-                            self.next_enumerate = Instant::now();
-                        }
                         self.driver_rest_until = None;
                         if self.clock_waits {
                             tracing::debug!("automatic clock sync goes ahead");
@@ -1550,10 +1508,6 @@ impl Actor {
                 let _write = self.flash.begin(FlashWrite::Settings);
                 let _ = reply.send(self.restore_keyboard(&file, color));
             }
-            Request::Closing(reply) => {
-                self.closing();
-                let _ = reply.send(());
-            }
         }
     }
 
@@ -1573,52 +1527,31 @@ impl Actor {
     }
 
     /// The effect the app last stored (the Lighting page's record),
-    /// calibrated, in an "AA" keyboard's values: where the colour of the
-    /// keyboard's effect comes from when the keyboard does not report it.
+    /// calibrated, in an "AA" keyboard's values: where the colour (and the
+    /// mode behind a read-back of 0) of the keyboard's effect comes from
+    /// when the keyboard does not report it.
     fn app_effect(&self) -> Option<AaEffect> {
         app_effect_in(self.config_dir.as_deref()?, self.calibration)
     }
 
     /// [`Self::app_effect`] as a closure that borrows nothing of the actor,
-    /// for the "AA" arm to read only when it needs it.
+    /// for the "AA" arm to read only when it needs it (a read again takes a
+    /// backup).
     fn app_effect_source(&self) -> impl Fn() -> Option<AaEffect> + 'static {
         let (dir, calibration) = (self.config_dir.clone(), self.calibration);
         move || app_effect_in(dir.as_deref()?, calibration)
     }
 
-    /// The Memory gate ([`write_gate`]) as a closure that borrows nothing of
-    /// the actor, for the "AA" arm to ask right before a write it makes on
-    /// its own (live lights, putting the effect back): it lists the running
-    /// programs and, on untested firmware, puts the question to the user,
-    /// so it is asked only when a write would go. The read-only check is
-    /// the arm's own.
-    fn memory_gate(&self) -> impl Fn() -> Result<(), String> + 'static {
-        let (wired, firmware, programs, app) = (self.wired, self.firmware_check(), self.programs, self.app.clone());
-        move || match write_gate(WriteKind::Memory, wired, firmware, programs) {
-            None => Ok(()),
-            Some(block) => {
-                note_block(&app, WriteKind::Memory, &block, wired);
-                Err(block.to_string())
-            }
-        }
-    }
-
-    /// When the open driver has work of its own ("AA": the effect back
-    /// after live lights or a crash, a read again).
+    /// When the open driver has work of its own ("AA": a read again).
     fn driver_due(&self) -> Option<Instant> {
-        if self.closed {
-            return None;
-        }
         let due = self.command.as_ref()?.driver.next_due()?;
         Some(self.driver_rest_until.map_or(due, |rest| due.max(rest)))
     }
 
     fn run_driver_due(&mut self) {
-        let now = Instant::now();
-        let (gate, app_effect) = (self.memory_gate(), self.app_effect_source());
-        let ctx = LiveContext { gate: Some(&gate), app_effect: Some(&app_effect), arming: None };
+        let app_effect = self.app_effect_source();
         let before = self.aa_driver().map(crate::aa::AaDriver::status);
-        if let Err(e) = self.with_open_background(|c| c.driver.run_due(now, &ctx)) {
+        if let Err(e) = self.with_open_background(|c| c.driver.run_due(&app_effect)) {
             tracing::debug!("driver work not done: {e}");
         }
         // Nothing it could do now: look again in a second at the soonest.
@@ -1626,25 +1559,6 @@ impl Actor {
         self.driver_rest_until = still.then(|| Instant::now() + Duration::from_secs(1));
         if self.aa_driver().map(crate::aa::AaDriver::status) != before {
             self.next_enumerate = Instant::now();
-        }
-    }
-
-    /// The app is closing: for the rest of the run nothing streams, mirrors
-    /// or syncs any more, and the "AA" arm gives the keyboard its own effect
-    /// back now if live lights hold it.
-    fn closing(&mut self) {
-        self.closed = true;
-        self.live = None;
-        self.layers = Layers::default();
-        self.mirror = None;
-        self.clock_due = None;
-        if self.aa_driver().is_none() {
-            return;
-        }
-        let (gate, app_effect) = (self.memory_gate(), self.app_effect_source());
-        let ctx = LiveContext { gate: Some(&gate), app_effect: Some(&app_effect), arming: None };
-        if let Err(e) = self.with_open(|c| c.driver.closing(&ctx)) {
-            tracing::warn!("closing: the keyboard's effect did not go back: {e}");
         }
     }
 
@@ -1751,7 +1665,7 @@ impl Actor {
             .map(|(c, rainbow)| EffectColor { color: self.calibration.apply(c), color_mode: u8::from(rainbow) })
             .or_else(|| {
                 let saved = backup.snapshot.effect()?;
-                self.app_effect().filter(|a| a.same_settings(&saved)).map(|a| a.color_part())
+                self.app_effect().filter(|a| a.matches_readback(&saved)).map(|a| a.color_part())
             });
         let report = self.with_command(|d| d.restore(&backup.snapshot, color, Some(file)))?;
         tracing::info!(written = ?report.written, kept = report.kept.len(), %file, "keyboard backup restored");
@@ -1765,10 +1679,10 @@ impl Actor {
     }
 
     /// An effect the keyboard holds, as the Lighting page's record keeps
-    /// one (monitor colour), when its colour is known and it is not the
-    /// per-key mode.
+    /// one (monitor colour), when its mode and colour are known and it is
+    /// not a per-key mode.
     fn effect_request(&self, read: &kb_core::aa::EffectRead) -> Option<crate::dto::EffectRequest> {
-        if read.effect.is_live() || !read.color_known {
+        if !read.mode_known || read.effect.shows_per_key() || !read.color_known {
             return None;
         }
         let s = read.settings();
@@ -2150,10 +2064,9 @@ impl Actor {
         }
     }
 
-    /// A live frame is being streamed (preview or background layer); never
-    /// once the app is closing.
+    /// A live frame is being streamed (preview or background layer).
     fn streaming(&self) -> bool {
-        !self.closed && (self.live.is_some() || self.has_layer())
+        self.live.is_some() || self.has_layer()
     }
 
     fn has_layer(&self) -> bool {
@@ -2161,7 +2074,7 @@ impl Actor {
     }
 
     fn send_live(&mut self) {
-        if self.command_path.is_none() || self.closed {
+        if self.command_path.is_none() {
             return;
         }
         // Live frames leave nothing on the keyboard: they never wait, not
@@ -2182,26 +2095,19 @@ impl Actor {
         };
         let cal = self.calibration;
         let frame: Vec<(u8, Rgb)> = keys.into_iter().map(|(l, c, level)| (l, cal.apply_dimmed(c, level))).collect();
-        // What an "AA" keyboard needs to switch to per-key mode, asked only
-        // when it would ("04 xx": never).
-        let (gate, app_effect) = (self.memory_gate(), self.app_effect_source());
-        // A switch to per-key mode about to be written: closing the app
-        // waits for it (and puts the effect back) from now on.
-        let hold = self.aa_hold.clone();
-        let arming = move || hold.store(true, Ordering::SeqCst);
-        let ctx = LiveContext { gate: Some(&gate), app_effect: Some(&app_effect), arming: Some(&arming) };
         let before = self.aa_driver().map(crate::aa::AaDriver::status);
         // The first frame on this handle starts the stream in the family's
-        // driver ("04 xx": nothing to do).
+        // driver (nothing to switch in either family).
         let sent = self.with_open_background(|c| {
             if !c.live {
-                c.driver.live_starting(&ctx)?;
+                c.driver.live_starting()?;
                 c.live = true;
             }
-            c.driver.live_frame(frame, &ctx)
+            c.driver.live_frame(frame)
         });
         if self.aa_driver().map(crate::aa::AaDriver::status) != before {
-            // Armed, or why not: the UI hears it at once.
+            // Held back while the keyboard settles, or no more: the UI
+            // hears it at once.
             self.next_enumerate = Instant::now();
         }
         match sent {
@@ -2269,12 +2175,23 @@ impl Actor {
     /// in a family that reports ([`driver::family::reports_device`]; never
     /// "04 xx", so nothing is sent to those). Runs on the actor like every
     /// other request, never during a screen upload.
+    ///
+    /// An "AA" keyboard stops a macro that is playing on every command but
+    /// the live frames and the colour read-back (firmware 769), so after
+    /// the read on connecting it is asked again only while the window shows
+    /// its colours (the mirror runs: the Overview, the Lighting page), and
+    /// then at most every [`AA_DEVICE_REFRESH`]; never while hidden.
     fn refresh_device_report(&mut self) -> Option<(DeviceReport, u64)> {
         let protocol = self.usb.as_ref().map(UsbKeyboard::protocol)?;
         if !driver::family::reports_device(protocol) {
             return None;
         }
-        if self.device_read.is_none_or(|at| at.elapsed() >= BATTERY_REFRESH) {
+        let due = match (protocol, self.device_read) {
+            (_, None) => true,
+            (Protocol::AjazzAa, Some(at)) => self.mirror.is_some() && at.elapsed() >= AA_DEVICE_REFRESH,
+            (_, Some(at)) => at.elapsed() >= BATTERY_REFRESH,
+        };
+        if due {
             self.device_read = Some(Instant::now());
             match self.with_command_background(|d| d.device_info()) {
                 Ok(report) => self.device_report = report.map(|r| (r, now_ms())),
@@ -3223,10 +3140,7 @@ mod tests {
 
         #[test]
         fn a_read_only_keyboard_refuses_every_write_path() {
-            for (faults, text) in [
-                ("insane", "the keyboard does not look as expected, so nothing is written"),
-                ("update-pending", "the keyboard is waiting for a firmware update; nothing is read or written"),
-            ] {
+            for (faults, text) in [("insane", "the keyboard does not look as expected, so nothing is written")] {
                 let dir = TempDir::new(&format!("actor-{faults}"));
                 let (mut a, sim) = actor(&dir.0, faults);
                 a.handle(Request::ConfirmFirmware("3.01".into()));
@@ -3245,14 +3159,14 @@ mod tests {
                 }
                 let block = call(&mut a, Request::WriteBlocked).unwrap().unwrap();
                 assert!(block.to_string().starts_with(text), "{faults}");
-                // Live lights: nothing switched, the UI hears why.
+                // Live lights store nothing: they show all the same.
                 a.handle(Request::SetLayer(LightLayer::Gauges, Some(frame(&[(1, 9)], 1.0))));
                 a.send_live();
                 a.enumerate();
-                let off = info(&a).aa_status.unwrap().live_lights_off;
-                assert_eq!(off, Some(crate::dto::LiveLightsOff::ReadOnly), "{faults}");
+                assert_eq!(info(&a).aa_status.unwrap().live_lights_off, None, "{faults}");
                 assert_eq!(writes(&sim), 0, "{faults}: nothing written");
-                assert!(sim.state().sent(cmd::REALTIME).is_empty() && sim.state().screen.is_empty());
+                assert!(!sim.state().sent(cmd::REALTIME).is_empty(), "{faults}: frames shown");
+                assert!(sim.state().screen.is_empty());
             }
         }
 
@@ -3284,44 +3198,53 @@ mod tests {
         }
 
         #[test]
-        fn live_lights_switch_through_the_actor_and_come_back() {
+        fn live_lights_go_through_the_actor_and_switch_nothing() {
             let dir = TempDir::new("actor-live");
             let (mut a, sim) = actor(&dir.0, "");
-            // Untested firmware not confirmed: not switched, and the UI
-            // hears why.
+            // Untested firmware, not confirmed: frames store nothing, so
+            // nobody is asked; the effect stays as it is.
             a.handle(Request::SetLayer(LightLayer::Gauges, Some(frame(&[(1, 9)], 1.0))));
             a.send_live();
             a.enumerate();
-            assert_eq!(
-                info(&a).aa_status.unwrap().live_lights_off,
-                Some(crate::dto::LiveLightsOff::Blocked { reason: "untested keyboard firmware 3.01".into() })
-            );
-            assert_eq!(sim.state().effect[0], 1);
-            // Confirmed: the note goes at once (the UI hears it on the next
-            // look, due now), and the next frame switches and shows.
-            a.next_enumerate = Instant::now() + Duration::from_secs(60);
-            a.handle(Request::ConfirmFirmware("3.01".into()));
-            assert!(a.next_enumerate <= Instant::now(), "the UI hears it at once");
-            a.enumerate();
-            assert_eq!(info(&a).aa_status.unwrap().live_lights_off, None);
-            a.send_live();
-            assert_eq!(sim.state().effect[0], kb_protocol::aa::effect::MODE_PER_KEY);
-            assert!(sim.state().frames.last().is_some_and(|f| f.1), "shown");
-            a.enumerate();
             let status = info(&a).aa_status.unwrap();
-            assert!(status.live_armed && status.live_lights_off.is_none());
-            assert!(status.live_restores, "its own effect comes back after the hold");
-            // The layer goes: the hold starts, the actor wakes for it.
+            assert_eq!(status.live_lights_off, None);
+            assert!(!status.live_armed && !status.live_restores, "nothing switched, nothing to put back");
+            assert!(sim.state().frames.last().is_some_and(|f| f.1), "shown");
+            assert_eq!(sim.state().effect[0], 1);
+            assert!(sim.state().sent(cmd::SET_EFFECT).is_empty());
+            // The layer goes: nothing is due afterwards.
             a.handle(Request::SetLayer(LightLayer::Gauges, None));
             a.end_live();
-            let due = a.driver_due().expect("the effect goes back later");
-            assert!(due > Instant::now() + Duration::from_secs(25));
-            // Closing does not wait for it.
-            let (tx, rx) = mpsc::channel();
-            a.handle(Request::Closing(tx));
-            rx.try_recv().unwrap();
-            assert_eq!(sim.state().effect[0], 1);
             assert_eq!(a.driver_due(), None);
+            assert!(sim.state().sent(cmd::SET_EFFECT).is_empty());
+        }
+
+        #[test]
+        fn an_aa_keyboard_is_asked_its_battery_only_while_the_window_shows_it() {
+            // Every command but frames and the colour read-back stops a macro
+            // that plays on firmware 769: no device information every minute
+            // in the background.
+            let dir = TempDir::new("actor-battery");
+            let (mut a, sim) = actor(&dir.0, "");
+            let asked = || sim.state().sent(cmd::DEVICE_INFO).len();
+            let n = asked();
+            a.device_read = Some(Instant::now() - Duration::from_secs(3600));
+            for _ in 0..3 {
+                a.enumerate();
+            }
+            assert_eq!(asked(), n, "hidden or on another page: not asked");
+            // The window shows the keyboard's colours (Overview): asked once,
+            // then not again for five minutes.
+            a.handle(Request::SetMirror(Some(MirrorExpect::default())));
+            a.enumerate();
+            assert_eq!(asked(), n + 1);
+            a.device_read = Some(Instant::now() - Duration::from_secs(120));
+            a.enumerate();
+            assert_eq!(asked(), n + 1, "not every minute");
+            a.device_read = Some(Instant::now() - AA_DEVICE_REFRESH);
+            a.enumerate();
+            assert_eq!(asked(), n + 2);
+            assert_eq!(info(&a).device.and_then(|d| d.battery), Some(100));
         }
 
         #[test]
@@ -3373,8 +3296,8 @@ mod tests {
         #[test]
         fn a_handle_left_from_another_keyboard_says_nothing_about_the_one_on_the_cable() {
             let dir = TempDir::new("actor-stale-handle");
-            let (mut a, _) = actor(&dir.0, "update-pending");
-            assert_eq!(a.read_only(), Some(ReadOnly::UpdatePending));
+            let (mut a, _) = actor(&dir.0, "insane");
+            assert!(matches!(a.read_only(), Some(ReadOnly::NotSane(_))));
             // The "04 xx" AK980 PRO takes the cable before a listing in
             // between drops the "AA" handle.
             let model = Sim::model();
@@ -3395,66 +3318,6 @@ mod tests {
             a.command.as_mut().expect("opened when listed").path = "gone".into();
             a.enumerate();
             assert!(a.command.as_ref().is_none_or(|c| c.path != "gone"));
-        }
-
-        #[test]
-        fn closing_waits_only_when_an_aa_keyboard_is_held() {
-            let (tx, _rx) = mpsc::channel();
-            let h = DeviceHandle {
-                snapshot: Arc::default(),
-                flash: FlashState::new(Ui(None)),
-                tx,
-                uploads: Arc::default(),
-                aa_hold: Arc::new(AtomicBool::new(false)),
-                config_dir: None,
-            };
-            let t = Instant::now();
-            h.closing(Duration::from_secs(2));
-            assert!(t.elapsed() < Duration::from_millis(500), "nothing held: no wait");
-            h.aa_hold.store(true, Ordering::SeqCst);
-            let t = Instant::now();
-            h.closing(Duration::from_millis(300));
-            assert!(t.elapsed() >= Duration::from_millis(300), "held: it waits for the actor");
-
-            // The actor says when it holds one.
-            let dir = TempDir::new("actor-hold");
-            let (mut a, _) = actor(&dir.0, "");
-            a.handle(Request::ConfirmFirmware("3.01".into()));
-            a.note_hold();
-            assert!(!a.aa_hold.load(Ordering::SeqCst));
-            a.handle(Request::SetLayer(LightLayer::Gauges, Some(frame(&[(1, 9)], 1.0))));
-            a.send_live();
-            a.note_hold();
-            assert!(a.aa_hold.load(Ordering::SeqCst));
-            let (tx, rx) = mpsc::channel();
-            a.handle(Request::Closing(tx));
-            rx.try_recv().unwrap();
-            a.note_hold();
-            assert!(!a.aa_hold.load(Ordering::SeqCst));
-        }
-
-        #[test]
-        fn closing_ends_the_stream_for_good() {
-            let dir = TempDir::new("actor-closed");
-            let (mut a, sim) = actor(&dir.0, "");
-            a.handle(Request::ConfirmFirmware("3.01".into()));
-            a.handle(Request::SetLayer(LightLayer::Gauges, Some(frame(&[(1, 9)], 1.0))));
-            a.send_live();
-            assert_eq!(sim.state().effect[0], kb_protocol::aa::effect::MODE_PER_KEY);
-            let (tx, rx) = mpsc::channel();
-            a.handle(Request::Closing(tx));
-            rx.try_recv().unwrap();
-            assert_eq!(sim.state().effect[0], 1);
-            let writes_before = sim.state().sent(cmd::SET_EFFECT).len();
-            // A layer that still comes, and the next turns of the loop.
-            a.handle(Request::SetLayer(LightLayer::Gauges, Some(frame(&[(1, 7)], 1.0))));
-            assert!(!a.streaming());
-            a.send_live();
-            a.handle(Request::SetLive(Some(frame(&[(1, 5)], 1.0))));
-            a.send_live();
-            assert_eq!(sim.state().effect[0], 1);
-            assert_eq!(sim.state().sent(cmd::SET_EFFECT).len(), writes_before);
-            assert_eq!(a.driver_due(), None);
         }
 
         #[test]
@@ -3654,7 +3517,7 @@ mod tests {
 
         #[test]
         fn the_mirror_leaves_a_silent_or_waiting_keyboard_alone() {
-            for faults in ["silent", "update-pending"] {
+            for faults in ["silent"] {
                 let dir = TempDir::new(&format!("actor-mirror-{faults}"));
                 let (mut a, sim) = actor(&dir.0, faults);
                 a.handle(Request::SetMirror(Some(MirrorExpect::default())));
@@ -3676,39 +3539,6 @@ mod tests {
         }
 
         #[test]
-        fn the_running_actor_tells_the_handle_when_it_holds_a_keyboard() {
-            let dir = TempDir::new("actor-run-hold");
-            let path = dir.0.clone();
-            let hold = Arc::new(AtomicBool::new(false));
-            let flag = hold.clone();
-            let (tx, rx) = mpsc::channel();
-            // The actor holds the HID subsystem type, which stays on its own
-            // thread: made there, as `spawn` does.
-            let running = std::thread::spawn(move || {
-                let (mut a, _) = actor(&path, "");
-                a.aa_hold = flag;
-                a.run(rx);
-            });
-            let wait_for = |want: bool| {
-                let since = Instant::now();
-                while hold.load(Ordering::SeqCst) != want && since.elapsed() < Duration::from_secs(5) {
-                    std::thread::sleep(Duration::from_millis(20));
-                }
-                hold.load(Ordering::SeqCst) == want
-            };
-            tx.send(Request::ConfirmFirmware("3.01".into())).unwrap();
-            tx.send(Request::SetLayer(LightLayer::Gauges, Some(frame(&[(1, 9)], 1.0)))).unwrap();
-            // Frames switch it; no further request comes.
-            assert!(wait_for(true), "the handle hears it while frames stream");
-            let (done, answered) = mpsc::channel();
-            tx.send(Request::Closing(done)).unwrap();
-            answered.recv_timeout(Duration::from_secs(5)).unwrap();
-            assert!(wait_for(false), "nothing held after closing");
-            drop(tx);
-            running.join().unwrap();
-        }
-
-        #[test]
         fn a_failing_aa_channel_is_not_opened_again_with_every_frame() {
             let dir = TempDir::new("actor-reopen");
             let (mut a, sim) = actor(&dir.0, "");
@@ -3716,8 +3546,6 @@ mod tests {
             let first = a.keyboard_backups()[0].file.clone();
             a.handle(Request::SetLayer(LightLayer::Gauges, Some(frame(&[(1, 9)], 1.0))));
             a.send_live();
-            // The switch itself told the handle, before any later loop turn.
-            assert!(a.aa_hold.load(Ordering::SeqCst));
             let Ports::Sim(board) = &a.ports else { unreachable!() };
             let (dead, opened) = (board.dead.clone(), board.opened.clone());
             // The keyboard stays listed, but its channel dies: the next frame

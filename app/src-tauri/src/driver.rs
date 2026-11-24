@@ -20,7 +20,7 @@
 //! builds a simulated "AA" keyboard (`KEYMOTION_SIM`, sim.rs), in which
 //! case no HID device is enumerated or opened at all.
 
-use crate::aa::{AaDriver, AaPort, AaTarget, LiveContext};
+use crate::aa::{AaDriver, AaPort, AaTarget};
 use crate::device::{Expected, MirrorExpect};
 use crate::dto::DeviceReport;
 use kb_core::aa::{AaEffect, AaError, EffectColor, RestoreReport, UsbIdentity};
@@ -205,23 +205,25 @@ impl<C: FeaturePort> Driver<C> {
 
     /// Before the first frame of a live stream on this handle (the actor
     /// calls it once, right before that frame; again only after
-    /// [`Self::live_stopped`]). "04 xx": nothing, its real-time frames
-    /// show over any effect. "AA" shows them only in the per-key modes: it
-    /// switches the keyboard to one here (plan K-4), if `ctx` allows.
-    pub fn live_starting(&mut self, ctx: &LiveContext<'_>) -> Result<()> {
+    /// [`Self::live_stopped`]). Both families show real-time frames over
+    /// any effect: nothing is switched.
+    pub fn live_starting(&mut self) -> Result<()> {
         match self {
             Self::Ff13(_) => Ok(()),
-            Self::Aa(d) => d.live_starting(ctx),
+            Self::Aa(d) => {
+                d.live_starting();
+                Ok(())
+            }
         }
     }
 
     /// One live frame (LED colours, calibrated and dimmed): RAM only, gone
-    /// once the stream stops. "AA": dropped while the keyboard may not be
-    /// switched to per-key mode (the UI says why).
-    pub fn live_frame(&mut self, frame: Vec<(u8, Rgb)>, ctx: &LiveContext<'_>) -> Result<()> {
+    /// once the stream stops. "AA": held back while the keyboard ignores
+    /// writes (just switched on or reset; the UI says so).
+    pub fn live_frame(&mut self, frame: Vec<(u8, Rgb)>) -> Result<()> {
         match self {
             Self::Ff13(d) => Ok(d.realtime_frame(frame)?),
-            Self::Aa(d) => d.live_frame(frame, ctx),
+            Self::Aa(d) => d.live_frame(frame),
         }
     }
 
@@ -229,9 +231,8 @@ impl<C: FeaturePort> Driver<C> {
     /// frame is due any more (the preview and every light layer are gone,
     /// or a game asked for quiet). Called once per stream, on the same
     /// handle; not called when the handle was dropped meanwhile (the cable
-    /// went, a transport error). "04 xx": nothing, the keyboard goes back
-    /// to its saved effect by itself. "AA": the user's effect goes back
-    /// after a hold ([`crate::aa::LIVE_HOLD`], [`Self::run_due`]).
+    /// went, a transport error). Both families go back to their saved
+    /// effect by themselves ("AA": about 5 s after the last frame).
     pub fn live_stopped(&mut self) -> Result<()> {
         match self {
             Self::Ff13(_) => Ok(()),
@@ -242,8 +243,8 @@ impl<C: FeaturePort> Driver<C> {
         }
     }
 
-    /// When the driver has something to do on its own ("AA": put the
-    /// user's effect back, read the keyboard again); "04 xx": never.
+    /// When the driver has something to do on its own ("AA": read the
+    /// keyboard again); "04 xx": never.
     pub fn next_due(&self) -> Option<Instant> {
         match self {
             Self::Ff13(_) => None,
@@ -251,20 +252,12 @@ impl<C: FeaturePort> Driver<C> {
         }
     }
 
-    /// Do what [`Self::next_due`] said.
-    pub fn run_due(&mut self, now: Instant, ctx: &LiveContext<'_>) -> Result<()> {
+    /// Do what [`Self::next_due`] said; `app_effect` (the app's lighting
+    /// record) fills in a backup a read takes.
+    pub fn run_due(&mut self, app_effect: &dyn Fn() -> Option<kb_core::aa::AaEffect>) -> Result<()> {
         match self {
             Self::Ff13(_) => Ok(()),
-            Self::Aa(d) => d.run_due(now, ctx),
-        }
-    }
-
-    /// The app is closing: put the user's effect back now if live lights
-    /// hold the keyboard in per-key mode ("AA"; the hold is not waited).
-    pub fn closing(&mut self, ctx: &LiveContext<'_>) -> Result<()> {
-        match self {
-            Self::Ff13(_) => Ok(()),
-            Self::Aa(d) => d.closing(ctx),
+            Self::Aa(d) => d.run_due(app_effect),
         }
     }
 
@@ -770,8 +763,7 @@ mod tests {
         assert_eq!(a, b, "clock");
 
         let frame = vec![(1, [255, 0, 0]), (2, [0, 0, 255])];
-        let (a, b) =
-            both(|d| d.live_frame(frame.clone(), &LiveContext::default()), |s| s.realtime_frame(frame.clone()));
+        let (a, b) = both(|d| d.live_frame(frame.clone()), |s| s.realtime_frame(frame.clone()));
         assert_eq!(a, b, "live frame");
     }
 
@@ -779,7 +771,7 @@ mod tests {
     fn the_ff13_hooks_send_nothing() {
         let mut d = Driver::Ff13(SonixFf13::new(Fake::default()));
         assert_eq!(d.protocol(), Protocol::SonixFf13);
-        d.live_starting(&LiveContext::default()).unwrap();
+        d.live_starting().unwrap();
         d.live_stopped().unwrap();
         assert!(d.device_info().unwrap().is_none(), "no device report");
         let Driver::Ff13(d) = d else { unreachable!("an \"04 xx\" driver") };
@@ -832,7 +824,7 @@ mod tests {
 
         // A refused real-time frame is noise; it comes back as before.
         let mut d = Driver::Ff13(SonixFf13::new(Fake { refuse_live: true, ..Fake::default() }));
-        let e = d.live_frame(vec![(1, [1, 2, 3])], &LiveContext::default()).unwrap_err();
+        let e = d.live_frame(vec![(1, [1, 2, 3])]).unwrap_err();
         assert!(e.is_noise(), "{e}");
         assert_eq!(e.to_string(), "keyboard refused 0x20 (status 0xFF)");
 

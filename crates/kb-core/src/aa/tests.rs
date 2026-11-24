@@ -293,8 +293,8 @@ fn the_sanity_gate() {
         "remembered effect mode 128 does not read back as 1",
     );
     fails(&|s| s.keymap.0.truncate(504), usb, "base layer read is 504 bytes");
-    fails(&|s| s.macro_table.0[0..4].copy_from_slice(&100u32.to_le_bytes()), usb, "macro 0");
-    fails(&|s| s.macro_table.0[8..12].copy_from_slice(&5000u32.to_le_bytes()), usb, "macro 2");
+    fails(&|s| s.macro_table.0[0..4].copy_from_slice(&100u32.to_le_bytes()), usb, "macro slot 0 at");
+    fails(&|s| s.macro_table.0[8..12].copy_from_slice(&5000u32.to_le_bytes()), usb, "macro slot 2 at");
     // Levels other tools leave (0–6), any levels when off, per-key mode and
     // FUNC_V2 pages are all plausible.
     for (mode, brightness, speed) in [(1, 0, 0), (1, 6, 6), (0, 0, 9), (128, 1, 5)] {
@@ -387,7 +387,7 @@ fn erased_or_impossible_macro_pointers_do_not_overflow() {
     sim.state().macros[..4].copy_from_slice(&0xFFFF_FFF0u32.to_le_bytes());
     k.read_all().unwrap();
     assert!(!k.is_sane());
-    assert!(k.sanity_reasons().iter().any(|r| r.contains("macro 0")), "{:?}", k.sanity_reasons());
+    assert!(k.sanity_reasons().iter().any(|r| r.contains("macro slot 0 at")), "{:?}", k.sanity_reasons());
 }
 
 #[test]
@@ -1018,7 +1018,7 @@ fn a_macro_write_that_fails_part_way_closes_the_gate() {
     let err = k.write_macros(&[a_macro(), long]).unwrap_err();
     assert!(matches!(err, AaError::Readback { what: "macros" }), "{err}");
     assert!(!k.is_sane());
-    assert!(k.sanity_reasons().iter().any(|r| r.contains("macro 1 at address 412")), "{:?}", k.sanity_reasons());
+    assert!(k.sanity_reasons().iter().any(|r| r.contains("macro slot 1 at address 412")), "{:?}", k.sanity_reasons());
 }
 
 #[test]

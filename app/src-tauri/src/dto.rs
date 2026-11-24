@@ -307,27 +307,32 @@ pub enum ReadOnlyReason {
         read_failed: bool,
     },
     /// A firmware update was left unfinished: AJAZZ's tool has to finish it.
+    /// No longer sent: firmware 769 has no such field.
     UpdatePending,
     /// The backup of its settings could not be saved (`error`: English).
     NoBackup { error: String },
 }
 
 /// Why live lights (gauges, music, games, agents, previews) do not show on
-/// the "AA" keyboard: it shows them only in per-key mode, which the app
-/// switches to and back (plan K-4).
+/// the "AA" keyboard. It shows them in any effect mode, and nothing is
+/// switched or put back: only `blocked` is sent, for the moment the
+/// keyboard ignores writes (just switched on or reset). The other kinds are
+/// no longer sent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 #[ts(export)]
 pub enum LiveLightsOff {
-    /// The colour of the keyboard's effect is not known, so it could not be
-    /// put back afterwards: setting the lighting once in Keymotion fixes it.
+    /// No longer sent.
+    #[allow(dead_code)]
     ColorUnknown,
-    /// The keyboard is read-only ([`ReadOnlyReason`]).
+    /// No longer sent: frames store nothing, so a read-only keyboard shows
+    /// them too.
+    #[allow(dead_code)]
     ReadOnly,
-    /// A write was refused (`reason`: the backend error, such as "untested
-    /// keyboard firmware 3.01" or "more than one keyboard on the USB cable").
+    /// Frames are held back for a moment (`reason`: the backend's text).
     Blocked { reason: String },
-    /// The switch failed (`error`: the backend error).
+    /// No longer sent.
+    #[allow(dead_code)]
     Failed { error: String },
 }
 
@@ -341,11 +346,11 @@ pub struct AaStatus {
     pub read_only: Option<ReadOnlyReason>,
     /// Set: live lights do not show on it, and why.
     pub live_lights_off: Option<LiveLightsOff>,
-    /// Live lights hold it in per-key mode now.
+    /// Always false: live lights switch nothing (firmware 769 shows them in
+    /// any effect mode).
     pub live_armed: bool,
-    /// Live lights switched it to per-key mode: its own effect comes back
-    /// about 30 s after they end. False while it was in a live mode before
-    /// (per-key lighting saved from Keymotion): nothing goes back.
+    /// Always false: nothing is put back after live lights (the keyboard
+    /// shows its own effect again by itself about 5 s after the last frame).
     pub live_restores: bool,
     /// Replies nobody asked for keep coming: another program (AJAZZ's web
     /// page?) seems to talk to the keyboard. Nothing is blocked.
@@ -453,8 +458,8 @@ pub struct DeviceReport {
     pub charge: Option<ChargeState>,
     /// Frames its screen takes (the "AA" `tftMaxFrames`).
     pub screen_max_frames: Option<u32>,
-    /// A firmware update was left unfinished: nothing may be written until
-    /// AJAZZ's tool completes it (the "AA" `firmwareStatus` 1).
+    /// Always false: firmware 769 has no "waiting for an update" field (the
+    /// WebHID driver's `firmwareStatus` is a fixed byte there).
     pub update_pending: bool,
 }
 

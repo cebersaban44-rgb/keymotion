@@ -338,9 +338,9 @@ impl std::fmt::Display for Reason {
                 write!(f, "the remembered effect mode {mode} does not read back as {read}")
             }
             Self::MacroBlock { slot, addr } => {
-                write!(f, "macro {slot} at address {addr} is outside the macro memory or unreadable")
+                write!(f, "macro slot {slot} at address {addr} is outside the macro memory or unreadable")
             }
-            Self::StrayBlock { slot } => write!(f, "a stored block for macro {slot} is not in the table"),
+            Self::StrayBlock { slot } => write!(f, "macro slot {slot}: a stored block is not in the table"),
         }
     }
 }
