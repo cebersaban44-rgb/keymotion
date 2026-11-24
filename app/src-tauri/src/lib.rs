@@ -810,18 +810,29 @@ impl autoprofile::Host for AutoHost {
         let device = self.app.state::<Arc<DeviceHandle>>().inner().clone();
         let mut writer = DeviceWriter { device: &device, config_dir: self.app.path().app_config_dir().ok() };
         let mut written = 0;
+        let mut skipped = false;
         // Never the screen: that is a library upload, on the live budget.
         for part in [ProfilePart::Lighting, ProfilePart::Keymap, ProfilePart::Macros] {
             if !profile.has(part) {
                 continue;
             }
             let current = profile_current(&self.app, &model)?;
-            if profiles::load_part(profile, part, &current, &mut writer)? == PartLoaded::Written {
-                written += 1;
+            match profiles::load_part(profile, part, &current, &mut writer)? {
+                PartLoaded::Written | PartLoaded::Kept => written += 1,
+                PartLoaded::Same => {}
+                PartLoaded::Skipped => skipped = true,
             }
         }
         tray::refresh(&self.app);
+        // Said once (then held for this keyboard: autoprofile.rs).
+        if skipped {
+            return Err(profiles::ERR_MACROS_KEPT.into());
+        }
         Ok(written)
+    }
+
+    fn on_cable(&self) -> Option<String> {
+        usb_model(&self.app)
     }
 
     fn game(&self, front: &kb_winsys::foreground::Front) -> Option<String> {
@@ -1061,12 +1072,13 @@ async fn apply_keymap(
     device: Device<'_>,
     layer: KeymapLayer,
     assignments: Vec<KeyAssignment>,
+    base: Option<String>,
 ) -> Result<KeymapState, String> {
     tracing::debug!(?layer, keys = assignments.len(), "ipc: apply_keymap");
     let entries = assignments.into_iter().map(|a| (a.led, a.action.into())).collect();
     let handle = device.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        handle.call(|reply| Request::ApplyKeymap { layer: layer.into(), entries, reply })
+        handle.call(|reply| Request::ApplyKeymap { layer: layer.into(), entries, base, reply })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1086,11 +1098,15 @@ fn macros_state(device: Device<'_>, record_id: String) -> MacrosState {
 /// Slot `i` is macro `i`; `null` leaves a slot unused so later slots keep
 /// their numbers.
 #[tauri::command]
-async fn apply_macros(device: Device<'_>, slots: Vec<Option<MacroInfo>>) -> Result<MacrosState, String> {
+async fn apply_macros(
+    device: Device<'_>,
+    slots: Vec<Option<MacroInfo>>,
+    base: Option<String>,
+) -> Result<MacrosState, String> {
     tracing::debug!(slots = slots.len(), "ipc: apply_macros");
     let slots = slots.into_iter().map(|m| m.map(Into::into)).collect();
     let handle = device.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || handle.call(|reply| Request::ApplyMacros { slots, reply }))
+    tauri::async_runtime::spawn_blocking(move || handle.call(|reply| Request::ApplyMacros { slots, base, reply }))
         .await
         .map_err(|e| e.to_string())?
         .map(|m| MacrosState::from(&m))
@@ -1512,13 +1528,26 @@ fn record_of(keyboards: &[KeyboardInfo], model_id: &str) -> String {
 /// ([`record_of`]). Editors' unsaved drafts are not in it. A profile still
 /// fits by model id, so it goes to either family's keyboards.
 pub(crate) fn profile_current(app: &AppHandle, model_id: &str) -> Result<profiles::Current, String> {
-    let (keymap, macros, record) = {
+    let (keymap, macros, kept, record) = {
         let device = app.state::<Arc<DeviceHandle>>();
         let snap = device.snapshot.lock().map_err(|_| "device state unavailable")?;
         let record = record_of(&snap.keyboards, model_id);
+        let stored = snap.keymaps.models.get(&record);
+        let both = |l: &settings::StoredLayer| l.fixed.iter().chain(&l.builtin).copied().collect::<Vec<u8>>();
+        let kept = profiles::KeptOnKeyboard {
+            base: stored.map(|k| both(&k.base)).unwrap_or_default(),
+            fn_layer: stored.map(|k| both(&k.fn_layer)).unwrap_or_default(),
+            macros: snap
+                .macros
+                .models
+                .get(&record)
+                .map(|m| m.fixed.iter().map(|f| f.slot).collect())
+                .unwrap_or_default(),
+        };
         (
-            profiles::ProfileKeymap::from_record(snap.keymaps.models.get(&record)),
+            profiles::ProfileKeymap::from_record(stored),
             snap.macros.models.get(&record).map(|m| m.slots.clone()).unwrap_or_default(),
+            kept,
             record,
         )
     };
@@ -1544,6 +1573,7 @@ pub(crate) fn profile_current(app: &AppHandle, model_id: &str) -> Result<profile
         keymap,
         macros: profiles::trimmed(macros),
         screen,
+        kept,
     })
 }
 
@@ -1736,11 +1766,11 @@ impl profiles::Writer for DeviceWriter<'_> {
         layer: kb_protocol::sonix::keymap::Layer,
         entries: Vec<(u8, kb_protocol::sonix::keymap::KeyAction)>,
     ) -> Result<(), String> {
-        self.device.call(|reply| Request::ApplyKeymap { layer, entries, reply }).map(|_| ())
+        self.device.call(|reply| Request::ApplyKeymap { layer, entries, base: None, reply }).map(|_| ())
     }
 
     fn macros(&mut self, slots: Vec<Option<settings::StoredMacro>>) -> Result<(), String> {
-        self.device.call(|reply| Request::ApplyMacros { slots, reply }).map(|_| ())
+        self.device.call(|reply| Request::ApplyMacros { slots, base: None, reply }).map(|_| ())
     }
 
     fn lighting_stored(&mut self, l: &profiles::ProfileLighting) -> Result<(), String> {

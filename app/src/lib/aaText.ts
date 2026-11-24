@@ -93,6 +93,26 @@ export function freeMacroSlot(slots: readonly unknown[], fixed: readonly number[
   return null;
 }
 
+/** The `source` of a draft opened from a backup on purpose: it stays until
+ *  saved or dropped, whatever the keyboard holds. */
+export const IMPORTED = "import";
+
+/** An unsaved draft kept from before still fits the record it would be
+ *  saved over: the record is the app's own (`null`: the "04 xx" family),
+ *  the draft was made against the same read of the keyboard, or it was
+ *  opened from a backup. Otherwise ("AA": the keys or macros changed in
+ *  another program since) it goes. */
+export function draftFits(kept: string | null | undefined, record: string | null): boolean {
+  return record === null || kept === record || kept === IMPORTED;
+}
+
+/** The keys a restore left as the keyboard has them that the done step
+ *  names: those with a key on the keyboard (a slot past the keys means
+ *  nothing to the user). */
+export function keptKeys<T extends { led: number | null }>(kept: readonly T[]): T[] {
+  return kept.filter((k) => k.led !== null);
+}
+
 /** A layer of keys without the ones set in another program (`fixed`):
  *  Keymotion neither shows nor changes them. */
 export function withoutFixed<T>(layer: Record<number, T>, fixed: readonly number[]): Record<number, T> {

@@ -596,7 +596,7 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
 
       <ActionBar
         left={
-          <label className="flex items-center gap-2.5 text-[14px]" title={t("light.livePreviewHint")}>
+          <label className="flex items-center gap-2.5 text-[14px]" title={t(kb.protocol === "ajazz-aa" ? "light.livePreviewHint.aa" : "light.livePreviewHint")}>
             <span className={usb ? "text-ink" : "text-ink-3"}>{t("light.livePreview")}</span>
             <Toggle label={t("light.livePreview")} checked={livePreview} onChange={setLivePreview} disabled={!usb} />
           </label>

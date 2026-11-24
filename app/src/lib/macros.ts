@@ -4,7 +4,7 @@ import type { MacroFixed } from "../bindings/MacroFixed";
 import type { MacroInfo } from "../bindings/MacroInfo";
 import type { MacroStepInfo } from "../bindings/MacroStepInfo";
 import type { MacrosState } from "../bindings/MacrosState";
-import { freeMacroSlot } from "./aaText";
+import { draftFits, freeMacroSlot, IMPORTED } from "./aaText";
 import { applyMacros, getMacrosState } from "./ipc";
 
 /** Slot `i` is macro `i`; `null` is an unused slot. */
@@ -32,6 +32,9 @@ export interface MacroStore {
   /** When `saved` was read from the keyboard itself; `null`: the app's own
    *  record. */
   readMs: number | null;
+  /** The keyboard's macro memory `saved` was read from ("AA"): sent with a
+   *  save, which the keyboard refuses when it changed since. */
+  source: string | null;
   limits: MacroLimits;
   /** Edits being made; equals `saved` when nothing is pending. */
   draft: Slots;
@@ -60,6 +63,8 @@ interface Persisted {
   modelId: string;
   draft: Slots;
   selected: number | null;
+  /** The record's `source` the draft was made against ("AA"). */
+  source?: string | null;
 }
 
 function loadPersisted(): Partial<Persisted> {
@@ -92,8 +97,8 @@ function clone(slots: Slots): Slots {
 
 export const useMacros = create<MacroStore>((set, get) => {
   const save = () => {
-    const { recordId, draft, selected } = get();
-    if (recordId) persist({ modelId: recordId, draft, selected });
+    const { recordId, draft, selected, source } = get();
+    if (recordId) persist({ modelId: recordId, draft, selected, source });
   };
   const update = (patch: Partial<MacroStore>) => {
     set(patch);
@@ -104,6 +109,7 @@ export const useMacros = create<MacroStore>((set, get) => {
     writtenMs: state.writtenMs,
     fixed: state.fixed,
     readMs: state.readMs,
+    source: state.source,
     limits: {
       budget: state.budget,
       maxSlots: state.maxSlots,
@@ -124,13 +130,16 @@ export const useMacros = create<MacroStore>((set, get) => {
     writtenMs: null,
     fixed: [],
     readMs: null,
+    source: null,
     limits: DEFAULT_LIMITS,
     draft: [],
     selected: null,
     load: async (recordId) => {
       const r = record(await getMacrosState(recordId));
       const kept = loadPersisted();
-      const same = kept.modelId === recordId && Array.isArray(kept.draft);
+      // A draft made against macros the keyboard no longer holds ("AA":
+      // changed in another program since) goes.
+      const same = kept.modelId === recordId && Array.isArray(kept.draft) && draftFits(kept.source, r.source);
       update({
         recordId,
         ...r,
@@ -162,8 +171,19 @@ export const useMacros = create<MacroStore>((set, get) => {
       update({ draft: trim(draft), selected: get().selected === slot ? null : get().selected });
     },
     save: async () => {
-      const r = record(await applyMacros(trim(get().draft)));
-      update({ ...r, draft: clone(r.saved) });
+      saving += 1;
+      try {
+        // "AA": refused when the macros changed on the keyboard since `source`.
+        const r = record(await applyMacros(trim(get().draft), get().source));
+        update({ ...r, draft: clone(r.saved) });
+      } finally {
+        saving -= 1;
+        if (saving === 0 && adoptAfterSave) {
+          const id = adoptAfterSave;
+          adoptAfterSave = null;
+          void adoptMacrosRecord(id).catch(console.error);
+        }
+      }
     },
     discard: () => {
       const saved = get().saved;
@@ -183,34 +203,53 @@ export function stageMacrosImport(recordId: string, slots: Slots) {
   const store = useMacros.getState();
   const draft = withoutFixed(clone(trim(slots)), store.recordId === recordId ? store.fixed : []);
   if (store.recordId === recordId) useMacros.setState({ draft, selected: null });
-  persist({ modelId: recordId, draft, selected: null });
+  persist({ modelId: recordId, draft, selected: null, source: store.recordId === recordId ? store.source : IMPORTED });
 }
+
+/** A save of the page runs: the record is read again after it. */
+let saving = 0;
+let adoptAfterSave: string | null = null;
 
 /**
  * The record may have changed outside the editor (a profile was loaded):
  * read it again. When it did, the draft (made against the old one) goes.
  */
 export async function adoptMacrosRecord(recordId: string) {
-  const state = await getMacrosState(recordId);
-  const saved = trim(state.slots);
-  const store = useMacros.getState();
-  const sameFixed = JSON.stringify(store.fixed) === JSON.stringify(state.fixed);
-  if (store.recordId === recordId && store.saved && sameFixed && dirtySlots({ saved: store.saved, draft: saved }).length === 0) {
-    // Read again, the same macros: only the time changes.
-    useMacros.setState({ readMs: state.readMs });
+  if (saving > 0) {
+    adoptAfterSave = recordId;
     return;
   }
-  if (store.recordId === recordId) {
+  const state = await getMacrosState(recordId);
+  if (saving > 0) {
+    adoptAfterSave = recordId;
+    return;
+  }
+  const saved = trim(state.slots);
+  const store = useMacros.getState();
+  const loaded = store.recordId === recordId;
+  const sameFixed = JSON.stringify(store.fixed) === JSON.stringify(state.fixed);
+  if (loaded && store.saved && sameFixed && dirtySlots({ saved: store.saved, draft: saved }).length === 0) {
+    // Read again, the same macros: the draft still fits.
+    useMacros.setState({ readMs: state.readMs, source: state.source });
+    persist({ modelId: recordId, draft: store.draft, selected: store.selected, source: state.source });
+    return;
+  }
+  if (loaded) {
     useMacros.setState({
       saved,
       writtenMs: state.writtenMs,
       fixed: state.fixed,
       readMs: state.readMs,
+      source: state.source,
       draft: clone(saved),
       selected: null,
     });
+  } else if (state.source !== null && draftFits(loadPersisted().source, state.source)) {
+    // Not loaded yet, and a kept draft still fits the keyboard: `load`
+    // takes it.
+    return;
   }
-  persist({ modelId: recordId, draft: clone(saved), selected: null });
+  persist({ modelId: recordId, draft: clone(saved), selected: null, source: state.source });
 }
 
 function sameStep(a: MacroStepInfo, b: MacroStepInfo): boolean {

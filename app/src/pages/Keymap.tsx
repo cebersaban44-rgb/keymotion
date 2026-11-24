@@ -128,6 +128,7 @@ function Plate({
   const draft = useKeymap((s) => s.draft[layer]);
   const saved = useKeymap((s) => s.saved?.[layer] ?? null);
   const fixed = useKeymap((s) => s.fixed[layer]);
+  const builtin = useKeymap((s) => s.builtin[layer]);
   const keys = kb.geometry?.keys ?? NO_KEYS;
   const names = useMacroNames();
   const layoutMap = useLayout((s) => s.map);
@@ -142,9 +143,11 @@ function Plate({
       const a = draft[k.led];
       const cls: string[] = [];
       if (fixed.includes(k.led)) {
-        // Set in another program: shown as such, not editable.
-        legends[k.led] = { main: "•••", text: t("km.fixed.title"), sub: k.label };
-        classes[k.led] = "is-mapped is-locked";
+        // Set in another program, or the keyboard's own function: shown as
+        // such, not editable.
+        const own = builtin.includes(k.led);
+        legends[k.led] = { main: own ? "ƒ" : "•••", text: t(own ? "km.builtin.title" : "km.fixed.title"), sub: k.label };
+        classes[k.led] = own ? "is-locked" : "is-mapped is-locked";
         continue;
       }
       if (a) {
@@ -160,7 +163,7 @@ function Plate({
       if (cls.length) classes[k.led] = cls.join(" ");
     }
     return { legends, classes };
-  }, [keys, draft, saved, fixed, catalog, t, names, layoutMap]);
+  }, [keys, draft, saved, fixed, builtin, catalog, t, names, layoutMap]);
 
   const selectedSet = useMemo(() => new Set(selected === null ? [] : [selected]), [selected]);
 
@@ -550,6 +553,7 @@ function SelectedCard({
   const t = useT();
   const action = useKeymap((s) => (keyGeo ? s.draft[layer][keyGeo.led] : undefined));
   const setElsewhere = useKeymap((s) => !!keyGeo && s.fixed[layer].includes(keyGeo.led));
+  const builtin = useKeymap((s) => !!keyGeo && s.builtin[layer].includes(keyGeo.led));
   const assign = useAssign(layer, keyGeo);
   const names = useMacroNames();
   const layout = useLayoutLabel();
@@ -565,11 +569,11 @@ function SelectedCard({
             {keyGeo.label || "␣"}
           </span>
           <span className="text-ink-3">→</span>
-          <span className="font-display text-[17px] font-semibold">{t("km.fixed.title")}</span>
+          <span className="font-display text-[17px] font-semibold">{t(builtin ? "km.builtin.title" : "km.fixed.title")}</span>
         </div>
         <p className="flex gap-2 text-[12px] text-ink-2">
           <Lock size={14} className="mt-0.5 shrink-0" />
-          {t("km.fixed.note")}
+          {t(builtin ? "km.builtin.note" : "km.fixed.note")}
         </p>
       </section>
     );

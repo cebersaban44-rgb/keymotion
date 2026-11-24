@@ -1247,6 +1247,10 @@ pub struct KeymapLayerState {
     /// (a firmware function, a combo, set in AJAZZ's tool...): shown as
     /// such, never changed by a save ("AA" family; empty otherwise).
     pub fixed: Vec<u8>,
+    /// LEDs of keys at one of the keyboard's own functions in this layer
+    /// (a factory reset, a mode switch): shown as such, never changed
+    /// ("AA" family; empty otherwise).
+    pub builtin: Vec<u8>,
 }
 
 impl From<&StoredLayer> for KeymapLayerState {
@@ -1255,6 +1259,7 @@ impl From<&StoredLayer> for KeymapLayerState {
             assignments: l.actions().into_iter().map(|(led, a)| KeyAssignment { led, action: a.into() }).collect(),
             written_ms: l.written_ms.map(|ms| ms as f64),
             fixed: l.fixed.clone(),
+            builtin: l.builtin.clone(),
         }
     }
 }
@@ -1271,11 +1276,20 @@ pub struct KeymapState {
     /// are the app's own record.
     #[serde(rename = "readMs")]
     pub read_ms: Option<f64>,
+    /// The keyboard's tables the layers were read from: sent back with a
+    /// save (`apply_keymap`'s `base`), which is refused when the keyboard
+    /// changed since ("AA"; `null` otherwise).
+    pub source: Option<String>,
 }
 
 impl From<&StoredKeymap> for KeymapState {
     fn from(k: &StoredKeymap) -> Self {
-        Self { base: (&k.base).into(), fn_layer: (&k.fn_layer).into(), read_ms: k.read_ms.map(|ms| ms as f64) }
+        Self {
+            base: (&k.base).into(),
+            fn_layer: (&k.fn_layer).into(),
+            read_ms: k.read_ms.map(|ms| ms as f64),
+            source: k.source.clone(),
+        }
     }
 }
 
@@ -1595,6 +1609,9 @@ pub struct MacrosState {
     /// When the macros were read from the keyboard (Unix ms); `null`: they
     /// are the app's own record.
     pub read_ms: Option<f64>,
+    /// The keyboard's macro memory they were read from: sent back with a
+    /// save (`apply_macros`' `base`; see `KeymapState::source`).
+    pub source: Option<String>,
 }
 
 /// A macro slot kept as the keyboard has it.
@@ -1613,6 +1630,7 @@ impl From<&StoredMacros> for MacrosState {
         Self {
             fixed: m.fixed.iter().map(|f| MacroFixed { slot: f.slot, steps: f.entries }).collect(),
             read_ms: m.read_ms.map(|ms| ms as f64),
+            source: m.source.clone(),
             slots: m.slots.iter().map(|s| s.as_ref().map(MacroInfo::from)).collect(),
             written_ms: m.written_ms.map(|ms| ms as f64),
             budget: BUDGET as u32,

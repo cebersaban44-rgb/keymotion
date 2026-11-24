@@ -19,4 +19,10 @@ writtenMs: number | null,
  * (a firmware function, a combo, set in AJAZZ's tool...): shown as
  * such, never changed by a save ("AA" family; empty otherwise).
  */
-fixed: Array<number>, };
+fixed: Array<number>, 
+/**
+ * LEDs of keys at one of the keyboard's own functions in this layer
+ * (a factory reset, a mode switch): shown as such, never changed
+ * ("AA" family; empty otherwise).
+ */
+builtin: Array<number>, };

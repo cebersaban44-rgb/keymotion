@@ -460,17 +460,23 @@ export async function getKeymapCatalog(): Promise<KeymapCatalog> {
 
 // Browser-only stand-in for the app's keymap record.
 let mockKeymap: KeymapState = {
-  base: { assignments: [], writtenMs: null, fixed: [] },
-  fn: { assignments: [], writtenMs: null, fixed: [] },
+  base: { assignments: [], writtenMs: null, fixed: [], builtin: [] },
+  fn: { assignments: [], writtenMs: null, fixed: [], builtin: [] },
   readMs: null,
+  source: null,
 };
+
+/** The stand-in AA keyboard's `source` (`&aa=stale` makes saves see
+ *  another one). */
+const mockSource = "mock";
 
 /** `?mock=aa769`: the keyboard reports its keymap and macros; with
  *  `&aa=elsewhere`, B and macro M2 were set in AJAZZ's tool. */
 function mockAaRecords<T extends KeymapState | MacrosState>(state: T, fixed: (s: T) => T): T {
   if (new URLSearchParams(location.search).get("mock") !== "aa769") return state;
-  const read = { ...state, readMs: Date.now() - 4 * 60_000 };
-  return new Set((new URLSearchParams(location.search).get("aa") ?? "").split(",")).has("elsewhere") ? fixed(read) : read;
+  const flags = new Set((new URLSearchParams(location.search).get("aa") ?? "").split(","));
+  const read = { ...state, readMs: Date.now() - 4 * 60_000, source: flags.has("stale") ? "stale" : mockSource };
+  return flags.has("elsewhere") ? fixed(read) : read;
 }
 
 /**
@@ -482,8 +488,13 @@ function mockAaRecords<T extends KeymapState | MacrosState>(state: T, fixed: (s:
 export function getKeymapState(recordId: string): Promise<KeymapState> {
   if (import.meta.env.DEV && !inTauri) {
     const b = mockKeyboards()[0]?.geometry?.keys.find((k) => k.id === "b")?.led;
+    const space = mockKeyboards()[0]?.geometry?.keys.find((k) => k.id === "space")?.led;
     return Promise.resolve(
-      mockAaRecords(mockKeymap, (s) => ({ ...s, base: { ...s.base, fixed: b === undefined ? [] : [b] } })),
+      mockAaRecords(mockKeymap, (s) => ({
+        ...s,
+        base: { ...s.base, fixed: b === undefined ? [] : [b] },
+        fn: { ...s.fn, builtin: space === undefined ? [] : [space] },
+      })),
     );
   }
   return invoke<KeymapState>("keymap_state", { recordId });
@@ -491,16 +502,21 @@ export function getKeymapState(recordId: string): Promise<KeymapState> {
 
 /**
  * Write one whole keymap layer (flash write); keys not listed go back to
- * the default. Resolves with the app's updated record.
+ * the default. Resolves with the app's updated record. `base`: the
+ * record's `source` the change was made against ("AA": refused when the
+ * keys changed on the keyboard since; `null` for the "04 xx" family).
  */
-export function applyKeymap(layer: KeymapLayer, assignments: KeyAssignment[]): Promise<KeymapState> {
+export function applyKeymap(layer: KeymapLayer, assignments: KeyAssignment[], base: string | null): Promise<KeymapState> {
   return flashWrite(async () => {
     if (import.meta.env.DEV && !inTauri) {
       await mockDelay(700);
-      mockKeymap = { ...mockKeymap, [layer]: { assignments, writtenMs: Date.now(), fixed: [] } };
+      if (base !== null && base !== mockSource) {
+        throw new Error("the keyboard's keys changed in another program since Keymotion read them; nothing was written");
+      }
+      mockKeymap = { ...mockKeymap, [layer]: { assignments, writtenMs: Date.now(), fixed: [], builtin: [] } };
       return getKeymapState("");
     }
-    return serial(() => invoke<KeymapState>("apply_keymap", { layer, assignments }));
+    return serial(() => invoke<KeymapState>("apply_keymap", { layer, assignments, base }));
   });
 }
 
@@ -516,6 +532,7 @@ let mockMacros: MacrosState = {
   maxName: 40,
   fixed: [],
   readMs: null,
+  source: null,
 };
 
 /** The macros of the keyboards with this record id
@@ -530,17 +547,21 @@ export function getMacrosState(recordId: string): Promise<MacrosState> {
 
 /**
  * Write every macro (flash write); slot `i` is macro `i`, `null` leaves a
- * slot unused. Resolves with the app's updated record.
+ * slot unused. Resolves with the app's updated record. `base`: as for
+ * `applyKeymap`.
  */
-export function applyMacros(slots: (MacroInfo | null)[]): Promise<MacrosState> {
+export function applyMacros(slots: (MacroInfo | null)[], base: string | null): Promise<MacrosState> {
   return flashWrite(async () => {
     if (import.meta.env.DEV && !inTauri) {
       await mockDelay(600);
+      if (base !== null && base !== mockSource) {
+        throw new Error("the keyboard's macros changed in another program since Keymotion read them; nothing was written");
+      }
       while (slots.length && slots[slots.length - 1] === null) slots = slots.slice(0, -1);
       mockMacros = { ...mockMacros, slots, writtenMs: Date.now() };
       return getMacrosState("");
     }
-    return serial(() => invoke<MacrosState>("apply_macros", { slots }));
+    return serial(() => invoke<MacrosState>("apply_macros", { slots, base }));
   });
 }
 
@@ -1203,9 +1224,10 @@ async function mockLoadProfilePart(modelId: string, id: string, part: ProfilePar
   }
   if (part === "keymap" && p.keymap) {
     mockKeymap = {
-      base: { assignments: p.keymap.base, writtenMs: Date.now(), fixed: [] },
-      fn: { assignments: p.keymap.fn, writtenMs: Date.now(), fixed: [] },
+      base: { assignments: p.keymap.base, writtenMs: Date.now(), fixed: [], builtin: [] },
+      fn: { assignments: p.keymap.fn, writtenMs: Date.now(), fixed: [], builtin: [] },
       readMs: null,
+      source: null,
     };
   }
   if (part === "macros" && p.macros) mockMacros = { ...mockMacros, slots: mockTrim(p.macros), writtenMs: Date.now() };
@@ -1278,7 +1300,9 @@ const AA_LIMITS: KeyboardInfo["limits"] = {
  * (another program talks to it); `charging`; `clock` (its clock page is at
  * risk: lib/screen.ts and live.ts); `nocolor` (a backup that doesn't know
  * its colour: lib/aa.ts); `cut` (the quiet time after a stopped upload:
- * lib/screen.ts); `elsewhere` (a key and a macro set in AJAZZ's tool).
+ * lib/screen.ts); `elsewhere` (a key and a macro set in AJAZZ's tool, the
+ * factory reset on Fn+Space); `stale` (saves see keys and macros changed
+ * in another program).
  */
 function mockAaKeyboard(): KeyboardInfo {
   const flags = new Set((new URLSearchParams(location.search).get("aa") ?? "").split(",").filter(Boolean));

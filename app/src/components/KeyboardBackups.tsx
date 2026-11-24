@@ -25,7 +25,7 @@ import {
   writeBlock,
   type RestoreFlow,
 } from "../lib/aa";
-import { keptWhy, restoredParts, restoreHeldBy, type KeptWhy, type RestoredPart } from "../lib/aaText";
+import { keptKeys, keptWhy, restoredParts, restoreHeldBy, type KeptWhy, type RestoredPart } from "../lib/aaText";
 import { friendlyError } from "../lib/errors";
 import { intlTag, useT, type MessageKey } from "../lib/i18n";
 import { useApp } from "../lib/store";
@@ -317,6 +317,12 @@ function RestoreFlowView({
   } else {
     const parts = restoredParts(flow.result.written);
     const keys = kb.geometry?.keys ?? [];
+    // Only places that are keys on the keyboard: a slot past the keys means
+    // nothing to the user.
+    const kept = keptKeys(flow.result.kept).flatMap((k) => {
+      const key = keys.find((g) => g.led === k.led);
+      return key ? [{ k, key }] : [];
+    });
     const layer = (l: string) => t(l === "fn" ? "km.layer.fn" : "km.layer.base");
     body = (
       <ul className="flex flex-col gap-2">
@@ -339,15 +345,14 @@ function RestoreFlowView({
             t("aa.rs.done.nothing")
           )}
         </li>
-        {flow.result.kept.length > 0 && (
+        {kept.length > 0 && (
           <li className="flex items-start gap-2" data-restore-kept>
             <CircleAlert size={16} className="mt-0.5 shrink-0 text-ink-3" aria-hidden />
             <span className="flex flex-col gap-1">
               <span>{t("aa.rs.done.kept")}</span>
               <ul className="flex flex-col gap-0.5 text-[13px] text-ink-2">
-                {flow.result.kept.map((k) => {
-                  const key = k.led === null ? null : keys.find((g) => g.led === k.led);
-                  const name = key ? key.label || key.id : t("aa.rs.kept.unnamed");
+                {kept.map(({ k, key }) => {
+                  const name = key.label || key.id;
                   return (
                     <li key={`${k.layer}:${k.slot}`}>
                       <span className="font-medium text-ink">{name}</span> ({layer(k.layer)}): {t(KEPT[keptWhy(k.reason)])}

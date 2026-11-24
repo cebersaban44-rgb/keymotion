@@ -652,10 +652,102 @@ fn keys_and_macros_set_elsewhere_are_shown_and_kept() {
     let c = d.contents().unwrap();
     assert_eq!(c.macros[1], MacroContents::Fixed(2));
     let before = c.fingerprint;
-    // A slot the app fills is the app's.
-    d.write_macros(&[Vec::new(), mine.clone()]).unwrap();
-    assert_eq!(d.keyboard_mut().read_macros().unwrap()[1], aa_macros::from_steps(&mine).unwrap());
+    // Not even a save that fills its slot replaces it: refused, nothing
+    // written.
+    let sent = sim.state().sent(cmd::SET_MACROS).len();
+    let e = d.write_macros(&[Vec::new(), mine.clone()]).unwrap_err();
+    assert_eq!(e.to_string(), macro_elsewhere(1));
+    assert_eq!(sim.state().sent(cmd::SET_MACROS).len(), sent);
+    assert_eq!(d.keyboard_mut().read_macros().unwrap()[1], wheel());
+    // Another slot is the app's.
+    d.write_macros(&[mine.clone(), Vec::new(), mine.clone()]).unwrap();
+    assert_eq!(d.keyboard_mut().read_macros().unwrap()[2], aa_macros::from_steps(&mine).unwrap());
     assert_ne!(d.contents().unwrap().fingerprint, before, "a change shows in the fingerprint");
+}
+
+#[test]
+fn a_save_made_against_keys_or_macros_changed_elsewhere_is_refused() {
+    let dir = TempDir::new("changed-elsewhere");
+    let sim = Sim::ak980();
+    let mut d = driver(&sim, Some(&dir.0));
+    let (keys, macros) = {
+        let c = d.contents().unwrap();
+        (c.keys_source, c.macros_source)
+    };
+    // The page's own source: saved.
+    let a = LayerMap::from([(led("a"), KeyAction::key(0x05))]);
+    d.apply_keymap_from(Layer::Base, &a, Some(&keys)).unwrap();
+    let keys = d.contents().unwrap().keys_source;
+    // Meanwhile AJAZZ's web tool sets B; the page still shows the old keys.
+    aa_keymap::set_entry(&mut sim.state().keymap, aa("b"), [aa_keymap::page::KEYBOARD, 0, 0x06, 0]);
+    let before = sim.state().keymap.clone();
+    let e = d.apply_keymap_from(Layer::Base, &LayerMap::from([(led("c"), KeyAction::key(0x07))]), Some(&keys));
+    assert_eq!(e.unwrap_err().to_string(), ERR_KEYS_CHANGED);
+    assert_eq!(sim.state().keymap, before, "nothing written: B stays as AJAZZ's tool set it");
+    // The fresh read went into the snapshot: the page can show B now.
+    let c = d.contents().unwrap();
+    assert_eq!(c.base.actions.get(&led("b")), Some(&KeyAction::key(0x06)));
+    assert_ne!(c.keys_source, keys);
+    // Against the new source the save goes.
+    let both = LayerMap::from([
+        (led("a"), KeyAction::key(0x05)),
+        (led("b"), KeyAction::key(0x06)),
+        (led("c"), KeyAction::key(0x07)),
+    ]);
+    d.apply_keymap_from(Layer::Base, &both, Some(&c.keys_source)).unwrap();
+    assert_eq!(aa_keymap::entry(&sim.state().keymap, aa("c")), [aa_keymap::page::KEYBOARD, 0, 0x07, 0]);
+
+    // The same for macros.
+    let mine = vec![MacroStep::new(StepKind::KeyDown, 5, 20), MacroStep::new(StepKind::KeyUp, 5, 20)];
+    macros_written_elsewhere(&sim, &[aa_macros::from_steps(&mine).unwrap()]);
+    let e = d.write_macros_from(&[], Some(&macros)).unwrap_err();
+    assert_eq!(e.to_string(), ERR_MACROS_CHANGED);
+    assert_eq!(d.keyboard_mut().read_macros().unwrap()[0], aa_macros::from_steps(&mine).unwrap(), "not deleted");
+    let c = d.contents().unwrap();
+    assert_eq!(c.macros[0], MacroContents::Steps(mine.clone()));
+    d.write_macros_from(&[mine.clone(), mine.clone()], Some(&c.macros_source)).unwrap();
+}
+
+#[test]
+fn the_keyboards_own_fn_functions_are_kept() {
+    let dir = TempDir::new("builtin");
+    let sim = Sim::ak980();
+    // A firmware that keeps zeros for a factory entry (N5), and a key whose
+    // factory firmware function was replaced in another program.
+    let default_fn = sim.state().default_fn.clone();
+    let func_keys: Vec<(u8, u8)> = Sim::model()
+        .geometry
+        .as_ref()
+        .unwrap()
+        .keys
+        .iter()
+        .filter(|k| k.id != "space" && k.id != "fn")
+        .filter_map(|k| Some((k.led, k.aa?)))
+        .filter(|&(_, slot)| aa_keymap::is_func(aa_keymap::entry(&default_fn, slot)))
+        .collect();
+    assert!(func_keys.len() >= 2, "the simulated Fn layer has firmware functions: {func_keys:?}");
+    let ((zeroed_led, zeroed), (moved_led, moved)) = (func_keys[0], func_keys[1]);
+    {
+        let mut st = sim.state();
+        aa_keymap::set_entry(&mut st.fn_keymap, zeroed, [0; 4]);
+        aa_keymap::set_entry(&mut st.fn_keymap, moved, [aa_keymap::page::KEYBOARD, 0, 0x05, 0]);
+    }
+    let mut d = driver(&sim, Some(&dir.0));
+    let c = d.contents().unwrap();
+    assert!(c.fn_layer.builtin.contains(&led("space")), "the factory reset is the keyboard's own function");
+    assert!(c.fn_layer.builtin.contains(&zeroed_led), "zeros are the factory function");
+    assert_eq!(c.fn_layer.actions.get(&moved_led), Some(&KeyAction::key(0x05)));
+    assert!(c.fn_layer.fixed.is_empty());
+    // A map that names the factory reset, and one that names nothing (the
+    // Default profile): neither writes over a firmware function, neither
+    // fails on the key whose factory function can't come back.
+    let before = sim.state().fn_keymap.clone();
+    let kept = d.apply_keymap_from(Layer::Fn, &LayerMap::from([(led("space"), KeyAction::key(0x04))]), None).unwrap();
+    assert!(kept >= 1);
+    assert_eq!(sim.state().fn_keymap, before);
+    d.apply_keymap_from(Layer::Fn, &LayerMap::new(), None).unwrap();
+    assert_eq!(sim.state().fn_keymap, before, "nothing written");
+    assert!(sim.state().sent(cmd::SET_FN_KEYMAP).is_empty());
 }
 
 #[test]

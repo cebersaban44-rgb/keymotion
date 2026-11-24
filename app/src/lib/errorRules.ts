@@ -50,6 +50,20 @@ const RULES: Rule[] = [
   [/cannot repeat while the key is held/i, "err.aa.holdMacro"],
   [/macros with \d+ steps take \d+ bytes; the keyboard takes/i, "err.aa.macroMemory", (raw) => macroBytes(raw) ?? undefined],
   [/not supported on this keyboard/i, "err.aa.unsupported"],
+  // A save made against keys or macros changed in another program meanwhile
+  // (aa.rs `ERR_KEYS_CHANGED`, `ERR_MACROS_CHANGED`), one that would replace
+  // a macro made there, and a per-app profile whose macros would.
+  [/keys changed in another program since keymotion read them/i, "err.aa.keysChanged"],
+  [/macros changed in another program since keymotion read them/i, "err.aa.macrosChanged"],
+  [
+    /macro \d+ on the keyboard was made in another program and is not replaced/i,
+    "err.aa.macroElsewhere",
+    (raw) => {
+      const m = /macro (\d+) on the keyboard/i.exec(raw);
+      return m ? { slot: Number(m[1]) } : undefined;
+    },
+  ],
+  [/the profile's macros were not loaded: they would replace a macro made in another program/i, "err.aa.profileMacros"],
   // The app stopped waiting (DeviceHandle::call): the keyboard is busy, a
   // screen upload most likely, and the request still waits its turn.
   [/keyboard did not answer in time/i, "err.busy"],
@@ -113,6 +127,10 @@ export const EXPECTED: ReadonlySet<MessageKey> = new Set<MessageKey>([
   "err.aa.holdMacro",
   "err.aa.macroMemory",
   "err.aa.unsupported",
+  "err.aa.keysChanged",
+  "err.aa.macrosChanged",
+  "err.aa.macroElsewhere",
+  "err.aa.profileMacros",
   "err.busy",
   "err.clockPage",
   "err.sim.start",

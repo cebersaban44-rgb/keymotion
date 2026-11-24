@@ -9,7 +9,6 @@ import { ActionBar } from "../components/ActionBar";
 import { InfoBar, Segmented } from "../components/controls";
 import { KeyboardNotices } from "../components/KeyboardNotices";
 import { useWriteBlock } from "../lib/aa";
-import { freeMacroSlot } from "../lib/aaText";
 import { hidFromCode } from "../lib/hidCodes";
 import { getKeymapCatalog } from "../lib/ipc";
 import { decimal, percent, useAgo, useT, type MessageKey } from "../lib/i18n";
@@ -97,16 +96,7 @@ export function Macros({ kb }: { kb: KeyboardInfo }) {
               <button
                 type="button"
                 disabled={!loaded || full}
-                onClick={() => {
-                  // Named after the slot it takes (one made in another
-                  // program is skipped).
-                  const slot = freeMacroSlot(
-                    draft,
-                    fixed.map((f) => f.slot),
-                    limits.maxSlots,
-                  );
-                  create(`${t("mc.newName")} ${(slot ?? draft.length) + 1}`);
-                }}
+                onClick={() => create(`${t("mc.newName")} ${draft.filter(Boolean).length + 1}`)}
                 className="btn-primary"
               >
                 <Plus size={13} />

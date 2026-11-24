@@ -199,6 +199,8 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
     stopRef.current = false;
     setRun({ id: p.id, steps: Object.fromEntries(p.toWrite.map((part) => [part, "waiting"])) });
     const done: ProfilePart[] = [];
+    // Parts that left keys or macros set in another program as they are.
+    const notes = new Set<"kept" | "skipped">();
     let n: Notice;
     try {
       const result = await loadProfile(
@@ -209,11 +211,18 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
           setRun((r) => (r ? { ...r, steps: { ...r.steps, [part]: s } } : r));
         },
         () => stopRef.current,
+        (_, loaded) => {
+          if (loaded === "kept" || loaded === "skipped") notes.add(loaded);
+        },
       );
-      if (result === "stopped") n = { ok: true, text: t("prof.load.stopped") };
+      const kept = [
+        notes.has("kept") ? ` ${t("prof.load.kept")}` : "",
+        notes.has("skipped") ? ` ${t("err.aa.profileMacros")}` : "",
+      ].join("");
+      if (result === "stopped") n = { ok: true, text: `${t("prof.load.stopped")}${kept}` };
       else {
         const fnHome = done.includes("screen") ? ` ${t("sc.done.fnHome")}` : "";
-        n = { ok: true, text: `${t("prof.load.done", { name: profileName(p, t) })}${fnHome}` };
+        n = { ok: true, text: `${t("prof.load.done", { name: profileName(p, t) })}${kept}${fnHome}` };
       }
     } catch (e) {
       const cause = e instanceof ProfileLoadError ? e.cause : e;

@@ -362,16 +362,21 @@ pub enum Request {
     /// Turn automatic clock sync on or off (persisted).
     SetClockAuto(bool, Reply<ClockSettings>),
     /// Write one keymap layer of the USB keyboard (flash) and record it.
-    /// Replies with the model's updated record.
+    /// Replies with the model's updated record. `base`: the record's
+    /// `source` the change was made against ("AA": refused when the keys
+    /// changed on the keyboard since; `None`: not checked).
     ApplyKeymap {
         layer: Layer,
         entries: Vec<(u8, KeyAction)>,
+        base: Option<String>,
         reply: Reply<StoredKeymap>,
     },
     /// Write every macro of the USB keyboard (flash) and record them with
-    /// their names. Replies with the model's updated record.
+    /// their names. Replies with the model's updated record. `base`: as
+    /// for [`Request::ApplyKeymap`].
     ApplyMacros {
         slots: Vec<Option<StoredMacro>>,
+        base: Option<String>,
         reply: Reply<StoredMacros>,
     },
     /// Describe an unsupported keyboard for a support request: its ids,
@@ -1200,7 +1205,7 @@ struct Actor {
     live_failures: u32,
     /// The "AA" keyboard contents the records were last taken from (record
     /// id and [`crate::aa::AaContents::fingerprint`]).
-    aa_synced: Option<(String, u64)>,
+    aa_synced: Option<(String, String)>,
     /// `Some` while the UI shows the mirror.
     mirror: Option<MirrorExpect>,
     /// Firmware status lights of the USB keyboard: (LED, colour when lit).
@@ -1523,13 +1528,13 @@ impl Actor {
                 }
                 let _ = reply.send(self.store_clock().map(|_| self.clock));
             }
-            Request::ApplyKeymap { layer, entries, reply } => {
+            Request::ApplyKeymap { layer, entries, base, reply } => {
                 let _write = self.flash.begin(FlashWrite::Settings);
-                let _ = reply.send(self.apply_keymap(layer, entries));
+                let _ = reply.send(self.apply_keymap(layer, entries, base));
             }
-            Request::ApplyMacros { slots, reply } => {
+            Request::ApplyMacros { slots, base, reply } => {
                 let _write = self.flash.begin(FlashWrite::Settings);
-                let _ = reply.send(self.apply_macros(slots));
+                let _ = reply.send(self.apply_macros(slots, base));
             }
             Request::DescribeUnsupported { id, reply } => {
                 let _ = reply.send(self.describe_unsupported(&id));
@@ -1676,7 +1681,7 @@ impl Actor {
         else {
             return;
         };
-        let key = (record.clone(), contents.fingerprint);
+        let key = (record.clone(), contents.fingerprint.clone());
         if self.aa_synced.as_ref() == Some(&key) {
             return;
         }
@@ -1687,15 +1692,18 @@ impl Actor {
             let mut l = StoredLayer::new(&c.actions, 0);
             l.written_ms = old.written_ms;
             l.fixed = c.fixed.clone();
+            l.builtin = c.builtin.clone();
             l
         };
         let keymap = StoredKeymap {
             base: layer(&contents.base, &old_keymap.base),
             fn_layer: layer(&contents.fn_layer, &old_keymap.fn_layer),
             read_ms: Some(now),
+            source: Some(contents.keys_source.clone()),
         };
         let old_macros = self.macros.models.get(&record).cloned().unwrap_or_default();
-        let macros = macros_from_keyboard(&contents.macros, &old_macros, now);
+        let mut macros = macros_from_keyboard(&contents.macros, &old_macros, now);
+        macros.source = Some(contents.macros_source.clone());
         let same_keymap = StoredKeymap { read_ms: old_keymap.read_ms, ..keymap.clone() } == old_keymap;
         let same_macros = StoredMacros { read_ms: old_macros.read_ms, ..macros.clone() } == old_macros;
         self.keymaps.models.insert(record.clone(), keymap);
@@ -1865,7 +1873,11 @@ impl Actor {
 
     /// Write every macro, then record them (names included). Like the
     /// keymap, the record changes only after the keyboard confirmed the data.
-    fn apply_macros(&mut self, mut slots: Vec<Option<StoredMacro>>) -> Result<StoredMacros, String> {
+    fn apply_macros(
+        &mut self,
+        mut slots: Vec<Option<StoredMacro>>,
+        base: Option<String>,
+    ) -> Result<StoredMacros, String> {
         let record = self.usb.as_ref().map(|k| k.record_id.clone()).ok_or_else(|| NO_USB.to_string())?;
         self.may_write()?;
         while slots.last().is_some_and(Option::is_none) {
@@ -1873,17 +1885,27 @@ impl Actor {
         }
         let mut stored = StoredMacros { slots, ..Default::default() };
         let image = stored.image_slots();
-        self.with_command(|d| d.write_macros(&image))?;
-        tracing::info!(slots = image.len(), record = %record, "macros written");
-        stored.written_ms = Some(now_ms());
+        let written = self.with_command(|d| match d.aa_mut() {
+            Some(aa) => aa.write_macros_from(&image, base.as_deref()),
+            None => d.write_macros(&image),
+        });
         if self.aa_driver().is_some() {
             // The keyboard is the record ("AA"): what it holds now, with the
-            // names the user just gave.
-            self.macros.models.insert(record.clone(), stored.clone());
+            // names the user just gave. A refused save still brings the
+            // record up to the fresh read (and the UI hears it).
+            if written.is_ok() {
+                tracing::info!(slots = image.len(), record = %record, "macros written");
+                stored.written_ms = Some(now_ms());
+                self.macros.models.insert(record.clone(), stored.clone());
+            }
             self.aa_synced = None;
             self.sync_aa_records(true);
+            written?;
             return Ok(self.macros.models.get(&record).cloned().unwrap_or(stored));
         }
+        written?;
+        tracing::info!(slots = image.len(), record = %record, "macros written");
+        stored.written_ms = Some(now_ms());
         self.macros.models.insert(record, stored.clone());
         if let Ok(mut s) = self.shared.lock() {
             s.macros = self.macros.clone();
@@ -1900,23 +1922,40 @@ impl Actor {
     /// Write a keymap layer, then record it. The record changes only after
     /// the keyboard confirmed the data (checksum), so it never claims a
     /// layout the keyboard did not get.
-    fn apply_keymap(&mut self, layer: Layer, entries: Vec<(u8, KeyAction)>) -> Result<StoredKeymap, String> {
+    fn apply_keymap(
+        &mut self,
+        layer: Layer,
+        entries: Vec<(u8, KeyAction)>,
+        base: Option<String>,
+    ) -> Result<StoredKeymap, String> {
         let usb = self.usb.clone().ok_or_else(|| NO_USB.to_string())?;
         let map = kb_core::keymap::canonical(usb.model, layer, entries).map_err(|e| e.to_string())?;
         self.may_write()?;
-        self.with_command(|d| d.apply_keymap(layer, &map))?;
-        tracing::info!(?layer, keys = map.len(), record = %usb.record_id, "keymap layer written");
+        let written = self.with_command(|d| match d.aa_mut() {
+            Some(aa) => aa.apply_keymap_from(layer, &map, base.as_deref()),
+            None => d.apply_keymap(layer, &map).map(|()| 0),
+        });
         if self.aa_driver().is_some() {
-            // The keyboard is the record ("AA"): what it holds now.
-            if let Some(l) = self.keymaps.models.get_mut(&usb.record_id) {
-                l.layer_mut(layer).written_ms = Some(now_ms());
+            // The keyboard is the record ("AA"): what it holds now. A refused
+            // save still brings the record up to the fresh read (and the UI
+            // hears it).
+            if let Ok(kept) = &written {
+                tracing::info!(?layer, keys = map.len(), kept, record = %usb.record_id, "keymap layer written");
+                if let Some(l) = self.keymaps.models.get_mut(&usb.record_id) {
+                    l.layer_mut(layer).written_ms = Some(now_ms());
+                }
             }
             self.aa_synced = None;
             self.sync_aa_records(true);
+            let kept = written?;
             if let Some(k) = self.keymaps.models.get(&usb.record_id) {
                 return Ok(k.clone());
             }
+            tracing::debug!(kept, "no keymap record to answer with");
+        } else {
+            written?;
         }
+        tracing::info!(?layer, keys = map.len(), record = %usb.record_id, "keymap layer written");
         let stored = self.keymaps.models.entry(usb.record_id).or_default();
         *stored.layer_mut(layer) = StoredLayer::new(&map, now_ms());
         let result = stored.clone();
@@ -3162,6 +3201,7 @@ mod tests {
             let stored = call(&mut a, |reply| Request::ApplyKeymap {
                 layer: Layer::Base,
                 entries: vec![(a_key, KeyAction::key(0x05))],
+                base: None,
                 reply,
             })
             .unwrap();
@@ -3173,7 +3213,7 @@ mod tests {
                 crate::settings::StoredStep(MacroStep::new(StepKind::KeyUp, 4, 20)),
             ];
             let slots = vec![Some(StoredMacro { name: "x".into(), steps })];
-            call(&mut a, |reply| Request::ApplyMacros { slots, reply }).unwrap();
+            call(&mut a, |reply| Request::ApplyMacros { slots, base: None, reply }).unwrap();
             assert!(!sim.state().sent(cmd::SET_MACROS).is_empty());
             call(&mut a, Request::SyncClock).unwrap();
             assert!(sim.state().clock.is_some());
@@ -3193,9 +3233,9 @@ mod tests {
                 let refused = [
                     call(&mut a, |r| Request::ApplyEffect(settings(), r)).unwrap_err(),
                     call(&mut a, |reply| Request::ApplyPerKey { colors: vec![], brightness: 5, reply }).unwrap_err(),
-                    call(&mut a, |reply| Request::ApplyKeymap { layer: Layer::Fn, entries: vec![], reply })
+                    call(&mut a, |reply| Request::ApplyKeymap { layer: Layer::Fn, entries: vec![], base: None, reply })
                         .unwrap_err(),
-                    call(&mut a, |reply| Request::ApplyMacros { slots: vec![], reply }).unwrap_err(),
+                    call(&mut a, |reply| Request::ApplyMacros { slots: vec![], base: None, reply }).unwrap_err(),
                     call(&mut a, Request::SyncClock).unwrap_err(),
                     upload(&mut a, "0123456789abcdef").error.unwrap(),
                 ];
@@ -3451,6 +3491,7 @@ mod tests {
             let stored = call(&mut a, |reply| Request::ApplyKeymap {
                 layer: Layer::Base,
                 entries: vec![(d_led, KeyAction::key(0x05)), (a_led, KeyAction::key(0x06))],
+                base: None,
                 reply,
             })
             .unwrap();
@@ -3466,7 +3507,7 @@ mod tests {
                 crate::settings::StoredStep(MacroStep::new(StepKind::KeyUp, 4, 20)),
             ];
             let slots = vec![Some(StoredMacro { name: "x".into(), steps: steps.clone() })];
-            let stored = call(&mut a, |reply| Request::ApplyMacros { slots, reply }).unwrap();
+            let stored = call(&mut a, |reply| Request::ApplyMacros { slots, base: None, reply }).unwrap();
             assert_eq!(stored.slots[0].as_ref().map(|m| (m.name.as_str(), m.steps.clone())), Some(("x", steps)));
             assert!(stored.written_ms.is_some() && stored.read_ms.is_some());
             assert_eq!(
@@ -3485,6 +3526,68 @@ mod tests {
             assert_eq!(k.base.fixed, [b_led]);
             assert!(a.macros.models[RECORD].slots.iter().all(Option::is_none));
             assert_eq!(settings::load_macros(&dir.0).models[RECORD], a.macros.models[RECORD]);
+        }
+
+        #[test]
+        fn a_stale_save_is_refused_and_the_records_catch_up() {
+            use kb_core::keymap::LayerMap;
+            use kb_protocol::aa::keymap as aa_keymap;
+            let dir = TempDir::new("actor-stale");
+            let (mut a, sim) = actor(&dir.0, "");
+            a.handle(Request::ConfirmFirmware("3.01".into()));
+            let key = |id: &str| {
+                let k = Sim::model().geometry.as_ref().unwrap().keys.iter().find(|k| k.id == id).unwrap();
+                (k.led, k.aa.unwrap())
+            };
+            let ((a_led, _), (d_led, d_aa)) = (key("a"), key("d"));
+            let source = a.keymaps.models[RECORD].source.clone();
+            assert!(source.is_some(), "the page gets it with the record");
+            // AJAZZ's tool sets D while the page shows the old keys.
+            aa_keymap::set_entry(&mut sim.state().keymap, d_aa, [aa_keymap::page::KEYBOARD, 0, 0x05, 0]);
+            let before = sim.state().keymap.clone();
+            let e = call(&mut a, |reply| Request::ApplyKeymap {
+                layer: Layer::Base,
+                entries: vec![(a_led, KeyAction::key(0x06))],
+                base: source.clone(),
+                reply,
+            })
+            .unwrap_err();
+            assert_eq!(e, crate::aa::ERR_KEYS_CHANGED);
+            assert_eq!(sim.state().keymap, before, "nothing written");
+            // The records (and the file) show D now, with a new source.
+            let k = a.keymaps.models[RECORD].clone();
+            assert_eq!(k.base.actions(), LayerMap::from([(d_led, KeyAction::key(0x05))]));
+            assert_ne!(k.source, source);
+            assert_eq!(settings::load_keymaps(&dir.0).models[RECORD], k);
+            // Against it, the save goes.
+            call(&mut a, |reply| Request::ApplyKeymap {
+                layer: Layer::Base,
+                entries: vec![(a_led, KeyAction::key(0x06)), (d_led, KeyAction::key(0x05))],
+                base: k.source.clone(),
+                reply,
+            })
+            .unwrap();
+            // Macros: one made meanwhile is not deleted by a stale save.
+            let m = a.macros.models[RECORD].source.clone();
+            let steps = vec![
+                crate::settings::StoredStep(kb_protocol::sonix::macros::MacroStep::new(
+                    kb_protocol::sonix::macros::StepKind::KeyDown,
+                    4,
+                    20,
+                )),
+                crate::settings::StoredStep(kb_protocol::sonix::macros::MacroStep::new(
+                    kb_protocol::sonix::macros::StepKind::KeyUp,
+                    4,
+                    20,
+                )),
+            ];
+            let slots = vec![Some(StoredMacro { name: "x".into(), steps })];
+            call(&mut a, |reply| Request::ApplyMacros { slots: slots.clone(), base: m.clone(), reply }).unwrap();
+            let m = a.macros.models[RECORD].source.clone();
+            let e = call(&mut a, |reply| Request::ApplyMacros { slots: vec![], base: Some("0".into()), reply });
+            assert_eq!(e.unwrap_err(), crate::aa::ERR_MACROS_CHANGED);
+            assert_eq!(a.macros.models[RECORD].slots.len(), 1, "still there");
+            assert_eq!(a.macros.models[RECORD].source, m);
         }
 
         #[test]

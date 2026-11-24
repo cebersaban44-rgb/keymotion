@@ -247,6 +247,11 @@ pub struct StoredKeymap {
     /// record ("04 xx").
     #[serde(default, rename = "readMs", skip_serializing_if = "Option::is_none")]
     pub read_ms: Option<u64>,
+    /// The keyboard's keymap tables these layers were taken from
+    /// (`AaContents::keys_source`): a save made against other ones is
+    /// refused ("AA" family).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 impl StoredKeymap {
@@ -274,6 +279,10 @@ pub struct StoredLayer {
     /// them ("AA" family only).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fixed: Vec<u8>,
+    /// LEDs of keys at one of the keyboard's own functions in this layer
+    /// (a factory reset, a mode switch): never written ("AA" family).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub builtin: Vec<u8>,
 }
 
 impl StoredLayer {
@@ -285,7 +294,7 @@ impl StoredLayer {
                 Some((led.to_string(), format!("{:02x}{:02x}{:02x}{:02x}", e[0], e[1], e[2], e[3])))
             })
             .collect();
-        Self { entries, written_ms: Some(written_ms), fixed: Vec::new() }
+        Self { entries, written_ms: Some(written_ms), fixed: Vec::new(), builtin: Vec::new() }
     }
 
     /// The stored actions; entries that do not decode are skipped.
@@ -344,6 +353,10 @@ pub struct StoredMacros {
     /// see [`StoredKeymap::read_ms`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub read_ms: Option<u64>,
+    /// The keyboard's macro memory these slots were taken from (see
+    /// [`StoredKeymap::source`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 /// A macro slot the app keeps as the keyboard has it.
@@ -570,6 +583,7 @@ mod tests {
             ]),
             written_ms: Some(1),
             fixed: Vec::new(),
+            builtin: Vec::new(),
         };
         assert_eq!(layer.actions(), LayerMap::from([(33, KeyAction::key(0x04))]));
     }

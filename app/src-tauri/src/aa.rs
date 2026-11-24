@@ -1111,24 +1111,43 @@ impl AaDriver {
     /// changing only the keys that differ from a fresh read. **Writes
     /// flash** (nothing when nothing differs).
     pub fn apply_keymap(&mut self, layer: Layer, map: &LayerMap) -> Result<(), Error> {
+        self.apply_keymap_from(layer, map, None).map(|_| ())
+    }
+
+    /// [`Self::apply_keymap`], never over a key set in another program or
+    /// one of the keyboard's own functions ([`slot_view`]): those keep what
+    /// they hold, and how many keys `map` asked to change that way is the
+    /// answer. `base`: the [`AaContents::keys_source`] the change was made
+    /// against (the Key mapping page's); when the fresh read differs (the
+    /// keys changed in another program meanwhile), nothing is written and
+    /// the snapshot, now as read, tells the records. **Writes flash.**
+    pub fn apply_keymap_from(&mut self, layer: Layer, map: &LayerMap, base: Option<&str>) -> Result<usize, Error> {
         self.writable()?;
         let changes = self.keymap_changes(layer, map);
-        let changes = self.check(changes)?;
-        if changes.is_empty() {
-            tracing::debug!(?layer, "keymap layer already as asked; nothing written");
-            return Ok(());
+        self.after_io();
+        let (changes, kept) = self.check(changes)?;
+        if base.is_some_and(|b| self.keys_source().as_deref() != Some(b)) {
+            tracing::info!(?layer, "keys changed on the keyboard since the page read them; nothing written");
+            return Err(Error::Refused(ERR_KEYS_CHANGED.into()));
         }
-        tracing::debug!(?layer, keys = changes.len(), "keymap keys to change");
+        if changes.is_empty() {
+            tracing::debug!(?layer, kept, "keymap layer already as asked; nothing written");
+            return Ok(kept);
+        }
+        tracing::debug!(?layer, keys = changes.len(), kept, "keymap keys to change");
         let r = self.kb.apply_keymap(layer, changes);
         self.after_io();
         let r = self.check(r);
         self.renote();
-        r
+        r.map(|()| kept)
     }
 
-    /// The keys of `layer` whose entry differs from what `map` asks for.
-    /// The Fn key is never among them (it is never reassigned).
-    fn keymap_changes(&mut self, layer: Layer, map: &LayerMap) -> kb_core::aa::Result<Vec<(u8, KeyAction)>> {
+    /// The keys of `layer` whose entry differs from what `map` asks for, and
+    /// how many keys asked for something are kept as they are instead: set
+    /// in another program, one of the keyboard's own functions, or a key
+    /// whose factory function is one of those, which never comes back. The
+    /// Fn key is never among the changes (it is never reassigned).
+    fn keymap_changes(&mut self, layer: Layer, map: &LayerMap) -> kb_core::aa::Result<(Vec<(u8, KeyAction)>, usize)> {
         let current = self.kb.read_keymap(layer)?;
         let layout = self.kb.layout().clone();
         let factory: HashMap<u8, [u8; 4]> = match layer {
@@ -1154,33 +1173,38 @@ impl AaDriver {
         };
         let fn_led = layout.fn_slot().and_then(|s| layout.led(s));
         let mut changes = Vec::new();
+        let mut kept = 0;
         for (led, now) in current {
             if Some(led) == fn_led {
                 continue;
             }
-            let now = now.bytes().ok();
-            // Set to something the app cannot show (a firmware function, a
-            // combo, AJAZZ's host program...) and not asked for: it stays
-            // ([`record_view`]; the Key mapping page shows it as kept).
-            if !map.contains_key(&led) {
-                if let (Some(n), Some(f)) = (now, factory.get(&led).copied()) {
-                    if record_view(n, f).is_none() {
-                        continue;
-                    }
-                }
-            }
+            let (Ok(now), Some(f)) = (now.bytes(), factory.get(&led).copied()) else { continue };
             let want = map.get(&led).copied().unwrap_or(KeyAction::Default);
-            let same = match want {
-                KeyAction::Default => now.is_some() && now == factory.get(&led).copied(),
-                a => aa_keymap::encode(a).ok().is_some_and(|e| Some(e) == now),
+            let view = slot_view(now, f);
+            let same = match (&view, want) {
+                (SlotView::Default, KeyAction::Default) => true,
+                (SlotView::Action(_), w) => aa_keymap::encode(w).ok() == Some(now),
+                _ => false,
             };
-            if !same {
-                changes.push((led, want));
+            if same {
+                continue;
             }
+            // Never written over: set in another program, the keyboard's own
+            // function, or the factory function of a key that holds another
+            // action now (a firmware function is never brought back).
+            let never = matches!(view, SlotView::Fixed | SlotView::Builtin)
+                || (want == KeyAction::Default && aa_keymap::is_func(f));
+            if never {
+                if map.contains_key(&led) || want == KeyAction::Default && matches!(view, SlotView::Action(_)) {
+                    kept += 1;
+                }
+                continue;
+            }
+            changes.push((led, want));
         }
         // Keys this keyboard does not have: the driver refuses them.
         changes.extend(map.iter().filter(|(led, _)| layout.aa(**led).is_none()).map(|(l, a)| (*l, *a)));
-        Ok(changes)
+        Ok((changes, kept))
     }
 
     /// Replace every macro with `slots` (an empty one is none), except a
@@ -1188,17 +1212,33 @@ impl AaDriver {
     /// the app leaves its slot empty, it stays as it is (the Macros page
     /// shows it as kept). **Writes flash.**
     pub fn write_macros(&mut self, slots: &[Vec<MacroStep>]) -> Result<(), Error> {
+        self.write_macros_from(slots, None)
+    }
+
+    /// [`Self::write_macros`]: a macro made in another program is never
+    /// replaced (a slot that asks to is refused, nothing written). `base`:
+    /// the [`AaContents::macros_source`] the change was made against; when
+    /// the fresh read differs, nothing is written. **Writes flash.**
+    pub fn write_macros_from(&mut self, slots: &[Vec<MacroStep>], base: Option<&str>) -> Result<(), Error> {
         self.writable()?;
         let fresh = self.kb.read_macros();
         self.after_io();
         let fresh = self.check(fresh)?;
+        if base.is_some_and(|b| self.macros_source().as_deref() != Some(b)) {
+            tracing::info!("macros changed on the keyboard since the page read them; nothing written");
+            return Err(Error::Refused(ERR_MACROS_CHANGED.into()));
+        }
+        let made_elsewhere = |m: &Vec<AaMacroEntry>| !m.is_empty() && lossless_steps(m).is_none();
+        if let Some(i) = (0..slots.len()).find(|&i| !slots[i].is_empty() && fresh.get(i).is_some_and(made_elsewhere)) {
+            return Err(Error::Refused(macro_elsewhere(i)));
+        }
         let len = slots.len().max(fresh.iter().rposition(|m| !m.is_empty()).map_or(0, |i| i + 1));
         let mut entries: Vec<Vec<AaMacroEntry>> = Vec::with_capacity(len);
         for i in 0..len {
             let wanted = slots.get(i).filter(|s| !s.is_empty());
             let e = match (wanted, fresh.get(i)) {
                 (Some(steps), _) => self.check(aa_macros::from_steps(steps).map_err(AaError::from))?,
-                (None, Some(kept)) if !kept.is_empty() && lossless_steps(kept).is_none() => kept.clone(),
+                (None, Some(kept)) if made_elsewhere(kept) => kept.clone(),
                 _ => Vec::new(),
             };
             entries.push(e);
@@ -1211,6 +1251,20 @@ impl AaDriver {
         let r = self.check(r);
         self.renote();
         r
+    }
+
+    /// [`AaContents::keys_source`] of the last read (writes and fresh reads
+    /// update it).
+    pub fn keys_source(&self) -> Option<String> {
+        self.kb.snapshot().map(|s| source(&[&s.keymap.0, &s.fn_keymap.0]))
+    }
+
+    /// [`AaContents::macros_source`] of the last read.
+    pub fn macros_source(&self) -> Option<String> {
+        self.kb.snapshot().map(|s| {
+            let blocks: Vec<u8> = s.macro_blocks.iter().flat_map(|b| b.bytes.0.iter().copied()).collect();
+            source(&[&s.macro_table.0, &blocks])
+        })
     }
 
     /// What the keyboard holds in its keymap layers and macros, as the
@@ -1235,12 +1289,13 @@ impl AaDriver {
                     continue;
                 }
                 let (now, f) = (aa_keymap::entry(table, k.aa), aa_keymap::entry(factory, k.aa));
-                match record_view(now, f) {
-                    Some(None) => {}
-                    Some(Some(a)) => {
+                match slot_view(now, f) {
+                    SlotView::Default => {}
+                    SlotView::Action(a) => {
                         out.actions.insert(k.led, a);
                     }
-                    None => out.fixed.push(k.led),
+                    SlotView::Builtin => out.builtin.push(k.led),
+                    SlotView::Fixed => out.fixed.push(k.led),
                 }
             }
             out
@@ -1254,20 +1309,14 @@ impl AaDriver {
                 (false, None) => MacroContents::Fixed(e.len()),
             })
             .collect();
-        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-        let blocks: Vec<u8> = s.macro_blocks.iter().flat_map(|b| b.bytes.0.iter().copied()).collect();
-        for part in [&s.keymap.0, &s.fn_keymap.0, &s.macro_table.0, &blocks] {
-            let len = (part.len() as u64).to_le_bytes();
-            for b in len.iter().chain(part.iter()) {
-                h ^= u64::from(*b);
-                h = h.wrapping_mul(0x0100_0000_01b3);
-            }
-        }
+        let (keys_source, macros_source) = (self.keys_source()?, self.macros_source()?);
         Some(AaContents {
             base: layer(&s.keymap.0, layout.factory_base()),
             fn_layer: layer(&s.fn_keymap.0, &s.default_fn.0),
             macros,
-            fingerprint: h,
+            fingerprint: format!("{keys_source}:{macros_source}"),
+            keys_source,
+            macros_source,
         })
     }
 
@@ -1602,6 +1651,10 @@ pub struct LayerContents {
     /// firmware function, a combo, an entry for AJAZZ's host program...):
     /// every keymap write keeps them as they are.
     pub fixed: Vec<u8>,
+    /// Keys at one of the keyboard's own functions in this layer (a
+    /// factory reset, a mode switch: plan K-15): shown as such, never
+    /// written.
+    pub builtin: Vec<u8>,
 }
 
 /// One macro slot as the keyboard holds it.
@@ -1624,20 +1677,66 @@ pub struct AaContents {
     /// 100 slots.
     pub macros: Vec<MacroContents>,
     /// Changes whenever any of the above does.
-    pub fingerprint: u64,
+    pub fingerprint: String,
+    /// Tells the keymap tables apart: a keymap save made against another
+    /// one is refused ([`AaDriver::apply_keymap_from`]).
+    pub keys_source: String,
+    /// The same for the macros ([`AaDriver::write_macros_from`]).
+    pub macros_source: String,
 }
 
-/// A slot as the app's records see it: `Some(None)` its factory function
-/// (or `00`, which is the same), `Some(Some(a))` an action the records hold,
-/// `None` something they cannot (kept as the keyboard has it).
-fn record_view(now: [u8; 4], factory: [u8; 4]) -> Option<Option<KeyAction>> {
-    if now == factory || now == [0; 4] {
-        return Some(None);
+/// How the app's records see a keymap slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SlotView {
+    /// Its factory function (`00 00 00 00` is the same).
+    Default,
+    /// An action the records hold and the app writes.
+    Action(KeyAction),
+    /// One of the keyboard's own functions (a firmware function), at its
+    /// factory place: never written (plan K-15).
+    Builtin,
+    /// Something the app can neither show nor write (set in another
+    /// program): never written.
+    Fixed,
+}
+
+fn slot_view(now: [u8; 4], factory: [u8; 4]) -> SlotView {
+    // A firmware that keeps zeros in a table means the factory function.
+    let now = if now == [0; 4] { factory } else { now };
+    if now == factory {
+        return if aa_keymap::is_func(factory) { SlotView::Builtin } else { SlotView::Default };
     }
     match aa_keymap::decode(now) {
-        Binding::Action(a) if a != KeyAction::Default && a.encode().is_ok() => Some(Some(a)),
-        _ => None,
+        Binding::Action(a) if a != KeyAction::Default && a.encode().is_ok() && !aa_keymap::is_func(now) => {
+            SlotView::Action(a)
+        }
+        _ => SlotView::Fixed,
     }
+}
+
+/// A short hex tag of `parts` (FNV-1a over their lengths and bytes).
+fn source(parts: &[&[u8]]) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for part in parts {
+        let len = (part.len() as u64).to_le_bytes();
+        for b in len.iter().chain(part.iter()) {
+            h ^= u64::from(*b);
+            h = h.wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+    format!("{h:016x}")
+}
+
+/// A keymap save made against keys the keyboard no longer holds.
+pub const ERR_KEYS_CHANGED: &str =
+    "the keyboard's keys changed in another program since Keymotion read them; nothing was written";
+/// A macro save made against macros the keyboard no longer holds.
+pub const ERR_MACROS_CHANGED: &str =
+    "the keyboard's macros changed in another program since Keymotion read them; nothing was written";
+
+/// A write that would replace a macro made in another program (slot `i`).
+pub fn macro_elsewhere(i: usize) -> String {
+    format!("macro {} on the keyboard was made in another program and is not replaced; nothing was written", i + 1)
 }
 
 /// A macro's entries as the app's steps, when the steps give back the very

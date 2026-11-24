@@ -10,4 +10,10 @@ export type KeymapState = { base: KeymapLayerState, fn: KeymapLayerState,
  * When the layers were read from the keyboard (Unix ms); `null`: they
  * are the app's own record.
  */
-readMs: number | null, };
+readMs: number | null, 
+/**
+ * The keyboard's tables the layers were read from: sent back with a
+ * save (`apply_keymap`'s `base`), which is refused when the keyboard
+ * changed since ("AA"; `null` otherwise).
+ */
+source: string | null, };

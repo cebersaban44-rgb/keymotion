@@ -10,7 +10,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   betaIssue,
+  draftFits,
   freeMacroSlot,
+  IMPORTED,
+  keptKeys,
   keptWhy,
   liveNoticeKind,
   notSaneBody,
@@ -127,4 +130,46 @@ test("macros and keys set in another program are left alone", () => {
   assert.equal(freeMacroSlot([{ name: "a" }, null, null], [], 100), 1);
   assert.equal(freeMacroSlot([null], [0], 1), null);
   assert.deepEqual(withoutFixed({ 3: "x", 7: "y" }, [7]), { 3: "x" });
+});
+
+test("a save against keys or macros changed elsewhere says what happened", () => {
+  assert.equal(
+    errorRule("the keyboard's keys changed in another program since Keymotion read them; nothing was written").key,
+    "err.aa.keysChanged",
+  );
+  assert.equal(
+    errorRule("the keyboard's macros changed in another program since Keymotion read them; nothing was written").key,
+    "err.aa.macrosChanged",
+  );
+  assert.deepEqual(
+    errorRule("macro 2 on the keyboard was made in another program and is not replaced; nothing was written"),
+    { key: "err.aa.macroElsewhere", vars: { slot: 2 } },
+  );
+  assert.equal(
+    errorRule("the profile's macros were not loaded: they would replace a macro made in another program").key,
+    "err.aa.profileMacros",
+  );
+  for (const k of ["err.aa.keysChanged", "err.aa.macrosChanged", "err.aa.macroElsewhere", "err.aa.profileMacros"]) {
+    assert.ok(EXPECTED.has(k), k);
+  }
+});
+
+test("an unsaved draft from before goes when the keyboard changed since", () => {
+  // "04 xx": the app's own record, nothing to compare.
+  assert.equal(draftFits(undefined, null), true);
+  // "AA": the same read of the keyboard, or a draft opened from a backup.
+  assert.equal(draftFits("abc", "abc"), true);
+  assert.equal(draftFits(IMPORTED, "abc"), true);
+  // Changed in AJAZZ's tool since, or a draft from before sources existed.
+  assert.equal(draftFits("abc", "def"), false);
+  assert.equal(draftFits(undefined, "def"), false);
+  assert.equal(draftFits(null, "def"), false);
+});
+
+test("the restore's done step names only places that are keys", () => {
+  const kept = [
+    { layer: "base", slot: 85, led: 96, reason: "the Fn key is never reassigned" },
+    { layer: "fn", slot: 126, led: null, reason: "slot 126 (end of the table) must stay as read" },
+  ];
+  assert.deepEqual(keptKeys(kept), [kept[0]]);
 });
