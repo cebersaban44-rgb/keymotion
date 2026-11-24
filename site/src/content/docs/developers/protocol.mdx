@@ -382,10 +382,10 @@ A layer is 512 bytes, 128 slots of 4 bytes `PAGE P1 P2 P3`; slot `i` is the key 
 ### Macro table and blocks
 
 - Addresses 0–399 hold 100 little-endian 4-byte addresses, one per macro slot (0: no macro). From address 400 follows one block per macro: a 4-byte header whose first two bytes hold twice the number of entries, then 4-byte entries `DELAY_LO DELAY_HI CODE FLAG`.
-- The flag is `B0` or `30` for a key going down or up, `90` or `10` for a mouse button. The delay is the pause after the entry, 5 to 65,535 ms; shorter pauses are raised to 5 ms, except after the last entry.
+- The flag's top bit is set for a press and clear for a release, and the three bits below it give the event's type: 1 a mouse button (`90`, `10`), 2 the wheel (`A0`, `20`), 3 a keyboard usage (`B0`, `30`). Keymotion writes key and mouse-button events. The delay is the pause after the entry, 5 to 65,535 ms; shorter pauses are raised to 5 ms, except after the last entry.
 - A write sends the table and the blocks as one image, from address 0 upwards, and reads it back. The image is written once: the table is not written again after the blocks, because a second chunk at address 0 would erase the page the blocks were just written to. An image longer than 1 KB has a chunk that starts exactly at 1024, and one at 2048 past 2 KB, so that each page is erased before it is programmed; chunks of 56 bytes never land there on their own.
 - The macro memory is three flash pages, the 3072 bytes the device information reports, and the firmware doesn't keep a write inside it: anything at 3072 or beyond would land on the Fn layer and then on the firmware's code, so the guard refuses it. The blocks take at most 512 bytes (4 per macro and 4 per entry), for at most 99 macros. AJAZZ's own tool keeps this keyboard to that; the limit goes up only once a real keyboard shows that more works.
-- Every command except `32` and `33` stops a macro that is playing.
+- Every command except live frames (`32`) and the color read (`33`) stops a macro that is playing. So a repeating macro stops when the app writes to the keyboard (a save, the clock, a restore), reads it in full on connecting, or reads the device information for the battery, which it does only while its window shows the Overview or Connection page, at most every 5 minutes. A macro cut between a mouse button's press and release can leave that button held until it is clicked. The user guide says so on the Macros page.
 - Macro names are not stored on the keyboard.
 
 ### Setting the clock

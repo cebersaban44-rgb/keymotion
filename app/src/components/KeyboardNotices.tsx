@@ -4,21 +4,20 @@
 //
 // - KeyboardNotices: nothing is written to it, and why; another program
 //   seems to talk to it. On every page that writes to the keyboard.
-// - LiveLightsNotice: why live lighting doesn't show on its keys, or that
-//   its own lighting comes back about 30 seconds after live lighting ends.
-//   On every page that turns live lighting on.
+// - LiveLightsNotice: live lighting doesn't show on its keys for now, and
+//   why. On every page that turns live lighting on.
 // - BetaPill / BetaNote: support for this firmware is new.
 
-import { Cable, FlaskConical, Lightbulb, MessageSquareWarning, RadioTower } from "lucide-react";
+import { FlaskConical, MessageSquareWarning, RadioTower } from "lucide-react";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import { aaStatusOf } from "../lib/aa";
-import { betaIssue, liveNoticeKind, notSaneBody, untestedFirmware } from "../lib/aaText";
+import { betaIssue, liveOffReason, notSaneBody } from "../lib/aaText";
+import { errorRule } from "../lib/errorRules";
 import { friendlyError } from "../lib/errors";
 import { useT, type MessageKey } from "../lib/i18n";
 import { openIssue } from "../lib/ipc";
 import { useReport } from "../lib/report";
-import { askFirmwareAgain, useSafety } from "../lib/safety";
-import { useActiveKeyboard, useApp } from "../lib/store";
+import { useActiveKeyboard } from "../lib/store";
 import { InfoBar } from "./controls";
 
 const READ_ONLY: Record<string, { title: MessageKey; body: MessageKey }> = {
@@ -56,7 +55,11 @@ export function KeyboardNotices({ kb }: { kb: KeyboardInfo }) {
                   openReport({
                     kind: "bug",
                     title: `[Problem] ${kb.modelName} firmware ${kb.firmware ?? "?"}: only read, not as expected`,
-                    context: `The keyboard does not look as expected: ${ro.reasons.join("; ") || "(no reason given)"}`,
+                    // The reasons come grouped (diagnostics.rs
+                    // summarize_reasons), one per line.
+                    context: `The keyboard does not look as expected:\n${
+                      ro.reasons.map((r) => `- ${r}`).join("\n") || "(no reason given)"
+                    }`,
                   })
                 }
                 data-aa-report
@@ -80,92 +83,28 @@ export function KeyboardNotices({ kb }: { kb: KeyboardInfo }) {
 }
 
 /**
- * Live lighting on an "AA" keyboard (plan K-4): it shows only in the
- * keyboard's per-key mode, which Keymotion switches to and back. Says why
- * it doesn't show on the keys, or, while it does, that the keyboard's own
- * lighting comes back about 30 seconds after it ends. One component for
- * every page that turns live lighting on.
+ * Live lighting on an "AA" keyboard: it shows in any of the keyboard's
+ * lighting modes, is never saved, and the keyboard's own lighting comes
+ * back by itself a few seconds after it ends, so there is nothing to say
+ * while it shows. Says that it doesn't show on the keys for now, and why
+ * when the keyboard takes none (just after it is switched on, during a
+ * reset or an update). One component for every page that turns live
+ * lighting on.
  */
 export function LiveLightsNotice() {
   const t = useT();
   const kb = useActiveKeyboard();
-  const setPage = useApp((s) => s.setPage);
-  const page = useApp((s) => s.page);
-  const confirmed = useSafety((s) => s.confirmed);
-  const status = aaStatusOf(kb);
-  if (!status) return null;
-  const off = status.liveLightsOff;
-  const kind = liveNoticeKind(status);
-  if (kind === "off" && off) {
-    const title = t("aa.live.off.title");
-    switch (off.kind) {
-      case "color-unknown":
-        return (
-          <InfoBar
-            tone="warn"
-            icon={<Lightbulb size={20} strokeWidth={1.6} />}
-            title={title}
-            data="aa-live-color"
-            actions={
-              page !== "lighting" ? (
-                <button type="button" className="btn-secondary" onClick={() => setPage("lighting")}>
-                  {t("overview.light.go")}
-                </button>
-              ) : undefined
-            }
-          >
-            <span className="block max-w-[80ch]">{t("aa.live.color")}</span>
-          </InfoBar>
-        );
-      case "read-only":
-        return (
-          <InfoBar tone="warn" title={title} data="aa-live-read-only">
-            <span className="block max-w-[80ch]">{t("aa.live.readOnly")}</span>
-          </InfoBar>
-        );
-      case "blocked": {
-        const version = untestedFirmware(off.reason);
-        return (
-          <InfoBar
-            tone="warn"
-            title={title}
-            data="aa-live-blocked"
-            actions={
-              // Not once the user said yes to this firmware: the note goes
-              // with the next look.
-              version && !confirmed.includes(version) ? (
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => void askFirmwareAgain(version).catch(console.error)}
-                  data-aa-ask-again
-                >
-                  {t("aa.live.askAgain")}
-                </button>
-              ) : undefined
-            }
-          >
-            <span className="block max-w-[80ch]">
-              {version ? t("aa.live.untested") : friendlyError(off.reason, t, true)}
-            </span>
-          </InfoBar>
-        );
-      }
-      case "failed":
-        // It tries again by itself: no "try again" from the driver's error.
-        return (
-          <InfoBar tone="warn" title={title} data="aa-live-failed">
-            <span className="block max-w-[80ch]">{t("aa.live.failed")}</span>
-          </InfoBar>
-        );
-    }
-  }
-  // "Comes back in about 30 seconds" only when Keymotion switched the
-  // keyboard and has its effect to put back.
-  if (kind !== "armed") return null;
+  const off = liveOffReason(aaStatusOf(kb)?.liveLightsOff);
+  if (!off) return null;
+  // A reason the app has no words for gets the general line, not
+  // "something went wrong".
+  const body =
+    off.reason && errorRule(off.reason).key !== "err.generic"
+      ? friendlyError(off.reason, t, true)
+      : t("aa.live.off.body");
   return (
-    <InfoBar icon={<Cable size={20} strokeWidth={1.6} />} title={t("aa.live.armed.title")} data="aa-live-armed">
-      <span className="block max-w-[80ch]">{t("aa.live.armed.body")}</span>
+    <InfoBar tone="warn" title={t("aa.live.off.title")} data="aa-live-off">
+      <span className="block max-w-[80ch]">{body}</span>
     </InfoBar>
   );
 }

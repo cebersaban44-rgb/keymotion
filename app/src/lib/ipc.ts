@@ -1295,9 +1295,8 @@ const AA_LIMITS: KeyboardInfo["limits"] = {
  * `?mock=aa769`: an AK980 PRO on AJAZZ's firmware 3.01 ("769") on the cable,
  * the "AA" family, as the simulator reports it. `&aa=` adds states, comma
  * separated: `insane`, `notread`, `update`, `nobackup` (why nothing is
- * written); `color`, `untested`, `blocked`, `failed`, `armed` (live lights;
- * with `perkey`, armed on per-key lighting: nothing to put back); `other`
- * (another program talks to it); `charging`; `clock` (its clock page is at
+ * written); `blocked` (live lights don't show on its keys for now, and
+ * why); `other` (another program talks to it); `charging`; `clock` (its clock page is at
  * risk: lib/screen.ts and live.ts); `nocolor` (a backup that doesn't know
  * its colour: lib/aa.ts); `cut` (the quiet time after a stopped upload:
  * lib/screen.ts); `elsewhere` (a key and a macro set in AJAZZ's tool, the
@@ -1316,19 +1315,9 @@ function mockAaKeyboard(): KeyboardInfo {
       : flags.has("nobackup")
         ? { kind: "no-backup", error: "Access is denied. (os error 5)" }
         : null;
-  const live = ["color", "untested", "blocked", "failed"].some((f) => flags.has(f));
-  const liveLightsOff: AaStatus["liveLightsOff"] =
-    readOnly && live
-      ? { kind: "read-only" }
-      : flags.has("color")
-        ? { kind: "color-unknown" }
-        : flags.has("untested")
-          ? { kind: "blocked", reason: "untested keyboard firmware 3.01" }
-          : flags.has("blocked")
-            ? { kind: "blocked", reason: "another program is using the keyboard (ajazz-driver)" }
-            : flags.has("failed")
-              ? { kind: "failed", error: "no answer to command 0x13" }
-              : null;
+  const liveLightsOff: AaStatus["liveLightsOff"] = flags.has("blocked")
+    ? { kind: "blocked", reason: "another program is using the keyboard (ajazz-driver)" }
+    : null;
   return {
     key: "ajazz-ak980-pro.aa:Usb",
     modelId: "ajazz-ak980-pro",
@@ -1345,11 +1334,11 @@ function mockAaKeyboard(): KeyboardInfo {
     aaStatus: {
       readOnly,
       liveLightsOff,
-      liveArmed: !liveLightsOff && flags.has("armed"),
-      liveRestores: !liveLightsOff && flags.has("armed") && !flags.has("perkey"),
+      liveArmed: false,
+      liveRestores: false,
       otherProgramSuspected: flags.has("other"),
       backup: readOnly?.kind === "no-backup" ? null : "aa-8039-0301-1763500000000.json",
-      effectColorKnown: !flags.has("color"),
+      effectColorKnown: true,
     },
     modelName: "AJAZZ AK980 PRO",
     vendor: "AJAZZ",
