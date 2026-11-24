@@ -293,8 +293,24 @@ fn the_sanity_gate() {
         "remembered effect mode 128 does not read back as 1",
     );
     fails(&|s| s.keymap.0.truncate(504), usb, "base layer read is 504 bytes");
-    fails(&|s| s.macro_table.0[0..4].copy_from_slice(&100u32.to_le_bytes()), usb, "macro slot 0 at");
-    fails(&|s| s.macro_table.0[8..12].copy_from_slice(&5000u32.to_le_bytes()), usb, "macro slot 2 at");
+    // A stored block that does not hold what its header says (a backup).
+    fails(
+        &|s| {
+            s.macro_table.0[8..12].copy_from_slice(&400u32.to_le_bytes());
+            s.macro_blocks = vec![MacroBlock { slot: 2, addr: 400, bytes: Hex(vec![4, 0, 0, 0, 1, 2, 3, 4]) }];
+        },
+        usb,
+        "macro slot 2 at address 400 does not hold",
+    );
+    // A pointer outside the macro memory or to erased flash is an empty
+    // slot, no reason: the next macro save repairs the table.
+    for p in [100u32, 5000] {
+        let mut s = good.clone();
+        s.macro_table.0[8..12].copy_from_slice(&p.to_le_bytes());
+        assert_eq!(check_sanity(&s, usb), Ok(()), "{p}");
+        assert_eq!(broken_macros(&s), [(2, p)]);
+        assert!(s.macros()[2].is_empty());
+    }
     // Levels other tools leave (0–6), any levels when off, per-key mode and
     // FUNC_V2 pages are all plausible.
     for (mode, brightness, speed) in [(1, 0, 0), (1, 6, 6), (0, 0, 9), (128, 1, 5)] {
@@ -383,11 +399,12 @@ fn erased_or_impossible_macro_pointers_do_not_overflow() {
     let addrs: Vec<u16> = sim.state().sent(cmd::MACROS).iter().map(|p| u16::from_le_bytes([p[4], p[5]])).collect();
     assert!(addrs.iter().all(|&a| a < 400), "only the table was read: {addrs:?}");
     // A pointer near the top of the address range is outside the memory,
-    // without wrapping around to a small address.
+    // without wrapping around to a small address: an empty slot, not read.
     sim.state().macros[..4].copy_from_slice(&0xFFFF_FFF0u32.to_le_bytes());
-    k.read_all().unwrap();
-    assert!(!k.is_sane());
-    assert!(k.sanity_reasons().iter().any(|r| r.contains("macro slot 0 at")), "{:?}", k.sanity_reasons());
+    let snap = k.read_all().unwrap();
+    assert!(k.is_sane(), "{:?}", k.sanity_reasons());
+    assert_eq!(broken_macros(&snap), [(0, 0xFFFF_FFF0)]);
+    assert!(snap.macros()[0].is_empty());
 }
 
 #[test]
@@ -902,9 +919,20 @@ fn what_the_keyboard_cannot_do_is_refused_before_sending() {
 fn a_keymap_the_keyboard_did_not_keep_is_an_error() {
     let sim = Sim::ak980();
     let mut k = ready(&sim);
+    k.set_settle(Duration::from_millis(1));
+    std::thread::sleep(Duration::from_millis(2));
+    k.settle = Duration::from_secs(60);
     sim.state().faults.ignore_writes = Some(cmd::SET_KEYMAP);
+    let n = sim.state().packets.len();
     let r = k.apply_keymap(Layer::Base, [(A, KeyAction::key(0x05))]);
     assert!(matches!(r, Err(AaError::Readback { what: "keymap" })));
+    // Read back, then read again whole: the device information went out
+    // after the write.
+    let after: Vec<u8> = sim.state().packets[n..].iter().map(|p| p[2]).collect();
+    let last_write = after.iter().rposition(|&c| c == cmd::SET_KEYMAP).unwrap();
+    assert!(after[last_write..].contains(&cmd::DEVICE_INFO), "{after:02X?}");
+    // The next write waits the settle time again.
+    assert!(k.settling().is_some_and(|d| d > Duration::from_secs(50)));
 }
 
 // ------------------------------------------------------------------ macros
@@ -989,36 +1017,47 @@ fn macro_entries_the_steps_cannot_express_go_back_byte_for_byte() {
 }
 
 #[test]
-fn a_macro_write_that_fails_part_way_closes_the_gate() {
+fn a_macro_write_that_stops_part_way_is_repaired_by_the_next_one() {
     // The table comes first in the one image a write sends: one that stops
-    // part-way can leave a pointer to a block that is not there. The gate
-    // closes until a read clears it.
+    // after its first chunk leaves pointers to erased flash. Beta.2 read
+    // that as "outside the macro memory" and kept the keyboard read-only
+    // for good (Fn+Space does not touch macros; only AJAZZ's tool could
+    // help). Now such a slot reads as empty, writes stay allowed, and the
+    // next macro save writes the whole image and repairs the table.
     let sim = Sim::ak980();
     let mut k = ready(&sim);
-    k.write_macros(&[a_macro()]).unwrap();
-    let n = sim.state().packets.len();
-    sim.state().faults.fail_write = Some(n + 8);
-    let err = k.write_macros(&[a_macro(), a_macro()]).unwrap_err();
-    assert!(err.needs_reopen(), "{err}");
-    assert!(!k.is_sane());
-    assert!(k.sanity_reasons()[0].contains("did not finish"));
-
-    // The keyboard drops the writes from the third chunk on (it echoes
-    // them all the same): the read-back tells, the gate closes and the
-    // keyboard is read again. The page was erased by the first chunk, so
-    // the second macro's pointer leads to erased flash: the read finds it
-    // outside the macro memory, and the keyboard stays read-only.
-    let sim = Sim::ak980();
-    let mut k = ready(&sim);
-    let n = sim.state().packets.len();
-    sim.state().faults.drop_writes_from = Some(n + 3);
     let long: Vec<MacroStep> = (0..40)
         .map(|i| MacroStep::new(if i % 2 == 0 { StepKind::KeyDown } else { StepKind::KeyUp }, 0x05, 10))
         .collect();
-    let err = k.write_macros(&[a_macro(), long]).unwrap_err();
-    assert!(matches!(err, AaError::Readback { what: "macros" }), "{err}");
+    let n = sim.state().packets.len();
+    sim.state().faults.fail_write = Some(n + 2);
+    let err = k.write_macros(&[a_macro(), long.clone()]).unwrap_err();
+    assert!(err.needs_reopen(), "{err}");
     assert!(!k.is_sane());
-    assert!(k.sanity_reasons().iter().any(|r| r.contains("macro slot 1 at address 412")), "{:?}", k.sanity_reasons());
+    // What the keyboard holds now: the first chunk (the table's start),
+    // the rest of the page erased.
+    {
+        let s = sim.state();
+        assert_eq!(&s.macros[..4], &400u32.to_le_bytes());
+        assert_eq!(&s.macros[4..8], &412u32.to_le_bytes());
+        assert!(s.macros[400..420].iter().all(|&b| b == 0xFF), "the blocks were never written");
+    }
+    // The channel is opened again (a new driver) and the keyboard read.
+    sim.state().faults.fail_write = None;
+    let mut k = ready(&sim);
+    let snap = k.snapshot().unwrap().clone();
+    assert_eq!(broken_macros(&snap), [(0, 400), (1, 412)]);
+    assert!(snap.macros().iter().all(Vec::is_empty), "both slots read as empty");
+    assert!(k.read_macros().unwrap().iter().all(Vec::is_empty));
+    // A backup taken now holds them as empty, and passes the gate.
+    assert_eq!(check_sanity(&snap, Sim::usb()), Ok(()));
+    // The next save repairs the table.
+    k.write_macros(&[long]).unwrap();
+    let back = k.read_all().unwrap();
+    assert!(broken_macros(&back).is_empty());
+    assert_eq!(back.macros()[0].len(), 40);
+    assert!(back.macros()[1].is_empty());
+    assert_eq!(&sim.state().macros[4..8], &[0; 4], "slot 1 names no block any more");
 }
 
 #[test]
@@ -1143,15 +1182,19 @@ fn live_frames_need_no_sanity_gate_but_this_keyboard() {
     assert!(!k.is_sane());
     k.realtime_frame([(ENTER, [1, 2, 3])]).unwrap();
     assert_eq!(sim.state().sent(cmd::REALTIME).len(), 7);
-    // A fresh driver asks the device information first; one that names
-    // another USB device gets no frame.
-    let sim = Sim::ak980();
+    // Without an answered device information a frame asks nothing (a
+    // silent keyboard is not asked three times per frame) and goes
+    // nowhere; one that names another USB device gets no frame either.
+    let sim = Sim::ak980().with_faults(Faults { silent_info: true, ..Faults::default() });
     let mut k = keyboard(&sim);
-    k.realtime_frame([]).unwrap();
-    assert_eq!(sim.state().packets[0][2], cmd::DEVICE_INFO);
+    for _ in 0..5 {
+        assert!(matches!(k.realtime_frame([]), Err(AaError::NotSane(why)) if why[0].contains("went unanswered")));
+    }
+    assert!(sim.state().packets.is_empty(), "nothing sent");
     let other = Sim::ak980();
     let mut k = AaKeyboard::new(other.command(), layout(), UsbIdentity { pid: 0x8039, release: 0x0302 });
     k.set_settle(Duration::ZERO);
+    k.device_info().unwrap();
     assert!(matches!(k.realtime_frame([]), Err(AaError::NotSane(why)) if why[0].contains("not this USB device")));
     assert!(other.state().sent(cmd::REALTIME).is_empty());
 }
@@ -1183,15 +1226,188 @@ fn a_write_the_keyboard_dropped_closes_the_gate_and_reads_it_again() {
     // the same. The read-back tells; the keyboard is read again at once.
     let sim = Sim::ak980();
     let mut k = ready(&sim);
-    sim.state().power_on(Duration::from_millis(200));
+    sim.state().power_on(Duration::from_millis(400));
+    k.set_settle(Duration::from_millis(100));
     let before = sim.state().keymap.clone();
+    let n = sim.state().packets.len();
     let r = k.apply_keymap(Layer::Base, [(A, KeyAction::key(0x05))]);
     assert!(matches!(r, Err(AaError::Readback { what: "keymap" })), "{r:?}");
     assert_eq!(sim.state().dropped.len(), 10);
     assert_eq!(sim.state().keymap, before, "nothing changed");
+    // The device information went out again after the write: a full read.
+    let after: Vec<u8> = sim.state().packets[n..].iter().map(|p| p[2]).collect();
+    let last_write = after.iter().rposition(|&c| c == cmd::SET_KEYMAP).unwrap();
+    assert!(after[last_write..].contains(&cmd::DEVICE_INFO), "{after:02X?}");
     // Read again (sane: nothing changed), and the next write waits.
     assert!(k.is_sane(), "{:?}", k.sanity_reasons());
     assert_eq!(k.snapshot().unwrap().keymap.0, before);
+    assert!(k.settling().is_some(), "the settle time starts again");
+}
+
+#[test]
+fn a_power_on_animation_that_ends_mid_write_is_caught_by_the_read_back() {
+    // The first chunk (the one that erases the page) is dropped, the rest
+    // land: programmed over the old table, they mix old and new. The
+    // read-back tells; the gate closes and the keyboard is read again.
+    let sim = Sim::ak980();
+    {
+        let mut s = sim.state();
+        s.per_key = perkey::blank().to_vec();
+        for slot in 0..128u8 {
+            perkey::set(&mut s.per_key, slot, [0x0F, 0xF0, 0x33]);
+        }
+    }
+    let mut k = ready(&sim);
+    k.set_settle(Duration::from_millis(1));
+    std::thread::sleep(Duration::from_millis(2));
+    k.settle = Duration::from_secs(60);
+    let n = sim.state().packets.len();
+    // The fresh read (10 chunks), then the first write chunk dropped.
+    sim.state().faults.drop_writes_until = Some(n + 11);
+    let r = k.write_per_key([(ENTER, [0xFF, 0xFF, 0xFF])]);
+    assert!(matches!(r, Err(AaError::Readback { what: "per-key table" })), "{r:?}");
+    assert_eq!(sim.state().dropped, [cmd::SET_PER_KEY]);
+    // Old AND new, neither: Enter (slot 76, chunk 6) shows 0F F0 33.
+    assert_eq!(perkey::get(&sim.state().per_key, ENTER_AA), [0x0F, 0xF0, 0x33]);
+    assert_eq!(perkey::get(&sim.state().per_key, 0), [0x0F, 0xF0, 0x33], "chunk 0 not written");
+    assert!(k.settling().is_some());
+    let after: Vec<u8> = sim.state().packets[n..].iter().map(|p| p[2]).collect();
+    assert!(after.ends_with(&[cmd::MACROS]) && after.contains(&cmd::DEVICE_INFO), "read again: {after:02X?}");
+    // The next write, with the keyboard settled, lands whole.
+    sim.state().faults.drop_writes_until = None;
+    k.set_settle(Duration::ZERO);
+    k.read_all().unwrap();
+    k.write_per_key([(ENTER, [0xFF, 0xFF, 0xFF])]).unwrap();
+    assert_eq!(perkey::get(&sim.state().per_key, ENTER_AA), [0xFF, 0xFF, 0xFF]);
+    assert_eq!(perkey::get(&sim.state().per_key, 0), [0, 0, 0]);
+}
+
+#[test]
+fn a_reset_during_the_settle_time_stops_the_write_before_its_first_chunk() {
+    // The reset notice comes while the driver waits for the keyboard to
+    // settle: nothing asked it, so only a look at what is queued finds it,
+    // before the first chunk (the one that erases the page) goes.
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    k.set_settle(Duration::from_millis(150));
+    let resetter = sim.clone();
+    let t = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(40));
+        resetter.state().notice_reset();
+    });
+    let r = k.apply_effect(&red_breath());
+    t.join().unwrap();
+    assert!(matches!(&r, Err(AaError::NotSane(why)) if why[0].contains("reset")), "{r:?}");
+    assert!(sim.state().sent(cmd::SET_EFFECT).is_empty(), "nothing written");
+    assert_eq!(k.resets_reported(), 1);
+    assert!(k.settling().is_some(), "the blink: the settle time starts again");
+}
+
+#[test]
+fn a_read_back_that_gets_no_answer_closes_the_gate_like_a_mismatch() {
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    k.set_settle(Duration::from_millis(1));
+    std::thread::sleep(Duration::from_millis(2));
+    k.settle = Duration::from_secs(60);
+    // The effect write is echoed; nothing answers after it (the read-back,
+    // and the read again).
+    let n = sim.state().packets.len();
+    sim.state().faults.mute_from = Some(n + 2);
+    let r = k.apply_effect(&red_breath());
+    assert!(matches!(r, Err(AaError::Timeout { cmd: 0x13 })), "{r:?}");
+    assert!(!k.is_sane(), "the gate closed");
+    assert!(k.settling().is_some_and(|d| d > Duration::from_secs(50)), "the settle time starts again");
+    assert_eq!(k.current_effect(), None, "the write is not vouched for");
+    // Once the keyboard answers again, a read opens the gate, and what it
+    // holds is read, not assumed.
+    sim.state().faults.mute_from = None;
+    k.read_all().unwrap();
+    assert!(k.is_sane());
+    let e = k.read_effect().unwrap();
+    assert_eq!(e.effect.mode, 7);
+    assert!(!e.color_known, "read back as the quirk, and not remembered");
+    // The same for the other tables.
+    k.set_settle(Duration::ZERO);
+    k.settle = Duration::from_secs(60);
+    for what in ["per-key table", "keymap", "macros"] {
+        let n = sim.state().packets.len();
+        let writes = match what {
+            "per-key table" => 10 + 10,
+            "keymap" => 10 + 10,
+            _ => 8,
+        };
+        sim.state().faults.mute_from = Some(n + writes + 1);
+        let r = match what {
+            "per-key table" => k.write_per_key([(ENTER, [9, 9, 9])]),
+            "keymap" => k.apply_keymap(Layer::Base, [(A, KeyAction::key(0x05))]),
+            _ => k.write_macros(&[a_macro()]),
+        };
+        assert!(matches!(r, Err(AaError::Timeout { .. })), "{what}: {r:?}");
+        assert!(!k.is_sane(), "{what}");
+        sim.state().faults.mute_from = None;
+        k.set_settle(Duration::ZERO);
+        k.read_all().unwrap();
+        k.settle = Duration::from_secs(60);
+    }
+}
+
+#[test]
+fn an_interrupted_keymap_write_is_repaired_to_the_factory_entries() {
+    // A keymap write that stops after its first chunk leaves the rest of
+    // the page erased: FF FF FF FF on the Fn key, the knob and the Fn
+    // layer's firmware functions too, which no ordinary write may touch.
+    // Written 00 00 00 00 they get their factory entries back.
+    for layer in [Layer::Base, Layer::Fn] {
+        let sim = Sim::ak980();
+        let mut k = ready(&sim);
+        let n = sim.state().packets.len();
+        // The fresh read (10 chunks), the first write chunk, then a stall.
+        sim.state().faults.fail_write = Some(n + 12);
+        let r = k.apply_keymap(layer, [(W, KeyAction::key(0x05))]);
+        assert!(r.unwrap_err().needs_reopen());
+        let erased_slots = |s: &SimState| {
+            let t = if layer == Layer::Base { &s.keymap } else { &s.fn_keymap };
+            (0..128u8).filter(|&i| keymap::entry(t, i) == keymap::ERASED).collect::<Vec<u8>>()
+        };
+        let erased = erased_slots(&sim.state());
+        assert!(erased.contains(&FN_AA) && erased.contains(&14) && erased.contains(&SPACE_AA), "{erased:?}");
+        // Opened again: the gate passes (an erased entry is a known page).
+        sim.state().faults.fail_write = None;
+        let mut k = ready(&sim);
+        // Any write of the layer repairs every erased slot.
+        // The knob's factory entry (volume) is one the app does not know.
+        k.apply_keymap(layer, [(A, KeyAction::key(0x06))]).unwrap();
+        let s = sim.state();
+        assert!(erased_slots(&s).is_empty(), "{layer:?}");
+        let (t, factory) =
+            if layer == Layer::Base { (&s.keymap, &s.factory_keymap) } else { (&s.fn_keymap, &s.default_fn) };
+        for slot in [FN_AA, 13, 14, 15, SPACE_AA, 127] {
+            assert_eq!(keymap::entry(t, slot), keymap::entry(factory, slot), "{layer:?} slot {slot}");
+        }
+        assert_eq!(keymap::entry(t, 49), [keymap::page::KEYBOARD, 0, 0x06, 0], "A as asked");
+        drop(s);
+        // "Default" on the Fn layer's Space (factory reset) is allowed only
+        // while the slot is erased.
+        if layer == Layer::Fn {
+            assert!(matches!(k.apply_keymap(Layer::Fn, [(SPACE, KeyAction::key(0x2C))]), Ok(())));
+            assert!(k.apply_keymap(Layer::Fn, [(SPACE, KeyAction::Default)]).is_err());
+        }
+    }
+
+    // A restore repairs them as well, the Fn key and the knob included.
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    let backup = k.snapshot().unwrap().clone();
+    let n = sim.state().packets.len();
+    sim.state().faults.fail_write = Some(n + 12);
+    let _ = k.apply_keymap(Layer::Fn, [(W, KeyAction::key(0x05))]);
+    sim.state().faults.fail_write = None;
+    let mut k = ready(&sim);
+    let r = k.restore(&backup, None).unwrap();
+    assert_eq!(r.written, ["Fn layer"]);
+    assert!(r.kept.is_empty(), "{:?}", r.kept);
+    assert_eq!(sim.state().fn_keymap, backup.fn_keymap.0);
 }
 
 #[test]
@@ -1215,6 +1431,15 @@ fn after_a_reset_frames_and_writes_wait_out_the_blink() {
     sim.state().faults.reset_before = Some(n + 2);
     assert!(matches!(k.realtime_frame([]), Err(AaError::Settling { .. })));
     assert_eq!(sim.state().packets.len(), n + 2);
+    // Writes: the gate is closed until a read; read at once, the write
+    // still waits for the blink to end, so nothing is dropped.
+    assert!(matches!(k.apply_effect(&red_breath()), Err(AaError::NotSane(why)) if why[0].contains("reset")));
+    k.read_all().unwrap();
+    let t = Instant::now();
+    k.apply_effect(&red_breath()).unwrap();
+    assert!(t.elapsed() >= Duration::from_millis(50), "waited for the blink");
+    assert!(sim.state().dropped.is_empty());
+    assert_eq!(sim.state().effect[0], 7);
 }
 
 // ------------------------------------------------------------------ screen
@@ -1667,6 +1892,28 @@ fn the_simulator_ands_a_page_that_was_not_erased() {
         port.write(&w).unwrap();
     }
     assert_eq!(&sim.state().macros[..1200], &image[..]);
+}
+
+#[test]
+#[should_panic(expected = "written again from address 0 with no read between")]
+fn the_simulator_catches_beta_1s_macro_order_with_a_short_block() {
+    // An empty table, the one-chunk block, the table again, the block's
+    // chunk again: every chunk continues a write from 0, but the table goes
+    // out twice.
+    let sim = Sim::ak980();
+    let mut port = sim.command();
+    let mut send = |addr: u16, data: &[u8]| {
+        let ch = frame::Chunk { offset: 0, addr, len: data.len() as u8, last: false };
+        port.write(&frame::wire(&frame::request(cmd::SET_MACROS, &ch, 0, data))).unwrap();
+    };
+    let block = [4, 0, 0, 0, 10, 0, 4, 0xB0, 0, 0, 4, 0x30];
+    for at in (0..400).step_by(56) {
+        send(at as u16, &[0u8; 56][..(400 - at).min(56)]);
+    }
+    send(400, &block);
+    let mut table = [0u8; 56];
+    table[..4].copy_from_slice(&400u32.to_le_bytes());
+    send(0, &table);
 }
 
 #[test]

@@ -64,6 +64,20 @@ pub const WRITES: [u8; 7] = [
 /// FF67 commands.
 pub const DISPLAY: [u8; 1] = [cmd::SCREEN];
 
+/// Bytes a read command may reach (ADDR + LEN at most this), or `None` for
+/// a command that reads nothing. The firmware checks neither ADDR nor LEN;
+/// a read past its table reads whatever flash follows.
+pub fn read_limit(c: u8) -> Option<usize> {
+    match c {
+        cmd::DEVICE_INFO | cmd::OPTIONS => Some(frame::CHUNK),
+        cmd::KEYMAP | cmd::FN_KEYMAP | cmd::DEFAULT_FN => Some(keymap::LEN),
+        cmd::EFFECT => Some(effect::LEN),
+        cmd::PER_KEY | cmd::LIVE_COLORS => Some(perkey::LEN),
+        cmd::MACROS => Some(macros::AREA_LEN),
+        _ => None,
+    }
+}
+
 /// Bytes a write command may reach (ADDR + LEN at most this), or `None` for
 /// a command that writes nothing. The keymap and per-key tables are 512
 /// bytes, the effect 16, the macro memory three pages, the clock block 24;
@@ -170,20 +184,31 @@ fn command_packet(r: &[u8]) -> Result<(), Blocked> {
     if data[len..].iter().any(|&b| b != 0) {
         return Err(Blocked::Header("bytes after LEN must be 0"));
     }
+    let end = usize::from(addr) + len;
     if let Some(limit) = write_limit(c) {
-        if len % 4 != 0 {
-            return Err(Blocked::Header("a write's LEN must be a multiple of 4"));
+        if len % 4 != 0 || addr % 4 != 0 {
+            return Err(Blocked::Header("a write's ADDR and LEN must be multiples of 4"));
         }
-        let end = usize::from(addr) + len;
+        if end > limit {
+            return Err(Blocked::PastTable { cmd: c, end, limit });
+        }
+    }
+    if let Some(limit) = read_limit(c) {
         if end > limit {
             return Err(Blocked::PastTable { cmd: c, end, limit });
         }
     }
     match c {
         cmd::LIVE_COLORS => {
-            // The request names each entry: `[i 00 00 00]`.
-            if data.chunks(4).any(|e| e[1..].iter().any(|&b| b != 0)) {
+            // The request names each entry: `[i 00 00 00]`, a slot below 128.
+            if data[..len].chunks(4).any(|e| usize::from(e[0]) >= perkey::SLOTS || e[1..].iter().any(|&b| b != 0)) {
                 return Err(Blocked::ReadData(c));
+            }
+        }
+        cmd::REALTIME => {
+            // `[slot R G B]` entries; the firmware takes the slot as an index.
+            if data[..len].chunks(4).any(|e| usize::from(e[0]) >= perkey::SLOTS) {
+                return Err(Blocked::Header("a real-time entry names a slot past 127"));
             }
         }
         _ if READS.contains(&c) => {
@@ -245,7 +270,11 @@ fn screen_packet(p: &[u8]) -> Result<(), Blocked> {
 ///
 /// `factory` is the layer's factory table when known (`1C` for the Fn
 /// layer). A slot set to `00 00 00 00` gets its factory function back, so
-/// that is refused where the factory entry is a firmware function.
+/// that is refused where the factory entry is a firmware function, except
+/// on a slot that reads as erased flash ([`keymap::ERASED`], left by a
+/// write that stopped part-way): there the factory entry is what the
+/// keyboard had, and `00 00 00 00` is the only way back to it, for every
+/// slot (the tail, the Fn key and the knob included).
 pub fn guard_keymap(fresh: &[u8], new: &[u8], factory: Option<&[u8]>) -> Result<(), Blocked> {
     tables(fresh, new)?;
     if let Some(f) = factory {
@@ -258,6 +287,9 @@ pub fn guard_keymap(fresh: &[u8], new: &[u8], factory: Option<&[u8]>) -> Result<
             continue;
         }
         let slot = slot as u8;
+        if f == keymap::ERASED && n == [0; 4] {
+            continue;
+        }
         if keymap::TAIL_SLOTS.contains(&slot) {
             return Err(Blocked::Tail(slot));
         }
@@ -316,7 +348,8 @@ mod tests {
     #[test]
     fn allowed_packets_pass() {
         for c in READS.into_iter().filter(|&c| c != cmd::LIVE_COLORS) {
-            assert_eq!(guard(Channel::Command, &packet(c, 56, &[])), Ok(()), "{c:02X}");
+            let len = read_limit(c).unwrap().min(56);
+            assert_eq!(guard(Channel::Command, &packet(c, len, &[])), Ok(()), "{c:02X}");
         }
         assert_eq!(guard(Channel::Command, &packet(cmd::LIVE_COLORS, 56, &[4, 0, 0, 0, 5, 0, 0, 0])), Ok(()));
         assert_eq!(guard(Channel::Command, &packet(cmd::SET_EFFECT, 16, &effect_data())), Ok(()));
@@ -334,6 +367,93 @@ mod tests {
         }
         let ch = frame::Chunk { offset: 0, addr, len: len as u8, last: true };
         wire(&request(c, &ch, 0, &data))
+    }
+
+    #[test]
+    fn writes_start_on_a_word_and_reads_stay_in_their_table() {
+        // A write starting off a 4-byte word would be programmed over the
+        // word before it.
+        for c in [cmd::SET_KEYMAP, cmd::SET_PER_KEY, cmd::SET_MACROS, cmd::REALTIME] {
+            assert_eq!(guard(Channel::Command, &write_at(c, 56, 56)), Ok(()), "{c:02X}");
+            assert_eq!(
+                guard(Channel::Command, &write_at(c, 2, 52)),
+                Err(Blocked::Header("a write's ADDR and LEN must be multiples of 4")),
+                "{c:02X}"
+            );
+        }
+        // Reads: up to the end of their table, not a byte further.
+        for (c, limit) in [
+            (cmd::DEVICE_INFO, 56usize),
+            (cmd::OPTIONS, 56),
+            (cmd::KEYMAP, 512),
+            (cmd::FN_KEYMAP, 512),
+            (cmd::DEFAULT_FN, 512),
+            (cmd::EFFECT, 16),
+            (cmd::PER_KEY, 512),
+            (cmd::MACROS, 0x0C00),
+            (cmd::LIVE_COLORS, 512),
+        ] {
+            assert_eq!(read_limit(c), Some(limit), "{c:02X}");
+            let len = limit.min(56);
+            let ch = frame::Chunk { offset: 0, addr: (limit - len) as u16, len: len as u8, last: true };
+            let req = |ch: &frame::Chunk| {
+                let data: Vec<u8> = if c == cmd::LIVE_COLORS { vec![0; len] } else { vec![] };
+                wire(&request(c, ch, 0, &data))
+            };
+            assert_eq!(guard(Channel::Command, &req(&ch)), Ok(()), "{c:02X} last chunk");
+            let past = frame::Chunk { addr: ch.addr + 4, ..ch };
+            assert_eq!(
+                guard(Channel::Command, &req(&past)),
+                Err(Blocked::PastTable { cmd: c, end: limit + 4, limit }),
+                "{c:02X}"
+            );
+        }
+        // The raw effect page through the keymap read (0x9400 + 0x400) is
+        // past the keymap table: refused.
+        let ch = frame::Chunk { offset: 0, addr: 0x400, len: 16, last: true };
+        assert!(guard(Channel::Command, &wire(&request(cmd::KEYMAP, &ch, 0, &[]))).is_err());
+        for c in WRITES {
+            assert_eq!(read_limit(c), None, "{c:02X}");
+        }
+    }
+
+    #[test]
+    fn real_time_and_live_colour_entries_name_slots_below_128() {
+        let ok = packet(cmd::REALTIME, 8, &[127, 1, 2, 3, 0, 4, 5, 6]);
+        assert_eq!(guard(Channel::Command, &ok), Ok(()));
+        let bad = packet(cmd::REALTIME, 8, &[127, 1, 2, 3, 128, 4, 5, 6]);
+        assert_eq!(guard(Channel::Command, &bad), Err(Blocked::Header("a real-time entry names a slot past 127")));
+        assert_eq!(guard(Channel::Command, &packet(cmd::LIVE_COLORS, 8, &[127, 0, 0, 0, 3, 0, 0, 0])), Ok(()));
+        assert_eq!(
+            guard(Channel::Command, &packet(cmd::LIVE_COLORS, 8, &[200, 0, 0, 0])),
+            Err(Blocked::ReadData(cmd::LIVE_COLORS))
+        );
+    }
+
+    #[test]
+    fn an_erased_slot_may_go_back_to_its_factory_entry() {
+        // A keymap write that stopped part-way left FF FF FF FF: written as
+        // 00 00 00 00 the firmware fills in the factory entry, also where
+        // that is a firmware function, the tail, or any other slot.
+        let factory = table();
+        let mut fresh = factory;
+        for s in [83u8, 34, 127, 5] {
+            keymap::set_entry(&mut fresh, s, keymap::ERASED);
+        }
+        let mut new = fresh;
+        for s in [83u8, 34, 127, 5] {
+            keymap::set_entry(&mut new, s, [0; 4]);
+        }
+        assert_eq!(guard_keymap(&fresh, &new, Some(&factory)), Ok(()));
+        // Not anything else, and not where the slot held something real.
+        let mut new2 = fresh;
+        keymap::set_entry(&mut new2, 83, [0x0D, 0, 0, 1]);
+        assert!(guard_keymap(&fresh, &new2, Some(&factory)).is_err());
+        let mut real = factory;
+        keymap::set_entry(&mut real, 83, [2, 0, 0x2C, 0]);
+        let mut back = real;
+        keymap::set_entry(&mut back, 83, [0; 4]);
+        assert_eq!(guard_keymap(&real, &back, Some(&factory)), Err(Blocked::FactoryFunc { slot: 83, id: 1 }));
     }
 
     #[test]
@@ -361,7 +481,7 @@ mod tests {
             for len in [1usize, 2, 3, 6, 55] {
                 assert_eq!(
                     guard(Channel::Command, &write_at(c, 0, len)),
-                    Err(Blocked::Header("a write's LEN must be a multiple of 4")),
+                    Err(Blocked::Header("a write's ADDR and LEN must be multiples of 4")),
                     "{c:02X} LEN {len}"
                 );
             }

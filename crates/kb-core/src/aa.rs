@@ -59,7 +59,7 @@ pub use kb_protocol::aa::keymap::Binding;
 pub use kb_protocol::aa::macros::AaMacroEntry;
 pub use layout::{AaLayout, LayoutError, LayoutKey, KNOB_SLOTS};
 pub use snapshot::{
-    check as check_sanity, check_reasons, AaSnapshot, ColorRecord, DeviceRecord, Hex, MacroBlock,
+    broken_macros, check as check_sanity, check_reasons, AaSnapshot, ColorRecord, DeviceRecord, Hex, MacroBlock,
     Reason as SanityReason, READ_LEVEL_MAX,
 };
 
@@ -488,14 +488,18 @@ fn layer_commands(layer: Layer) -> (u8, u8) {
     }
 }
 
-/// Whether a table read back as `table` was written: a slot written as
-/// `00 00 00 00` may read back as its factory entry (the firmware fills it
-/// in; measured on the MK87).
-fn keymap_matches(table: &[u8], back: &[u8], factory: &[u8]) -> bool {
+/// Whether a table read back as `table` was written over `fresh`: a slot
+/// written as `00 00 00 00` may read back as its factory entry (the
+/// firmware fills it in; measured on the MK87). A slot repaired from erased
+/// flash only has to be erased no more: the factory entry the firmware puts
+/// there may be one the app does not know (the knob's, on the base layer).
+fn keymap_matches(fresh: &[u8], table: &[u8], back: &[u8], factory: &[u8]) -> bool {
     back.len() == table.len()
         && (0..keymap::SLOTS as u8).all(|s| {
             let (t, b) = (keymap::entry(table, s), keymap::entry(back, s));
-            t == b || (t == [0; 4] && b == keymap::entry(factory, s))
+            t == b
+                || (t == [0; 4] && b == keymap::entry(factory, s))
+                || (t == [0; 4] && keymap::entry(fresh, s) == keymap::ERASED && b != keymap::ERASED)
         })
 }
 
@@ -518,6 +522,16 @@ fn record(report: &mut RestoreReport, section: &'static str, r: Result<()>) -> R
 /// 128 it is ([`AaSnapshot::effect_mode`]).
 fn known_mode(raw: &[u8], read: EffectRead) -> Option<u8> {
     (read.mode_known && raw.first() == Some(&0)).then_some(read.effect.mode)
+}
+
+/// Every slot of `table` that holds erased flash ([`keymap::ERASED`]) set
+/// to `00 00 00 00`: the firmware fills in the factory entry.
+fn repair_erased(table: &mut [u8]) {
+    for slot in 0..keymap::SLOTS as u8 {
+        if keymap::entry(table, slot) == keymap::ERASED {
+            keymap::set_entry(table, slot, [0; 4]);
+        }
+    }
 }
 
 /// `e` as a read reports it: modes 0, 20, 21 and 128 as 0.
@@ -688,11 +702,10 @@ impl<P: OutputPort> AaKeyboard<P> {
 
     /// Frames write nothing, so the sanity gate does not hold them back:
     /// they need only a device information that was answered and names the
-    /// USB device the layout is for.
-    fn ensure_identified(&mut self) -> Result<()> {
-        if self.info.is_none() {
-            self.device_info()?;
-        }
+    /// USB device the layout is for. Nothing is asked here: a keyboard that
+    /// left it unanswered gets no frame (and no request per frame) until a
+    /// read brings it back.
+    fn ensure_identified(&self) -> Result<()> {
         let i = self.info.ok_or_else(|| AaError::NotSane(vec![INFO_UNANSWERED.into()]))?;
         if (i.vid, i.pid, i.version) != (crate::detect::SONIX_VID, self.usb.pid, self.usb.release) {
             return Err(AaError::NotSane(vec![format!(
@@ -787,15 +800,31 @@ impl<P: OutputPort> AaKeyboard<P> {
         Ok(())
     }
 
+    /// Reports the keyboard sent on its own while nothing was asked (a
+    /// reset notice during the settle time): counted now, before a write.
+    fn take_queued(&mut self) -> Result<()> {
+        for _ in 0..64 {
+            let Some(r) = self.port.read(0)? else { break };
+            self.watch.note(&r);
+        }
+        self.after_io();
+        Ok(())
+    }
+
     /// Write `data` as block `c` ([`Self::send`]). Refused unless the gate
-    /// is open; waits out the time the keyboard may drop writes. A flash
-    /// write that fails part-way closes the gate: the keyboard holds
-    /// something between old and new.
+    /// is open; waits out the time the keyboard may drop writes, and looks
+    /// at what the keyboard said meanwhile (a reset closes the gate before
+    /// the first, page-erasing chunk). A flash write that fails part-way
+    /// closes the gate: the keyboard holds something between old and new.
     fn write_block(&mut self, c: u8, data: &[u8]) -> Result<()> {
         self.ensure_idle()?;
         self.after_io();
         self.check_writable()?;
-        self.wait_settled();
+        if self.settling().is_some() {
+            self.wait_settled();
+            self.take_queued()?;
+            self.check_writable()?;
+        }
         let resets = self.watch.resets;
         let result = self.send(c, data, resets);
         self.after_io();
@@ -811,12 +840,39 @@ impl<P: OutputPort> AaKeyboard<P> {
     /// is read again now: the gate opens again only if that read passes.
     fn readback_failed(&mut self, what: &'static str) -> AaError {
         tracing::warn!(what, "a write did not read back as written; the keyboard is read again");
+        self.unverified(true);
+        AaError::Readback { what }
+    }
+
+    /// The read-back after a table write that failed (no answer): the write
+    /// is as unverified as one that read back otherwise, and handled so.
+    /// The error is kept (a dead channel still asks to be opened again,
+    /// and is not read on).
+    fn readback_lost(&mut self, what: &'static str, e: AaError) -> AaError {
+        tracing::warn!(what, "the read-back after a write failed ({e}); the keyboard is read again");
+        self.unverified(!e.needs_reopen());
+        e
+    }
+
+    /// Close the gate after a write nobody could confirm, wait [`SETTLE`]
+    /// before the next one, and (`reread`) read the keyboard again.
+    fn unverified(&mut self, reread: bool) {
         self.sanity = Some(Err(vec![READBACK_REASON.into()]));
         self.settle_until = Some(Instant::now() + self.settle);
-        if let Err(e) = self.read_all() {
-            tracing::warn!("the read after a write that did not land failed: {e}");
+        if reread {
+            if let Err(e) = self.read_all() {
+                tracing::warn!("the read after an unconfirmed write failed: {e}");
+            }
         }
-        AaError::Readback { what }
+    }
+
+    /// Read back `len` bytes of table `c` after a write of `what`
+    /// ([`Self::readback_lost`] when that fails).
+    fn read_back(&mut self, c: u8, len: usize, what: &'static str) -> Result<Vec<u8>> {
+        match self.read_block(c, len, 0, None) {
+            Ok(back) => Ok(back),
+            Err(e) => Err(self.readback_lost(what, e)),
+        }
     }
 
     fn patch_snapshot(&mut self, f: impl FnOnce(&mut AaSnapshot)) {
@@ -884,6 +940,15 @@ impl<P: OutputPort> AaKeyboard<P> {
         if i.firmware_status != 0 {
             // Not a field of firmware 769 (§F.7): noted, never acted on.
             tracing::info!(firmware_status = i.firmware_status, "device information byte 32 is not 0");
+        }
+        let broken = snapshot::broken_macros(&snap);
+        if !broken.is_empty() {
+            let slots: Vec<u8> = broken.iter().map(|&(slot, _)| slot).collect();
+            tracing::warn!(
+                ?slots,
+                "macro slots point at erased flash or outside the macro memory (a macro write that stopped \
+                 part-way?); read as empty until the next macro save"
+            );
         }
         let mut verdict = check_sanity(&snap, self.usb);
         if self.watch.resets != resets {
@@ -1054,7 +1119,15 @@ impl<P: OutputPort> AaKeyboard<P> {
         let data = e.encode()?;
         self.write_block(cmd::SET_EFFECT, &data)?;
         self.written = Some(*e);
-        let raw = self.read_block(cmd::EFFECT, effect::LEN, 0, None)?;
+        let raw = match self.read_back(cmd::EFFECT, effect::LEN, "effect") {
+            Ok(raw) => raw,
+            Err(err) => {
+                // Not confirmed: the driver does not vouch for it.
+                self.written = None;
+                self.effect = None;
+                return Err(err);
+            }
+        };
         let back = AaEffect::decode(&raw)?;
         let read = self.remember(back);
         if !e.matches_readback(&back) {
@@ -1124,7 +1197,7 @@ impl<P: OutputPort> AaKeyboard<P> {
             return Ok(());
         }
         self.write_block(cmd::SET_PER_KEY, table)?;
-        let back = self.read_block(cmd::PER_KEY, perkey::LEN, 0, None)?;
+        let back = self.read_back(cmd::PER_KEY, perkey::LEN, "per-key table")?;
         let ok = back == table;
         self.patch_snapshot(|s| s.per_key = Hex(back));
         if !ok {
@@ -1169,7 +1242,13 @@ impl<P: OutputPort> AaKeyboard<P> {
     /// and reads back as the factory entry); that is refused where the
     /// factory function in this layer is a firmware function (such as the
     /// factory reset on Fn+Space) the key does not hold now. The Fn key and
-    /// the knob are never reassigned. **Writes flash.**
+    /// the knob are never reassigned.
+    ///
+    /// A slot a keymap write that stopped part-way left erased
+    /// ([`keymap::ERASED`]) gets its factory entry back with any write of
+    /// the layer (written `00 00 00 00`, which the firmware fills in): the
+    /// Fn key, the knob and firmware functions included, which nothing else
+    /// could bring back. **Writes flash.**
     pub fn apply_keymap(&mut self, layer: Layer, changes: impl IntoIterator<Item = (u8, KeyAction)>) -> Result<()> {
         self.ensure_writable()?;
         let mut wanted = Vec::new();
@@ -1183,15 +1262,16 @@ impl<P: OutputPort> AaKeyboard<P> {
         let mut table = fresh.clone();
         for (aa, e) in wanted {
             let now = keymap::entry(&fresh, aa);
+            let repair = now == keymap::ERASED && e == [0; 4];
             if e == [0; 4] && now == keymap::entry(&factory, aa) {
                 // Already its factory function: nothing to write.
                 keymap::set_entry(&mut table, aa, now);
                 continue;
             }
-            if self.layout.is_protected(aa) && now != e {
+            if self.layout.is_protected(aa) && now != e && !repair {
                 return Err(AaError::Unsupported("the Fn key and the knob are not reassigned"));
             }
-            if e == [0; 4] && keymap::is_func(keymap::entry(&factory, aa)) {
+            if e == [0; 4] && keymap::is_func(keymap::entry(&factory, aa)) && !repair {
                 return Err(AaError::Unsupported(
                     "this key's factory function in this layer is a firmware function (such as a factory \
                      reset); it is not brought back",
@@ -1199,6 +1279,7 @@ impl<P: OutputPort> AaKeyboard<P> {
             }
             keymap::set_entry(&mut table, aa, e);
         }
+        repair_erased(&mut table);
         self.put_keymap(layer, &fresh, &table, &factory)
     }
 
@@ -1211,8 +1292,8 @@ impl<P: OutputPort> AaKeyboard<P> {
         }
         let (read, write) = layer_commands(layer);
         self.write_block(write, table)?;
-        let back = self.read_block(read, keymap::LEN, 0, None)?;
-        let ok = keymap_matches(table, &back, factory);
+        let back = self.read_back(read, keymap::LEN, "keymap")?;
+        let ok = keymap_matches(fresh, table, &back, factory);
         self.patch_snapshot(|s| match layer {
             Layer::Base => s.keymap = Hex(back),
             Layer::Fn => s.fn_keymap = Hex(back),
@@ -1247,14 +1328,17 @@ impl<P: OutputPort> AaKeyboard<P> {
     /// whole image is read back.
     ///
     /// The table comes first, so a write that stops part-way can leave
-    /// pointers to blocks that were not written; the gate closes and the
-    /// keyboard is read again, and the sanity gate keeps a table that
-    /// points outside the macro memory read-only. Beta check on a real
-    /// AK980 PRO: write a macro, unplug and replug, read it back, press it.
+    /// pointers to blocks that were not written (erased flash, or another
+    /// page's old bytes). The gate closes and the keyboard is read again; a
+    /// pointer to erased flash or outside the macro memory reads as an
+    /// empty slot ([`snapshot::broken_macros`]), so the gate opens again and
+    /// the next macro save, which writes the whole image, repairs the
+    /// table. Beta check on a real AK980 PRO: write a macro, unplug and
+    /// replug, read it back, press it.
     fn put_macros(&mut self, img: &macros::MacroImage) -> Result<()> {
         let image = img.bytes();
         self.write_block(cmd::SET_MACROS, &image)?;
-        let back = self.read_block(cmd::MACROS, image.len(), 0, None)?;
+        let back = self.read_back(cmd::MACROS, image.len(), "macros")?;
         if back != image {
             return Err(self.readback_failed("macros"));
         }
@@ -1312,7 +1396,9 @@ impl<P: OutputPort> AaKeyboard<P> {
             let (want, now) = (keymap::entry(backup, slot), keymap::entry(fresh, slot));
             if want != now {
                 keymap::set_entry(&mut table, slot, now);
-                kept.push(KeptSlot { layer, slot, led: self.layout.led(slot), backup: want, reason });
+                if now != keymap::ERASED {
+                    kept.push(KeptSlot { layer, slot, led: self.layout.led(slot), backup: want, reason });
+                }
             }
         }
         for slot in 0..keymap::SLOTS as u8 {
@@ -1324,9 +1410,23 @@ impl<P: OutputPort> AaKeyboard<P> {
             keymap::set_entry(&mut probe, slot, want);
             if let Err(b) = guard::guard_keymap(fresh, &probe, Some(factory)) {
                 keymap::set_entry(&mut table, slot, now);
-                kept.push(KeptSlot { layer, slot, led: self.layout.led(slot), backup: want, reason: b.to_string() });
+                // An erased slot goes back to its factory entry below: no
+                // loss when that is what the backup holds (a firmware
+                // function the Fn layer has from the factory).
+                if now != keymap::ERASED || want != keymap::entry(factory, slot) {
+                    kept.push(KeptSlot {
+                        layer,
+                        slot,
+                        led: self.layout.led(slot),
+                        backup: want,
+                        reason: b.to_string(),
+                    });
+                }
             }
         }
+        // What the keyboard holds erased (a write that stopped part-way)
+        // and the backup cannot give back goes back to its factory entry.
+        repair_erased(&mut table);
         table
     }
 

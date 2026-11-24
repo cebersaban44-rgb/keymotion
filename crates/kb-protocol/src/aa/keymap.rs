@@ -19,6 +19,11 @@ pub const SLOTS: usize = 128;
 /// no such tail and no key there (slots 111–127 reach no key); keeping
 /// them as read costs nothing. (The per-key table has no such rule.)
 pub const TAIL_SLOTS: [u8; 2] = [126, 127];
+/// An entry of erased flash. A keymap write that stopped part-way leaves
+/// every entry it did not reach so (the page was erased by its first
+/// chunk); written as `00 00 00 00` it gets the layer's factory entry back,
+/// which firmware 769 fills in from its defaults (protocol notes §F.2).
+pub const ERASED: [u8; 4] = [0xFF; 4];
 /// "The key does nothing": a keyboard entry without a usage. Inferred from
 /// the vendor's encoding (no vendor tool writes it); to be confirmed by
 /// read-back on a real board.

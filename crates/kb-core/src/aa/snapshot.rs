@@ -191,7 +191,8 @@ impl AaSnapshot {
         self.effect_mode.is_some() || self.effect.0.first().is_some_and(|&m| m != 0)
     }
 
-    /// The stored macros, slot by slot (100 slots; empty = none).
+    /// The stored macros, slot by slot (100 slots; empty = none). A slot
+    /// whose pointer leads nowhere ([`broken_macros`]) is empty.
     pub fn macros(&self) -> Vec<Vec<AaMacroEntry>> {
         let mut slots = vec![Vec::new(); macros::MAX_MACROS];
         for b in &self.macro_blocks {
@@ -216,6 +217,35 @@ pub(crate) fn macro_limit(info: &DeviceInfo) -> u64 {
 /// (no arithmetic can overflow).
 pub(crate) fn block_fits(addr: u32, len: usize, limit: u64) -> bool {
     u64::from(addr) >= u64::from(macros::BLOCKS_AT) && u64::from(addr) + len as u64 <= limit
+}
+
+/// Macro slots (slot, address) whose pointer leads nowhere: outside the
+/// macro memory, or to erased flash (a block header of `FF FF`) or a block
+/// that would run past it. A macro write that stopped part-way leaves them
+/// (the table goes first). They read as empty slots and are no reason to
+/// refuse writes: the next macro save writes the whole image and repairs
+/// the table. Shown in the log and the report.
+pub fn broken_macros(s: &AaSnapshot) -> Vec<(u8, u32)> {
+    let limit = DeviceInfo::parse(&s.info.0).map_or(macros::AREA_LEN as u64, |i| macro_limit(&i));
+    let pointers = macros::pointers(&s.macro_table.0);
+    pointers
+        .iter()
+        .enumerate()
+        .filter(|&(_, &p)| !macros::is_none(p))
+        .filter(|&(slot, &p)| {
+            if !block_fits(p, 4, limit) {
+                return true;
+            }
+            let block = s.macro_blocks.iter().find(|b| usize::from(b.slot) == slot && b.addr == p);
+            block.is_some_and(|b| {
+                let header = b.bytes.0.get(..4).unwrap_or_default();
+                header.len() == 4
+                    && (header[..2] == [0xFF, 0xFF]
+                        || (b.bytes.0.len() == 4 && !block_fits(p, 4 + 4 * macros::header_entries(header), limit)))
+            })
+        })
+        .map(|(slot, &p)| (slot as u8, p))
+        .collect()
 }
 
 /// Highest brightness and speed a read may show (written: 1–5 only).
@@ -276,8 +306,8 @@ pub enum Reason {
         mode: u8,
         read: u8,
     },
-    /// A macro pointer outside the macro memory, or a block that does not
-    /// read whole.
+    /// A macro block that does not hold what its header says (a backup);
+    /// a pointer that leads nowhere is no reason ([`broken_macros`]).
     MacroBlock {
         slot: u8,
         addr: u32,
@@ -338,7 +368,7 @@ impl std::fmt::Display for Reason {
                 write!(f, "the remembered effect mode {mode} does not read back as {read}")
             }
             Self::MacroBlock { slot, addr } => {
-                write!(f, "macro slot {slot} at address {addr} is outside the macro memory or unreadable")
+                write!(f, "macro slot {slot} at address {addr} does not hold what its header says")
             }
             Self::StrayBlock { slot } => write!(f, "macro slot {slot}: a stored block is not in the table"),
         }
@@ -431,8 +461,9 @@ pub fn check_reasons(s: &AaSnapshot, usb: UsbIdentity) -> Vec<Reason> {
     // an entry without its own index only leaves its LED dark.
 
     let limit = macro_limit(&i);
+    let broken = broken_macros(s);
     for (slot, &p) in macros::pointers(&s.macro_table.0).iter().enumerate() {
-        if macros::is_none(p) {
+        if macros::is_none(p) || broken.contains(&(slot as u8, p)) {
             continue;
         }
         let block = s.macro_blocks.iter().find(|b| usize::from(b.slot) == slot && b.addr == p);

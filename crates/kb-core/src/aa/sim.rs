@@ -76,6 +76,9 @@ pub struct Faults {
     /// Every write from the n-th FF68 request on is echoed but not done, as
     /// in a power-on animation that started meanwhile.
     pub drop_writes_from: Option<usize>,
+    /// Every write up to the n-th FF68 request is echoed but not done, as
+    /// in a power-on animation that ends in the middle of a write.
+    pub drop_writes_until: Option<usize>,
     /// The answer to the n-th FF67 packet comes only after the next one.
     pub late_ack: Option<usize>,
     /// The n-th FF67 packet is answered twice.
@@ -150,6 +153,9 @@ pub struct SimState {
     /// The table write in progress: its command, where its last chunk
     /// started and ended.
     writing: Option<(u8, usize, usize)>,
+    /// Tables written from address 0 since the keyboard was last read: one
+    /// written twice in a row is a driver that sends a table again.
+    since_read: Vec<u8>,
     /// A keymap write in progress: the table before it and the table asked
     /// for (checked with the table guard when its last byte comes).
     pending_keymap: Option<(Vec<u8>, Vec<u8>)>,
@@ -271,6 +277,7 @@ impl SimState {
             display_replies: VecDeque::new(),
             held_ack: None,
             writing: None,
+            since_read: Vec::new(),
             pending_keymap: None,
             upload_open: false,
             last_screen: None,
@@ -345,6 +352,7 @@ impl SimState {
         self.booting_until.is_some_and(|t| now < t)
             || self.resetting()
             || self.faults.drop_writes_from.is_some_and(|m| n >= m)
+            || self.faults.drop_writes_until.is_some_and(|m| n <= m)
     }
 
     /// What the LED of `slot` shows now.
@@ -438,6 +446,13 @@ impl SimState {
         Ok(wire.len())
     }
 
+    /// The keyboard reports a reset on its own (`55 FC 05`), with nothing
+    /// asked: a key-combination reset while the host waits.
+    pub fn notice_reset(&mut self) {
+        self.command_replies.push_back(report(&[0x55, 0xFC, 0x05]));
+        self.reset_by_keys();
+    }
+
     /// A key-combination reset (Fn+Space held): the keymap layers go back
     /// to their defaults; the per-key table, the effect and the macros stay
     /// (§F.4). The reset blink follows.
@@ -478,6 +493,10 @@ impl SimState {
             _ => None,
         };
         if let Some(mut d) = read {
+            // A read ends a table write: a write from 0 after it is a new
+            // one, not its first chunk sent again.
+            self.since_read.clear();
+            self.writing = None;
             if self.faults.corrupt == Some(c) {
                 d[0] ^= 0xFF;
             }
@@ -508,8 +527,10 @@ impl SimState {
 
     /// The driver's side of the flash rule: a table is written from address
     /// 0 upwards, each chunk where the last one ended (or the last one
-    /// again, when its echo was lost), never patched in the middle. True for
-    /// the last chunk again.
+    /// again, when its echo was lost), never patched in the middle, and
+    /// never written twice without a read between (beta.1's macro write
+    /// sent the table, the blocks, the table again and the last block chunk
+    /// again). True for the last chunk again.
     fn check_sequence(&mut self, c: u8, addr: usize, len: usize) -> bool {
         let resend = self.writing.is_some_and(|(wc, start, _)| wc == c && addr == start);
         let ok = addr == 0 || resend || self.writing.is_some_and(|(wc, _, end)| wc == c && addr == end);
@@ -518,6 +539,13 @@ impl SimState {
             "write 0x{c:02X} at {addr} does not continue a table write from address 0 \
              (its page would not be erased)"
         );
+        if addr == 0 && !resend {
+            assert!(
+                !self.since_read.contains(&c),
+                "table 0x{c:02X} written again from address 0 with no read between: it is sent twice"
+            );
+            self.since_read.push(c);
+        }
         self.writing = Some((c, addr, addr + len));
         resend
     }
