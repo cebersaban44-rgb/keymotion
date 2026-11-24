@@ -41,7 +41,11 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   atamasını ve makrolarını bildirir; bu yüzden **Tuş atama** ve **Makrolar**
   sayfaları, geri yüklemeden sonra da, klavyede olanı gösterir. Başka bir
   programda (örneğin AJAZZ'ınkinde) ayarlanan ve Keymotion'ın gösteremediği
-  tuşlar ile makrolar öyle işaretlenir; kaydettiğinizde olduğu gibi kalırlar.
+  tuşlar ile makrolar ve Fn katmanındaki klavyenin kendi işlevleri öyle
+  işaretlenir; kaydetmek ya da profil yüklemek onları olduğu gibi bırakır.
+  Tuşlar ya da makrolar, Keymotion onları okuduktan sonra başka bir
+  programda değiştiyse kaydetme hiçbir şey yazmaz ve sayfa klavyeyi yeniden
+  gösterir.
 - **3.01 klavye yazılımında canlı ışıklar:** tuşlar canlı ışıkları (müzik
   modu, sistem göstergeleri, odak zamanlayıcısı, hatırlatıcılar, takvim,
   oyun oturumu, yapay zekâ ajanları, **Klavyede önizle**) yalnızca

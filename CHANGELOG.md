@@ -42,8 +42,11 @@ says so.
 - **Key mapping and macros on firmware 3.01:** this firmware reports its key
   mapping and macros, so the **Key mapping** and **Macros** pages show
   what's on the keyboard, also after a restore. Keys and macros set in
-  another program (AJAZZ's, say) that Keymotion can't show are marked as
-  such, and saving leaves them as they are.
+  another program (AJAZZ's, say) that Keymotion can't show, and the
+  keyboard's own functions on the Fn layer, are marked as such; saving and
+  loading a profile leave them as they are. When the keys or macros changed
+  in another program after Keymotion read them, a save writes nothing and
+  the page shows the keyboard again.
 - **Live lighting on firmware 3.01:** the keys show live lighting (music
   mode, system gauges, the focus timer, reminders, the calendar, the game
   session, AI agents, **Preview on keyboard**) only in the keyboard's
