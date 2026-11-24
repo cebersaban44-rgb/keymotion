@@ -15,12 +15,11 @@ import {
   IMPORTED,
   keptKeys,
   keptWhy,
-  liveNoticeKind,
+  liveOffReason,
   notSaneBody,
   restoredPart,
   restoredParts,
   restoreHeldBy,
-  untestedFirmware,
   withoutFixed,
 } from "../app/src/lib/aaText.ts";
 import { EXPECTED, errorRule, uploadCancelledAt, uploadWaitSeconds } from "../app/src/lib/errorRules.ts";
@@ -61,11 +60,6 @@ test("the wait after a cut upload, in whole seconds", () => {
   assert.equal(uploadWaitSeconds("a screen upload stopped part-way; no commands for another 5000 ms"), 5);
   assert.equal(uploadWaitSeconds("a screen upload stopped part-way; no commands for another 12 ms"), 1);
   assert.equal(uploadWaitSeconds("screen upload stopped"), null);
-});
-
-test("live lights that wait on the untested firmware question", () => {
-  assert.equal(untestedFirmware("untested keyboard firmware 3.01"), "3.01");
-  assert.equal(untestedFirmware("another program is using the keyboard (ajazz-driver)"), null);
 });
 
 test("the beta's issue form names the model and firmware as the docs do", () => {
@@ -110,12 +104,21 @@ test("a read that did not finish is not a report-worthy check failure", () => {
   assert.equal(notSaneBody(false), "aa.ro.notSane.body");
 });
 
-test("'comes back in about 30 seconds' only when something goes back", () => {
-  assert.equal(liveNoticeKind({ liveLightsOff: null, liveArmed: true, liveRestores: true }), "armed");
-  // Per-key lighting saved from Keymotion: nothing was switched.
-  assert.equal(liveNoticeKind({ liveLightsOff: null, liveArmed: true, liveRestores: false }), null);
-  assert.equal(liveNoticeKind({ liveLightsOff: null, liveArmed: false, liveRestores: false }), null);
-  assert.equal(liveNoticeKind({ liveLightsOff: { kind: "read-only" }, liveArmed: false, liveRestores: false }), "off");
+test("live lights say only that they don't show for now, and why the keyboard takes none", () => {
+  // They show in any of the keyboard's modes: nothing to say.
+  assert.equal(liveOffReason(null), null);
+  assert.equal(liveOffReason(undefined), null);
+  // The keyboard takes none for now: the backend's reason, in the user's words.
+  const reason = "another program is using the keyboard (ajazz-driver)";
+  assert.deepEqual(liveOffReason({ kind: "blocked", reason }), { reason });
+  assert.equal(errorRule(reason).key, "err.conflict.ajazz");
+  // Any other kind (and a reason the app has no words for: the component
+  // checks errorRule) gets the general line, never a button or a question.
+  assert.deepEqual(liveOffReason({ kind: "blocked", reason: "" }), { reason: null });
+  for (const kind of ["color-unknown", "read-only", "failed", "something new"]) {
+    assert.deepEqual(liveOffReason({ kind, error: "no answer to command 0x13" }), { reason: null }, kind);
+  }
+  assert.equal(errorRule("a reason this version has no words for").key, "err.generic");
 });
 
 test("no restore while the keyboard takes no writes or an upload runs", () => {
