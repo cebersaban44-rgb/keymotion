@@ -40,7 +40,6 @@ export function aaStatusOf(kb: KeyboardInfo | null | undefined): AaStatus | null
  *  save bar, as a disabled button's tooltip. */
 const READ_ONLY_SHORT: Record<ReadOnlyReason["kind"], MessageKey> = {
   "not-sane": "aa.ro.notSane.short",
-  "update-pending": "aa.ro.update.short",
   "no-backup": "aa.ro.backup.short",
 };
 

@@ -16,16 +16,6 @@ readOnly: ReadOnlyReason | null,
  */
 liveLightsOff: LiveLightsOff | null, 
 /**
- * Live lights hold it in per-key mode now.
- */
-liveArmed: boolean, 
-/**
- * Live lights switched it to per-key mode: its own effect comes back
- * about 30 s after they end. False while it was in a live mode before
- * (per-key lighting saved from Keymotion): nothing goes back.
- */
-liveRestores: boolean, 
-/**
  * Replies nobody asked for keep coming: another program (AJAZZ's web
  * page?) seems to talk to the keyboard. Nothing is blocked.
  */

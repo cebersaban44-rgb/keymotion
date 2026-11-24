@@ -1281,8 +1281,8 @@ function mockKeyboards(): KeyboardInfo[] {
 }
 
 /** The limits of a keyboard of AJAZZ's "AA" family (driver.rs
- *  `family::limits`): 140 frames as its own report says, none proven, no
- *  "Disabled", "While held" or double click. */
+ *  `family::limits`): 140 frames (its own report says 146; never above the
+ *  app's), none proven, no "Disabled", "While held" or double click. */
 const AA_LIMITS: KeyboardInfo["limits"] = {
   brightness: { min: 0, max: 5 },
   speed: { min: 0, max: 5 },
@@ -1294,9 +1294,9 @@ const AA_LIMITS: KeyboardInfo["limits"] = {
 /**
  * `?mock=aa769`: an AK980 PRO on AJAZZ's firmware 3.01 ("769") on the cable,
  * the "AA" family, as the simulator reports it. `&aa=` adds states, comma
- * separated: `insane`, `notread`, `update`, `nobackup` (why nothing is
- * written); `blocked` (live lights don't show on its keys for now, and
- * why); `other` (another program talks to it); `charging`; `clock` (its clock page is at
+ * separated: `insane`, `notread`, `nobackup` (why nothing is written);
+ * `blocked` (live lights don't show on its keys for now: it was just
+ * switched on or reset); `other` (another program talks to it); `charging`; `clock` (its clock page is at
  * risk: lib/screen.ts and live.ts); `nocolor` (a backup that doesn't know
  * its colour: lib/aa.ts); `cut` (the quiet time after a stopped upload:
  * lib/screen.ts); `elsewhere` (a key and a macro set in AJAZZ's tool, the
@@ -1310,13 +1310,11 @@ function mockAaKeyboard(): KeyboardInfo {
     ? { kind: "not-sane", reasons: ["keymap page 0x0E at slot 12 is not one this app knows"], readFailed: false }
     : flags.has("notread")
       ? { kind: "not-sane", reasons: ["no answer to command 0x10"], readFailed: true }
-      : flags.has("update")
-      ? { kind: "update-pending" }
       : flags.has("nobackup")
         ? { kind: "no-backup", error: "Access is denied. (os error 5)" }
         : null;
   const liveLightsOff: AaStatus["liveLightsOff"] = flags.has("blocked")
-    ? { kind: "blocked", reason: "another program is using the keyboard (ajazz-driver)" }
+    ? { kind: "blocked", reason: "the keyboard was just switched on or reset and ignores live lights for a moment" }
     : null;
   return {
     key: "ajazz-ak980-pro.aa:Usb",
@@ -1328,14 +1326,11 @@ function mockAaKeyboard(): KeyboardInfo {
     device: {
       battery: 100,
       charge: flags.has("charging") ? "charging" : null,
-      screenMaxFrames: 140,
-      updatePending: flags.has("update"),
+      screenMaxFrames: 146,
     },
     aaStatus: {
       readOnly,
       liveLightsOff,
-      liveArmed: false,
-      liveRestores: false,
       otherProgramSuspected: flags.has("other"),
       backup: readOnly?.kind === "no-backup" ? null : "aa-8039-0301-1763500000000.json",
       effectColorKnown: true,

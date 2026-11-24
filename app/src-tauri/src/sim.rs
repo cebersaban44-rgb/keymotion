@@ -9,11 +9,13 @@
 //! its own data folder, log folder and single-instance lock, beside an
 //! installed copy.
 //!
-//! `KEYMOTION_SIM_FAULTS` (comma-separated) makes the keyboard misbehave:
-//! `insane` (an unknown effect mode: read-only), `update-pending`
-//! (firmware status 1), `silent` (no answer to the device information),
-//! `color-unknown` (another tool wrote the effect, so its colour reads back
-//! white).
+//! The keyboard starts as AJAZZ's 769 updater leaves it (per-key table and
+//! macros all 00). `KEYMOTION_SIM_FAULTS` (comma-separated) makes it
+//! misbehave: `insane` (an unknown effect mode: read-only), `silent` (no
+//! answer to the device information), `color-unknown` (another tool wrote
+//! the effect, so its colour reads back white), `erased` (a per-key table
+//! never programmed: all FF), `booting` (its power-on animation runs for
+//! 3 s after the app starts: writes meanwhile are dropped).
 //!
 //! Release builds never contain this module: it needs the `sim` feature,
 //! which does not build without debug assertions (lib.rs).
@@ -70,9 +72,9 @@ impl SimBoard {
                 match fault {
                     // An effect mode the sanity check does not know.
                     "insane" => s.effect[0] = 99,
-                    // `firmwareStatus` 1.
-                    "update-pending" => s.info[32] = 1,
                     "silent" => s.faults = Faults { silent_info: true, ..s.faults.clone() },
+                    "erased" => s.erased_per_key(),
+                    "booting" => s.power_on(std::time::Duration::from_secs(3)),
                     "color-unknown" => {
                         let e = s.effect;
                         s.set_effect_by_another_tool(e);
@@ -186,8 +188,8 @@ mod tests {
     fn the_environment_names_the_keyboard() {
         assert!(SimBoard::from_vars(None, Some("insane".into())).is_none(), "no simulator asked for");
         assert!(SimBoard::from_vars(Some(" ".into()), None).is_none());
-        let b = SimBoard::from_vars(Some("aa769".into()), Some("update-pending".into())).unwrap().unwrap();
-        assert_eq!(b.sim().state().info[32], 1);
+        let b = SimBoard::from_vars(Some("aa769".into()), Some("erased".into())).unwrap().unwrap();
+        assert!(b.sim().state().per_key.iter().all(|&x| x == 0xFF));
         assert!(SimBoard::from_vars(Some("aa769".into()), Some("nope".into())).unwrap().is_err());
         // The real variables: not set where tests run.
         if std::env::var(ENV).is_err() {
@@ -200,10 +202,11 @@ mod tests {
 
     #[test]
     fn faults_are_named() {
-        assert!(SimBoard::new("aa769", "insane, update-pending,silent,color-unknown").is_ok());
+        assert!(SimBoard::new("aa769", "insane, erased,silent,color-unknown, booting").is_ok());
         assert!(SimBoard::new("aa769", "loud").is_err());
+        assert!(SimBoard::new("aa769", "update-pending").is_err(), "no such field on 769");
         assert!(SimBoard::new("ff13", "").is_err(), "only the 769 board");
-        let b = SimBoard::new("aa769", "update-pending").unwrap();
-        assert_eq!(b.sim().state().info[32], 1);
+        let b = SimBoard::new("aa769", "booting").unwrap();
+        assert!(b.sim().state().booting_until.is_some());
     }
 }

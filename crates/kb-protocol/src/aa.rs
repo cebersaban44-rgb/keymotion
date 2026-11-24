@@ -8,8 +8,21 @@
 //! * Every request is answered by a 64-byte input report `55 CMD LEN ADDR…`
 //!   carrying the data of a read, or echoing the data of a write.
 //! * Blocks longer than 56 bytes travel in 56-byte chunks: ADDR is the
-//!   chunk's byte offset, LEN its length, LAST is set on the final chunk.
+//!   chunk's byte offset, LEN its length, LAST is set on the final chunk
+//!   (as AJAZZ's tools do; firmware 769 never looks at it).
 //! * The screen takes 4104-byte packets on FF67 ([`screen`]).
+//!
+//! What firmware 769 does with them (protocol notes §F, from its code):
+//! the settings live straight in flash, in 1 KB pages, and a write chunk
+//! erases its page only when it starts on the page's first byte; every
+//! other chunk is programmed over what is there. So a table is written
+//! once, from address 0 upwards, with a chunk on every page boundary
+//! ([`frame::paged_chunks`]), never patched in the middle. Nothing bounds
+//! ADDR or LEN on the keyboard: a write past its table erases firmware
+//! code, so [`guard::guard`] keeps every write inside its table. A write's
+//! reply echoes the request even when the keyboard dropped the write (as
+//! it does during its power-on animation and its reset blink): only a
+//! read-back tells it landed.
 //!
 //! There are no sessions, no checksums and no feature reports. Everything
 //! here is pure: the driver in kb-core does the I/O and passes every packet

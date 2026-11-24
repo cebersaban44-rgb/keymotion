@@ -5,8 +5,15 @@
 //! 128 per-key), plus 20 and 21 (which also show the per-key table).
 //! Brightness and speed are 1–5 here (0–5 in the "04 xx" family): the app's
 //! levels go through one table, [`LEVELS`], and nothing outside 1–5 is ever
-//! written. The colour read back after a write is not reliable (it comes
-//! back `FF FF FF`), so only mode and levels are compared after a write.
+//! written.
+//!
+//! A read does not give back what was written (protocol notes §F.6): it
+//! reports the effect the keyboard runs, through a map that turns modes 0,
+//! 20, 21 and 128 all into 0 ([`READS_AS_OFF`]), and a custom colour (any
+//! colour an effect write sets) as `FF FF FF` with colour mode 1
+//! ([`READBACK_QUIRK`]). So a read-back confirms levels and direction, and
+//! the mode only up to that ambiguity ([`AaEffect::matches_readback`]); the
+//! colour never.
 
 use super::{range, CodecError};
 use crate::sonix::{EffectSettings, Rgb};
@@ -15,8 +22,12 @@ use crate::sonix::{EffectSettings, Rgb};
 pub const LEN: usize = 16;
 /// Per-key mode: the per-key table is shown.
 pub const MODE_PER_KEY: u8 = 128;
-/// Modes in which real-time frames are visible (and the per-key table is shown).
-pub const LIVE_MODES: [u8; 3] = [20, 21, MODE_PER_KEY];
+/// Modes that show the per-key table (20 and 21 fall through to the same
+/// renderer as 128 on firmware 769).
+pub const PER_KEY_MODES: [u8; 3] = [20, 21, MODE_PER_KEY];
+/// Modes a read reports as 0: off and the three per-key modes. A read of 0
+/// is one of them; which one, the keyboard does not tell.
+pub const READS_AS_OFF: [u8; 4] = [0, 20, 21, MODE_PER_KEY];
 /// Byte 4, as both AJAZZ tools write it.
 pub const DRIVER_SETTING: u8 = 0xFF;
 /// Bytes 14–15, as AJAZZ's WebHID driver writes them for this keyboard.
@@ -36,6 +47,18 @@ pub fn is_valid_mode(m: u8) -> bool {
     m <= 21 || m == MODE_PER_KEY
 }
 
+/// Whether a read that reports mode `read` can follow a write of mode
+/// `written`: the same mode, or 0 for any mode in [`READS_AS_OFF`].
+pub fn mode_reads_as(written: u8, read: u8) -> bool {
+    written == read || (read == 0 && READS_AS_OFF.contains(&written))
+}
+
+/// Whether the effect colour shows in mode `m` (not off, not a per-key
+/// mode): only then does a write need it.
+pub fn shows_color(m: u8) -> bool {
+    !READS_AS_OFF.contains(&m)
+}
+
 /// The keyboard's level for an app level (0–5).
 pub fn level(app: u8) -> Result<u8, CodecError> {
     LEVELS.get(usize::from(app)).copied().ok_or(CodecError::Range {
@@ -46,8 +69,10 @@ pub fn level(app: u8) -> Result<u8, CodecError> {
     })
 }
 
-/// What a read-back shows after any effect write (by any program, in any
-/// session): white and colour mode 1, whatever the keyboard shows.
+/// What a read shows while the effect colour is a custom one, which every
+/// effect write (by any program, in any session) makes it: white and
+/// colour mode 1, whatever the keyboard shows. Only a colour picked with
+/// the keyboard's own Fn keys (one of its palette) reads back as itself.
 pub const READBACK_QUIRK: EffectColor = EffectColor { color: [0xFF, 0xFF, 0xFF], color_mode: 1 };
 
 /// The colour part of an effect: the colour and the colour mode (1 =
@@ -163,15 +188,25 @@ impl AaEffect {
         })
     }
 
-    /// What a read-back can confirm: mode and levels (not the colour).
+    /// The same mode, levels and direction (the colour aside): two effects
+    /// both known, such as one written and one remembered.
     pub fn same_settings(&self, other: &Self) -> bool {
         (self.mode, self.brightness, self.speed, self.direction)
             == (other.mode, other.brightness, other.speed, other.direction)
     }
 
-    /// Whether real-time frames show in this mode.
-    pub fn is_live(&self) -> bool {
-        LIVE_MODES.contains(&self.mode)
+    /// Whether `read`, an effect as the keyboard reports it, is what this
+    /// effect (written, or known otherwise) reads back as: levels and
+    /// direction equal, and the mode equal up to [`READS_AS_OFF`]. The
+    /// colour is not compared (it does not read back).
+    pub fn matches_readback(&self, read: &Self) -> bool {
+        mode_reads_as(self.mode, read.mode)
+            && (self.brightness, self.speed, self.direction) == (read.brightness, read.speed, read.direction)
+    }
+
+    /// Whether this mode shows the per-key table (20, 21, 128).
+    pub fn shows_per_key(&self) -> bool {
+        PER_KEY_MODES.contains(&self.mode)
     }
 
     /// The colour and colour mode.
@@ -243,9 +278,9 @@ mod tests {
         let s = EffectSettings { mode: 128, rainbow: true, ..EffectSettings::factory() };
         let e = AaEffect::from_settings(&s).unwrap();
         assert_eq!(e.encode().unwrap()[8], 0);
-        assert!(e.is_live());
+        assert!(e.shows_per_key());
         let rolling = AaEffect::from_settings(&EffectSettings::factory()).unwrap();
-        assert!(!rolling.is_live());
+        assert!(!rolling.shows_per_key());
         let pk = rolling.per_key();
         assert_eq!((pk.mode, pk.color_mode, pk.brightness, pk.speed), (128, 0, 5, 3));
     }
@@ -262,5 +297,32 @@ mod tests {
         assert_eq!(EffectColor::from_settings(&pink), EffectColor { color: [0xFF, 0x69, 0xB4], color_mode: 0 });
         assert!(!written.same_settings(&AaEffect { brightness: 4, ..written }));
         assert!(AaEffect::decode(&[0; 15]).is_err());
+    }
+
+    #[test]
+    fn off_and_the_per_key_modes_all_read_back_as_0() {
+        // Firmware 769 reports the running effect through a reverse map that
+        // sends 0, 20, 21 and 128 to 0 (§F.6).
+        let base = AaEffect::from_settings(&EffectSettings::factory()).unwrap();
+        for m in READS_AS_OFF {
+            let written = AaEffect { mode: m, ..base };
+            let read = AaEffect { mode: 0, color: [0xFF; 3], color_mode: 1, ..base };
+            assert!(written.matches_readback(&read), "{m}");
+            assert!(mode_reads_as(m, 0) && mode_reads_as(m, m));
+            assert!(!shows_color(m));
+            assert_eq!(written.same_settings(&read), m == 0, "{m}: not the same as known");
+        }
+        // Any other mode reads back as itself.
+        for m in (1..=19).chain([22]) {
+            assert!(!mode_reads_as(m, 0), "{m}");
+            assert!(shows_color(m));
+        }
+        let static_one = AaEffect { mode: 1, ..base };
+        assert!(static_one.matches_readback(&AaEffect { mode: 1, color: [0xFF; 3], ..base }));
+        assert!(!static_one.matches_readback(&AaEffect { mode: 0, ..base }));
+        // Levels and direction still count.
+        let pk = AaEffect { mode: 128, ..base };
+        assert!(!pk.matches_readback(&AaEffect { mode: 0, brightness: 1, ..base }));
+        assert!(!pk.matches_readback(&AaEffect { mode: 0, direction: 2, ..base }));
     }
 }

@@ -14,9 +14,4 @@ battery: number | null, charge: ChargeState | null,
 /**
  * Frames its screen takes (the "AA" `tftMaxFrames`).
  */
-screenMaxFrames: number | null, 
-/**
- * A firmware update was left unfinished: nothing may be written until
- * AJAZZ's tool completes it (the "AA" `firmwareStatus` 1).
- */
-updatePending: boolean, };
+screenMaxFrames: number | null, };

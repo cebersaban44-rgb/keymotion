@@ -306,29 +306,20 @@ pub enum ReadOnlyReason {
         #[serde(rename = "readFailed")]
         read_failed: bool,
     },
-    /// A firmware update was left unfinished: AJAZZ's tool has to finish it.
-    UpdatePending,
     /// The backup of its settings could not be saved (`error`: English).
     NoBackup { error: String },
 }
 
 /// Why live lights (gauges, music, games, agents, previews) do not show on
-/// the "AA" keyboard: it shows them only in per-key mode, which the app
-/// switches to and back (plan K-4).
+/// the "AA" keyboard. It shows them in any effect mode, and nothing is
+/// switched or put back: they are held back only for the moment the
+/// keyboard ignores writes (just switched on or reset).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 #[ts(export)]
 pub enum LiveLightsOff {
-    /// The colour of the keyboard's effect is not known, so it could not be
-    /// put back afterwards: setting the lighting once in Keymotion fixes it.
-    ColorUnknown,
-    /// The keyboard is read-only ([`ReadOnlyReason`]).
-    ReadOnly,
-    /// A write was refused (`reason`: the backend error, such as "untested
-    /// keyboard firmware 3.01" or "more than one keyboard on the USB cable").
+    /// Frames are held back for a moment (`reason`: the backend's text).
     Blocked { reason: String },
-    /// The switch failed (`error`: the backend error).
-    Failed { error: String },
 }
 
 /// What the app knows about an "AA" keyboard on the cable beyond the model
@@ -341,12 +332,6 @@ pub struct AaStatus {
     pub read_only: Option<ReadOnlyReason>,
     /// Set: live lights do not show on it, and why.
     pub live_lights_off: Option<LiveLightsOff>,
-    /// Live lights hold it in per-key mode now.
-    pub live_armed: bool,
-    /// Live lights switched it to per-key mode: its own effect comes back
-    /// about 30 s after they end. False while it was in a live mode before
-    /// (per-key lighting saved from Keymotion): nothing goes back.
-    pub live_restores: bool,
     /// Replies nobody asked for keep coming: another program (AJAZZ's web
     /// page?) seems to talk to the keyboard. Nothing is blocked.
     pub other_program_suspected: bool,
@@ -453,9 +438,6 @@ pub struct DeviceReport {
     pub charge: Option<ChargeState>,
     /// Frames its screen takes (the "AA" `tftMaxFrames`).
     pub screen_max_frames: Option<u32>,
-    /// A firmware update was left unfinished: nothing may be written until
-    /// AJAZZ's tool completes it (the "AA" `firmwareStatus` 1).
-    pub update_pending: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
