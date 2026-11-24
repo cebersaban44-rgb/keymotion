@@ -190,8 +190,6 @@ export const SHOTS = [
   })),
   // Nothing is written: what the keyboard reports doesn't look as expected.
   { name: "aa-read-only", mock: "aa769", query: { aa: "insane" }, page: "lighting" },
-  // Live lighting can't show yet: the colour of the user's lighting isn't known.
-  { name: "aa-live-lights", mock: "aa769", query: { aa: "color" }, page: "music" },
   // The upload question before the first upload: the clock page may go.
   {
     name: "aa-clock-page",

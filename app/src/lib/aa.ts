@@ -5,8 +5,9 @@
 // - Read-only: nothing is written to it (what it reported doesn't look as
 //   expected, a firmware update was left unfinished, or its backup couldn't
 //   be saved). Every page that writes says why and keeps its save off.
-// - Live lights: it shows them only in its per-key mode, which the backend
-//   switches to and back; the pages that start live lights say what happens.
+// - Live lights: it shows them in any of its lighting modes, never saves
+//   them, and goes back to its own lighting by itself a few seconds after
+//   they end; the pages that start live lights say when it takes none.
 // - Backups: taken at its first connection and before every restore; the
 //   Connection page lists them and puts one back (the restore flow below).
 // - Its key mapping and macros: it reports them, and the app's records

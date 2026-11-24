@@ -42,12 +42,6 @@ export function keptWhy(reason: string): KeptWhy {
   return "other";
 }
 
-/** The firmware version a live-lights block waits on ("untested keyboard
- *  firmware 3.01"), when that is the reason. */
-export function untestedFirmware(reason: string): string | null {
-  return /untested keyboard firmware (\S+)/i.exec(reason)?.[1] ?? null;
-}
-
 /** The GitHub issue form's title and model for a keyboard on firmware
  *  `firmware` (the "AA" family's beta: "tell us how it works"). */
 export function betaIssue(model: string, firmware: string | null): { title: string; model: string } {
@@ -63,17 +57,14 @@ export function notSaneBody(readFailed: boolean): "aa.ro.notSane.read" | "aa.ro.
   return readFailed ? "aa.ro.notSane.read" : "aa.ro.notSane.body";
 }
 
-/** What the live-lights notice says, from `AaStatus`: why live lighting
- *  doesn't show, that the keyboard's own lighting comes back about 30
- *  seconds after it ends (only when Keymotion switched it and has something
- *  to put back), or nothing. */
-export function liveNoticeKind(s: {
-  liveLightsOff: unknown;
-  liveArmed: boolean;
-  liveRestores: boolean;
-}): "off" | "armed" | null {
-  if (s.liveLightsOff) return "off";
-  return s.liveArmed && s.liveRestores ? "armed" : null;
+/** What the live-lights notice says, from `AaStatus.liveLightsOff`: nothing
+ *  (`null`: live lighting shows in any of the keyboard's lighting modes),
+ *  or that it doesn't show for now, with the reason when the keyboard takes
+ *  none ("blocked": just after it is switched on, during a reset or an
+ *  update) and `reason: null` for a general line. */
+export function liveOffReason(off: { kind: string; reason?: string } | null | undefined): { reason: string | null } | null {
+  if (!off) return null;
+  return { reason: off.kind === "blocked" && off.reason ? off.reason : null };
 }
 
 /** Why a backup can't be put back now: the keyboard takes no writes, or a
