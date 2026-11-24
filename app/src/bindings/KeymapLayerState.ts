@@ -25,4 +25,9 @@ fixed: Array<number>,
  * (a factory reset, a mode switch): shown as such, never changed
  * ("AA" family; empty otherwise).
  */
-builtin: Array<number>, };
+builtin: Array<number>, 
+/**
+ * LEDs of keys in `assignments` whose default never comes back (their
+ * factory function is one of the keyboard's own): no reset offered.
+ */
+pinned: Array<number>, };

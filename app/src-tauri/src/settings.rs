@@ -283,6 +283,10 @@ pub struct StoredLayer {
     /// (a factory reset, a mode switch): never written ("AA" family).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub builtin: Vec<u8>,
+    /// LEDs of keys with an action whose factory function is one of the
+    /// keyboard's own: their default never comes back ("AA" family).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pinned: Vec<u8>,
 }
 
 impl StoredLayer {
@@ -294,7 +298,7 @@ impl StoredLayer {
                 Some((led.to_string(), format!("{:02x}{:02x}{:02x}{:02x}", e[0], e[1], e[2], e[3])))
             })
             .collect();
-        Self { entries, written_ms: Some(written_ms), fixed: Vec::new(), builtin: Vec::new() }
+        Self { entries, written_ms: Some(written_ms), fixed: Vec::new(), builtin: Vec::new(), pinned: Vec::new() }
     }
 
     /// The stored actions; entries that do not decode are skipped.
@@ -584,6 +588,7 @@ mod tests {
             written_ms: Some(1),
             fixed: Vec::new(),
             builtin: Vec::new(),
+            pinned: Vec::new(),
         };
         assert_eq!(layer.actions(), LayerMap::from([(33, KeyAction::key(0x04))]));
     }

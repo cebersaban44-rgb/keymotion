@@ -420,6 +420,11 @@ pub struct KeptOnKeyboard {
     pub fn_layer: Vec<u8>,
     /// Macro slots.
     pub macros: Vec<u8>,
+    /// Keys with an action whose default never comes back (their factory
+    /// function is one of the keyboard's own), per layer: a profile that
+    /// doesn't name them leaves them as they are.
+    pub base_pinned: Vec<u8>,
+    pub fn_pinned: Vec<u8>,
 }
 
 impl KeptOnKeyboard {
@@ -428,6 +433,29 @@ impl KeptOnKeyboard {
             Layer::Base => &self.base,
             Layer::Fn => &self.fn_layer,
         }
+    }
+
+    fn pinned(&self, layer: Layer) -> &[u8] {
+        match layer {
+            Layer::Base => &self.base_pinned,
+            Layer::Fn => &self.fn_pinned,
+        }
+    }
+
+    /// What `current` would be compared with for a profile layer `keys`:
+    /// pinned keys the profile doesn't name stay as they are, whatever the
+    /// profile says, so they don't count; and how many there are.
+    fn comparable(
+        &self,
+        current: &BTreeMap<String, String>,
+        keys: &BTreeMap<String, String>,
+        layer: Layer,
+    ) -> (BTreeMap<String, String>, usize) {
+        let pinned = self.pinned(layer);
+        let mut out = current.clone();
+        out.retain(|led, _| keys.contains_key(led) || !led.parse::<u8>().is_ok_and(|l| pinned.contains(&l)));
+        let left = current.len() - out.len();
+        (out, left)
     }
 
     /// `layer` of `k` without the keys the keyboard keeps, and how many
@@ -493,7 +521,10 @@ impl Profile {
                 self.lighting.as_ref().is_none_or(|l| current.lighting.as_ref().is_some_and(|c| l.same(c)))
             }
             ProfilePart::Keymap => self.keymap.as_ref().is_none_or(|k| {
-                [Layer::Base, Layer::Fn].into_iter().all(|l| current.kept.keys(k, l).0 == *current.keymap.layer(l))
+                [Layer::Base, Layer::Fn].into_iter().all(|l| {
+                    let (keys, _) = current.kept.keys(k, l);
+                    current.kept.comparable(current.keymap.layer(l), &keys, l).0 == keys
+                })
             }),
             ProfilePart::Macros => self.macros.as_ref().is_none_or(|m| *m == current.macros),
             ProfilePart::Screen => {
@@ -994,8 +1025,9 @@ pub fn load_part(
             let mut left = 0;
             for layer in [Layer::Base, Layer::Fn] {
                 let (keys, out) = current.kept.keys(k, layer);
-                left += out;
-                if keys != *current.keymap.layer(layer) {
+                let (now, pinned) = current.kept.comparable(current.keymap.layer(layer), &keys, layer);
+                left += out + pinned;
+                if keys != now {
                     let actions = StoredLayer { entries: keys, ..Default::default() }.actions().into_iter().collect();
                     w.keymap(layer, actions).map_err(|e| part_failed(part, e))?;
                 }
@@ -1473,7 +1505,7 @@ mod tests {
     fn keys_and_macros_the_keyboard_keeps_are_left_alone() {
         // "AA": key 33 on the Fn layer and macro slot 1 were set in another
         // program (or 33 is one of the keyboard's own functions).
-        let kept = KeptOnKeyboard { base: vec![], fn_layer: vec![33], macros: vec![1] };
+        let kept = KeptOnKeyboard { base: vec![], fn_layer: vec![33], macros: vec![1], ..Default::default() };
         let cur = Current { model_id: MODEL.into(), kept: kept.clone(), ..Current::default() };
         let both = LayerMap::from([(33, KeyAction::key(0x04)), (34, KeyAction::key(0x05))]);
         let profile = Profile {
@@ -1501,6 +1533,43 @@ mod tests {
         // The Default profile never names them.
         let d = default_profile();
         assert_eq!(load_part(&d, ProfilePart::Keymap, &cur, &mut kb), Ok(PartLoaded::Same));
+    }
+
+    #[test]
+    fn a_key_whose_default_never_comes_back_does_not_keep_a_profile_off_the_keyboard() {
+        // "AA": key 40 on the Fn layer has a firmware function as its
+        // factory function and holds "a" now (set in AJAZZ's tool).
+        let a_on_40 = LayerMap::from([(40, KeyAction::key(0x04))]);
+        let cur = Current {
+            model_id: MODEL.into(),
+            keymap: ProfileKeymap { base: BTreeMap::new(), fn_layer: StoredLayer::new(&a_on_40, 1).entries },
+            kept: KeptOnKeyboard { fn_pinned: vec![40], ..Default::default() },
+            ..Current::default()
+        };
+        // The Default profile (factory layout) can't give it back: it is on
+        // the keyboard as far as it goes, nothing is written or counted.
+        let d = default_profile();
+        assert!(d.part_matches(ProfilePart::Keymap, &cur));
+        let mut kb = FakeKeyboard::default();
+        assert_eq!(load_part(&d, ProfilePart::Keymap, &cur, &mut kb), Ok(PartLoaded::Same));
+        assert!(kb.writes.is_empty());
+        // A profile with another key writes that one and says 40 was kept.
+        let b_on_41 = LayerMap::from([(41, KeyAction::key(0x05))]);
+        let other = Profile {
+            keymap: Some(ProfileKeymap { base: BTreeMap::new(), fn_layer: StoredLayer::new(&b_on_41, 1).entries }),
+            ..default_profile()
+        };
+        assert!(!other.part_matches(ProfilePart::Keymap, &cur));
+        assert_eq!(load_part(&other, ProfilePart::Keymap, &cur, &mut kb), Ok(PartLoaded::Kept));
+        assert_eq!(kb.writes, ["keymap Fn 1"]);
+        // A profile that names it gives it another action.
+        let b_on_40 = LayerMap::from([(40, KeyAction::key(0x05))]);
+        let named = Profile {
+            keymap: Some(ProfileKeymap { base: BTreeMap::new(), fn_layer: StoredLayer::new(&b_on_40, 1).entries }),
+            ..default_profile()
+        };
+        assert!(!named.part_matches(ProfilePart::Keymap, &cur));
+        assert_eq!(load_part(&named, ProfilePart::Keymap, &cur, &mut kb), Ok(PartLoaded::Written));
     }
 
     #[test]

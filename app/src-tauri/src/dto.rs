@@ -1251,6 +1251,9 @@ pub struct KeymapLayerState {
     /// (a factory reset, a mode switch): shown as such, never changed
     /// ("AA" family; empty otherwise).
     pub builtin: Vec<u8>,
+    /// LEDs of keys in `assignments` whose default never comes back (their
+    /// factory function is one of the keyboard's own): no reset offered.
+    pub pinned: Vec<u8>,
 }
 
 impl From<&StoredLayer> for KeymapLayerState {
@@ -1260,6 +1263,7 @@ impl From<&StoredLayer> for KeymapLayerState {
             written_ms: l.written_ms.map(|ms| ms as f64),
             fixed: l.fixed.clone(),
             builtin: l.builtin.clone(),
+            pinned: l.pinned.clone(),
         }
     }
 }

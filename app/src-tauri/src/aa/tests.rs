@@ -706,6 +706,15 @@ fn a_save_made_against_keys_or_macros_changed_elsewhere_is_refused() {
     let c = d.contents().unwrap();
     assert_eq!(c.macros[0], MacroContents::Steps(mine.clone()));
     d.write_macros_from(&[mine.clone(), mine.clone()], Some(&c.macros_source)).unwrap();
+
+    // A change made elsewhere on the Fn layer refuses a save of the base
+    // layer too, before anything is written (a page saves both, base first).
+    let keys = d.contents().unwrap().keys_source;
+    aa_keymap::set_entry(&mut sim.state().fn_keymap, aa("q"), [aa_keymap::page::KEYBOARD, 0, 0x08, 0]);
+    let base_before = sim.state().keymap.clone();
+    let e = d.apply_keymap_from(Layer::Base, &LayerMap::from([(led("e"), KeyAction::key(0x09))]), Some(&keys));
+    assert_eq!(e.unwrap_err().to_string(), ERR_KEYS_CHANGED);
+    assert_eq!(sim.state().keymap, base_before, "nothing written, as the message says");
 }
 
 #[test]
@@ -737,6 +746,7 @@ fn the_keyboards_own_fn_functions_are_kept() {
     assert!(c.fn_layer.builtin.contains(&led("space")), "the factory reset is the keyboard's own function");
     assert!(c.fn_layer.builtin.contains(&zeroed_led), "zeros are the factory function");
     assert_eq!(c.fn_layer.actions.get(&moved_led), Some(&KeyAction::key(0x05)));
+    assert_eq!(c.fn_layer.pinned, [moved_led], "its default never comes back");
     assert!(c.fn_layer.fixed.is_empty());
     // A map that names the factory reset, and one that names nothing (the
     // Default profile): neither writes over a firmware function, neither

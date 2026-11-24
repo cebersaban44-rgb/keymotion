@@ -1123,6 +1123,19 @@ impl AaDriver {
     /// the snapshot, now as read, tells the records. **Writes flash.**
     pub fn apply_keymap_from(&mut self, layer: Layer, map: &LayerMap, base: Option<&str>) -> Result<usize, Error> {
         self.writable()?;
+        if base.is_some() {
+            // The source covers both layers: the other one is read fresh too,
+            // so a change made elsewhere on it refuses this save before
+            // anything is written (a save of both layers starts with this
+            // one).
+            let other = match layer {
+                Layer::Base => Layer::Fn,
+                Layer::Fn => Layer::Base,
+            };
+            let read = self.kb.read_keymap(other);
+            self.after_io();
+            self.check(read)?;
+        }
         let changes = self.keymap_changes(layer, map);
         self.after_io();
         let (changes, kept) = self.check(changes)?;
@@ -1293,6 +1306,11 @@ impl AaDriver {
                     SlotView::Default => {}
                     SlotView::Action(a) => {
                         out.actions.insert(k.led, a);
+                        // Its factory function is a firmware function, which
+                        // never comes back: no write gives it its default.
+                        if aa_keymap::is_func(f) {
+                            out.pinned.push(k.led);
+                        }
                     }
                     SlotView::Builtin => out.builtin.push(k.led),
                     SlotView::Fixed => out.fixed.push(k.led),
@@ -1655,6 +1673,10 @@ pub struct LayerContents {
     /// factory reset, a mode switch: plan K-15): shown as such, never
     /// written.
     pub builtin: Vec<u8>,
+    /// Keys in `actions` whose factory function in this layer is one of
+    /// the keyboard's own: they take another action, never their default
+    /// back (a write asking for it keeps them as they are).
+    pub pinned: Vec<u8>,
 }
 
 /// One macro slot as the keyboard holds it.

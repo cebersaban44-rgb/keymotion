@@ -460,8 +460,8 @@ export async function getKeymapCatalog(): Promise<KeymapCatalog> {
 
 // Browser-only stand-in for the app's keymap record.
 let mockKeymap: KeymapState = {
-  base: { assignments: [], writtenMs: null, fixed: [], builtin: [] },
-  fn: { assignments: [], writtenMs: null, fixed: [], builtin: [] },
+  base: { assignments: [], writtenMs: null, fixed: [], builtin: [], pinned: [] },
+  fn: { assignments: [], writtenMs: null, fixed: [], builtin: [], pinned: [] },
   readMs: null,
   source: null,
 };
@@ -513,7 +513,7 @@ export function applyKeymap(layer: KeymapLayer, assignments: KeyAssignment[], ba
       if (base !== null && base !== mockSource) {
         throw new Error("the keyboard's keys changed in another program since Keymotion read them; nothing was written");
       }
-      mockKeymap = { ...mockKeymap, [layer]: { assignments, writtenMs: Date.now(), fixed: [], builtin: [] } };
+      mockKeymap = { ...mockKeymap, [layer]: { assignments, writtenMs: Date.now(), fixed: [], builtin: [], pinned: [] } };
       return getKeymapState("");
     }
     return serial(() => invoke<KeymapState>("apply_keymap", { layer, assignments, base }));
@@ -1224,8 +1224,8 @@ async function mockLoadProfilePart(modelId: string, id: string, part: ProfilePar
   }
   if (part === "keymap" && p.keymap) {
     mockKeymap = {
-      base: { assignments: p.keymap.base, writtenMs: Date.now(), fixed: [], builtin: [] },
-      fn: { assignments: p.keymap.fn, writtenMs: Date.now(), fixed: [], builtin: [] },
+      base: { assignments: p.keymap.base, writtenMs: Date.now(), fixed: [], builtin: [], pinned: [] },
+      fn: { assignments: p.keymap.fn, writtenMs: Date.now(), fixed: [], builtin: [], pinned: [] },
       readMs: null,
       source: null,
     };

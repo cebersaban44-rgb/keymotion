@@ -317,9 +317,17 @@ struct Inner {
     held: Held,
 }
 
-/// Profiles whose write was refused (or left a part out) while one
-/// keyboard is on the cable: not tried again on every switch, only after
-/// the keyboard was unplugged (or another one came).
+/// A failed write that no retry on this keyboard changes (the profile's
+/// macros would replace macros made in another program): held. Any other
+/// failure (another program open, the firmware question, a busy keyboard,
+/// two keyboards on the cable) is tried again on the next switch.
+fn holds(error: &str) -> bool {
+    error == crate::profiles::ERR_MACROS_KEPT
+}
+
+/// Profiles whose write was refused for good while one keyboard is on the
+/// cable ([`holds`]): not tried again on every switch, only after the
+/// keyboard was unplugged (or another one came).
 #[derive(Debug, Default)]
 struct Held {
     /// The keyboard the list is about ([`Host::on_cable`]).
@@ -676,7 +684,9 @@ impl AutoProfiles {
                 tracing::warn!("per-app profile not written: {e}");
                 inner.last_error = Some(e.clone());
                 if let Write::Profile(id) = &what {
-                    inner.held.refused(id);
+                    if holds(e) {
+                        inner.held.refused(id);
+                    }
                 }
             }
             None => {}
@@ -731,6 +741,22 @@ mod tests {
 
     fn rule(path: &str, profile: &str) -> AutoRule {
         AutoRule { path: path.into(), name: path.into(), profile: profile.into(), writes: false }
+    }
+
+    #[test]
+    fn only_a_refusal_for_good_holds_a_profile() {
+        assert!(holds(crate::profiles::ERR_MACROS_KEPT));
+        // Conditions the user clears: tried again on the next switch
+        // ("04 xx" keyboards too).
+        for passing in [
+            "another program is using the keyboard (ajazz-driver)",
+            "untested keyboard firmware 1.07",
+            "more than one keyboard on the USB cable",
+            "keyboard did not answer in time",
+            "profile part failed (keymap): no valid echo",
+        ] {
+            assert!(!holds(passing), "{passing}");
+        }
     }
 
     #[test]

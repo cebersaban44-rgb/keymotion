@@ -554,6 +554,8 @@ function SelectedCard({
   const action = useKeymap((s) => (keyGeo ? s.draft[layer][keyGeo.led] : undefined));
   const setElsewhere = useKeymap((s) => !!keyGeo && s.fixed[layer].includes(keyGeo.led));
   const builtin = useKeymap((s) => !!keyGeo && s.builtin[layer].includes(keyGeo.led));
+  // Its default never comes back: no reset.
+  const pinned = useKeymap((s) => !!keyGeo && s.pinned[layer].includes(keyGeo.led));
   const assign = useAssign(layer, keyGeo);
   const names = useMacroNames();
   const layout = useLayoutLabel();
@@ -596,7 +598,8 @@ function SelectedCard({
           {t("km.fnLocked")}
         </p>
       ) : (
-        action && (
+        action &&
+        !pinned && (
           <button
             type="button"
             onClick={() => assign({ kind: "default" })}

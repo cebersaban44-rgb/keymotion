@@ -34,6 +34,9 @@ export interface KeymapStore {
   /** The part of `fixed` that is the keyboard's own function in the layer
    *  (a factory reset, a mode switch). */
   builtin: Record<KeymapLayer, number[]>;
+  /** Keys with an action whose default never comes back (their factory
+   *  function is one of the keyboard's own): no reset. */
+  pinned: Record<KeymapLayer, number[]>;
   /** When `saved` was read from the keyboard itself; `null`: the app's own
    *  record. */
   readMs: number | null;
@@ -117,6 +120,7 @@ export const useKeymap = create<KeymapStore>((set, get) => {
     writtenMs: { base: state.base.writtenMs, fn: state.fn.writtenMs },
     fixed: fixedOf(state),
     builtin: { base: [...state.base.builtin], fn: [...state.fn.builtin] },
+    pinned: { base: [...state.base.pinned], fn: [...state.fn.pinned] },
     readMs: state.readMs,
     source: state.source,
   });
@@ -126,6 +130,7 @@ export const useKeymap = create<KeymapStore>((set, get) => {
     writtenMs: { base: null, fn: null },
     fixed: { base: [], fn: [] },
     builtin: { base: [], fn: [] },
+    pinned: { base: [], fn: [] },
     readMs: null,
     source: null,
     draft: EMPTY,
@@ -146,14 +151,22 @@ export const useKeymap = create<KeymapStore>((set, get) => {
     assign: (led, action, target) => {
       const { draft } = get();
       const layer = target ?? get().layer;
-      // Set in another program: kept as the keyboard has it.
+      // Set in another program: kept as the keyboard has it. A key whose
+      // default never comes back takes other actions only.
       if (get().fixed[layer].includes(led)) return;
+      if (action.kind === "default" && get().pinned[layer].includes(led)) return;
       const next = { ...draft[layer] };
       if (action.kind === "default") delete next[led];
       else next[led] = action;
       update({ draft: { ...draft, [layer]: next } });
     },
-    resetLayer: (layer) => update({ draft: { ...get().draft, [layer]: {} } }),
+    resetLayer: (layer) => {
+      // Keys whose default never comes back keep what they have.
+      const { draft, pinned } = get();
+      const kept: LayerMap = {};
+      for (const led of pinned[layer]) if (draft[layer][led]) kept[led] = draft[layer][led];
+      update({ draft: { ...draft, [layer]: kept } });
+    },
     save: async () => {
       saving += 1;
       try {
@@ -234,6 +247,7 @@ export async function adoptKeymapRecord(recordId: string) {
       writtenMs: { base: state.base.writtenMs, fn: state.fn.writtenMs },
       fixed,
       builtin,
+      pinned: { base: [...state.base.pinned], fn: [...state.fn.pinned] },
       readMs: state.readMs,
       source: state.source,
       draft: clone(saved),

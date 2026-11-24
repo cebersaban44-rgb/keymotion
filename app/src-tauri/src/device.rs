@@ -1693,6 +1693,7 @@ impl Actor {
             l.written_ms = old.written_ms;
             l.fixed = c.fixed.clone();
             l.builtin = c.builtin.clone();
+            l.pinned = c.pinned.clone();
             l
         };
         let keymap = StoredKeymap {

@@ -1543,6 +1543,8 @@ pub(crate) fn profile_current(app: &AppHandle, model_id: &str) -> Result<profile
                 .get(&record)
                 .map(|m| m.fixed.iter().map(|f| f.slot).collect())
                 .unwrap_or_default(),
+            base_pinned: stored.map(|k| k.base.pinned.clone()).unwrap_or_default(),
+            fn_pinned: stored.map(|k| k.fn_layer.pinned.clone()).unwrap_or_default(),
         };
         (
             profiles::ProfileKeymap::from_record(stored),
