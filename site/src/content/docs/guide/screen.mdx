@@ -38,6 +38,12 @@ The screen has two pages:
 
 Press **Fn+Home** on the keyboard to switch between the two. When Keymotion sets the keyboard clock, the screen goes back to the clock page.
 
+<Aside type="caution" title="On firmware 3.01 (beta)">
+On an AK980 PRO with AJAZZ's firmware 3.01, an upload may replace the keyboard's own clock page, which then comes back only after a full reset of the keyboard (Fn+Space). A full reset also erases your key mapping, macros and lighting. The upload window says so before the first upload, and Keymotion asks only this once. Before the live screen's first card, Keymotion asks **Let the live screen upload?**: **Upload cards** lets the cards go, and **Not now** keeps them waiting until you click **Answer** on the **Live screen** tab. During an upload, **Stop upload** stops it; Keymotion then waits a few seconds before it sends the keyboard anything else. On this firmware it isn't known whether setting the clock switches the screen to the clock page. The Screen page doesn't offer to copy the factory animation from AJAZZ's official driver either; without a copy, the upload window says: "There's no backup of the factory animation, and this upload may replace it for good."
+</Aside>
+
+<Screenshot name="aa-clock-page" alt="The Upload to the keyboard? window on firmware 3.01, warning that the clock page may go until a full reset (Fn+Space), and that Keymotion asks about the clock page only this once" />
+
 At the top of the Screen page, the GIF page is drawn large and the clock page at its own size beside it, with how many uploads you made today and in total.
 
 ## Put a GIF, picture or video on the screen

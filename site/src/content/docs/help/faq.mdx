@@ -19,7 +19,7 @@ If **Smart App Control** is on (Windows Security, **App & browser control**), Wi
 
 ## Is the Microsoft Store version different from the one on GitHub?
 
-No. It is the same app with the same version numbers and the same release notes. What differs: the Store updates its copy (the app's own update check stays off), and Windows shows its version with a fourth number, always 0 (1.0.0.0). A new version comes out in both the same day, once Microsoft has reviewed the Store's copy. Test versions are only on GitHub. One copy is enough: with both installed, the GitHub copy opens the Store's copy instead; see [GitHub and the Microsoft Store](/keymotion/about/release-notes/#github-and-the-microsoft-store).
+No. It is the same app with the same version numbers and the same release notes. What differs: the Store updates its copy (the app's own update check stays off), and Windows shows its version with a fourth number, always 0 (1.0.0.0). A new version comes out in both the same day, once Microsoft has reviewed the Store's copy. Test versions are only on GitHub. One copy is enough: with both installed, the GitHub copy opens the Store's copy instead; see [GitHub and the Microsoft Store](/keymotion/about/release-notes/#github-and-the-microsoft-store). A test version doesn't, but only one copy can run at a time: quit the Store copy, also from its icon next to the clock, before you open a test version.
 
 ## My antivirus or VirusTotal flags Keymotion. Is it safe?
 
@@ -62,7 +62,7 @@ No. Keymotion runs on Windows 10 and 11, 64-bit.
 
 Over Bluetooth, the keyboard offers typing and its battery level, but no way to change its settings. So Keymotion only reads the battery there. To change settings, connect the USB cable and set the switch on the back to the middle.
 
-Over the USB cable it's the other way round: the keyboard doesn't report its battery, so Keymotion shows the last Bluetooth reading and how long ago it was taken.
+Over the USB cable it's the other way round: the keyboard doesn't report its battery, so Keymotion shows the last Bluetooth reading and how long ago it was taken. On AJAZZ's firmware 3.01, the keyboard reports its battery over the cable too, and Keymotion shows that.
 
 ## What about the 2.4 GHz receiver?
 
@@ -75,6 +75,7 @@ Keymotion is built to be careful with the keyboard:
 - It sends only commands that were tested on this keyboard. Anything else is blocked before it leaves your computer, including the commands that would start a firmware update. Keymotion never updates the keyboard's firmware, and over Bluetooth it writes nothing at all.
 - Your settings go to the keyboard's permanent memory only when you choose to save or upload, for example with **Save to keyboard**. Previews aren't saved.
 - Before saving, it checks. If your keyboard's firmware version hasn't been tested with Keymotion, it asks you first, and it doesn't set the keyboard's clock either until you say yes. Live lighting, which the keyboard doesn't keep, goes on without asking. If it doesn't recognize the firmware, it sends nothing. While another program is using the keyboard, or more than one keyboard is connected by USB, it doesn't save.
+- On AJAZZ's firmware 3.01, which Keymotion supports in beta, it first saves a backup of the keyboard's settings. It writes nothing if the backup fails or if what the keyboard reports doesn't look as expected. There, live lighting changes the keyboard's mode, so Keymotion asks before live lighting too. See [Should I install AJAZZ's newest firmware?](#should-i-install-ajazzs-newest-firmware)
 - If you close Keymotion while it's saving, it waits and closes when the save is done. If you shut down Windows, Windows shows that Keymotion is still saving to the keyboard.
 
 The screen's memory wears out slowly with each upload. Its exact lifespan isn't known; by the usual estimate for this kind of memory, a few uploads a day are fine for years. The live screen has a daily upload limit for this reason.
@@ -112,7 +113,7 @@ On your computer, in your Windows user folder:
 - settings and records in `%APPDATA%\dev.keymotion\`;
 - log files in `%LOCALAPPDATA%\dev.keymotion\logs\`.
 
-In **Settings**, under **About**, **Data folder** and **Log files** open them. Keymotion's records of your key mapping and macros are the only copy, because the keyboard can't report them. To keep a copy, open **Settings** and click **Export** under **Backup**: it saves everything in one file. The full list is in the [privacy policy](/keymotion/about/privacy/#where-your-data-lives).
+In **Settings**, under **About**, **Data folder** and **Log files** open them. Keymotion's records of your key mapping and macros are the only copy, because the keyboard can't report them; on AJAZZ's firmware 3.01, the keyboard reports them itself. To keep a copy, open **Settings** and click **Export** under **Backup**: it saves everything in one file. The full list is in the [privacy policy](/keymotion/about/privacy/#where-your-data-lives).
 
 ## Does Keymotion send data anywhere?
 
@@ -140,9 +141,18 @@ Yes. The keyboard Keymotion is tested with was sold as the AK980 V2: AJAZZ's sto
 
 ## Should I install AJAZZ's newest firmware?
 
-AJAZZ's newest firmware for the AK980 PRO, "AK980 Led v2 Firmware 769" (version 3.01), switches the keyboard to a different command set; afterwards the keyboard usually shows up under a new USB ID, 0C45:8039. AJAZZ's keyboard tool on its website offers it to older AK980 PRO keyboards too. Keymotion doesn't support this firmware yet and sends nothing to a keyboard that runs it; support is planned for a later update. AJAZZ offers no way back to the older firmware.
+AJAZZ's newest firmware for the AK980 PRO, "AK980 Led v2 Firmware 769" (version 3.01), switches the keyboard to a different command set; afterwards the keyboard usually shows up under a new USB ID, 0C45:8039. AJAZZ's keyboard tool on its website offers it to older AK980 PRO keyboards too. AJAZZ offers no way back to the older firmware, so don't install it just for Keymotion: keyboards on the older firmware work as before, and Keymotion was tested on them.
 
-The choice is yours: if you want to keep using Keymotion now, wait before updating. Keyboards on the older firmware work as before.
+Keymotion supports firmware 3.01 in beta, over the USB cable. The support is new and hasn't been tried on a real keyboard yet. To see which firmware your keyboard has, connect the cable and open **Connection**: the keyboard's details show 3.01 or another version next to **Firmware**, and 3.01 is marked **In beta**. [Supported keyboards](/keymotion/help/keyboards/#ak980-pro-on-firmware-301-beta) lists what works.
+
+What to know on firmware 3.01:
+
+- **Keymotion backs up the keyboard first.** The first time it connects to the keyboard, before it can write anything, it saves a backup of the keyboard's settings: the key mapping on both layers, the lighting and the macros. Without the backup, it writes nothing. [If something goes wrong](/keymotion/help/recovery/#the-keyboards-backup-on-firmware-301) shows how to put it back.
+- **An upload may replace the keyboard's clock page.** Once a picture is uploaded to the screen, the keyboard's own clock page may come back only after a full reset of the keyboard (Fn+Space), which also erases your key mapping, macros and lighting. Keymotion asks you before the first upload.
+- **Live lighting switches the keyboard to its per-key mode for a while.** On this firmware, the keys show live lighting, such as music mode or the system gauges, only in per-key mode. Keymotion switches the keyboard to it and puts your own lighting back about 30 seconds after the live lighting ends. See [Lighting](/keymotion/guide/lighting/#on-firmware-301-beta).
+- **Key mapping and macros come from the keyboard itself.** The Key mapping and Macros pages show what the keyboard has, including keys and macros set in other programs such as AJAZZ's. Saving keeps the ones Keymotion can't show or change as they are.
+- **The battery level shows over the cable too**, because the keyboard reports it there.
+- **Close AJAZZ's keyboard tool while Keymotion runs.** It talks to the keyboard from your browser, where Keymotion can't see it, and the commands of two programs can mix up. If the keyboard sends answers that Keymotion didn't ask for, Keymotion says that another program seems to be talking to it.
 
 ## My keyboard isn't recognized any more
 

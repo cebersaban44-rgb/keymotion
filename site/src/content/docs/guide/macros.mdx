@@ -43,6 +43,8 @@ The bottom bar counts your changes, for example **1 macro changed**, and a dot i
 
 <Aside type="note" title="What the list shows">
 Macros and their names can't be read back from the keyboard, so the list shows what you last saved from Keymotion and when. Saving replaces every macro on the keyboard, including any saved with other software.
+
+On AJAZZ's firmware 3.01 it's different: the list shows the macros on the keyboard itself, read from it, and says when they were read. The keyboard doesn't store names, so a macro made in another program has none here. A macro Keymotion can't show or change is marked **Made in another program**, and saving keeps it as it is. Keymotion doesn't replace it either: a save that would, writes nothing and says so, for example "Macro M3 on the keyboard was made in another program, and Keymotion doesn't replace it. Nothing was written." If the macros changed in another program since Keymotion read them, nothing is written: "The keyboard's macros changed in another program since Keymotion read them. The page now shows them; make your change again."
 </Aside>
 
 ## Give a macro to a key
@@ -71,6 +73,8 @@ A macro you haven't saved yet shows **Not saved** in this list. Back on the **Ma
 ## Keyboard memory
 
 **Keyboard memory**, at the top right of the page, shows how much of the keyboard's macro memory your macros use. Each step and each macro takes the same share, and there is room for 337 in total: one macro can have 336 steps, and ten macros can share 327. You can have up to 100 macros, M1 to M100.
+
+On AJAZZ's firmware 3.01 (beta), the keyboard has less macro memory, and the bar counts by that firmware's rule: one macro can have up to 127 steps there, and there can be at most 99 macros. **While held** isn't offered there.
 
 When the macros don't fit, the bar turns red, **Save to keyboard** is off and the bottom bar says "The macros do not fit in keyboard memory. Delete some steps."
 

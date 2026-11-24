@@ -78,7 +78,7 @@ Below the keys:
 
 Keys you don't paint stay off. Num Lock and Fn light up as indicators, so their color may not change.
 
-**Preview on keyboard**, the switch in the bottom bar, shows your design on the keyboard while you paint, without saving it. It is on at first. When you leave the tab, the keyboard goes back to its saved lighting.
+**Preview on keyboard**, the switch in the bottom bar, shows your design on the keyboard while you paint, without saving it. It is on at first. When you leave the tab, the keyboard goes back to its saved lighting; on AJAZZ's firmware 3.01, your saved lighting returns within about 30 seconds after you leave this tab.
 
 ## Save or revert
 
@@ -118,3 +118,16 @@ Changes are saved by themselves, and **Saved** appears for a moment. **Restore d
 </Steps>
 
 The sliders work without the cable; the test patterns need it.
+
+## On firmware 3.01 (beta)
+
+On an AK980 PRO with AJAZZ's firmware 3.01, the keys show live lighting only while the keyboard is in its per-key mode. Live lighting is what Keymotion shows on the keys without saving it: **Preview on keyboard**, the test patterns, music mode, the system gauges, the focus timer, reminders, the calendar, the game session, AI agents and profiles by app.
+
+- When live lighting starts, Keymotion switches the keyboard to its per-key mode. The switch is saved on the keyboard, so Keymotion asks first (**Untested firmware**), as it does before saving. The question can be missed, for example when it comes while Keymotion is starting. Live lighting then stays off the keys, and the pages of the live features say **Live lighting doesn't show on the keys**: click **Show the question** to answer it.
+- While Keymotion holds the keyboard in per-key mode, those pages say **Your lighting comes back about 30 seconds after live lighting ends**. The wait spares the keyboard when lights come and go often, as with AI agents. If you choose another effect on the keyboard meanwhile, that one stays. If the keyboard already was in per-key mode, Keymotion doesn't switch it, and the notice doesn't show.
+- If switching fails, the pages say so, and Keymotion tries again by itself while live lighting runs.
+- If you quit Keymotion, it puts your lighting back before it closes. After a crash, or if the cable came out, it does so the next time the keyboard connects.
+- To put your lighting back, Keymotion needs to know its color. If it doesn't, live lighting stays off the keys, and the pages say so with **Go to Lighting**. There, the bar at the bottom says **Save once so live lighting can show on the keys**: click **Save to keyboard**, even without changes.
+- If you save an effect or a design while live lighting runs, that is the lighting that comes back.
+
+<Screenshot name="aa-live-lights" alt="Music mode on a keyboard with firmware 3.01: the notice Live lighting doesn't show on the keys, which asks to save the lighting once, with Go to Lighting" />

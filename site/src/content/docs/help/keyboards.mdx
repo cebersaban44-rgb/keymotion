@@ -21,9 +21,31 @@ Keymotion works with the **AJAZZ AK980 PRO**. Many keyboards are built on the sa
 
 Shops sell this keyboard under more than one name. The one Keymotion is tested with came from AJAZZ's own store, listed as "AK980MAX … V2", with **AK980 V2** on the box. Over USB it gives SONiX as its maker and "AK980 PRO" as its name, and Keymotion recognizes it by that name. So the **AJAZZ AK980 V2** with the screen works too. Other AK980 versions, for example ones without the screen, may be different inside. Keymotion takes a keyboard for this one only if it gives that name and, when Keymotion checks it on connecting, is built the same way inside. Otherwise Keymotion sends nothing to it and offers **Request support** instead.
 
-Keymotion is tested with the keyboard's firmware 1.06; on another version it asks you before it saves anything to the keyboard. AJAZZ's newest firmware for the AK980 PRO, 3.01 ("AK980 Led v2 Firmware 769"), uses a different set of commands that Keymotion doesn't support yet: it sends nothing to a keyboard on that firmware, and AJAZZ offers no way back. See [Should I install AJAZZ's newest firmware?](/keymotion/help/faq/#should-i-install-ajazzs-newest-firmware)
+Keymotion is tested with the keyboard's firmware 1.06; on another version it asks you before it saves anything to the keyboard. AJAZZ's newest firmware, 3.01, uses a different set of commands; Keymotion supports it in beta, as described [below](#ak980-pro-on-firmware-301-beta).
 
 Settings travel over the USB cable; that is how the keyboard is built. [Connecting the keyboard](/keymotion/guide/connecting/) explains the three connections.
+
+## AK980 PRO on firmware 3.01 (beta)
+
+AJAZZ's newest firmware for the AK980 PRO, 3.01 ("AK980 Led v2 Firmware 769"), switches the keyboard to a different set of commands. Keymotion supports it in beta, over the USB cable. To see which firmware your keyboard has, connect the cable and open **Connection**: the keyboard's details show it next to **Firmware**. On firmware 3.01, the **Overview** and the **Connection** page mark it **In beta**.
+
+| Connection | What Keymotion does with firmware 3.01 |
+|---|---|
+| USB cable | Lighting effects and per-key color, live lighting, key mapping on both layers, macros, pictures on the screen, the clock and the battery level |
+| 2.4 GHz receiver | Nothing new: it sends nothing over the receiver, as with the older firmware |
+| Bluetooth | As before: it reads the battery level |
+
+Beta means that this support is new: it was tried on a simulated keyboard, not yet on a real one. So Keymotion is extra careful with it:
+
+- Before it can write anything, it saves a backup of the keyboard's settings, which it can put back later.
+- It asks you before it first writes to the keyboard, as it does on any firmware it hasn't been tested with.
+- If what the keyboard reports doesn't look as expected, or a firmware update was left unfinished, Keymotion writes nothing to the keyboard and says why at the top of the page; see [If something goes wrong](/keymotion/help/recovery/#when-keymotion-writes-nothing-to-the-keyboard).
+
+A few things work differently on this firmware: live lighting switches the keyboard to its per-key mode for a while, an upload to the screen may replace the keyboard's clock page, the battery level shows over the cable too, the Key mapping and Macros pages show what is on the keyboard itself, and a few key choices aren't offered. [Should I install AJAZZ's newest firmware?](/keymotion/help/faq/#should-i-install-ajazzs-newest-firmware) goes through them.
+
+Have you tried it? [Tell us how it works](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK980+PRO+firmware+3.01&model=AJAZZ+AK980+PRO+firmware+3.01); the Connection page has the same link. If something goes wrong, send a report from **Settings**: under **About**, next to **Feedback**, click **Report a problem**. The report includes what Keymotion read about the keyboard, but not your keys, macros or colors.
+
+An AK980 PRO on another AJAZZ firmware that Keymotion doesn't know yet gets nothing sent to it; Keymotion offers **Request support** instead.
 
 ## Same platform, not tested yet
 

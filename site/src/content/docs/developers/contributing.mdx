@@ -110,7 +110,7 @@ A beta lets people try the next version early. It is only on GitHub, marked as a
 
 </Steps>
 
-The beta branch is never merged; CI fails a pull request from it into `main`. Fixes go to `develop` as usual, and the next beta is cut from it again (`beta/1.3.0-beta.2`). The release itself (`1.3.0`) is made the usual way from `develop`, whose **Unreleased** still lists everything. A beta install finds the next beta and the release by itself. A beta and the Store copy don't run side by side: with the Store copy installed, the beta steps aside and opens it, so trying a beta means removing the Store copy first.
+The beta branch is never merged; CI fails a pull request from it into `main`. Fixes go to `develop` as usual, and the next beta is cut from it again (`beta/1.3.0-beta.2`). The release itself (`1.3.0`) is made the usual way from `develop`, whose **Unreleased** still lists everything. A beta install finds the next beta and the release by itself. A beta never hands over to the Store copy: it starts itself even when the Store copy is installed. Both copies share the single-instance lock, though, so quit the Store copy first, also from its icon next to the clock; otherwise starting the beta only brings the Store copy's window forward, and at sign-in whichever starts first wins.
 
 ## The checks
 

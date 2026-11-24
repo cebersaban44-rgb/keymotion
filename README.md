@@ -69,7 +69,7 @@ Keymotion is tested on the AJAZZ AK980 PRO. Other keyboards built on the same pl
 Settings travel over the USB cable: that is how the keyboard is built.
 
 > [!NOTE]
-> AJAZZ's newest firmware for the AK980 PRO, 3.01 ("AK980 Led v2 Firmware 769"), uses a different set of commands that Keymotion doesn't support yet, and AJAZZ offers no way back to the older firmware. If you want to keep using Keymotion now, wait before updating. [More in the FAQ](https://cebersaban44-rgb.github.io/keymotion/help/faq/#should-i-install-ajazzs-newest-firmware).
+> AJAZZ's newest firmware for the AK980 PRO, 3.01 ("AK980 Led v2 Firmware 769"), uses a different set of commands. Keymotion supports it in beta over the USB cable: the support is new and hasn't been tried on a real keyboard yet. AJAZZ offers no way back to the older firmware, so don't install it just for Keymotion. [More in the FAQ](https://cebersaban44-rgb.github.io/keymotion/help/faq/#should-i-install-ajazzs-newest-firmware).
 
 ### Same platform, not tested yet
 
