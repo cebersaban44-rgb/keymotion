@@ -299,11 +299,12 @@ impl<C: FeaturePort> Driver<C> {
         &mut self,
         backup: &kb_core::aa::AaSnapshot,
         color: Option<EffectColor>,
+        app_effect: Option<kb_core::aa::AaEffect>,
         source: Option<&str>,
     ) -> Result<RestoreReport> {
         match self {
             Self::Ff13(_) => Err(Error::Refused("this keyboard has no backup to restore".into())),
-            Self::Aa(d) => d.restore(backup, color, source),
+            Self::Aa(d) => d.restore(backup, color, app_effect, source),
         }
     }
 

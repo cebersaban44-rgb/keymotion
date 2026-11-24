@@ -108,14 +108,16 @@ test("live lights say only that they don't show for now, and why the keyboard ta
   // They show in any of the keyboard's modes: nothing to say.
   assert.equal(liveOffReason(null), null);
   assert.equal(liveOffReason(undefined), null);
-  // The keyboard takes none for now: the backend's reason, in the user's words.
-  const reason = "another program is using the keyboard (ajazz-driver)";
+  // The keyboard takes none for now (just switched on or reset: aa.rs
+  // `LIVE_SETTLING`): the backend's reason, in the user's words.
+  const reason = "the keyboard was just switched on or reset and ignores live lights for a moment";
   assert.deepEqual(liveOffReason({ kind: "blocked", reason }), { reason });
-  assert.equal(errorRule(reason).key, "err.conflict.ajazz");
+  assert.equal(errorRule(reason).key, "err.aa.settling");
+  assert.ok(EXPECTED.has("err.aa.settling"));
   // Any other kind (and a reason the app has no words for: the component
   // checks errorRule) gets the general line, never a button or a question.
   assert.deepEqual(liveOffReason({ kind: "blocked", reason: "" }), { reason: null });
-  for (const kind of ["color-unknown", "read-only", "failed", "something new"]) {
+  for (const kind of ["something new"]) {
     assert.deepEqual(liveOffReason({ kind, error: "no answer to command 0x13" }), { reason: null }, kind);
   }
   assert.equal(errorRule("a reason this version has no words for").key, "err.generic");

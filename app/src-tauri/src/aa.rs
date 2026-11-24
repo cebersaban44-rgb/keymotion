@@ -41,7 +41,6 @@ use kb_protocol::sonix::screen::ScreenAnimation;
 use kb_protocol::sonix::{ClockTime, EffectSettings, Rgb};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use std::convert::Infallible;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
@@ -59,6 +58,20 @@ pub const CONFLICT_THRESHOLD: u64 = 10;
 pub const CONFLICT_WINDOW: Duration = Duration::from_secs(60);
 /// Driver errors kept for the diagnostics report.
 const ERRORS_KEPT: usize = 10;
+/// Beta.1 kept a note here, in the app's data folder, while live lights had
+/// switched a keyboard to its per-key mode (the effect to put back).
+/// Nothing switches or puts back any more, and nothing reads it.
+const BETA1_LIVE_NOTE: &str = "aa-live-armed.json";
+
+/// Remove beta.1's live-lights note from the app's data folder, if it is
+/// there: a file only, nothing is sent to a keyboard.
+pub fn remove_beta1_live_note(dir: &Path) {
+    match std::fs::remove_file(dir.join(BETA1_LIVE_NOTE)) {
+        Ok(()) => tracing::info!("beta.1's live-lights note removed (nothing reads it any more)"),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => tracing::warn!("beta.1's live-lights note not removed: {e}"),
+    }
+}
 
 fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
@@ -115,11 +128,6 @@ pub enum ReadOnly {
     /// Its answers do not look as expected (the sanity check), or the last
     /// full read did not finish.
     NotSane(Vec<String>),
-    /// A firmware update was left unfinished: AJAZZ's tool has to finish it.
-    /// Never produced since firmware 769 turned out to have no such field
-    /// (protocol notes §F.7); kept until the report and the UI drop it.
-    #[allow(dead_code)]
-    UpdatePending,
     /// The backup of its settings could not be saved.
     NoBackup(String),
 }
@@ -136,9 +144,6 @@ impl fmt::Display for ReadOnly {
                     write!(f, "the keyboard does not look as expected, so nothing is written: {}", summary.join("; "))
                 }
             },
-            Self::UpdatePending => {
-                write!(f, "the keyboard is waiting for a firmware update; nothing is read or written")
-            }
             Self::NoBackup(e) => write!(f, "no backup of the keyboard could be saved, so nothing is written: {e}"),
         }
     }
@@ -150,7 +155,6 @@ impl ReadOnly {
     pub fn kind(&self) -> &'static str {
         match self {
             Self::NotSane(_) => "not as expected",
-            Self::UpdatePending => "waiting for a firmware update",
             Self::NoBackup(_) => "no backup",
         }
     }
@@ -162,7 +166,6 @@ impl From<&ReadOnly> for ReadOnlyReason {
             ReadOnly::NotSane(reasons) => {
                 Self::NotSane { reasons: crate::diagnostics::summarize_reasons(reasons), read_failed: false }
             }
-            ReadOnly::UpdatePending => Self::UpdatePending,
             ReadOnly::NoBackup(error) => Self::NoBackup { error: error.clone() },
         }
     }
@@ -183,16 +186,14 @@ impl From<&LiveOff> for LiveLightsOff {
     }
 }
 
-/// Live lights on the keyboard. The variants' fields stay as the
-/// diagnostics report reads them until it is reworded: nothing is ever put
-/// back (`restore`) and nothing is held after a stream (`stopped`), so
-/// both are always `None`.
+/// Live lights on the keyboard: frames only (RAM, any effect mode), so
+/// nothing is switched before a stream or put back after it.
 #[derive(Debug, Clone)]
 enum Live {
     /// No frames go to the keyboard.
     Idle,
     /// A stream's frames go to the keyboard.
-    Armed { restore: Option<Infallible>, stopped: Option<Infallible> },
+    Streaming,
     /// A stream runs, but its frames are held back.
     Off { why: LiveOff },
 }
@@ -252,9 +253,6 @@ pub struct AaDriver {
     /// The backup taken before the first write: its file, or why it failed.
     backup: Option<Result<String, String>>,
     live: Live,
-    /// Always `None`: no effect is ever put back after live lights or a
-    /// crash. Kept for the diagnostics report until it is reworded.
-    recover: Option<Infallible>,
     /// The quiet time after a cut screen upload: nothing is tried before.
     quiet_until: Option<Instant>,
     /// The last full read failed in a way that needs the channel opened
@@ -287,7 +285,6 @@ impl AaDriver {
             read_at: None,
             backup: None,
             live: Live::Idle,
-            recover: None,
             quiet_until: None,
             reopen: None,
             conflict,
@@ -461,11 +458,7 @@ impl AaDriver {
             self.backup = Some(Ok(file));
             return;
         }
-        let mut snapshot = snap.clone();
-        snapshot.effect_color = snapshot.effect_color.or_else(|| app_color(&snapshot, app_effect).map(Into::into));
-        if !snapshot.effect_mode_known() {
-            snapshot.effect_mode = app_mode(&snapshot, app_effect);
-        }
+        let snapshot = with_app_effect(snap, app_effect);
         let backup = backups::KeyboardBackup::new(&self.target, backups::Reason::FirstConnect, snapshot);
         self.backup = Some(match backups::save(&dir, &backup) {
             Ok(file) => {
@@ -509,23 +502,28 @@ impl AaDriver {
     /// A stream starts: nothing to switch on firmware 769.
     pub fn live_starting(&mut self) {
         if matches!(self.live, Live::Idle) {
-            self.live = Live::Armed { restore: None, stopped: None };
+            self.live = Live::Streaming;
         }
     }
 
     /// One frame (RAM only, any effect mode). Held back, with no error,
-    /// while the keyboard ignores writes (the UI says so) and in the quiet
-    /// time after a cut upload.
+    /// while the keyboard ignores writes (the UI says so), in the quiet time
+    /// after a cut upload, and while its device information is unknown (a
+    /// silent keyboard is not asked with every frame: the background read
+    /// asks at its own pace, as for the mirror).
     pub fn live_frame(&mut self, frame: Vec<(u8, Rgb)>) -> Result<(), Error> {
         if self.quiet(Instant::now()) {
             return Ok(());
         }
         self.reopen_needed()?;
+        if self.kb.info().is_none() {
+            return Ok(());
+        }
         let r = self.kb.realtime_frame(frame);
         self.after_io();
         match r {
             Ok(()) => {
-                self.live = Live::Armed { restore: None, stopped: None };
+                self.live = Live::Streaming;
                 Ok(())
             }
             Err(AaError::Settling { .. }) => {
@@ -607,7 +605,11 @@ impl AaDriver {
             tracing::info!(?layer, "keys changed on the keyboard since the page read them; nothing written");
             return Err(Error::Refused(ERR_KEYS_CHANGED.into()));
         }
-        if changes.is_empty() {
+        // A layer a write that stopped part-way left partly erased is
+        // written even when the records ask for nothing new: the driver
+        // gives every erased slot its factory entry back (the Fn key and
+        // the knob too, which no change names).
+        if changes.is_empty() && !self.layer_erased(layer) {
             tracing::debug!(?layer, kept, "keymap layer already as asked; nothing written");
             return Ok(kept);
         }
@@ -615,6 +617,18 @@ impl AaDriver {
         let r = self.kb.apply_keymap(layer, changes);
         self.after_io();
         self.check(r).map(|()| kept)
+    }
+
+    /// Whether `layer`, as last read, holds erased slots ([`aa_keymap::ERASED`]).
+    fn layer_erased(&self, layer: Layer) -> bool {
+        self.kb.snapshot().is_some_and(|s| {
+            let t = match layer {
+                Layer::Base => &s.keymap.0,
+                Layer::Fn => &s.fn_keymap.0,
+            };
+            t.len() == aa_keymap::LEN
+                && (0..aa_keymap::SLOTS as u8).any(|i| aa_keymap::entry(t, i) == aa_keymap::ERASED)
+        })
     }
 
     /// The keys of `layer` whose entry differs from what `map` asks for, and
@@ -666,9 +680,11 @@ impl AaDriver {
             }
             // Never written over: set in another program, the keyboard's own
             // function, or the factory function of a key that holds another
-            // action now (a firmware function is never brought back).
+            // action now (a firmware function is never brought back). An
+            // erased slot is always written: its factory entry, or what the
+            // records ask.
             let never = matches!(view, SlotView::Fixed | SlotView::Builtin)
-                || (want == KeyAction::Default && aa_keymap::is_func(f));
+                || (want == KeyAction::Default && aa_keymap::is_func(f) && view != SlotView::Erased);
             if never {
                 if map.contains_key(&led) || want == KeyAction::Default && matches!(view, SlotView::Action(_)) {
                     kept += 1;
@@ -763,7 +779,10 @@ impl AaDriver {
                 }
                 let (now, f) = (aa_keymap::entry(table, k.aa), aa_keymap::entry(factory, k.aa));
                 match slot_view(now, f) {
-                    SlotView::Default => {}
+                    // Erased: the next save gives it its factory entry back,
+                    // so the records see that.
+                    SlotView::Erased if aa_keymap::is_func(f) => out.builtin.push(k.led),
+                    SlotView::Default | SlotView::Erased => {}
                     SlotView::Action(a) => {
                         out.actions.insert(k.led, a);
                         // Its factory function is a firmware function, which
@@ -837,19 +856,22 @@ impl AaDriver {
 
     /// Write `backup` back (the keyboard's own entries where it cannot be,
     /// listed in the report). The colour of its effect comes from the
-    /// backup, else `color`. The state before is backed up first; old
-    /// backups are pruned only once something was written, and never
-    /// `source` (the file being restored). **Writes flash.**
+    /// backup, else `color`. The state before is backed up first, with the
+    /// colour and mode `app_effect` (the app's lighting record) tells, if
+    /// the keyboard's do not; old backups are pruned only once something
+    /// was written, and never `source` (the file being restored). **Writes
+    /// flash.**
     pub fn restore(
         &mut self,
         backup: &AaSnapshot,
         color: Option<EffectColor>,
+        app_effect: Option<AaEffect>,
         source: Option<&str>,
     ) -> Result<RestoreReport, Error> {
         self.writable()?;
         // A fresh full read: the gate looks at the keyboard as it is now,
         // and the state before is what gets backed up.
-        self.connect(None);
+        self.connect(app_effect);
         self.reopen_needed()?;
         if let Some(r) = self.read_only() {
             return Err(Error::Refused(r.to_string()));
@@ -861,7 +883,11 @@ impl AaDriver {
             .as_deref()
             .map(backups::dir)
             .ok_or_else(|| Error::Refused(ReadOnly::NoBackup("the app has no data folder".into()).to_string()))?;
-        let before = backups::KeyboardBackup::new(&self.target, backups::Reason::BeforeRestore, now);
+        let before = backups::KeyboardBackup::new(
+            &self.target,
+            backups::Reason::BeforeRestore,
+            with_app_effect(&now, app_effect),
+        );
         let file = backups::save(&dir, &before).map_err(|e| {
             Error::Refused(format!(
                 "the keyboard's settings could not be backed up first, so nothing was restored: {e}"
@@ -900,6 +926,12 @@ impl AaDriver {
     }
 
     // ------------------------------------------------------------ reads
+
+    /// How long the keyboard still takes no write (just opened or reset:
+    /// [`kb_core::aa::SETTLE`]); a write meanwhile waits for it.
+    pub fn settling(&self) -> Option<Duration> {
+        self.kb.settling()
+    }
 
     /// Whether the mirror may ask now: not while the keyboard left its
     /// device information unanswered (the background read asks again at its
@@ -971,11 +1003,9 @@ impl AaDriver {
 
     /// What the UI shows about this keyboard.
     pub fn status(&self) -> AaStatus {
-        // Frames switch nothing and leave nothing to put back: the keyboard
-        // is never "armed".
         let live_lights_off = match &self.live {
             Live::Off { why } => Some(why.into()),
-            Live::Idle | Live::Armed { .. } => None,
+            Live::Idle | Live::Streaming => None,
         };
         AaStatus {
             read_only: self.read_only().as_ref().map(|r| {
@@ -989,8 +1019,6 @@ impl AaDriver {
                 shown
             }),
             live_lights_off,
-            live_armed: false,
-            live_restores: false,
             other_program_suspected: self.conflict.suspected,
             backup: self.backup.as_ref().and_then(|b| b.as_ref().ok().cloned()),
             effect_color_known: self.kb.current_effect().is_some_and(|e| e.color_known),
@@ -1059,15 +1087,22 @@ impl AaDriver {
         ));
         out.push(match &self.live {
             Live::Idle => "live lights: none".into(),
-            Live::Armed { restore, stopped, .. } => format!(
-                "live lights: per-key mode{}{}",
-                if restore.is_some() { ", effect to put back" } else { "" },
-                if stopped.is_some() { ", hold running" } else { "" }
-            ),
-            Live::Off { why, .. } => format!("live lights: not shown ({})", cut(&format!("{why:?}"), LINE)),
+            Live::Streaming if self.kb.info().is_none() => {
+                "live lights: held back (the keyboard left its device information unanswered)".into()
+            }
+            Live::Streaming => "live lights: frames streaming".into(),
+            Live::Off { why: LiveOff::Blocked(reason) } => format!("live lights: held back ({})", cut(reason, LINE)),
         });
-        if self.recover.is_some() {
-            out.push("an effect waits to be put back after a crash".into());
+        if let Some(s) = self.kb.snapshot() {
+            let broken = kb_core::aa::broken_macros(s);
+            if !broken.is_empty() {
+                let slots: Vec<String> = broken.iter().map(|(slot, _)| slot.to_string()).collect();
+                out.push(format!(
+                    "macro slots read as empty (erased or outside the macro memory; the next macro save \
+                     repairs them): {}",
+                    slots.join(", ")
+                ));
+            }
         }
         out.push(match &self.backup {
             Some(Ok(f)) => format!("backup: {f}"),
@@ -1147,9 +1182,15 @@ enum SlotView {
     /// Something the app can neither show nor write (set in another
     /// program): never written.
     Fixed,
+    /// Erased flash a keymap write that stopped part-way left: any save of
+    /// the layer writes it (its factory entry, or what the records ask).
+    Erased,
 }
 
 fn slot_view(now: [u8; 4], factory: [u8; 4]) -> SlotView {
+    if now == aa_keymap::ERASED {
+        return SlotView::Erased;
+    }
     // A firmware that keeps zeros in a table means the factory function.
     let now = if now == [0; 4] { factory } else { now };
     if now == factory {
@@ -1204,6 +1245,18 @@ fn app_color(s: &AaSnapshot, app: Option<AaEffect>) -> Option<EffectColor> {
     s.effect().and_then(|e| matching_color(e, app))
 }
 
+/// `snap` for a backup: the effect's colour and mode the keyboard does not
+/// report, from the app's lighting record when its effect reads back as
+/// the keyboard's.
+fn with_app_effect(snap: &AaSnapshot, app_effect: Option<AaEffect>) -> AaSnapshot {
+    let mut snapshot = snap.clone();
+    snapshot.effect_color = snapshot.effect_color.or_else(|| app_color(&snapshot, app_effect).map(Into::into));
+    if !snapshot.effect_mode_known() {
+        snapshot.effect_mode = app_mode(&snapshot, app_effect);
+    }
+    snapshot
+}
+
 /// The mode behind a backup's read-back of 0 (off or a per-key mode), from
 /// the app's record when its effect reads back as the backup's.
 fn app_mode(s: &AaSnapshot, app: Option<AaEffect>) -> Option<u8> {
@@ -1213,13 +1266,12 @@ fn app_mode(s: &AaSnapshot, app: Option<AaEffect>) -> Option<u8> {
 
 /// The device information as the app shows it. Only `1` is taken as
 /// "charging": what the other charge values mean is not known. Firmware
-/// 769 has no "waiting for an update" field: `update_pending` is false.
+/// 769 has no "waiting for an update" field (protocol notes §F.7).
 pub fn device_report(i: &DeviceInfo) -> DeviceReport {
     DeviceReport {
         battery: (i.battery_level <= 100).then_some(i.battery_level),
         charge: (i.charge_status == 1).then_some(ChargeState::Charging),
         screen_max_frames: (i.tft_max_frames > 0).then_some(u32::from(i.tft_max_frames)),
-        update_pending: false,
     }
 }
 

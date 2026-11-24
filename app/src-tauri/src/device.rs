@@ -106,8 +106,6 @@ pub enum WriteBlock {
     /// An "AA" keyboard whose answers do not look as expected (the sanity
     /// check, or a full read that did not finish): read-only.
     NotSane(Vec<String>),
-    /// An "AA" keyboard waiting for a firmware update: read-only.
-    UpdatePending,
     /// The backup of an "AA" keyboard could not be saved: read-only.
     NoBackup(String),
 }
@@ -120,7 +118,6 @@ impl std::fmt::Display for WriteBlock {
             Self::UnverifiedFirmware(v) => write!(f, "untested keyboard firmware {v}"),
             // The same texts the "AA" arm refuses with (aa.rs `ReadOnly`).
             Self::NotSane(why) => ReadOnly::NotSane(why.clone()).fmt(f),
-            Self::UpdatePending => ReadOnly::UpdatePending.fmt(f),
             Self::NoBackup(e) => ReadOnly::NoBackup(e.clone()).fmt(f),
         }
     }
@@ -130,7 +127,6 @@ impl From<ReadOnly> for WriteBlock {
     fn from(r: ReadOnly) -> Self {
         match r {
             ReadOnly::NotSane(why) => Self::NotSane(why),
-            ReadOnly::UpdatePending => Self::UpdatePending,
             ReadOnly::NoBackup(e) => Self::NoBackup(e),
         }
     }
@@ -209,8 +205,8 @@ pub fn write_gate(
 /// [`write_gate`] for a keyboard that may be read-only (an "AA" keyboard,
 /// aa.rs `ReadOnly`): such a keyboard takes no memory write and no clock,
 /// whatever else holds. Several keyboards on the cable are still reported
-/// first; live frames are the "AA" arm's own business (it does not switch
-/// a read-only keyboard to per-key mode, and says so).
+/// first; live frames are the "AA" arm's own business (RAM only, they go to
+/// a read-only keyboard too).
 pub fn write_gate_for(
     kind: WriteKind,
     wired: usize,
@@ -242,14 +238,12 @@ fn note_block(app: &Ui, kind: WriteKind, block: &WriteBlock, wired: usize) {
         WriteBlock::NotSane(why) => {
             tracing::info!(?kind, reasons = why.len(), "write refused: the keyboard does not look as expected");
         }
-        WriteBlock::UpdatePending | WriteBlock::NoBackup(_) => {
+        WriteBlock::NoBackup(_) => {
             tracing::info!(?kind, "write refused: {}", crate::diagnostics::cut(&block.to_string(), 300));
         }
     }
 }
 
-/// The effect the Lighting page's record (`lighting.json` in `dir`) says
-/// the app last stored, calibrated, in an "AA" keyboard's values.
 /// An "AA" keyboard's macros as the app's record keeps them: its steps,
 /// with the name the record had for the same steps in the same slot (the
 /// keyboard stores no names); the macros the steps cannot express as kept.
@@ -1093,6 +1087,9 @@ pub fn spawn(
     std::thread::Builder::new()
         .name("device-actor".into())
         .spawn(move || {
+            if let Some(dir) = actor_dir.as_deref() {
+                crate::aa::remove_beta1_live_note(dir);
+            }
             let mut actor = Actor::new(Ui::app(app), shared, calibration, clock, keymaps, macros, actor_dir);
             actor.ports = ports();
             if actor.ports.simulated() {
@@ -1306,23 +1303,7 @@ impl Actor {
             if self.driver_due().is_some_and(|due| now >= due) {
                 self.run_driver_due();
             }
-            if let Some((due, attempts)) = self.clock_due {
-                // Not during a game that wants the keyboard left alone.
-                if now >= due && self.quiet == Quiet::Off {
-                    self.clock_due = None;
-                    match self.sync_clock() {
-                        Ok(()) => {}
-                        // The user was asked; a yes starts it (ConfirmFirmware).
-                        Err(_) if firmware_block(self.firmware_check()).is_some() => self.wait_clock(true),
-                        Err(e) => {
-                            tracing::warn!(attempts_left = attempts - 1, "automatic clock sync failed: {e}");
-                            if attempts > 1 && self.command_path.is_some() {
-                                self.clock_due = Some((Instant::now() + CLOCK_RETRY, attempts - 1));
-                            }
-                        }
-                    }
-                }
-            }
+            self.run_clock_due(now);
 
             if waiting.is_empty() {
                 let frames = if self.streaming() {
@@ -1515,6 +1496,33 @@ impl Actor {
         }
     }
 
+    /// The automatic clock sync, when it is due: not during a game that
+    /// wants the keyboard left alone, and not while an "AA" keyboard just
+    /// opened or reset takes no write yet (it is put off until then, rather
+    /// than the actor sleeping through the wait).
+    fn run_clock_due(&mut self, now: Instant) {
+        let Some((due, attempts)) = self.clock_due else { return };
+        if now < due || self.quiet != Quiet::Off {
+            return;
+        }
+        if let Some(left) = self.aa_driver().and_then(crate::aa::AaDriver::settling) {
+            self.clock_due = Some((Instant::now() + left, attempts));
+            return;
+        }
+        self.clock_due = None;
+        match self.sync_clock() {
+            Ok(()) => {}
+            // The user was asked; a yes starts it (ConfirmFirmware).
+            Err(_) if firmware_block(self.firmware_check()).is_some() => self.wait_clock(true),
+            Err(e) => {
+                tracing::warn!(attempts_left = attempts - 1, "automatic clock sync failed: {e}");
+                if attempts > 1 && self.command_path.is_some() {
+                    self.clock_due = Some((Instant::now() + CLOCK_RETRY, attempts - 1));
+                }
+            }
+        }
+    }
+
     /// The "AA" driver of the keyboard on the cable, when its channel is
     /// open: a handle left from another keyboard (another path, another
     /// family) is not this keyboard's, and its state says nothing about it.
@@ -1671,7 +1679,8 @@ impl Actor {
                 let saved = backup.snapshot.effect()?;
                 self.app_effect().filter(|a| a.matches_readback(&saved)).map(|a| a.color_part())
             });
-        let report = self.with_command(|d| d.restore(&backup.snapshot, color, Some(file)))?;
+        let app_effect = self.app_effect();
+        let report = self.with_command(|d| d.restore(&backup.snapshot, color, app_effect, Some(file)))?;
         tracing::info!(written = ?report.written, kept = report.kept.len(), %file, "keyboard backup restored");
         self.next_enumerate = Instant::now();
         // The records follow what was put back; so does the Lighting
@@ -2151,9 +2160,9 @@ impl Actor {
         if self.command_path.is_none() {
             return;
         }
-        // An "AA" keyboard waiting for an update, silent or in its quiet
-        // time after a cut upload is not asked four times a second; its
-        // background read asks at its own pace.
+        // An "AA" keyboard that left its device information unanswered, or
+        // in its quiet time after a cut upload, is not asked four times a
+        // second; its background read asks at its own pace.
         if self.aa_driver().is_some_and(|d| !d.mirror_ready()) {
             return;
         }
@@ -2177,10 +2186,10 @@ impl Actor {
     }
 
     /// What the keyboard on the cable reports about itself, and when it was
-    /// read (Unix ms): asked again at most every [`BATTERY_REFRESH`], only
-    /// in a family that reports ([`driver::family::reports_device`]; never
-    /// "04 xx", so nothing is sent to those). Runs on the actor like every
-    /// other request, never during a screen upload.
+    /// read (Unix ms), in a family that reports
+    /// ([`driver::family::reports_device`]: only "AA"; nothing is sent to an
+    /// "04 xx" keyboard). Runs on the actor like every other request, never
+    /// during a screen upload.
     ///
     /// An "AA" keyboard stops a macro that is playing on every command but
     /// the live frames and the colour read-back (firmware 769), so after
@@ -2192,11 +2201,7 @@ impl Actor {
         if !driver::family::reports_device(protocol) {
             return None;
         }
-        let due = match (protocol, self.device_read) {
-            (_, None) => true,
-            (Protocol::AjazzAa, Some(at)) => self.mirror.is_some() && at.elapsed() >= AA_DEVICE_REFRESH,
-            (_, Some(at)) => at.elapsed() >= BATTERY_REFRESH,
-        };
+        let due = self.device_read.is_none_or(|at| self.mirror.is_some() && at.elapsed() >= AA_DEVICE_REFRESH);
         if due {
             self.device_read = Some(Instant::now());
             match self.with_command_background(|d| d.device_info()) {
@@ -2986,17 +2991,15 @@ mod tests {
             "the keyboard does not look as expected, so nothing is written: a; b"
         );
         assert_eq!(
-            write_gate_for(WriteKind::Clock, 1, Some(ReadOnly::UpdatePending), tested, || None)
-                .map(|b| b.to_string())
-                .as_deref(),
-            Some("the keyboard is waiting for a firmware update; nothing is read or written")
+            write_gate_for(WriteKind::Clock, 1, Some(ReadOnly::NoBackup("disk full".into())), tested, || None),
+            Some(WriteBlock::NoBackup("disk full".into()))
         );
         assert_eq!(
             WriteBlock::NoBackup("disk full".into()).to_string(),
             "no backup of the keyboard could be saved, so nothing is written: disk full"
         );
-        // Live frames are the "AA" arm's business (it does not switch a
-        // read-only keyboard); several keyboards still come first.
+        // Live frames are the "AA" arm's business (RAM only, a read-only
+        // keyboard shows them too); several keyboards still come first.
         assert_eq!(write_gate_for(WriteKind::Live, 1, insane(), tested, || None), None);
         assert_eq!(write_gate_for(WriteKind::Memory, 2, insane(), tested, || None), Some(WriteBlock::SeveralKeyboards));
         // A keyboard that is not read-only: the gate as before.
@@ -3090,7 +3093,7 @@ mod tests {
             assert!(a.shared.lock().unwrap().aa_diagnostics.iter().any(|l| l == "writes: allowed"));
             let json = serde_json::to_value(&k).unwrap();
             assert_eq!(json["aaStatus"]["readOnly"], serde_json::Value::Null);
-            assert_eq!(json["aaStatus"]["liveArmed"], false);
+            assert!(json["aaStatus"].get("liveArmed").is_none() && json["device"].get("updatePending").is_none());
             assert_eq!(json["aaStatus"]["otherProgramSuspected"], false);
 
             // An older Bluetooth reading never stands in on the cable.
@@ -3204,6 +3207,30 @@ mod tests {
         }
 
         #[test]
+        fn the_clock_on_connect_waits_until_the_keyboard_takes_writes() {
+            let dir = TempDir::new("actor-clock-settle");
+            let (mut a, sim) = actor(&dir.0, "");
+            // Untested firmware: the user said yes this session.
+            a.firmware_confirmed = a.usb_firmware;
+            fn settle(a: &mut Actor, d: Duration) {
+                a.command.as_mut().unwrap().driver.aa_mut().unwrap().keyboard_mut().set_settle(d);
+            }
+            settle(&mut a, Duration::from_secs(5));
+            let now = Instant::now();
+            a.clock_due = Some((now, CLOCK_ATTEMPTS));
+            a.run_clock_due(now);
+            assert!(sim.state().clock.is_none(), "not sent, and the actor did not sleep");
+            assert!(now.elapsed() < Duration::from_secs(1));
+            let (due, attempts) = a.clock_due.expect("still due");
+            assert!(due > now + Duration::from_secs(4) && attempts == CLOCK_ATTEMPTS);
+            // Once the keyboard takes writes, it goes.
+            settle(&mut a, Duration::ZERO);
+            a.run_clock_due(due);
+            assert!(sim.state().clock.is_some());
+            assert_eq!(a.clock_due, None);
+        }
+
+        #[test]
         fn live_lights_go_through_the_actor_and_switch_nothing() {
             let dir = TempDir::new("actor-live");
             let (mut a, sim) = actor(&dir.0, "");
@@ -3214,7 +3241,6 @@ mod tests {
             a.enumerate();
             let status = info(&a).aa_status.unwrap();
             assert_eq!(status.live_lights_off, None);
-            assert!(!status.live_armed && !status.live_restores, "nothing switched, nothing to put back");
             assert!(sim.state().frames.last().is_some_and(|f| f.1), "shown");
             assert_eq!(sim.state().effect[0], 1);
             assert!(sim.state().sent(cmd::SET_EFFECT).is_empty());
@@ -3313,10 +3339,7 @@ mod tests {
             assert_eq!(a.read_only(), None);
             a.firmware_confirmed = a.usb_firmware;
             let block = a.gate_block(WriteKind::Memory);
-            assert!(
-                !matches!(block, Some(WriteBlock::NotSane(_) | WriteBlock::UpdatePending | WriteBlock::NoBackup(_))),
-                "{block:?}"
-            );
+            assert!(!matches!(block, Some(WriteBlock::NotSane(_) | WriteBlock::NoBackup(_))), "{block:?}");
 
             // A listing drops a handle whose path is gone.
             let dir = TempDir::new("actor-gone-path");

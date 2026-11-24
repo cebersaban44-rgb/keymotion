@@ -168,7 +168,6 @@ fn every_write_goes_through_the_arm() {
     assert_eq!(report.battery, Some(100));
     assert_eq!(report.charge, None, "charge status 2 means nothing sure");
     assert_eq!(report.screen_max_frames, Some(146), "firmware 769's own frame limit");
-    assert!(!report.update_pending);
 
     // The screen, over its own channel, with progress.
     let anim = ScreenAnimation::still(screen::test_pattern());
@@ -271,6 +270,24 @@ fn a_keyboard_that_does_not_look_right_is_read_only() {
         }
         assert_eq!(writes(&sim), 0, "{name}: nothing written");
         assert!(backups_in(&dir.0).is_empty(), "{name}: no backup of what does not look right");
+
+        // Live frames are RAM only: a keyboard that failed the check shows
+        // them. One that left its device information unanswered is not
+        // asked again with every frame (as the mirror): no I/O, no error.
+        let (packets, errors) = (sim.state().packets.len(), d.diagnostics().len());
+        d.live_starting();
+        for _ in 0..5 {
+            d.live_frame(vec![(led("esc"), [9, 9, 9])]).unwrap();
+        }
+        if name == "silent" {
+            assert!(!d.mirror_ready(), "{name}");
+            assert_eq!(sim.state().packets.len(), packets, "{name}: nothing sent");
+            assert_eq!(d.diagnostics().len(), errors, "{name}: no error noted");
+        } else {
+            assert!(!sim.state().sent(cmd::REALTIME).is_empty(), "{name}");
+            assert!(sim.state().frames.last().is_some_and(|f| f.1), "{name}: shown");
+        }
+        d.live_stopped();
     }
 
     // What firmware 769 really holds is no reason: a per-key table of all
@@ -285,7 +302,7 @@ fn a_keyboard_that_does_not_look_right_is_read_only() {
         let dir = TempDir::new(&format!("writable-{}", name.replace(' ', "-")));
         let mut d = driver(&sim, Some(&dir.0));
         assert_eq!(d.read_only(), None, "{name}");
-        assert!(!d.device_info().unwrap().update_pending, "{name}");
+        assert_eq!(d.device_info().unwrap().battery, Some(100), "{name}");
         d.apply_per_key(vec![(led("esc"), [1, 2, 3])], 5).unwrap();
         assert_eq!(perkey::shown(&sim.state().per_key, aa("esc")), [1, 2, 3], "{name}");
     }
@@ -506,7 +523,7 @@ fn restore_writes_the_backup_back_and_says_what_it_did() {
     d.write_macros(&[vec![MacroStep::new(StepKind::KeyDown, 4, 20), MacroStep::new(StepKind::KeyUp, 4, 20)]]).unwrap();
 
     let mut d = Driver::<kb_transport::hid::HidChannel>::Aa(Box::new(d));
-    let report = d.restore(&first.snapshot, None, None).unwrap();
+    let report = d.restore(&first.snapshot, None, None, None).unwrap();
     for section in ["base layer", "effect", "macros"] {
         assert!(report.written.contains(&section), "{section}: {:?}", report.written);
     }
@@ -533,13 +550,13 @@ fn a_restore_without_the_effects_colour_needs_one() {
     assert_eq!(first.snapshot.effect_color, None);
     d.apply_effect(&effect(2, [255, 0, 0])).unwrap();
     let writes_before = writes(&sim);
-    let e = d.restore(&first.snapshot, None, None).unwrap_err();
+    let e = d.restore(&first.snapshot, None, None, None).unwrap_err();
     assert!(e.to_string().contains("does not report its effect colour"), "{e}");
     assert_eq!(writes(&sim), writes_before, "refused before anything was written");
     assert_eq!(backups_in(&dir.0).len(), 1, "no backup kept for a restore that did not happen");
     // With the colour given, it goes.
     let color = EffectColor { color: [0x00, 0x80, 0xFF], color_mode: 0 };
-    let report = d.restore(&first.snapshot, Some(color), None).unwrap();
+    let report = d.restore(&first.snapshot, Some(color), None, None).unwrap();
     assert!(report.written.contains(&"effect"));
     assert_eq!(sim.state().effect[..12], FACTORY_EFFECT[..12]);
 }
@@ -658,13 +675,14 @@ fn the_device_information_reports_what_is_known() {
     raw[..kb_protocol::aa::info::FIRMWARE_769_CABLE.len()].copy_from_slice(&kb_protocol::aa::info::FIRMWARE_769_CABLE);
     let i = DeviceInfo::parse(&raw).unwrap();
     let r = device_report(&i);
-    assert_eq!((r.battery, r.charge, r.screen_max_frames, r.update_pending), (Some(100), None, None, false));
+    assert_eq!((r.battery, r.charge, r.screen_max_frames), (Some(100), None, None));
     let charging = DeviceInfo { charge_status: 1, battery_level: 40, tft_max_frames: 120, ..i };
     let r = device_report(&charging);
     assert_eq!((r.battery, r.charge, r.screen_max_frames), (Some(40), Some(ChargeState::Charging), Some(120)));
     assert_eq!(device_report(&DeviceInfo { battery_level: 0xFF, ..i }).battery, None);
-    // No such field on firmware 769: never "waiting for an update".
-    assert!(!device_report(&DeviceInfo { firmware_status: 1, ..i }).update_pending);
+    // No "waiting for an update" field on firmware 769: the byte changes
+    // nothing.
+    assert_eq!(device_report(&DeviceInfo { firmware_status: 1, ..i }), device_report(&i));
 }
 
 #[test]
@@ -695,6 +713,71 @@ fn backups_keep_the_first_and_the_newest() {
     for bad in ["../keymap.json", "aa-8039-0301-x.json", "aa-8039-0301-1.json/..", "keymap.json"] {
         assert!(backups::load(&backups::dir(&dir.0), bad).is_err(), "{bad}");
     }
+}
+
+#[test]
+fn a_macro_save_that_stopped_part_way_leaves_the_keyboard_writable() {
+    // What such a save leaves (its first chunk, the table's start, landed;
+    // the rest of the page is erased): two pointers to erased flash.
+    let sim = Sim::ak980();
+    {
+        let mut s = sim.state();
+        s.macros[..1024].fill(0xFF);
+        s.macros[..56].fill(0);
+        s.macros[..4].copy_from_slice(&400u32.to_le_bytes());
+        s.macros[4..8].copy_from_slice(&412u32.to_le_bytes());
+    }
+    let dir = TempDir::new("macro-cut");
+    let mut d = driver(&sim, Some(&dir.0));
+    assert_eq!(d.read_only(), None, "{:?}", d.diagnostics());
+    let empty = |d: &AaDriver| d.diagnostics().into_iter().find(|l| l.starts_with("macro slots read as empty"));
+    assert!(empty(&d).is_some_and(|l| l.ends_with(": 0, 1")), "{:?}", empty(&d));
+    assert_eq!(backups_in(&dir.0).len(), 1, "backed up, the two slots as empty");
+    // The next save repairs the table.
+    d.write_macros(&[vec![MacroStep::new(StepKind::KeyDown, 4, 20), MacroStep::new(StepKind::KeyUp, 4, 20)]]).unwrap();
+    assert_eq!(empty(&d), None);
+    assert_eq!(&sim.state().macros[4..8], &[0; 4]);
+}
+
+#[test]
+fn a_keymap_save_that_stopped_part_way_is_repaired_by_the_next_save() {
+    for layer in [Layer::Base, Layer::Fn] {
+        let sim = Sim::ak980();
+        {
+            // The first chunk landed; the rest of the page is erased (the
+            // Fn key, two of the knob's slots, Fn+Space's factory reset).
+            let mut s = sim.state();
+            let t = if layer == Layer::Base { &mut s.keymap } else { &mut s.fn_keymap };
+            t[56..].fill(0xFF);
+        }
+        let dir = TempDir::new(&format!("keymap-cut-{layer:?}"));
+        let mut d = driver(&sim, Some(&dir.0));
+        assert_eq!(d.read_only(), None, "{layer:?}: {:?}", d.diagnostics());
+        let c = d.contents().expect("contents");
+        let shown = if layer == Layer::Base { &c.base } else { &c.fn_layer };
+        assert!(shown.fixed.is_empty(), "{layer:?}: erased slots are no keys set elsewhere");
+        if layer == Layer::Fn {
+            assert!(shown.builtin.contains(&led("space")), "the factory reset comes back");
+        }
+        // The records ask for nothing new: the save still repairs the layer.
+        d.apply_keymap(layer, &LayerMap::new()).unwrap();
+        let s = sim.state();
+        let (t, factory) =
+            if layer == Layer::Base { (&s.keymap, &s.factory_keymap) } else { (&s.fn_keymap, &s.default_fn) };
+        assert_eq!(t, factory, "{layer:?}");
+    }
+}
+
+#[test]
+fn beta_1s_live_lights_note_is_removed_at_start() {
+    let dir = TempDir::new("beta1-note");
+    std::fs::write(dir.0.join("aa-live-armed.json"), "{}").unwrap();
+    std::fs::write(dir.0.join("lighting.json"), "{}").unwrap();
+    remove_beta1_live_note(&dir.0);
+    assert!(!dir.0.join("aa-live-armed.json").exists());
+    assert!(dir.0.join("lighting.json").exists(), "nothing else");
+    // None there: nothing to do.
+    remove_beta1_live_note(&dir.0);
 }
 
 #[test]
@@ -816,13 +899,13 @@ fn a_refused_restore_removes_no_backup_and_the_first_stays_first() {
     d.apply_effect(&effect(2, [255, 0, 0])).unwrap();
     let source = others[0].clone();
     let restoring = backups::load(&bdir, &source).unwrap();
-    let e = d.restore(&restoring.snapshot, None, Some(&source)).unwrap_err();
+    let e = d.restore(&restoring.snapshot, None, None, Some(&source)).unwrap_err();
     assert!(e.to_string().contains("does not report its effect colour"), "{e}");
     assert_eq!(names(&dir.0), all, "a refused restore removes no backup");
 
     // The try again with a colour goes: the file restored and the first stay.
     let color = EffectColor { color: [0x00, 0x80, 0xFF], color_mode: 0 };
-    d.restore(&restoring.snapshot, Some(color), Some(&source)).unwrap();
+    d.restore(&restoring.snapshot, Some(color), None, Some(&source)).unwrap();
     let after = names(&dir.0);
     assert_eq!(after.len(), backups::KEPT, "{after:?}");
     assert!(after.contains(&first) && after.contains(&source), "{after:?}");
@@ -886,7 +969,7 @@ fn restores_that_stop_part_way_do_not_pile_up_backups() {
     let source = others[0].clone();
     let restoring = backups::load(&bdir, &source).unwrap();
     for i in 0..3 {
-        let e = d.restore(&restoring.snapshot, None, Some(&source)).unwrap_err();
+        let e = d.restore(&restoring.snapshot, None, None, Some(&source)).unwrap_err();
         assert!(e.to_string().starts_with("the restore stopped while writing the base layer"), "{e}");
         let now = names(&dir.0);
         assert_eq!(now.len(), backups::KEPT, "try {i}: {now:?}");
@@ -913,7 +996,8 @@ fn live_lights_switch_nothing_and_write_nothing() {
     assert_eq!(s.effect, FACTORY_EFFECT);
     assert_eq!(writes(&sim), s.sent(cmd::REALTIME).len(), "frames only");
     let status = d.status();
-    assert!(!status.live_armed && !status.live_restores && status.live_lights_off.is_none(), "{status:?}");
+    assert!(status.live_lights_off.is_none(), "{status:?}");
+    assert!(d.diagnostics().iter().any(|l| l == "live lights: frames streaming"));
     assert!(!dir.0.join("aa-live-armed.json").exists(), "no note on disk");
     // The stream ends: nothing is due, nothing goes back.
     d.live_stopped();
@@ -1006,4 +1090,10 @@ fn a_backup_keeps_the_effect_mode_the_app_knows() {
     let mut d = AaDriver::new(AaPort::new(sim.command()), Sim::model(), target(Some(&dir.0))).unwrap();
     d.connect(Some(AaEffect { mode: 1, ..app }));
     assert_eq!(backups_in(&dir.0)[0].1.snapshot.effect_mode, None);
+
+    // The backup before a restore keeps it too.
+    let backup = backups_in(&dir.0).remove(0).1;
+    d.restore(&backup.snapshot, None, Some(app), None).unwrap();
+    let before = backups_in(&dir.0).into_iter().find(|(_, b)| b.reason == backups::Reason::BeforeRestore);
+    assert_eq!(before.map(|(_, b)| b.snapshot.effect_mode), Some(Some(128)));
 }

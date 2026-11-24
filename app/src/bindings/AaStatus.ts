@@ -16,16 +16,6 @@ readOnly: ReadOnlyReason | null,
  */
 liveLightsOff: LiveLightsOff | null, 
 /**
- * Always false: live lights switch nothing (firmware 769 shows them in
- * any effect mode).
- */
-liveArmed: boolean, 
-/**
- * Always false: nothing is put back after live lights (the keyboard
- * shows its own effect again by itself about 5 s after the last frame).
- */
-liveRestores: boolean, 
-/**
  * Replies nobody asked for keep coming: another program (AJAZZ's web
  * page?) seems to talk to the keyboard. Nothing is blocked.
  */

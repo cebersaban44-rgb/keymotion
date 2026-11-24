@@ -306,34 +306,20 @@ pub enum ReadOnlyReason {
         #[serde(rename = "readFailed")]
         read_failed: bool,
     },
-    /// A firmware update was left unfinished: AJAZZ's tool has to finish it.
-    /// No longer sent: firmware 769 has no such field.
-    UpdatePending,
     /// The backup of its settings could not be saved (`error`: English).
     NoBackup { error: String },
 }
 
 /// Why live lights (gauges, music, games, agents, previews) do not show on
 /// the "AA" keyboard. It shows them in any effect mode, and nothing is
-/// switched or put back: only `blocked` is sent, for the moment the
-/// keyboard ignores writes (just switched on or reset). The other kinds are
-/// no longer sent.
+/// switched or put back: they are held back only for the moment the
+/// keyboard ignores writes (just switched on or reset).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 #[ts(export)]
 pub enum LiveLightsOff {
-    /// No longer sent.
-    #[allow(dead_code)]
-    ColorUnknown,
-    /// No longer sent: frames store nothing, so a read-only keyboard shows
-    /// them too.
-    #[allow(dead_code)]
-    ReadOnly,
     /// Frames are held back for a moment (`reason`: the backend's text).
     Blocked { reason: String },
-    /// No longer sent.
-    #[allow(dead_code)]
-    Failed { error: String },
 }
 
 /// What the app knows about an "AA" keyboard on the cable beyond the model
@@ -346,12 +332,6 @@ pub struct AaStatus {
     pub read_only: Option<ReadOnlyReason>,
     /// Set: live lights do not show on it, and why.
     pub live_lights_off: Option<LiveLightsOff>,
-    /// Always false: live lights switch nothing (firmware 769 shows them in
-    /// any effect mode).
-    pub live_armed: bool,
-    /// Always false: nothing is put back after live lights (the keyboard
-    /// shows its own effect again by itself about 5 s after the last frame).
-    pub live_restores: bool,
     /// Replies nobody asked for keep coming: another program (AJAZZ's web
     /// page?) seems to talk to the keyboard. Nothing is blocked.
     pub other_program_suspected: bool,
@@ -458,9 +438,6 @@ pub struct DeviceReport {
     pub charge: Option<ChargeState>,
     /// Frames its screen takes (the "AA" `tftMaxFrames`).
     pub screen_max_frames: Option<u32>,
-    /// Always false: firmware 769 has no "waiting for an update" field (the
-    /// WebHID driver's `firmwareStatus` is a fixed byte there).
-    pub update_pending: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]

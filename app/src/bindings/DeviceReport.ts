@@ -14,9 +14,4 @@ battery: number | null, charge: ChargeState | null,
 /**
  * Frames its screen takes (the "AA" `tftMaxFrames`).
  */
-screenMaxFrames: number | null, 
-/**
- * Always false: firmware 769 has no "waiting for an update" field (the
- * WebHID driver's `firmwareStatus` is a fixed byte there).
- */
-updatePending: boolean, };
+screenMaxFrames: number | null, };
