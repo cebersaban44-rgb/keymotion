@@ -1,15 +1,22 @@
 //! Device information (§4.1): `10`, 48 bytes, read only.
 //!
 //! Field offsets from AJAZZ's WebHID driver (`getDeviceInfo`); the values
-//! of firmware 769 from a real reply (issue #966 of another project).
+//! of firmware 769 from a real reply (issue #966 of another project) and
+//! from its code (protocol notes §F.7): the reply is a fixed block of flash
+//! (`40 00 | 00 0C | 45 0C | 39 80 | 01 03 | FF FF 01 00 33 00`, zeros
+//! after) with four bytes filled in on the fly: the work mode (16), the
+//! battery (17), the charge state (18) and the screen frame limit (22,
+//! always 146). There is no "waiting for an update" field: a keyboard
+//! goes into its updater only on the updater's own command, and byte 32
+//! ([`DeviceInfo::firmware_status`]) is just flash. It is logged, never
+//! acted on.
 
 use super::CodecError;
 
 /// Bytes requested (the WebHID driver's LEN; the web hub asks for 56).
 pub const LEN: usize = 48;
-/// `firmware_status` of a keyboard waiting for a firmware update: nothing
-/// else may be read or written.
-pub const UPDATE_PENDING: u8 = 1;
+/// The screen frame limit firmware 769 reports (byte 22).
+pub const FRAME_LIMIT_769: u16 = 146;
 /// `tft_direction` of a keyboard without a screen.
 pub const NO_SCREEN: u8 = 255;
 
@@ -51,7 +58,9 @@ pub struct DeviceInfo {
     /// 1 = longer timeouts and FUNC_V2 entries (not this keyboard).
     pub frame_version: u8,
     pub lighting_version: u8,
-    /// 1 = waiting for a firmware update.
+    /// The WebHID driver's "firmware status" (1 = waiting for an update).
+    /// Firmware 769 has no such field: this is a byte of its fixed flash
+    /// block (0). Shown in reports, never acted on.
     pub firmware_status: u8,
     pub max_profile: u8,
     /// 0 = RGB565 little-endian.
@@ -92,10 +101,6 @@ impl DeviceInfo {
         })
     }
 
-    pub fn update_pending(&self) -> bool {
-        self.firmware_status == UPDATE_PENDING
-    }
-
     pub fn has_screen(&self) -> bool {
         self.tft_direction != NO_SCREEN
     }
@@ -117,8 +122,22 @@ mod tests {
         assert_eq!((i.sensor, i.manufacturer, i.product), (0xFFFF, 1, 0x33));
         assert_eq!((i.work_mode, i.battery_level, i.charge_status), (0, 100, 2));
         assert_eq!((i.tft_max_frames, i.firmware_status), (0, 0));
-        assert!(!i.update_pending());
         assert!(i.has_screen());
+    }
+
+    #[test]
+    fn parses_the_real_3_02_reply_with_its_frame_limit() {
+        // The whole reply of a patched 769 ("770", 0x0302) from issue #154:
+        // the frame limit 146 (0x92) the firmware writes into byte 22.
+        let mut d = [0u8; LEN];
+        d[..23].copy_from_slice(&[
+            0x40, 0x00, 0x00, 0x0C, 0x45, 0x0C, 0x39, 0x80, 0x02, 0x03, 0xFF, 0xFF, 0x01, 0x00, 0x33, 0x00, 0x00, 0x64,
+            0x02, 0x00, 0x00, 0x00, 0x92,
+        ]);
+        let i = DeviceInfo::parse(&d).unwrap();
+        assert_eq!((i.version, i.tft_max_frames, i.firmware_status), (0x0302, FRAME_LIMIT_769, 0));
+        // Byte 12 is always 1 (the manufacturer's low byte): not a status.
+        assert_eq!(i.manufacturer, 1);
     }
 
     #[test]
@@ -135,10 +154,8 @@ mod tests {
         assert_eq!((i.tft_direction, i.rt_precision, i.frame_version, i.lighting_version), (28, 29, 30, 31));
         assert_eq!((i.firmware_status, i.max_profile, i.tft_color_byte_order), (32, 33, 35));
         assert!(DeviceInfo::parse(&d[..47]).is_err());
-        let mut pending = [0u8; LEN];
-        pending[32] = UPDATE_PENDING;
-        pending[28] = NO_SCREEN;
-        let p = DeviceInfo::parse(&pending).unwrap();
-        assert!(p.update_pending() && !p.has_screen());
+        let mut none = [0u8; LEN];
+        none[28] = NO_SCREEN;
+        assert!(!DeviceInfo::parse(&none).unwrap().has_screen());
     }
 }

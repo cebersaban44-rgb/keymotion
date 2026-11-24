@@ -22,7 +22,6 @@ import { InfoBar } from "./controls";
 
 const READ_ONLY: Record<string, { title: MessageKey; body: MessageKey }> = {
   "not-sane": { title: "aa.ro.notSane.title", body: "aa.ro.notSane.body" },
-  "update-pending": { title: "aa.ro.update.title", body: "aa.ro.update.body" },
   "no-backup": { title: "aa.ro.backup.title", body: "aa.ro.backup.body" },
 };
 

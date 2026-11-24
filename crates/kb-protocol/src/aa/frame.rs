@@ -12,6 +12,12 @@ pub const CHUNK: usize = REPORT_LEN - HEADER_LEN;
 pub const REQUEST: u8 = 0xAA;
 /// First byte of every reply.
 pub const REPLY: u8 = 0x55;
+/// Bytes in one flash page. The keyboard keeps its settings straight in
+/// flash and erases a page only for a write chunk that starts exactly on
+/// the page's first byte; any other chunk is programmed over what the page
+/// holds (protocol notes §F.2). Every table write therefore starts at
+/// address 0 and goes up ([`paged_chunks`]).
+pub const PAGE: usize = 1024;
 
 /// One chunk of a block: where its data starts in the block and what the
 /// header says about it.
@@ -44,6 +50,27 @@ pub fn chunks(total: usize, base: u16, last_flag: bool) -> Vec<Chunk> {
             }
         })
         .collect()
+}
+
+/// Cut a block of `total` bytes written from address 0 into chunks of at
+/// most 56 bytes that never cross a page boundary, so that one chunk starts
+/// exactly on every page the block reaches (0, 1024, 2048 …) and the
+/// firmware erases each page before it programs it. Ascending, each byte
+/// once, LAST on the final chunk. For a block within one page this is
+/// [`chunks`]`(total, 0, true)`.
+pub fn paged_chunks(total: usize) -> Vec<Chunk> {
+    let mut out = Vec::with_capacity(total.div_ceil(CHUNK) + total / PAGE);
+    let mut offset = 0;
+    while offset < total {
+        let to_page = PAGE - offset % PAGE;
+        let len = (total - offset).min(CHUNK).min(to_page);
+        out.push(Chunk { offset, addr: offset as u16, len: len as u8, last: false });
+        offset += len;
+    }
+    if let Some(c) = out.last_mut() {
+        c.last = true;
+    }
+    out
 }
 
 /// Build a 64-byte request: `AA CMD LEN ADDR_LO ADDR_HI R5 LAST 00` and
@@ -132,6 +159,35 @@ mod tests {
         assert_eq!((b[0].addr, b[0].len, b[0].last), (400, 56, false));
         assert_eq!((b[1].addr, b[1].len, b[1].last), (456, 4, true));
         assert!(chunks(0, 0, true).is_empty());
+    }
+
+    #[test]
+    fn paged_chunks_start_on_every_page() {
+        // Within one page: the plain 56-byte cut.
+        assert_eq!(paged_chunks(512), chunks(512, 0, true));
+        assert!(paged_chunks(0).is_empty());
+        // The macro memory (3 pages): 56-byte chunks never land on 1024
+        // (1008 → 1064), so a 16-byte chunk closes each page.
+        let c = paged_chunks(3072);
+        let starts: Vec<usize> = c.iter().map(|c| c.offset).collect();
+        assert!(starts.contains(&0) && starts.contains(&1024) && starts.contains(&2048));
+        let at_1008 = c.iter().find(|c| c.offset == 1008).unwrap();
+        assert_eq!(at_1008.len, 16);
+        // Contiguous, ascending, every byte once, none crossing a page.
+        let mut next = 0;
+        for ch in &c {
+            assert_eq!(ch.offset, next);
+            assert_eq!(usize::from(ch.addr), ch.offset);
+            assert!((1..=56).contains(&usize::from(ch.len)));
+            assert_eq!(ch.offset / PAGE, (ch.offset + usize::from(ch.len) - 1) / PAGE, "{ch:?} crosses a page");
+            assert_eq!(ch.len % 4, 0);
+            next += usize::from(ch.len);
+        }
+        assert_eq!(next, 3072);
+        assert!(c[..c.len() - 1].iter().all(|ch| !ch.last) && c.last().unwrap().last);
+        // A block ending just past a page boundary.
+        let d = paged_chunks(1028);
+        assert_eq!((d.last().unwrap().offset, d.last().unwrap().len), (1024, 4));
     }
 
     #[test]

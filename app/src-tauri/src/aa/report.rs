@@ -452,6 +452,7 @@ mod tests {
             default_fn: Hex(keymap_table()),
             effect: Hex(vec![5, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0, 1, 5, 3, 0, 0, 0, 0xAA, 0x55]),
             effect_color: None,
+            effect_mode: None,
             per_key: Hex(vec![0; perkey::LEN]),
             macro_table: Hex(vec![0; macros::TABLE_LEN]),
             macro_blocks: vec![],
