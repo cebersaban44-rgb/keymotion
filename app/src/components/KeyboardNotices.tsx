@@ -56,7 +56,11 @@ export function KeyboardNotices({ kb }: { kb: KeyboardInfo }) {
                   openReport({
                     kind: "bug",
                     title: `[Problem] ${kb.modelName} firmware ${kb.firmware ?? "?"}: only read, not as expected`,
-                    context: `The keyboard does not look as expected: ${ro.reasons.join("; ") || "(no reason given)"}`,
+                    // The reasons come grouped (diagnostics.rs
+                    // summarize_reasons), one per line.
+                    context: `The keyboard does not look as expected:\n${
+                      ro.reasons.map((r) => `- ${r}`).join("\n") || "(no reason given)"
+                    }`,
                   })
                 }
                 data-aa-report

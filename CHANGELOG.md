@@ -64,6 +64,13 @@ says so.
 - **Another program (firmware 3.01):** when the keyboard sends answers
   Keymotion didn't ask for, Keymotion says that another program seems to be
   talking to it (AJAZZ's keyboard tool in the browser?). Nothing is blocked.
+- **Problem reports (firmware 3.01):** when what the keyboard reports
+  doesn't look as expected, the report says why in a few lines and shows
+  the part that doesn't look right, so one report is usually enough.
+  Keymotion also keeps that read in its data folder (`keyboard-reads`, the
+  last five, without your macros) in case we ask for it; it's never offered
+  for a restore. Reports stay short enough for GitHub, and anything cut
+  short says so.
 
 ### Changed
 

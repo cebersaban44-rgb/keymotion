@@ -86,6 +86,7 @@ Her şey Windows kullanıcı klasörünüzdedir. **Ayarlar**'da, **Hakkında** b
   - `game-history.json`: oyun oturumlarınız (oyun, başlangıç ve bitiş, okunan değerler, League of Legends sonucu). **Oyun oturumu** sayfasındaki **Geçmişi sil** onu boşaltır;
   - `keymap.json` ve `macros.json`: Keymotion'ın klavyeye ne yazdığının tek kaydı (klavye bunları geri okutmaz; AJAZZ'ın 3.01 klavye yazılımındaki bir klavyede ise Keymotion'ın ondan en son okudukları);
   - `keyboard-backups\`: AJAZZ'ın 3.01 klavye yazılımındaki bir klavyenin tuş atamasının, ışığının ve makrolarının yedekleri; klavye ilk kez bağlandığında ve her geri yüklemeden önce alınır. `aa-live-armed.json`: canlı ışıklar böyle bir klavyeyi tuş başına renk moduna geçirdiği sürece, geri getirilecek ışık;
+  - `keyboard-reads\`: AJAZZ'ın 3.01 klavye yazılımındaki bir klavyenin bildirdikleri beklendiği gibi görünmediğinde, Keymotion'ın ondan yaptığı son beş okuma (makrolarınız olmadan). Bir bildirim yetmezse geliştirici için tutulur; Keymotion bunları hiçbir zaman geri yüklemez;
   - `calendar.json`: takvimleriniz. Takvim adresleri parola gibidir; bu yüzden Windows kullanıcı hesabınıza özel olarak şifrelenir (Windows Veri Koruma). Başka bir kullanıcı ya da başka bir bilgisayar bunları okuyamaz;
   - `screen\`: görsel kütüphaneniz, aldıysanız fabrika animasyonunun kopyası ve son canlı kart.
 - **Günlük dosyaları**, `%LOCALAPPDATA%\dev.keymotion\logs\` klasöründe: her gün için bir dosya, son 7 gün, her biri en çok 4 MB; ayrıca kısa çökme notları. Yazılmadan önce web adresleri yalnızca sunucu adına indirilir ve Windows kullanıcı adınız klasör yollarından çıkarılır. Hatırlatma başlıkları ve toplantı adları hiç yazılmaz.
@@ -95,7 +96,7 @@ Microsoft Store'dan kurulan Keymotion aynı klasörleri kullanır. Bu klasörler
 
 ## Tanılama bilgisi
 
-**Ayarlar**'da, **Hakkında** bölümünde **Tanılama bilgisi** satırındaki **Kopyala** panoya bir metin koyar: uygulama, Windows ve WebView2 sürümleri; klavye modeli, klavye yazılımı ve bağlantısı; ayar dosyalarının adları ve boyutları; günlüğün son 150 satırı (yukarıdaki gibi temizlenmiş). AJAZZ'ın 3.01 klavye yazılımındaki bir klavyede, Keymotion'ın klavyeden okudukları ve onunla ilgili son hataları da metinde yer alır; tuşlarınız, makrolarınız ve renkleriniz yer almaz. Bu metin hiçbir yere gönderilmez. Bir iletiye yapıştırıp yapıştırmamaya siz karar verirsiniz.
+**Ayarlar**'da, **Hakkında** bölümünde **Tanılama bilgisi** satırındaki **Kopyala** panoya bir metin koyar: uygulama, Windows ve WebView2 sürümleri; klavye modeli, klavye yazılımı ve bağlantısı; ayar dosyalarının adları ve boyutları; günlüğün en fazla son 150 satırı (yukarıdaki gibi temizlenmiş; çok uzun bir satır ya da uzun bir günlük kısaltılır ve metin bunu belirtir). AJAZZ'ın 3.01 klavye yazılımındaki bir klavyede, Keymotion'ın klavyeden bölüm bölüm okudukları ve onunla ilgili son hataları da metinde yer alır: ışık efekti olduğu gibi, tuş ataması ve tuş başına renkler yalnızca sayı olarak, beklendiği gibi görünmeyen bir bölümün ise ilk baytları. Makrolarınız hiçbir zaman yer almaz. Bu metin hiçbir yere gönderilmez. Bir iletiye yapıştırıp yapıştırmamaya siz karar verirsiniz.
 
 ## Sorun bildirme ve destek isteme
 

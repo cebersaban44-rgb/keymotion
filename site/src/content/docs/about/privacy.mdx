@@ -86,6 +86,7 @@ Everything is in your Windows user folder. In **Settings**, under **About**, **D
   - `game-history.json`: your game sessions (game, start and end, the readings, a League of Legends result). **Delete history** on the **Game session** page empties it;
   - `keymap.json` and `macros.json`: Keymotion's only record of what it wrote to the keyboard, because the keyboard can't report them (for a keyboard on AJAZZ's firmware 3.01, what Keymotion last read from it);
   - `keyboard-backups\`: for a keyboard on AJAZZ's firmware 3.01, backups of its key mapping, lighting and macros, saved when it is first connected and before each restore; `aa-live-armed.json`, while live lighting has switched such a keyboard to its per-key mode: the lighting to put back;
+  - `keyboard-reads\`: for a keyboard on AJAZZ's firmware 3.01 whose answers don't look as expected, Keymotion's last five reads of it, without your macros. They're for the developer, in case a report isn't enough; Keymotion never restores them;
   - `calendar.json`: your calendars. Their addresses work like passwords, so they're encrypted for your Windows user account (Windows Data Protection). Another user or another computer can't read them;
   - `screen\`: your picture library, the copy of the factory animation if you made one, and the last live card.
 - **Log files**, in `%LOCALAPPDATA%\dev.keymotion\logs\`: one file per day for the last 7 days, at most 4 MB each, and short crash notes. Before anything is written, web addresses are cut to their server name and your Windows user name is removed from folder paths. Reminder titles and meeting names are never written.
@@ -95,7 +96,7 @@ Keymotion installed from the Microsoft Store uses the same folders. If they were
 
 ## Diagnostics
 
-In **Settings**, under **About**, **Copy** next to **Diagnostics** puts a text on your clipboard: the app, Windows and WebView2 versions, the keyboard model, its firmware and connection, the names and sizes of the settings files, and the last 150 lines of the log (cleaned as described above). For a keyboard on AJAZZ's firmware 3.01, it also has what Keymotion read about the keyboard and its last errors with it, but not your keys, macros or colors. It isn't sent anywhere. You decide whether to paste it into a message.
+In **Settings**, under **About**, **Copy** next to **Diagnostics** puts a text on your clipboard: the app, Windows and WebView2 versions, the keyboard model, its firmware and connection, the names and sizes of the settings files, and up to the last 150 lines of the log (cleaned as described above; a very long line or a long log is cut short, and the text says so). For a keyboard on AJAZZ's firmware 3.01, it also has what Keymotion read from the keyboard, part by part, and its last errors with it: the lighting effect in full, the key mapping and per-key colors only counted, and the first bytes of a part that doesn't look as expected. Never your macros. It isn't sent anywhere. You decide whether to paste it into a message.
 
 ## Reporting a problem or asking for support
 
