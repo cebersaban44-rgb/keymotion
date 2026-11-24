@@ -38,6 +38,13 @@ export interface LightingState {
   setTool: (t: PaintTool) => void;
   setEffect: (patch: Partial<EffectRequest>) => void;
   markApplied: (e: EffectRequest) => void;
+  /**
+   * The keyboard's lighting changed outside this page (a backup was put
+   * back): `effect` is what it shows now, `null` when that isn't known (or
+   * it is a per-key design), so the page offers a save. Edits being made
+   * stay.
+   */
+  followKeyboard: (effect: EffectRequest | null) => void;
   markPerKeySaved: (colors: ColorMap, brightness: number) => void;
   /** Back to the effect last stored on the keyboard. */
   revertEffect: () => void;
@@ -230,6 +237,14 @@ export const useLighting = create<LightingState>((set, get) => {
     // The keyboard shows one lighting setup at a time: storing an effect
     // replaces the per-key design and vice versa.
     markApplied: (appliedEffect) => update({ appliedEffect, savedPerKey: null, draft: null }),
+    followKeyboard: (known) => {
+      const { draft, effect } = get();
+      update({
+        appliedEffect: known ? { ...known } : null,
+        savedPerKey: null,
+        effect: known && draft !== "effect" ? { ...known } : effect,
+      });
+    },
     markPerKeySaved: (colors, brightness) =>
       update({ savedPerKey: { colors: { ...colors }, brightness }, appliedEffect: null, draft: null }),
     revertEffect: () => {

@@ -12,7 +12,10 @@ import type { ProfileInfo } from "../bindings/ProfileInfo";
 import type { ProfilesState } from "../bindings/ProfilesState";
 import { Toggle } from "../components/controls";
 import { ProgramIcon } from "../components/ProgramIcon";
+import { useWriteBlock } from "../lib/aa";
 import { RULE_GAMES, followAuto, useAuto } from "../lib/autoprofile";
+import { errorRule } from "../lib/errorRules";
+import { friendlyError } from "../lib/errors";
 import { useGames } from "../lib/games";
 import { useT } from "../lib/i18n";
 import { profileName } from "../lib/profiles";
@@ -25,7 +28,15 @@ export function AutoProfiles({ profiles, usb }: { profiles: ProfilesState | null
   useEffect(() => followAuto(), []);
   const all: ProfileInfo[] = useMemo(() => (profiles ? [...profiles.profiles, profiles.factory] : []), [profiles]);
   const [adding, setAdding] = useState<string>("");
+  // An "AA" keyboard that takes no writes: its own reason, not "check the
+  // cable".
+  const readOnly = useWriteBlock();
   if (!s || !profiles) return null;
+  const lastError = (raw: string) => {
+    if (raw === "daily limit reached") return t("auto.limit");
+    if (readOnly) return readOnly;
+    return errorRule(raw).key.startsWith("err.aa.") ? friendlyError(raw, t, true) : t("auto.error");
+  };
 
   const set = (patch: Parameters<typeof configure>[0]) => configure(patch).catch(console.error);
   const rules = s.settings.rules;
@@ -207,7 +218,11 @@ export function AutoProfiles({ profiles, usb }: { profiles: ProfilesState | null
         <p className="text-[12px] text-ink-3" data-auto-writes>
           {t("auto.count", { n: s.writesToday, max: s.writesMax })}
         </p>
-        {s.lastError && <p className="text-[12px] text-danger">{s.lastError === "daily limit reached" ? t("auto.limit") : t("auto.error")}</p>}
+        {s.lastError && (
+          <p className="text-[12px] text-danger" data-auto-error>
+            {lastError(s.lastError)}
+          </p>
+        )}
       </div>
     </section>
   );

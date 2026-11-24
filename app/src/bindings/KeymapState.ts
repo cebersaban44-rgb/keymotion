@@ -2,7 +2,18 @@
 import type { KeymapLayerState } from "./KeymapLayerState";
 
 /**
- * What the app last wrote to a model's keymap. The keyboard cannot report
- * its keymap, so this is the app's own record.
+ * A keyboard's keymap: what the app last wrote ("04 xx", which cannot
+ * report it), or what the keyboard itself holds ("AA", `readMs`).
  */
-export type KeymapState = { base: KeymapLayerState, fn: KeymapLayerState, };
+export type KeymapState = { base: KeymapLayerState, fn: KeymapLayerState, 
+/**
+ * When the layers were read from the keyboard (Unix ms); `null`: they
+ * are the app's own record.
+ */
+readMs: number | null, 
+/**
+ * The keyboard's tables the layers were read from: sent back with a
+ * save (`apply_keymap`'s `base`), which is refused when the keyboard
+ * changed since ("AA"; `null` otherwise).
+ */
+source: string | null, };

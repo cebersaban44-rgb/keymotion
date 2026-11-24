@@ -10,6 +10,8 @@ import type { KeymapLayer } from "../bindings/KeymapLayer";
 import { ActionBar } from "../components/ActionBar";
 import { InfoBar, Segmented, Tabs } from "../components/controls";
 import { KeyboardView, type Legend } from "../components/KeyboardView";
+import { KeyboardNotices } from "../components/KeyboardNotices";
+import { useWriteBlock } from "../lib/aa";
 import { getKeymapCatalog } from "../lib/ipc";
 import { useAgo, useT, type MessageKey } from "../lib/i18n";
 import { FN_USAGE, normalize, sameAction, usageAction, useKeymap, type LayerMap } from "../lib/keymap";
@@ -53,6 +55,7 @@ export function Keymap({ kb }: { kb: KeyboardInfo }) {
   const keys = kb.geometry?.keys ?? [];
   const selectedKey = keys.find((k) => k.led === selected) ?? null;
   const changed = useKeymap((s) => countChanges(s.draft, s.saved));
+  const blocked = useWriteBlock(kb);
 
   return (
     <div className="@container flex flex-col gap-5">
@@ -74,6 +77,7 @@ export function Keymap({ kb }: { kb: KeyboardInfo }) {
       {!usb && (
         <InfoBar tone="warn" icon={<Usb size={20} strokeWidth={1.6} />} title={t("km.needsUsb")} data="usb" />
       )}
+      <KeyboardNotices kb={kb} />
 
       <Plate kb={kb} layer={layer} catalog={catalog} onSelect={select} selected={selected} />
 
@@ -95,6 +99,7 @@ export function Keymap({ kb }: { kb: KeyboardInfo }) {
 
       <ActionBar
         changes={changed > 0 ? t("bar.keysChanged", { count: changed }) : null}
+        blocked={blocked}
         canSave={usb && loaded}
         onSave={save}
         onRevert={discard}
@@ -122,6 +127,8 @@ function Plate({
   const t = useT();
   const draft = useKeymap((s) => s.draft[layer]);
   const saved = useKeymap((s) => s.saved?.[layer] ?? null);
+  const fixed = useKeymap((s) => s.fixed[layer]);
+  const builtin = useKeymap((s) => s.builtin[layer]);
   const keys = kb.geometry?.keys ?? NO_KEYS;
   const names = useMacroNames();
   const layoutMap = useLayout((s) => s.map);
@@ -135,6 +142,14 @@ function Plate({
     for (const k of keys) {
       const a = draft[k.led];
       const cls: string[] = [];
+      if (fixed.includes(k.led)) {
+        // Set in another program, or the keyboard's own function: shown as
+        // such, not editable.
+        const own = builtin.includes(k.led);
+        legends[k.led] = { main: own ? "ƒ" : "•••", text: t(own ? "km.builtin.title" : "km.fixed.title"), sub: k.label };
+        classes[k.led] = own ? "is-locked" : "is-mapped is-locked";
+        continue;
+      }
       if (a) {
         legends[k.led] = {
           main: actionShort(a, catalog, layout),
@@ -148,7 +163,7 @@ function Plate({
       if (cls.length) classes[k.led] = cls.join(" ");
     }
     return { legends, classes };
-  }, [keys, draft, saved, catalog, t, names, layoutMap]);
+  }, [keys, draft, saved, fixed, builtin, catalog, t, names, layoutMap]);
 
   const selectedSet = useMemo(() => new Set(selected === null ? [] : [selected]), [selected]);
 
@@ -188,8 +203,9 @@ function Plate({
 /** Assign the selected key, normalising "a key sends itself" to the default. */
 function useAssign(layer: KeymapLayer, keyGeo: KeyGeo | null) {
   const assign = useKeymap((s) => s.assign);
+  const fixed = useKeymap((s) => s.fixed[layer]);
   return (action: KeyActionInfo) => {
-    if (!keyGeo || keyGeo.hid === FN_USAGE) return;
+    if (!keyGeo || keyGeo.hid === FN_USAGE || fixed.includes(keyGeo.led)) return;
     assign(keyGeo.led, normalize(layer, keyGeo.hid, action));
   };
 }
@@ -214,7 +230,8 @@ function Picker({
   const [mods, setMods] = useState(0);
   const current = useKeymap((s) => (keyGeo ? s.draft[layer][keyGeo.led] : undefined));
   const assignRaw = useAssign(layer, keyGeo);
-  const locked = keyGeo?.hid === FN_USAGE;
+  const setElsewhere = useKeymap((s) => !!keyGeo && s.fixed[layer].includes(keyGeo.led));
+  const locked = keyGeo?.hid === FN_USAGE || setElsewhere;
   const off = disabled || !keyGeo || locked || !catalog;
 
   // A new key starts without "held with" modifiers.
@@ -535,12 +552,34 @@ function SelectedCard({
 }) {
   const t = useT();
   const action = useKeymap((s) => (keyGeo ? s.draft[layer][keyGeo.led] : undefined));
+  const setElsewhere = useKeymap((s) => !!keyGeo && s.fixed[layer].includes(keyGeo.led));
+  const builtin = useKeymap((s) => !!keyGeo && s.builtin[layer].includes(keyGeo.led));
+  // Its default never comes back: no reset.
+  const pinned = useKeymap((s) => !!keyGeo && s.pinned[layer].includes(keyGeo.led));
   const assign = useAssign(layer, keyGeo);
   const names = useMacroNames();
   const layout = useLayoutLabel();
   if (!keyGeo) return null;
   const locked = keyGeo.hid === FN_USAGE;
   const own = layer === "base" ? t("km.ownFunction") : t("km.fnDefault");
+  if (setElsewhere) {
+    return (
+      <section className="card flex flex-col gap-3 p-5" data-key-fixed>
+        <div className="eyebrow">{t("km.selected")}</div>
+        <div className="flex items-center gap-3">
+          <span className="num flex h-11 min-w-11 items-center justify-center rounded-lg border border-line-strong bg-surface-2 px-2.5 text-[14px] font-semibold">
+            {keyGeo.label || "␣"}
+          </span>
+          <span className="text-ink-3">→</span>
+          <span className="font-display text-[17px] font-semibold">{t(builtin ? "km.builtin.title" : "km.fixed.title")}</span>
+        </div>
+        <p className="flex gap-2 text-[12px] text-ink-2">
+          <Lock size={14} className="mt-0.5 shrink-0" />
+          {t(builtin ? "km.builtin.note" : "km.fixed.note")}
+        </p>
+      </section>
+    );
+  }
   return (
     <section className="card flex flex-col gap-3 p-5">
       <div className="eyebrow">{t("km.selected")}</div>
@@ -559,7 +598,8 @@ function SelectedCard({
           {t("km.fnLocked")}
         </p>
       ) : (
-        action && (
+        action &&
+        !pinned && (
           <button
             type="button"
             onClick={() => assign({ kind: "default" })}
@@ -580,6 +620,7 @@ function LayerCard({ layer }: { layer: KeymapLayer }) {
   const ago = useAgo();
   const layerEmpty = useKeymap((s) => Object.keys(s.draft[layer]).length === 0);
   const writtenMs = useKeymap((s) => s.writtenMs[layer]);
+  const readMs = useKeymap((s) => s.readMs);
   const resetLayer = useKeymap((s) => s.resetLayer);
 
   return (
@@ -590,14 +631,21 @@ function LayerCard({ layer }: { layer: KeymapLayer }) {
           {t("km.fnNote")}
         </p>
       )}
-      <p className="flex gap-2">
+      <p className="flex gap-2" data-keymap-source={readMs ? "keyboard" : "record"}>
         <Info size={14} className="mt-0.5 shrink-0 text-ink-3" />
-        <span>
-          {t("km.readNote")}{" "}
-          <span className="text-ink-3">
-            {writtenMs ? t("km.record.at", { ago: ago(writtenMs) }) : t("km.record.never")}
+        {readMs ? (
+          // "AA": the keyboard reports its keymap.
+          <span>
+            {t("km.readNote.aa")} <span className="text-ink-3">{t("km.record.read", { ago: ago(readMs) })}</span>
           </span>
-        </span>
+        ) : (
+          <span>
+            {t("km.readNote")}{" "}
+            <span className="text-ink-3">
+              {writtenMs ? t("km.record.at", { ago: ago(writtenMs) }) : t("km.record.never")}
+            </span>
+          </span>
+        )}
       </p>
       <div className="border-t border-line pt-3">
         <button

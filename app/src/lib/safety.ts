@@ -27,6 +27,9 @@ interface SafetyStore {
   firmware: string | null;
   /** Records reset at start-up, not yet acknowledged. */
   resets: SettingsReset[];
+  /** Firmware versions the user said yes to in this session: nothing
+   *  offers the question again for them. */
+  confirmed: string[];
   answerFirmware: (go: boolean) => void;
   dismissResets: () => void;
 }
@@ -39,6 +42,7 @@ let declined = false;
 export const useSafety = create<SafetyStore>((set) => ({
   firmware: null,
   resets: [],
+  confirmed: [],
   answerFirmware: (go) => {
     set({ firmware: null });
     resolveAsk?.(go);
@@ -63,13 +67,22 @@ function askFirmware(version: string, fromUser: boolean): Promise<boolean> {
   })
     .then(async (go) => {
       declined = !go;
-      if (go) await confirmFirmware(version);
+      if (go) {
+        await confirmFirmware(version);
+        useSafety.setState((s) => ({ confirmed: s.confirmed.includes(version) ? s.confirmed : [...s.confirmed, version] }));
+      }
       return go;
     })
     .finally(() => {
       pending = null;
     });
   return pending;
+}
+
+/** The untested firmware question again, asked by the user (live lights on
+ *  an "AA" keyboard wait on it after a no). Resolves `true` on a yes. */
+export function askFirmwareAgain(version: string): Promise<boolean> {
+  return askFirmware(version, true);
 }
 
 /** Start answering the backend. Call once from the app; returns the cleanup. */

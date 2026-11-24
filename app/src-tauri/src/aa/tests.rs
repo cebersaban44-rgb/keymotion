@@ -286,6 +286,7 @@ fn live_lights_switch_to_per_key_mode_and_back_after_the_hold() {
     let note = armed_note(&dir.0).expect("noted before the switch");
     assert_eq!(AaEffect::decode(&note.effect.0).unwrap().mode, 1, "the effect to put back");
     assert!(d.status().live_armed);
+    assert!(d.status().live_restores, "its own effect comes back after the hold");
     for _ in 0..3 {
         d.live_frame(vec![(led("esc"), [9, 9, 9])], &counted).unwrap();
     }
@@ -449,8 +450,10 @@ fn a_refused_gate_holds_live_lights_back() {
     d.live_frame(vec![], &LiveContext { gate: Some(&ask), app_effect: None, arming: None }).unwrap();
     assert_eq!(gate.asked(), 0);
     assert!(sim.state().sent(cmd::SET_EFFECT).is_empty());
-    // The user said yes: the next frame switches.
+    // The user said yes: the refusal goes at once (the UI stops saying live
+    // lights wait for the answer), and the next frame switches.
     d.retry_live();
+    assert_eq!(d.status().live_lights_off, None);
     d.live_frame(vec![(led("esc"), [1, 1, 1])], &go()).unwrap();
     assert_eq!(sim.state().effect[0], aa_effect::MODE_PER_KEY);
     assert!(sim.state().frames.last().unwrap().1);
@@ -512,7 +515,14 @@ fn a_keyboard_that_does_not_look_right_is_read_only() {
             "update pending" => assert_eq!(ro, ReadOnly::UpdatePending),
             _ => assert!(matches!(&ro, ReadOnly::NotSane(why) if !why.is_empty()), "{name}: {ro:?}"),
         }
-        assert_eq!(d.status().read_only, Some((&ro).into()));
+        let shown = d.status().read_only.unwrap();
+        match (&ro, &shown) {
+            (ReadOnly::NotSane(why), ReadOnlyReason::NotSane { reasons, read_failed }) => {
+                assert_eq!(reasons, why, "{name}");
+                assert_eq!(*read_failed, name == "silent", "{name}: a read that did not finish, not a failed check");
+            }
+            _ => assert_eq!(shown, (&ro).into(), "{name}"),
+        }
         let refusals = [
             d.apply_effect(&effect(2, [255, 0, 0])).unwrap_err(),
             d.apply_per_key(vec![], 5).unwrap_err(),
@@ -556,6 +566,206 @@ fn a_keyboard_that_answers_again_is_read_again_before_a_write() {
     assert_eq!(d.read_only(), None);
     assert_eq!(backups_in(&dir.0).len(), 1);
     assert_eq!(sim.state().effect[0], 2);
+}
+
+#[test]
+fn live_lights_on_a_keyboard_in_per_key_mode_put_nothing_back() {
+    let dir = TempDir::new("live-per-key");
+    let sim = Sim::ak980();
+    let mut d = driver(&sim, Some(&dir.0));
+    // Per-key lighting saved from Keymotion: the keyboard's own effect.
+    d.apply_effect(&effect(aa_effect::MODE_PER_KEY, [0, 0, 0])).unwrap();
+    d.live_starting(&go()).unwrap();
+    let status = d.status();
+    assert!(status.live_armed);
+    assert!(!status.live_restores, "nothing comes back: no \"about 30 seconds\" notice");
+}
+
+/// A wheel turn and a 2 ms pause, as AJAZZ's tool writes them: no app
+/// step holds either.
+fn wheel() -> Vec<AaMacroEntry> {
+    use kb_protocol::aa::macros::flag;
+    vec![
+        AaMacroEntry { delay_ms: 2, code: 0xFF, flag: flag::MOUSE_DOWN },
+        AaMacroEntry { delay_ms: 0, code: 0xFF, flag: flag::MOUSE_UP },
+    ]
+}
+
+/// The keyboard's macro memory holding `slots`, as another tool left it.
+fn macros_written_elsewhere(sim: &Sim, slots: &[Vec<AaMacroEntry>]) {
+    let img = aa_macros::encode(slots).unwrap();
+    let mut st = sim.state();
+    st.macros.fill(0);
+    st.macros[..img.table.len()].copy_from_slice(&img.table);
+    let at = usize::from(aa_macros::BLOCKS_AT);
+    st.macros[at..at + img.blocks.len()].copy_from_slice(&img.blocks);
+}
+
+#[test]
+fn keys_and_macros_set_elsewhere_are_shown_and_kept() {
+    let dir = TempDir::new("elsewhere");
+    let sim = Sim::ak980();
+    // Set in AJAZZ's tool: B runs a firmware function, D types "b", macro
+    // slot 1 turns the wheel, slot 2 types "a".
+    let func = [aa_keymap::page::FUNC, 0, 0, 2];
+    {
+        let mut st = sim.state();
+        aa_keymap::set_entry(&mut st.keymap, aa("b"), func);
+        aa_keymap::set_entry(&mut st.keymap, aa("d"), [aa_keymap::page::KEYBOARD, 0, 0x05, 0]);
+    }
+    let typed = vec![MacroStep::new(StepKind::KeyDown, 4, 20), MacroStep::new(StepKind::KeyUp, 4, 20)];
+    let typed_entries = aa_macros::from_steps(&typed).unwrap();
+    macros_written_elsewhere(&sim, &[Vec::new(), wheel(), typed_entries.clone()]);
+    let mut d = driver(&sim, Some(&dir.0));
+
+    // What the Key mapping and Macros pages start from.
+    let c = d.contents().expect("read and sane");
+    assert_eq!(c.base.actions, LayerMap::from([(led("d"), KeyAction::key(0x05))]));
+    assert_eq!(c.base.fixed, [led("b")]);
+    assert!(c.fn_layer.actions.is_empty() && c.fn_layer.fixed.is_empty(), "the factory Fn layer");
+    assert_eq!(c.macros[..3], [MacroContents::Empty, MacroContents::Fixed(2), MacroContents::Steps(typed.clone())]);
+    assert!(c.macros[3..].iter().all(|m| *m == MacroContents::Empty));
+
+    // A save of the page as shown (D kept, A added): B's firmware function
+    // stays; only A's slot changes.
+    let before = sim.state().keymap.clone();
+    let map = LayerMap::from([(led("d"), KeyAction::key(0x05)), (led("a"), KeyAction::key(0x06))]);
+    d.apply_keymap(Layer::Base, &map).unwrap();
+    let after = sim.state().keymap.clone();
+    let changed: Vec<u8> =
+        (0..128u8).filter(|&s| aa_keymap::entry(&before, s) != aa_keymap::entry(&after, s)).collect();
+    assert_eq!(changed, [aa("a")]);
+    assert_eq!(aa_keymap::entry(&after, aa("b")), func);
+    // Even a map that names no key at all leaves it.
+    d.apply_keymap(Layer::Base, &LayerMap::new()).unwrap();
+    assert_eq!(aa_keymap::entry(&sim.state().keymap, aa("b")), func);
+    assert_eq!(d.contents().unwrap().base.fixed, [led("b")]);
+
+    // A macro save that leaves slot 1 empty keeps the wheel, byte for byte;
+    // the others are as the app asked.
+    let mine = vec![MacroStep::new(StepKind::KeyDown, 5, 20), MacroStep::new(StepKind::KeyUp, 5, 20)];
+    d.write_macros(std::slice::from_ref(&mine)).unwrap();
+    let back = d.keyboard_mut().read_macros().unwrap();
+    assert_eq!(back[0], aa_macros::from_steps(&mine).unwrap());
+    assert_eq!(back[1], wheel());
+    assert!(back[2].is_empty(), "a macro the app shows goes when the app leaves it out");
+    let c = d.contents().unwrap();
+    assert_eq!(c.macros[1], MacroContents::Fixed(2));
+    let before = c.fingerprint;
+    // Not even a save that fills its slot replaces it: refused, nothing
+    // written.
+    let sent = sim.state().sent(cmd::SET_MACROS).len();
+    let e = d.write_macros(&[Vec::new(), mine.clone()]).unwrap_err();
+    assert_eq!(e.to_string(), macro_elsewhere(1));
+    assert_eq!(sim.state().sent(cmd::SET_MACROS).len(), sent);
+    assert_eq!(d.keyboard_mut().read_macros().unwrap()[1], wheel());
+    // Another slot is the app's.
+    d.write_macros(&[mine.clone(), Vec::new(), mine.clone()]).unwrap();
+    assert_eq!(d.keyboard_mut().read_macros().unwrap()[2], aa_macros::from_steps(&mine).unwrap());
+    assert_ne!(d.contents().unwrap().fingerprint, before, "a change shows in the fingerprint");
+}
+
+#[test]
+fn a_save_made_against_keys_or_macros_changed_elsewhere_is_refused() {
+    let dir = TempDir::new("changed-elsewhere");
+    let sim = Sim::ak980();
+    let mut d = driver(&sim, Some(&dir.0));
+    let (keys, macros) = {
+        let c = d.contents().unwrap();
+        (c.keys_source, c.macros_source)
+    };
+    // The page's own source: saved.
+    let a = LayerMap::from([(led("a"), KeyAction::key(0x05))]);
+    d.apply_keymap_from(Layer::Base, &a, Some(&keys)).unwrap();
+    let keys = d.contents().unwrap().keys_source;
+    // Meanwhile AJAZZ's web tool sets B; the page still shows the old keys.
+    aa_keymap::set_entry(&mut sim.state().keymap, aa("b"), [aa_keymap::page::KEYBOARD, 0, 0x06, 0]);
+    let before = sim.state().keymap.clone();
+    let e = d.apply_keymap_from(Layer::Base, &LayerMap::from([(led("c"), KeyAction::key(0x07))]), Some(&keys));
+    assert_eq!(e.unwrap_err().to_string(), ERR_KEYS_CHANGED);
+    assert_eq!(sim.state().keymap, before, "nothing written: B stays as AJAZZ's tool set it");
+    // The fresh read went into the snapshot: the page can show B now.
+    let c = d.contents().unwrap();
+    assert_eq!(c.base.actions.get(&led("b")), Some(&KeyAction::key(0x06)));
+    assert_ne!(c.keys_source, keys);
+    // Against the new source the save goes.
+    let both = LayerMap::from([
+        (led("a"), KeyAction::key(0x05)),
+        (led("b"), KeyAction::key(0x06)),
+        (led("c"), KeyAction::key(0x07)),
+    ]);
+    d.apply_keymap_from(Layer::Base, &both, Some(&c.keys_source)).unwrap();
+    assert_eq!(aa_keymap::entry(&sim.state().keymap, aa("c")), [aa_keymap::page::KEYBOARD, 0, 0x07, 0]);
+
+    // The same for macros.
+    let mine = vec![MacroStep::new(StepKind::KeyDown, 5, 20), MacroStep::new(StepKind::KeyUp, 5, 20)];
+    macros_written_elsewhere(&sim, &[aa_macros::from_steps(&mine).unwrap()]);
+    let e = d.write_macros_from(&[], Some(&macros)).unwrap_err();
+    assert_eq!(e.to_string(), ERR_MACROS_CHANGED);
+    assert_eq!(d.keyboard_mut().read_macros().unwrap()[0], aa_macros::from_steps(&mine).unwrap(), "not deleted");
+    let c = d.contents().unwrap();
+    assert_eq!(c.macros[0], MacroContents::Steps(mine.clone()));
+    d.write_macros_from(&[mine.clone(), mine.clone()], Some(&c.macros_source)).unwrap();
+
+    // A change made elsewhere on the Fn layer refuses a save of the base
+    // layer too, before anything is written (a page saves both, base first).
+    let keys = d.contents().unwrap().keys_source;
+    aa_keymap::set_entry(&mut sim.state().fn_keymap, aa("q"), [aa_keymap::page::KEYBOARD, 0, 0x08, 0]);
+    let base_before = sim.state().keymap.clone();
+    let e = d.apply_keymap_from(Layer::Base, &LayerMap::from([(led("e"), KeyAction::key(0x09))]), Some(&keys));
+    assert_eq!(e.unwrap_err().to_string(), ERR_KEYS_CHANGED);
+    assert_eq!(sim.state().keymap, base_before, "nothing written, as the message says");
+}
+
+#[test]
+fn the_keyboards_own_fn_functions_are_kept() {
+    let dir = TempDir::new("builtin");
+    let sim = Sim::ak980();
+    // A firmware that keeps zeros for a factory entry (N5), and a key whose
+    // factory firmware function was replaced in another program.
+    let default_fn = sim.state().default_fn.clone();
+    let func_keys: Vec<(u8, u8)> = Sim::model()
+        .geometry
+        .as_ref()
+        .unwrap()
+        .keys
+        .iter()
+        .filter(|k| k.id != "space" && k.id != "fn")
+        .filter_map(|k| Some((k.led, k.aa?)))
+        .filter(|&(_, slot)| aa_keymap::is_func(aa_keymap::entry(&default_fn, slot)))
+        .collect();
+    assert!(func_keys.len() >= 2, "the simulated Fn layer has firmware functions: {func_keys:?}");
+    let ((zeroed_led, zeroed), (moved_led, moved)) = (func_keys[0], func_keys[1]);
+    {
+        let mut st = sim.state();
+        aa_keymap::set_entry(&mut st.fn_keymap, zeroed, [0; 4]);
+        aa_keymap::set_entry(&mut st.fn_keymap, moved, [aa_keymap::page::KEYBOARD, 0, 0x05, 0]);
+    }
+    let mut d = driver(&sim, Some(&dir.0));
+    let c = d.contents().unwrap();
+    assert!(c.fn_layer.builtin.contains(&led("space")), "the factory reset is the keyboard's own function");
+    assert!(c.fn_layer.builtin.contains(&zeroed_led), "zeros are the factory function");
+    assert_eq!(c.fn_layer.actions.get(&moved_led), Some(&KeyAction::key(0x05)));
+    assert_eq!(c.fn_layer.pinned, [moved_led], "its default never comes back");
+    assert!(c.fn_layer.fixed.is_empty());
+    // A map that names the factory reset, and one that names nothing (the
+    // Default profile): neither writes over a firmware function, neither
+    // fails on the key whose factory function can't come back.
+    let before = sim.state().fn_keymap.clone();
+    let kept = d.apply_keymap_from(Layer::Fn, &LayerMap::from([(led("space"), KeyAction::key(0x04))]), None).unwrap();
+    assert!(kept >= 1);
+    assert_eq!(sim.state().fn_keymap, before);
+    d.apply_keymap_from(Layer::Fn, &LayerMap::new(), None).unwrap();
+    assert_eq!(sim.state().fn_keymap, before, "nothing written");
+    assert!(sim.state().sent(cmd::SET_FN_KEYMAP).is_empty());
+}
+
+#[test]
+fn nothing_is_taken_from_a_keyboard_that_does_not_look_right() {
+    for (name, sim) in misbehaving() {
+        let d = driver(&sim, None);
+        assert!(d.contents().is_none(), "{name}");
+    }
 }
 
 #[test]
@@ -638,8 +848,10 @@ fn a_cut_upload_keeps_the_command_channel_quiet_for_a_while() {
     assert!(e.to_string().starts_with("a screen upload stopped part-way; no commands for another"), "{e}");
     assert!(d.apply_effect(&effect(2, [1, 2, 3])).is_err());
     assert_eq!(sim.state().packets.len(), sent);
+    assert!(d.in_quiet_time(), "refusals now are on purpose (no live-frame failure)");
     // Then the device information first, and on.
     std::thread::sleep(Duration::from_millis(300));
+    assert!(!d.in_quiet_time());
     d.device_info().unwrap();
     assert_eq!(sim.state().packets[sent][2], cmd::DEVICE_INFO);
 }

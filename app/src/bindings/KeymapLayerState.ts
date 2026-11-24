@@ -13,4 +13,21 @@ assignments: Array<KeyAssignment>,
  * Unix ms of the last write; `null` when the app never wrote this
  * layer (taken to be the factory default).
  */
-writtenMs: number | null, };
+writtenMs: number | null, 
+/**
+ * LEDs of keys set to something the app can neither show nor write
+ * (a firmware function, a combo, set in AJAZZ's tool...): shown as
+ * such, never changed by a save ("AA" family; empty otherwise).
+ */
+fixed: Array<number>, 
+/**
+ * LEDs of keys at one of the keyboard's own functions in this layer
+ * (a factory reset, a mode switch): shown as such, never changed
+ * ("AA" family; empty otherwise).
+ */
+builtin: Array<number>, 
+/**
+ * LEDs of keys in `assignments` whose default never comes back (their
+ * factory function is one of the keyboard's own): no reset offered.
+ */
+pinned: Array<number>, };

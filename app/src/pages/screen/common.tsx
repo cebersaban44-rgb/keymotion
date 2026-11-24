@@ -10,7 +10,7 @@
 //              and says what was done.
 // "Vazgeç" leaves the flow at any step before the upload.
 
-import { AlertTriangle, Check, Download, ImageOff, Info, Library, Loader2, Pencil, Play, Upload, Usb, X } from "lucide-react";
+import { AlertTriangle, Check, Download, ImageOff, Info, Library, Loader2, Pencil, Play, Square, Upload, Usb, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -18,7 +18,8 @@ import type { ScreenItem } from "../../bindings/ScreenItem";
 import { Field } from "../../components/controls";
 import { decimal, percent, tNow, useT, type MessageKey } from "../../lib/i18n";
 import { useLive } from "../../lib/live";
-import { itemData, useScreen, useScreenLimits } from "../../lib/screen";
+import { useAaKeyboard, useAaOnCable, useWriteBlock } from "../../lib/aa";
+import { cancelUpload, itemData, useScreen, useScreenLimits } from "../../lib/screen";
 import {
   H,
   ImportError,
@@ -311,6 +312,61 @@ export function Hint({ tone, children }: { tone: "warn" | "note" | "usb" | "erro
   );
 }
 
+/** Frames not proven on this kind of keyboard: past 135 on a "04 xx" one,
+ *  any on an "AA" one (nothing was uploaded to a real one yet). */
+export function UnprovenHint({ frames }: { frames: number }) {
+  const t = useT();
+  const screen = useScreenLimits();
+  if (frames <= screen.provenFrames) return null;
+  return (
+    <Hint tone="note">
+      {screen.provenFrames === 0 ? t("sc.warn.unprovenAa", { max: screen.maxFrames }) : t("sc.warn.unproven")}
+    </Hint>
+  );
+}
+
+/** What an upload does to the keyboard's two pages: only the GIF page on a
+ *  "04 xx" keyboard; on an "AA" one the clock page may go too. */
+export function PagesLine({ size = 13 }: { size?: number }) {
+  const t = useT();
+  const aa = useAaOnCable();
+  return aa ? (
+    <>
+      <AlertTriangle size={size} className="mt-0.5 shrink-0 text-warn" /> {t("sc.confirm.clock")}
+    </>
+  ) : (
+    <>
+      <Check size={size} className="mt-0.5 shrink-0 text-ok" /> {t("sc.confirm.onlyGif")}
+    </>
+  );
+}
+
+/** Stop the running upload (an "AA" keyboard's; a "04 xx" upload can't be
+ *  stopped, so nothing shows for it). */
+export function CancelUpload({ small }: { small?: boolean }) {
+  const t = useT();
+  const upload = useScreen((s) => s.upload);
+  const aa = useAaOnCable();
+  const [asked, setAsked] = useState<string | null>(null);
+  if (!aa || !upload) return null;
+  const stopping = asked === upload.id;
+  return (
+    <button
+      type="button"
+      disabled={stopping}
+      onClick={() => {
+        setAsked(upload.id);
+        cancelUpload(upload.id).catch(console.error);
+      }}
+      className={`btn-secondary ${small ? "btn-sm" : ""} w-fit`}
+      data-upload-cancel
+    >
+      {stopping ? <Loader2 size={13} className="animate-spin" aria-hidden /> : <Square size={12} aria-hidden />}
+      {stopping ? t("sc.cancelUpload.busy") : t("sc.cancelUpload")}
+    </button>
+  );
+}
+
 // ------------------------------------------------------------- the frame
 
 export type Step = 1 | 2 | 3 | 4;
@@ -456,7 +512,7 @@ export function PreviewPanel({
 }) {
   const t = useT();
   const upload = useScreen((s) => s.upload);
-  const screen = useScreenLimits();
+  const blocked = useWriteBlock();
   const [confirm, setConfirm] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -526,7 +582,7 @@ export function PreviewPanel({
           ) : (
             <ul className="flex flex-col gap-1.5 text-[12px] text-ink-2">
               <li className="flex gap-2">
-                <Check size={13} className="mt-0.5 shrink-0 text-ok" /> {t("sc.confirm.onlyGif")}
+                <PagesLine />
               </li>
               <li className="flex gap-2">
                 <Library size={13} className="mt-0.5 shrink-0 text-ink-3" /> {t("sc.preview.libraryNote")}
@@ -555,8 +611,8 @@ export function PreviewPanel({
           </button>
           <button
             type="button"
-            disabled={!usb || !loaded || !!upload}
-            title={!usb ? t("sc.needsUsb") : undefined}
+            disabled={!usb || !loaded || !!upload || !!blocked}
+            title={!usb ? t("sc.needsUsb") : (blocked ?? undefined)}
             onClick={() => setConfirm(true)}
             className="flex h-10 items-center gap-2 rounded-lg bg-signal px-5 text-[13px] font-semibold text-signal-ink disabled:opacity-40"
           >
@@ -565,8 +621,9 @@ export function PreviewPanel({
         </div>
       )}
 
-      {frames > screen.provenFrames && <Hint tone="note">{t("sc.warn.unproven")}</Hint>}
+      <UnprovenHint frames={frames} />
       {!usb && !uploading && <Hint tone="usb">{t("sc.needsUsbShort")}</Hint>}
+      {usb && !uploading && blocked && <Hint tone="warn">{blocked}</Hint>}
       {error && <Hint tone="error">{error}</Hint>}
 
       <AnimatePresence>
@@ -617,6 +674,7 @@ function InlineProgress() {
         </span>
         <span>{left ? t("sc.left", { time: left }) : ""}</span>
       </div>
+      <CancelUpload />
     </div>
   );
 }
@@ -638,6 +696,7 @@ export function LibraryConfirm({ item, onCancel, onConfirm }: { item: ScreenItem
 export function RetryUpload({ item, usb, onDone }: { item: ScreenItem; usb: boolean; onDone?: () => void }) {
   const t = useT();
   const upload = useScreen((s) => s.upload);
+  const blocked = useWriteBlock();
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const run = async () => {
@@ -654,8 +713,8 @@ export function RetryUpload({ item, usb, onDone }: { item: ScreenItem; usb: bool
     <div className="flex flex-col gap-1.5">
       <button
         type="button"
-        disabled={!usb || !!upload}
-        title={!usb ? t("sc.needsUsbShort") : undefined}
+        disabled={!usb || !!upload || !!blocked}
+        title={!usb ? t("sc.needsUsbShort") : (blocked ?? undefined)}
         onClick={() => setConfirm(true)}
         className="btn-primary w-fit"
         data-retry-upload
@@ -692,6 +751,26 @@ export function ConfirmUpload({
   const state = useScreen((s) => s.state);
   const screen = useScreenLimits();
   const factory = state?.items.some((i) => i.kind === "factory") ?? false;
+  // An "AA" keyboard whose clock page this upload may replace: the user
+  // hasn't said yes yet, so this question is the one about the clock page
+  // too (asked once; `ackClockPage`).
+  const clockAtRisk = !!state?.clockPageAtRisk;
+  // AJAZZ's old official driver doesn't know an "AA" keyboard's firmware.
+  const aa = useAaKeyboard();
+  const [acking, setAcking] = useState(false);
+  const [ackError, setAckError] = useState<string | null>(null);
+  const go = async () => {
+    if (!clockAtRisk) return onConfirm();
+    setAcking(true);
+    setAckError(null);
+    try {
+      await useScreen.getState().ackClockPage();
+      onConfirm();
+    } catch (e) {
+      setAckError(friendlyError(e, t));
+      setAcking(false);
+    }
+  };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onCancel();
@@ -720,9 +799,14 @@ export function ConfirmUpload({
           </div>
         </div>
         <ul className="flex flex-col gap-2 text-[13px] text-ink-2">
-          <li className="flex gap-2">
-            <Check size={14} className="mt-0.5 shrink-0 text-ok" /> {t("sc.confirm.onlyGif")}
+          <li className={`flex gap-2 ${clockAtRisk ? "rounded-lg border border-warn/40 bg-warn/10 px-3 py-2.5 text-ink" : ""}`} data-confirm-pages>
+            <PagesLine size={14} />
           </li>
+          {clockAtRisk && (
+            <li className="flex gap-2" data-confirm-clock>
+              <Info size={14} className="mt-0.5 shrink-0 text-ink-3" /> {t("sc.confirm.clockOnce")}
+            </li>
+          )}
           <li className="flex gap-2">
             <Usb size={14} className="mt-0.5 shrink-0 text-signal" /> {t("sc.confirm.cable")}
           </li>
@@ -733,14 +817,15 @@ export function ConfirmUpload({
               <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" />
             )}
             <span className="flex flex-col gap-2">
-              {factory ? t("sc.confirm.factoryKept") : t("sc.confirm.noFactory")}
-              <DriverBackup />
+              {factory ? t("sc.confirm.factoryKept") : t(aa ? "sc.confirm.noFactory.aa" : "sc.confirm.noFactory")}
+              {!aa && <DriverBackup />}
             </span>
           </li>
           <li className="flex gap-2">
             <Info size={14} className="mt-0.5 shrink-0 text-ink-3" /> {t("sc.wear.hint")}
           </li>
         </ul>
+        {ackError && <Hint tone="error">{ackError}</Hint>}
         <div className="flex justify-end gap-2 pt-1">
           <button
             type="button"
@@ -752,8 +837,10 @@ export function ConfirmUpload({
           </button>
           <button
             type="button"
-            onClick={onConfirm}
-            className="flex h-10 items-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink"
+            onClick={() => void go()}
+            disabled={acking}
+            className="flex h-10 items-center gap-2 rounded-lg bg-signal px-4 text-[13px] font-semibold text-signal-ink disabled:opacity-50"
+            data-confirm-go
           >
             <Upload size={15} /> {t("sc.confirm.go")}
           </button>

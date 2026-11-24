@@ -13,9 +13,10 @@ type SyncState = { kind: "idle" | "busy" | "ok" } | { kind: "error"; message: st
 /**
  * Keyboard clock: when it was last set, a manual sync, and the automatic
  * sync switch. `usb` is false while the keyboard is connected some other
- * way; the card then explains how to enable it.
+ * way; the card then explains how to enable it. `blocked`: why nothing is
+ * written to the keyboard now (an "AA" keyboard Keymotion only reads).
  */
-export function ClockCard({ usb }: { usb: boolean }) {
+export function ClockCard({ usb, blocked = null, aa = false }: { usb: boolean; blocked?: string | null; aa?: boolean }) {
   const t = useT();
   const ago = useAgo();
   const locale = useApp((s) => s.locale);
@@ -70,7 +71,9 @@ export function ClockCard({ usb }: { usb: boolean }) {
           {status ? lastText : "…"}
         </div>
         <p className="mt-1 text-[12px] leading-relaxed text-ink-3">
-          {usb ? t("clock.note") : t("clock.needsUsb")}
+          {/* On an "AA" keyboard, setting the clock isn't known to switch
+              the screen to its clock page. */}
+          {!usb ? t("clock.needsUsb") : (blocked ?? t(aa ? "clock.note.aa" : "clock.note"))}
         </p>
         <div aria-live="polite" className="text-[12px]">
           {sync.kind === "ok" && <span className="text-ok">{t("clock.synced")}</span>}
@@ -94,7 +97,8 @@ export function ClockCard({ usb }: { usb: boolean }) {
       <button
         type="button"
         onClick={() => void syncNow()}
-        disabled={!usb || sync.kind === "busy"}
+        disabled={!usb || !!blocked || sync.kind === "busy"}
+        title={blocked ?? undefined}
         className="btn-secondary shrink-0"
       >
         {sync.kind === "busy" ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={14} />}

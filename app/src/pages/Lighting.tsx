@@ -22,6 +22,8 @@ import { ActionBar } from "../components/ActionBar";
 import { ColorPicker, InfoBar, Row, Rows, Segmented, Steps, Tabs, Toggle } from "../components/controls";
 import { EffectThumb } from "../components/EffectThumb";
 import { KeyboardView, type KeyAction } from "../components/KeyboardView";
+import { KeyboardNotices, LiveLightsNotice } from "../components/KeyboardNotices";
+import { aaStatusOf, useWriteBlock } from "../lib/aa";
 import { getLightingCatalog, setLiveFrame } from "../lib/ipc";
 import { useT, type MessageKey } from "../lib/i18n";
 import {
@@ -86,6 +88,8 @@ export function Lighting({ kb }: { kb: KeyboardInfo }) {
       {!usb && (
         <InfoBar tone="warn" icon={<Usb size={20} strokeWidth={1.6} />} title={t("light.needsUsb")} data="usb" />
       )}
+      <KeyboardNotices kb={kb} />
+      <LiveLightsNotice />
       {usb && gaugesOn && (
         <InfoBar
           icon={<Gauge size={20} strokeWidth={1.6} />}
@@ -182,12 +186,18 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
 
   const current = catalog.find((e) => e.id === effect.mode);
   const effects = catalog.filter((e) => e.id !== 0);
+  const blocked = useWriteBlock(kb);
   const off = catalog.find((e) => e.id === 0);
-  // Unknown until the app stores an effect once; then whatever differs.
+  // Unknown until the app stores an effect once; then whatever differs. An
+  // "AA" keyboard whose colour Keymotion doesn't know needs one save for
+  // live lighting, even of the same effect.
+  const colorUnknown = aaStatusOf(kb)?.liveLightsOff?.kind === "color-unknown";
   const changes = !appliedEffect
     ? t("bar.notSaved")
     : sameEffect(effect, appliedEffect)
-      ? null
+      ? colorUnknown
+        ? t("bar.saveForLive")
+        : null
       : t("bar.effectChanged");
 
   const card = (fx: EffectInfo) => {
@@ -341,6 +351,7 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
 
       <ActionBar
         changes={changes}
+        blocked={blocked}
         canSave={usb && !!current}
         onSave={applyEffectDraft}
         onRevert={appliedEffect ? revertEffect : undefined}
@@ -370,6 +381,7 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
     setTool,
   } = useLighting();
   const keys = kb.geometry?.keys ?? NO_KEYS;
+  const blocked = useWriteBlock(kb);
   // The preview covers every other light (agents, music, the focus timer,
   // reminders): only while the window is on screen, not in the tray.
   const windowShown = useApp((s) => s.windowShown);
@@ -584,12 +596,13 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
 
       <ActionBar
         left={
-          <label className="flex items-center gap-2.5 text-[14px]" title={t("light.livePreviewHint")}>
+          <label className="flex items-center gap-2.5 text-[14px]" title={t(kb.protocol === "ajazz-aa" ? "light.livePreviewHint.aa" : "light.livePreviewHint")}>
             <span className={usb ? "text-ink" : "text-ink-3"}>{t("light.livePreview")}</span>
             <Toggle label={t("light.livePreview")} checked={livePreview} onChange={setLivePreview} disabled={!usb} />
           </label>
         }
         changes={changes}
+        blocked={blocked}
         canSave={usb}
         onSave={savePerKeyDraft}
         onRevert={savedPerKey ? revertPerKey : undefined}

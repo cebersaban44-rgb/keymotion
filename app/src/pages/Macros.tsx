@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Circle, Info, Keyboard, MousePointerClick, Plus, Square, Trash2, Usb, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Circle, Info, Keyboard, Lock, MousePointerClick, Plus, Square, Trash2, Usb, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { KeymapCatalog } from "../bindings/KeymapCatalog";
@@ -7,6 +7,8 @@ import type { MacroInfo } from "../bindings/MacroInfo";
 import type { MacroStepInfo } from "../bindings/MacroStepInfo";
 import { ActionBar } from "../components/ActionBar";
 import { InfoBar, Segmented } from "../components/controls";
+import { KeyboardNotices } from "../components/KeyboardNotices";
+import { useWriteBlock } from "../lib/aa";
 import { hidFromCode } from "../lib/hidCodes";
 import { getKeymapCatalog } from "../lib/ipc";
 import { decimal, percent, useAgo, useT, type MessageKey } from "../lib/i18n";
@@ -60,14 +62,16 @@ export function Macros({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
   const usb = kb.connection === "usb" && kb.hasCommandChannel && kb.features.includes("macros");
   const catalog = useCatalog();
-  const { draft, limits, selected, select, create, recordId, saved, save, discard } = useMacros();
+  const { draft, limits, selected, select, create, recordId, saved, save, discard, fixed } = useMacros();
   const loaded = saved !== null && recordId === kb.recordId;
-  // The keyboard family counts macro memory its own way.
+  // The keyboard family counts macro memory its own way; macros made in
+  // another program take their part.
   const rule = kb.limits.macroBudget;
-  const used = budgetUsed(draft, rule);
+  const used = budgetUsed(draft, rule, fixed);
   const budget = budgetOf(rule, limits.budget);
-  const full = draft.filter(Boolean).length >= limits.maxSlots;
+  const full = draft.filter(Boolean).length + fixed.length >= limits.maxSlots;
   const changed = useMacros((s) => dirtySlots(s).length);
+  const readOnly = useWriteBlock(kb);
 
   return (
     <div className="@container flex flex-col gap-6">
@@ -82,6 +86,7 @@ export function Macros({ kb }: { kb: KeyboardInfo }) {
       {!usb && (
         <InfoBar tone="warn" icon={<Usb size={20} strokeWidth={1.6} />} title={t("mc.needsUsb")} data="usb" />
       )}
+      <KeyboardNotices kb={kb} />
 
       <div className="grid grid-cols-[240px_minmax(0,1fr)] items-start gap-5 @3xl:grid-cols-[280px_minmax(0,1fr)]">
         <div className="sticky top-4 flex flex-col gap-5">
@@ -114,7 +119,7 @@ export function Macros({ kb }: { kb: KeyboardInfo }) {
 
       <ActionBar
         changes={changed > 0 ? t("bar.macrosChanged", { count: changed }) : null}
-        blocked={used > budget ? t("mc.overBudget") : null}
+        blocked={readOnly ?? (used > budget ? t("mc.overBudget") : null)}
         canSave={usb && loaded}
         onSave={save}
         onRevert={discard}
@@ -148,14 +153,32 @@ function Memory({ used, budget }: { used: number; budget: number }) {
 function MacroList({ selected, onSelect }: { selected: number | null; onSelect: (slot: number) => void }) {
   const t = useT();
   const draft = useMacros((s) => s.draft);
+  const fixed = useMacros((s) => s.fixed);
   const minDelay = useMacros((s) => s.limits.minDelayMs);
   const dirtyKey = useMacros((s) => dirtySlots(s).join(","));
   const dirty = new Set(dirtyKey ? dirtyKey.split(",").map(Number) : []);
   const items = draft.map((m, slot) => ({ m, slot })).filter((x): x is { m: MacroInfo; slot: number } => !!x.m);
-  if (items.length === 0) return <p className="px-2 pb-2 text-[13px] text-ink-3">{t("mc.none")}</p>;
+  if (items.length === 0 && fixed.length === 0) return <p className="px-2 pb-2 text-[13px] text-ink-3">{t("mc.none")}</p>;
+  // In slot order, the macros made in another program among them.
+  const rows = [
+    ...items.map((x) => ({ slot: x.slot, m: x.m as MacroInfo | null, steps: x.m.steps.length })),
+    ...fixed.map((f) => ({ slot: f.slot, m: null, steps: f.steps })),
+  ].sort((a, b) => a.slot - b.slot);
   return (
     <ul className="flex flex-col gap-1">
-      {items.map(({ m, slot }) => (
+      {rows.map(({ m, slot, steps }) =>
+        m === null ? (
+          <li key={slot} className="flex items-center gap-3 rounded-lg px-2.5 py-2" title={t("mc.fixed.note")} data-macro-fixed={slot}>
+            <span className="num flex h-8 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-[12px] font-semibold text-ink-3">
+              M{slot + 1}
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-[13px] font-medium text-ink-2">{t("mc.fixed.name")}</span>
+              <span className="num text-[11px] text-ink-3">{t("mc.steps", { count: steps })}</span>
+            </span>
+            <Lock size={13} className="shrink-0 text-ink-3" aria-label={t("mc.fixed.note")} />
+          </li>
+        ) : (
         <li key={slot}>
           <button
             type="button"
@@ -179,7 +202,8 @@ function MacroList({ selected, onSelect }: { selected: number | null; onSelect: 
             )}
           </button>
         </li>
-      ))}
+        ),
+      )}
     </ul>
   );
 }
@@ -542,18 +566,26 @@ function IconButton({
   );
 }
 
-/** Macros cannot be read back: what the list shows and when it was saved. */
+/** Where the list comes from: what was last saved ("04 xx", which can't
+ *  report its macros), or the keyboard itself ("AA"), and when. */
 function RecordNote() {
   const t = useT();
   const ago = useAgo();
   const writtenMs = useMacros((s) => s.writtenMs);
+  const readMs = useMacros((s) => s.readMs);
   return (
-    <p className="mx-2 mb-1 flex gap-2 border-t border-line pt-3 text-[12px] text-ink-2">
+    <p className="mx-2 mb-1 flex gap-2 border-t border-line pt-3 text-[12px] text-ink-2" data-macros-source={readMs ? "keyboard" : "record"}>
       <Info size={13} className="mt-0.5 shrink-0 text-ink-3" />
-      <span>
-        {t("mc.readNote")}{" "}
-        <span className="text-ink-3">{writtenMs ? t("mc.record.at", { ago: ago(writtenMs) }) : t("mc.record.never")}</span>
-      </span>
+      {readMs ? (
+        <span>
+          {t("mc.readNote.aa")} <span className="text-ink-3">{t("mc.record.read", { ago: ago(readMs) })}</span>
+        </span>
+      ) : (
+        <span>
+          {t("mc.readNote")}{" "}
+          <span className="text-ink-3">{writtenMs ? t("mc.record.at", { ago: ago(writtenMs) }) : t("mc.record.never")}</span>
+        </span>
+      )}
     </p>
   );
 }

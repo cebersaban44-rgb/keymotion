@@ -1,7 +1,9 @@
 // node --test tools/new-firmware.test.mjs
-// How the page tells AJAZZ's new AK980 PRO firmware (769, 3.01) from the
-// old one among the keyboards the backend doesn't support
+// How the page tells an AK980 PRO on one of AJAZZ's new firmwares from one
+// on the old firmware among the keyboards the backend doesn't take
 // (app/src/lib/newFirmware.ts; Node runs the TypeScript file as it is).
+// Firmware 769 (3.01) is supported in beta, so such a keyboard is not in
+// that list; what is: an AK980 PRO on a firmware Keymotion doesn't know yet.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { firmwareVersion, isAk980Candidate, isNewAk980Firmware, parseDetails } from "../app/src/lib/newFirmware.ts";
@@ -18,10 +20,19 @@ const details = (pid, release, pages) =>
     ...pages.map((p, i) => `  ${i + 1}. usage page 0x${p}, usage 0x0001, interface ${i}`),
   ].join("\n");
 
-test("0C45:8039 is the new firmware, whatever its details say", () => {
+test("0C45:8039 the backend didn't take is a new firmware, whatever its details say", () => {
   const k = { id: "0C45:8039:usb", name: "AK980 PRO" };
   assert.equal(isNewAk980Firmware(k), true);
   assert.equal(isNewAk980Firmware(k, parseDetails(details("8039", "0301", ["0001"]))), true);
+});
+
+test("0C45:8029 and 0C45:8802 with a usage page 0xFF67 collection are a new firmware", () => {
+  const d = parseDetails(details("8029", "0302", ["0001", "000C", "FF67", "FF68"]));
+  assert.deepEqual(d, { release: 0x0302, pages: [0x0001, 0x000c, 0xff67, 0xff68] });
+  assert.equal(firmwareVersion(d.release), "3.02");
+  for (const pid of ["8029", "8802"]) {
+    assert.equal(isNewAk980Firmware({ id: `0C45:${pid}:usb`, name: "AK980 PRO" }, d), true, pid);
+  }
 });
 
 test("0C45:8009 with a usage page 0xFF67 collection is the new firmware", () => {

@@ -1,6 +1,7 @@
 import { AlertTriangle, Loader2, Save } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
+import { writeBlock } from "../lib/aa";
 import { useT } from "../lib/i18n";
 import { closeWindow } from "../lib/ipc";
 import { useActiveKeyboard } from "../lib/store";
@@ -17,7 +18,10 @@ export function UnsavedDialog({ items, onCancel }: { items: UnsavedItem[]; onCan
   const t = useT();
   const kb = useActiveKeyboard();
   const usb = kb?.connection === "usb" && kb.hasCommandChannel;
-  const canSave = usb || !items.some((i) => i.needsUsb);
+  // An "AA" keyboard that takes no writes: like no cable, with its reason.
+  const readOnly = writeBlock(kb, t);
+  const needsKeyboard = items.some((i) => i.needsUsb);
+  const canSave = !needsKeyboard || (usb && !readOnly);
   // Only writes already running: nothing to save, only to wait for.
   const writing = items.every((i) => i.running);
   const [busy, setBusy] = useState(false);
@@ -103,7 +107,11 @@ export function UnsavedDialog({ items, onCancel }: { items: UnsavedItem[]; onCan
               {t("unsaved.writing.waiting")}
             </p>
           ) : (
-            !canSave && <p className="text-[13px] text-ink-2">{t("unsaved.needsUsb")}</p>
+            !canSave && (
+              <p className="text-[13px] text-ink-2" data-unsaved-blocked>
+                {usb && readOnly ? readOnly : t("unsaved.needsUsb")}
+              </p>
+            )
           )}
           {error && (
             <p role="alert" className="flex items-start gap-2 text-[13px] text-danger">

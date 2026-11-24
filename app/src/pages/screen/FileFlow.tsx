@@ -32,7 +32,7 @@ import {
   type Source,
   type Timing,
 } from "../../lib/screenImport";
-import { EditFooter, Hint, PreviewPanel, StudioFrame, errorKey, fmtSeconds, type Done, type Step } from "./common";
+import { EditFooter, Hint, PreviewPanel, StudioFrame, UnprovenHint, errorKey, fmtSeconds, type Done, type Step } from "./common";
 
 export const ACCEPT = "image/*,video/mp4,video/webm,.gif,.webp,.apng,.png,.jpg,.jpeg,.bmp,.avif,.mp4,.webm,.m4v,.mov";
 
@@ -323,7 +323,7 @@ function FileEditor({ source, onPrepared }: { source: Source; onPrepared: (p: Pr
       <EditFooter frames={p.frames.length} loopMs={loopMs} preparing={preparing} onPreview={runPreview} />
 
       {p.clipped && <Hint tone="warn">{t("sc.warn.clipped")}</Hint>}
-      {p.frames.length > screen.provenFrames && <Hint tone="note">{t("sc.warn.unproven")}</Hint>}
+      <UnprovenHint frames={p.frames.length} />
       {error && <Hint tone="error">{error}</Hint>}
     </>
   );

@@ -64,6 +64,7 @@ import {
 import type { Prepared } from "../lib/screenImport";
 import { useApp } from "../lib/store";
 import { FramePlayer, Hint } from "./screen/common";
+import { LiveLightsNotice } from "../components/KeyboardNotices";
 
 export const ICON_OF: Record<ReminderIcon, LucideIcon> = {
   bell: Bell,
@@ -113,6 +114,7 @@ export function Reminders({ kb }: { kb: KeyboardInfo }) {
         <h1 className="page-title">{t("nav.reminders")}</h1>
         <p className="page-desc">{t("reminder.body")}</p>
       </header>
+      <LiveLightsNotice />
 
       <section className="card flex flex-col gap-6 p-5">
         <div className="flex flex-col gap-4 rounded-lg border border-line bg-bg-raise/50 p-5">

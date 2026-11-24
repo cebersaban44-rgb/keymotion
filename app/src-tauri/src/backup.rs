@@ -643,6 +643,7 @@ mod tests {
                     None,
                 ],
                 written_ms: Some(1),
+                ..Default::default()
             },
         );
         b.macros = Some(macros);

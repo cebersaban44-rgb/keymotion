@@ -1,12 +1,15 @@
-// AJAZZ's newest AK980 PRO firmware ("AK980 Led v2 Firmware 769", 3.01)
-// moves the keyboard to another command set. Keymotion doesn't speak it yet,
-// so the backend lists such a keyboard as unknown and sends it nothing; the
-// page tells the user what it is (Welcome, the pane on the left, the tray).
+// AJAZZ's newer AK980 PRO firmwares move the keyboard to another command
+// set (the "AA" family). Keymotion drives firmware 769 (3.01) in beta: the
+// model file has its USB modes, 0C45:8039 and the "AA" layout on 0C45:8009,
+// so such a keyboard is a normal one and never reaches this file. What does
+// is an AK980 PRO the backend doesn't take: one on an AJAZZ firmware
+// Keymotion doesn't know yet (AJAZZ's own tools also find the keyboard
+// under 0x8029 and 0x8802), which gets nothing sent to it and a card of its
+// own (Welcome, the pane on the left, the tray) with "Request support".
 //
-// The new firmware shows up as 0C45:8039, and AJAZZ's own tools also find
-// it under 0x8009, 0x8029 and 0x8802. What tells it apart from the old
-// firmware on those ids is its screen channel, a collection with usage page
-// 0xFF67, which the old firmware never has. The collections and the USB
+// What tells the new firmwares apart from the old one is their screen
+// channel, a collection with usage page 0xFF67, which the old firmware
+// never has; 0C45:8039 is always one of them. The collections and the USB
 // release number come from the keyboard's support details (read from
 // Windows; nothing is sent to the keyboard).
 //
@@ -39,8 +42,9 @@ export function isAk980Candidate(k: { id: string; name: string | null }): boolea
   return ids(k.id)[0] === "0C45" && /AK980\s*PRO/i.test(k.name ?? "");
 }
 
-/** An unknown keyboard is an AK980 PRO on AJAZZ's new firmware: 0C45:8039
- *  always, any other id when its collections include usage page 0xFF67. */
+/** An unknown keyboard is an AK980 PRO on one of AJAZZ's new firmwares:
+ *  0C45:8039 always (one the backend didn't take), any other id when its
+ *  collections include usage page 0xFF67. */
 export function isNewAk980Firmware(k: { id: string; name: string | null }, details?: KeyboardDetails | null): boolean {
   if (!isAk980Candidate(k)) return false;
   if (ids(k.id)[1] === "8039") return true;

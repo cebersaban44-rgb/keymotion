@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { GeometryInfo } from "../bindings/GeometryInfo";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import { KeyboardView } from "../components/KeyboardView";
+import { BetaPill, KeyboardNotices } from "../components/KeyboardNotices";
 import { hidFromCode } from "../lib/hidCodes";
 import { connectionKey, listOf, modelTitle, percent, useAgo, useT } from "../lib/i18n";
 import { useMirror } from "../lib/mirror";
@@ -151,7 +152,14 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
   const lightsOff = !onPress && !!mirror && Object.keys(mirror).length > 0 && lit <= 3;
   const charge = useChargeState(kb, live ? mirror : null);
   const specs = useSpecs(kb);
-  const lastRead = kb.battery ? t("overview.bat.read", { level: percent(kb.battery.percent), ago: ago(kb.battery.readAtMs) }) : undefined;
+  // On the cable, a keyboard that reports its battery ("AA") gives its own
+  // reading; otherwise the level is the last Bluetooth one.
+  const ownReading = usb && kb.batteryOverUsb;
+  const lastRead = kb.battery
+    ? ownReading
+      ? t("overview.bat.own", { ago: ago(kb.battery.readAtMs) })
+      : t("overview.bat.read", { level: percent(kb.battery.percent), ago: ago(kb.battery.readAtMs) })
+    : undefined;
   const level = useKnobLevel();
   const firmware = firmwareOf(kb);
 
@@ -171,6 +179,7 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
             {t(connectionKey(kb.connection))}
           </span>
           {firmware && <span>{t("overview.firmware.short", { version: firmware })}</span>}
+          {kb.protocol === "ajazz-aa" && <BetaPill />}
           <span className="num" data-overview-specs>
             {specs}
           </span>
@@ -213,6 +222,12 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
           <span>{t("overview.kb.press")}</span>
         </div>
       </section>
+
+      {kb.aaStatus && (
+        <div className="mt-6 flex flex-col gap-3">
+          <KeyboardNotices kb={kb} />
+        </div>
+      )}
 
       {!usb && (
         <InfoBar

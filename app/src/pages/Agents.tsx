@@ -49,6 +49,7 @@ import { friendlyError } from "../lib/errors";
 import { clockTime, intlTag, useT, type MessageKey, type Translate } from "../lib/i18n";
 import { colorNameKey } from "../lib/keyColor";
 import { useApp } from "../lib/store";
+import { LiveLightsNotice } from "../components/KeyboardNotices";
 
 type Rgb = [number, number, number];
 type SignalId = keyof AgentSignalLooks;
@@ -190,6 +191,7 @@ export function Agents() {
         {error && <InfoBar tone="error" title={error} live />}
         {state.server.error && <InfoBar tone="error" title={t("ag.server.error", { message: state.server.error })} />}
         {lightsNote && <InfoBar tone="warn" title={t(lightsNote)} data="lights" />}
+        <LiveLightsNotice />
       </div>
 
       {connections && (

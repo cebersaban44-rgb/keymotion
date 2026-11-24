@@ -15,6 +15,62 @@ says so.
 
 ## [Unreleased]
 
+### Added
+
+- **AK980 PRO on AJAZZ's firmware 3.01 ("769"), in beta:** over the USB
+  cable, Keymotion now speaks this firmware's different set of commands:
+  lighting effects and per-key color, live lighting, key mapping on both
+  layers, macros, pictures on the screen, the clock, and the battery level,
+  which the keyboard reports over the cable too. The support is new: it was
+  tried on a simulated keyboard, not yet on a real one, so **Connection** and
+  the Overview mark it **In beta**, with a link to tell us how it works.
+  Before the first write of a session, Keymotion asks (**Untested
+  firmware**), as on any firmware it wasn't tested with. **Disabled**,
+  **Double-click** and the macro mode **While held** aren't offered there.
+- **Keyboard backups (firmware 3.01):** the first time Keymotion connects to
+  the keyboard, before it can write anything, it saves a backup of the
+  keyboard's settings (key mapping on both layers, lighting effect, per-key
+  colors, macros), and another before every restore. **Connection** lists
+  them. **Restore** puts a backup of the keyboard on the cable back, step by
+  step: what comes back, the lighting's color when the backup doesn't know
+  it, then what it put back and which keys it left as they were. A restore
+  doesn't start while an upload to the screen runs; it goes on when you
+  open another page, and a notice says how it ended. When the backup can't
+  be saved, when what the keyboard reports doesn't look as expected, or when
+  a firmware update was left unfinished, Keymotion writes nothing to the
+  keyboard and every page that would says why.
+- **Key mapping and macros on firmware 3.01:** this firmware reports its key
+  mapping and macros, so the **Key mapping** and **Macros** pages show
+  what's on the keyboard, also after a restore. Keys and macros set in
+  another program (AJAZZ's, say) that Keymotion can't show, and the
+  keyboard's own functions on the Fn layer, are marked as such; saving and
+  loading a profile leave them as they are. When the keys or macros changed
+  in another program after Keymotion read them, a save writes nothing and
+  the page shows the keyboard again.
+- **Live lighting on firmware 3.01:** the keys show live lighting (music
+  mode, system gauges, the focus timer, reminders, the calendar, the game
+  session, AI agents, **Preview on keyboard**) only in the keyboard's
+  per-key mode. Keymotion switches the keyboard to it and puts your own
+  lighting back about 30 seconds after live lighting ends, or when you quit.
+  For that it needs to know your lighting's color; when it doesn't, the
+  pages that start live lighting say so: save your lighting once in
+  Keymotion.
+- **The clock page (firmware 3.01):** an upload may replace the keyboard's
+  own clock page, which then comes back only after a full reset of the
+  keyboard (Fn+Space). Keymotion asks before the first upload, the live
+  screen's first card included. On this firmware a running upload can be
+  stopped (**Stop upload**); Keymotion then waits a few seconds before it
+  sends the keyboard anything else.
+- **Another program (firmware 3.01):** when the keyboard sends answers
+  Keymotion didn't ask for, Keymotion says that another program seems to be
+  talking to it (AJAZZ's keyboard tool in the browser?). Nothing is blocked.
+
+### Changed
+
+- An AK980 PRO on an AJAZZ firmware Keymotion doesn't know yet still gets
+  its own card on the welcome page, now worded for any such firmware, with
+  **Request support**.
+
 ## [1.2.1] - 2026-11-23
 
 Keymotion 1.2.1 brings 1.2.0 to the Microsoft Store. Nothing changes for

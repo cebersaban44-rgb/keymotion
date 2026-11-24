@@ -809,13 +809,20 @@ impl<P: OutputPort> AaKeyboard<P> {
     }
 
     /// The macros the keyboard holds, slot by slot (100 slots; empty = none).
+    /// The snapshot takes the fresh table and blocks, as
+    /// [`Self::read_keymap`] does.
     fn read_macro_slots(&mut self) -> Result<Vec<Vec<AaMacroEntry>>> {
         let i = self.info.ok_or_else(|| AaError::NotSane(vec![NOTHING_READ.into()]))?;
         let table = self.read_block(cmd::MACROS, macros::TABLE_LEN, 0, None)?;
+        let blocks = self.read_macro_blocks(&table, &i)?;
         let mut slots = vec![Vec::new(); macros::MAX_MACROS];
-        for b in self.read_macro_blocks(&table, &i)? {
+        for b in &blocks {
             slots[usize::from(b.slot)] = macros::decode_entries(b.bytes.0.get(4..).unwrap_or_default());
         }
+        self.patch_snapshot(|s| {
+            s.macro_table = Hex(table);
+            s.macro_blocks = blocks;
+        });
         Ok(slots)
     }
 
@@ -873,11 +880,26 @@ impl<P: OutputPort> AaKeyboard<P> {
         Ok(self.layout.keys().iter().map(|k| (k.led, perkey::get(&t, k.aa))).collect())
     }
 
-    /// One keymap layer, by LED, in layout order.
+    /// One keymap layer, by LED, in layout order. The snapshot takes the
+    /// fresh table: a change made in another program since the full read
+    /// shows there too.
     pub fn read_keymap(&mut self, layer: Layer) -> Result<Vec<(u8, Binding)>> {
         self.ensure_readable()?;
         let t = self.read_block(layer_commands(layer).0, keymap::LEN, 0, None)?;
+        self.keep_keymap(layer, &t);
         Ok(self.bindings(&t))
+    }
+
+    /// A layer's table as just read, into the snapshot.
+    fn keep_keymap(&mut self, layer: Layer, table: &[u8]) {
+        if table.len() != keymap::LEN {
+            return;
+        }
+        let t = Hex(table.to_vec());
+        self.patch_snapshot(|s| match layer {
+            Layer::Base => s.keymap = t,
+            Layer::Fn => s.fn_keymap = t,
+        });
     }
 
     /// The factory Fn layer (`1C`), by LED, in layout order.
@@ -1024,6 +1046,7 @@ impl<P: OutputPort> AaKeyboard<P> {
             wanted.push((aa, keymap::encode(action)?));
         }
         let fresh = self.read_block(layer_commands(layer).0, keymap::LEN, 0, None)?;
+        self.keep_keymap(layer, &fresh);
         let factory = self.factory_table(layer)?;
         let mut table = fresh.clone();
         for (aa, e) in wanted {
@@ -1071,9 +1094,17 @@ impl<P: OutputPort> AaKeyboard<P> {
     /// Replace every macro: `slots[i]` is macro `i`, an empty one is none.
     /// **Writes flash.**
     pub fn write_macros(&mut self, slots: &[Vec<MacroStep>]) -> Result<()> {
-        self.ensure_writable()?;
         let entries = slots.iter().map(|s| macros::from_steps(s)).collect::<std::result::Result<Vec<_>, _>>()?;
-        let img = macros::encode(&entries)?;
+        self.write_macro_entries(&entries)
+    }
+
+    /// Replace every macro with entries as the keyboard keeps them:
+    /// `slots[i]` is macro `i`, an empty one is none. A macro read from the
+    /// keyboard that the app's steps cannot express goes back this way,
+    /// byte for byte. **Writes flash.**
+    pub fn write_macro_entries(&mut self, slots: &[Vec<AaMacroEntry>]) -> Result<()> {
+        self.ensure_writable()?;
+        let img = macros::encode(slots)?;
         self.put_macros(&img)
     }
 

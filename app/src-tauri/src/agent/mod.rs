@@ -2351,6 +2351,7 @@ mod tests {
             keymap: crate::profiles::ProfileKeymap::default(),
             macros: Vec::new(),
             screen: None,
+            kept: Default::default(),
         }
     }
 

@@ -759,6 +759,51 @@ fn the_a_macro() {
 }
 
 #[test]
+fn fresh_reads_of_keys_and_macros_update_the_snapshot() {
+    // Changed in another program (AJAZZ's web tool) after the full read.
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    let elsewhere = {
+        let mut st = sim.state();
+        keymap::set_entry(&mut st.keymap, 20, [page::KEYBOARD, 0, 0x06, 0]);
+        st.keymap.clone()
+    };
+    let img = macros::encode(&[macros::from_steps(&a_macro()).unwrap()]).unwrap();
+    {
+        let mut st = sim.state();
+        st.macros[..img.table.len()].copy_from_slice(&img.table);
+        let at = usize::from(macros::BLOCKS_AT);
+        st.macros[at..at + img.blocks.len()].copy_from_slice(&img.blocks);
+    }
+    assert_ne!(k.snapshot().unwrap().keymap.0, elsewhere);
+    k.read_keymap(Layer::Base).unwrap();
+    assert_eq!(k.snapshot().unwrap().keymap.0, elsewhere, "the snapshot shows the keyboard as it is now");
+    assert!(k.snapshot().unwrap().macros()[0].is_empty());
+    k.read_macros().unwrap();
+    assert_eq!(k.snapshot().unwrap().macros()[0], macros::from_steps(&a_macro()).unwrap());
+}
+
+#[test]
+fn macro_entries_the_steps_cannot_express_go_back_byte_for_byte() {
+    let sim = Sim::ak980();
+    let mut k = ready(&sim);
+    // A wheel turn (button 255, as AJAZZ writes it) and a 2 ms pause: no
+    // app step holds either.
+    let wheel = vec![
+        AaMacroEntry { delay_ms: 2, code: 0xFF, flag: macros::flag::MOUSE_DOWN },
+        AaMacroEntry { delay_ms: 0, code: 0xFF, flag: macros::flag::MOUSE_UP },
+    ];
+    assert!(macros::to_steps(&wheel).is_none());
+    let a = macros::from_steps(&a_macro()).unwrap();
+    k.write_macro_entries(&[a.clone(), Vec::new(), wheel.clone()]).unwrap();
+    let back = k.read_macros().unwrap();
+    assert_eq!(back[0], a);
+    assert!(back[1].is_empty());
+    assert_eq!(back[2], wheel);
+    assert_eq!(k.snapshot().unwrap().macros()[2], wheel);
+}
+
+#[test]
 fn a_macro_write_that_fails_part_way_leaves_no_dangling_pointer() {
     let sim = Sim::ak980();
     let mut k = ready(&sim);

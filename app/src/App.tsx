@@ -3,6 +3,7 @@ import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Row } from "./components/controls";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { RestoreToast } from "./components/KeyboardBackups";
 import { Reporting } from "./components/Reporting";
 import { Sidebar } from "./components/Sidebar";
 import { UnsavedDialog } from "./components/UnsavedDialog";
@@ -53,7 +54,7 @@ import { startReminders } from "./lib/reminders";
 import { startUpdates, useUpdates } from "./lib/updates";
 import { UpdateDialog, UpdateStrip } from "./components/Updates";
 import { useMacros } from "./lib/macros";
-import { followAutoWrites } from "./lib/profiles";
+import { followAutoWrites, followKeyboardRecords } from "./lib/profiles";
 import { useScreen } from "./lib/screen";
 import { followSelectWidths } from "./lib/selectWidth";
 import { OFFLINE_KEYBOARD } from "./lib/offline";
@@ -138,6 +139,8 @@ function useKeyboardRecords() {
   }, [recordId]);
   // A profile written by the per-app profiles: those records are read again.
   useEffect(() => (modelId ? followAutoWrites(modelId) : undefined), [modelId]);
+  // An "AA" keyboard's keys and macros, as the keyboard holds them.
+  useEffect(() => (modelId ? followKeyboardRecords(modelId) : undefined), [modelId]);
 }
 
 /** Words of the Pomodoro cards in the current language. */
@@ -196,8 +199,8 @@ function useTray() {
   const locale = useApp((s) => s.locale);
   const setWindowShown = useApp((s) => s.setWindowShown);
   const requestProfile = useApp((s) => s.requestProfile);
-  // A keyboard Keymotion can't drive yet (an AK980 PRO on AJAZZ's firmware
-  // 769, or another model): the menu says why no keyboard shows.
+  // A keyboard Keymotion can't drive yet (an AK980 PRO on an AJAZZ firmware
+  // it doesn't know, or another model): the menu says why no keyboard shows.
   const unsupported = useUnsupported();
   const newFirmware = unsupported.newFirmware.length > 0;
   const otherKeyboard = unsupported.list.length > 0;
@@ -206,7 +209,7 @@ function useTray() {
     setTrayTexts({
       locale,
       open: tNow("tray.open"),
-      noKeyboard: tNow(newFirmware ? "fw769.tray" : otherKeyboard ? "unsupported.tray" : "tray.noKeyboard"),
+      noKeyboard: tNow(newFirmware ? "newfw.tray" : otherKeyboard ? "unsupported.tray" : "tray.noKeyboard"),
       battery: tNow("tray.battery"),
       connUsb: tNow(connectionKey("usb")),
       connDongle: tNow(connectionKey("dongle")),
@@ -424,6 +427,7 @@ export default function App() {
         </main>
       </div>
       <ScreenUploadToast />
+      <RestoreToast />
       <SafetyDialogs />
       <ScreenNotices />
       <Reporting />
