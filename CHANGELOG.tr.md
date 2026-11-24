@@ -71,6 +71,67 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   karşılama sayfasında yine kendi kartını alır; kartın metni artık böyle her
   yazılım için yazıldı ve **Destek iste** düğmesi duruyor.
 
+## [1.3.0-beta.1] - 2026-11-24
+
+### Eklenenler
+
+- **AJAZZ'ın 3.01 ("769") klavye yazılımındaki AK980 PRO, deneme
+  aşamasında:** Keymotion artık USB kablosunda bu yazılımın farklı komut
+  takımını kullanıyor: ışık efektleri ve tuş başına renk, canlı ışıklar, iki
+  katmanda tuş atama, makrolar, ekrana görsel yükleme, saat ve klavyenin
+  kabloda da bildirdiği pil düzeyi. Destek yeni: sanal bir klavyede denendi,
+  henüz gerçek bir klavyede denenmedi. Bu yüzden **Bağlantı** sayfası ve
+  Genel bakış onu **Deneme aşamasında** diye işaretliyor ve nasıl
+  çalıştığını bize anlatmanız için bir bağlantı veriyor. Keymotion her
+  oturumda ilk yazmadan önce, denenmediği her klavye yazılımında olduğu gibi
+  sorar (**Klavye yazılımı denenmedi**). **Devre dışı**, **Çift tıklama** ve
+  **Basılı tuttukça** makro kipi bu yazılımda sunulmaz.
+- **Klavye yedekleri (3.01 klavye yazılımı):** Keymotion klavyeye ilk
+  bağlandığında, bir şey yazabilmeden önce klavyenin ayarlarının yedeğini
+  alır (iki katmandaki tuş atamaları, ışık efekti, tuş başına renkler,
+  makrolar); her geri yüklemeden önce bir yedek daha alır. **Bağlantı**
+  sayfası yedekleri listeler. **Geri yükle**, kablodaki klavyenin yedeğini
+  adım adım geri yükler: neler geri gelir, yedek ışığın rengini bilmiyorsa
+  o renk, sonra neyi geri yüklediği ve hangi tuşları olduğu gibi bıraktığı.
+  Ekrana bir yükleme sürerken geri yükleme başlamaz; başka bir sayfaya
+  geçtiğinizde sürer ve nasıl bittiğini bir bildirim söyler.
+  Yedek alınamazsa, klavyenin bildirdikleri beklendiği gibi görünmezse ya da
+  bir klavye yazılımı güncellemesi yarım kaldıysa Keymotion klavyeye hiçbir
+  şey yazmaz; yazacak her sayfa nedenini söyler.
+- **3.01 klavye yazılımında tuş atama ve makrolar:** bu yazılım tuş
+  atamasını ve makrolarını bildirir; bu yüzden **Tuş atama** ve **Makrolar**
+  sayfaları, geri yüklemeden sonra da, klavyede olanı gösterir. Başka bir
+  programda (örneğin AJAZZ'ınkinde) ayarlanan ve Keymotion'ın gösteremediği
+  tuşlar ile makrolar ve Fn katmanındaki klavyenin kendi işlevleri öyle
+  işaretlenir; kaydetmek ya da profil yüklemek onları olduğu gibi bırakır.
+  Tuşlar ya da makrolar, Keymotion onları okuduktan sonra başka bir
+  programda değiştiyse kaydetme hiçbir şey yazmaz ve sayfa klavyeyi yeniden
+  gösterir.
+- **3.01 klavye yazılımında canlı ışıklar:** tuşlar canlı ışıkları (müzik
+  modu, sistem göstergeleri, odak zamanlayıcısı, hatırlatıcılar, takvim,
+  oyun oturumu, yapay zekâ ajanları, **Klavyede önizle**) yalnızca
+  klavyenin tuş başına renk modunda gösterir. Keymotion klavyeyi bu moda
+  geçirir; canlı ışıklar bittikten yaklaşık 30 saniye sonra ya da siz
+  Keymotion'dan çıkınca kendi ışığınızı geri getirir. Bunun için ışığınızın
+  rengini bilmesi gerekir; bilmiyorsa canlı ışıkları başlatan sayfalar
+  bunu söyler: ışığınızı bir kez Keymotion'dan kaydedin.
+- **Saat sayfası (3.01 klavye yazılımı):** yükleme klavyenin kendi saat
+  sayfasının yerini alabilir; saat sayfası o zaman ancak klavyenin tam
+  sıfırlamasıyla (Fn+Boşluk) geri gelir. Keymotion ilk yüklemeden önce,
+  canlı ekranın ilk kartı da dahil, size sorar. Bu yazılımda süren bir
+  yükleme durdurulabilir (**Yüklemeyi durdur**); Keymotion o zaman klavyeye
+  başka bir şey göndermeden önce birkaç saniye bekler.
+- **Başka bir program (3.01 klavye yazılımı):** klavye Keymotion'ın
+  sormadığı cevaplar gönderirse Keymotion başka bir programın klavyeyle
+  konuşuyor gibi göründüğünü söyler (tarayıcıda AJAZZ'ın klavye aracı açık
+  mı?). Hiçbir şey engellenmez.
+
+### Değişenler
+
+- Keymotion'ın henüz tanımadığı bir AJAZZ klavye yazılımındaki AK980 PRO,
+  karşılama sayfasında yine kendi kartını alır; kartın metni artık böyle her
+  yazılım için yazıldı ve **Destek iste** düğmesi duruyor.
+
 ## [1.2.1] - 2026-11-23
 
 Keymotion 1.2.1, 1.2.0'ı Microsoft Store'a getiriyor. GitHub'dan kurulan
@@ -466,6 +527,7 @@ Store 0 ile başlayan sürüm numarası kabul etmediği için bu sürüm 1.0.0.
   sayfalar. Ayarlar › Hakkında'dan açılır.
 
 [Yayımlanmamış]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.1...develop
+[1.3.0-beta.1]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.3.0-beta.1
 [1.2.1]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.1
 [1.2.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.0
 [1.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.1.0
