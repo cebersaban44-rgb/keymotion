@@ -253,7 +253,7 @@ fn a_keyboard_that_does_not_look_right_is_read_only() {
         let shown = d.status().read_only.unwrap();
         match (&ro, &shown) {
             (ReadOnly::NotSane(why), ReadOnlyReason::NotSane { reasons, read_failed }) => {
-                assert_eq!(reasons, why, "{name}");
+                assert_eq!(reasons, &crate::diagnostics::summarize_reasons(why), "{name}");
                 assert_eq!(*read_failed, name == "silent", "{name}: a read that did not finish, not a failed check");
             }
             _ => assert_eq!(shown, (&ro).into(), "{name}"),
@@ -698,7 +698,7 @@ fn backups_keep_the_first_and_the_newest() {
 }
 
 #[test]
-fn the_diagnostics_hold_no_keymap_macro_or_colour_content() {
+fn the_diagnostics_hold_no_keymap_macro_or_per_key_content() {
     let dir = TempDir::new("diagnostics");
     let sim = Sim::ak980();
     let mut d = driver(&sim, Some(&dir.0));
@@ -706,13 +706,40 @@ fn the_diagnostics_hold_no_keymap_macro_or_colour_content() {
     let text = d.diagnostics().join("\n");
     for part in [
         "ajazz-ak980-pro.aa on USB 8039, firmware 3.01",
-        "device information: ",
+        "device information (0x10, 48 bytes, full",
+        "per-key table (0x14, 512 bytes, full",
         "writes: allowed",
         "backup: aa-8039-0301-",
     ] {
         assert!(text.contains(part), "{part}:\n{text}");
     }
     assert!(!text.contains("12 34 56") && !text.contains("123456"), "{text}");
+    assert!(!text.contains("failed a check") && !text.contains("failed read"), "{text}");
+}
+
+/// A read that fails the check: the report says why in a few lines, shows
+/// the effect whole, and names the read kept for the developer, which is
+/// no backup.
+#[test]
+fn a_failed_read_is_kept_and_named_in_the_report() {
+    let dir = TempDir::new("failed-read");
+    let sim = Sim::ak980();
+    sim.state().effect[0] = 99;
+    let d = driver(&sim, Some(&dir.0));
+    let lines = d.diagnostics();
+    let text = lines.join("\n");
+    let kept = lines.iter().find_map(|l| l.strip_prefix("failed read saved in the app's data folder: ")).expect(&text);
+    let name = kept.rsplit(['\\', '/']).next().unwrap();
+    assert!(dir.0.join("keyboard-reads").join(name).is_file(), "{kept}");
+    assert!(backups_in(&dir.0).is_empty(), "not a backup");
+    for part in ["did not pass the sanity check (", "\n  unknown effect mode 99", "effect (0x13, 16 bytes, full"] {
+        assert!(text.contains(part), "{part}:\n{text}");
+    }
+    assert!(text.contains("writes: refused, the keyboard does not look as expected (above)"), "{text}");
+    // The same read on the next connect keeps the one file.
+    let again = driver(&sim, Some(&dir.0));
+    assert!(again.diagnostics().iter().any(|l| l.ends_with(name)));
+    assert_eq!(std::fs::read_dir(dir.0.join("keyboard-reads")).unwrap().count(), 1);
 }
 
 // ---------------------------------------------------------------- review of #195

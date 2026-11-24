@@ -64,6 +64,13 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   sormadığı cevaplar gönderirse Keymotion başka bir programın klavyeyle
   konuşuyor gibi göründüğünü söyler (tarayıcıda AJAZZ'ın klavye aracı açık
   mı?). Hiçbir şey engellenmez.
+- **Sorun bildirimleri (3.01 klavye yazılımı):** klavyenin bildirdikleri
+  beklendiği gibi görünmediğinde bildirim nedenini birkaç satırda söyler ve
+  beklendiği gibi görünmeyen bölümü gösterir; çoğu zaman tek bildirim yeter.
+  Keymotion bu okumayı, isteyebiliriz diye veri klasöründe de tutar
+  (`keyboard-reads`, son beşi, makrolarınız olmadan); geri yükleme için
+  hiçbir zaman önerilmez. Bildirimler GitHub için yeterince kısa kalır; kısaltılan
+  her yer bunu belirtir.
 
 ### Değişenler
 

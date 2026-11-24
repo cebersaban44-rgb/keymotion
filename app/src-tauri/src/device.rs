@@ -238,8 +238,12 @@ fn note_block(app: &Ui, kind: WriteKind, block: &WriteBlock, wired: usize) {
         }
         WriteBlock::SeveralKeyboards => tracing::warn!(keyboards = wired, "write refused: several keyboards"),
         WriteBlock::Program(_) => {}
-        WriteBlock::NotSane(_) | WriteBlock::UpdatePending | WriteBlock::NoBackup(_) => {
-            tracing::info!(?kind, "write refused: {block}");
+        // The reasons went to the log once, with the read (aa.rs `connect`).
+        WriteBlock::NotSane(why) => {
+            tracing::info!(?kind, reasons = why.len(), "write refused: the keyboard does not look as expected");
+        }
+        WriteBlock::UpdatePending | WriteBlock::NoBackup(_) => {
+            tracing::info!(?kind, "write refused: {}", crate::diagnostics::cut(&block.to_string(), 300));
         }
     }
 }
@@ -2034,7 +2038,9 @@ impl Actor {
             };
             self.aa_reopen_after = None;
             if let Some(d) = driver.aa() {
-                tracing::info!(record = %usb.record_id, read_only = ?d.read_only(), "\"AA\" keyboard opened");
+                let read_only = d.read_only();
+                let read_only = read_only.as_ref().map_or("no", crate::aa::ReadOnly::kind);
+                tracing::info!(record = %usb.record_id, read_only, "\"AA\" keyboard opened");
                 // Show what the read found at once.
                 self.next_enumerate = Instant::now();
             }
