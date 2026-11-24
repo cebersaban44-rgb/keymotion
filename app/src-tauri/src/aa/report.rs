@@ -375,16 +375,26 @@ pub mod reads {
             at += 1;
         };
         crate::settings::save(&dir, &name, VERSION, &read)?;
-        prune(&dir);
+        prune(&dir, &name);
         Ok(shown(&name))
     }
 
-    /// Remove all but the newest [`KEPT`] files.
-    fn prune(dir: &Path) {
+    /// Remove the oldest files (by the time in their names) beyond
+    /// [`KEPT`], never `just_saved`: after the clock went back it is the
+    /// "oldest", and the report names it.
+    fn prune(dir: &Path, just_saved: &str) {
         let names = names(dir);
-        for (_, name) in names.iter().take(names.len().saturating_sub(KEPT)) {
-            if let Err(e) = std::fs::remove_file(dir.join(name)) {
-                tracing::warn!(file = %name, "old keyboard read not removed: {e}");
+        let mut left = names.len();
+        for (_, name) in &names {
+            if left <= KEPT {
+                break;
+            }
+            if name == just_saved {
+                continue;
+            }
+            match std::fs::remove_file(dir.join(name)) {
+                Ok(()) => left -= 1,
+                Err(e) => tracing::warn!(file = %name, "old keyboard read not removed: {e}"),
             }
         }
     }
@@ -638,6 +648,28 @@ mod tests {
         assert_eq!(names.len(), reads::KEPT);
         assert_eq!(reads::load(&reads::dir(&dir), names.last().unwrap()).unwrap().snapshot.per_key.0[4], 7);
         assert!(!reads::name_ok("read-1-8039-0302.json.tmp") && !reads::name_ok("aa-8039-0302-1.json"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// After the clock went back, the read just saved has the oldest name:
+    /// it stays (the report names it), the oldest other one goes.
+    #[test]
+    fn the_read_just_saved_is_never_pruned() {
+        let dir = std::env::temp_dir().join(format!("klavye-aa-reads-clock-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let reads_dir = reads::dir(&dir);
+        std::fs::create_dir_all(&reads_dir).unwrap();
+        let later: Vec<String> = (0..reads::KEPT).map(|i| format!("read-9999999999990{i}-8039-0302.json")).collect();
+        for name in &later {
+            std::fs::write(reads_dir.join(name), "{}").unwrap();
+        }
+        let target = AaTarget { record_id: "ajazz-ak980-pro.aa".into(), usb: USB, data_dir: Some(dir.clone()) };
+        let kept = reads::keep(&dir, &target, &tester_snapshot(), &tester_reasons()).unwrap();
+        let name = kept.rsplit(std::path::MAIN_SEPARATOR).next().unwrap();
+        let now = reads::names_in(&dir);
+        assert_eq!(now.len(), reads::KEPT, "{now:?}");
+        assert!(now.iter().any(|n| n == name), "the new read stays: {now:?}");
+        assert!(!now.contains(&later[0]) && now.contains(&later[1]), "the oldest other one went: {now:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

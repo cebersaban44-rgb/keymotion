@@ -24,14 +24,12 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
-/// Log lines read for a report: repeats are merged, then the newest that
-/// fit are shown.
-pub const LOG_LINES: usize = 300;
-/// Log entries shown at most.
-const LOG_SHOWN: usize = 150;
+/// Log lines read for a report, the newest: repeats are merged, then the
+/// newest that fit are shown ("Last N log lines" never says more).
+pub const LOG_LINES: usize = 150;
 /// Longest log line in a report.
 const LOG_LINE_MAX: usize = 400;
-/// Longest "what happened" text in a report.
+/// Longest "what happened" text in a report, its indentation included.
 const CONTEXT_MAX: usize = 3_000;
 /// Longest "AA" keyboard section.
 const AA_MAX: usize = 6_000;
@@ -77,7 +75,13 @@ pub struct Facts {
     pub context: Option<String>,
     pub keyboards: Vec<String>,
     /// About the "AA" keyboard on the cable, when there was one (aa.rs
-    /// `AaDriver::diagnostics`): no keymap, macro or colour content.
+    /// `AaDriver::diagnostics`, aa/report.rs): the device information, the
+    /// options and the effect (its colour included) whole; the keymaps,
+    /// the per-key table and the macro table counted (entries, the values
+    /// of their first byte, macro addresses); the first and last bytes of
+    /// a table that failed the sanity check, which can be a keymap, the
+    /// per-key colours or the macro table's addresses. Never macro
+    /// contents.
     pub aa: Vec<String>,
     pub data_files: Vec<(String, u64)>,
     pub log_lines: Vec<String>,
@@ -148,9 +152,10 @@ pub fn report(f: &Facts) -> String {
     s.push_str(&format!("UI language: {}\n", f.ui_language));
     if let Some(context) = f.context.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
         s.push_str("\nWhat happened:\n");
-        for line in cut(&redact(context), CONTEXT_MAX).lines() {
-            s.push_str(&format!("  {line}\n"));
-        }
+        // Cut with its indentation: many short lines count too.
+        let indented: Vec<String> = redact(context).lines().map(|l| format!("  {l}")).collect();
+        s.push_str(&cut(&indented.join("\n"), CONTEXT_MAX));
+        s.push('\n');
     }
     s.push_str("\nKeyboards:\n");
     if f.keyboards.is_empty() {
@@ -205,17 +210,18 @@ fn aa_section(lines: &[String]) -> String {
     out
 }
 
-/// The log part: the newest lines that fit in `room` characters (at most
-/// [`LOG_SHOWN`]), each redacted and at most [`LOG_LINE_MAX`] characters,
-/// repeats merged.
+/// The log part: the newest of `lines` (at most [`LOG_LINES`]) that fit in
+/// `room` characters, each redacted and at most [`LOG_LINE_MAX`]
+/// characters, repeats merged.
 fn log_section(lines: &[String], room: usize) -> String {
+    let lines = &lines[lines.len().saturating_sub(LOG_LINES)..];
     let entries = merge_repeats(lines);
     // Heading and the note about older lines.
     let mut room = room.saturating_sub(160);
     let mut shown: Vec<&(String, usize)> = Vec::new();
     for entry in entries.iter().rev() {
         let len = chars(&entry.0) + 1;
-        if shown.len() == LOG_SHOWN || len > room {
+        if len > room {
             break;
         }
         room -= len;
@@ -683,6 +689,12 @@ mod tests {
         assert!(part.chars().count() <= CONTEXT_MAX + 40, "{}", part.chars().count());
         assert!(part.contains("characters left out]"), "{part}");
         assert!(!part.contains("per-key e\n"), "not mid-word");
+
+        // Many short lines: their indentation counts too.
+        let r = report(&facts(Some("- x\n".repeat(3_000)), vec![]));
+        let part = &r[r.find("What happened:\n").unwrap() + 15..r.find("\nKeyboards:").unwrap()];
+        assert!(part.chars().count() <= CONTEXT_MAX + 1, "{}", part.chars().count());
+        assert!(part.starts_with("  - x\n  - x\n") && part.contains("characters left out]"), "{part}");
     }
 
     #[test]
@@ -710,6 +722,12 @@ mod tests {
         assert!(r.chars().count() <= REPORT_MAX, "{}", r.chars().count());
         assert!(r.contains(&format!("line {} ", LOG_LINES - 1)), "the newest line is in");
         assert!(r.contains("older lines left out to keep the report short"), "{r}");
+
+        // More lines than a report takes: the newest 150, never more.
+        let many: Vec<String> = (0..400).map(|i| format!("2026-11-24T03:00:00Z  INFO short {i}")).collect();
+        let r = report(&facts(None, many));
+        assert!(r.contains("Last 150 log lines") && !r.contains("older lines left out"), "{r}");
+        assert!(r.contains("INFO short 250\n") && !r.contains("INFO short 249\n"), "{r}");
     }
 
     #[test]

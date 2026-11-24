@@ -67,9 +67,9 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 - **Sorun bildirimleri (3.01 klavye yazılımı):** klavyenin bildirdikleri
   beklendiği gibi görünmediğinde bildirim nedenini birkaç satırda söyler ve
   beklendiği gibi görünmeyen bölümü gösterir; çoğu zaman tek bildirim yeter.
-  Keymotion bu okumayı veri klasöründe de tutar (`keyboard-reads`, son beşi,
-  makrolarınız olmadan), isteyebileceğimiz için; geri yükleme için hiçbir
-  zaman önerilmez. Bildirimler GitHub için yeterince kısa kalır; kısaltılan
+  Keymotion bu okumayı, isteyebiliriz diye veri klasöründe de tutar
+  (`keyboard-reads`, son beşi, makrolarınız olmadan); geri yükleme için
+  hiçbir zaman önerilmez. Bildirimler GitHub için yeterince kısa kalır; kısaltılan
   her yer bunu belirtir.
 
 ### Değişenler
