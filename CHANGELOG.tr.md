@@ -34,9 +34,14 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   o renk, sonra neyi geri yüklediği ve hangi tuşları olduğu gibi bıraktığı.
   Ekrana bir yükleme sürerken geri yükleme başlamaz; başka bir sayfaya
   geçtiğinizde sürer ve nasıl bittiğini bir bildirim söyler.
-  Yedek alınamazsa, klavyenin bildirdikleri beklendiği gibi görünmezse ya da
-  bir klavye yazılımı güncellemesi yarım kaldıysa Keymotion klavyeye hiçbir
-  şey yazmaz; yazacak her sayfa nedenini söyler.
+  Yedek alınamazsa ya da klavyenin bildirdikleri beklendiği gibi görünmezse
+  Keymotion klavyeye hiçbir şey yazmaz; yazacak her sayfa nedenini söyler.
+- **Denetlenen yazmalar (3.01 klavye yazılımı):** Keymotion klavyeye
+  yazdığı her şeyi geri okur. Klavye açıldıktan ya da sıfırlandıktan sonra
+  bir süre yazılanları yok saydığı için Keymotion ilk yazmadan önce bekler.
+  Tuş başına renkleri olmayan bir klavye, örneğin bir klavye yazılımı
+  güncellemesinden ya da sıfırlamadan sonra, olağandır ve Keymotion'ın
+  yazmasını engellemez.
 - **3.01 klavye yazılımında tuş atama ve makrolar:** bu yazılım tuş
   atamasını ve makrolarını bildirir; bu yüzden **Tuş atama** ve **Makrolar**
   sayfaları, geri yüklemeden sonra da, klavyede olanı gösterir. Başka bir
@@ -46,14 +51,13 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   Tuşlar ya da makrolar, Keymotion onları okuduktan sonra başka bir
   programda değiştiyse kaydetme hiçbir şey yazmaz ve sayfa klavyeyi yeniden
   gösterir.
-- **3.01 klavye yazılımında canlı ışıklar:** tuşlar canlı ışıkları (müzik
-  modu, sistem göstergeleri, odak zamanlayıcısı, hatırlatıcılar, takvim,
-  oyun oturumu, yapay zekâ ajanları, **Klavyede önizle**) yalnızca
-  klavyenin tuş başına renk modunda gösterir. Keymotion klavyeyi bu moda
-  geçirir; canlı ışıklar bittikten yaklaşık 30 saniye sonra ya da siz
-  Keymotion'dan çıkınca kendi ışığınızı geri getirir. Bunun için ışığınızın
-  rengini bilmesi gerekir; bilmiyorsa canlı ışıkları başlatan sayfalar
-  bunu söyler: ışığınızı bir kez Keymotion'dan kaydedin.
+- **3.01 klavye yazılımında canlı ışıklar:** canlı ışıklar (müzik modu,
+  sistem göstergeleri, odak zamanlayıcısı, hatırlatıcılar, takvim, oyun
+  oturumu, yapay zekâ ajanları, uygulamaya göre profiller, **Klavyede
+  önizle** ve kalibrasyonun test desenleri), eski klavye yazılımında olduğu
+  gibi, klavyenin ışığı ne olursa olsun tuşlarda görünür. Hiçbiri klavyeye
+  kaydedilmez: canlı ışıklar durunca klavyenin kendi ışığı yaklaşık 5
+  saniye sonra kendiliğinden geri gelir.
 - **Saat sayfası (3.01 klavye yazılımı):** yükleme klavyenin kendi saat
   sayfasının yerini alabilir; saat sayfası o zaman ancak klavyenin tam
   sıfırlamasıyla (Fn+Boşluk) geri gelir. Keymotion ilk yüklemeden önce,

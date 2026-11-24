@@ -36,9 +36,14 @@ says so.
   it, then what it put back and which keys it left as they were. A restore
   doesn't start while an upload to the screen runs; it goes on when you
   open another page, and a notice says how it ended. When the backup can't
-  be saved, when what the keyboard reports doesn't look as expected, or when
-  a firmware update was left unfinished, Keymotion writes nothing to the
-  keyboard and every page that would says why.
+  be saved, or when what the keyboard reports doesn't look as expected,
+  Keymotion writes nothing to the keyboard and every page that would says
+  why.
+- **Checked writes (firmware 3.01):** Keymotion reads back everything it
+  writes to the keyboard. The keyboard ignores writes for a moment after it
+  starts up or is reset, so Keymotion waits before its first write. A
+  keyboard without per-key colors, as after a firmware update or a reset,
+  is normal and doesn't keep Keymotion from writing.
 - **Key mapping and macros on firmware 3.01:** this firmware reports its key
   mapping and macros, so the **Key mapping** and **Macros** pages show
   what's on the keyboard, also after a restore. Keys and macros set in
@@ -47,14 +52,12 @@ says so.
   loading a profile leave them as they are. When the keys or macros changed
   in another program after Keymotion read them, a save writes nothing and
   the page shows the keyboard again.
-- **Live lighting on firmware 3.01:** the keys show live lighting (music
-  mode, system gauges, the focus timer, reminders, the calendar, the game
-  session, AI agents, **Preview on keyboard**) only in the keyboard's
-  per-key mode. Keymotion switches the keyboard to it and puts your own
-  lighting back about 30 seconds after live lighting ends, or when you quit.
-  For that it needs to know your lighting's color; when it doesn't, the
-  pages that start live lighting say so: save your lighting once in
-  Keymotion.
+- **Live lighting on firmware 3.01:** live lighting (music mode, system
+  gauges, the focus timer, reminders, the calendar, the game session, AI
+  agents, profiles by app, **Preview on keyboard** and the calibration test
+  patterns) shows on the keys whatever the keyboard's lighting is, as on the
+  older firmware. Nothing of it is saved on the keyboard: when it stops, the
+  keyboard's own lighting comes back by itself about 5 seconds later.
 - **The clock page (firmware 3.01):** an upload may replace the keyboard's
   own clock page, which then comes back only after a full reset of the
   keyboard (Fn+Space). Keymotion asks before the first upload, the live

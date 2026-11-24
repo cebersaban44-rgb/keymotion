@@ -194,7 +194,7 @@ A model is added only with measurements from that keyboard. Each one is written 
 
 </Steps>
 
-Steps 3 to 6 use `kb`, which speaks the "04 xx" family only. An "AA" keyboard is measured in the same order through the app, whose driver keeps to it by design: the device information is its first request, it writes nothing before a full read has passed its sanity gate, live frames need per-key mode first, and the screen comes last ([The "AA" family](/keymotion/developers/protocol/#the-aa-family-firmware-769)).
+Steps 3 to 6 use `kb`, which speaks the "04 xx" family only. An "AA" keyboard is measured in the same order through the app, whose driver keeps to it by design: the device information is its first request, it writes nothing before a full read has passed its sanity gate, every table it writes is read back, and the screen comes last ([The "AA" family](/keymotion/developers/protocol/#the-aa-family-firmware-769)).
 
 Only then does the model get `verified = true` for what was measured, and its tested firmware in `verified_firmware`. Update [Supported keyboards](/keymotion/help/keyboards/) and `CHANGELOG.md` in the same pull request.
 

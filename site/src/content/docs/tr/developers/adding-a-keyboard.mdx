@@ -194,7 +194,7 @@ Bir model yalnızca o klavyeden alınmış ölçümlerle eklenir. Her ölçüm t
 
 </Steps>
 
-3–6. adımlar yalnızca "04 xx" ailesini konuşan `kb`'yi kullanır. Bir "AA" klavye aynı sırayla uygulama üzerinden ölçülür; uygulamanın sürücüsü bu sıraya zaten uyar: ilk isteği cihaz bilgisidir, tam bir okuma tutarlılık kapısından geçmeden hiçbir şey yazmaz, canlı kareler için önce tuş başına renk modu gerekir ve ekran en sona kalır (["AA" ailesi](/keymotion/tr/developers/protocol/#aa-ailesi-klavye-yazılımı-769)).
+3–6. adımlar yalnızca "04 xx" ailesini konuşan `kb`'yi kullanır. Bir "AA" klavye aynı sırayla uygulama üzerinden ölçülür; uygulamanın sürücüsü bu sıraya zaten uyar: ilk isteği cihaz bilgisidir, tam bir okuma tutarlılık kapısından geçmeden hiçbir şey yazmaz, yazdığı her tabloyu geri okur ve ekran en sona kalır (["AA" ailesi](/keymotion/tr/developers/protocol/#aa-ailesi-klavye-yazılımı-769)).
 
 Ancak bundan sonra model, ölçülen bilgiler için `verified = true` alır ve denenmiş klavye yazılımı `verified_firmware` listesine girer. Aynı PR'da [Desteklenen klavyeler](/keymotion/tr/help/keyboards/) sayfasını ve `CHANGELOG.md`'yi de güncelleyin.
 

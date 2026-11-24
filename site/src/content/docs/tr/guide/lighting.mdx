@@ -78,7 +78,7 @@ Tuşların altında:
 
 Boyamadığınız tuşlar kapalı kalır. Num Lock ve Fn tuşlarının ışığı gösterge olduğu için rengi değişmeyebilir.
 
-Alttaki çubukta bulunan **Klavyede önizle** anahtarı, boyadığınız tasarımı kaydetmeden klavyede gösterir. Başta açıktır. Sekmeden çıkınca klavye kayıtlı ışığına döner; AJAZZ'ın 3.01 klavye yazılımında kayıtlı ışık, sekmeden çıktıktan sonra yaklaşık 30 saniye içinde geri gelir.
+Alttaki çubukta bulunan **Klavyede önizle** anahtarı, boyadığınız tasarımı kaydetmeden klavyede gösterir. Başta açıktır. Sekmeden çıkınca klavye kayıtlı ışığına döner; AJAZZ'ın 3.01 klavye yazılımında bu, sekmeden çıktıktan yaklaşık 5 saniye sonra olur.
 
 ## Kaydetme ve geri alma
 
@@ -121,13 +121,8 @@ Kaydırıcılar kablo olmadan da çalışır; test desenleri için kablo gerekir
 
 ## 3.01 klavye yazılımında (deneme aşamasında)
 
-AJAZZ'ın 3.01 klavye yazılımındaki bir AK980 PRO'da tuşlar canlı ışıkları yalnızca klavye tuş başına renk modundayken gösterir. Canlı ışıklar, Keymotion'ın tuşlarda kaydetmeden gösterdiği her şeydir: **Klavyede önizle**, test desenleri, müzik modu, sistem göstergeleri, odak zamanlayıcısı, hatırlatıcılar, takvim, oyun oturumu, yapay zekâ ajanları ve uygulamaya göre profiller.
+AJAZZ'ın 3.01 klavye yazılımındaki bir AK980 PRO'da canlı ışıklar eski klavye yazılımındaki gibi çalışır. Canlı ışıklar, Keymotion'ın tuşlarda kaydetmeden gösterdiği her şeydir: **Klavyede önizle**, test desenleri, müzik modu, sistem göstergeleri, odak zamanlayıcısı, hatırlatıcılar, takvim, oyun oturumu, yapay zekâ ajanları ve uygulamaya göre profiller.
 
-- Canlı ışıklar başlayınca Keymotion klavyeyi tuş başına renk moduna geçirir. Bu geçiş klavyeye kaydedilir; bu yüzden Keymotion, kaydetmeden önce yaptığı gibi önce sorar (**Klavye yazılımı denenmedi**). Bu soru gözden kaçabilir, örneğin Keymotion açılırken gelirse. O zaman canlı ışıklar tuşlarda görünmez ve canlı özelliklerin sayfaları **Canlı ışıklar tuşlarda görünmüyor** der: soruyu yanıtlamak için **Soruyu göster**'e tıklayın.
-- Keymotion klavyeyi tuş başına renk modunda tuttuğu sürece bu sayfalar **Işığınız canlı ışıklar bittikten yaklaşık 30 saniye sonra geri gelir** der. Bu bekleme, yapay zekâ ajanlarında olduğu gibi ışıklar sık sık gelip gittiğinde klavyeyi korur. Bu arada klavyeden başka bir efekt seçerseniz o efekt kalır. Klavye zaten tuş başına renk modundaysa Keymotion onu geçirmez ve bu uyarı görünmez.
-- Geçiş başarısız olursa sayfalar bunu söyler; Keymotion canlı ışıklar sürdükçe kendiliğinden yeniden dener.
-- Keymotion'dan çıkarsanız kapanmadan önce ışığınızı geri getirir. Keymotion beklenmedik biçimde kapandıysa ya da kablo çıktıysa bunu klavye bir sonraki bağlanışında yapar.
-- Işığınızı geri getirebilmek için Keymotion'ın onun rengini bilmesi gerekir. Bilmiyorsa canlı ışıklar tuşlarda görünmez ve sayfalar bunu **Işıklara git** düğmesiyle söyler. Orada alttaki çubuk **Canlı ışıkların tuşlarda görünmesi için bir kez kaydedin** der: değişiklik olmasa da **Klavyeye kaydet**'e tıklayın.
-- Canlı ışıklar sürerken bir efekt ya da tasarım kaydederseniz geri gelen ışık o olur.
-
-<Screenshot name="aa-live-lights" alt="3.01 klavye yazılımındaki bir klavyede Müzik modu: ışığın bir kez kaydedilmesini isteyen Canlı ışıklar tuşlarda görünmüyor uyarısı ve Işıklara git düğmesi" />
+- Klavyede hangi ışık varsa, bir efekt ya da tuş başına renk tasarımı, canlı ışıklar tuşlarda onun üstünde görünür. Keymotion bunun için ışığınızı değiştirmez ve önceden sormaz.
+- Canlı ışıklardan hiçbir şey klavyeye kaydedilmez.
+- Canlı ışıklar durunca tuşlar son renklerini yaklaşık 5 saniye korur, sonra klavyenin kendi ışığı kendiliğinden geri gelir; Keymotion'dan çıktığınızda da.
