@@ -3,8 +3,13 @@
 //! One frame is `[i R G B]` for every key of the layout, in layout order
 //! (not the 128-slot table), in 56-byte chunks; R5 (amplitude) is 0 for the
 //! AK980 PRO and LAST is set on the final chunk. Every chunk is echoed.
-//! Frames show only in effect modes 20, 21 and 128 (the keyboard falls back
-//! to its stored lighting ~5 s after the stream stops).
+//!
+//! On firmware 769 (protocol notes §F.5) a frame shows in any effect mode:
+//! the first byte of each entry names the slot (ADDR and LAST are
+//! ignored), an LED the frame leaves out keeps what it showed, and about
+//! 5 s after the last frame the keyboard shows its own effect again by
+//! itself. Nothing is written to flash, so nothing has to be put back. A
+//! frame sent while the keyboard runs a key-combination reset is ignored.
 
 use super::frame::CHUNK;
 use super::guard::find_forbidden;

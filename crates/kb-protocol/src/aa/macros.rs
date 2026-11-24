@@ -7,9 +7,13 @@
 //!   flag]`: wait `delay` ms after the entry; `flag` bit 7 is press (1) or
 //!   release (0), `B0`/`30` a key, `90`/`10` a mouse button.
 //!
-//! A write sends the table first with LAST = 0 on every chunk, then the
-//! blocks from address 400 with LAST on the final chunk (AJAZZ's WebHID
-//! driver). Macro names are not stored on the keyboard.
+//! The macro memory is three flash pages (`0xA000–0xABFF`, [`AREA_LEN`]);
+//! the Fn layer follows and then firmware code, which a write past the end
+//! would erase (protocol notes §F.2, §F.8). A write sends the table and the
+//! blocks as one image ([`MacroImage::bytes`]) from address 0 upwards, with
+//! a chunk starting exactly on 1024 and 2048 so the firmware erases each
+//! page before it programs it (`frame::paged_chunks`); nothing is sent
+//! twice. Macro names are not stored on the keyboard.
 
 use super::CodecError;
 use crate::sonix::keymap::is_key_usage;
@@ -23,10 +27,13 @@ pub const MAX_MACROS: usize = 100;
 pub const MAX_STORED: usize = 99;
 /// Address of the first block.
 pub const BLOCKS_AT: u16 = 400;
-/// Bytes of blocks the keyboard takes: AJAZZ's WebHID driver keeps this
-/// keyboard to 512 (the table not counted), although firmware 769 reports
-/// 3072 bytes of macro memory. Raised only once a real board shows more
-/// works.
+/// Bytes of macro memory: three flash pages. Nothing is ever written past
+/// it (the guard's limit for `25`).
+pub const AREA_LEN: usize = 0x0C00;
+/// Bytes of blocks when the keyboard reports less memory than this: what
+/// AJAZZ's WebHID driver keeps this keyboard to (the table not counted).
+/// Its 56-byte chunks never start a chunk on 1024, so it never reaches the
+/// second page; [`capacity`] goes further.
 pub const CAPACITY: usize = 512;
 /// Shortest pause after an entry, except the last.
 pub const MIN_DELAY_MS: u16 = 5;
@@ -121,6 +128,23 @@ pub struct MacroImage {
     pub blocks: Vec<u8>,
 }
 
+impl MacroImage {
+    /// The image as written, from address 0: the table, then the blocks.
+    pub fn bytes(&self) -> Vec<u8> {
+        let mut b = Vec::with_capacity(self.table.len() + self.blocks.len());
+        b.extend_from_slice(&self.table);
+        b.extend_from_slice(&self.blocks);
+        b
+    }
+}
+
+/// Bytes of blocks a keyboard reporting `macro_space_size` bytes of macro
+/// memory takes: that memory, at most [`AREA_LEN`], less the table, and at
+/// least [`CAPACITY`]. 2672 on firmware 769 (3072 reported).
+pub fn capacity(macro_space_size: u16) -> usize {
+    usize::from(macro_space_size).min(AREA_LEN).saturating_sub(TABLE_LEN).max(CAPACITY)
+}
+
 /// Bytes `macros` macros with `entries` entries in total take (headers and
 /// entries; the table is not counted).
 pub fn size(macros: usize, entries: usize) -> usize {
@@ -128,15 +152,17 @@ pub fn size(macros: usize, entries: usize) -> usize {
 }
 
 /// Encode every macro: `slots[i]` is macro `i`, an empty one is no macro.
-pub fn encode(slots: &[Vec<AaMacroEntry>]) -> Result<MacroImage, CodecError> {
+/// `capacity`: bytes of blocks the keyboard takes ([`capacity`]).
+pub fn encode(slots: &[Vec<AaMacroEntry>], capacity: usize) -> Result<MacroImage, CodecError> {
     if slots.len() > MAX_MACROS {
         return Err(CodecError::Invalid("more than 100 macro slots"));
     }
+    let capacity = capacity.min(AREA_LEN - TABLE_LEN);
     let macros = slots.iter().filter(|s| !s.is_empty()).count();
     let entries: usize = slots.iter().map(Vec::len).sum();
     let bytes = size(macros, entries);
-    if macros > MAX_STORED || bytes > CAPACITY {
-        return Err(CodecError::TooLarge { macros, entries, bytes, limit: CAPACITY });
+    if macros > MAX_STORED || bytes > capacity {
+        return Err(CodecError::TooLarge { macros, entries, bytes, limit: capacity });
     }
     let mut table = vec![0u8; TABLE_LEN];
     let mut blocks = Vec::with_capacity(bytes);
@@ -190,7 +216,7 @@ mod tests {
         // released, 10 ms, the last pause 0: pointer 400, header `04 00 00
         // 00`, entries `0A 00 04 B0` and `00 00 04 30`.
         let steps = [MacroStep::new(StepKind::KeyDown, 0x04, 10), MacroStep::new(StepKind::KeyUp, 0x04, 0)];
-        let img = encode(&[from_steps(&steps).unwrap()]).unwrap();
+        let img = encode(&[from_steps(&steps).unwrap()], CAPACITY).unwrap();
         assert_eq!(&img.table[..4], &[0x90, 0x01, 0x00, 0x00]);
         assert!(img.table[4..].iter().all(|&b| b == 0));
         assert_eq!(img.blocks, [0x04, 0x00, 0x00, 0x00, 0x0A, 0x00, 0x04, 0xB0, 0x00, 0x00, 0x04, 0x30]);
@@ -205,7 +231,7 @@ mod tests {
     fn layout_of_several_macros() {
         let a = from_steps(&tap(0x04, 20)).unwrap();
         let b = from_steps(&[MacroStep::new(StepKind::MouseDown, 0x10, 1)]).unwrap();
-        let img = encode(&[a.clone(), vec![], b.clone()]).unwrap();
+        let img = encode(&[a.clone(), vec![], b.clone()], CAPACITY).unwrap();
         let p = pointers(&img.table);
         assert_eq!((p[0], p[1], p[2]), (400, 0, 412));
         assert_eq!(&img.blocks[12..20], &[0x02, 0, 0, 0, 0x01, 0x00, 0x10, 0x90], "the last pause stays 1 ms");
@@ -217,8 +243,12 @@ mod tests {
             assert_eq!(&decode_entries(&img.blocks[at + 4..at + 4 + 4 * n]), want);
         }
         // No macros: an empty table and no blocks.
-        let none = encode(&[]).unwrap();
+        let none = encode(&[], CAPACITY).unwrap();
+        assert_eq!(none.bytes(), vec![0u8; 400]);
         assert_eq!((none.table, none.blocks.len()), (vec![0u8; 400], 0));
+        // The image as written: the table, then the blocks from 400.
+        let all = img.bytes();
+        assert_eq!((&all[..400], &all[400..]), (&img.table[..], &img.blocks[..]));
     }
 
     #[test]
@@ -251,16 +281,36 @@ mod tests {
     fn capacity_edges() {
         let entry = AaMacroEntry { delay_ms: 10, code: 4, flag: flag::KEY_DOWN };
         // One macro of 127 entries: 4 + 508 = 512 bytes fit.
-        assert!(encode(&[vec![entry; 127]]).is_ok());
+        assert!(encode(&[vec![entry; 127]], CAPACITY).is_ok());
         assert_eq!(
-            encode(&[vec![entry; 128]]),
+            encode(&[vec![entry; 128]], CAPACITY),
             Err(CodecError::TooLarge { macros: 1, entries: 128, bytes: 516, limit: 512 })
         );
         // 64 one-entry macros fit exactly; a 65th does not.
-        assert!(encode(&vec![vec![entry]; 64]).is_ok());
-        assert!(matches!(encode(&vec![vec![entry]; 65]), Err(CodecError::TooLarge { macros: 65, .. })));
+        assert!(encode(&vec![vec![entry]; 64], CAPACITY).is_ok());
+        assert!(matches!(encode(&vec![vec![entry]; 65], CAPACITY), Err(CodecError::TooLarge { macros: 65, .. })));
         // More than 100 slots is not a size question.
-        assert!(matches!(encode(&vec![vec![]; 101]), Err(CodecError::Invalid(_))));
-        assert!(encode(&vec![vec![]; 100]).is_ok());
+        assert!(matches!(encode(&vec![vec![]; 101], CAPACITY), Err(CodecError::Invalid(_))));
+        assert!(encode(&vec![vec![]; 100], CAPACITY).is_ok());
+    }
+
+    #[test]
+    fn the_whole_macro_memory_of_firmware_769() {
+        // 3072 bytes reported: 2672 bytes of blocks after the table.
+        assert_eq!(capacity(0x0C00), 2672);
+        // Less reported: never under the WebHID driver's 512; more: never
+        // past the three pages.
+        assert_eq!((capacity(0), capacity(912), capacity(0xFFFF)), (512, 512, 2672));
+        let entry = AaMacroEntry { delay_ms: 10, code: 4, flag: flag::KEY_DOWN };
+        // One macro of 667 entries: 4 + 2668 = 2672 bytes, the image ends
+        // exactly at the end of the third page.
+        let full = encode(&[vec![entry; 667]], capacity(0x0C00)).unwrap();
+        assert_eq!(full.bytes().len(), AREA_LEN);
+        assert!(matches!(
+            encode(&[vec![entry; 668]], capacity(0x0C00)),
+            Err(CodecError::TooLarge { bytes: 2676, limit: 2672, .. })
+        ));
+        // A capacity past the area is cut to it.
+        assert!(encode(&[vec![entry; 668]], 10_000).is_err());
     }
 }

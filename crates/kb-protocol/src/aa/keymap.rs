@@ -15,7 +15,9 @@ pub const LEN: usize = 512;
 /// Slots in one table.
 pub const SLOTS: usize = 128;
 /// The last two slots: some boards keep `AA 55` in bytes 510–511 (NUT87),
-/// so they are always written back as read.
+/// so they are always written back as read. Firmware 769's own tables have
+/// no such tail and no key there (slots 111–127 reach no key); keeping
+/// them as read costs nothing. (The per-key table has no such rule.)
 pub const TAIL_SLOTS: [u8; 2] = [126, 127];
 /// "The key does nothing": a keyboard entry without a usage. Inferred from
 /// the vendor's encoding (no vendor tool writes it); to be confirmed by
@@ -160,6 +162,9 @@ pub fn encode(action: KeyAction) -> Result<[u8; 4], CodecError> {
                 MacroPlay::Times(0) => return Err(CodecError::Invalid("macro repeat count 0")),
                 MacroPlay::Times(n) => (1, n),
                 MacroPlay::Toggle => (2, 0),
+                // Firmware 769 has play mode 3, "repeat while the key is
+                // held" (§F.8: 0 once, 1 N times, 2 until pressed again, 3
+                // repeat while held, 4 step by step). Not offered yet.
                 MacroPlay::WhileHeld => {
                     return Err(CodecError::Unsupported("a macro cannot repeat while the key is held"));
                 }
