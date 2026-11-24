@@ -219,30 +219,30 @@ pub(crate) fn block_fits(addr: u32, len: usize, limit: u64) -> bool {
     u64::from(addr) >= u64::from(macros::BLOCKS_AT) && u64::from(addr) + len as u64 <= limit
 }
 
-/// Macro slots (slot, address) whose pointer leads nowhere: outside the
-/// macro memory, or to erased flash (a block header of `FF FF`) or a block
-/// that would run past it. A macro write that stopped part-way leaves them
-/// (the table goes first). They read as empty slots and are no reason to
-/// refuse writes: the next macro save writes the whole image and repairs
-/// the table. Shown in the log and the report.
+/// Macro slots (slot, address) a macro write that stopped part-way can
+/// leave (the table goes first): a pointer into the table itself (below
+/// [`macros::BLOCKS_AT`]) or to erased flash (a block header of `FF FF`).
+/// They read as empty slots and are no reason to refuse writes: the next
+/// macro save writes the whole image and repairs the table. Shown in the
+/// log and the report.
+///
+/// A pointer past the macro memory is not among them: no write of the
+/// driver leaves one (its pointers stay inside, and programming over a page
+/// that was not erased only lowers a value), so it comes from another
+/// format or a misread. It stays a reason ([`check`]): read as empty, the
+/// first macro save would wipe macros that may be real.
 pub fn broken_macros(s: &AaSnapshot) -> Vec<(u8, u32)> {
-    let limit = DeviceInfo::parse(&s.info.0).map_or(macros::AREA_LEN as u64, |i| macro_limit(&i));
     let pointers = macros::pointers(&s.macro_table.0);
     pointers
         .iter()
         .enumerate()
         .filter(|&(_, &p)| !macros::is_none(p))
         .filter(|&(slot, &p)| {
-            if !block_fits(p, 4, limit) {
+            if p < u32::from(macros::BLOCKS_AT) {
                 return true;
             }
             let block = s.macro_blocks.iter().find(|b| usize::from(b.slot) == slot && b.addr == p);
-            block.is_some_and(|b| {
-                let header = b.bytes.0.get(..4).unwrap_or_default();
-                header.len() == 4
-                    && (header[..2] == [0xFF, 0xFF]
-                        || (b.bytes.0.len() == 4 && !block_fits(p, 4 + 4 * macros::header_entries(header), limit)))
-            })
+            block.is_some_and(|b| b.bytes.0.get(..2) == Some(&[0xFF, 0xFF][..]))
         })
         .map(|(slot, &p)| (slot as u8, p))
         .collect()
@@ -306,8 +306,9 @@ pub enum Reason {
         mode: u8,
         read: u8,
     },
-    /// A macro block that does not hold what its header says (a backup);
-    /// a pointer that leads nowhere is no reason ([`broken_macros`]).
+    /// A macro block that does not hold what its header says, or a pointer
+    /// past the macro memory; a pointer into the table or to erased flash
+    /// is no reason ([`broken_macros`]).
     MacroBlock {
         slot: u8,
         addr: u32,

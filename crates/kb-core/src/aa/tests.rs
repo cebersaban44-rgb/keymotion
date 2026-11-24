@@ -302,15 +302,27 @@ fn the_sanity_gate() {
         usb,
         "macro slot 2 at address 400 does not hold",
     );
-    // A pointer outside the macro memory or to erased flash is an empty
-    // slot, no reason: the next macro save repairs the table.
-    for p in [100u32, 5000] {
-        let mut s = good.clone();
-        s.macro_table.0[8..12].copy_from_slice(&p.to_le_bytes());
-        assert_eq!(check_sanity(&s, usb), Ok(()), "{p}");
-        assert_eq!(broken_macros(&s), [(2, p)]);
-        assert!(s.macros()[2].is_empty());
-    }
+    // What a macro save that stopped part-way leaves is an empty slot, no
+    // reason (the next save repairs the table): a pointer into the table,
+    // and one to erased flash (an FF FF header).
+    let mut s = good.clone();
+    s.macro_table.0[8..12].copy_from_slice(&100u32.to_le_bytes());
+    assert_eq!(check_sanity(&s, usb), Ok(()));
+    assert_eq!(broken_macros(&s), [(2, 100)]);
+    assert!(s.macros()[2].is_empty());
+    let mut s = good.clone();
+    s.macro_table.0[8..12].copy_from_slice(&400u32.to_le_bytes());
+    s.macro_blocks = vec![MacroBlock { slot: 2, addr: 400, bytes: Hex(vec![0xFF; 4]) }];
+    assert_eq!(check_sanity(&s, usb), Ok(()));
+    assert_eq!(broken_macros(&s), [(2, 400)]);
+    assert!(s.macros()[2].is_empty());
+    // A pointer past the macro memory no write of the driver leaves: a
+    // reason, or the first save would wipe macros that may be real.
+    fails(&|s| s.macro_table.0[8..12].copy_from_slice(&5000u32.to_le_bytes()), usb, "macro slot 2 at address 5000");
+    fails(&|s| s.macro_table.0[8..12].copy_from_slice(&0x0BFEu32.to_le_bytes()), usb, "macro slot 2 at address 3070");
+    let mut s = good.clone();
+    s.macro_table.0[8..12].copy_from_slice(&5000u32.to_le_bytes());
+    assert!(broken_macros(&s).is_empty());
     // Levels other tools leave (0–6), any levels when off, per-key mode and
     // FUNC_V2 pages are all plausible.
     for (mode, brightness, speed) in [(1, 0, 0), (1, 6, 6), (0, 0, 9), (128, 1, 5)] {
@@ -399,12 +411,14 @@ fn erased_or_impossible_macro_pointers_do_not_overflow() {
     let addrs: Vec<u16> = sim.state().sent(cmd::MACROS).iter().map(|p| u16::from_le_bytes([p[4], p[5]])).collect();
     assert!(addrs.iter().all(|&a| a < 400), "only the table was read: {addrs:?}");
     // A pointer near the top of the address range is outside the memory,
-    // without wrapping around to a small address: an empty slot, not read.
+    // without wrapping around to a small address: not read, and a reason
+    // (no write of the driver leaves one).
     sim.state().macros[..4].copy_from_slice(&0xFFFF_FFF0u32.to_le_bytes());
     let snap = k.read_all().unwrap();
-    assert!(k.is_sane(), "{:?}", k.sanity_reasons());
-    assert_eq!(broken_macros(&snap), [(0, 0xFFFF_FFF0)]);
-    assert!(snap.macros()[0].is_empty());
+    assert!(!k.is_sane());
+    assert!(k.sanity_reasons().iter().any(|r| r.contains("macro slot 0 at")), "{:?}", k.sanity_reasons());
+    assert!(broken_macros(&snap).is_empty());
+    assert!(snap.macro_blocks.is_empty(), "not read");
 }
 
 #[test]

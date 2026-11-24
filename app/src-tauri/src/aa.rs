@@ -1098,7 +1098,7 @@ impl AaDriver {
             if !broken.is_empty() {
                 let slots: Vec<String> = broken.iter().map(|(slot, _)| slot.to_string()).collect();
                 out.push(format!(
-                    "macro slots read as empty (erased or outside the macro memory; the next macro save \
+                    "macro slots read as empty (erased, or pointing into the table; the next macro save \
                      repairs them): {}",
                     slots.join(", ")
                 ));

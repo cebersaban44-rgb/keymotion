@@ -946,8 +946,8 @@ impl<P: OutputPort> AaKeyboard<P> {
             let slots: Vec<u8> = broken.iter().map(|&(slot, _)| slot).collect();
             tracing::warn!(
                 ?slots,
-                "macro slots point at erased flash or outside the macro memory (a macro write that stopped \
-                 part-way?); read as empty until the next macro save"
+                "macro slots point at erased flash or into the table (a macro write that stopped part-way?); \
+                 read as empty until the next macro save"
             );
         }
         let mut verdict = check_sanity(&snap, self.usb);
@@ -1330,8 +1330,8 @@ impl<P: OutputPort> AaKeyboard<P> {
     /// The table comes first, so a write that stops part-way can leave
     /// pointers to blocks that were not written (erased flash, or another
     /// page's old bytes). The gate closes and the keyboard is read again; a
-    /// pointer to erased flash or outside the macro memory reads as an
-    /// empty slot ([`snapshot::broken_macros`]), so the gate opens again and
+    /// pointer to erased flash or into the table reads as an empty slot
+    /// ([`snapshot::broken_macros`]), so the gate opens again and
     /// the next macro save, which writes the whole image, repairs the
     /// table. Beta check on a real AK980 PRO: write a macro, unplug and
     /// replug, read it back, press it.
