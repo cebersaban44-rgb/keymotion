@@ -33,10 +33,17 @@ says so.
   colors, macros), and another before every restore. **Connection** lists
   them. **Restore** puts a backup of the keyboard on the cable back, step by
   step: what comes back, the lighting's color when the backup doesn't know
-  it, then what it put back and which keys it left as they were. When the
-  backup can't be saved, when what the keyboard reports doesn't look as
-  expected, or when a firmware update was left unfinished, Keymotion writes
-  nothing to the keyboard and every page that would says why.
+  it, then what it put back and which keys it left as they were. A restore
+  doesn't start while an upload to the screen runs; it goes on when you
+  open another page, and a notice says how it ended. When the backup can't
+  be saved, when what the keyboard reports doesn't look as expected, or when
+  a firmware update was left unfinished, Keymotion writes nothing to the
+  keyboard and every page that would says why.
+- **Key mapping and macros on firmware 3.01:** this firmware reports its key
+  mapping and macros, so the **Key mapping** and **Macros** pages show
+  what's on the keyboard, also after a restore. Keys and macros set in
+  another program (AJAZZ's, say) that Keymotion can't show are marked as
+  such, and saving leaves them as they are.
 - **Live lighting on firmware 3.01:** the keys show live lighting (music
   mode, system gauges, the focus timer, reminders, the calendar, the game
   session, AI agents, **Preview on keyboard**) only in the keyboard's

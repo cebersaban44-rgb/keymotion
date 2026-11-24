@@ -32,9 +32,16 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   sayfası yedekleri listeler. **Geri yükle**, kablodaki klavyenin yedeğini
   adım adım geri yükler: neler geri gelir, yedek ışığın rengini bilmiyorsa
   o renk, sonra neyi geri yüklediği ve hangi tuşları olduğu gibi bıraktığı.
+  Ekrana bir yükleme sürerken geri yükleme başlamaz; başka bir sayfaya
+  geçtiğinizde sürer ve nasıl bittiğini bir bildirim söyler.
   Yedek alınamazsa, klavyenin bildirdikleri beklendiği gibi görünmezse ya da
   bir klavye yazılımı güncellemesi yarım kaldıysa Keymotion klavyeye hiçbir
   şey yazmaz; yazacak her sayfa nedenini söyler.
+- **3.01 klavye yazılımında tuş atama ve makrolar:** bu yazılım tuş
+  atamasını ve makrolarını bildirir; bu yüzden **Tuş atama** ve **Makrolar**
+  sayfaları, geri yüklemeden sonra da, klavyede olanı gösterir. Başka bir
+  programda (örneğin AJAZZ'ınkinde) ayarlanan ve Keymotion'ın gösteremediği
+  tuşlar ile makrolar öyle işaretlenir; kaydettiğinizde olduğu gibi kalırlar.
 - **3.01 klavye yazılımında canlı ışıklar:** tuşlar canlı ışıkları (müzik
   modu, sistem göstergeleri, odak zamanlayıcısı, hatırlatıcılar, takvim,
   oyun oturumu, yapay zekâ ajanları, **Klavyede önizle**) yalnızca
