@@ -43,7 +43,8 @@ says so.
   writes to the keyboard. The keyboard ignores writes for a moment after it
   starts up or is reset, so Keymotion waits before its first write. A
   keyboard without per-key colors, as after a firmware update or a reset,
-  is normal and doesn't keep Keymotion from writing.
+  is normal and doesn't keep Keymotion from writing. A save cut short, when
+  the cable comes out for example, is put right by the next save.
 - **Key mapping and macros on firmware 3.01:** this firmware reports its key
   mapping and macros, so the **Key mapping** and **Macros** pages show
   what's on the keyboard, also after a restore. Keys and macros set in
@@ -51,13 +52,17 @@ says so.
   keyboard's own functions on the Fn layer, are marked as such; saving and
   loading a profile leave them as they are. When the keys or macros changed
   in another program after Keymotion read them, a save writes nothing and
-  the page shows the keyboard again.
+  the page shows the keyboard again. A repeating macro stops whenever
+  Keymotion sends the keyboard something other than live lighting, a save
+  for example; press its key again.
 - **Live lighting on firmware 3.01:** live lighting (music mode, system
   gauges, the focus timer, reminders, the calendar, the game session, AI
   agents, profiles by app, **Preview on keyboard** and the calibration test
   patterns) shows on the keys whatever the keyboard's lighting is, as on the
   older firmware. Nothing of it is saved on the keyboard: when it stops, the
-  keyboard's own lighting comes back by itself about 5 seconds later.
+  keyboard's own lighting comes back by itself about 5 seconds later. Just
+  after the keyboard was switched on or reset, live lighting waits a few
+  seconds, and the pages say so.
 - **The clock page (firmware 3.01):** an upload may replace the keyboard's
   own clock page, which then comes back only after a full reset of the
   keyboard (Fn+Space). Keymotion asks before the first upload, the live

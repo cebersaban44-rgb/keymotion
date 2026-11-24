@@ -41,7 +41,8 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   bir süre yazılanları yok saydığı için Keymotion ilk yazmadan önce bekler.
   Tuş başına renkleri olmayan bir klavye, örneğin bir klavye yazılımı
   güncellemesinden ya da sıfırlamadan sonra, olağandır ve Keymotion'ın
-  yazmasını engellemez.
+  yazmasını engellemez. Yarıda kalan bir kaydetmeyi, örneğin kablo
+  çıktığında, bir sonraki kaydetme düzeltir.
 - **3.01 klavye yazılımında tuş atama ve makrolar:** bu yazılım tuş
   atamasını ve makrolarını bildirir; bu yüzden **Tuş atama** ve **Makrolar**
   sayfaları, geri yüklemeden sonra da, klavyede olanı gösterir. Başka bir
@@ -50,14 +51,17 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   işaretlenir; kaydetmek ya da profil yüklemek onları olduğu gibi bırakır.
   Tuşlar ya da makrolar, Keymotion onları okuduktan sonra başka bir
   programda değiştiyse kaydetme hiçbir şey yazmaz ve sayfa klavyeyi yeniden
-  gösterir.
+  gösterir. Tekrarlanan bir makro, Keymotion klavyeye canlı ışıklar
+  dışında bir şey gönderdiğinde (örneğin bir kaydetmede) durur; tuşuna
+  yeniden basın.
 - **3.01 klavye yazılımında canlı ışıklar:** canlı ışıklar (müzik modu,
   sistem göstergeleri, odak zamanlayıcısı, hatırlatıcılar, takvim, oyun
   oturumu, yapay zekâ ajanları, uygulamaya göre profiller, **Klavyede
   önizle** ve kalibrasyonun test desenleri), eski klavye yazılımında olduğu
   gibi, klavyenin ışığı ne olursa olsun tuşlarda görünür. Hiçbiri klavyeye
   kaydedilmez: canlı ışıklar durunca klavyenin kendi ışığı yaklaşık 5
-  saniye sonra kendiliğinden geri gelir.
+  saniye sonra kendiliğinden geri gelir. Klavye yeni açıldığında ya da
+  sıfırlandığında canlı ışıklar birkaç saniye bekler; sayfalar bunu söyler.
 - **Saat sayfası (3.01 klavye yazılımı):** yükleme klavyenin kendi saat
   sayfasının yerini alabilir; saat sayfası o zaman ancak klavyenin tam
   sıfırlamasıyla (Fn+Boşluk) geri gelir. Keymotion ilk yüklemeden önce,
