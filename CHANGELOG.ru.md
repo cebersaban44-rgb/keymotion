@@ -17,6 +17,10 @@
 
 ## [Не выпущено]
 
+## [1.3.0] - 2026-11-25
+
+AK980 PRO на прошивке AJAZZ 3.01 в бета-режиме и необязательная пошаговая проверка. Спасибо [@j0p3s](https://github.com/j0p3s) за сообщение о новой прошивке, проверку каждой беты на своей клавиатуре и отчёты, по которым сделана эта поддержка.
+
 ### Добавлено
 
 - **AK980 PRO с прошивкой AJAZZ 3.01 («769»), в бета-режиме:** через
@@ -371,6 +375,7 @@ AK980 PRO стоит новая прошивка AJAZZ 769, Keymotion тепер
   установленной копии больше не выключает **Запускать Keymotion при
   включении компьютера**.
 
-[Не выпущено]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.1...develop
+[Не выпущено]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.3.0...develop
+[1.3.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.3.0
 [1.2.1]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.1
 [1.2.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.0

@@ -1,6 +1,6 @@
 ---
 title: 发行说明
-description: 在哪里查看每个 Keymotion 版本的变更，以及 1.2.1、1.2.0、1.1.0、1.0.0 和首个版本 0.1.0 的简要说明。
+description: 在哪里查看每个 Keymotion 版本的变更，以及 1.3.0、1.2.1、1.2.0、1.1.0、1.0.0 和首个版本 0.1.0 的简要说明。
 ---
 
 import Screenshot from "~/components/Screenshot.astro";
@@ -24,6 +24,17 @@ import Screenshot from "~/components/Screenshot.astro";
 - **新版本何时推出**。新版本先在 GitHub 上推出。Microsoft 审核完 Microsoft Store 版后，它会随后推出，通常在一天之内。两者的版本号和发行说明都相同。
 - **测试版**（版本号中带“-rc”或“-beta”）只在 GitHub 上提供。
 - **同一时间只运行一个 Keymotion**。如果两个版本都已安装，它们使用相同的设置。打开 GitHub 版会改为打开 Microsoft Store 版，随 Windows 启动也会改由 Microsoft Store 版完成。测试版不会这样做：打开测试版之前，请先退出 Microsoft Store 版，包括时钟旁的图标。此时，Microsoft Store 版的“设置 › 关于”中会显示“GitHub 版”一行，其中的按钮可以打开 Windows 的“已安装的应用”，你可以在那里卸载 GitHub 版；要保留设置，不要勾选 **Also delete my settings and saved data**（同时删除我的设置和已保存的数据）。
+
+## Keymotion 1.3.0
+
+Keymotion 现在也能通过 USB 线配合 AJAZZ 为 AK980 PRO 推出的最新固件 3.01（“769”）使用。这项支持是新的，因此标为**测试版**，并有一个可选的测试向导，请使用该固件的用户告诉我们效果如何。固件 1.06 上没有任何变化。
+
+- **AJAZZ 固件 3.01（测试版）**。该固件使用另一套指令，Keymotion 现在也支持它：灯效和逐键颜色、实时灯光、两层按键映射、宏、屏幕图片、时钟，以及通过数据线显示的电量。每次会话第一次写入前，Keymotion 会询问（**未经测试的固件**）。
+- **安全为先**。Keymotion 第一次连接这类键盘时会备份其设置，每次恢复前还会再备份一次；**连接**页列出这些备份并可恢复。每项保存的设置都会从键盘读回核对，中途中断的保存会由下一次保存修正。实时灯光在任何键盘灯效下都能显示，且不会在键盘上保存任何内容。
+- **测试向导**。使用固件 3.01 键盘的用户会在**概览**页收到一次邀请，参加一个约十分钟、共九步的可选测试。向导会在页面旁保持打开，自动勾选 Keymotion 能自行检查的项目，最后显示可在 GitHub 上分享的完整文字。不会自动发送任何内容。
+- **更简短的问题报告**。**报告问题**现在用几行说明哪里不对，通常一份报告就够了，而且长度适合 GitHub。
+- **GitHub 优先**。从这个版本起，新版本的安装程序通过测试后就会在 GitHub 上发布，Microsoft Store 版本在 Microsoft 审核后跟进，通常在一天之内。
+- **感谢** [j0p3s](https://github.com/j0p3s)：让我们注意到 AJAZZ 的新固件，在自己的键盘上试用了每个测试版，并发来报告，帮助我们完成了这项支持。
 
 ## Keymotion 1.2.1
 

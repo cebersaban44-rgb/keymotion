@@ -149,6 +149,8 @@ The Submit job and **Publish a release** sign in to the Store's submission API a
 
 1. In Partner Center, open the gear › **Account settings** › **Tenants** and create a Microsoft Entra tenant (free), or associate one you have.
 
+   On an individual developer account signed in with a personal Microsoft account (outlook.com, hotmail.com), **Create Microsoft Entra ID** is greyed out there, and **User management** asks you to sign in with Microsoft Entra ID first. A tenant then has to come from elsewhere: Microsoft's business sign-up ("Microsoft for your business") or an Azure account, which ask for a registration number and payment details. Don't enter those just for this: until a tenant is associated, upload the package by hand (above); everything else works the same.
+
 2. In **User management** › **Microsoft Entra applications**, create a Microsoft Entra application (or add an existing one) and give it the **Manager** role.
 
 3. Open the application and select **Add new key**. Note the **Tenant ID**, **Client ID** and **Key**: the key is shown only once. It expires; add a new one before then (a Submit job with an expired key stops at sign-in and says so).

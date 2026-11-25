@@ -14,6 +14,10 @@ are only on GitHub. A change that concerns only one of them says so.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-25
+
+The AK980 PRO on AJAZZ's firmware 3.01, in beta, with an optional test guide. Thanks to [@j0p3s](https://github.com/j0p3s) for bringing the new firmware to our attention, trying each beta on their keyboard and sending the reports that shaped this support.
+
 ### Added
 
 - **AK980 PRO on AJAZZ's firmware 3.01 ("769"), in beta:** over the USB cable,
@@ -484,7 +488,8 @@ The first release. It supports the AJAZZ AK980 PRO on Windows.
   something goes wrong, the supported keyboards and the ones that could come
   next, and pages for developers. Settings › About opens it.
 
-[Unreleased]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.1...develop
+[Unreleased]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.3.0...develop
+[1.3.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.3.0
 [1.2.1]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.1
 [1.2.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.0
 [1.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.1.0

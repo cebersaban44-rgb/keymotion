@@ -1,6 +1,6 @@
 ---
 title: Release notes
-description: Where to read what changed in each Keymotion version, with a short summary of 1.2.1, 1.2.0, 1.1.0, 1.0.0 and the first release, 0.1.0.
+description: Where to read what changed in each Keymotion version, with a short summary of 1.3.0, 1.2.1, 1.2.0, 1.1.0, 1.0.0 and the first release, 0.1.0.
 ---
 
 import Screenshot from "~/components/Screenshot.astro";
@@ -24,6 +24,17 @@ From 1.0.0 on, Keymotion has the same version number wherever you got it, and on
 - **When a version arrives.** A new version comes out on GitHub first. The Microsoft Store's copy follows once Microsoft has reviewed it, usually within a day. Both have the same version number and the same notes.
 - **Test versions** (with "-rc" or "-beta" in their number) are only on GitHub.
 - **Only one Keymotion runs at a time.** If both are installed, they use the same settings. Opening the GitHub copy opens the Store's copy instead, and starting with Windows moves to the Store's copy too. A test version doesn't hand over: quit the Store's copy, also from its icon next to the clock, before you open one. Its Settings › About then shows a "GitHub copy" row with a button to Windows' Installed apps, where you can remove the GitHub copy; leave **Also delete my settings and saved data** unticked to keep your settings.
+
+## Keymotion 1.3.0
+
+Keymotion now also works with AJAZZ's newest firmware for the AK980 PRO, 3.01 ("769"), over the USB cable. The support is new, so it is marked **In beta**, and an optional test guide asks owners of that firmware how it works. On firmware 1.06 nothing changes.
+
+- **AJAZZ's firmware 3.01, in beta.** This firmware speaks a different set of commands, and Keymotion now speaks it too: lighting effects and per-key color, live lighting, key mapping on both layers, macros, pictures on the screen, the clock, and the battery level over the cable. Before the first write of a session, Keymotion asks (**Untested firmware**). See [AK980 PRO on firmware 3.01](/keymotion/help/keyboards/#ak980-pro-on-firmware-301-beta).
+- **Safe by design.** The first time Keymotion connects to such a keyboard, it saves a backup of its settings, and another before every restore; **Connection** lists them and can put one back. Every saved setting is read back from the keyboard, and a save cut short is put right by the next one. Live lighting shows whatever the keyboard's lighting is and saves nothing on it.
+- **Test guide.** Owners of a keyboard on firmware 3.01 are invited once, on the Overview, to an optional test of nine steps, about ten minutes. The guide stays open beside the pages, ticks what Keymotion can check by itself, and at the end shows the exact text you can share on GitHub. Nothing is sent by itself. See [The test guide](/keymotion/help/keyboards/#the-test-guide).
+- **Shorter problem reports.** **Report a problem** now sums up what doesn't look right in a few lines, so one report is usually enough, and it stays short enough for GitHub.
+- **GitHub first.** From this version on, a release comes out on GitHub as soon as its installer has passed its test, and the Microsoft Store's copy follows when Microsoft has reviewed it, usually within a day.
+- **Thanks** to [j0p3s](https://github.com/j0p3s), who brought AJAZZ's new firmware to our attention, tried each beta on their keyboard and sent the reports that shaped this support.
 
 ## Keymotion 1.2.1
 

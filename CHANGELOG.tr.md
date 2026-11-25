@@ -12,6 +12,10 @@ ilgilendiren bir değişiklik bunu belirtir.
 
 ## [Yayımlanmamış]
 
+## [1.3.0] - 2026-11-25
+
+AJAZZ'ın 3.01 yazılımındaki AK980 PRO, deneme aşamasında ve isteğe bağlı bir deneme rehberiyle. Yeni yazılımı bize haber veren, her betayı kendi klavyesinde deneyen ve bu desteğe yön veren bildirimleri gönderen [@j0p3s](https://github.com/j0p3s)'e teşekkürler.
+
 ### Eklenenler
 
 - **AJAZZ'ın 3.01 ("769") klavye yazılımındaki AK980 PRO, deneme aşamasında:**
@@ -504,7 +508,8 @@ Store 0 ile başlayan sürüm numarası kabul etmediği için bu sürüm 1.0.0.
   yapılacağı, desteklenen ve sırada olabilecek klavyeler, geliştiriciler için
   sayfalar. Ayarlar › Hakkında'dan açılır.
 
-[Yayımlanmamış]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.1...develop
+[Yayımlanmamış]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.3.0...develop
+[1.3.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.3.0
 [1.2.1]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.1
 [1.2.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.0
 [1.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.1.0
