@@ -26,7 +26,7 @@
 //! out. Tests drive it against `kb_core::aa::sim`.
 
 use crate::driver::Error;
-use crate::dto::{AaStatus, ChargeState, DeviceReport, LiveLightsOff, ReadOnlyReason};
+use crate::dto::{AaReadBack, AaStatus, ChargeState, DeviceReport, LiveLightsOff, ReadOnlyReason};
 use kb_core::aa::{
     AaEffect, AaError, AaKeyboard, AaLayout, AaMacroEntry, AaSnapshot, Binding, DeviceInfo, EffectColor, EffectRead,
     Hex, OutputPort, RestoreReport, UsbIdentity,
@@ -265,6 +265,9 @@ pub struct AaDriver {
     /// The last full read that failed the sanity check, as saved for the
     /// developer ([`report::reads`]): its file, or why it was not saved.
     kept_read: Option<Result<String, String>>,
+    /// When a save of each kind last read back as written (the driver reads
+    /// back every one, and fails it otherwise).
+    read_back: AaReadBack,
 }
 
 impl AaDriver {
@@ -290,6 +293,7 @@ impl AaDriver {
             conflict,
             errors: VecDeque::new(),
             kept_read: None,
+            read_back: AaReadBack::default(),
         })
     }
 
@@ -558,7 +562,9 @@ impl AaDriver {
         self.writable()?;
         let r = self.kb.apply_effect(s);
         self.after_io();
-        self.check(r)
+        self.check(r)?;
+        self.read_back.effect = Some(now_ms());
+        Ok(())
     }
 
     /// Store per-key colours, then switch to per-key mode. **Writes flash.**
@@ -566,7 +572,9 @@ impl AaDriver {
         self.writable()?;
         let r = self.kb.apply_per_key(colors, brightness);
         self.after_io();
-        self.check(r)
+        self.check(r)?;
+        self.read_back.per_key = Some(now_ms());
+        Ok(())
     }
 
     /// Make one layer what `map` says (keys not in it: their default), by
@@ -611,12 +619,16 @@ impl AaDriver {
         // the knob too, which no change names).
         if changes.is_empty() && !self.layer_erased(layer) {
             tracing::debug!(?layer, kept, "keymap layer already as asked; nothing written");
+            // The fresh read just showed it holds what was asked.
+            self.read_back.keymap = Some(now_ms());
             return Ok(kept);
         }
         tracing::debug!(?layer, keys = changes.len(), kept, "keymap keys to change");
         let r = self.kb.apply_keymap(layer, changes);
         self.after_io();
-        self.check(r).map(|()| kept)
+        self.check(r)?;
+        self.read_back.keymap = Some(now_ms());
+        Ok(kept)
     }
 
     /// Whether `layer`, as last read, holds erased slots ([`aa_keymap::ERASED`]).
@@ -739,7 +751,9 @@ impl AaDriver {
         }
         let r = self.kb.write_macro_entries(&entries);
         self.after_io();
-        self.check(r)
+        self.check(r)?;
+        self.read_back.macros = Some(now_ms());
+        Ok(())
     }
 
     /// [`AaContents::keys_source`] of the last read (writes and fresh reads
@@ -922,6 +936,7 @@ impl AaDriver {
         if report.effect_mode_guessed {
             tracing::info!("the backup could not tell its effect mode (it read 0); chosen from its per-key table");
         }
+        self.read_back.restore = Some(now_ms());
         Ok(report)
     }
 
@@ -1022,6 +1037,7 @@ impl AaDriver {
             other_program_suspected: self.conflict.suspected,
             backup: self.backup.as_ref().and_then(|b| b.as_ref().ok().cloned()),
             effect_color_known: self.kb.current_effect().is_some_and(|e| e.color_known),
+            read_back: self.read_back,
         }
     }
 
@@ -1075,6 +1091,7 @@ impl AaDriver {
             Some(ReadOnly::NotSane(_)) => "writes: refused, the keyboard does not look as expected (above)".into(),
             Some(r) => format!("writes: refused ({})", cut(&r.to_string(), LINE)),
         });
+        out.push(format!("saves read back as written since connected: {}", read_back_kinds(&self.read_back)));
         out.push(format!(
             "effect colour known: {}",
             if self.kb.current_effect().is_some_and(|e| e.color_known) { "yes" } else { "no" }
@@ -1116,6 +1133,26 @@ impl AaDriver {
             out.push(format!("error at {at}: {}", cut(e, LINE)));
         }
         out
+    }
+}
+
+/// The kinds of save that read back as written, for the diagnostics report
+/// ("none yet" before the first).
+fn read_back_kinds(r: &AaReadBack) -> String {
+    let kinds: Vec<&str> = [
+        (r.effect, "effect"),
+        (r.per_key, "per-key colours"),
+        (r.keymap, "keymap"),
+        (r.macros, "macros"),
+        (r.restore, "restore"),
+    ]
+    .into_iter()
+    .filter_map(|(at, kind)| at.map(|_| kind))
+    .collect();
+    if kinds.is_empty() {
+        "none yet".into()
+    } else {
+        kinds.join(", ")
     }
 }
 

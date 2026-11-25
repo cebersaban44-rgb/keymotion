@@ -37,7 +37,7 @@ Keymotion 只为两件事连接互联网：你添加的日历和更新检查。�
 
 Keymotion 本身不会发送任何关于你的信息。当你使用以下服务时，它们会看到一个普通的请求，并适用它们自己的隐私政策：
 
-- **GitHub**：更新检查、下载，以及报告问题或申请适配。参见 [GitHub 一般隐私声明](https://docs.github.com/zh/site-policy/privacy-policies/github-general-privacy-statement)。
+- **GitHub**：更新检查、下载，以及报告问题、申请适配或分享测试向导的结果。参见 [GitHub 一般隐私声明](https://docs.github.com/zh/site-policy/privacy-policies/github-general-privacy-statement)。
 - **Microsoft**：如果电脑上没有 WebView2（Windows 中负责绘制应用窗口的组件），安装程序会从 Microsoft 下载并安装它。Windows 11 已经自带。参见 [Microsoft 隐私声明](https://www.microsoft.com/zh-cn/privacy/privacystatement)。
 - **你添加的每个日历所属的服务**，例如 [Google](https://policies.google.com/privacy?hl=zh-CN)、[Microsoft Outlook](https://www.microsoft.com/zh-cn/privacy/privacystatement) 或 [Apple iCloud](https://www.apple.com.cn/legal/privacy/)。
 
@@ -90,7 +90,7 @@ Keymotion 本身不会发送任何关于你的信息。当你使用以下服务�
   - `calendar.json`：你的日历。日历地址的作用相当于密码，因此会针对你的 Windows 用户账户加密（Windows 数据保护）。其他用户或其他电脑无法读取它们；
   - `screen\`：你的图片素材库、出厂动画的副本（如果你做过），以及最近一张实时卡片。
 - **日志文件**，位于 `%LOCALAPPDATA%\dev.keymotion\logs\`：每天一个文件，保留最近 7 天，每个最多 4 MB；另有简短的崩溃记录。写入之前，网址会被截短为服务器名称，你的 Windows 用户名会从文件夹路径中删除。提醒标题和会议名称从不写入。
-- **界面偏好**，位于 `%LOCALAPPDATA%\dev.keymotion\EBWebView\`：主题、语言和尚未保存的编辑，由应用窗口保存。
+- **界面偏好**，位于 `%LOCALAPPDATA%\dev.keymotion\EBWebView\`：主题、语言和尚未保存的编辑，由应用窗口保存。对于装有黑爵 3.01 固件的键盘，测试向导的进度也保存在这里：你的回答和备注、它看到了 Keymotion 自己的哪些检查，以及你对邀请的回答。除非你自己分享，否则它不会离开这里。
 
 从 Microsoft Store 安装的 Keymotion 使用同样的文件夹。如果这些文件夹之前不存在（从未安装过 GitHub 版 Keymotion），Windows 会把它们保存在应用自己的文件夹 `%LOCALAPPDATA%\Packages\<应用的包名>\LocalCache\` 中，并在你卸载应用时删除；此时**设置**中的按钮会打开该文件夹。
 
@@ -104,6 +104,7 @@ Keymotion 本身不会发送任何关于你的信息。当你使用以下服务�
 
 - **报告问题**（位于**设置**的**关于** › **反馈**；意外错误之后的提示中；崩溃之后的提示中）会打开一个窗口，先显示文本：上述诊断信息，最上方是发生的情况。**在 GitHub 上报告**会把文本放到剪贴板上，并在浏览器中打开项目在 GitHub 上的表单。你在那里粘贴，并决定是否提交。
 - **申请适配**会在尚未支持的 SONiX 或 AJAZZ（黑爵）键盘连接时出现。它的工作方式相同，文本中包含键盘的信息：USB 标识符、名称以及 Windows 保存的 HID 描述。不会向键盘写入任何内容。序列号和设备路径不会包含在内。
+- **测试向导**（用于装有黑爵 3.01 固件的键盘）同样会先显示文本：你的回答和备注、Keymotion 自己检查过的步骤、应用和 Windows 的版本，以及 Keymotion 读取到的键盘信息（上述诊断信息中关于键盘的部分；从不包含你的宏的内容）。**复制并打开 GitHub** 会把文本放到剪贴板上，并打开只填好标题的项目表单；**只复制**只复制文本。测试向导不会发送任何内容，也不会向键盘写入任何内容。
 - **崩溃之后**，下次启动时会提供最近 7 天内最新的一条崩溃记录，只提供一次。
 
 ## 导出、导入和删除

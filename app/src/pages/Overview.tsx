@@ -14,6 +14,7 @@ import type { GeometryInfo } from "../bindings/GeometryInfo";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import { KeyboardView } from "../components/KeyboardView";
 import { BetaPill, KeyboardNotices } from "../components/KeyboardNotices";
+import { GuideInvite } from "../components/TestGuide";
 import { hidFromCode } from "../lib/hidCodes";
 import { connectionKey, listOf, modelTitle, percent, useAgo, useT } from "../lib/i18n";
 import { useMirror } from "../lib/mirror";
@@ -226,6 +227,7 @@ export function Overview({ kb }: { kb: KeyboardInfo }) {
       {kb.aaStatus && (
         <div className="mt-6 flex flex-col gap-3">
           <KeyboardNotices kb={kb} />
+          <GuideInvite kb={kb} />
         </div>
       )}
 

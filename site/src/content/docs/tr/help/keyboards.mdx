@@ -5,6 +5,7 @@ sidebar:
 description: Keymotion AJAZZ AK980 PRO ile çalışır; klavye AK980 V2 adıyla da satılıyor. Aynı altyapıyla yapılmış ve sırada olabilecek klavyeler ve kendi klavyenizi bize nasıl bildireceğiniz.
 ---
 
+import Screenshot from "~/components/Screenshot.astro";
 import { Aside } from "@astrojs/starlight/components";
 import { Image } from "astro:assets";
 import ak980 from "../../../../assets/keyboards/ajazz-ak980-pro.webp";
@@ -35,7 +36,7 @@ AJAZZ'ın AK980 PRO için en yeni klavye yazılımı 3.01 ("AK980 Led v2 Firmwar
 | 2.4 GHz alıcı | Yeni bir şey yok: eski yazılımda olduğu gibi alıcı üzerinden hiçbir şey göndermez |
 | Bluetooth | Eskisi gibi: pil düzeyini okur |
 
-Deneme aşaması, bu desteğin yeni olduğu anlamına gelir: sanal bir klavyede denendi, henüz gerçek bir klavyede denenmedi. Bu yüzden Keymotion bu yazılımda daha da dikkatlidir:
+Deneme aşaması, bu desteğin yeni olduğu ve hâlâ denendiği anlamına gelir. Bu yüzden Keymotion bu yazılımda daha da dikkatlidir:
 
 - Bir şey yazabilmeden önce klavyenin ayarlarının yedeğini alır; bu yedeği sonra geri yükleyebilir.
 - Klavyeye ilk kez yazmadan önce, Keymotion'la denenmemiş her klavye yazılımında olduğu gibi size sorar.
@@ -44,9 +45,27 @@ Deneme aşaması, bu desteğin yeni olduğu anlamına gelir: sanal bir klavyede 
 
 Bu yazılımda birkaç şey farklı çalışır: ekrana yükleme klavyenin saat sayfasının yerini alabilir, pil düzeyi kabloda da görünür, Tuş atama ve Makrolar sayfaları klavyenin kendisinde olanı gösterir ve birkaç tuş seçeneği sunulmaz. Bunların her biri [AJAZZ'ın en yeni klavye yazılımını kurmalı mıyım?](/keymotion/tr/help/faq/#ajazzın-en-yeni-klavye-yazılımını-kurmalı-mıyım) sorusunda anlatılıyor.
 
-Denediniz mi? [Nasıl çalıştığını bize anlatın](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK980+PRO+firmware+3.01&model=AJAZZ+AK980+PRO+firmware+3.01); Bağlantı sayfasında da aynı bağlantı var. Bir şey ters giderse **Ayarlar**'dan bir bildirim gönderin: **Hakkında** bölümünde, **Geri bildirim** satırında **Sorun bildir**'e tıklayın. Bildirimde Keymotion'ın klavyeden okudukları vardır, makrolarınızın içeriği hiçbir zaman yoktur; beklendiği gibi görünmeyen bir bölümün ise ilk ve son baytları vardır.
+Denediniz mi? Aşağıdaki [deneme rehberi](#deneme-rehberi) sizi adım adım götürür; isterseniz [nasıl çalıştığını bize kendi sözlerinizle anlatın](https://github.com/cebersaban44-rgb/keymotion/issues/new?template=keyboard.yml&title=%5BKeyboard%5D+AJAZZ+AK980+PRO+firmware+3.01&model=AJAZZ+AK980+PRO+firmware+3.01). Bir şey ters giderse **Ayarlar**'dan bir bildirim gönderin: **Hakkında** bölümünde, **Geri bildirim** satırında **Sorun bildir**'e tıklayın. Bildirimde Keymotion'ın klavyeden okudukları vardır, makrolarınızın içeriği hiçbir zaman yoktur; beklendiği gibi görünmeyen bir bölümün ise ilk ve son baytları vardır.
 
 Keymotion'ın henüz tanımadığı başka bir AJAZZ klavye yazılımındaki AK980 PRO'ya hiçbir şey gönderilmez; Keymotion onun yerine **Destek iste**'yi sunar.
+
+### Deneme rehberi
+
+3.01 klavye yazılımını gerçek klavyelerde denememize yardım etmek isterseniz Keymotion isteğe bağlı bir deneme rehberi sunar: dokuz adım, yaklaşık on dakika. Rehber yalnızca USB kablosuyla bağlı, 3.01 klavye yazılımındaki ve Keymotion'ın yazabildiği bir klavyede görünür; 1.06 klavye yazılımında hiç görmezsiniz.
+
+<Screenshot name="aa-guide-invite" alt="3.01 klavye yazılımındaki bir klavyenin Genel bakış sayfası, klavyenin altında davet: Yeni klavye yazılımı için yardımınızı rica ediyoruz; Denemeye başla, Şimdi değil ve Bir daha gösterme düğmeleri" />
+
+- **Davet.** Genel bakış bir kez sorar: **Denemeye başla**, **Şimdi değil** (klavyeyi bir sonraki bağlayışınızda bir kez daha sorar) ya da **Bir daha gösterme**. Davet bir pencere değil, sayfadaki bir şerittir: sayfa her zamanki gibi çalışır.
+- **Kalıcı yeri.** **Bağlantı** sayfasında **Deneme rehberi** ne kadar ilerlediğinizle birlikte her zaman durur; **Rehberi aç** onu açar.
+- **Adımlar.** Hazırlık, Bağlantı, Işık efekti, Canlı ışık, Tuş başına renk, Tuş atama, Makrolar, Ekran (isteğe bağlı) ve Geri yükleme. Rehber sayfaların yanında açık kalır: **Oraya git** adımın gerektirdiği sayfayı açar. **Çalıştı**, **Çalışmadı** ya da **Atladım** diye cevaplayın, isterseniz kısa bir not yazın; **Sonraki adım** önce bir cevap ister. **Vazgeç** rehberi her adımda kapatır ve ilerlemenizi saklar; Keymotion yeniden açıldığında da kaldığınız yerden devam edersiniz.
+- **Keymotion kendisi kontrol etti.** Keymotion'ın kendisinin bilebildiği yerlerde adım bunu bir onay işaretiyle söyler: ilk bağlantının yedeği var, klavye okundu ve Keymotion ona yazabiliyor, ya da rehber açıkken o türden bir kayıt klavyeden geri okundu. Olmamış bir denetimi hiçbir zaman söylemez.
+- **Sonuçları gönderme.** Sonunda rehber gidecek metnin tamamını önce gösterir: cevaplarınız ve notlarınız, uygulama ve Windows sürümü, Keymotion'ın klavye hakkında okudukları (**Sorun bildir**'deki bölümün aynısı; makrolarınızın içeriği hiçbir zaman yok). Metin geliştiriciler için İngilizcedir. **Kopyala ve GitHub'da aç** metni panoya koyar ve formu başlığı yazılı olarak açar; metni oraya yapıştırırsınız. **Yalnız kopyala** yalnızca kopyalar. Hiçbir şey kendiliğinden gönderilmez.
+
+<Screenshot name="aa-guide-step" alt="Yanında deneme rehberi açık olan Işıklar sayfası, 3. adım Işık efekti: Kaydettiğiniz efekt klavyeden geri okundu (Keymotion kendisi kontrol etti), Oraya git düğmesi, Çalıştı, Çalışmadı ve Atladım seçenekleri, not kutusu, Vazgeç, Geri ve Sonraki adım" />
+
+Rehber klavyeye kendisi hiçbir şey yazmaz: kaydetmeyi her zamanki gibi sayfalarda siz yaparsınız. Ekran adımı klavyenin saat sayfasının yerini alabilir; saat sayfasını korumak için **Atladım**'ı seçin.
+
+<Screenshot name="aa-guide-summary" alt="Deneme rehberinin son ekranı, Deneme tamamlandı: dokuz adım ve cevapları, gönderilecek metin, Kopyala ve GitHub'da aç ile Yalnız kopyala düğmeleri" />
 
 ## Aynı altyapı, henüz denenmedi
 

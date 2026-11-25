@@ -17,16 +17,34 @@ says so.
 
 ### Added
 
-- **AK980 PRO on AJAZZ's firmware 3.01 ("769"), in beta:** over the USB
-  cable, Keymotion now speaks this firmware's different set of commands:
-  lighting effects and per-key color, live lighting, key mapping on both
-  layers, macros, pictures on the screen, the clock, and the battery level,
-  which the keyboard reports over the cable too. The support is new: it was
-  tried on a simulated keyboard, not yet on a real one, so **Connection** and
-  the Overview mark it **In beta**, with a link to tell us how it works.
-  Before the first write of a session, Keymotion asks (**Untested
-  firmware**), as on any firmware it wasn't tested with. **Disabled**,
-  **Double-click** and the macro mode **While held** aren't offered there.
+- **AK980 PRO on AJAZZ's firmware 3.01 ("769"), in beta:** over the USB cable,
+  Keymotion now speaks this firmware's different set of commands: lighting
+  effects and per-key color, live lighting, key mapping on both layers,
+  macros, pictures on the screen, the clock, and the battery level, which the
+  keyboard reports over the cable too. The support is new and still being
+  tested, so **Connection** and the Overview mark it **In beta**, and the test
+  guide below asks how it works. Before the first write of a session,
+  Keymotion asks (**Untested firmware**), as on any firmware it wasn't tested
+  with. **Disabled**, **Double-click** and the macro mode **While held**
+  aren't offered there.
+- **Test guide (firmware 3.01):** an optional test of nine steps, about ten
+  minutes, for owners of a keyboard on firmware 3.01 who'd like to help:
+  getting ready, the connection, a lighting effect, live lighting, per-key
+  color, key mapping, macros, the screen (optional) and restoring the first
+  backup. The Overview invites you once, without covering the page (**Start
+  the test**; **Not now**, which asks once more at the next connection;
+  **Don't show again**), and **Connection** always has it, with how far you
+  got. The guide stays open beside the pages: **Go there** opens the page a
+  step needs, and you answer **Worked**, **Didn't work** or **Skipped**, with
+  a note if you like. Where Keymotion can tell by itself (the backup, a save
+  it read back from the keyboard while the guide was open), it ticks the step,
+  and never otherwise. Your answers stay on this computer. At the end, the
+  guide shows the exact text to send (your answers and notes, the app and
+  Windows versions, and what Keymotion read about the keyboard, never your
+  macros' contents); **Copy and open GitHub** puts it on the clipboard and
+  opens the form with its title filled in. Nothing is sent by itself, and the
+  guide writes nothing to the keyboard: you save on the pages, as usual. It
+  never shows on firmware 1.06.
 - **Keyboard backups (firmware 3.01):** the first time Keymotion connects to
   the keyboard, before it can write anything, it saves a backup of the
   keyboard's settings (key mapping on both layers, lighting effect, per-key

@@ -6,7 +6,8 @@
 //   seems to talk to it. On every page that writes to the keyboard.
 // - LiveLightsNotice: live lighting doesn't show on its keys for now, and
 //   why. On every page that turns live lighting on.
-// - BetaPill / BetaNote: support for this firmware is new.
+// - BetaPill / BetaNote: support for this firmware is new (on the cable,
+//   the test guide: components/TestGuide.tsx).
 
 import { FlaskConical, MessageSquareWarning, RadioTower } from "lucide-react";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
@@ -122,9 +123,10 @@ export function BetaPill() {
   );
 }
 
-/** Support for this keyboard's firmware is new: what that means, and the
- *  GitHub form to say how it works. */
-export function BetaNote({ kb }: { kb: KeyboardInfo }) {
+/** Support for this keyboard's firmware is new: what that means, and (with
+ *  `tell`) the GitHub form to say how it works. On the cable the test
+ *  guide (components/TestGuide.tsx) takes its place. */
+export function BetaNote({ kb, tell = true }: { kb: KeyboardInfo; tell?: boolean }) {
   const t = useT();
   if (kb.protocol !== "ajazz-aa") return null;
   const issue = betaIssue(kb.modelName, kb.firmware);
@@ -132,14 +134,16 @@ export function BetaNote({ kb }: { kb: KeyboardInfo }) {
     <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-ink-2" data-aa-beta-note>
       <BetaPill />
       <span>{t("aa.beta.body")}</span>
-      <button
-        type="button"
-        className="text-signal underline-offset-2 hover:underline"
-        onClick={() => openIssue("keyboard", issue.title, issue.model).catch(console.error)}
-        data-aa-beta-tell
-      >
-        {t("aa.beta.tell")}
-      </button>
+      {tell && (
+        <button
+          type="button"
+          className="text-signal underline-offset-2 hover:underline"
+          onClick={() => openIssue("keyboard", issue.title, issue.model).catch(console.error)}
+          data-aa-beta-tell
+        >
+          {t("aa.beta.tell")}
+        </button>
+      )}
     </p>
   );
 }

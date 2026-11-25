@@ -341,6 +341,34 @@ pub struct AaStatus {
     /// The colour of its effect is known (the keyboard reports white after
     /// any write, so only one Keymotion wrote is).
     pub effect_color_known: bool,
+    /// When a save of each kind last read back from the keyboard as
+    /// written, since the app connected to it: the test guide's own
+    /// checks show only what happened.
+    pub read_back: AaReadBack,
+}
+
+/// Unix ms of the last save of each kind that the keyboard read back as
+/// written ([`AaStatus::read_back`]); `null` while none has. A save that
+/// failed, or did not read back, leaves its time as it was. A restore
+/// counts as a restore, not as a save of the sections it put back.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AaReadBack {
+    #[ts(type = "number | null")]
+    pub effect: Option<u64>,
+    /// Per-key colours (and the per-key effect after them).
+    #[ts(type = "number | null")]
+    pub per_key: Option<u64>,
+    /// A keymap layer (nothing written when it already held what was
+    /// asked: the fresh read showed it).
+    #[ts(type = "number | null")]
+    pub keymap: Option<u64>,
+    #[ts(type = "number | null")]
+    pub macros: Option<u64>,
+    /// A backup put back whole.
+    #[ts(type = "number | null")]
+    pub restore: Option<u64>,
 }
 
 /// Why a keyboard backup was taken.

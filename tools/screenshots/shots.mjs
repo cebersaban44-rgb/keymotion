@@ -99,6 +99,20 @@ async function saveEffect(page, effect = "fx.8") {
   await page.waitForTimeout(400);
 }
 
+/** In the open test guide (firmware 3.01), answer the next `n` steps:
+ *  "Worked", or what `answers` gives for a step (by its id in
+ *  app/src/lib/aaGuideRules.ts), with an optional note. */
+async function answerGuide(page, n, answers = {}) {
+  for (let i = 0; i < n; i++) {
+    const step = await page.locator("[data-guide-panel]").getAttribute("data-guide-panel");
+    const [result, note] = answers[step] ?? ["worked"];
+    await page.locator(`[data-guide-result="${result}"]`).click();
+    if (note) await page.locator("[data-guide-note]").fill(note);
+    await page.locator("[data-guide-next]").click();
+    await page.waitForTimeout(250);
+  }
+}
+
 /** Reminders › Add reminder › `template`, an optional new title, Next, Save. */
 export async function addReminder(page, template, title) {
   await go(page, "reminders");
@@ -203,6 +217,52 @@ export const SHOTS = [
       await page.waitForTimeout(300);
       await page.locator("[data-library-upload]").click();
       await page.waitForTimeout(1000);
+    },
+  },
+  // The 3.01 test guide: the invitation on the Overview, a step beside the
+  // page it opened, with Keymotion's own check after a save, and the
+  // summary with the text to share.
+  {
+    name: "aa-guide-invite",
+    mock: "aa769",
+    page: "overview",
+    steps: async (page) => {
+      await scrollTo(page, page.locator('[data-infobar="aa-guide-invite"]'), 420);
+    },
+  },
+  {
+    name: "aa-guide-step",
+    mock: "aa769",
+    page: "connection",
+    steps: async (page) => {
+      await page.locator("[data-guide-open]").click();
+      await page.waitForTimeout(500);
+      await answerGuide(page, 2);
+      await page.locator("[data-guide-go]").click();
+      await page.waitForTimeout(900);
+      // A single-colour effect, as the step asks.
+      await click(page, "fx.1", { start: true });
+      await click(page, "bar.save", { wait: 300 });
+      await waitText(page, "bar.saved");
+      await page.locator("[data-guide-check]").waitFor();
+      await page.locator('[data-guide-result="worked"]').click();
+      await page.evaluate(() => document.querySelector("main").scrollTo({ top: 0, behavior: "instant" }));
+      await page.waitForTimeout(300);
+    },
+  },
+  {
+    name: "aa-guide-summary",
+    mock: "aa769",
+    page: "connection",
+    steps: async (page, { lang }) => {
+      await page.locator("[data-guide-open]").click();
+      await page.waitForTimeout(500);
+      await answerGuide(page, 9, {
+        effect: ["worked", L(lang, "The lowest brightness is dim, but on.", "En düşük parlaklık sönük ama açık.")],
+        screen: ["skipped"],
+      });
+      await page.locator("[data-guide-text]").waitFor();
+      await page.waitForTimeout(300);
     },
   },
   // Every tile: the window as tall as the page.
