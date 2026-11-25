@@ -36,13 +36,17 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
   da **Atladım** diye cevaplar, isterseniz bir not yazarsınız. Keymotion'ın
   kendisinin bilebildiği yerlerde (yedek, rehber açıkken kaydedilip klavyeden
   geri okunan bir ayar) adım işaretlenir; başka hiçbir zaman. Cevaplarınız bu
-  bilgisayarda kalır. Sonunda rehber gönderilecek metni olduğu gibi gösterir
+  bilgisayarda kalır ve o klavye yazılımına aittir: başka bir klavye
+  yazılımında rehber baştan başlar. Keymotion'ın yalnızca okuduğu bir klavyede
+  rehber, kaydetme isteyen adımların çalışamayacağını söyler ve **Sorun
+  bildir**'i sunar. Sonunda rehber gönderilecek metni olduğu gibi gösterir
   (cevaplarınız ve notlarınız, uygulama ve Windows sürümü, Keymotion'ın klavye
   hakkında okudukları; makrolarınızın içeriği hiçbir zaman yok); **Kopyala ve
-  GitHub'da aç** metni panoya koyar ve formu başlığı yazılı olarak açar.
-  Hiçbir şey kendiliğinden gönderilmez ve rehber klavyeye hiçbir şey yazmaz:
-  kaydetmeyi her zamanki gibi sayfalarda siz yaparsınız. 1.06 klavye
-  yazılımında hiç görünmez.
+  GitHub'da aç** metni panoya koyar ve formu başlığı ve modeli yazılı olarak
+  açar; rehber orada hangi cevabı seçeceğinizi söyler. Hiçbir şey
+  kendiliğinden gönderilmez ve rehber klavyeye hiçbir şey yazmaz: kaydetmeyi
+  her zamanki gibi sayfalarda siz yaparsınız. 1.06 klavye yazılımında hiç
+  görünmez.
 - **Klavye yedekleri (3.01 klavye yazılımı):** Keymotion klavyeye ilk
   bağlandığında, bir şey yazabilmeden önce klavyenin ayarlarının yedeğini
   alır (iki katmandaki tuş atamaları, ışık efekti, tuş başına renkler,

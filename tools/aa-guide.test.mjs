@@ -4,8 +4,13 @@
 // invitation shows, the progress kept on this computer, the checks
 // Keymotion makes itself, and the English text the user shares.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
+  FORM_DETAILS,
+  FORM_FAILS,
+  FORM_QUESTION,
+  FORM_WORKS,
   GUIDE_CHECK,
   GUIDE_GO,
   GUIDE_STEPS,
@@ -19,6 +24,7 @@ import {
   checkShown,
   emptyProgress,
   failedSteps,
+  formAnswer,
   guideIssue,
   guideState,
   inviteShown,
@@ -26,7 +32,9 @@ import {
   nextAt,
   openAt,
   parseProgress,
+  progressFor,
   reportParts,
+  sharedKeyboard,
   sharedText,
   withNote,
   withResult,
@@ -257,4 +265,56 @@ test("GitHub's form: the title and model, the body goes by the clipboard", () =>
     title: "[Keyboard] AJAZZ AK980 PRO — test guide",
     model: "AJAZZ AK980 PRO",
   });
+});
+
+test("GitHub's form: the question, its answers and the box are the form's own words", () => {
+  const form = readFileSync(new URL("../.github/ISSUE_TEMPLATE/keyboard.yml", import.meta.url), "utf8");
+  for (const words of [FORM_QUESTION, FORM_WORKS, FORM_FAILS, FORM_DETAILS]) assert.ok(form.includes(words), words);
+  assert.equal(formAnswer(all("worked")), FORM_WORKS);
+  assert.equal(formAnswer(withResult(all("worked"), "screen", "skipped")), FORM_WORKS);
+  assert.equal(formAnswer(withResult(all("worked"), "macros", "failed")), FORM_FAILS);
+});
+
+const K301 = { modelId: "ajazz-ak980-pro", model: "AJAZZ AK980 PRO", firmware: "3.01" };
+
+test("progress belongs to a model on a firmware: another one starts afresh", () => {
+  // The first keyboard met is noted; the same one keeps everything.
+  let p = withNote(withResult({ ...emptyProgress(), at: 3, opened: true, later: 1 }, "prepare", "worked"), "prepare", "ok");
+  p = progressFor(p, K301);
+  assert.deepEqual(p.keyboard, K301);
+  assert.equal(p.results.prepare, "worked", "kept when nothing was noted yet");
+  assert.equal(progressFor(p, { ...K301 }), p, "the same keyboard: the same progress");
+  // Another firmware: nothing of the old answers, the invitation's rules
+  // start over; only "Don't show again" stays.
+  const shared = { ...all("failed"), keyboard: K301, checked: { effect: true }, opened: true, later: 2, shared: true, at: SUMMARY };
+  const next = progressFor(shared, { ...K301, firmware: "3.02" });
+  assert.deepEqual(next, { ...emptyProgress(), keyboard: { ...K301, firmware: "3.02" } });
+  assert.equal(inviteShown(next, ready), true, "the invitation may show again for that firmware");
+  const never = progressFor({ ...shared, never: true }, { ...K301, firmware: "3.02" });
+  assert.equal(never.never, true);
+  assert.equal(inviteShown(never, ready), false);
+  // Another model too.
+  assert.equal(answered(progressFor(shared, { ...K301, modelId: "other" })), 0);
+  // Kept and read back with the rest.
+  assert.deepEqual(parseProgress(JSON.parse(JSON.stringify(shared))).keyboard, K301);
+  assert.equal(parseProgress({ keyboard: { modelId: "x", model: "", firmware: "3.01" } }).keyboard, null);
+});
+
+test("the shared text names the firmware the answers were collected on", () => {
+  const progress = { ...all("worked"), keyboard: K301 };
+  assert.deepEqual(sharedKeyboard(progress, "AJAZZ AK980 PRO", "3.02"), { model: "AJAZZ AK980 PRO", firmware: "3.01" });
+  assert.deepEqual(sharedKeyboard(emptyProgress(), "AJAZZ AK980 PRO", "3.02"), { model: "AJAZZ AK980 PRO", firmware: "3.02" });
+  const text = sharedText({ model: "Something else", firmware: "9.99", progress, checks: {}, report: REPORT });
+  assert.ok(text.startsWith("Keymotion test guide: AJAZZ AK980 PRO, firmware 3.01\n\n1. "), text);
+});
+
+test("the shared text says when the keyboard was the simulator", () => {
+  const sim = REPORT.replace(
+    "  ajazz-ak980-pro.aa on USB 8039, firmware 3.01\n",
+    "  ajazz-ak980-pro.aa on USB 8039, firmware 3.01\n  simulated keyboard (a development build with KEYMOTION_SIM), not a real one\n",
+  );
+  const text = sharedText({ model: "AJAZZ AK980 PRO", firmware: "3.01", progress: all("worked"), checks: {}, report: sim });
+  assert.ok(text.startsWith("Keymotion test guide: AJAZZ AK980 PRO, firmware 3.01\n(simulated keyboard)\n\n"), text);
+  const real = sharedText({ model: "AJAZZ AK980 PRO", firmware: "3.01", progress: all("worked"), checks: {}, report: REPORT });
+  assert.ok(!real.includes("simulated"));
 });

@@ -10,11 +10,14 @@
 //   what to do, opens the page that does it ("Go there") and asks how it
 //   went; Cancel at every step keeps the progress. After the last step, the
 //   summary shows the exact text to share, which the user copies; GitHub's
-//   form opens with only its title filled in.
+//   form opens with its title and model filled in (only its text fields
+//   take values from the address), and the panel names the answer to pick
+//   for its question. On a keyboard Keymotion can't write to now, the panel
+//   says the saving steps can't work and offers a report.
 //
 // Nothing here writes to the keyboard: the user saves on the pages.
 
-import { ArrowRight, ArrowUpRight, Check, Copy, FlaskConical, Loader2, X } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, Copy, FlaskConical, Loader2, MessageSquareWarning, TriangleAlert, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
@@ -31,8 +34,12 @@ import {
   showStep,
   useGuide,
   useGuideInvite,
+  GUIDE_WIDTH,
 } from "../lib/aaGuide";
+import { aaStatusOf } from "../lib/aa";
 import {
+  FORM_DETAILS,
+  FORM_QUESTION,
   GUIDE_CHECK,
   GUIDE_GO,
   GUIDE_STEPS,
@@ -41,9 +48,11 @@ import {
   answered,
   checkShown,
   failedSteps,
+  formAnswer,
   guideIssue,
   guideState,
   nextAt,
+  sharedKeyboard,
   sharedText,
   type GuideGo,
   type GuideResult,
@@ -53,6 +62,7 @@ import {
 import { copyText } from "../lib/diagnostics";
 import { useT, type MessageKey, type Translate } from "../lib/i18n";
 import { getDiagnostics, openIssue } from "../lib/ipc";
+import { useReport } from "../lib/report";
 import { useActiveKeyboard, useApp } from "../lib/store";
 
 const TITLE: Record<GuideStep, MessageKey> = {
@@ -209,10 +219,23 @@ export function GuidePanel() {
 function Panel() {
   const t = useT();
   const at = useGuide((s) => s.progress.at);
+  const attention = useGuide((s) => s.attention);
   const step = GUIDE_STEPS[at];
+  const box = useRef<HTMLElement>(null);
+  const [flash, setFlash] = useState(false);
+  // "Open the guide" while it is open: its heading takes the focus and the
+  // panel lights up for a moment.
+  useEffect(() => {
+    if (attention === 0) return;
+    box.current?.querySelector<HTMLElement>("[data-guide-step]")?.focus();
+    setFlash(true);
+    const id = window.setTimeout(() => setFlash(false), 900);
+    return () => window.clearTimeout(id);
+  }, [attention]);
   return (
     <motion.aside
-      className="guide-pane flex h-full w-[340px] shrink-0 flex-col"
+      ref={box}
+      className={`guide-pane flex h-full ${GUIDE_WIDTH} shrink-0 flex-col transition-shadow ${flash ? "shadow-[inset_0_0_0_2px_var(--signal)]" : ""}`}
       aria-label={t("guide.title")}
       initial={{ opacity: 0, x: 16 }}
       animate={{ opacity: 1, x: 0 }}
@@ -224,8 +247,43 @@ function Panel() {
         <FlaskConical size={16} className="text-signal" aria-hidden />
         <span className="text-[13px] font-semibold text-ink-2">{t("guide.title")}</span>
       </header>
+      <ReadOnlyNote />
       {step ? <StepView key={at} step={step} at={at} /> : <Summary />}
     </motion.aside>
+  );
+}
+
+/** The keyboard takes no writes now: the steps that save can't work. Says
+ *  so plainly, and offers a report. */
+function ReadOnlyNote() {
+  const t = useT();
+  const kb = useActiveKeyboard();
+  const openReport = useReport((s) => s.openReport);
+  const ro = kb ? aaStatusOf(kb)?.readOnly : null;
+  if (!kb || !ro) return null;
+  const reasons = ro.kind === "not-sane" ? ro.reasons : [ro.error];
+  return (
+    <div className="mx-5 mb-2 flex flex-col gap-2 rounded-lg bg-warn/12 p-3 text-[13px]" role="status" data-guide-read-only>
+      <span className="flex items-start gap-2">
+        <TriangleAlert size={15} className="mt-0.5 shrink-0 text-warn" aria-hidden />
+        {t("guide.readOnly")}
+      </span>
+      <button
+        type="button"
+        className="btn-secondary btn-sm self-start"
+        onClick={() =>
+          openReport({
+            kind: "bug",
+            title: `[Problem] ${kb.modelName} firmware ${kb.firmware ?? "?"}: the test guide can't save`,
+            context: `Keymotion writes nothing to the keyboard (${ro.kind}):\n${reasons.map((r) => `- ${r}`).join("\n") || "(no reason given)"}`,
+          })
+        }
+        data-guide-report
+      >
+        <MessageSquareWarning size={14} aria-hidden />
+        {t("report.settings.problem")}
+      </button>
+    </div>
   );
 }
 
@@ -344,13 +402,21 @@ function Summary() {
   const kb = useActiveKeyboard();
   const [report, setReport] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  // Bumped by "Try again" after the text couldn't be put together.
+  const [tries, setTries] = useState(0);
   const [done, setDone] = useState<"no" | "copied" | "opened" | "failed">("no");
   const title = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     title.current?.focus({ preventScroll: true });
+  }, []);
+  useEffect(() => {
     let gone = false;
     getDiagnostics(locale).then(
-      (r) => !gone && setReport(r),
+      (r) => {
+        if (gone) return;
+        setReport(r);
+        setFailed(false);
+      },
       (e) => {
         console.error(e);
         if (!gone) setFailed(true);
@@ -359,12 +425,12 @@ function Summary() {
     return () => {
       gone = true;
     };
-  }, [locale]);
+  }, [locale, tries]);
 
   const facts = checkFacts(kb);
   const checks = Object.fromEntries(GUIDE_STEPS.map((s) => [s, checkShown(progress, s, facts)]));
-  const model = kb?.modelName ?? "AJAZZ AK980 PRO";
-  const firmware = kb?.firmware ?? null;
+  // The keyboard the answers were collected on.
+  const { model, firmware } = sharedKeyboard(progress, kb?.modelName ?? "AJAZZ AK980 PRO", kb?.firmware ?? null);
   const text = report === null ? null : sharedText({ model, firmware, progress, checks, report });
   const bad = failedSteps(progress);
 
@@ -422,7 +488,12 @@ function Summary() {
         ) : (
           <div className="mt-2 flex min-h-[100px] items-center justify-center rounded-lg border border-line bg-bg-raise text-[12.5px] text-ink-3">
             {failed ? (
-              <span className="text-danger">{t("report.loadFailed")}</span>
+              <span className="flex flex-col items-center gap-2 text-center" role="alert" data-guide-text-failed>
+                <span className="text-danger">{t("guide.text.failed")}</span>
+                <button type="button" className="btn-secondary btn-sm" onClick={() => setTries((n) => n + 1)}>
+                  {t("guide.text.retry")}
+                </button>
+              </span>
             ) : (
               <Loader2 size={16} className="animate-spin" aria-label={t("report.loading")} />
             )}
@@ -438,6 +509,9 @@ function Summary() {
             {t("guide.copy")}
           </button>
         </div>
+        <p className="mt-3 text-[12.5px] text-ink-2" data-guide-form>
+          {t("guide.form", { question: FORM_QUESTION, answer: formAnswer(progress), box: FORM_DETAILS })}
+        </p>
         <p className="mt-2 text-[12.5px] text-ink-2" role="status" data-guide-sent={done}>
           {done === "opened"
             ? t("guide.sent.opened")

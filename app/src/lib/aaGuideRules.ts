@@ -72,8 +72,21 @@ export const LATER_MAX = 2;
  *  issue (the diagnostics report's own limit is 20,000). */
 export const SHARED_MAX = 12_000;
 
+/** The keyboard a progress belongs to: the answers are about this model
+ *  on this firmware, and another firmware starts afresh. */
+export interface GuideKeyboard {
+  modelId: string;
+  /** Its name, for the shared text ("AJAZZ AK980 PRO"). */
+  model: string;
+  /** As the keyboard reports it ("3.01"). */
+  firmware: string;
+}
+
 /** The progress, kept on this computer (it survives a restart). */
 export interface GuideProgress {
+  /** The keyboard the answers were collected on; `null` before the guide
+   *  met one. */
+  keyboard: GuideKeyboard | null;
   /** Each answered step's result. */
   results: Partial<Record<GuideStep, GuideResult>>;
   /** Each step's note, as typed (at most `NOTE_MAX` characters). */
@@ -93,7 +106,21 @@ export interface GuideProgress {
 }
 
 export function emptyProgress(): GuideProgress {
-  return { results: {}, notes: {}, checked: {}, at: 0, opened: false, later: 0, never: false, shared: false };
+  return { keyboard: null, results: {}, notes: {}, checked: {}, at: 0, opened: false, later: 0, never: false, shared: false };
+}
+
+/** `p` for the "AA" keyboard on the cable now (`kb`): the same progress
+ *  while it is the same model on the same firmware (the first one met is
+ *  noted). Another firmware or model starts afresh, answers, checks and
+ *  the invitation's "Not now" count included: the answers were about the
+ *  other one. Only "Don't show again" stays, as the user said. */
+export function progressFor(p: GuideProgress, kb: GuideKeyboard): GuideProgress {
+  const was = p.keyboard;
+  if (was && was.modelId === kb.modelId && was.firmware === kb.firmware) {
+    return was.model === kb.model ? p : { ...p, keyboard: kb };
+  }
+  if (!was) return { ...p, keyboard: kb };
+  return { ...emptyProgress(), never: p.never, keyboard: kb };
 }
 
 const RESULTS: readonly string[] = ["worked", "failed", "skipped"];
@@ -106,6 +133,10 @@ export function parseProgress(raw: unknown): GuideProgress {
   if (!raw || typeof raw !== "object") return p;
   const r = raw as Record<string, unknown>;
   const entries = (v: unknown) => (v && typeof v === "object" ? Object.entries(v as Record<string, unknown>) : []);
+  const kb = r.keyboard && typeof r.keyboard === "object" ? (r.keyboard as Record<string, unknown>) : null;
+  if (kb && [kb.modelId, kb.model, kb.firmware].every((v) => typeof v === "string" && v)) {
+    p.keyboard = { modelId: kb.modelId as string, model: kb.model as string, firmware: kb.firmware as string };
+  }
   for (const [k, v] of entries(r.results)) {
     if (isStep(k) && typeof v === "string" && RESULTS.includes(v)) p.results[k] = v as GuideResult;
   }
@@ -288,17 +319,35 @@ export function reportParts(report: string): { app: string | null; windows: stri
   return { app: value("App version: "), windows: value("Windows: "), aa };
 }
 
+/** The keyboard form's required question (.github/ISSUE_TEMPLATE/
+ *  keyboard.yml), its box for the text, and the answer that fits the
+ *  results, word for word: GitHub fills in only the form's text fields
+ *  from the address, so the panel tells the user which answer to pick. */
+export const FORM_QUESTION = "What happens when you plug it in with Keymotion open?";
+export const FORM_DETAILS = "Keyboard details";
+export const FORM_WORKS = "Keymotion finds it, and everything I tried works";
+export const FORM_FAILS = "Keymotion finds it, but something doesn't work (say what below)";
+
+export function formAnswer(p: GuideProgress): string {
+  return failedSteps(p) > 0 ? FORM_FAILS : FORM_WORKS;
+}
+
 /** The GitHub form's title and model for the shared results. */
 export function guideIssue(model: string, firmware: string | null): { title: string; model: string } {
   const name = firmware ? `${model} firmware ${firmware}` : model;
   return { title: `[Keyboard] ${name} — test guide`, model: name };
 }
 
+/** How the "AA" section of a development build with the simulator names it
+ *  (app/src-tauri/src/aa.rs `AaDriver::diagnostics`). */
+export const SIMULATED = "simulated keyboard";
+
 /** One line of a note: its line breaks as spaces. */
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim().slice(0, NOTE_MAX);
 
 /** What the shared text is made of. */
 export interface ShareInput {
+  /** The keyboard on the cable now, when the progress names none. */
   model: string;
   firmware: string | null;
   progress: GuideProgress;
@@ -308,13 +357,23 @@ export interface ShareInput {
   report: string;
 }
 
+/** The model and firmware the shared results are about: those the answers
+ *  were collected on. */
+export function sharedKeyboard(p: GuideProgress, model: string, firmware: string | null): { model: string; firmware: string | null } {
+  return p.keyboard ? { model: p.keyboard.model, firmware: p.keyboard.firmware } : { model, firmware };
+}
+
 /** The text the user shares: each step's result, note and Keymotion's own
  *  check, the app and Windows versions and the "AA" keyboard section of
- *  the diagnostics report (which never holds macro contents). English, at
- *  most `SHARED_MAX` characters. */
+ *  the diagnostics report (which never holds macro contents), the
+ *  simulated keyboard of a development build said at the top. English,
+ *  at most `SHARED_MAX` characters. */
 export function sharedText(i: ShareInput): string {
   const { app, windows, aa } = reportParts(i.report);
-  const out = [`Keymotion test guide: ${i.model}, firmware ${i.firmware ?? "unknown"}`, ""];
+  const kb = sharedKeyboard(i.progress, i.model, i.firmware);
+  const out = [`Keymotion test guide: ${kb.model}, firmware ${kb.firmware ?? "unknown"}`];
+  if (aa.some((l) => l.includes(SIMULATED))) out.push("(simulated keyboard)");
+  out.push("");
   GUIDE_STEPS.forEach((step, n) => {
     const result = i.progress.results[step];
     let line = `${n + 1}. ${STEP_NAME[step]}: ${result ? RESULT_TEXT[result] : "not answered"}.`;

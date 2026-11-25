@@ -38,13 +38,16 @@ says so.
   step needs, and you answer **Worked**, **Didn't work** or **Skipped**, with
   a note if you like. Where Keymotion can tell by itself (the backup, a save
   it read back from the keyboard while the guide was open), it ticks the step,
-  and never otherwise. Your answers stay on this computer. At the end, the
-  guide shows the exact text to send (your answers and notes, the app and
-  Windows versions, and what Keymotion read about the keyboard, never your
-  macros' contents); **Copy and open GitHub** puts it on the clipboard and
-  opens the form with its title filled in. Nothing is sent by itself, and the
-  guide writes nothing to the keyboard: you save on the pages, as usual. It
-  never shows on firmware 1.06.
+  and never otherwise. Your answers stay on this computer and belong to that
+  firmware: on another one, the guide starts afresh. On a keyboard Keymotion
+  only reads, the guide says that the steps that save can't work and offers
+  **Report a problem**. At the end, the guide shows the exact text to send
+  (your answers and notes, the app and Windows versions, and what Keymotion
+  read about the keyboard, never your macros' contents); **Copy and open
+  GitHub** puts it on the clipboard and opens the form with its title and
+  model filled in, and the guide says which answer to pick there. Nothing is
+  sent by itself, and the guide writes nothing to the keyboard: you save on
+  the pages, as usual. It never shows on firmware 1.06.
 - **Keyboard backups (firmware 3.01):** the first time Keymotion connects to
   the keyboard, before it can write anything, it saves a backup of the
   keyboard's settings (key mapping on both layers, lighting effect, per-key

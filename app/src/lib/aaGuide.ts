@@ -6,7 +6,8 @@
 // - The progress (answers, notes, the checks seen, the invitation's
 //   answers) is in the webview's local storage, as the UI's other
 //   preferences: it survives a restart, never leaves the computer and is
-//   shared only when the user copies the results.
+//   shared only when the user copies the results. It belongs to one model
+//   on one firmware: another firmware starts afresh (`progressFor`).
 // - The panel stays open beside every page: "Go there" opens a page, the
 //   guide waits at the side.
 // - The guide writes nothing to the keyboard. It only opens the pages that
@@ -23,6 +24,7 @@ import {
   newlyChecked,
   openAt,
   parseProgress,
+  progressFor,
   withNote,
   withResult,
   type CheckFacts,
@@ -63,6 +65,9 @@ interface GuideStore {
   laterNow: boolean;
   /** "The guide is closed, your progress is kept", for a moment. */
   closedNotice: boolean;
+  /** Bumped when "Open the guide" is clicked while it is open: the panel
+   *  draws the eye to itself. */
+  attention: number;
 }
 
 export const useGuide = create<GuideStore>(() => ({
@@ -71,6 +76,7 @@ export const useGuide = create<GuideStore>(() => ({
   openedAtMs: 0,
   laterNow: false,
   closedNotice: false,
+  attention: 0,
 }));
 
 function update(change: (p: GuideProgress) => GuideProgress) {
@@ -82,7 +88,10 @@ function update(change: (p: GuideProgress) => GuideProgress) {
 /** Open the panel where the guide was left (the summary once every step
  *  is answered). */
 export function openGuide() {
-  if (useGuide.getState().open) return;
+  if (useGuide.getState().open) {
+    useGuide.setState((s) => ({ attention: s.attention + 1 }));
+    return;
+  }
   update((p) => ({ ...p, opened: true, at: openAt(p) }));
   useGuide.setState({ open: true, openedAtMs: Date.now(), closedNotice: false });
 }
@@ -172,15 +181,34 @@ export function useGuideInvite(): boolean {
   return inviteShown(progress, { ...writableAa(kb), laterNow, guideOpen });
 }
 
-/** For the whole session (App): "Not now" lasts until the keyboard is
- *  connected again, and while the panel is open the saves that read back
- *  are noted as its checks. */
+/** The panel's width (components/TestGuide.tsx), and where a notice in the
+ *  window's bottom or top right corner goes meanwhile: left of the panel,
+ *  never over its buttons. */
+export const GUIDE_WIDTH = "w-[340px]";
+
+export function useCornerRight(): string {
+  return useGuide((s) => s.open) ? "right-[364px]" : "right-6";
+}
+
+/** For the whole session (App): the progress follows the "AA" keyboard on
+ *  the cable (another firmware starts afresh), "Not now" lasts until the
+ *  keyboard is connected again, and while the panel is open the saves that
+ *  read back are noted as its checks. */
 export function useGuideFollow() {
   const kb = useActiveKeyboard();
   const onCable = kb?.protocol === "ajazz-aa" && kb.connection === "usb";
   useEffect(() => {
     if (!onCable && useGuide.getState().laterNow) useGuide.setState({ laterNow: false });
   }, [onCable]);
+  const modelId = onCable ? kb.modelId : null;
+  const model = onCable ? kb.modelName : null;
+  const firmware = onCable ? (kb.firmware?.trim() ?? "") : "";
+  useEffect(() => {
+    if (!modelId || !model || !firmware) return;
+    const now = useGuide.getState().progress;
+    const next = progressFor(now, { modelId, model, firmware });
+    if (next !== now) update(() => next);
+  }, [modelId, model, firmware]);
   const open = useGuide((s) => s.open);
   const since = useGuide((s) => s.openedAtMs);
   const facts = checkFacts(kb);

@@ -1057,6 +1057,10 @@ impl AaDriver {
             self.target.usb.pid,
             kb_devices::firmware_text(self.target.usb.release)
         )];
+        // The test guide's shared text says so at its top (aaGuideRules.ts).
+        if crate::simulated() {
+            out.push("simulated keyboard (a development build with KEYMOTION_SIM), not a real one".into());
+        }
         match self.kb.snapshot() {
             Some(s) => out.extend(report::section_lines(s)),
             None => match self.kb.info() {
