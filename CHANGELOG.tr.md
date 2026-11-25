@@ -5,10 +5,10 @@ Keymotion'daki önemli değişiklikler burada listelenir. İngilizcesi: [CHANGEL
 1.0.0'dan itibaren her sürüm GitHub'da ve Microsoft Store'da aynıdır; ikisi
 için tek bir değişiklik listesi vardır. Windows, Store'dan kurulan kopyanın
 sürümünü sonuna her zaman 0 olan dördüncü bir sayıyla gösterir (1.0.0, 1.0.0.0
-olur). Bir sürüm ikisinde aynı gün çıkar: GitHub sürümü, Microsoft Store
-kopyasını denetleyene kadar bekler. Yalnızca acil bir düzeltme önce GitHub'da
-çıkabilir ve bunu belirtir. Deneme sürümleri ("-rc") yalnızca GitHub'dadır.
-Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
+olur). Bir sürüm önce GitHub'da çıkar; Store kopyası, Microsoft onu
+denetleyince arkasından gelir, genellikle bir gün içinde. Numarası da notları
+da aynıdır. Deneme sürümleri ("-rc") yalnızca GitHub'dadır. Yalnızca birini
+ilgilendiren bir değişiklik bunu belirtir.
 
 ## [Yayımlanmamış]
 

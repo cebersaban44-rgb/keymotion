@@ -4,7 +4,7 @@
 
 中文更新日志从下一个版本开始记录。1.1.0 及更早版本的更改以英文记录在 [CHANGELOG.md](CHANGELOG.md) 中。
 
-每个版本在 GitHub 和 Microsoft Store 上都相同，两者共用一份更改列表。Windows 显示 Store 版的版本号时会多出第四位数字，且始终为 0（1.0.0 显示为 1.0.0.0）。同一版本在两处同一天发布：GitHub 上的版本会等到 Microsoft 审核完 Store 版之后再发布。只有紧急修复可能先在 GitHub 上发布，并会注明这一点。测试版（“-rc”）只在 GitHub 上提供。只涉及其中一个版本的更改会注明。
+每个版本在 GitHub 和 Microsoft Store 上都相同，两者共用一份更改列表。Windows 显示 Store 版的版本号时会多出第四位数字，且始终为 0（1.0.0 显示为 1.0.0.0）。同一版本先在 GitHub 上发布；Microsoft 审核完 Store 版后，Store 版随后发布，通常在一天之内，版本号和更改列表都相同。测试版（“-rc”）只在 GitHub 上提供。只涉及其中一个版本的更改会注明。
 
 ## [未发布]
 

@@ -7,11 +7,10 @@ Türkçe: [CHANGELOG.tr.md](CHANGELOG.tr.md).
 
 From 1.0.0 on, each version is the same on GitHub and in the Microsoft Store,
 with one list of changes for both. Windows shows the Store's copy with a
-fourth number, always 0 (1.0.0 is 1.0.0.0). A version comes out in both the
-same day: the GitHub release waits until Microsoft has reviewed the Store's
-copy. Only an urgent fix may come out on GitHub first, and says so. Test
-versions ("-rc") are only on GitHub. A change that concerns only one of them
-says so.
+fourth number, always 0 (1.0.0 is 1.0.0.0). A version comes out on GitHub
+first; the Store's copy follows when Microsoft has reviewed it, usually
+within a day, with the same number and the same notes. Test versions ("-rc")
+are only on GitHub. A change that concerns only one of them says so.
 
 ## [Unreleased]
 

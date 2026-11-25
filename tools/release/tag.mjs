@@ -10,7 +10,9 @@
 //      the version's CHANGELOGs, release notes and What's new are written
 //      (tools/release/check-release.mjs), and the tag doesn't exist yet.
 //   2. Makes the annotated tag vX.Y.Z ("Keymotion X.Y.Z") and pushes it,
-//      which starts release.yml (and its Store job).
+//      which starts release.yml (and its Store job). Once its install test
+//      has passed, publish.yml publishes the GitHub draft; the Store's copy
+//      publishes by itself when Microsoft certifies it.
 //   3. Opens the main → develop back-merge pull request with gh. CI runs on
 //      it like on any other; merge it with a merge commit once it is green.
 //
@@ -154,7 +156,9 @@ function main() {
     }
     tagAndPush({ tag, version, git, push });
     console.log(`Pushed ${tag}: release.yml builds the installer and drafts a GitHub pre-release, with no Store package (GitHub › Actions).`);
-    console.log(`Then publish it with Actions › Publish a release, run from the tag ${tag}: it stays a pre-release, never GitHub's latest release.`);
+    console.log(
+      `Once its install test has passed, publish it with Actions › Publish a release, run from the tag ${tag}: it stays a pre-release, never GitHub's latest release.`,
+    );
     return;
   }
 
@@ -168,6 +172,8 @@ function main() {
 
   tagAndPush({ tag, version, git, push });
   console.log(`Pushed ${tag}: release.yml builds the installer and the Store package (GitHub › Actions).`);
+  console.log(`Once its install test has passed, publish it with Actions › Publish a release, run from the tag ${tag}.`);
+  console.log("The Store's copy publishes by itself when Microsoft certifies it: nothing to select in Partner Center.");
 
   const open = gh("pr", "list", "--base", "develop", "--head", "main", "--state", "open", "--json", "url", "--jq", ".[0].url");
   const url = open || gh("pr", "create", "--base", "develop", "--head", "main", "--title", pr.title, "--body", pr.body);

@@ -220,8 +220,9 @@ const STORE_BADGE = (theme) => `https://get.microsoft.com/images/en-us%20${theme
  * The draft release's body. GitHub always lists the release files at the
  * bottom, so the page starts with a download button for the setup file (with
  * its size and what it needs) and, beside it, Microsoft's "Get it from
- * Microsoft" badge: the same version comes out in the Microsoft Store the
- * same day (pre-releases don't). While releases are unsigned, the Windows
+ * Microsoft" badge: the same version follows in the Microsoft Store once
+ * Microsoft has certified it (pre-releases don't go there; GitHub comes
+ * first, owner's decision 2026-11-25). While releases are unsigned, the Windows
  * warning follows; then the notes, one line per paragraph (unwrapNotes) and
  * folded when long; then how to install,
  * the setup file's SHA-256 and the links SignPath asks a download page to
@@ -262,7 +263,9 @@ export function releaseBody({ notes, fileName, sha256, size, preface, repository
     `Download **\`${fileName}\`** with the button above or from the files below, and run it. It works on Windows 10 and 11, 64-bit, and installs for your user account without administrator rights. Connect the keyboard with the USB cable, with the switch on its back in the middle.`,
     `Of the files below, only the \`.exe\` is needed: the \`.sig\` file and \`latest.json\` are for the app's own updates.`,
     ...(store
-      ? [`Prefer the Microsoft Store? The same version is there, signed by Microsoft: [Keymotion in the Microsoft Store](${STORE_URL}).`]
+      ? [
+          `Prefer the Microsoft Store? The same version comes there too, signed by Microsoft, once Microsoft has reviewed it (usually within a day): [Keymotion in the Microsoft Store](${STORE_URL}).`,
+        ]
       : []),
     ...(prerelease
       ? [

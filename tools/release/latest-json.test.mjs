@@ -202,6 +202,9 @@ test("releaseBody: a release also offers the same version in the Microsoft Store
   ));
   assert.match(body, /\*\*Run anyway\*\*\. The Microsoft Store copy of this version is signed by Microsoft/);
   assert.match(body, /Prefer the Microsoft Store\? .*\(https:\/\/apps\.microsoft\.com\/detail\/9NL03GDZZ0ZS\?referrer=appbadge&mode=full\)\./);
+  // GitHub comes first: the page never says the Store copy is out already.
+  assert.match(body, /The same version comes there too, signed by Microsoft, once Microsoft has reviewed it \(usually within a day\)/);
+  assert.doesNotMatch(body, /same version is there|same day/);
   assert.match(STORE_URL, /^https:\/\/apps\.microsoft\.com\/detail\/9NL03GDZZ0ZS\?/);
 });
 

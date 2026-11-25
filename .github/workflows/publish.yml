@@ -1,17 +1,18 @@
-# Publishes a release once the Microsoft Store has certified it (docs site:
-# developers/microsoft-store, "Making a release").
+# Publishes a release's GitHub draft once its install test has passed (docs
+# site: developers/microsoft-store, "Making a release").
 #
 #   Actions › Publish a release › Run workflow, with "Use workflow from" set
-#   to the release tag (Tags › v1.2.0) and the same tag typed below: the
+#   to the release tag (Tags › v1.3.0) and the same tag typed below: the
 #   microsoft-store environment only lets v* tags use its secrets.
 #
-#   1. Reads the status of the tag's Store submission (tools/store/submit.mjs
-#      --status). Only reading: nothing in the Store changes.
-#   2. Unless "Only check" is ticked, and only when the submission has passed
-#      certification (Release, or already Publishing or Published), publishes
-#      the tag's GitHub draft release (release.yml made it).
-#   3. The Store's copy is published by selecting "Publish now" in Partner
-#      Center: the submission API has no way to do it.
+#   1. Checks that the tag's Release run (release.yml) passed its install
+#      test on a clean Windows. Only reading.
+#   2. Unless "Only check" is ticked, publishes the tag's GitHub draft
+#      (release.yml made it) as GitHub's latest release.
+#   3. Shows the status of the tag's Store submission (tools/store/submit.mjs
+#      --status). Only reading, and nothing waits for it: GitHub comes first
+#      (owner's decision, 2026-11-25), and the Store publishes its copy by
+#      itself once Microsoft certifies it, usually within a day.
 #
 # A pre-release (v1.3.0-beta.1; docs site: developers/contributing, "Beta
 # (pre-release)") is only on GitHub: the Store is not asked, and its draft is
@@ -28,11 +29,11 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag, such as v1.2.0 or v1.3.0-beta.1 (run the workflow from this tag)
+        description: Release tag, such as v1.3.0 or v1.3.0-beta.1 (run the workflow from this tag)
         required: true
         type: string
       check_only:
-        description: Only check (the Store's status; for a pre-release, its draft); publish nothing
+        description: Only check (the install test; for a release, the Store's status); publish nothing
         required: false
         type: boolean
         default: true
@@ -62,7 +63,7 @@ jobs:
           elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$ ]]; then
             prerelease=true
           else
-            echo "::error::$TAG is not a release tag such as v1.2.0, or a pre-release tag such as v1.3.0-beta.1."
+            echo "::error::$TAG is not a release tag such as v1.3.0, or a pre-release tag such as v1.3.0-beta.1."
             exit 1
           fi
           if [ "$GITHUB_REF" != "refs/tags/$TAG" ]; then
@@ -71,6 +72,68 @@ jobs:
           fi
           echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
 
+  # The installer on the draft was tried on a clean Windows by the tag's own
+  # Release run (release.yml, "Install test on a clean Windows"). A draft is
+  # published only once that job has passed on the tag's commit.
+  tested:
+    name: The install test passed
+    needs: tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    steps:
+      - name: The tag's Release run passed its install test
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          JOB: Install test on a clean Windows
+        run: |
+          # The newest Release run that pushing the tag started, on the tag's commit.
+          if ! run="$(gh api "repos/$GH_REPO/actions/workflows/release.yml/runs?event=push&branch=$TAG&head_sha=$GITHUB_SHA&per_page=1" \
+            --jq '.workflow_runs[0] // empty | "\(.id) \(.html_url)"')"; then
+            echo "::error::Could not read the Release runs of $TAG."
+            exit 1
+          fi
+          if [ -z "$run" ]; then
+            echo "::error::No Release run (release.yml) started by pushing $TAG on $GITHUB_SHA: the draft has had no install test."
+            exit 1
+          fi
+          read -r id url <<< "$run"
+
+          # The job's latest attempt: "completed success", "in_progress null", ...
+          if ! job="$(gh api "repos/$GH_REPO/actions/runs/$id/jobs?filter=latest&per_page=100" \
+            --jq "[.jobs[] | select(.name == \"$JOB\")][0] // empty | \"\(.status) \(.conclusion)\"")"; then
+            echo "::error::Could not read the jobs of the Release run $url."
+            exit 1
+          fi
+          case "$job" in
+            "completed success")
+              echo "The install test of $TAG passed: $url"
+              ;;
+            "")
+              echo "::error::The Release run of $TAG has no \"$JOB\" job (yet): $url"
+              exit 1
+              ;;
+            completed*)
+              echo "::error::The install test of $TAG did not pass (${job#completed }): the draft stays a draft. See $url; re-run the job if it was the runner, otherwise fix it in a new version."
+              exit 1
+              ;;
+            *)
+              echo "::error::The install test of $TAG is still running (${job%% *}): run this again when it has passed. $url"
+              exit 1
+              ;;
+          esac
+          {
+            echo "### $TAG passed its install test"
+            echo
+            echo "- Release run: $url"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Only reading, and only to show where the Store's copy is: it publishes
+  # by itself when Microsoft certifies it, and nothing here waits for it.
+  # Without the Store secrets it says that the Store was not asked.
   store:
     name: Store submission status
     needs: tag
@@ -78,8 +141,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: microsoft-store
-    outputs:
-      status: ${{ steps.status.outputs.status }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -90,7 +151,6 @@ jobs:
           node-version: 24
 
       - name: Read the status
-        id: status
         env:
           TAG: ${{ inputs.tag }}
           STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
@@ -100,8 +160,8 @@ jobs:
 
   github:
     name: Publish the GitHub release
-    needs: store
-    if: ${{ !inputs.check_only }}
+    needs: [tag, tested]
+    if: needs.tag.outputs.prerelease == 'false' && !inputs.check_only
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -112,16 +172,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ inputs.tag }}
-          STATUS: ${{ needs.store.outputs.status }}
         run: |
-          case "$STATUS" in
-            Release | Publishing | Published) ;;
-            *)
-              echo "::error::The Store submission of $TAG is $STATUS, not certified yet: the GitHub draft stays a draft. Run this again when the Store says it passed (status Release)."
-              exit 1
-              ;;
-          esac
-
           if ! draft="$(gh release view "$TAG" --json isDraft --jq .isDraft)"; then
             echo "::error::There is no GitHub release $TAG. release.yml makes its draft when the tag is pushed."
             exit 1
@@ -138,21 +189,14 @@ jobs:
             echo "### $TAG is published on GitHub"
             echo
             echo "- GitHub release: $url"
-            if [ "$STATUS" = Release ]; then
-              echo "- Microsoft Store: certified and waiting. **Now select \"Publish now\" in Partner Center › Keymotion**; the API can't."
-            else
-              echo "- Microsoft Store: $STATUS."
-            fi
+            echo "- Microsoft Store: its copy publishes by itself once Microsoft has certified it, usually within a day. **Store submission status** in this run shows where it is."
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ "$STATUS" = Release ]; then
-            echo "::notice::Now select \"Publish now\" in Partner Center › Keymotion, so the Store's copy comes out too."
-          fi
 
   # A pre-release: no Store, and never GitHub's latest release. "Only check"
-  # publishes nothing and only runs the check of the latest release.
+  # publishes nothing and only runs the checks.
   prerelease:
     name: Publish the GitHub pre-release
-    needs: tag
+    needs: [tag, tested]
     if: needs.tag.outputs.prerelease == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
