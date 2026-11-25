@@ -243,7 +243,8 @@ pub struct BackupSummary {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct ImportedKeymap {
-    pub model_id: String,
+    /// The keyboards' record id (`KeyboardInfo.recordId`).
+    pub record_id: String,
     pub state: KeymapState,
 }
 
@@ -251,7 +252,8 @@ pub struct ImportedKeymap {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct ImportedMacros {
-    pub model_id: String,
+    /// The keyboards' record id (`KeyboardInfo.recordId`).
+    pub record_id: String,
     pub slots: Vec<Option<MacroInfo>>,
 }
 
@@ -304,7 +306,9 @@ pub struct PendingImport(pub Mutex<Option<Pending>>);
 /// belong to known models, the lighting state has the right shape.
 /// `in_library` says whether a picture id is stored here already.
 pub fn check(mut backup: Backup, in_library: &dyn Fn(&str) -> bool) -> Result<(Pending, BackupSummary), String> {
-    let known = |id: &str| kb_devices::catalogue().is_ok_and(|c| c.iter().any(|m| m.id == id));
+    // Records are kept per record id: the model id, or `<model>.aa` for the
+    // "AA" family (driver.rs `family::record_id`).
+    let known = crate::driver::family::known_record;
     if let Some(k) = backup.keymaps.as_mut() {
         k.models.retain(|id, _| known(id));
     }
@@ -582,7 +586,7 @@ pub fn apply(app: &AppHandle, pending: Pending, sections: &[BackupSection]) -> B
             .keymaps
             .iter()
             .flat_map(|k| &k.models)
-            .map(|(id, k)| ImportedKeymap { model_id: id.clone(), state: KeymapState::from(k) })
+            .map(|(id, k)| ImportedKeymap { record_id: id.clone(), state: KeymapState::from(k) })
             .collect();
     }
     if want(BackupSection::Macros) {
@@ -591,7 +595,7 @@ pub fn apply(app: &AppHandle, pending: Pending, sections: &[BackupSection]) -> B
             .iter()
             .flat_map(|m| &m.models)
             .map(|(id, m)| ImportedMacros {
-                model_id: id.clone(),
+                record_id: id.clone(),
                 slots: m.slots.iter().map(|s| s.as_ref().map(MacroInfo::from)).collect(),
             })
             .collect();
@@ -639,6 +643,7 @@ mod tests {
                     None,
                 ],
                 written_ms: Some(1),
+                ..Default::default()
             },
         );
         b.macros = Some(macros);

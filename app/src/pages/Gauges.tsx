@@ -21,6 +21,7 @@ import { fromHex, toHex } from "../lib/pomodoroLights";
 import { useMusic } from "../lib/music";
 import { usePomodoro } from "../lib/pomodoro";
 import { useApp } from "../lib/store";
+import { LiveLightsNotice } from "../components/KeyboardNotices";
 
 export function Gauges({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
@@ -88,6 +89,7 @@ export function Gauges({ kb }: { kb: KeyboardInfo }) {
       {!usb && (
         <InfoBar tone="warn" icon={<Usb size={20} strokeWidth={1.6} />} title={t("gauges.noUsb")} data="usb" />
       )}
+      <LiveLightsNotice />
 
       <section className="card flex flex-col">
         {/* On or off, what the keys show, and the readings. */}

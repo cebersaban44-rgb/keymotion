@@ -11,18 +11,22 @@
 //       3. makes a new submission (a copy of the last published one), with
 //          the new package (the old one PendingDelete), "What's new" in
 //          every listing language from store/whats-new/<version>.<lang>.txt,
-//          and targetPublishMode "Manual", set every time: the version waits
-//          for "Publish now" in Partner Center after certification;
+//          and targetPublishMode "Immediate", set every time (a new
+//          submission copies the last one's, which may have waited for
+//          "Publish now"): the version publishes by itself as soon as it
+//          passes certification (owner's decision, 2026-11-25);
 //       4. uploads the package (a ZIP) to the submission's fileUploadUrl,
 //          commits it and waits while the commit runs.
 //   node tools/store/submit.mjs --status --tag v1.2.0
 //       Only reads: the status of the submission that carries the version's
-//       package (Certification, Release, Published, …). publish.yml uses it.
+//       package (Certification, Release, Published, …). publish.yml shows
+//       it beside the GitHub release; nothing waits for it.
 //
 // The secrets STORE_TENANT_ID, STORE_CLIENT_ID and STORE_CLIENT_SECRET (a
 // Microsoft Entra app with the Manager role in Partner Center) come from the
-// microsoft-store environment. Without them a submission is skipped with a
-// notice, and the package is uploaded in Partner Center by hand as before.
+// microsoft-store environment. Without them a submission (or a status) is
+// skipped with a notice, and the package is uploaded in Partner Center by
+// hand, set to publish as soon as it passes certification.
 //
 // Microsoft's msstore tool is not used: it deletes a pending submission.
 // A submission made here must not be edited in Partner Center while this
@@ -164,8 +168,8 @@ export function matchListings(listingKeys, languages) {
 
 /**
  * The submission to PUT: the old packages PendingDelete, the new one
- * PendingUpload, "What's new" in each listing, and "Manual" publishing.
- * The input is not changed.
+ * PendingUpload, "What's new" in each listing, and "Immediate" publishing
+ * (as soon as it passes certification). The input is not changed.
  */
 export function prepareSubmission(submission, { packageFile, notes }) {
   const s = structuredClone(submission);
@@ -185,7 +189,7 @@ export function prepareSubmission(submission, { packageFile, notes }) {
     ...(s.applicationPackages ?? []).map((p) => ({ ...p, fileStatus: "PendingDelete" })),
     { fileName: packageFile, fileStatus: "PendingUpload", minimumDirectXVersion: "None", minimumSystemRam: "None" },
   ];
-  s.targetPublishMode = "Manual";
+  s.targetPublishMode = "Immediate";
   return s;
 }
 
@@ -271,10 +275,12 @@ export async function submit({ client, msix, notes, log = console.log, sleep = s
     if (!created?.id || !created.fileUploadUrl) throw new Error("the Store made a submission without an id or an upload address");
     log(`Made submission ${created.id} (a copy of ${lastId}).`);
     const updated = await client.updateSubmission(created.id, prepareSubmission(created, { packageFile: msix.name, notes }));
-    if (updated?.targetPublishMode && updated.targetPublishMode !== "Manual") {
-      throw new Error(`the submission says targetPublishMode ${updated.targetPublishMode}, not Manual: it would publish by itself`);
+    if (updated?.targetPublishMode && updated.targetPublishMode !== "Immediate") {
+      throw new Error(
+        `the submission says targetPublishMode ${updated.targetPublishMode}, not Immediate: it would not publish by itself when it passes certification`,
+      );
     }
-    log(`Set the package ${msix.name}, What's new (${Object.keys(notes).join(", ")}) and publishing on "Publish now".`);
+    log(`Set the package ${msix.name}, What's new (${Object.keys(notes).join(", ")}) and publishing as soon as it passes certification.`);
     await client.upload(created.fileUploadUrl, zipOne(msix.name, msix.bytes));
     log(`Uploaded ${msix.name} (${msix.bytes.length} bytes).`);
 
@@ -350,9 +356,24 @@ async function main() {
   const secrets = storeSecrets(process.env);
   if (!secrets) {
     const names = SECRET_NAMES.join(", ");
-    if (opt.status) throw new Error(`${names} are not set, so the Store can't be asked (microsoft-store environment)`);
-    console.log(`${ci ? "::notice::" : ""}${names} are not set: nothing was submitted. Upload the .msix in Partner Center by hand.`);
-    summary(["### Not submitted to the Store", "", `The secrets ${names} are not set. Upload the package in Partner Center by hand.`]);
+    if (opt.status) {
+      console.log(`${ci ? "::notice::" : ""}${names} are not set (microsoft-store environment): the Store was not asked.`);
+      summary([`### Keymotion ${version} in the Microsoft Store: not asked`, "", `The secrets ${names} are not set, so the Store can't be asked.`]);
+      return;
+    }
+    console.log(
+      `${ci ? "::notice::" : ""}${names} are not set: nothing was submitted. ` +
+        "Upload the .msix in Partner Center by hand, set to publish as soon as it passes certification.",
+    );
+    summary([
+      "### Not submitted to the Store",
+      "",
+      `The secrets ${names} are not set. Upload the package in Partner Center by hand: download the .msix from this run's artifacts, ` +
+        "start a new submission, upload it under Packages (remove the old one), and fill in What's new from store/whats-new.",
+      "",
+      "Under Submission options, choose to publish the submission **as soon as it passes certification**, not " +
+        "\"Don't publish this submission until I select Publish now\": a new submission starts as a copy of the last one, so check it.",
+    ]);
     return;
   }
   const client = storeClient(secrets);
@@ -377,9 +398,10 @@ async function main() {
   summary([
     `### Keymotion ${version} is submitted to the Microsoft Store`,
     "",
-    `Submission ${result.id}: ${result.status}. It waits for "Publish now" after certification.`,
+    `Submission ${result.id}: ${result.status}. It publishes by itself when it passes certification ` +
+      "(Microsoft allows up to three working days; usually within a day). Nothing to select in Partner Center.",
     "",
-    "When it passes certification, run the **Publish a release** workflow from this tag; then select **Publish now** in Partner Center.",
+    "The GitHub release doesn't wait for it: publish it with the **Publish a release** workflow, run from this tag, once the install test has passed.",
   ]);
 }
 

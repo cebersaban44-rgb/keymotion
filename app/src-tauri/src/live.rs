@@ -321,13 +321,24 @@ pub struct LiveHandle {
     rt: Arc<Mutex<Runtime>>,
     library: Arc<Mutex<ScreenLibrary>>,
     app: AppHandle,
+    device: Arc<DeviceHandle>,
+}
+
+/// The keyboard on the cable (`record`) would lose its clock page with the
+/// next upload and the user was not asked yet (plan K-13): no card goes and
+/// the screen does not go back until then (`LiveState::clock_ack_needed`).
+/// The device actor refuses such an upload anyway (lib.rs `screen_journal`);
+/// this keeps the live mode from trying, and from charging the budget.
+fn clock_ack_needed(lib: &ScreenLibrary, record: Option<&str>) -> bool {
+    record.is_some_and(|r| lib.clock_page_at_risk(r))
 }
 
 impl LiveHandle {
     pub fn spawn(app: AppHandle, library: Arc<Mutex<ScreenLibrary>>, device: Arc<DeviceHandle>) -> Arc<Self> {
         let (tx, rx) = mpsc::channel();
         let rt = Arc::new(Mutex::new(Runtime::default()));
-        let handle = Arc::new(Self { tx, rt: rt.clone(), library: library.clone(), app: app.clone() });
+        let handle =
+            Arc::new(Self { tx, rt: rt.clone(), library: library.clone(), app: app.clone(), device: device.clone() });
         let worker = handle.clone();
         std::thread::Builder::new()
             .name("live-screen".into())
@@ -349,9 +360,11 @@ impl LiveHandle {
 
     /// Current state for the UI.
     pub fn state(&self) -> Result<LiveState, String> {
+        let record = self.device.usb_record();
         let mut lib = self.library.lock().map_err(|_| "screen library unavailable")?;
         let rt = self.rt.lock().map_err(|_| "live state unavailable")?;
-        Ok(snapshot(&mut lib, &rt))
+        let clock = clock_ack_needed(&lib, record.as_deref());
+        Ok(snapshot(&mut lib, &rt, clock))
     }
 
     fn emit(&self) {
@@ -718,11 +731,13 @@ impl LiveHandle {
     }
 
     fn next_wait(&self) -> Duration {
+        let record = self.device.usb_record();
         let Ok(mut lib) = self.library.lock() else { return IDLE };
         let Ok(rt) = self.rt.lock() else { return IDLE };
         let now = now_ms();
-        if quieted(&rt) {
-            // `set_quiet` and a new card wake the worker.
+        if quieted(&rt) || clock_ack_needed(&lib, record.as_deref()) {
+            // `set_quiet`, the clock page's answer and a new card wake the
+            // worker.
             return IDLE;
         }
         if rt.restore.is_some() {
@@ -754,11 +769,16 @@ impl LiveHandle {
     /// upload; it does not wait for the budget.
     fn restore(&self, device: &DeviceHandle) -> bool {
         let now = now_ms();
+        let record = device.usb_record();
         let (id, anim) = {
             let Ok(mut lib) = self.library.lock() else { return false };
             let Ok(mut rt) = self.rt.lock() else { return false };
             if rt.uploading.is_some() || rt.retry_at.is_some_and(|t| now < t) {
                 return rt.restore.is_some();
+            }
+            if rt.restore.is_some() && clock_ack_needed(&lib, record.as_deref()) {
+                // Waits for the user's answer (the state says so).
+                return false;
             }
             let Some(id) = rt.restore.take() else { return false };
             if rt.restore_auto.is_some() && card_ready(&mut lib, &rt, now) {
@@ -791,8 +811,8 @@ impl LiveHandle {
             rt.restore_auto = None;
             match &result.error {
                 None => {
-                    let model = result.model_id.clone().unwrap_or_default();
-                    if let Err(e) = lib.uploaded(&model, &id) {
+                    let record = result.record_id.clone().unwrap_or_default();
+                    if let Err(e) = lib.uploaded(&record, &id) {
                         tracing::warn!("restore not recorded: {e}");
                     }
                     lib.live_mut().before = None;
@@ -832,9 +852,15 @@ impl LiveHandle {
             return;
         }
         let now = now_ms();
+        let record = device.usb_record();
         let job = {
             let Ok(mut lib) = self.library.lock() else { return };
             let Ok(mut rt) = self.rt.lock() else { return };
+            if clock_ack_needed(&lib, record.as_deref()) {
+                // No card goes (and nothing is charged) until the user says
+                // yes to losing the clock page.
+                return;
+            }
             if go_back(&mut lib, &mut rt, now) {
                 drop(rt);
                 drop(lib);
@@ -874,8 +900,8 @@ impl LiveHandle {
             let now = now_ms();
             match &result.error {
                 None => {
-                    let model = result.model_id.clone().unwrap_or_default();
-                    if let Err(e) = lib.live_uploaded(&model, &job.anim, &job.content, &job.item) {
+                    let record = result.record_id.clone().unwrap_or_default();
+                    if let Err(e) = lib.live_uploaded(&record, &job.anim, &job.content, &job.item) {
                         tracing::warn!("live upload not recorded: {e}");
                     }
                     rt.last_error = None;
@@ -946,7 +972,7 @@ fn go_back(lib: &mut ScreenLibrary, rt: &mut Runtime, now: f64) -> bool {
     }
 }
 
-fn snapshot(lib: &mut ScreenLibrary, rt: &Runtime) -> LiveState {
+fn snapshot(lib: &mut ScreenLibrary, rt: &Runtime, clock_ack_needed: bool) -> LiveState {
     let now = now_ms();
     let live = lib.live_mut();
     let plan = live.budget.plan;
@@ -986,6 +1012,7 @@ fn snapshot(lib: &mut ScreenLibrary, rt: &Runtime) -> LiveState {
         own: lib.live_own(),
         going_back: rt.back.clone(),
         factory_ack_needed: factory_ack_needed(lib),
+        clock_ack_needed,
     }
 }
 

@@ -1,0 +1,1673 @@
+//! Driver for AJAZZ's "AA" command family: the AK980 PRO on firmware 769
+//! (USB 0C45:8039). Protocol: `kb_protocol::aa` and the protocol notes.
+//!
+//! What firmware 769 does with each command comes from its code (protocol
+//! notes §F); the simulator ([`sim`]) models it.
+//!
+//! * Every packet runs [`kb_protocol::aa::guard::guard`] right before it is
+//!   written: FF68 requests in [`exchange`], FF67 screen packets in
+//!   [`screen_exchange`]. It keeps every write inside its table (a write
+//!   past it erases firmware code). Keymap tables are also checked as a
+//!   whole against the fresh read they were built from.
+//! * Nothing is read before the device information (`10`) was answered,
+//!   and nothing is written before a full read ([`AaKeyboard::read_all`])
+//!   passed the sanity gate ([`check_sanity`]). A reset notice (`55 FC 05`),
+//!   an unfinished full read, an unfinished write or a write that did not
+//!   read back closes the gate again, and a reset stops the operation it
+//!   arrives in before its next write.
+//! * The keyboard drops writes, echoing them all the same, during its
+//!   power-on animation and its reset blink: no write goes before
+//!   [`SETTLE`] has passed since the channel was opened or the last reset
+//!   notice, and every table write is read back. One that did not land
+//!   closes the gate and the keyboard is read again at once.
+//! * Settings live in flash pages that a write erases only when a chunk
+//!   starts on the page: tables are read fresh, changed only where asked
+//!   and written whole, once, from address 0 upwards; unchanged tables are
+//!   not written.
+//! * The effect does not read back as written: a read reports modes 0, 20,
+//!   21 and 128 all as 0, and any colour an effect write set as `FF FF FF`
+//!   with colour mode 1. The driver knows the mode and the colour only when
+//!   it wrote them itself or the read-back tells them
+//!   ([`EffectRead::mode_known`], [`EffectRead::color_known`]), and never
+//!   writes a colour it could not trust: the caller supplies it.
+//! * Real-time frames (`32`) are RAM only and show in any effect mode: they
+//!   need no sanity gate and change nothing, only a keyboard that answered
+//!   as this one and is not in its write-drop window.
+//! * After a screen upload stopped part-way, FF68 stays silent for
+//!   [`UPLOAD_COOLDOWN`] and then sends one device-information request
+//!   before anything else ([`AaError::UploadInterrupted`]). Keep the same
+//!   [`AaKeyboard`] across a reopen of the screen channel, or the rule is
+//!   lost.
+//! * The app names keys by LED number; the driver translates through the
+//!   model's [`AaLayout`].
+//! * A failed write leaves that HID channel unusable (hidapi keeps the
+//!   write pending): on [`AaError::needs_reopen`], reopen it and read
+//!   everything again.
+
+mod channel;
+mod layout;
+#[cfg(any(test, feature = "sim"))]
+pub mod sim;
+mod snapshot;
+#[cfg(test)]
+mod tests;
+
+pub use channel::open_channel;
+pub use kb_protocol::aa::effect::{AaEffect, EffectColor};
+pub use kb_protocol::aa::info::DeviceInfo;
+pub use kb_protocol::aa::keymap::Binding;
+pub use kb_protocol::aa::macros::AaMacroEntry;
+pub use layout::{AaLayout, LayoutError, LayoutKey, KNOB_SLOTS};
+pub use snapshot::{
+    broken_macros, check as check_sanity, check_reasons, AaSnapshot, ColorRecord, DeviceRecord, Hex, MacroBlock,
+    Reason as SanityReason, READ_LEVEL_MAX,
+};
+
+use kb_protocol::aa::guard::{self, Blocked, Channel};
+use kb_protocol::aa::{clock, cmd, effect, frame, info, keymap, macros, notify, perkey, realtime, screen, CodecError};
+use kb_protocol::sonix::keymap::{KeyAction, Layer};
+use kb_protocol::sonix::macros::MacroStep;
+use kb_protocol::sonix::screen::ScreenAnimation;
+use kb_protocol::sonix::{ClockTime, EffectSettings, Rgb};
+use kb_transport::hid::HidChannel;
+use kb_transport::TransportError;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
+
+/// Tries per request before giving up.
+pub const ATTEMPTS: usize = 3;
+
+/// The default wait for a reply.
+const DEFAULT_TIMEOUT_MS: u32 = 500;
+
+/// How long to wait for a reply (AJAZZ's WebHID driver: 500 ms, longer for
+/// the big writes, 50 ms per real-time chunk).
+pub fn timeout_ms(c: u8) -> u32 {
+    match c {
+        cmd::SET_KEYMAP | cmd::SET_FN_KEYMAP => 1000,
+        cmd::SET_PER_KEY | cmd::SCREEN => 2000,
+        cmd::REALTIME => realtime::CHUNK_TIMEOUT_MS,
+        _ => DEFAULT_TIMEOUT_MS,
+    }
+}
+
+/// [`timeout_ms`] on a board reporting `frame_version`: version 1 raises
+/// only the 500 ms default to 2 s (AJAZZ's WebHID driver).
+pub fn timeout_ms_for(c: u8, frame_version: u8) -> u32 {
+    match timeout_ms(c) {
+        DEFAULT_TIMEOUT_MS if frame_version == 1 => 2000,
+        t => t,
+    }
+}
+
+/// How long the command channel stays silent after a screen upload stopped
+/// part-way. The keyboard has no command that ends an upload, nobody has
+/// measured how long it waits for the missing packets, and command traffic
+/// during an upload reset a sibling board's USB: well above the 2 s the
+/// WebHID driver allows a packet.
+pub const UPLOAD_COOLDOWN: Duration = Duration::from_secs(5);
+
+/// How long after its channel was opened or it reported a reset the
+/// keyboard is not sent a write. Firmware 769 echoes but skips every write
+/// during its power-on animation and its reset blink, and ignores frames
+/// during the reset; nobody has timed either light show, both are short.
+pub const SETTLE: Duration = Duration::from_secs(5);
+
+/// The USB device the channels belong to, as the OS reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UsbIdentity {
+    pub pid: u16,
+    /// `bcdDevice`: the firmware version.
+    pub release: u16,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum AaError {
+    #[error(transparent)]
+    Transport(#[from] TransportError),
+    #[error("only {written} of {expected} bytes were written")]
+    ShortWrite { written: usize, expected: usize },
+    #[error("no answer to command 0x{cmd:02X}")]
+    Timeout { cmd: u8 },
+    #[error("the keyboard echoed different data for command 0x{cmd:02X}")]
+    Mismatch { cmd: u8 },
+    #[error("blocked by the safety guard: {0}")]
+    Blocked(#[from] Blocked),
+    #[error("the keyboard does not look as expected, so nothing is written: {}", .0.join("; "))]
+    NotSane(Vec<String>),
+    #[error("not supported on this keyboard: {0}")]
+    Unsupported(&'static str),
+    /// Live frames only: the keyboard ignores writes for a while after it
+    /// was opened or reset ([`SETTLE`]).
+    #[error("the keyboard was just switched on or reset and ignores writes for another {wait_ms} ms")]
+    Settling { wait_ms: u64 },
+    #[error(
+        "{macros} macros with {entries} steps take {bytes} bytes; the keyboard takes {limit} \
+         (and at most 99 macros)"
+    )]
+    TooLarge { macros: usize, entries: usize, bytes: usize, limit: usize },
+    #[error("the {what} read back differs from what was written")]
+    Readback { what: &'static str },
+    #[error("invalid value: {0}")]
+    Invalid(CodecError),
+    #[error("LED {0} is not a key of this keyboard")]
+    UnknownLed(u8),
+    #[error(transparent)]
+    Layout(#[from] LayoutError),
+    #[error("channel not usable: {0}")]
+    Channel(String),
+    #[error("screen upload cancelled after {done} of {total} parts")]
+    Cancelled { done: usize, total: usize },
+    #[error(
+        "the keyboard does not report its effect colour (it reads back white after any write); \
+         the colour to write has to be given"
+    )]
+    ColorUnknown,
+    #[error("a screen upload stopped part-way; no commands for another {wait_ms} ms")]
+    UploadInterrupted { wait_ms: u64 },
+    /// A restore failed while writing `section`; `report` holds what was
+    /// written before it (complete sections only; `section` itself may be
+    /// partly written).
+    #[error("the restore stopped while writing the {section} ({}): {error}", wrote(.report))]
+    RestoreIncomplete { section: &'static str, report: RestoreReport, error: Box<AaError> },
+}
+
+fn wrote(report: &RestoreReport) -> String {
+    match report.written.as_slice() {
+        [] => "nothing written before".into(),
+        done => format!("already written: {}", done.join(", ")),
+    }
+}
+
+impl AaError {
+    /// The channel that failed must be dropped and opened again before it
+    /// is used (a write failed or stalled; hidapi keeps it pending).
+    pub fn needs_reopen(&self) -> bool {
+        match self {
+            Self::Transport(_) | Self::ShortWrite { .. } => true,
+            Self::RestoreIncomplete { error, .. } => error.needs_reopen(),
+            _ => false,
+        }
+    }
+}
+
+impl From<CodecError> for AaError {
+    fn from(e: CodecError) -> Self {
+        match e {
+            CodecError::Unsupported(what) => Self::Unsupported(what),
+            CodecError::TooLarge { macros, entries, bytes, limit } => Self::TooLarge { macros, entries, bytes, limit },
+            other => Self::Invalid(other),
+        }
+    }
+}
+
+pub type Result<T> = std::result::Result<T, AaError>;
+
+/// One "AA" collection: output reports out, input reports in. Implemented
+/// by the HID channel (FF68 and FF67 alike) and by the simulator.
+pub trait OutputPort {
+    /// Write one output report (report ID first); returns the bytes
+    /// written. Never a feature report.
+    fn write(&mut self, report: &[u8]) -> Result<usize>;
+    /// Wait up to `timeout_ms` for one input report (64 bytes, no report
+    /// ID); `None` when none came.
+    fn read(&mut self, timeout_ms: u32) -> Result<Option<Vec<u8>>>;
+    /// Drop input reports already queued; returns how many.
+    fn drain(&mut self) -> usize {
+        let mut n = 0;
+        while n < 64 && matches!(self.read(0), Ok(Some(_))) {
+            n += 1;
+        }
+        n
+    }
+}
+
+impl OutputPort for HidChannel {
+    fn write(&mut self, report: &[u8]) -> Result<usize> {
+        Ok(self.write_output(report)?)
+    }
+    fn read(&mut self, timeout_ms: u32) -> Result<Option<Vec<u8>>> {
+        match self.read_input(frame::WIRE_LEN, timeout_ms.min(i32::MAX as u32) as i32) {
+            Ok(mut r) => {
+                // Windows leaves the report ID out of unnumbered reports;
+                // drop it should a backend keep it.
+                if r.len() == frame::WIRE_LEN && r[0] == 0 {
+                    r.remove(0);
+                }
+                Ok(Some(r))
+            }
+            Err(TransportError::Timeout(_)) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+}
+
+/// Reports that were not the awaited reply.
+#[derive(Debug, Default)]
+struct Watch {
+    unexpected: u64,
+    /// Of those, the keyboard's own notices (`55 FA`, `55 FB`, `55 FC`).
+    notices: u64,
+    resets: u64,
+}
+
+impl Watch {
+    fn note(&mut self, report: &[u8]) {
+        self.unexpected += 1;
+        let notice = notify::notice(report);
+        if notice.is_some() {
+            self.notices += 1;
+        }
+        if notice == Some(notify::Notice::Reset) {
+            self.resets += 1;
+        }
+        tracing::debug!(?notice, head = ?&report[..report.len().min(8)], "unexpected report skipped");
+    }
+}
+
+/// The reply a request waits for.
+struct Expect<'a> {
+    cmd: u8,
+    /// The chunk's address (FF68 replies echo it).
+    addr: u16,
+    /// What a write's echo must repeat.
+    echo: Option<&'a [u8]>,
+}
+
+fn is_reply(report: &[u8], expect: &Expect<'_>) -> bool {
+    frame::parse_reply(report).is_some_and(|r| r.cmd == expect.cmd && r.addr == expect.addr)
+}
+
+/// The one way an FF68 request reaches the keyboard: guard it, write it,
+/// wait for its reply (matched by command and address; anything else is
+/// skipped and counted), up to [`ATTEMPTS`] times. A failed write is
+/// returned at once: the channel must be reopened.
+fn exchange<P: OutputPort>(
+    port: &mut P,
+    wire: &[u8],
+    expect: &Expect<'_>,
+    timeout_ms: u32,
+    watch: &mut Watch,
+) -> Result<Vec<u8>> {
+    guard::guard(Channel::Command, wire)?;
+    for attempt in 0..ATTEMPTS {
+        let written = port.write(wire)?;
+        if written != wire.len() {
+            return Err(AaError::ShortWrite { written, expected: wire.len() });
+        }
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms.into());
+        loop {
+            let left = deadline.saturating_duration_since(Instant::now()).as_millis() as u32;
+            let Some(r) = port.read(left)? else { break };
+            if is_reply(&r, expect) {
+                if let Some(sent) = expect.echo {
+                    if r.get(frame::HEADER_LEN..frame::HEADER_LEN + sent.len()) != Some(sent) {
+                        return Err(AaError::Mismatch { cmd: expect.cmd });
+                    }
+                }
+                return Ok(r);
+            }
+            watch.note(&r);
+            if Instant::now() >= deadline {
+                break;
+            }
+        }
+        tracing::debug!(cmd = expect.cmd, attempt, "no reply");
+    }
+    Err(AaError::Timeout { cmd: expect.cmd })
+}
+
+fn is_screen_ack(report: &[u8]) -> bool {
+    report.get(..2) == Some(&screen::ACK[..2])
+}
+
+/// Wait up to `timeout_ms` for one FF67 answer.
+fn wait_screen_ack<D: OutputPort>(display: &mut D, timeout_ms: u32, watch: &mut Watch) -> Result<bool> {
+    let deadline = Instant::now() + Duration::from_millis(timeout_ms.into());
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now()).as_millis() as u32;
+        let Some(r) = display.read(left)? else { return Ok(false) };
+        if is_screen_ack(&r) {
+            return Ok(true);
+        }
+        watch.note(&r);
+        if Instant::now() >= deadline {
+            return Ok(false);
+        }
+    }
+}
+
+/// Drop what FF67 has queued; returns how many of them were answers.
+fn drain_screen_acks<D: OutputPort>(display: &mut D, watch: &mut Watch) -> Result<usize> {
+    let mut acks = 0;
+    for _ in 0..64 {
+        let Some(r) = display.read(0)? else { break };
+        if is_screen_ack(&r) {
+            acks += 1;
+        } else {
+            watch.note(&r);
+        }
+    }
+    Ok(acks)
+}
+
+/// The one way a screen packet reaches FF67. Its answer `55 41 00 01` names
+/// no packet, so answers are counted, not matched: whatever was queued
+/// before the packet is dropped first, a resent packet's late answers are
+/// dropped before the resend, and every copy sent gets its answer consumed
+/// (bounded wait) before the next packet. Returns the stale answers dropped.
+fn screen_exchange<D: OutputPort>(display: &mut D, wire: &[u8], watch: &mut Watch) -> Result<usize> {
+    guard::guard(Channel::Display, wire)?;
+    let mut stale = drain_screen_acks(display, watch)?;
+    let mut outstanding = 0usize;
+    let mut answered = false;
+    for attempt in 0..ATTEMPTS {
+        if attempt > 0 {
+            let late = drain_screen_acks(display, watch)?;
+            stale += late;
+            outstanding = outstanding.saturating_sub(late);
+        }
+        let written = display.write(wire)?;
+        if written != wire.len() {
+            return Err(AaError::ShortWrite { written, expected: wire.len() });
+        }
+        outstanding += 1;
+        if wait_screen_ack(display, screen::ACK_TIMEOUT_MS, watch)? {
+            outstanding -= 1;
+            answered = true;
+            break;
+        }
+        tracing::debug!(attempt, "no screen answer");
+    }
+    if !answered {
+        return Err(AaError::Timeout { cmd: cmd::SCREEN });
+    }
+    while outstanding > 0 && wait_screen_ack(display, screen::ACK_TIMEOUT_MS, watch)? {
+        outstanding -= 1;
+    }
+    Ok(stale)
+}
+
+/// What a screen upload measured.
+#[derive(Debug, Clone)]
+pub struct AaScreenReport {
+    pub packets: usize,
+    /// Input reports already queued on FF67 before the upload.
+    pub drained: usize,
+    /// Answers dropped because they came before their packet or belonged to
+    /// a resent copy.
+    pub stale_acks: usize,
+    /// Write-to-answer time of every packet.
+    pub packet_times: Vec<Duration>,
+}
+
+/// The effect as read: levels and direction always; the mode only when
+/// [`Self::mode_known`], the colour and colour mode only when
+/// [`Self::color_known`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectRead {
+    /// The read-back, with the mode and colour this driver wrote when the
+    /// read-back agrees with its write.
+    pub effect: AaEffect,
+    /// False when the read-back shows the custom-colour quirk (`FF FF FF`,
+    /// colour mode 1) and the driver did not write the colour itself: the
+    /// keyboard may show anything.
+    pub color_known: bool,
+    /// False when the read-back's mode is 0 and the driver did not write
+    /// the mode itself: the keyboard is off or in mode 20, 21 or 128, which
+    /// all read back as 0. Nothing on the keyboard tells which.
+    pub mode_known: bool,
+}
+
+impl EffectRead {
+    /// The colour and colour mode, when known.
+    pub fn color(&self) -> Option<EffectColor> {
+        self.color_known.then(|| self.effect.color_part())
+    }
+
+    /// The effect as the app describes it; its colour and rainbow flag mean
+    /// nothing unless [`Self::color_known`].
+    pub fn settings(&self) -> EffectSettings {
+        self.effect.to_settings()
+    }
+}
+
+/// A slot a restore left as the keyboard has it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeptSlot {
+    pub layer: Layer,
+    pub slot: u8,
+    /// The key's LED, when the slot is a key of the layout.
+    pub led: Option<u8>,
+    /// What the backup holds there.
+    pub backup: [u8; 4],
+    /// Why it was not written.
+    pub reason: String,
+}
+
+/// What a restore did.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RestoreReport {
+    /// Backup entries that were not written (a firmware function, a host
+    /// program, anything this driver never writes, or a factory firmware
+    /// function a cleared slot would bring back): the keyboard keeps its own.
+    pub kept: Vec<KeptSlot>,
+    /// The sections written (unchanged ones are not).
+    pub written: Vec<&'static str>,
+    /// The backup could not tell its effect mode (it read 0: off or a
+    /// per-key mode) and the keyboard showed another, so the mode written
+    /// was chosen from the backup's per-key table: 128 when it lights a
+    /// key, off otherwise.
+    pub effect_mode_guessed: bool,
+}
+
+const RESET_REASON: &str = "the keyboard reported a reset (55 FC 05); read it again before writing";
+const READBACK_REASON: &str = "a write did not read back as written; the keyboard is read again before the next one";
+const NOTHING_READ: &str = "nothing has been read from the keyboard yet";
+const INFO_UNANSWERED: &str = "the device information (10) went unanswered; read it again before writing";
+
+/// The colour stored with per-key mode when the real one is unknown: white,
+/// one colour, the web hub's reset default. Per-key mode does not show it;
+/// it is what a later switch to a one-colour mode starts from, so it is a
+/// visible one rather than black.
+pub const NEUTRAL_COLOR: EffectColor = EffectColor { color: [0xFF, 0xFF, 0xFF], color_mode: 0 };
+const UNFINISHED_READ: &str = "the last full read of the keyboard did not finish";
+const UNFINISHED_WRITE: &str = "a write to the keyboard did not finish; read it again before writing";
+
+/// Levels in range for a write. Reads may show 0 or 6 (other tools,
+/// sibling boards); the keyboard is only ever sent 1–5.
+pub fn levels_in_range(e: AaEffect) -> AaEffect {
+    let fit = |v: u8| v.clamp(effect::MIN_LEVEL, effect::MAX_LEVEL);
+    AaEffect { brightness: fit(e.brightness), speed: fit(e.speed), ..e }
+}
+
+fn layer_commands(layer: Layer) -> (u8, u8) {
+    match layer {
+        Layer::Base => (cmd::KEYMAP, cmd::SET_KEYMAP),
+        Layer::Fn => (cmd::FN_KEYMAP, cmd::SET_FN_KEYMAP),
+    }
+}
+
+/// Whether a table read back as `table` was written over `fresh`: a slot
+/// written as `00 00 00 00` may read back as its factory entry (the
+/// firmware fills it in; measured on the MK87). A slot repaired from erased
+/// flash only has to be erased no more: the factory entry the firmware puts
+/// there may be one the app does not know (the knob's, on the base layer).
+fn keymap_matches(fresh: &[u8], table: &[u8], back: &[u8], factory: &[u8]) -> bool {
+    back.len() == table.len()
+        && (0..keymap::SLOTS as u8).all(|s| {
+            let (t, b) = (keymap::entry(table, s), keymap::entry(back, s));
+            t == b
+                || (t == [0; 4] && b == keymap::entry(factory, s))
+                || (t == [0; 4] && keymap::entry(fresh, s) == keymap::ERASED && b != keymap::ERASED)
+        })
+}
+
+/// Note a restore section as written, or turn its failure into
+/// [`AaError::RestoreIncomplete`] with what was written before it.
+fn record(report: &mut RestoreReport, section: &'static str, r: Result<()>) -> Result<()> {
+    match r {
+        Ok(()) => {
+            report.written.push(section);
+            Ok(())
+        }
+        Err(error) => {
+            Err(AaError::RestoreIncomplete { section, report: std::mem::take(report), error: Box::new(error) })
+        }
+    }
+}
+
+/// The mode a read of `raw` leaves unsaid that `read` knows: `Some` only
+/// when the read-back says 0 and the driver knows which of 0, 20, 21 and
+/// 128 it is ([`AaSnapshot::effect_mode`]).
+fn known_mode(raw: &[u8], read: EffectRead) -> Option<u8> {
+    (read.mode_known && raw.first() == Some(&0)).then_some(read.effect.mode)
+}
+
+/// Every slot of `table` that holds erased flash ([`keymap::ERASED`]) set
+/// to `00 00 00 00`: the firmware fills in the factory entry.
+fn repair_erased(table: &mut [u8]) {
+    for slot in 0..keymap::SLOTS as u8 {
+        if keymap::entry(table, slot) == keymap::ERASED {
+            keymap::set_entry(table, slot, [0; 4]);
+        }
+    }
+}
+
+/// `e` as a read reports it: modes 0, 20, 21 and 128 as 0.
+fn reads_as(e: &AaEffect) -> AaEffect {
+    let mode = if effect::READS_AS_OFF.contains(&e.mode) { 0 } else { e.mode };
+    AaEffect { mode, ..*e }
+}
+
+/// An "AA" keyboard on its FF68 command channel.
+pub struct AaKeyboard<P: OutputPort> {
+    port: P,
+    layout: AaLayout,
+    usb: UsbIdentity,
+    watch: Watch,
+    resets_seen: u64,
+    info: Option<DeviceInfo>,
+    snapshot: Option<AaSnapshot>,
+    /// The sanity gate's verdict on the last full read.
+    sanity: Option<std::result::Result<(), Vec<String>>>,
+    /// The effect the keyboard holds, as last read or written.
+    effect: Option<EffectRead>,
+    /// The last effect written (its colour is the only trusted one).
+    written: Option<AaEffect>,
+    /// When a screen upload stopped part-way.
+    upload_interrupted: Option<Instant>,
+    upload_cooldown: Duration,
+    /// Until when the keyboard may drop writes (opened, reset, a write that
+    /// did not land).
+    settle_until: Option<Instant>,
+    settle: Duration,
+}
+
+impl<P: OutputPort> AaKeyboard<P> {
+    /// The driver on a channel just opened: the keyboard may have just been
+    /// switched on, so no write goes for [`SETTLE`].
+    pub fn new(port: P, layout: AaLayout, usb: UsbIdentity) -> Self {
+        Self {
+            port,
+            layout,
+            usb,
+            watch: Watch::default(),
+            resets_seen: 0,
+            info: None,
+            snapshot: None,
+            sanity: None,
+            effect: None,
+            written: None,
+            upload_interrupted: None,
+            upload_cooldown: UPLOAD_COOLDOWN,
+            settle_until: Some(Instant::now() + SETTLE),
+            settle: SETTLE,
+        }
+    }
+
+    /// A shorter [`UPLOAD_COOLDOWN`], for tests and the simulator.
+    #[cfg(any(test, feature = "sim"))]
+    pub fn set_upload_cooldown(&mut self, cooldown: Duration) {
+        self.upload_cooldown = cooldown;
+    }
+
+    /// Another [`SETTLE`] time, counted from now (tests and the
+    /// simulator; zero: writes go at once).
+    #[cfg(any(test, feature = "sim"))]
+    pub fn set_settle(&mut self, settle: Duration) {
+        self.settle = settle;
+        self.settle_until = Some(Instant::now() + settle);
+    }
+
+    pub fn layout(&self) -> &AaLayout {
+        &self.layout
+    }
+
+    /// Reports that arrived while a reply was awaited and were not it. More
+    /// than a few means another program talks to the keyboard (AJAZZ's web
+    /// tools cannot be found by process name).
+    pub fn unexpected_reports(&self) -> u64 {
+        self.watch.unexpected
+    }
+
+    /// Of [`Self::unexpected_reports`], the keyboard's own notices (a reset,
+    /// sleep, a status or calibration report): what is left are replies to
+    /// requests this driver did not make.
+    pub fn notices_reported(&self) -> u64 {
+        self.watch.notices
+    }
+
+    /// How often the keyboard reported a reset (`55 FC 05`).
+    pub fn resets_reported(&self) -> u64 {
+        self.watch.resets
+    }
+
+    /// The device information last read (`None` after a failed attempt).
+    pub fn info(&self) -> Option<&DeviceInfo> {
+        self.info.as_ref()
+    }
+
+    /// The last full read, kept up to date by every write.
+    pub fn snapshot(&self) -> Option<&AaSnapshot> {
+        self.snapshot.as_ref()
+    }
+
+    /// The effect the keyboard holds, as far as the driver knows.
+    pub fn current_effect(&self) -> Option<EffectRead> {
+        self.effect
+    }
+
+    /// Whether writes are allowed: a full read passed the sanity gate,
+    /// nothing has invalidated it since, and the last device-information
+    /// request was answered.
+    pub fn is_sane(&self) -> bool {
+        self.check_writable().is_ok()
+    }
+
+    /// Why writes are refused (empty when they are allowed).
+    pub fn sanity_reasons(&self) -> Vec<String> {
+        match self.check_writable() {
+            Ok(()) => Vec::new(),
+            Err(AaError::NotSane(why)) => why,
+            Err(e) => vec![e.to_string()],
+        }
+    }
+
+    /// How long the keyboard may still drop writes (just opened, or a reset
+    /// or a write that did not land), if at all.
+    pub fn settling(&self) -> Option<Duration> {
+        let left = self.settle_until?.saturating_duration_since(Instant::now());
+        (!left.is_zero()).then_some(left)
+    }
+
+    pub fn into_inner(self) -> P {
+        self.port
+    }
+
+    /// Bytes of macro blocks a write may hold: the memory the keyboard
+    /// reports, within its three pages ([`macros::capacity`]).
+    pub fn macro_capacity(&self) -> usize {
+        macros::capacity(self.info.map_or(0, |i| i.macro_space_size))
+    }
+
+    // ---------------------------------------------------------------- gates
+
+    /// Reads need an answered device information first.
+    fn ensure_readable(&mut self) -> Result<()> {
+        if self.info.is_none() {
+            self.device_info()?;
+        }
+        Ok(())
+    }
+
+    /// The gate's verdict, without any I/O; the one source for
+    /// [`Self::is_sane`], [`Self::sanity_reasons`] and every write. A
+    /// device-information request that went unanswered after the full read
+    /// (it clears what was known) closes the gate until one is answered.
+    fn check_writable(&self) -> Result<()> {
+        match &self.sanity {
+            None => Err(AaError::NotSane(vec![NOTHING_READ.into()])),
+            Some(Err(why)) => Err(AaError::NotSane(why.clone())),
+            Some(Ok(())) if self.info.is_none() => Err(AaError::NotSane(vec![INFO_UNANSWERED.into()])),
+            Some(Ok(())) => Ok(()),
+        }
+    }
+
+    /// Writes need the gate open (which needs a full read, device
+    /// information included); refused without sending anything.
+    fn ensure_writable(&mut self) -> Result<()> {
+        self.check_writable()
+    }
+
+    /// Frames write nothing, so the sanity gate does not hold them back:
+    /// they need only a device information that was answered and names the
+    /// USB device the layout is for. Nothing is asked here: a keyboard that
+    /// left it unanswered gets no frame (and no request per frame) until a
+    /// read brings it back.
+    fn ensure_identified(&self) -> Result<()> {
+        let i = self.info.ok_or_else(|| AaError::NotSane(vec![INFO_UNANSWERED.into()]))?;
+        if (i.vid, i.pid, i.version) != (crate::detect::SONIX_VID, self.usb.pid, self.usb.release) {
+            return Err(AaError::NotSane(vec![format!(
+                "the device information names {:04X}:{:04X} version {:04X}, not this USB device",
+                i.vid, i.pid, i.version
+            )]));
+        }
+        Ok(())
+    }
+
+    /// Wait until the keyboard takes writes again ([`SETTLE`]).
+    fn wait_settled(&self) {
+        if let Some(left) = self.settling() {
+            tracing::debug!(wait_ms = left.as_millis() as u64, "waiting for the keyboard to take writes");
+            std::thread::sleep(left);
+        }
+    }
+
+    /// After a screen upload stopped part-way: nothing on FF68 until the
+    /// cooldown is over, then one device-information request.
+    fn ensure_idle(&mut self) -> Result<()> {
+        let Some(since) = self.upload_interrupted else { return Ok(()) };
+        let waited = since.elapsed();
+        if waited < self.upload_cooldown {
+            return Err(AaError::UploadInterrupted { wait_ms: (self.upload_cooldown - waited).as_millis() as u64 });
+        }
+        self.upload_interrupted = None;
+        let probe = self.device_info();
+        if probe.is_err() {
+            self.upload_interrupted = Some(Instant::now());
+        }
+        probe.map(|_| ())
+    }
+
+    /// How long to wait for command `c`'s reply on this board.
+    fn timeout(&self, c: u8) -> u32 {
+        timeout_ms_for(c, self.info.map_or(0, |i| i.frame_version))
+    }
+
+    /// A reset reported since the last look makes everything known stale,
+    /// and the keyboard drops writes while it blinks.
+    fn after_io(&mut self) {
+        if self.watch.resets != self.resets_seen {
+            self.resets_seen = self.watch.resets;
+            self.effect = None;
+            self.written = None;
+            self.sanity = Some(Err(vec![RESET_REASON.into()]));
+            self.settle_until = Some(Instant::now() + self.settle);
+        }
+    }
+
+    // ---------------------------------------------------------------- I/O
+
+    /// Read `len` bytes of block `c` from address `base`. `request` is the
+    /// data each chunk carries (only `33` sends any).
+    fn read_block(&mut self, c: u8, len: usize, base: u16, request: Option<&[u8]>) -> Result<Vec<u8>> {
+        self.ensure_idle()?;
+        let mut out = Vec::with_capacity(len);
+        let timeout = self.timeout(c);
+        let result = (|| -> Result<()> {
+            for ch in frame::chunks(len, base, true) {
+                let data = request.map_or(&[][..], |r| &r[ch.offset..]);
+                let wire = frame::wire(&frame::request(c, &ch, 0, data));
+                let expect = Expect { cmd: c, addr: ch.addr, echo: None };
+                let r = exchange(&mut self.port, &wire, &expect, timeout, &mut self.watch)?;
+                let data = r
+                    .get(frame::HEADER_LEN..frame::HEADER_LEN + usize::from(ch.len))
+                    .ok_or(AaError::Invalid(CodecError::Malformed("reply")))?;
+                out.extend_from_slice(data);
+            }
+            Ok(())
+        })();
+        self.after_io();
+        result.map(|()| out)
+    }
+
+    /// Send `data` as block `c` from address 0 upwards, one chunk on every
+    /// flash page ([`frame::paged_chunks`]), every chunk echoed; stopped
+    /// before the next chunk when the keyboard reports a reset (counted
+    /// from `resets`).
+    fn send(&mut self, c: u8, data: &[u8], resets: u64) -> Result<()> {
+        let timeout = self.timeout(c);
+        for ch in frame::paged_chunks(data.len()) {
+            if self.watch.resets != resets {
+                return Err(AaError::NotSane(vec![RESET_REASON.into()]));
+            }
+            let part = &data[ch.offset..ch.offset + usize::from(ch.len)];
+            let wire = frame::wire(&frame::request(c, &ch, 0, part));
+            let expect = Expect { cmd: c, addr: ch.addr, echo: Some(part) };
+            exchange(&mut self.port, &wire, &expect, timeout, &mut self.watch)?;
+        }
+        Ok(())
+    }
+
+    /// Reports the keyboard sent on its own while nothing was asked (a
+    /// reset notice during the settle time): counted now, before a write.
+    fn take_queued(&mut self) -> Result<()> {
+        for _ in 0..64 {
+            let Some(r) = self.port.read(0)? else { break };
+            self.watch.note(&r);
+        }
+        self.after_io();
+        Ok(())
+    }
+
+    /// Write `data` as block `c` ([`Self::send`]). Refused unless the gate
+    /// is open; waits out the time the keyboard may drop writes, and looks
+    /// at what the keyboard said meanwhile (a reset closes the gate before
+    /// the first, page-erasing chunk). A flash write that fails part-way
+    /// closes the gate: the keyboard holds something between old and new.
+    fn write_block(&mut self, c: u8, data: &[u8]) -> Result<()> {
+        self.ensure_idle()?;
+        self.after_io();
+        self.check_writable()?;
+        if self.settling().is_some() {
+            self.wait_settled();
+            self.take_queued()?;
+            self.check_writable()?;
+        }
+        let resets = self.watch.resets;
+        let result = self.send(c, data, resets);
+        self.after_io();
+        if result.is_err() && c != cmd::CLOCK && self.watch.resets == resets {
+            self.sanity = Some(Err(vec![UNFINISHED_WRITE.into()]));
+        }
+        result
+    }
+
+    /// A table write read back otherwise: the keyboard may have dropped it
+    /// (its write-drop window) or holds something between old and new. The
+    /// gate closes, the next write waits [`SETTLE`] again, and everything
+    /// is read again now: the gate opens again only if that read passes.
+    fn readback_failed(&mut self, what: &'static str) -> AaError {
+        tracing::warn!(what, "a write did not read back as written; the keyboard is read again");
+        self.unverified(true);
+        AaError::Readback { what }
+    }
+
+    /// The read-back after a table write that failed (no answer): the write
+    /// is as unverified as one that read back otherwise, and handled so.
+    /// The error is kept (a dead channel still asks to be opened again,
+    /// and is not read on).
+    fn readback_lost(&mut self, what: &'static str, e: AaError) -> AaError {
+        tracing::warn!(what, "the read-back after a write failed ({e}); the keyboard is read again");
+        self.unverified(!e.needs_reopen());
+        e
+    }
+
+    /// Close the gate after a write nobody could confirm, wait [`SETTLE`]
+    /// before the next one, and (`reread`) read the keyboard again.
+    fn unverified(&mut self, reread: bool) {
+        self.sanity = Some(Err(vec![READBACK_REASON.into()]));
+        self.settle_until = Some(Instant::now() + self.settle);
+        if reread {
+            if let Err(e) = self.read_all() {
+                tracing::warn!("the read after an unconfirmed write failed: {e}");
+            }
+        }
+    }
+
+    /// Read back `len` bytes of table `c` after a write of `what`
+    /// ([`Self::readback_lost`] when that fails).
+    fn read_back(&mut self, c: u8, len: usize, what: &'static str) -> Result<Vec<u8>> {
+        match self.read_block(c, len, 0, None) {
+            Ok(back) => Ok(back),
+            Err(e) => Err(self.readback_lost(what, e)),
+        }
+    }
+
+    fn patch_snapshot(&mut self, f: impl FnOnce(&mut AaSnapshot)) {
+        if let Some(s) = self.snapshot.as_mut() {
+            f(s);
+        }
+    }
+
+    // ---------------------------------------------------------------- reading
+
+    /// Read the device information (`10`) only: the first and safest
+    /// request.
+    pub fn device_info(&mut self) -> Result<DeviceInfo> {
+        if self.upload_interrupted.is_some() {
+            // The probe after an interrupted upload is this very request.
+            self.ensure_idle()?;
+            if let Some(i) = self.info {
+                return Ok(i);
+            }
+        }
+        self.info = None;
+        let raw = self.read_block(cmd::DEVICE_INFO, info::LEN, 0, None)?;
+        let i = DeviceInfo::parse(&raw)?;
+        self.info = Some(i);
+        Ok(i)
+    }
+
+    /// Read everything the keyboard lets the host read and run the sanity
+    /// gate over it. The snapshot is returned even when the gate fails (the
+    /// app can keep it as a backup); writes are allowed only when it passed
+    /// ([`Self::is_sane`]).
+    pub fn read_all(&mut self) -> Result<AaSnapshot> {
+        self.ensure_idle()?;
+        let resets = self.watch.resets;
+        // Until this read is through, the last verdict no longer holds.
+        self.sanity = Some(Err(vec![UNFINISHED_READ.into()]));
+        self.info = None;
+        let raw_info = self.read_block(cmd::DEVICE_INFO, info::LEN, 0, None)?;
+        let i = DeviceInfo::parse(&raw_info)?;
+        self.info = Some(i);
+        let options = self.read_block(cmd::OPTIONS, 56, 0, None)?;
+        let keymap = self.read_block(cmd::KEYMAP, keymap::LEN, 0, None)?;
+        let fn_keymap = self.read_block(cmd::FN_KEYMAP, keymap::LEN, 0, None)?;
+        let default_fn = self.read_block(cmd::DEFAULT_FN, keymap::LEN, 0, None)?;
+        let effect = self.read_block(cmd::EFFECT, effect::LEN, 0, None)?;
+        let per_key = self.read_block(cmd::PER_KEY, perkey::LEN, 0, None)?;
+        let macro_table = self.read_block(cmd::MACROS, macros::TABLE_LEN, 0, None)?;
+        let macro_blocks = self.read_macro_blocks(&macro_table, &i)?;
+        let read = AaEffect::decode(&effect).ok().map(|e| self.remember(e));
+        let snap = AaSnapshot {
+            format: AaSnapshot::FORMAT,
+            info: Hex(raw_info),
+            device: i.into(),
+            options: Hex(options),
+            keymap: Hex(keymap),
+            fn_keymap: Hex(fn_keymap),
+            default_fn: Hex(default_fn),
+            effect_color: read.and_then(|r| r.color()).map(Into::into),
+            effect_mode: read.and_then(|r| known_mode(&effect, r)),
+            effect: Hex(effect),
+            per_key: Hex(per_key),
+            macro_table: Hex(macro_table),
+            macro_blocks,
+        };
+        if i.firmware_status != 0 {
+            // Not a field of firmware 769 (§F.7): noted, never acted on.
+            tracing::info!(firmware_status = i.firmware_status, "device information byte 32 is not 0");
+        }
+        let broken = snapshot::broken_macros(&snap);
+        if !broken.is_empty() {
+            let slots: Vec<u8> = broken.iter().map(|&(slot, _)| slot).collect();
+            tracing::warn!(
+                ?slots,
+                "macro slots point at erased flash or into the table (a macro write that stopped part-way?); \
+                 read as empty until the next macro save"
+            );
+        }
+        let mut verdict = check_sanity(&snap, self.usb);
+        if self.watch.resets != resets {
+            let mut why = verdict.err().unwrap_or_default();
+            why.push(RESET_REASON.into());
+            verdict = Err(why);
+        }
+        if let Err(why) = &verdict {
+            tracing::warn!(reasons = why.len(), "the keyboard did not pass the sanity gate; no writes");
+        }
+        self.sanity = Some(verdict);
+        self.snapshot = Some(snap.clone());
+        Ok(snap)
+    }
+
+    /// Read the block every macro slot points to. A slot holding 0 or
+    /// `FF FF FF FF` (erased flash) has none; addresses outside the macro
+    /// memory are not read (the sanity gate reports them).
+    fn read_macro_blocks(&mut self, table: &[u8], i: &DeviceInfo) -> Result<Vec<MacroBlock>> {
+        let limit = snapshot::macro_limit(i);
+        let mut blocks = Vec::new();
+        for (slot, p) in macros::pointers(table).into_iter().enumerate() {
+            if macros::is_none(p) || !snapshot::block_fits(p, 4, limit) {
+                continue;
+            }
+            // Inside the macro memory, so below 0xFFFF.
+            let mut bytes = self.read_block(cmd::MACROS, 4, p as u16, None)?;
+            let body = 4 * macros::header_entries(&bytes);
+            if body > 0 && snapshot::block_fits(p, 4 + body, limit) {
+                bytes.extend(self.read_block(cmd::MACROS, body, (p + 4) as u16, None)?);
+            }
+            blocks.push(MacroBlock { slot: slot as u8, addr: p, bytes: Hex(bytes) });
+        }
+        Ok(blocks)
+    }
+
+    /// The macros the keyboard holds, slot by slot (100 slots; empty = none).
+    /// The snapshot takes the fresh table and blocks, as
+    /// [`Self::read_keymap`] does.
+    fn read_macro_slots(&mut self) -> Result<Vec<Vec<AaMacroEntry>>> {
+        let i = self.info.ok_or_else(|| AaError::NotSane(vec![NOTHING_READ.into()]))?;
+        let table = self.read_block(cmd::MACROS, macros::TABLE_LEN, 0, None)?;
+        let blocks = self.read_macro_blocks(&table, &i)?;
+        let mut slots = vec![Vec::new(); macros::MAX_MACROS];
+        for b in &blocks {
+            slots[usize::from(b.slot)] = macros::decode_entries(b.bytes.0.get(4..).unwrap_or_default());
+        }
+        self.patch_snapshot(|s| {
+            s.macro_table = Hex(table);
+            s.macro_blocks = blocks;
+        });
+        Ok(slots)
+    }
+
+    /// What a read of the effect tells. When it agrees with the last effect
+    /// this driver wrote (levels, direction, and the mode up to
+    /// [`effect::READS_AS_OFF`]), that write's mode is the keyboard's, and
+    /// so is its colour unless the read-back names another one (a palette
+    /// colour picked on the keyboard since). Otherwise the mode is known
+    /// unless it reads 0, and the colour unless it reads as the
+    /// custom-colour quirk.
+    ///
+    /// Any read-back other than `FF FF FF` / colour mode 1 is the palette
+    /// colour the keyboard shows (§F.6). The effect this driver wrote is
+    /// remembered for one session only: a reset notice clears it
+    /// ([`Self::after_io`]) and a reopened channel is a new driver, which
+    /// starts without it.
+    fn interpret(&self, read: AaEffect) -> EffectRead {
+        let quirk = read.color_part() == effect::READBACK_QUIRK;
+        if let Some(w) = self.written.filter(|w| w.matches_readback(&read)) {
+            let mut e = AaEffect { mode: w.mode, ..read };
+            if quirk {
+                e = e.with_color(w.color_part());
+            }
+            return EffectRead { effect: e, color_known: true, mode_known: true };
+        }
+        EffectRead { effect: read, color_known: !quirk, mode_known: read.mode != 0 }
+    }
+
+    fn remember(&mut self, read: AaEffect) -> EffectRead {
+        let e = self.interpret(read);
+        self.effect = Some(e);
+        e
+    }
+
+    /// Read the effect (`13`).
+    pub fn read_effect(&mut self) -> Result<EffectRead> {
+        self.ensure_readable()?;
+        let raw = self.read_block(cmd::EFFECT, effect::LEN, 0, None)?;
+        let e = AaEffect::decode(&raw)?;
+        let read = self.remember(e);
+        self.patch_snapshot(|s| {
+            s.effect_mode = known_mode(&raw, read);
+            s.effect = Hex(raw);
+            s.effect_color = read.color().map(Into::into);
+        });
+        Ok(read)
+    }
+
+    /// The effect as the app describes it, and whether its colour and
+    /// rainbow flag are known ([`EffectRead::color_known`]).
+    pub fn effect_settings(&mut self) -> Result<(EffectSettings, bool)> {
+        let e = self.read_effect()?;
+        Ok((e.settings(), e.color_known))
+    }
+
+    /// The colours the per-key table shows, by LED, in layout order (an
+    /// entry that does not carry its own index shows nothing: black).
+    pub fn read_per_key(&mut self) -> Result<Vec<(u8, Rgb)>> {
+        self.ensure_readable()?;
+        let t = self.read_block(cmd::PER_KEY, perkey::LEN, 0, None)?;
+        Ok(self.layout.keys().iter().map(|k| (k.led, perkey::shown(&t, k.aa))).collect())
+    }
+
+    /// The colours the keys show right now (`33`), by LED, in layout order.
+    pub fn read_live_colors(&mut self) -> Result<Vec<(u8, Rgb)>> {
+        self.ensure_readable()?;
+        let request = perkey::live_request();
+        let t = self.read_block(cmd::LIVE_COLORS, perkey::LEN, 0, Some(&request[..]))?;
+        Ok(self.layout.keys().iter().map(|k| (k.led, perkey::get(&t, k.aa))).collect())
+    }
+
+    /// One keymap layer, by LED, in layout order. The snapshot takes the
+    /// fresh table: a change made in another program since the full read
+    /// shows there too.
+    pub fn read_keymap(&mut self, layer: Layer) -> Result<Vec<(u8, Binding)>> {
+        self.ensure_readable()?;
+        let t = self.read_block(layer_commands(layer).0, keymap::LEN, 0, None)?;
+        self.keep_keymap(layer, &t);
+        Ok(self.bindings(&t))
+    }
+
+    /// A layer's table as just read, into the snapshot.
+    fn keep_keymap(&mut self, layer: Layer, table: &[u8]) {
+        if table.len() != keymap::LEN {
+            return;
+        }
+        let t = Hex(table.to_vec());
+        self.patch_snapshot(|s| match layer {
+            Layer::Base => s.keymap = t,
+            Layer::Fn => s.fn_keymap = t,
+        });
+    }
+
+    /// The factory Fn layer (`1C`), by LED, in layout order.
+    pub fn read_default_fn(&mut self) -> Result<Vec<(u8, Binding)>> {
+        self.ensure_readable()?;
+        let t = self.read_block(cmd::DEFAULT_FN, keymap::LEN, 0, None)?;
+        Ok(self.bindings(&t))
+    }
+
+    fn bindings(&self, table: &[u8]) -> Vec<(u8, Binding)> {
+        self.layout.keys().iter().map(|k| (k.led, keymap::decode(keymap::entry(table, k.aa)))).collect()
+    }
+
+    /// Every macro slot's entries (100 slots; empty = no macro).
+    pub fn read_macros(&mut self) -> Result<Vec<Vec<AaMacroEntry>>> {
+        self.ensure_readable()?;
+        self.read_macro_slots()
+    }
+
+    // ---------------------------------------------------------------- writing
+
+    /// Write an effect and read it back: levels and direction, and the mode
+    /// up to [`effect::READS_AS_OFF`] (mode 128 reads back as 0); the
+    /// colour does not read back.
+    fn put_effect(&mut self, e: &AaEffect) -> Result<()> {
+        let data = e.encode()?;
+        self.write_block(cmd::SET_EFFECT, &data)?;
+        self.written = Some(*e);
+        let raw = match self.read_back(cmd::EFFECT, effect::LEN, "effect") {
+            Ok(raw) => raw,
+            Err(err) => {
+                // Not confirmed: the driver does not vouch for it.
+                self.written = None;
+                self.effect = None;
+                return Err(err);
+            }
+        };
+        let back = AaEffect::decode(&raw)?;
+        let read = self.remember(back);
+        if !e.matches_readback(&back) {
+            self.written = None;
+            self.effect = Some(self.interpret(back));
+            return Err(self.readback_failed("effect"));
+        }
+        self.patch_snapshot(|s| {
+            s.effect_mode = known_mode(&raw, read);
+            s.effect = Hex(raw);
+            s.effect_color = read.color().map(Into::into);
+        });
+        Ok(())
+    }
+
+    /// Store an effect given in the keyboard's own values. **Writes flash.**
+    pub fn write_effect(&mut self, e: &AaEffect) -> Result<()> {
+        self.ensure_writable()?;
+        self.put_effect(e)
+    }
+
+    /// Store the app's effect (levels mapped to 1–5). **Writes flash.**
+    pub fn apply_effect(&mut self, s: &EffectSettings) -> Result<()> {
+        let e = AaEffect::from_settings(s)?;
+        self.write_effect(&e)
+    }
+
+    /// `current` in per-key mode (at `level` when given), its other fields
+    /// kept. A colour the driver cannot trust is not written back: per-key
+    /// mode shows none, so [`NEUTRAL_COLOR`] goes in its place.
+    fn per_key_effect(current: EffectRead, level: Option<u8>) -> AaEffect {
+        let mut e = current.effect.per_key();
+        if !current.color_known {
+            e = e.with_color(NEUTRAL_COLOR);
+        }
+        if let Some(level) = level {
+            e.brightness = level;
+        }
+        levels_in_range(e)
+    }
+
+    /// Store per-key colours by LED: the whole table, every entry with its
+    /// own index in front, every key of the layout with its colour (black
+    /// when not given) and black where no key is. **Writes flash.** Shown
+    /// in effect modes 20, 21 and 128 once an effect write made the colour
+    /// the custom one ([`Self::apply_per_key`] does both).
+    pub fn write_per_key(&mut self, colors: impl IntoIterator<Item = (u8, Rgb)>) -> Result<()> {
+        self.ensure_writable()?;
+        let mut want = [None; perkey::SLOTS];
+        for (led, rgb) in colors {
+            let aa = self.layout.aa(led).ok_or(AaError::UnknownLed(led))?;
+            want[usize::from(aa)] = Some(rgb);
+        }
+        let fresh = self.read_block(cmd::PER_KEY, perkey::LEN, 0, None)?;
+        let mut table = perkey::blank();
+        for k in self.layout.keys() {
+            perkey::set(&mut table, k.aa, want[usize::from(k.aa)].unwrap_or([0, 0, 0]));
+        }
+        self.put_per_key(&fresh, &table)
+    }
+
+    /// Write a whole per-key table and read it back; nothing is written
+    /// when the keyboard holds it already.
+    fn put_per_key(&mut self, fresh: &[u8], table: &[u8]) -> Result<()> {
+        guard::guard_per_key(table)?;
+        if fresh == table {
+            return Ok(());
+        }
+        self.write_block(cmd::SET_PER_KEY, table)?;
+        let back = self.read_back(cmd::PER_KEY, perkey::LEN, "per-key table")?;
+        let ok = back == table;
+        self.patch_snapshot(|s| s.per_key = Hex(back));
+        if !ok {
+            return Err(self.readback_failed("per-key table"));
+        }
+        Ok(())
+    }
+
+    /// Store the colours as [`Self::write_per_key`] does, then switch to
+    /// per-key mode at the app's `brightness` (0–5), everything else of the
+    /// effect kept. The effect goes second and every time: its write makes
+    /// the keyboard show the table (a colour picked with the keyboard's Fn
+    /// keys hides it), and the mode cannot be read back to skip it (128
+    /// reads as 0). **Writes flash.**
+    pub fn apply_per_key(&mut self, colors: impl IntoIterator<Item = (u8, Rgb)>, brightness: u8) -> Result<()> {
+        self.ensure_writable()?;
+        let colors: Vec<(u8, Rgb)> = colors.into_iter().collect();
+        if let Some(&(led, _)) = colors.iter().find(|(led, _)| self.layout.aa(*led).is_none()) {
+            return Err(AaError::UnknownLed(led));
+        }
+        let level = effect::level(brightness)?;
+        let current = self.read_effect()?;
+        self.write_per_key(colors)?;
+        self.put_effect(&Self::per_key_effect(current, Some(level)))
+    }
+
+    /// The factory table of a layer: `1C` for the Fn layer, the model's
+    /// own usages for the base layer.
+    fn factory_table(&mut self, layer: Layer) -> Result<Vec<u8>> {
+        Ok(match layer {
+            Layer::Base => self.layout.factory_base().to_vec(),
+            Layer::Fn => match self.snapshot.as_ref().map(|s| s.default_fn.0.clone()) {
+                Some(t) if t.len() == keymap::LEN => t,
+                _ => self.read_block(cmd::DEFAULT_FN, keymap::LEN, 0, None)?,
+            },
+        })
+    }
+
+    /// Change keys of one layer, by LED: only the slots asked for change,
+    /// every other slot keeps what was read. `KeyAction::Default` gives a
+    /// key its factory function back (the slot is written `00 00 00 00`
+    /// and reads back as the factory entry); that is refused where the
+    /// factory function in this layer is a firmware function (such as the
+    /// factory reset on Fn+Space) the key does not hold now. The Fn key and
+    /// the knob are never reassigned.
+    ///
+    /// A slot a keymap write that stopped part-way left erased
+    /// ([`keymap::ERASED`]) gets its factory entry back with any write of
+    /// the layer (written `00 00 00 00`, which the firmware fills in): the
+    /// Fn key, the knob and firmware functions included, which nothing else
+    /// could bring back. **Writes flash.**
+    pub fn apply_keymap(&mut self, layer: Layer, changes: impl IntoIterator<Item = (u8, KeyAction)>) -> Result<()> {
+        self.ensure_writable()?;
+        let mut wanted = Vec::new();
+        for (led, action) in changes {
+            let aa = self.layout.aa(led).ok_or(AaError::UnknownLed(led))?;
+            wanted.push((aa, keymap::encode(action)?));
+        }
+        let fresh = self.read_block(layer_commands(layer).0, keymap::LEN, 0, None)?;
+        self.keep_keymap(layer, &fresh);
+        let factory = self.factory_table(layer)?;
+        let mut table = fresh.clone();
+        for (aa, e) in wanted {
+            let now = keymap::entry(&fresh, aa);
+            let repair = now == keymap::ERASED && e == [0; 4];
+            if e == [0; 4] && now == keymap::entry(&factory, aa) {
+                // Already its factory function: nothing to write.
+                keymap::set_entry(&mut table, aa, now);
+                continue;
+            }
+            if self.layout.is_protected(aa) && now != e && !repair {
+                return Err(AaError::Unsupported("the Fn key and the knob are not reassigned"));
+            }
+            if e == [0; 4] && keymap::is_func(keymap::entry(&factory, aa)) && !repair {
+                return Err(AaError::Unsupported(
+                    "this key's factory function in this layer is a firmware function (such as a factory \
+                     reset); it is not brought back",
+                ));
+            }
+            keymap::set_entry(&mut table, aa, e);
+        }
+        repair_erased(&mut table);
+        self.put_keymap(layer, &fresh, &table, &factory)
+    }
+
+    /// Write a layer built from `fresh` and read it back; nothing is
+    /// written when it is unchanged.
+    fn put_keymap(&mut self, layer: Layer, fresh: &[u8], table: &[u8], factory: &[u8]) -> Result<()> {
+        guard::guard_keymap(fresh, table, Some(factory))?;
+        if fresh == table {
+            return Ok(());
+        }
+        let (read, write) = layer_commands(layer);
+        self.write_block(write, table)?;
+        let back = self.read_back(read, keymap::LEN, "keymap")?;
+        let ok = keymap_matches(fresh, table, &back, factory);
+        self.patch_snapshot(|s| match layer {
+            Layer::Base => s.keymap = Hex(back),
+            Layer::Fn => s.fn_keymap = Hex(back),
+        });
+        if !ok {
+            return Err(self.readback_failed("keymap"));
+        }
+        Ok(())
+    }
+
+    /// Replace every macro: `slots[i]` is macro `i`, an empty one is none.
+    /// **Writes flash.**
+    pub fn write_macros(&mut self, slots: &[Vec<MacroStep>]) -> Result<()> {
+        let entries = slots.iter().map(|s| macros::from_steps(s)).collect::<std::result::Result<Vec<_>, _>>()?;
+        self.write_macro_entries(&entries)
+    }
+
+    /// Replace every macro with entries as the keyboard keeps them:
+    /// `slots[i]` is macro `i`, an empty one is none. A macro read from the
+    /// keyboard that the app's steps cannot express goes back this way,
+    /// byte for byte. **Writes flash.**
+    pub fn write_macro_entries(&mut self, slots: &[Vec<AaMacroEntry>]) -> Result<()> {
+        self.ensure_writable()?;
+        let img = macros::encode(slots, self.macro_capacity())?;
+        self.put_macros(&img)
+    }
+
+    /// Write a macro image, the table and the blocks, as one block from
+    /// address 0 upwards with a chunk starting on every page it reaches
+    /// (1024, 2048): the firmware erases a page only for such a chunk, so
+    /// nothing is sent twice and nothing is patched afterwards. Then the
+    /// whole image is read back.
+    ///
+    /// The table comes first, so a write that stops part-way can leave
+    /// pointers to blocks that were not written (erased flash, or another
+    /// page's old bytes). The gate closes and the keyboard is read again; a
+    /// pointer to erased flash or into the table reads as an empty slot
+    /// ([`snapshot::broken_macros`]), so the gate opens again and
+    /// the next macro save, which writes the whole image, repairs the
+    /// table. Beta check on a real AK980 PRO: write a macro, unplug and
+    /// replug, read it back, press it.
+    fn put_macros(&mut self, img: &macros::MacroImage) -> Result<()> {
+        let image = img.bytes();
+        self.write_block(cmd::SET_MACROS, &image)?;
+        let back = self.read_back(cmd::MACROS, image.len(), "macros")?;
+        if back != image {
+            return Err(self.readback_failed("macros"));
+        }
+        let stored: Vec<MacroBlock> = macros::pointers(&img.table)
+            .into_iter()
+            .enumerate()
+            .filter(|(_, p)| !macros::is_none(*p))
+            .map(|(slot, p)| {
+                let at = (p - u32::from(macros::BLOCKS_AT)) as usize;
+                let len = 4 + 4 * macros::header_entries(&img.blocks[at..]);
+                MacroBlock { slot: slot as u8, addr: p, bytes: Hex(img.blocks[at..at + len].to_vec()) }
+            })
+            .collect();
+        self.patch_snapshot(|s| {
+            s.macro_table = Hex(back[..macros::TABLE_LEN].to_vec());
+            s.macro_blocks = stored;
+        });
+        Ok(())
+    }
+
+    /// Set the keyboard clock (`34`; AJAZZ's WebHID driver sends it on every
+    /// connection). Nothing reads it back: it counts as set only when every
+    /// chunk was echoed and the gate is still open afterwards (no reset
+    /// reported meanwhile).
+    pub fn set_clock(&mut self, t: &ClockTime) -> Result<()> {
+        self.ensure_writable()?;
+        let data = clock::encode(t)?;
+        self.write_block(cmd::CLOCK, &data)?;
+        self.check_writable()
+    }
+
+    // ---------------------------------------------------------------- restore
+
+    /// Build `layer` from `backup`, keeping the keyboard's entry where the
+    /// backup's could not be written: the Fn key, the knob and the table
+    /// tail always, and any slot the table guard refuses on its own. Every
+    /// slot kept with a backup entry that differs is reported in `kept`.
+    fn plan_layer(
+        &self,
+        layer: Layer,
+        fresh: &[u8],
+        backup: &[u8],
+        factory: &[u8],
+        kept: &mut Vec<KeptSlot>,
+    ) -> Vec<u8> {
+        let mut table = backup.to_vec();
+        let fixed = self
+            .layout
+            .fn_slot()
+            .into_iter()
+            .map(|s| (s, "the Fn key is never reassigned".to_string()))
+            .chain(KNOB_SLOTS.map(|s| (s, "the knob is never reassigned".to_string())))
+            .chain(keymap::TAIL_SLOTS.map(|s| (s, Blocked::Tail(s).to_string())));
+        for (slot, reason) in fixed {
+            let (want, now) = (keymap::entry(backup, slot), keymap::entry(fresh, slot));
+            if want != now {
+                keymap::set_entry(&mut table, slot, now);
+                if now != keymap::ERASED {
+                    kept.push(KeptSlot { layer, slot, led: self.layout.led(slot), backup: want, reason });
+                }
+            }
+        }
+        for slot in 0..keymap::SLOTS as u8 {
+            let (want, now) = (keymap::entry(&table, slot), keymap::entry(fresh, slot));
+            if want == now {
+                continue;
+            }
+            let mut probe = fresh.to_vec();
+            keymap::set_entry(&mut probe, slot, want);
+            if let Err(b) = guard::guard_keymap(fresh, &probe, Some(factory)) {
+                keymap::set_entry(&mut table, slot, now);
+                // An erased slot goes back to its factory entry below: no
+                // loss when that is what the backup holds (a firmware
+                // function the Fn layer has from the factory).
+                if now != keymap::ERASED || want != keymap::entry(factory, slot) {
+                    kept.push(KeptSlot {
+                        layer,
+                        slot,
+                        led: self.layout.led(slot),
+                        backup: want,
+                        reason: b.to_string(),
+                    });
+                }
+            }
+        }
+        // What the keyboard holds erased (a write that stopped part-way)
+        // and the backup cannot give back goes back to its factory entry.
+        repair_erased(&mut table);
+        table
+    }
+
+    /// The effect a restore writes, if any: `saved` is the backup's (its
+    /// mode as known, [`AaSnapshot::effect`]), `fresh` the keyboard's now.
+    fn plan_effect(
+        &self,
+        backup: &AaSnapshot,
+        fresh: EffectRead,
+        effect_color: Option<EffectColor>,
+        guessed: &mut bool,
+    ) -> Result<Option<AaEffect>> {
+        let saved = backup.effect().ok_or(AaError::Invalid(CodecError::Malformed("effect")))?;
+        let color = backup.effect_color.map(EffectColor::from).or(effect_color);
+        if !backup.effect_mode_known() {
+            // The backup read 0: off or one of the per-key modes, it cannot
+            // tell. A keyboard that reads the same now is left alone;
+            // otherwise the backup's per-key table decides: one that lights
+            // a key was meant to show (128), an empty one shows nothing
+            // either way (off).
+            if reads_as(&fresh.effect).same_settings(&reads_as(&saved)) {
+                return Ok(None);
+            }
+            let lit = self.layout.keys().iter().any(|k| perkey::shown(&backup.per_key.0, k.aa) != [0, 0, 0]);
+            let mode = if lit { effect::MODE_PER_KEY } else { 0 };
+            *guessed = true;
+            let e = levels_in_range(AaEffect { mode, ..saved }.with_color(color.unwrap_or(NEUTRAL_COLOR)));
+            e.encode()?;
+            return Ok(Some(e));
+        }
+        let same = fresh.mode_known && fresh.effect.same_settings(&saved);
+        let e = match color {
+            Some(c) if same && (fresh.color() == Some(c) || !effect::shows_color(saved.mode)) => return Ok(None),
+            Some(c) => saved.with_color(c),
+            None if same => return Ok(None),
+            // Off and the per-key modes show no effect colour: the one a
+            // later switch to a one-colour mode starts from is neutral.
+            None if !effect::shows_color(saved.mode) => saved.with_color(NEUTRAL_COLOR),
+            None => return Err(AaError::ColorUnknown),
+        };
+        let e = levels_in_range(e);
+        e.encode()?;
+        Ok(Some(e))
+    }
+
+    /// Write a backup back: both keymap layers, the per-key table, the
+    /// effect and the macros (not the options, not the screen).
+    ///
+    /// Everything is planned before anything is sent: fresh reads of every
+    /// section, every table built and guarded, the effect and the macros
+    /// encoded. Any refusal returns with nothing written. Backup entries
+    /// the guard would refuse on their own (a firmware function the slot no
+    /// longer holds, say) keep the keyboard's entry and are listed in the
+    /// report; so are the Fn key, the knob and the keymap table tails. The
+    /// per-key table goes back whole, every entry with its own index (an
+    /// entry the backup held without it was dark, and goes back black).
+    ///
+    /// The backup's effect colour is used when the backup knew it
+    /// ([`AaSnapshot::effect_color`]), else `effect_color`. With neither,
+    /// the effect is left alone when it already matches; off and the
+    /// per-key modes (which show no effect colour) get [`NEUTRAL_COLOR`];
+    /// any other restore is refused ([`AaError::ColorUnknown`]). A backup
+    /// that cannot tell its mode (it read 0) is handled as
+    /// [`RestoreReport::effect_mode_guessed`] says.
+    ///
+    /// Unchanged sections are not written. A write that fails returns
+    /// [`AaError::RestoreIncomplete`] with the sections written before it.
+    /// **Writes flash.**
+    pub fn restore(&mut self, backup: &AaSnapshot, effect_color: Option<EffectColor>) -> Result<RestoreReport> {
+        self.ensure_writable()?;
+        check_sanity(backup, self.usb).map_err(AaError::NotSane)?;
+        let (Some(now), Some(then)) = (self.info, backup.device_info()) else {
+            return Err(AaError::NotSane(vec![NOTHING_READ.into()]));
+        };
+        if (now.vid, now.pid, now.product) != (then.vid, then.pid, then.product) {
+            return Err(AaError::NotSane(vec!["the backup is from another keyboard".into()]));
+        }
+
+        // 1. Fresh reads.
+        let fresh_base = self.read_block(cmd::KEYMAP, keymap::LEN, 0, None)?;
+        let fresh_fn = self.read_block(cmd::FN_KEYMAP, keymap::LEN, 0, None)?;
+        let factory_fn = self.read_block(cmd::DEFAULT_FN, keymap::LEN, 0, None)?;
+        let fresh_effect = self.read_effect()?;
+        let fresh_per_key = self.read_block(cmd::PER_KEY, perkey::LEN, 0, None)?;
+        let fresh_macros = self.read_macro_slots()?;
+        self.check_writable()?;
+
+        // 2. Plan and check everything.
+        let mut report = RestoreReport::default();
+        let factory_base = self.layout.factory_base().to_vec();
+        let base = self.plan_layer(Layer::Base, &fresh_base, &backup.keymap.0, &factory_base, &mut report.kept);
+        let fn_layer = self.plan_layer(Layer::Fn, &fresh_fn, &backup.fn_keymap.0, &factory_fn, &mut report.kept);
+        guard::guard_keymap(&fresh_base, &base, Some(&factory_base))?;
+        guard::guard_keymap(&fresh_fn, &fn_layer, Some(&factory_fn))?;
+
+        let mut guessed = false;
+        let effect = self.plan_effect(backup, fresh_effect, effect_color, &mut guessed)?;
+
+        let per_key = perkey::well_formed(&backup.per_key.0);
+        guard::guard_per_key(&per_key)?;
+
+        let saved_macros = backup.macros();
+        let macro_image = if saved_macros == fresh_macros {
+            None
+        } else {
+            Some(macros::encode(&saved_macros, self.macro_capacity())?)
+        };
+
+        // 3. Write; a failure says what was written before it. The per-key
+        // table goes before the effect: an effect write makes the keyboard
+        // show the table.
+        if base != fresh_base {
+            let r = self.put_keymap(Layer::Base, &fresh_base, &base, &factory_base);
+            record(&mut report, "base layer", r)?;
+        }
+        if fn_layer != fresh_fn {
+            let r = self.put_keymap(Layer::Fn, &fresh_fn, &fn_layer, &factory_fn);
+            record(&mut report, "Fn layer", r)?;
+        }
+        // Unless the keyboard shows the same already (a dark entry and a
+        // black one look alike).
+        if per_key != perkey::well_formed(&fresh_per_key) {
+            let r = self.put_per_key(&fresh_per_key, &per_key);
+            record(&mut report, "per-key table", r)?;
+        }
+        if let Some(e) = effect {
+            report.effect_mode_guessed = guessed;
+            let r = self.put_effect(&e);
+            record(&mut report, "effect", r)?;
+        }
+        if let Some(img) = macro_image {
+            let r = self.put_macros(&img);
+            record(&mut report, "macros", r)?;
+        }
+        Ok(report)
+    }
+
+    // ---------------------------------------------------------------- live lighting
+
+    /// Show one real-time frame (`32`, RAM only): every key of the layout,
+    /// black unless given; LEDs that are no key are ignored. Firmware 769
+    /// shows it in any effect mode, and its own effect again about 5 s
+    /// after the last frame: nothing is switched before, nothing is put
+    /// back after, and the sanity gate (which guards flash) does not apply.
+    /// Refused while the keyboard may ignore it ([`AaError::Settling`]:
+    /// just opened, or reset) or after a cut screen upload.
+    pub fn realtime_frame(&mut self, leds: impl IntoIterator<Item = (u8, Rgb)>) -> Result<()> {
+        self.ensure_idle()?;
+        self.after_io();
+        self.ensure_identified()?;
+        if let Some(left) = self.settling() {
+            return Err(AaError::Settling { wait_ms: left.as_millis() as u64 });
+        }
+        let mut colors = [[0u8; 3]; perkey::SLOTS];
+        for (led, rgb) in leds {
+            if let Some(aa) = self.layout.aa(led) {
+                colors[usize::from(aa)] = rgb;
+            }
+        }
+        let f = realtime::frame(&self.layout.order(), |aa| colors[usize::from(aa)]);
+        let resets = self.watch.resets;
+        let r = self.send(cmd::REALTIME, &f, resets);
+        self.after_io();
+        match r {
+            Err(_) if self.watch.resets != resets => {
+                Err(AaError::Settling { wait_ms: self.settling().unwrap_or_default().as_millis() as u64 })
+            }
+            r => r,
+        }
+    }
+
+    // ---------------------------------------------------------------- screen
+
+    /// Upload an image or animation to the screen over FF67 (`display`),
+    /// one packet at a time, each waiting for FF67's answer, which is no
+    /// proof (FF67 answers anything). Holding `self` keeps the command
+    /// channel silent meanwhile. Every packet is checked before the first
+    /// is sent; `cancel` stops before the next one. Once a packet has gone
+    /// out, stopping part-way (cancel or error) leaves the screen incomplete
+    /// until the next upload and silences the command channel for
+    /// [`UPLOAD_COOLDOWN`] ([`AaError::UploadInterrupted`]). **Writes the
+    /// keyboard's flash**, and on firmware 769 replaces the factory clock
+    /// screen, which only a full factory reset brings back.
+    pub fn upload_screen<D: OutputPort>(
+        &mut self,
+        display: &mut D,
+        anim: &ScreenAnimation,
+        mut progress: impl FnMut(usize, usize),
+        cancel: &AtomicBool,
+    ) -> Result<AaScreenReport> {
+        self.ensure_idle()?;
+        self.ensure_writable()?;
+        let info = self.info.ok_or_else(|| AaError::NotSane(vec![NOTHING_READ.into()]))?;
+        self.wait_settled();
+        if !info.has_screen() {
+            return Err(AaError::Unsupported("the keyboard reports no screen"));
+        }
+        let limit = screen::frame_limit(info.tft_max_frames);
+        let frames = anim.frames().len();
+        if frames > limit {
+            return Err(AaError::Invalid(CodecError::Range {
+                field: "frames",
+                value: frames as u32,
+                min: 1,
+                max: limit as u32,
+            }));
+        }
+        let blob = screen::blob(anim);
+        let total = blob.len().div_ceil(screen::PAYLOAD);
+        let packets: Vec<Vec<u8>> = (0..total)
+            .map(|i| {
+                let mut w = vec![0u8; screen::WIRE_LEN];
+                w[1..].copy_from_slice(&screen::packet(&blob, i, total));
+                w
+            })
+            .collect();
+        for p in &packets {
+            guard::guard(Channel::Display, p)?;
+        }
+        let drained = display.drain();
+        let mut report =
+            AaScreenReport { packets: total, drained, stale_acks: 0, packet_times: Vec::with_capacity(total) };
+        for (i, p) in packets.iter().enumerate() {
+            if cancel.load(Ordering::Relaxed) {
+                if i > 0 {
+                    self.upload_interrupted = Some(Instant::now());
+                }
+                return Err(AaError::Cancelled { done: i, total });
+            }
+            let t = Instant::now();
+            match screen_exchange(display, p, &mut self.watch) {
+                Ok(stale) => report.stale_acks += stale,
+                Err(e) => {
+                    self.upload_interrupted = Some(Instant::now());
+                    return Err(e);
+                }
+            }
+            report.packet_times.push(t.elapsed());
+            progress(i + 1, total);
+        }
+        self.after_io();
+        Ok(report)
+    }
+}

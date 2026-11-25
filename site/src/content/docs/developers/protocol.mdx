@@ -1,14 +1,25 @@
 ---
 title: Protocol reference
-description: What has been measured on the AJAZZ AK980 PRO over USB and Bluetooth, how the command and screen channels work, and which commands are blocked and why.
+description: What is known about the AJAZZ AK980 PRO's two command families over USB and Bluetooth, how their command and screen channels work, and which commands are blocked and why.
 ---
 
 import { Aside } from "@astrojs/starlight/components";
 
-This page lists what has been measured on one AJAZZ AK980 PRO with firmware 1.06 (USB `bcdDevice` `0x0106`), in November 2026, with the `kb` developer tool and the app itself. The code that implements it is in `crates/kb-protocol` (packets), `crates/kb-core/src/sonix.rs` (sessions and timing) and `crates/kb-devices/models/ajazz-ak980-pro.toml` (the model). AJAZZ does not publish this protocol, and Keymotion is not affiliated with AJAZZ.
+An AJAZZ AK980 PRO runs one of two firmware generations, and they speak different command families. This site names each family after the first byte of its commands:
+
+| | "04 xx" family | "AA" family |
+|---|---|---|
+| Firmware | 1.06 (USB `bcdDevice` `0x0106`) | 769, shown as 3.01 (`0x0301`) |
+| USB IDs on the cable | `0C45:8009` | `0C45:8039` |
+| Commands | 64-byte feature reports on `FF13`, in sessions | 64-byte output reports on `FF68`, each answered with an input report |
+| Screen | 4096-byte pages on `FF68` | 4104-byte packets on `FF67` |
+| Code | `kb_protocol::sonix`, `kb_core::sonix` | `kb_protocol::aa`, `kb_core::aa` |
+| Measured on a real keyboard | yes | not yet ([what is open](#still-unverified-on-a-real-769)) |
+
+The sections up to [What is blocked, and why](#what-is-blocked-and-why) describe firmware 1.06, as measured on one keyboard in November 2026 with the `kb` developer tool and the app itself. The code that implements them is in `crates/kb-protocol` (packets), `crates/kb-core/src/sonix.rs` (sessions and timing) and `crates/kb-devices/models/ajazz-ak980-pro.toml` (the model). [The "AA" family](#the-aa-family-firmware-769) describes firmware 769. AJAZZ publishes neither protocol, and Keymotion is not affiliated with AJAZZ.
 
 <Aside type="caution" title="A reference, not a recipe">
-Several of these commands write the keyboard's permanent memory. Don't send them by hand: use the app or `kb`, which validate every value and pass every packet through the safety guard. Only firmware 1.06 has been tested; other versions may behave differently.
+Several of these commands write the keyboard's permanent memory. Don't send them by hand: use the app or `kb`, which validate every value and pass every packet through the safety guard. Only firmware 1.06 has been tested on a real keyboard; other versions may behave differently. `kb` speaks the "04 xx" family only.
 </Aside>
 
 ## Identity and connection modes
@@ -46,7 +57,7 @@ Read from the report descriptors (`kb descriptors`), and kept as test data in `c
 
 Windows adds a report ID byte of `00` in front, so a command travels as 65 bytes and a screen page as 4,097. In a 20-second passive listen on the `FF13` and `FFFF` collections, the keyboard sent no input reports at all.
 
-These shapes are what the app checks when it finds a keyboard on the cable, and again before it uses a channel (`kb_core::shape`). Keyboards of the other SONiX command family, some of which share the AK980 PRO's USB IDs, put 64-byte commands on `FF68` and add an `FF67` collection; they fail the check, nothing is sent to them, and they are listed as unsupported.
+These shapes are what the app checks when it finds a keyboard on the cable, and again before it uses a channel (`kb_core::shape`). Keyboards of the "AA" family, some of which share the AK980 PRO's USB IDs and name, put 64-byte commands on `FF68` and add an `FF67` collection. They fail this check; when the model file lists an "AA" mode for them, they are driven in that family ([Telling the families apart](#telling-the-families-apart)). A keyboard whose channels fit neither family gets nothing and is listed as unsupported.
 
 ## The command channel
 
@@ -208,7 +219,7 @@ Over Bluetooth the keyboard offers only standard HID reports (system control, bo
 
 ## What is blocked, and why
 
-These are refused in the code, whatever the caller asks for. The byte sequences are not given here on purpose.
+In the "04 xx" family these are refused in the code, whatever the caller asks for. The byte sequences are not given here on purpose. The "AA" family has its own rules: [Safety rules](#safety-rules).
 
 | Blocked | Why |
 |---|---|
@@ -220,9 +231,225 @@ These are refused in the code, whatever the caller asks for. The byte sequences 
 | Uploads over 140 frames or 2,215 pages | On an AULA F108 Pro, an animation past its limit overwrote the keyboard's menu graphics for good. The largest upload measured here is 135 frames. |
 | Commands to the 2.4 GHz receiver | Nothing has been measured through it here. |
 
+## The "AA" family: firmware 769
+
+AJAZZ's firmware 769 for the AK980 PRO (version 3.01) replaces the commands above with the "AA" family, which AJAZZ's web tools and several related keyboards (AK820 Pro, AK980 MAX, MK87 and others) speak too. The packets and their guard are in `crates/kb-protocol/src/aa/`, the driver in `crates/kb-core/src/aa.rs` and `crates/kb-core/src/aa/`.
+
+<Aside type="caution" title="Not yet measured on a 769 keyboard">
+No keyboard on firmware 769 has been measured here yet. Most of what follows was read from the code of AJAZZ's official firmware 769 image: how it stores the settings, how it handles each command and what its answers mean. The image was read, never run, and nothing was sent to a keyboard for it. The rest comes from what owners of 769 keyboards shared (the USB descriptors that **Request support** collects, and one device-information reply), from AJAZZ's own tools, also read but never run against a keyboard here, and from measurements other projects made on related keyboards of this family. Where these sources disagree, the firmware's code wins. The driver was tested against a simulated keyboard that behaves as that code does. The first tests on a real 769 keyboard are planned for the [beta](/keymotion/developers/contributing/#beta-pre-release); until they pass, the "AA" mode lists no tested firmware, so the app asks before the first write of every session. [Still unverified on a real 769](#still-unverified-on-a-real-769) lists what is open.
+</Aside>
+
+### Identity and channels
+
+On the cable a 769 keyboard reports VID `0C45`, PID `8039`, `bcdDevice` `0x0301`, manufacturer `SONiX` and product `AK980 PRO`. AJAZZ's tools also know an AK980 PRO of this family on PID `8009`, the IDs of firmware 1.06, so the IDs alone never decide the family.
+
+| Interface | Usage page / usage | Role |
+|---|---|---|
+| 0 | `0x0001` / `0x06` | Boot keyboard |
+| 1 | as on firmware 1.06 | Consumer control, system control, NKRO keyboard, mouse and the `FFFF` vendor collection |
+| 2 | `0xFF68` / `0x61` | Command channel |
+| 3 | `0xFF67` / `0x61` | Screen channel |
+
+| Collection | Input | Output | Feature | Report IDs |
+|---|---|---|---|---|
+| Command, `FF68` | 64 bytes | 64 bytes | none | none |
+| Screen, `FF67` | 64 bytes | 4104 bytes | 64 bytes, never used | none |
+
+With Windows' report ID byte in front, a request travels as 65 bytes and a screen packet as 4,105. Each channel takes output reports no longer than its own report descriptor declares (`kb_transport::descriptor`), so a 4 KiB report can never reach the 64-byte command collection, and a channel whose descriptor can't be read writes nothing at all. Feature reports belong to the "04 xx" command channel only: `kb-transport` refuses SET_FEATURE and GET_FEATURE on every other usage page, `FF67`'s declared feature report included.
+
+### Telling the families apart
+
+The model file lists a cable mode for each family, each with its `protocol` ([How the family is chosen](/keymotion/developers/adding-a-keyboard/#how-the-family-is-chosen)). The report descriptors, which Windows keeps and which can be read without sending anything, decide which one a keyboard is:
+
+| Family | Command channel | Screen channel |
+|---|---|---|
+| "04 xx" | `FF13`: 64-byte feature and output reports, no report IDs | `FF68`: 4096-byte output reports |
+| "AA" | `FF68`: 64-byte output and input reports, no feature report, no report IDs | `FF67`: 4104-byte output and 64-byte input reports, no report IDs |
+
+The two never overlap. Before an "AA" channel is opened (`kb_core::aa::open_channel`), its descriptor must fit again and declare exactly the 65 or 4,105 bytes the protocol uses, and the keyboard must report a product name: a SONiX controller in its bootloader can keep the keyboard's IDs and report an empty name, and nothing is sent to it.
+
+### Requests and replies
+
+Every request is a 64-byte **output report** on `FF68`. This family has no feature reports.
+
+| Byte | Content |
+|---|---|
+| 0 | `AA` |
+| 1 | Command |
+| 2 | LEN: data bytes in this request, 1–56 |
+| 3–4 | ADDR: where the data starts in the block, little-endian |
+| 5 | 0 |
+| 6 | LAST: 1 on a block's last chunk, otherwise 0 |
+| 7 | 0 |
+| 8–63 | LEN bytes of data, the rest 0; a read sends none |
+
+LAST is what AJAZZ's tools send; the firmware reads neither it nor bytes 5 and 7.
+
+The keyboard answers each request with a 64-byte input report: `55`, then the command, LEN and ADDR repeated, then 56 bytes that hold the data of a read or echo the data of a write. The answer leaves at once or with the firmware's next 100 ms tick. Reports the keyboard sends on its own pass through the same buffer, so only a report that starts with `55` and the awaited command is an answer. A request whose first byte isn't `AA` gets none. There are no sessions, no checksums and no pauses between commands.
+
+- **Chunks.** A block longer than 56 bytes travels in 56-byte chunks, each answered before the next one goes: a 512-byte table takes ten requests, nine of 56 bytes and one of 8.
+- **Flash pages.** The firmware keeps every setting straight in the controller's flash, in 1 KB pages, with no copy in RAM, and a read returns the bytes at the block's address plus ADDR. A write chunk whose address is the start of a page erases that page first. Any other chunk is programmed over what the page holds, and since programming flash can only clear bits, the result is the old and the new data ANDed together. So a table is always written whole, from address 0 upwards, and never patched in the middle.
+- **No bounds in the firmware.** The firmware checks neither ADDR nor LEN. A write past a table's end goes on into the next settings, and past the last settings page into the firmware's own code, which would leave the keyboard unusable; a LEN above 56 takes bytes from outside the request. The guard therefore refuses any request with a LEN above 56, any write whose ADDR plus LEN reaches past its table, and any write whose LEN isn't a multiple of 4, the unit the firmware programs.
+- **Matching.** The driver takes a reply only when its command and address match the request, so a late answer to an earlier try never counts for the wrong chunk. The echo of a write must repeat the data sent, byte for byte.
+- **Waiting.** Half a second for most answers, one or two seconds for the big table writes and for each screen packet, 50 ms for each chunk of a live frame. A request without an answer is sent again at once, up to three tries in all: only that chunk is repeated, before any later one, so a table is still written from address 0 upwards. A write that fails, or writes fewer bytes than it should, is not: hidapi can leave it pending, so the channel is closed and opened again, and the keyboard is read again before anything is written.
+- **Other reports.** Reports that are not the awaited answer are skipped and counted. `55 FC 05` means the keyboard was reset (with a key combination, for example): everything the driver knew is stale, and nothing is written until it has read the keyboard again. Many unexpected reports mean that another program talks to the keyboard, such as AJAZZ's web tool in a browser, which can't be found by its process name.
+- **Echo is not proof.** A write is answered with an exact echo of the request. There is no status byte, and the echo comes even for a write the firmware dropped: it means the request was processed, not that it was stored. The firmware drops writes while the keyboard plays its power-on animation and while it blinks after a reset. So the driver lets 5 seconds pass after it opens the keyboard's channel, after a reset notice and after a write the keyboard didn't keep before it writes again (the settle time), and reads every table back after writing it. A read-back that doesn't match, or a table write that stopped without an answer, closes the write gate; the keyboard is read again at once, and writes open again only if that read passes. A reset notice that comes during the settle time stops the write before its first chunk, and one that comes during a write stops it before its next chunk.
+
+### What Keymotion reads and writes
+
+Only these commands pass the guard (`kb_protocol::aa::guard`):
+
+| Command | Size | Use |
+|---|---|---|
+| `10` read | 48 bytes | Device information. Always the first request. |
+| `11` read | 56 bytes | The keyboard's system options, kept in the backup. Never written. |
+| `12` read, `22` write | 512 bytes | Base keymap layer |
+| `16` read, `26` write | 512 bytes | Fn keymap layer |
+| `1C` read | 512 bytes | The factory Fn layer |
+| `13` read, `23` write | 16 bytes | Lighting effect |
+| `14` read, `24` write | 512 bytes | Per-key color table |
+| `15` read, `25` write | 400 bytes and the macros | Macros |
+| `33` read | 512 bytes | The colors the LEDs show right now |
+| `32` write | one frame | Live frame, RAM only |
+| `34` write | 24 bytes | Clock |
+| `50` write, on `FF67` | 4104-byte packets | Screen upload |
+
+Every other command is refused, on both channels: among them the option write, the factory reset, the firmware update and raw flash commands, LED animations, calibration and profile switching. `FF67` takes nothing but `50`, and `50` goes nowhere else.
+
+The device information, as Keymotion reads it:
+
+| Bytes | Field |
+|---|---|
+| 2–3 | Macro memory in bytes (3072 on 769) |
+| 4–7 | VID and PID, little-endian |
+| 8–9 | Firmware version as in `bcdDevice` (`01 03`, version 3.01, on 769) |
+| 14–15 | Model code (`0x0033` on 769) |
+| 16 | 0 on the cable, 2 through the receiver |
+| 17 | Battery level in percent, on the cable too |
+| 18 | Charge state, 0 to 2 |
+| 22–23 | Most screen frames the firmware takes (146 on 769; 0: not reported) |
+| 28 | Screen orientation; 255 means no screen |
+
+The first 19 bytes a real 769 keyboard sent on the cable were `40 00 00 0C 45 0C 39 80 01 03 FF FF 01 00 33 00 00 64 02`: battery 100 %, charge state 2. What charge state 2 means is not known.
+
+Nothing in this block says that the keyboard waits for a firmware update: the firmware keeps no such flag, because its updater switches to the bootloader at once. Byte 12 always reads 1. Byte 32, which some sources read as a firmware status, is logged when it isn't 0; the driver gates nothing on it.
+
+### Effects and per-key colors
+
+The effect is 16 bytes: `MODE R G B FF 00 00 00 RAINBOW BRIGHTNESS SPEED DIRECTION 00 00 AA 55`.
+
+- The modes are those of the "04 xx" family (0 off to 19), 128 (`0x80`) for the per-key table, and 20 and 21, which show the per-key table too. The per-key table shows only while the keyboard uses custom colors: changing the color with the Fn keys switches it to built-in color tables, and an effect write (`23`) switches it back.
+- Brightness and speed are 1–5 in this family, not 0–5. The app keeps its 0–5 scale and maps it through one table: 0 and 1 become 1, 2 to 5 stay as they are. Nothing outside 1–5 is ever written. The direction (0–3) goes as given.
+- `13` reports the effect that runs, which the firmware keeps in RAM, not the one stored: an effect changed with the Fn keys shows there too. Modes 0, 20, 21 and 128 all read back as 0, so a 0 after writing 128 is what the keyboard should say, and the driver keeps the mode it wrote, in a backup too. One of the firmware's palette colors reads back as such, and any other color as `FF FF FF`: a custom color never reads back. So after a write the mode, through that mapping, and the levels are compared, and the driver remembers the color it wrote. A mode the firmware doesn't know is ignored, and the old effect reads back.
+- The per-key table is 512 bytes: 128 entries `[i, R, G, B]`, entry `i` for the key whose "AA" index is `i` (the model file's `aa`, not its LED number). Byte 0 is a validity tag: the firmware uses an entry's color only when its byte 0 is `i`, and otherwise leaves that LED off. `24` neither checks nor fixes the tag. So a write sends all 128 entries, each tagged with its own index: every key of the layout gets its color, black when none is given, and the slots that aren't keys get black. Saving per-key colors writes the table first, then the effect in mode 128.
+- There is no default per-key table. Flashing the firmware, or the factory reset command `0F` (which Keymotion never sends), leaves it all `00`: entry 0 valid and black, entries 1–127 off. A board that was never programmed may read `FF`. Both are normal. A reset with the key combination on the keyboard leaves the table, the effect and the macros as they are and restores the key mapping of both layers. The firmware reads the table from flash each time it draws the keys, so a write shows at once.
+- In the firmware's map from slots to LEDs, the 29 slots that aren't keys (13–15, 84, 86, 96, 99–103, 107, 111–127) all point at the same LED, number 20 in the firmware's own order, so in per-key mode slot 127, drawn last, decides that LED's color. Four of the firmware's LEDs (108–110 and 114) are reached by no slot.
+- `33` returns the colors the LEDs show at that moment, effects included; the app's mirror reads it. Red comes back whole, so the "04 xx" read-back decoding is not needed.
+- The firmware's own Num Lock and Fn lights are "AA" indices 29 and 85, inferred from their keys.
+
+### Live frames show in any mode
+
+`32` shows one frame from RAM and stores nothing: `[slot, R, G, B]` for every key of the layout, in the model file's key order rather than the 128-entry table, in 56-byte chunks that are each echoed. Keys not given are sent black.
+
+- The firmware doesn't look at the effect: frames show over any lighting mode, as on firmware 1.06. Byte 0 of an entry is the slot it colors and ADDR is ignored, so a partial or unordered frame works too; an LED a frame leaves out keeps its last color, which is why every key is sent.
+- Nothing is written to flash. When frames stop, the last one stays for about 5 seconds, then the keyboard goes back to its own effect by itself. There is nothing to switch before a stream and nothing to put back after it.
+- Frames skip the keyboard's brightness level. The lock, battery and pairing lights are drawn over them, and frames are ignored while a reset from the key combination runs.
+- Frames touch RAM only, so a keyboard that the [sanity gate](#safety-rules) keeps read-only still gets them. They wait during the settle time, while the app says that live lighting shows again in a few seconds, during a screen upload and the quiet time after one that stopped part-way, and while the device information is unanswered.
+- Through the 2.4 GHz receiver the firmware takes frames as command `35`; Keymotion sends nothing through the receiver.
+- A color that would, together with its neighbors in a chunk, form one of the bootloader sequences ([Safety rules](#safety-rules)) is changed by one step in one channel, which can't be seen. Index bytes are never changed.
+
+### Keymap layers
+
+A layer is 512 bytes, 128 slots of 4 bytes `PAGE P1 P2 P3`; slot `i` is the key whose "AA" index is `i`. These are the entries Keymotion writes:
+
+| Entry | Meaning |
+|---|---|
+| `00 00 00 00` | The key's factory function |
+| `02 MODS KEY 00` | A key with modifiers, the bits as in the boot keyboard report. A modifier on its own is its usage: `02 00 E0 00` to `02 00 E7 00`. |
+| `03 LO HI 00` | A consumer usage, little-endian |
+| `01 01 BTN 00` | A mouse button: 1 left, 2 right, 4 middle, 8 back, 16 forward |
+| `01 03 01 00`, `01 03 FF 00` | Wheel up, wheel down |
+| `06 SLOT MODE COUNT` | Plays macro `SLOT`: mode 0 once, mode 1 `COUNT` times, mode 2 until the key is pressed again |
+
+- **Read, change, write.** A layer is always written whole. The driver reads it fresh, changes only the slots it was asked to, writes it, reads it back and compares. A layer that would not change is not written.
+- **All-zero entries.** In a `22` or `26` write, the firmware replaces every all-zero entry with the matching entry of its default tables. So `00 00 00 00` gives the key its factory function, and the read-back shows that factory entry, not zeros.
+- **A layer write cut short.** Its first chunk erases the page, so a write that stopped part-way (the cable pulled out, say) leaves every slot it didn't reach erased, `FF FF FF FF`. The next write of that layer repairs them, and so do a restore and "Default": each such slot is written `00 00 00 00`, which the firmware replaces with its factory entry. That is the one way back for the Fn key, the knob and the Fn layer's firmware functions, which are otherwise never written.
+- **Never reassigned:** the Fn key (slot 85), the knob (slots 13–15) and slots 126 and 127, where some keyboards of this family keep an `AA 55` tail (769's tables have no key there).
+- **Firmware functions.** The Fn layer holds firmware functions (page `0D` with a 24-bit id), such as brightness steps and, on related keyboards, a factory reset on Fn+Space. A write never introduces one, nor a two-function entry (pages from `80` up), an entry that AJAZZ's own software runs (page 5) or a combination (page 7): these stay only in the slot where the fresh read found them. 23 function ids that reset the keyboard, start a test or calibration mode, switch between USB and wireless or NKRO modes, or lock the driver or macros out are refused by name. Every keymap write is checked as a whole table against the read it was built from.
+- An entry the driver can't express as an action stays as raw bytes and goes back untouched.
+- The firmware plays a macro in five modes: the three above, mode 3, which repeats it while the key is held, and mode 4, step by step. Keymotion writes modes 0 to 2.
+- Not offered in this family yet: "the key does nothing" (the vendor's encoding suggests `02 00 00 00`, but no AJAZZ tool writes it), a double click, and a macro that repeats while the key is held. The "04 xx" family's "does nothing" entry, `05 03 00 00`, would be a page 5 entry here and is never written.
+
+### Macro table and blocks
+
+- Addresses 0–399 hold 100 little-endian 4-byte addresses, one per macro slot (0: no macro). From address 400 follows one block per macro: a 4-byte header whose first two bytes hold twice the number of entries, then 4-byte entries `DELAY_LO DELAY_HI CODE FLAG`.
+- The flag's top bit is set for a press and clear for a release, and the three bits below it give the event's type: 1 a mouse button (`90`, `10`), 2 the wheel (`A0`, `20`), 3 a keyboard usage (`B0`, `30`). Keymotion writes key and mouse-button events. The delay is the pause after the entry, 5 to 65,535 ms; shorter pauses are raised to 5 ms, except after the last entry.
+- A write sends the table and the blocks as one image, from address 0 upwards, and reads it back. The image is written once: the table is not written again after the blocks, because a second chunk at address 0 would erase the page the blocks were just written to. An image longer than 1 KB has a chunk that starts exactly at 1024, and one at 2048 past 2 KB, so that each page is erased before it is programmed; chunks of 56 bytes never land there on their own.
+- The table comes first, so a write cut short leaves pointers to blocks that weren't written. A pointer to erased flash or into the table reads as an empty slot and doesn't keep the gate closed: the next macro save writes the whole image and repairs the table. A pointer past the macro memory still does, since no write of the driver leaves one and reading it as empty could wipe real macros. An image longer than 1 KB, as a restore of a backup with many macros may write, that is cut short after its first page can also leave pointers into a later page that still holds old bytes, which may not read as empty; the app's own saves stay within 912 bytes, one page.
+- The macro memory is three flash pages, the 3072 bytes the device information reports, and the firmware doesn't keep a write inside it: anything at 3072 or beyond would land on the Fn layer and then on the firmware's code, so the guard refuses it. The driver takes blocks up to that memory less the table, written page by page as above, and a restore uses that much. The app keeps its own macros to 512 bytes of blocks (4 per macro and 4 per entry), for at most 99 macros, as AJAZZ's own tool does; that limit goes up only once a real keyboard shows that more works.
+- Every command except live frames (`32`) and the color read (`33`) stops a macro that is playing. So a repeating macro stops when the app writes to the keyboard (a save, the clock, a restore), reads it in full on connecting or again after the gate closed, or reads the device information for the battery: once on connecting, then only while the window shows the keyboard's colors (the Overview page or the Effects tab of the Lighting page), at most every 5 minutes. A macro cut between a mouse button's press and release can leave that button held until it is clicked. The user guide says so on the Macros page.
+- Macro names are not stored on the keyboard.
+
+### Setting the clock
+
+`34` carries `5A 01 5A`, then the year minus 2000, month, day, hour, minute, second and weekday (0 = Sunday) in binary local time, padded with zeros to 24 bytes. There is no session and nothing to read back: the echo shows only that the keyboard processed the request. The clock set on connecting waits for the settle time like any write. Whether the screen switches to a clock page depends on the firmware; on 769 it reportedly doesn't.
+
+### Screen uploads
+
+- **Packets.** 4104 bytes each, on `FF67`: `AA 50`, the packet's number and the number of packets (both little-endian), `50 06`, then 4096 bytes of the image. The last packet is padded with zeros.
+- **Image.** As in the "04 xx" family: a 256-byte header (the frame count, the delay of every frame but the last in 2 ms units, a 0, then `FF`), followed by the 240×135 frames in RGB565 little-endian, with no padding between them. One frame takes 16 packets, 140 frames take 2,215.
+- **Answers.** Each packet waits for `FF67`'s answer `55 41 00 01` before the next one goes. But `FF67` answers every packet this way, whatever it holds: the answer is no proof that the screen changed. A command channel request sent to `FF67` would be answered the same way, with an unknown effect; none is ever sent there.
+- **Limits.** At most the frame limit the keyboard reports in its device information, never more than 140; when it reports none, 140. A 769 keyboard reports 146, and its firmware cuts a larger count down to that. A keyboard that reports no screen gets no upload. The guard checks every packet before the first one is sent.
+- **The command channel stays silent.** On a related keyboard, live frames sent during an upload left its first packet unanswered, and a battery reading reset the USB connection. The driver holds the command channel for the whole upload: live frames, the mirror, the clock and device readings wait until it ends.
+- **Cancelling** stops before the next packet. The screen stays incomplete until the next upload.
+- **The clock page.** On 769, an upload reportedly takes the place of the factory screen with the date and time, and only a full reset brings that screen back (Fn+Space on the keyboard). One source reports this, and it is not confirmed. That source also reports that the reset erases keys, macros and lighting; in the firmware's code, the reset from the keyboard restores the key mapping of both layers and leaves the lighting and the macros alone, while the factory reset command `0F`, which Keymotion never sends, also clears the per-key table and the macros. Before the first upload to an "AA" keyboard, the app says that the clock page may go and waits for the user's yes.
+- Whether an upload is kept in flash or in RAM differs between related keyboards and is not known for 769. The app treats it as a flash write and counts it against the daily upload limit.
+
+### Battery on the cable
+
+The device information reports the battery level and a charge state on the cable too, which firmware 1.06 doesn't. The app shows the battery while the cable is plugged in.
+
+### Safety rules
+
+These hold in the code, whatever the caller asks for:
+
+1. **No feature reports and no SET_REPORT** on an "AA" keyboard. Requests and screen packets are output reports only. On a related keyboard, the check that switches to the bootloader sits where control transfers are handled, which is where those would arrive.
+2. **One way out.** Every packet on both channels goes through one function that runs the guard first: the exact length of its channel, report ID 0, the `AA` marker, a command on that channel's list, clean header bytes, no data in a read, a LEN of at most 56, a write that stays inside its table with a LEN that is a multiple of 4, effect values inside this family's ranges, the clock's marker, and a screen header whose packet number is below the count, with at most 2,215 packets and 1–140 frames.
+3. **Bootloader sequences.** Two byte sequences that switch a SONiX controller into its bootloader, the one AJAZZ's 769 updater uses and SONiX's generic one, are refused at any position in any packet. The byte sequences are not given here on purpose.
+4. **Signs of the bootloader.** A keyboard in its bootloader can keep its USB IDs and report an empty product name. A USB mode never matches a keyboard without a name, and no "AA" channel of one is opened.
+5. **Firmware functions** are never written to a new slot, and the dangerous ones are refused by name ([Keymap layers](#keymap-layers)).
+6. **Read, change, write.** Keymap tables are built from a fresh read and change only where asked; the Fn key, the knob and slots 126 and 127 stay as read. The per-key table is written whole, every entry tagged with its own index.
+7. **A full read before the first write.** The driver writes nothing until it has read everything the keyboard lets the host read: the device information, the options, both layers and the factory Fn layer, the effect, the per-key table and the macros. That read is the backup the app keeps before its first write to the keyboard. The driver can write a backup back: both layers, the effect, the per-key table and the macros, never the options, with the Fn key, the knob and keymap slots 126 and 127 kept as the keyboard has them now (unless a cut-short write left them erased), and only to a keyboard with the same IDs and model code as the one the backup came from. The screen can't be read back, so no backup holds its image. Since the keyboard reads 0 for off and for the per-key modes, a backup keeps the effect mode the app knows: one it wrote, or the mode of its own lighting record. When a backup doesn't know its mode, a restore leaves a keyboard that reads the same alone, and otherwise picks the per-key mode if the backup's per-key table lights a key, off if it doesn't.
+8. **Sanity gate.** Writes open only when that full read looks like the keyboard the driver knows: every block has its length; the device information's VID is `0C45`, and its PID and firmware version are the ones USB reports; every keymap entry is on a known page; the effect has a known mode, levels of 1–5 (unless it is off) and a direction of 0–3; every macro address lies inside the macro memory and its block reads, except a pointer to erased flash or into the table, which reads as an empty slot. The per-key table is not a condition: all `00`, as after a firmware flash, or all `FF`, as on a board never programmed, is normal. Erased keymap slots aren't a reason either. Otherwise the keyboard stays read-only, and the reasons are kept for the report the user is asked to send. A reset notice, a full read that didn't finish, a table write that stopped part-way, or a read-back that doesn't match what was written closes the gate again; while it stays closed for one of these, the app reads the keyboard again, at most every 30 seconds.
+9. **Dropped writes.** The keyboard echoes the writes it drops during its power-on animation and its reset blink, so the driver lets the settle time pass after it opens the channel, after a reset notice and after a write that didn't read back, and reads back every table it writes. No firmware status is read, because the firmware has none. Keymotion never updates firmware.
+10. **No command channel traffic during an upload** ([Screen uploads](#screen-uploads)).
+11. **The app's write gate still applies:** one keyboard on the cable, no conflicting program, and a tested firmware version or the user's yes for this session.
+
+Never sent to an "AA" keyboard: any "04 xx" command (on a related keyboard, the "04 xx" screen upload command erased the stored picture), anything through the 2.4 GHz receiver, and anything at all when its channels don't have this family's shape.
+
+### The simulated keyboard
+
+`kb_core::aa::sim`, behind the cargo feature `sim` (always on in kb-core's own tests, not part of the app's release build), is an AK980 PRO on firmware 769 in memory, built after the firmware's code: both collections over one shared state, answering as this section describes. Its settings sit in 1 KB flash pages that a chunk erases only when it starts a page, with every other chunk ANDed over what is there. It echoes every write exactly, ignores LAST, replaces all-zero keymap entries with the factory ones, reports the running effect with modes 0, 20, 21 and 128 as 0 and a custom color as `FF FF FF`, shows live frames in any mode and goes back to its effect about 5 seconds after the last one, and starts with a per-key table all `00`, as after a firmware flash, or all `FF`, as a board never programmed. Its device information is the real 769 reply above, with the frame limit of 146. It drops writes, echoing them all the same, during a power-on animation and a reset blink, and a reset from the key combination brings the keymap layers back to their defaults. Faults make it misbehave on purpose: lost and stray replies, a reset notice, writes dropped from or up to a given request (a power-on animation that starts or ends during a write), silent device information, corrupted reads, failed writes, wrong echoes, writes it doesn't keep, and screen answers that come late, twice or never. It also checks the driver: a packet the guard refuses (a write past its table among them), a keymap write the table guard refuses, a table write that doesn't run from address 0 upwards, a screen packet sent before the previous answer was read, or command channel traffic during a screen upload fails the test.
+
+### Still unverified on a real 769
+
+Nobody has run this driver against a keyboard on firmware 769 yet. The firmware's code shows how the keyboard stores its settings and answers; the first tests, planned for the beta from reading to writing, one step at a time, check that a real keyboard does so. Until then these stay open as well:
+
+- whether every key's "AA" index is the right physical key (three tables of AJAZZ's agree on all 97 keys);
+- the brightness and speed ranges, whether level 1 is dim or off, which direction codes each effect uses, and whether the `AA 55` tail of the effect matters;
+- how many live frames a second a real keyboard takes;
+- whether `33` reports the colors on 769;
+- how long the keyboard drops writes after it powers on or resets;
+- the "key does nothing" entry, and whether the knob's slots can be written;
+- whether more than 512 bytes of macros work;
+- the screen: the time per packet, whether a picture stays after unplugging, which page shows it, and whether it really replaces the clock page;
+- whether a clock packet changes the screen's page;
+- what charge state 2 means;
+- the 2.4 GHz receiver of a 769 keyboard: nothing is sent through it.
+
 ## Credits
 
-Keymotion's protocol code is its own. These community projects documented this keyboard family first and showed where to look; the facts on this page were then measured on our keyboard, except where a reason above comes from a related keyboard. Thank you.
+Keymotion's protocol code is its own. These community projects documented these keyboard families first and showed where to look. The "04 xx" facts on this page were then measured on our keyboard, except where a reason comes from a related keyboard; the "AA" facts come from these projects, from AJAZZ's own tools, from what owners of 769 keyboards shared and from reading the code of AJAZZ's official firmware 769 image, and wait for the beta's tests. Thank you.
 
 - [sonix-keyboard-studio](https://github.com/donglover69/sonix-keyboard-studio): AK980 V2 and AULA F108 Pro
 - [ajazz-ak980-v2-linux](https://github.com/YellowHearth1/ajazz-ak980-v2-linux): AK980 V2 on Linux
@@ -237,9 +464,14 @@ Keymotion's protocol code is its own. These community projects documented this k
 - [ajazz-ak820-pro-mac](https://github.com/gusleig/ajazz-ak820-pro-mac): AK820 Pro on macOS
 - [ajazz-ak820-pro (kabelklaus)](https://github.com/kabelklaus/ajazz-ak820-pro): AK820 Pro in the browser
 - [EPOMAKER-Ajazz-AK820-Pro](https://github.com/gohv/EPOMAKER-Ajazz-AK820-Pro): AK820 Pro on the command line
-- [ajazz-ak820-pro (fpb)](https://github.com/fpb/ajazz-ak820-pro): AK820 Pro hardware
-- [ak820-screen](https://github.com/fromagge/ak820-screen): the AK820 Pro screen on newer firmware
-- [freejazz](https://github.com/fraustiz/freejazz): AK980 MAX, a different command family
+- [ajazz-ak820-pro (fpb)](https://github.com/fpb/ajazz-ak820-pro): AK820 Pro hardware, including how one entered its bootloader
+- [ak820-screen](https://github.com/fromagge/ak820-screen): the AK820 Pro screen on newer firmware, with a capture of AJAZZ's web driver talking to it
+- [freejazz](https://github.com/fraustiz/freejazz): AK980 MAX, an "AA" keyboard, measured on Windows
+- [ajazz-mk87](https://github.com/w32394045-dotcom/ajazz-mk87): MK87, an "AA" keyboard with the same 240×135 screen, tested on hardware
+- [nutctl](https://github.com/ht4w5/nutctl): NUT87, an "AA" keyboard, including the tails of its tables
+- [myfinder-device-battery](https://github.com/wushuai0802/myfinder-device-battery): a firmware 769 keyboard's device information and its screen channel's answers
+- [AK980-Manager](https://github.com/j0p3s/AK980-Manager): the AK980 PRO on firmware 769, including what an upload does to its clock page
+- [OpenAula](https://github.com/cvanelteren/OpenAula): AULA firmware, including where its bootloader is triggered
 - [f108-pro](https://github.com/parsiya/f108-pro): AULA F108 Pro, including the report on its damaged screen
 - [OpenRGB with AULA F108 Pro support](https://github.com/hcode10/OpenRGB-With-AulaF108Pro-support): live lighting on the F108 Pro
 - [aks075-linux](https://github.com/aar-rafi/aks075-linux): AKS075 on Linux

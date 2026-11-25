@@ -3,4 +3,4 @@
 /**
  * How a part of a load went.
  */
-export type PartLoaded = "written" | "same";
+export type PartLoaded = "written" | "same" | "kept" | "skipped";

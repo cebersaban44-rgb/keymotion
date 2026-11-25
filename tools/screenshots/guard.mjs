@@ -13,6 +13,8 @@ export const DENY = [
   "apply_macros",
   "screen_upload",
   "screen_backup_from_driver",
+  // An "AA" keyboard's restore writes every section back.
+  "keyboard_backup_restore",
   "profiles_load",
   "sync_clock",
   "set_clock_auto",
@@ -20,6 +22,8 @@ export const DENY = [
   // The live screen uploads its cards: never turned on, nothing handed over.
   "live_configure",
   "live_ack_factory",
+  // Saying yes to losing an "AA" keyboard's clock page lets uploads go.
+  "screen_ack_clock_page",
   "live_submit",
   "live_send_now",
   // Profiles by app may write a profile when a program comes to the front.

@@ -9,6 +9,7 @@
 //! belong to.
 
 use serde::Deserialize;
+use std::fmt;
 use std::sync::OnceLock;
 
 /// Embedded model files. Keep sorted by id.
@@ -45,6 +46,39 @@ impl ConnectionKind {
     }
 }
 
+/// Command family a keyboard speaks on its vendor channels. Boards with the
+/// same IDs and name can speak either (another firmware), and sending one
+/// family's commands to the other can erase the screen slot, so the family
+/// is also told apart by the channels' report layout (kb_core `shape`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, serde::Serialize)]
+pub enum Protocol {
+    /// SONiX "04 xx" family: 64-byte feature reports on FF13 for commands,
+    /// 4096-byte output reports on FF68 for screen pages.
+    #[serde(rename = "sonix-ff13")]
+    SonixFf13,
+    /// AJAZZ "AA" family (AK980 PRO firmware 769 and others): 64-byte
+    /// output and input reports on FF68 for commands, 4104-byte output
+    /// reports on FF67 for the screen. No feature reports.
+    #[serde(rename = "ajazz-aa")]
+    AjazzAa,
+}
+
+impl Protocol {
+    /// The name model files use.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SonixFf13 => "sonix-ff13",
+            Self::AjazzAa => "ajazz-aa",
+        }
+    }
+}
+
+impl fmt::Display for Protocol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// A feature the keyboard offers in a given connection mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -72,6 +106,10 @@ pub struct ScreenSpec {
 #[serde(deny_unknown_fields)]
 pub struct ModeSpec {
     pub kind: ConnectionKind,
+    /// Command family in this mode, when it is not the model's
+    /// ([`Model::protocol_of`] resolves it).
+    #[serde(default)]
+    pub protocol: Option<Protocol>,
     pub vid: u16,
     pub pid: u16,
     /// Case-insensitive substring the USB product string must contain.
@@ -118,6 +156,11 @@ pub struct KeySpec {
     pub label: String,
     /// LED index; equals the keymap index on SONiX boards.
     pub led: u8,
+    /// The key's index in the "AA" command family (keymap slot and per-key
+    /// table entry), which is not `led` shifted: needed by every model with
+    /// a mode that speaks it.
+    #[serde(default)]
+    pub aa: Option<u8>,
     /// Default HID usage (keyboard page 0x07; 0xAF is the vendor Fn key).
     pub hid: u8,
     pub x: f32,
@@ -165,7 +208,8 @@ pub struct Model {
     pub id: String,
     pub name: String,
     pub vendor: String,
-    pub protocol: String,
+    /// Command family of the model's modes, unless a mode names its own.
+    pub protocol: Protocol,
     pub layout: String,
     pub key_count: u16,
     pub has_knob: bool,
@@ -186,6 +230,9 @@ pub struct Model {
 #[serde(deny_unknown_fields)]
 pub struct Indicator {
     pub led: u8,
+    /// The same LED's index in the "AA" command family ([`KeySpec::aa`]).
+    #[serde(default)]
+    pub aa: Option<u8>,
     /// What it shows, e.g. "Num Lock".
     pub name: String,
     /// Colour when lit, as the LED is driven (not affected by brightness).
@@ -194,8 +241,22 @@ pub struct Indicator {
 }
 
 impl Model {
+    /// The first mode of `kind` in the model file. A model can list more
+    /// than one mode of a kind, one per command family behind the same
+    /// connection: [`Model::modes_of`] lists them all.
     pub fn mode(&self, kind: ConnectionKind) -> Option<&ModeSpec> {
         self.modes.iter().find(|m| m.kind == kind)
+    }
+
+    /// Every mode of `kind`, in model file order.
+    pub fn modes_of(&self, kind: ConnectionKind) -> impl Iterator<Item = &ModeSpec> + '_ {
+        self.modes.iter().filter(move |m| m.kind == kind)
+    }
+
+    /// The command family `mode` (one of this model's) speaks: its own,
+    /// else the model's.
+    pub fn protocol_of(&self, mode: &ModeSpec) -> Protocol {
+        mode.protocol.unwrap_or(self.protocol)
     }
 }
 
@@ -223,6 +284,8 @@ pub struct InterfaceMatch<'m> {
     pub model: &'m Model,
     pub mode: &'m ModeSpec,
     pub role: InterfaceRole,
+    /// The mode's command family ([`Model::protocol_of`]).
+    pub protocol: Protocol,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -257,42 +320,74 @@ pub fn catalogue() -> Result<&'static [Model], &'static ModelError> {
 /// Match one HID interface against `models`.
 ///
 /// USB and dongle share VID/PIDs with unrelated SONiX boards, so a USB match
-/// also requires the product string when the model declares one. Bluetooth
-/// and the 2.4G dongle report the same VID/PID and are told apart by bus.
+/// also requires the product string to contain the mode's
+/// `product_contains`: a USB mode without one, or a board with no product
+/// string (a bootloader keeps the IDs and drops the name), never matches.
+/// The dongle matches the product string when the model declares one.
+/// Bluetooth and the 2.4G dongle report the same VID/PID and are told apart
+/// by bus.
 ///
 /// A match says only that the IDs and the name fit: whether the vendor
 /// channels have the protocol's shape is checked by the caller, which can
 /// read their report descriptors (kb_core `classify`).
+///
+/// This is the first matching mode in catalogue order. When a model lists
+/// modes of several command families behind the same IDs and name, only
+/// the report layout tells them apart: [`match_interfaces`] lists them all.
 pub fn match_interface<'m>(models: &'m [Model], probe: &InterfaceProbe<'_>) -> Option<InterfaceMatch<'m>> {
     for model in models {
         for mode in &model.modes {
-            if mode.vid != probe.vid || mode.pid != probe.pid {
-                continue;
+            if mode_matches(mode, probe) {
+                return Some(interface_match(model, mode, probe));
             }
-            let bus_ok = match mode.kind {
-                ConnectionKind::Bluetooth => probe.bus == Bus::Bluetooth,
-                ConnectionKind::Usb | ConnectionKind::Dongle => probe.bus == Bus::Usb,
-            };
-            if !bus_ok {
-                continue;
-            }
-            if let Some(needle) = &mode.product_contains {
-                let hit = probe.product.is_some_and(|p| p.to_ascii_lowercase().contains(&needle.to_ascii_lowercase()));
-                if !hit {
-                    continue;
-                }
-            }
-            let role = if Some(probe.usage_page) == mode.command_usage_page {
-                InterfaceRole::Command
-            } else if Some(probe.usage_page) == mode.display_usage_page {
-                InterfaceRole::Display
-            } else {
-                InterfaceRole::Standard
-            };
-            return Some(InterfaceMatch { model, mode, role });
         }
     }
     None
+}
+
+/// Every mode one HID interface could belong to, in catalogue order (the
+/// first is [`match_interface`]'s).
+pub fn match_interfaces<'m>(models: &'m [Model], probe: &InterfaceProbe<'_>) -> Vec<InterfaceMatch<'m>> {
+    models
+        .iter()
+        .flat_map(|model| model.modes.iter().map(move |mode| (model, mode)))
+        .filter(|(_, mode)| mode_matches(mode, probe))
+        .map(|(model, mode)| interface_match(model, mode, probe))
+        .collect()
+}
+
+fn mode_matches(mode: &ModeSpec, probe: &InterfaceProbe<'_>) -> bool {
+    if mode.vid != probe.vid || mode.pid != probe.pid {
+        return false;
+    }
+    let bus_ok = match mode.kind {
+        ConnectionKind::Bluetooth => probe.bus == Bus::Bluetooth,
+        ConnectionKind::Usb | ConnectionKind::Dongle => probe.bus == Bus::Usb,
+    };
+    if !bus_ok {
+        return false;
+    }
+    match mode.product_contains.as_deref().map(str::trim) {
+        Some(needle) if !needle.is_empty() => {
+            probe.product.is_some_and(|p| p.to_ascii_lowercase().contains(&needle.to_ascii_lowercase()))
+        }
+        // A board on the cable must name itself: a bootloader (ISP mode)
+        // can keep the keyboard's IDs and report no product string, and
+        // nothing may be sent to it. A USB mode without a name to look for
+        // never matches.
+        _ => mode.kind != ConnectionKind::Usb,
+    }
+}
+
+fn interface_match<'m>(model: &'m Model, mode: &'m ModeSpec, probe: &InterfaceProbe<'_>) -> InterfaceMatch<'m> {
+    let role = if Some(probe.usage_page) == mode.command_usage_page {
+        InterfaceRole::Command
+    } else if Some(probe.usage_page) == mode.display_usage_page {
+        InterfaceRole::Display
+    } else {
+        InterfaceRole::Standard
+    };
+    InterfaceMatch { model, mode, role, protocol: model.protocol_of(mode) }
 }
 
 /// Find the model whose Bluetooth name starts with a declared prefix.
@@ -350,6 +445,41 @@ mod tests {
             assert!(match_interface(models(), &probe(Some(other))).is_none(), "{other} must not match");
         }
         assert!(match_interface(models(), &probe(None)).is_none(), "no name, no match");
+    }
+
+    #[test]
+    fn the_ak980_pro_lists_its_aa_modes() {
+        let m = models().iter().find(|m| m.id == "ajazz-ak980-pro").unwrap();
+        let usb: Vec<&ModeSpec> = m.modes_of(ConnectionKind::Usb).collect();
+        let seen: Vec<(Protocol, u16)> = usb.iter().map(|mode| (m.protocol_of(mode), mode.pid)).collect();
+        // The "04 xx" mode stays first: it is what `mode(Usb)` means.
+        assert_eq!(seen, [(Protocol::SonixFf13, 0x8009), (Protocol::AjazzAa, 0x8039), (Protocol::AjazzAa, 0x8009)]);
+        for aa in &usb[1..] {
+            assert_eq!((aa.command_usage_page, aa.display_usage_page), (Some(0xFF68), Some(0xFF67)));
+            assert_eq!(aa.product_contains.as_deref(), Some("AK980 PRO"));
+            assert!(!aa.verified && aa.verified_firmware.is_empty(), "nothing tried on a keyboard yet");
+            assert!(!aa.capabilities.contains(&Capability::Options), "options are not written (plan K-16)");
+            assert!(aa.capabilities.contains(&Capability::Battery));
+        }
+        let probe = |pid, usage_page| InterfaceProbe {
+            vid: 0x0C45,
+            pid,
+            usage_page,
+            product: Some("AK980 PRO"),
+            bus: Bus::Usb,
+        };
+        // Firmware 769's own id: only the "AA" mode.
+        let ff68 = match_interface(models(), &probe(0x8039, 0xFF68)).unwrap();
+        assert_eq!((ff68.protocol, ff68.role), (Protocol::AjazzAa, InterfaceRole::Command));
+        let ff67 = match_interface(models(), &probe(0x8039, 0xFF67)).unwrap();
+        assert_eq!((ff67.protocol, ff67.role), (Protocol::AjazzAa, InterfaceRole::Display));
+        // The old id: the "04 xx" mode first, the "AA" one next (the report
+        // layout decides, kb_core::classify).
+        let first = match_interface(models(), &probe(0x8009, 0xFF68)).unwrap();
+        assert_eq!((first.protocol, first.role), (Protocol::SonixFf13, InterfaceRole::Display));
+        let all: Vec<_> =
+            match_interfaces(models(), &probe(0x8009, 0xFF68)).iter().map(|m| (m.protocol, m.role)).collect();
+        assert_eq!(all, [(Protocol::SonixFf13, InterfaceRole::Display), (Protocol::AjazzAa, InterfaceRole::Command)]);
     }
 
     #[test]
@@ -416,5 +546,160 @@ mod tests {
     fn ble_name_prefix() {
         assert!(match_ble_name(models(), "AK980 PRO-1").is_some());
         assert!(match_ble_name(models(), "AJAZZ BT-1").is_none());
+    }
+
+    /// A board with both command families behind the same IDs and name (a
+    /// test model, smaller than the AK980 PRO's file).
+    const TWO_FAMILIES: &str = r#"
+        id = "test-two-families"
+        name = "Test"
+        vendor = "Test"
+        protocol = "sonix-ff13"
+        layout = "98"
+        key_count = 0
+        has_knob = false
+        has_side_light = false
+
+        [[modes]]
+        kind = "usb"
+        vid = 0x0C45
+        pid = 0x8009
+        product_contains = "AK980 PRO"
+        command_usage_page = 0xFF13
+        display_usage_page = 0xFF68
+        verified = false
+
+        [[modes]]
+        kind = "usb"
+        protocol = "ajazz-aa"
+        vid = 0x0C45
+        pid = 0x8009
+        product_contains = "AK980 PRO"
+        command_usage_page = 0xFF68
+        display_usage_page = 0xFF67
+        verified = false
+    "#;
+
+    #[test]
+    fn protocol_names_are_checked() {
+        let ak980 = models().iter().find(|m| m.id == "ajazz-ak980-pro").unwrap();
+        assert_eq!(ak980.protocol, Protocol::SonixFf13);
+        assert_eq!(ak980.protocol_of(ak980.mode(ConnectionKind::Usb).unwrap()), Protocol::SonixFf13);
+        assert_eq!(Protocol::SonixFf13.to_string(), "sonix-ff13");
+        assert_eq!(Protocol::AjazzAa.to_string(), "ajazz-aa");
+
+        assert!(toml::from_str::<Model>(TWO_FAMILIES).is_ok());
+        let unknown_model = TWO_FAMILIES.replacen("protocol = \"sonix-ff13\"", "protocol = \"sonix\"", 1);
+        assert!(toml::from_str::<Model>(&unknown_model).is_err(), "unknown model family");
+        let unknown_mode = TWO_FAMILIES.replacen("protocol = \"ajazz-aa\"", "protocol = \"aa\"", 1);
+        assert!(toml::from_str::<Model>(&unknown_mode).is_err(), "unknown mode family");
+    }
+
+    #[test]
+    fn one_connection_can_have_a_mode_per_family() {
+        let model: Model = toml::from_str(TWO_FAMILIES).unwrap();
+        let usb: Vec<&ModeSpec> = model.modes_of(ConnectionKind::Usb).collect();
+        assert_eq!(usb.len(), 2);
+        assert!(model.modes_of(ConnectionKind::Dongle).next().is_none());
+        // `mode` keeps meaning the first one.
+        assert!(std::ptr::eq(model.mode(ConnectionKind::Usb).unwrap(), usb[0]));
+        assert_eq!(model.protocol_of(usb[0]), Protocol::SonixFf13, "inherited from the model");
+        assert_eq!(model.protocol_of(usb[1]), Protocol::AjazzAa, "the mode's own");
+
+        // FF68 is the screen in one family and the command channel in the other.
+        let models = std::slice::from_ref(&model);
+        let probe = |usage_page| InterfaceProbe {
+            vid: 0x0C45,
+            pid: 0x8009,
+            usage_page,
+            product: Some("AK980 PRO"),
+            bus: Bus::Usb,
+        };
+        let ff68 = match_interfaces(models, &probe(0xFF68));
+        let seen: Vec<_> = ff68.iter().map(|m| (m.protocol, m.role)).collect();
+        assert_eq!(seen, [(Protocol::SonixFf13, InterfaceRole::Display), (Protocol::AjazzAa, InterfaceRole::Command)]);
+        let first = match_interface(models, &probe(0xFF68)).unwrap();
+        assert_eq!((first.protocol, first.role), (Protocol::SonixFf13, InterfaceRole::Display));
+        let ff67 = match_interfaces(models, &probe(0xFF67));
+        let seen: Vec<_> = ff67.iter().map(|m| (m.protocol, m.role)).collect();
+        assert_eq!(seen, [(Protocol::SonixFf13, InterfaceRole::Standard), (Protocol::AjazzAa, InterfaceRole::Display)]);
+        assert!(match_interfaces(models, &InterfaceProbe { product: Some("AK820 PRO"), ..probe(0xFF68) }).is_empty());
+    }
+
+    #[test]
+    fn a_board_without_a_name_never_matches_a_usb_mode() {
+        // In ISP (bootloader) mode a board can keep its PID and report an
+        // empty product string. Neither family's USB mode may match it.
+        let two: Model = toml::from_str(TWO_FAMILIES).unwrap();
+        for models in [models(), std::slice::from_ref(&two)] {
+            for usage_page in [0xFF13, 0xFF68, 0xFF67, 0x0001] {
+                for product in [None, Some(""), Some("   ")] {
+                    let probe = InterfaceProbe { vid: 0x0C45, pid: 0x8009, usage_page, product, bus: Bus::Usb };
+                    assert!(match_interfaces(models, &probe).is_empty(), "{usage_page:04X} {product:?}");
+                }
+            }
+        }
+        // Every shipped USB mode names the product it is for.
+        for m in models() {
+            for mode in m.modes_of(ConnectionKind::Usb) {
+                let name = mode.product_contains.as_deref().unwrap_or("");
+                assert!(!name.trim().is_empty(), "{}: a USB mode needs `product_contains`", m.id);
+            }
+        }
+        // A USB mode without one, or with a blank one, matches nothing.
+        let nameless = TWO_FAMILIES.replace("product_contains = \"AK980 PRO\"", "");
+        let blank = TWO_FAMILIES.replace("product_contains = \"AK980 PRO\"", "product_contains = \" \"");
+        for src in [nameless, blank] {
+            let model: Model = toml::from_str(&src).unwrap();
+            let probe = InterfaceProbe {
+                vid: 0x0C45,
+                pid: 0x8009,
+                usage_page: 0xFF68,
+                product: Some("AK980 PRO"),
+                bus: Bus::Usb,
+            };
+            assert!(match_interfaces(std::slice::from_ref(&model), &probe).is_empty());
+        }
+    }
+
+    #[test]
+    fn aa_indices_are_complete_and_unique() {
+        for m in models() {
+            let Some(g) = &m.geometry else { continue };
+            let speaks_aa = m.modes.iter().any(|mode| m.protocol_of(mode) == Protocol::AjazzAa);
+            let given: Vec<u8> = g.keys.iter().filter_map(|k| k.aa).collect();
+            if given.is_empty() {
+                assert!(!speaks_aa, "{}: an \"AA\" mode needs every key's `aa` index", m.id);
+                continue;
+            }
+            assert_eq!(given.len(), g.keys.len(), "{}: `aa` on some keys only", m.id);
+            let mut unique = given.clone();
+            unique.sort_unstable();
+            unique.dedup();
+            assert_eq!(unique.len(), given.len(), "{}: duplicate `aa` index", m.id);
+            // 128 keymap slots (512 bytes, 4 per key).
+            assert!(given.iter().all(|&i| i < 128), "{}: `aa` index out of range", m.id);
+            // A status light sits on a key's LED: same key, same index.
+            for ind in &m.indicators {
+                let key = g.keys.iter().find(|k| k.led == ind.led).expect("indicator on a key");
+                assert_eq!(ind.aa, key.aa, "{}: {} indicator", m.id, ind.name);
+            }
+        }
+    }
+
+    #[test]
+    fn ak980_pro_aa_indices() {
+        let m = models().iter().find(|m| m.id == "ajazz-ak980-pro").unwrap();
+        let aa = |id: &str| m.geometry.as_ref().unwrap().keys.iter().find(|k| k.id == id).unwrap().aa;
+        // Spot checks against the vendor's tables (hub key table, WebHID key list).
+        assert_eq!(aa("esc"), Some(0));
+        assert_eq!(aa("grave"), Some(16));
+        assert_eq!(aa("w"), Some(34));
+        assert_eq!(aa("numlock"), Some(29));
+        assert_eq!(aa("enter"), Some(76));
+        assert_eq!(aa("fn"), Some(85));
+        assert_eq!(aa("kp-plus"), Some(110));
+        // Not the LED index shifted: Esc 1→0, Fn 96→85.
+        assert_eq!(m.indicators.iter().map(|i| i.aa).collect::<Vec<_>>(), [Some(29), Some(85)]);
     }
 }

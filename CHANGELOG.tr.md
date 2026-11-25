@@ -5,12 +5,114 @@ Keymotion'daki önemli değişiklikler burada listelenir. İngilizcesi: [CHANGEL
 1.0.0'dan itibaren her sürüm GitHub'da ve Microsoft Store'da aynıdır; ikisi
 için tek bir değişiklik listesi vardır. Windows, Store'dan kurulan kopyanın
 sürümünü sonuna her zaman 0 olan dördüncü bir sayıyla gösterir (1.0.0, 1.0.0.0
-olur). Bir sürüm ikisinde aynı gün çıkar: GitHub sürümü, Microsoft Store
-kopyasını denetleyene kadar bekler. Yalnızca acil bir düzeltme önce GitHub'da
-çıkabilir ve bunu belirtir. Deneme sürümleri ("-rc") yalnızca GitHub'dadır.
-Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
+olur). Bir sürüm önce GitHub'da çıkar; Store kopyası, Microsoft onu
+denetleyince arkasından gelir, genellikle bir gün içinde. Numarası da notları
+da aynıdır. Deneme sürümleri ("-rc") yalnızca GitHub'dadır. Yalnızca birini
+ilgilendiren bir değişiklik bunu belirtir.
 
 ## [Yayımlanmamış]
+
+## [1.3.0] - 2026-11-25
+
+AJAZZ'ın 3.01 yazılımındaki AK980 PRO, deneme aşamasında ve isteğe bağlı bir deneme rehberiyle. Yeni yazılımı bize haber veren, her betayı kendi klavyesinde deneyen ve bu desteğe yön veren bildirimleri gönderen [@j0p3s](https://github.com/j0p3s)'e teşekkürler.
+
+### Eklenenler
+
+- **AJAZZ'ın 3.01 ("769") klavye yazılımındaki AK980 PRO, deneme aşamasında:**
+  Keymotion artık USB kablosunda bu yazılımın farklı komut takımını
+  kullanıyor: ışık efektleri ve tuş başına renk, canlı ışıklar, iki katmanda
+  tuş atama, makrolar, ekrana görsel yükleme, saat ve klavyenin kabloda da
+  bildirdiği pil düzeyi. Destek yeni ve hâlâ deneniyor. Bu yüzden **Bağlantı**
+  sayfası ve Genel bakış onu **Deneme aşamasında** diye işaretliyor; nasıl
+  çalıştığını aşağıdaki deneme rehberiyle bize anlatabilirsiniz. Keymotion her
+  oturumda ilk yazmadan önce, denenmediği her klavye yazılımında olduğu gibi
+  sorar (**Klavye yazılımı denenmedi**). **Devre dışı**, **Çift tıklama** ve
+  **Basılı tuttukça** makro kipi bu yazılımda sunulmaz.
+- **Deneme rehberi (3.01 klavye yazılımı):** 3.01 klavye yazılımı kullanan ve
+  yardım etmek isteyenler için dokuz adımlık, yaklaşık on dakikalık, isteğe
+  bağlı bir deneme: hazırlık, bağlantı, ışık efekti, canlı ışık, tuş başına
+  renk, tuş atama, makrolar, ekran (isteğe bağlı) ve ilk yedeği geri yükleme.
+  Genel bakış sizi sayfayı kapatmadan bir kez davet eder (**Denemeye başla**;
+  bir sonraki bağlanışta bir kez daha soran **Şimdi değil**; **Bir daha
+  gösterme**); **Bağlantı** sayfasında rehber, ne kadar ilerlediğinizle
+  birlikte her zaman durur. Rehber sayfaların yanında açık kalır: **Oraya
+  git** adımın gerektirdiği sayfayı açar, siz de **Çalıştı**, **Çalışmadı** ya
+  da **Atladım** diye cevaplar, isterseniz bir not yazarsınız. Keymotion'ın
+  kendisinin bilebildiği yerlerde (yedek, rehber açıkken kaydedilip klavyeden
+  geri okunan bir ayar) adım işaretlenir; başka hiçbir zaman. Cevaplarınız bu
+  bilgisayarda kalır ve o klavye yazılımına aittir: başka bir klavye
+  yazılımında rehber baştan başlar. Keymotion'ın yalnızca okuduğu bir klavyede
+  rehber, kaydetme isteyen adımların çalışamayacağını söyler ve **Sorun
+  bildir**'i sunar. Sonunda rehber gönderilecek metni olduğu gibi gösterir
+  (cevaplarınız ve notlarınız, uygulama ve Windows sürümü, Keymotion'ın klavye
+  hakkında okudukları; makrolarınızın içeriği hiçbir zaman yok); **Kopyala ve
+  GitHub'da aç** metni panoya koyar ve formu başlığı ve modeli yazılı olarak
+  açar; rehber orada hangi cevabı seçeceğinizi söyler. Hiçbir şey
+  kendiliğinden gönderilmez ve rehber klavyeye hiçbir şey yazmaz: kaydetmeyi
+  her zamanki gibi sayfalarda siz yaparsınız. 1.06 klavye yazılımında hiç
+  görünmez.
+- **Klavye yedekleri (3.01 klavye yazılımı):** Keymotion klavyeye ilk
+  bağlandığında, bir şey yazabilmeden önce klavyenin ayarlarının yedeğini
+  alır (iki katmandaki tuş atamaları, ışık efekti, tuş başına renkler,
+  makrolar); her geri yüklemeden önce bir yedek daha alır. **Bağlantı**
+  sayfası yedekleri listeler. **Geri yükle**, kablodaki klavyenin yedeğini
+  adım adım geri yükler: neler geri gelir, yedek ışığın rengini bilmiyorsa
+  o renk, sonra neyi geri yüklediği ve hangi tuşları olduğu gibi bıraktığı.
+  Ekrana bir yükleme sürerken geri yükleme başlamaz; başka bir sayfaya
+  geçtiğinizde sürer ve nasıl bittiğini bir bildirim söyler.
+  Yedek alınamazsa ya da klavyenin bildirdikleri beklendiği gibi görünmezse
+  Keymotion klavyeye hiçbir şey yazmaz; yazacak her sayfa nedenini söyler.
+- **Denetlenen yazmalar (3.01 klavye yazılımı):** Keymotion kaydettiği her
+  ayarı (tuş atama, ışık, makrolar) geri okur. Klavye açıldıktan ya da
+  sıfırlandıktan sonra bir süre yazılanları yok saydığı için Keymotion ilk
+  yazmadan önce bekler. Tuş başına renkleri olmayan bir klavye, örneğin bir
+  klavye yazılımı güncellemesinden (ya da AJAZZ'ın web aracıyla yapılan bir
+  sıfırlamadan) sonra, olağandır ve Keymotion'ın yazmasını engellemez.
+  Yarıda kalan bir kaydetmeyi, örneğin kablo çıktığında, aynı şeyin bir
+  sonraki kaydı düzeltir.
+- **3.01 klavye yazılımında tuş atama ve makrolar:** bu yazılım tuş
+  atamasını ve makrolarını bildirir; bu yüzden **Tuş atama** ve **Makrolar**
+  sayfaları, geri yüklemeden sonra da, klavyede olanı gösterir. Başka bir
+  programda (örneğin AJAZZ'ınkinde) ayarlanan ve Keymotion'ın gösteremediği
+  tuşlar ile makrolar ve Fn katmanındaki klavyenin kendi işlevleri öyle
+  işaretlenir; kaydetmek ya da profil yüklemek onları olduğu gibi bırakır.
+  Tuşlar ya da makrolar, Keymotion onları okuduktan sonra başka bir
+  programda değiştiyse kaydetme hiçbir şey yazmaz ve sayfa klavyeyi yeniden
+  gösterir. Tekrarlanan bir makro, Keymotion klavyeye canlı ışıklar
+  dışında bir şey gönderdiğinde (örneğin bir kaydetmede) durur; tuşuna
+  yeniden basın.
+- **3.01 klavye yazılımında canlı ışıklar:** canlı ışıklar (müzik modu,
+  sistem göstergeleri, odak zamanlayıcısı, hatırlatıcılar, takvim, oyun
+  oturumu, yapay zekâ ajanları, uygulamaya göre profiller, **Klavyede
+  önizle** ve kalibrasyonun test desenleri), eski klavye yazılımında olduğu
+  gibi, klavyenin ışığı ne olursa olsun tuşlarda görünür. Hiçbiri klavyeye
+  kaydedilmez: canlı ışıklar durunca klavyenin kendi ışığı yaklaşık 5
+  saniye sonra kendiliğinden geri gelir. Keymotion klavyeye bağlandıktan
+  hemen sonra ya da klavye sıfırlandıktan sonra canlı ışıklar birkaç saniye
+  bekler; sayfalar bunu söyler.
+- **Saat sayfası (3.01 klavye yazılımı):** yükleme klavyenin kendi saat
+  sayfasının yerini alabilir; saat sayfası o zaman ancak klavyenin tam
+  sıfırlamasıyla (Fn+Boşluk) geri gelir. Keymotion ilk yüklemeden önce,
+  canlı ekranın ilk kartı da dahil, size sorar. Bu yazılımda süren bir
+  yükleme durdurulabilir (**Yüklemeyi durdur**); Keymotion o zaman klavyeye
+  başka bir şey göndermeden önce birkaç saniye bekler.
+- **Başka bir program (3.01 klavye yazılımı):** klavye Keymotion'ın
+  sormadığı cevaplar gönderirse Keymotion başka bir programın klavyeyle
+  konuşuyor gibi göründüğünü söyler (tarayıcıda AJAZZ'ın klavye aracı açık
+  mı?). Hiçbir şey engellenmez.
+- **Sorun bildirimleri (3.01 klavye yazılımı):** klavyenin bildirdikleri
+  beklendiği gibi görünmediğinde bildirim nedenini birkaç satırda söyler ve
+  beklendiği gibi görünmeyen bölümü gösterir; çoğu zaman tek bildirim yeter.
+  Keymotion bu okumayı, isteyebiliriz diye veri klasöründe de tutar
+  (`keyboard-reads`, son beşi, makrolarınız olmadan); geri yükleme için
+  hiçbir zaman önerilmez. Bildirimler GitHub için yeterince kısa kalır; kısaltılan
+  her yer bunu belirtir.
+
+### Değişenler
+
+- Keymotion'ın henüz tanımadığı bir AJAZZ klavye yazılımındaki AK980 PRO,
+  karşılama sayfasında yine kendi kartını alır; kartın metni artık böyle her
+  yazılım için yazıldı ve **Destek iste** düğmesi duruyor.
 
 ## [1.2.1] - 2026-11-23
 
@@ -406,7 +508,8 @@ Store 0 ile başlayan sürüm numarası kabul etmediği için bu sürüm 1.0.0.
   yapılacağı, desteklenen ve sırada olabilecek klavyeler, geliştiriciler için
   sayfalar. Ayarlar › Hakkında'dan açılır.
 
-[Yayımlanmamış]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.1...develop
+[Yayımlanmamış]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.3.0...develop
+[1.3.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.3.0
 [1.2.1]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.1
 [1.2.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.0
 [1.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.1.0

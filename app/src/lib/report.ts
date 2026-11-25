@@ -98,7 +98,8 @@ function readDetails(list: UnsupportedKeyboard[]) {
 export interface UnsupportedView {
   /** Every keyboard that looks like a SONiX or AJAZZ one but isn't supported. */
   list: UnsupportedKeyboard[];
-  /** AK980 PROs on AJAZZ's new firmware, with its version when known. */
+  /** AK980 PROs on an AJAZZ firmware Keymotion doesn't know yet, with its
+   *  version when known. */
   newFirmware: { keyboard: UnsupportedKeyboard; version: string | null }[];
   /** The rest (an AK980 PRO whose details are still being read waits). */
   others: UnsupportedKeyboard[];

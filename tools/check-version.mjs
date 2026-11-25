@@ -7,7 +7,11 @@
 //   - app/src-tauri/tauri.conf.json
 // It also checks that Cargo.lock has been updated for the app crate and that
 // every other workspace crate either inherits the workspace version or has the
-// same one.
+// same one, and that the version is X.Y.Z or a pre-release such as
+// X.Y.Z-beta.1, never with build metadata ("+…"): a pre-release is a "-"
+// after the three numbers for the release scripts
+// (tools/release/latest-json.mjs, isPrerelease) and a "-" anywhere for the
+// workflows (release.yml), and this keeps the two from disagreeing.
 //
 // Usage: node tools/check-version.mjs
 //        node tools/check-version.mjs --tag v0.2.0     also: the release tag is
@@ -74,6 +78,19 @@ const expected = app.version;
 for (const [file, v] of sources) {
   if (!v) problems.push(`${file}: no version found`);
   else if (v !== expected) problems.push(`${file}: ${v} (expected ${expected})`);
+}
+
+// Its form: Semantic Versioning without build metadata, as
+// tools/release/check-release.mjs (RELEASE_VERSION, PRERELEASE_VERSION) and
+// prepare.mjs make them.
+const IDENTIFIER = "(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)";
+const VERSION = new RegExp(`^\\d+\\.\\d+\\.\\d+(?:-${IDENTIFIER}(?:\\.${IDENTIFIER})*)?$`);
+if (expected && !VERSION.test(expected)) {
+  problems.push(
+    expected.includes("+")
+      ? `${expected} has build metadata ("+…"), which Keymotion's versions don't use: X.Y.Z, or a pre-release such as X.Y.Z-beta.1`
+      : `${expected} is not X.Y.Z or a pre-release such as X.Y.Z-beta.1`,
+  );
 }
 
 // Other crates: inherit, or match.

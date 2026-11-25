@@ -34,7 +34,7 @@ Keymotion connects to the internet for two things only: the calendars you add, a
 
 Keymotion itself sends nothing about you. When you use the services below, they see an ordinary request, and their own privacy policies apply:
 
-- **GitHub**: the update check, downloads, and reporting a problem or asking for support. See the [GitHub General Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
+- **GitHub**: the update check, downloads, and reporting a problem, asking for support or sharing the test guide's results. See the [GitHub General Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
 - **Microsoft**: on a computer without WebView2, the part of Windows that draws the app's window, the installer downloads it from Microsoft and installs it. Windows 11 already has it. See the [Microsoft Privacy Statement](https://www.microsoft.com/privacy/privacystatement).
 - **The service of each calendar you add**, for example [Google](https://policies.google.com/privacy), [Microsoft Outlook](https://www.microsoft.com/privacy/privacystatement) or [Apple iCloud](https://www.apple.com/legal/privacy/).
 
@@ -81,17 +81,19 @@ Everything is in your Windows user folder. In **Settings**, under **About**, **D
   - `calibration.json`, `clock.json`, `lighting.json`, `pomodoro.json`, `gauges.json`, `music.json`, `reminders.json`, `battery.json`, `profiles.json`, `background.json`, `updates.json`, `games.json`, `agents.json`;
   - `auto-profiles.json`: your profiles **By app** and, after a profile was saved to the keyboard for a program, a copy of the keyboard's lighting, key mapping and macros from before, to go back to;
   - `game-history.json`: your game sessions (game, start and end, the readings, a League of Legends result). **Delete history** on the **Game session** page empties it;
-  - `keymap.json` and `macros.json`: Keymotion's only record of what it wrote to the keyboard, because the keyboard can't report them;
+  - `keymap.json` and `macros.json`: Keymotion's only record of what it wrote to the keyboard, because the keyboard can't report them (for a keyboard on AJAZZ's firmware 3.01, what Keymotion last read from it);
+  - `keyboard-backups\`: for a keyboard on AJAZZ's firmware 3.01, backups of its key mapping, lighting and macros, saved when it is first connected and before each restore;
+  - `keyboard-reads\`: for a keyboard on AJAZZ's firmware 3.01 whose answers don't look as expected, what Keymotion read from it and why it didn't look right: the device information, the options and the lighting effect, the key mapping (both layers and the factory Fn layer) and the per-key colors in full, and the macro table's addresses and each macro's length, but not your macros' contents. At most five such files in all; the oldest go first. They're for the developer, in case a report isn't enough; Keymotion never restores them;
   - `calendar.json`: your calendars. Their addresses work like passwords, so they're encrypted for your Windows user account (Windows Data Protection). Another user or another computer can't read them;
   - `screen\`: your picture library, the copy of the factory animation if you made one, and the last live card.
 - **Log files**, in `%LOCALAPPDATA%\dev.keymotion\logs\`: one file per day for the last 7 days, at most 4 MB each, and short crash notes. Before anything is written, web addresses are cut to their server name and your Windows user name is removed from folder paths. Reminder titles and meeting names are never written.
-- **Interface preferences**, in `%LOCALAPPDATA%\dev.keymotion\EBWebView\`: theme, language and edits you haven't saved yet, kept by the app's window.
+- **Interface preferences**, in `%LOCALAPPDATA%\dev.keymotion\EBWebView\`: theme, language and edits you haven't saved yet, kept by the app's window. For a keyboard on AJAZZ's firmware 3.01, also the test guide's progress: your answers and notes, which of Keymotion's own checks it saw, and how you answered its invitation. It stays there unless you share it yourself.
 
 Keymotion installed from the Microsoft Store uses the same folders. If they weren't there before (Keymotion from GitHub was never installed), Windows keeps them in the app's own folder, `%LOCALAPPDATA%\Packages\<the app's package name>\LocalCache\`, and deletes them when you uninstall the app; the buttons in **Settings** then open that folder.
 
 ## Diagnostics
 
-In **Settings**, under **About**, **Copy** next to **Diagnostics** puts a text on your clipboard: the app, Windows and WebView2 versions, the keyboard model, its firmware and connection, the names and sizes of the settings files, and the last 150 lines of the log (cleaned as described above). It isn't sent anywhere. You decide whether to paste it into a message.
+In **Settings**, under **About**, **Copy** next to **Diagnostics** puts a text on your clipboard: the app, Windows and WebView2 versions, the keyboard model, its firmware and connection, the names and sizes of the settings files, and up to the last 150 lines of the log (cleaned as described above; a line that repeats is shown once with a count, a very long line is cut short, and when the text would get too long the oldest of those lines are left out; the text says so). For a keyboard on AJAZZ's firmware 3.01, it also has what Keymotion read from the keyboard, part by part, and its last errors with it: the device information, the options and the lighting effect in full; for the key mapping, the per-key colors and the macro table only counts (how many entries are empty, and of what kind); for a part that doesn't look as expected, its first and last bytes, which can be key mapping, per-key colors or the macro table's addresses. Never your macros' contents. It isn't sent anywhere. You decide whether to paste it into a message.
 
 ## Reporting a problem or asking for support
 
@@ -99,6 +101,7 @@ You report problems on GitHub yourself. Keymotion sends nothing by itself.
 
 - **Report a problem** (in **Settings**, under **About** › **Feedback**; in the notice after an unexpected error; in the notice after a crash) opens a window that shows the text first: the diagnostics above, with what happened at the top. **Report on GitHub** puts the text on your clipboard and opens the project's form on GitHub in your browser. You paste it there and decide whether to send it.
 - **Request support** appears when a SONiX or AJAZZ keyboard isn't supported yet. It works the same way, with the keyboard's details: its USB identifiers, its name and the HID descriptions Windows keeps of it. Nothing is written to the keyboard. Its serial number and device paths are left out.
+- **The test guide** (for a keyboard on AJAZZ's firmware 3.01) shows its text first too: your answers and notes, which steps Keymotion checked itself, the app and Windows versions, and what Keymotion read about the keyboard (the part of the diagnostics above about it, never your macros' contents). **Copy and open GitHub** puts it on your clipboard and opens the project's form with its title and the keyboard model filled in; you pick the answer to its question and paste the text from the clipboard yourself. **Copy only** just copies it. The guide sends nothing, and writes nothing to the keyboard.
 - **After a crash**, the next start offers the newest crash note from the last 7 days, once.
 
 ## Export, import and deletion

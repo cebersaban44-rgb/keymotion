@@ -241,6 +241,17 @@ pub struct StoredKeymap {
     pub base: StoredLayer,
     #[serde(default, rename = "fn")]
     pub fn_layer: StoredLayer,
+    /// When the layers were last taken from the keyboard itself (Unix ms):
+    /// a keyboard of the "AA" family reports its keymap, and this record
+    /// follows it (device.rs `sync_aa_records`). `None`: the app's own
+    /// record ("04 xx").
+    #[serde(default, rename = "readMs", skip_serializing_if = "Option::is_none")]
+    pub read_ms: Option<u64>,
+    /// The keyboard's keymap tables these layers were taken from
+    /// (`AaContents::keys_source`): a save made against other ones is
+    /// refused ("AA" family).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 impl StoredKeymap {
@@ -263,6 +274,19 @@ pub struct StoredLayer {
     /// When this app last wrote the layer (Unix ms). `None`: never, so the
     /// keyboard is taken to be at its factory default.
     pub written_ms: Option<u64>,
+    /// LEDs of keys the keyboard has set to something the app can neither
+    /// show nor write (a firmware function, a combo...): every write keeps
+    /// them ("AA" family only).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fixed: Vec<u8>,
+    /// LEDs of keys at one of the keyboard's own functions in this layer
+    /// (a factory reset, a mode switch): never written ("AA" family).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub builtin: Vec<u8>,
+    /// LEDs of keys with an action whose factory function is one of the
+    /// keyboard's own: their default never comes back ("AA" family).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pinned: Vec<u8>,
 }
 
 impl StoredLayer {
@@ -274,7 +298,7 @@ impl StoredLayer {
                 Some((led.to_string(), format!("{:02x}{:02x}{:02x}{:02x}", e[0], e[1], e[2], e[3])))
             })
             .collect();
-        Self { entries, written_ms: Some(written_ms) }
+        Self { entries, written_ms: Some(written_ms), fixed: Vec::new(), builtin: Vec::new(), pinned: Vec::new() }
     }
 
     /// The stored actions; entries that do not decode are skipped.
@@ -325,6 +349,26 @@ pub struct StoredMacros {
     pub slots: Vec<Option<StoredMacro>>,
     /// When this app last wrote the macros (Unix ms); `None`: never.
     pub written_ms: Option<u64>,
+    /// Macros the keyboard holds that the app's steps cannot express: every
+    /// write keeps them ("AA" family only).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fixed: Vec<FixedMacro>,
+    /// When the slots were last taken from the keyboard itself (Unix ms;
+    /// see [`StoredKeymap::read_ms`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_ms: Option<u64>,
+    /// The keyboard's macro memory these slots were taken from (see
+    /// [`StoredKeymap::source`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+}
+
+/// A macro slot the app keeps as the keyboard has it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FixedMacro {
+    pub slot: u8,
+    /// Its entries, for the memory count.
+    pub entries: u16,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -471,7 +515,7 @@ mod tests {
         let mut rec = MacroRecord::default();
         rec.models.insert(
             "ajazz-ak980-pro".into(),
-            StoredMacros { slots: vec![Some(ok), None], written_ms: Some(1_794_000_000_000) },
+            StoredMacros { slots: vec![Some(ok), None], written_ms: Some(1_794_000_000_000), ..Default::default() },
         );
         save_macros(&dir, &rec).unwrap();
         assert_eq!(load_macros(&dir), rec);
@@ -480,6 +524,55 @@ mod tests {
         let slots = rec.models["ajazz-ak980-pro"].image_slots();
         assert_eq!(slots.len(), 2);
         assert!(slots[1].is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn records_from_1_2_1_load_under_the_ff13_keyboards_record_id() {
+        // Written by Keymotion 1.2.1, keyed by model id. A "04 xx" keyboard's
+        // record id is its model id, so they still belong to it.
+        let dir = temp_dir("records-121");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(KEYMAP_FILE),
+            r#"{"version":1,"models":{"ajazz-ak980-pro":{"base":{"entries":{},"writtenMs":null},"fn":{"entries":{"33":"02000400","34":"03e90000"},"writtenMs":1794000000000}}}}"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.join(MACROS_FILE),
+            r#"{"version":1,"models":{"ajazz-ak980-pro":{"slots":[{"name":"ok","steps":[["down",18,20],["up",18,20]]},null],"writtenMs":1794000000000}}}"#,
+        )
+        .unwrap();
+        let iface = kb_transport::hid::HidInterface {
+            vid: 0x0C45,
+            pid: 0x8009,
+            release: 0x0106,
+            usage_page: 0xFF13,
+            usage: 1,
+            interface_number: -1,
+            bus: kb_transport::hid::Bus::Usb,
+            manufacturer: None,
+            product: Some("AK980 PRO".into()),
+            serial: None,
+            path: "p".into(),
+        };
+        let found = kb_core::detect(&[iface], &[]);
+        let record = found.first().expect("the AK980 PRO on the cable").record_id();
+        assert_eq!(record, "ajazz-ak980-pro");
+
+        let keymaps = load_keymaps(&dir);
+        let layer = &keymaps.models.get(&record).expect("keymap record").fn_layer;
+        assert_eq!(layer.actions(), LayerMap::from([(33, KeyAction::key(0x04)), (34, KeyAction::Consumer(0xE9))]));
+        assert_eq!(layer.written_ms, Some(1_794_000_000_000));
+        let macros = load_macros(&dir);
+        let stored = macros.models.get(&record).expect("macro record");
+        assert_eq!(stored.slots.len(), 2);
+        assert_eq!(stored.slots[0].as_ref().map(|m| m.steps.len()), Some(2));
+        // Saved again, the files keep their shape: 1.2.1 still reads them.
+        save_keymaps(&dir, &keymaps).unwrap();
+        save_macros(&dir, &macros).unwrap();
+        assert_eq!(load_keymaps(&dir), keymaps);
+        assert_eq!(load_macros(&dir), macros);
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -493,6 +586,9 @@ mod tests {
                 ("x".into(), "02000400".into()),
             ]),
             written_ms: Some(1),
+            fixed: Vec::new(),
+            builtin: Vec::new(),
+            pinned: Vec::new(),
         };
         assert_eq!(layer.actions(), LayerMap::from([(33, KeyAction::key(0x04))]));
     }

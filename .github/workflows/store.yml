@@ -2,14 +2,14 @@
 # GitHub release, its installer and its updater stay as release.yml makes
 # them.
 #
-#   release.yml calls this for every release tag (not pre-releases), so the
-#   .msix waits beside the GitHub draft: both channels publish the same day
-#   (owner's decision, 2026-11-16). The Submit job sends it for
-#   certification (tools/store/submit.mjs), with the tag's What's new files
-#   and set to wait for "Publish now"; Microsoft signs it when it passes.
-#   Once it passes, publish.yml publishes the GitHub draft and the owner
-#   selects "Publish now" in Partner Center. Docs site:
-#   developers/microsoft-store.
+#   release.yml calls this for every release tag (not pre-releases), once
+#   the installer has passed its install test. The Submit job sends the
+#   .msix for certification (tools/store/submit.mjs), with the tag's What's
+#   new files, set to publish by itself as soon as it passes: Microsoft
+#   signs it and the Store's copy comes out, usually within a day. GitHub
+#   comes first and doesn't wait for it (owner's decision, 2026-11-25):
+#   publish.yml publishes the GitHub draft after the install test. Docs
+#   site: developers/microsoft-store.
 #
 #   "Run workflow" with a release tag ("v1.0.0") builds it again by hand;
 #   it is also submitted when "Use workflow from" is that same tag (the
@@ -21,7 +21,9 @@
 # Secrets, in the microsoft-store environment (Settings › Environments),
 # from a Microsoft Entra app with the Manager role in Partner Center:
 # STORE_TENANT_ID, STORE_CLIENT_ID, STORE_CLIENT_SECRET. Without them the
-# Submit job only says so, and the package is uploaded by hand.
+# Submit job only says so, and the package is uploaded by hand, set to
+# publish as soon as it passes certification. The environment must let only
+# v* tags use its secrets: what they submit publishes by itself.
 #
 # Repository variables (Settings › Secrets and variables › Actions ›
 # Variables), copied from Partner Center › the app › Product identity:
@@ -204,16 +206,17 @@ jobs:
           {
             echo "### Package $VERSION is ready"
             echo
-            echo "1. The **Submit to the Microsoft Store** job sends it for certification, set to wait for \"Publish now\". Without the Store secrets, or on a run by hand not started from the tag, it doesn't: then download the artifact and, in Partner Center › Keymotion › a new submission, upload the .msix (remove the old one), fill in \"What's new\" from store/whats-new, choose to wait for \"Publish now\" and submit."
-            echo "2. Keep the GitHub draft unpublished until the submission passes certification."
-            echo "3. Then run **Publish a release** from the tag (it publishes the GitHub draft) and select \"Publish now\" in Partner Center."
+            echo "1. The **Submit to the Microsoft Store** job sends it for certification, set to publish by itself as soon as it passes (usually within a day). Nothing to select in Partner Center."
+            echo "2. Without the Store secrets, or on a run by hand not started from the tag, it doesn't: then download the artifact and, in Partner Center › Keymotion › a new submission, upload the .msix (remove the old one), fill in \"What's new\" from store/whats-new, and under Submission options choose to publish **as soon as it passes certification**, not \"Don't publish this submission until I select Publish now\" (a new submission starts as a copy of the last one, so check it). Then submit."
+            echo "3. The GitHub release doesn't wait for the Store: publish it with **Publish a release**, run from the tag, once the install test has passed."
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Sends the package for certification. Only a release tag's own run may:
-  # the microsoft-store environment lets v* tags alone use its secrets.
-  # Without the secrets, tools/store/submit.mjs only says so (green), and
-  # the package is uploaded in Partner Center by hand. A pending submission
-  # stops it without changes: it never deletes one.
+  # Sends the package for certification, set to publish by itself as soon as
+  # it passes. Only a release tag's own run may: the microsoft-store
+  # environment lets v* tags alone use its secrets. Without the secrets,
+  # tools/store/submit.mjs only says so (green), and the package is uploaded
+  # in Partner Center by hand, set to publish as soon as it passes. A
+  # pending submission stops it without changes: it never deletes one.
   submit:
     name: Submit to the Microsoft Store
     needs: package

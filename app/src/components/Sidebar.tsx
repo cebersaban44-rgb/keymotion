@@ -185,9 +185,9 @@ export function Sidebar() {
     );
   };
 
-  // A keyboard is there that Keymotion can't drive yet (an AK980 PRO on
-  // AJAZZ's firmware 769, or another model): say so rather than "Waiting
-  // for a keyboard".
+  // A keyboard is there that Keymotion can't drive yet (an AK980 PRO on an
+  // AJAZZ firmware it doesn't know, or another model): say so rather than
+  // "Waiting for a keyboard".
   const newFirmware = !kb && unsupported.newFirmware.length > 0;
   const other = kb || newFirmware ? null : (unsupported.others[0] ?? null);
   const deviceTitle = kb
@@ -200,7 +200,7 @@ export function Sidebar() {
   const deviceSub = kb
     ? t(connectionKey(kb.connection))
     : newFirmware
-      ? t("fw769.sub")
+      ? t("newfw.sub")
       : other
         ? t("unsupported.sub")
         : t("device.none.sub");

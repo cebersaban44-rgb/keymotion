@@ -1,10 +1,12 @@
 //! Turn raw HID collections and paired BLE devices into a list of keyboards.
 
 use kb_devices::{
-    catalogue, match_ble_name, match_interface, Bus, Capability, ConnectionKind, InterfaceProbe, InterfaceRole, Model,
+    catalogue, match_ble_name, match_interface, match_interfaces, Bus, Capability, ConnectionKind, InterfaceMatch,
+    InterfaceProbe, InterfaceRole, ModeSpec, Model, Protocol,
 };
 use kb_transport::hid::{self, HidInterface};
 use serde::Serialize;
+use std::cmp::Reverse;
 
 /// Minimal view of a paired Bluetooth LE device, independent of the
 /// platform module that produced it.
@@ -20,6 +22,9 @@ pub struct BlePeer {
 #[derive(Debug, Clone)]
 pub struct DetectedKeyboard {
     pub model: &'static Model,
+    /// The model file's mode it matched: one of `model.modes`, of kind
+    /// `connection`. It names the command family ([`Self::protocol`]).
+    pub mode: &'static ModeSpec,
     pub connection: ConnectionKind,
     /// USB product string when the OS reports a meaningful one.
     pub product: Option<String>,
@@ -42,24 +47,32 @@ pub struct DetectedKeyboard {
 }
 
 /// Features this app drives in `kind`, out of what the model file says the
-/// keyboard offers there.
+/// keyboard offers there: [`mode_capabilities`] of the first mode of `kind`.
+pub fn app_capabilities(model: &Model, kind: ConnectionKind) -> Vec<Capability> {
+    model.mode(kind).map(|mode| mode_capabilities(model, mode)).unwrap_or_default()
+}
+
+/// Features this app drives in `mode` (one of `model`'s), out of what the
+/// model file says the keyboard offers there.
 ///
-/// - USB: the FF13 command channel and the FF68 screen channel. Keyboard
-///   options (`04 17`) are not built yet, and the firmware has no battery
-///   reading over USB.
+/// - USB: the command and screen channels. Keyboard options are not built
+///   yet. The "04 xx" firmware has no battery reading over USB; the "AA"
+///   family reports the battery in its device information.
 /// - Bluetooth: no vendor channel; only the standard GATT battery service.
 /// - 2.4 GHz receiver: no driver yet (the other modes come after USB), so
 ///   nothing is offered even though the model file lists what the receiver
 ///   is said to carry.
-pub fn app_capabilities(model: &Model, kind: ConnectionKind) -> Vec<Capability> {
-    let Some(mode) = model.mode(kind) else {
-        return Vec::new();
-    };
+pub fn mode_capabilities(model: &Model, mode: &ModeSpec) -> Vec<Capability> {
+    let protocol = model.protocol_of(mode);
     mode.capabilities
         .iter()
         .copied()
-        .filter(|c| match kind {
-            ConnectionKind::Usb => !matches!(c, Capability::Options | Capability::Battery),
+        .filter(|c| match mode.kind {
+            ConnectionKind::Usb => match c {
+                Capability::Options => false,
+                Capability::Battery => protocol == Protocol::AjazzAa,
+                _ => true,
+            },
             ConnectionKind::Bluetooth => *c == Capability::Battery,
             ConnectionKind::Dongle => false,
         })
@@ -67,22 +80,38 @@ pub fn app_capabilities(model: &Model, kind: ConnectionKind) -> Vec<Capability> 
 }
 
 impl DetectedKeyboard {
-    /// Features usable right now: what the app drives in this connection
-    /// mode, given the interfaces the OS actually exposed.
+    /// Features usable right now: what the app drives in the detected mode,
+    /// given the interfaces the OS actually exposed.
     pub fn capabilities(&self) -> Vec<Capability> {
-        app_capabilities(self.model, self.connection)
+        mode_capabilities(self.model, self.mode)
             .into_iter()
             .filter(|c| match c {
-                Capability::Battery => self.ble.is_some(),
+                Capability::Battery if self.connection == ConnectionKind::Bluetooth => self.ble.is_some(),
                 Capability::Screen => self.display.is_some(),
                 _ => self.command.is_some(),
             })
             .collect()
     }
 
-    /// Stable identity for UI keys and change detection.
+    /// The command family of the detected mode.
+    pub fn protocol(&self) -> Protocol {
+        self.model.protocol_of(self.mode)
+    }
+
+    /// What the app keys this keyboard's stored records by: the model id in
+    /// the "04 xx" family, `"<model id>.aa"` in the "AA" family, whose key
+    /// indices, tables and limits differ.
+    pub fn record_id(&self) -> String {
+        match self.protocol() {
+            Protocol::SonixFf13 => self.model.id.clone(),
+            Protocol::AjazzAa => format!("{}.aa", self.model.id),
+        }
+    }
+
+    /// Stable identity for UI keys and change detection: the record id and
+    /// the connection.
     pub fn key(&self) -> String {
-        format!("{}:{:?}", self.model.id, self.connection)
+        format!("{}:{:?}", self.record_id(), self.connection)
     }
 
     /// How many physical keyboards stand behind this entry (at least one):
@@ -99,7 +128,12 @@ pub fn wired_count(found: &[DetectedKeyboard]) -> usize {
     found.iter().filter(|k| k.connection == ConnectionKind::Usb).map(DetectedKeyboard::units).sum()
 }
 
-/// Group matching HID collections per (model, mode) and attach BLE peers.
+/// Group matching HID collections per (model, connection, command family)
+/// and attach BLE peers.
+///
+/// Each collection goes to the first mode it matches: without the report
+/// descriptors, two families behind the same IDs and name cannot be told
+/// apart ([`classify`] reads them).
 ///
 /// Placeholder product strings that some Bluetooth stacks report
 /// ("Model_Number") are dropped.
@@ -108,15 +142,45 @@ pub fn detect(interfaces: &[HidInterface], ble: &[BlePeer]) -> Vec<DetectedKeybo
         tracing::error!("embedded model catalogue failed to parse");
         return Vec::new();
     };
+    detect_among(interfaces, ble, models)
+}
+
+fn detect_among(interfaces: &[HidInterface], ble: &[BlePeer], models: &'static [Model]) -> Vec<DetectedKeyboard> {
+    let chosen: Vec<_> = interfaces.iter().map(|i| match_interface(models, &probe(i))).collect();
+    group(interfaces, &chosen, ble, models)
+}
+
+/// One keyboard family: model id, connection and command family. Detected
+/// keyboards are grouped by it; [`classify`] judges layouts per family and
+/// USB IDs.
+type Family<'m> = (&'m str, ConnectionKind, Protocol);
+
+fn family<'m>(m: &InterfaceMatch<'m>) -> Family<'m> {
+    (m.model.id.as_str(), m.mode.kind, m.protocol)
+}
+
+/// Build the keyboards from the mode chosen for each collection (`chosen`,
+/// same order as `interfaces`; `None` leaves the collection out) and attach
+/// BLE peers.
+fn group(
+    interfaces: &[HidInterface],
+    chosen: &[Option<InterfaceMatch<'static>>],
+    ble: &[BlePeer],
+    models: &'static [Model],
+) -> Vec<DetectedKeyboard> {
     let mut out: Vec<DetectedKeyboard> = Vec::new();
 
-    for iface in interfaces {
-        let Some(m) = match_interface(models, &probe(iface)) else { continue };
-        let idx = match out.iter().position(|k| k.model.id == m.model.id && k.connection == m.mode.kind) {
+    for (iface, m) in interfaces.iter().zip(chosen) {
+        let Some(m) = m else { continue };
+        let idx = match out
+            .iter()
+            .position(|k| k.model.id == m.model.id && k.connection == m.mode.kind && k.protocol() == m.protocol)
+        {
             Some(i) => i,
             None => {
                 out.push(DetectedKeyboard {
                     model: m.model,
+                    mode: m.mode,
                     connection: m.mode.kind,
                     product: iface.product.clone().filter(|p| is_meaningful_product(p)),
                     command: None,
@@ -144,12 +208,13 @@ pub fn detect(interfaces: &[HidInterface], ble: &[BlePeer]) -> Vec<DetectedKeybo
     }
 
     for peer in ble {
-        let Some((model, _)) = match_ble_name(models, &peer.name) else { continue };
+        let Some((model, mode)) = match_ble_name(models, &peer.name) else { continue };
         if let Some(k) = out.iter_mut().find(|k| k.model.id == model.id && k.connection == ConnectionKind::Bluetooth) {
             k.ble = Some(peer.clone());
         } else if peer.connected {
             out.push(DetectedKeyboard {
                 model,
+                mode,
                 connection: ConnectionKind::Bluetooth,
                 product: None,
                 command: None,
@@ -162,7 +227,7 @@ pub fn detect(interfaces: &[HidInterface], ble: &[BlePeer]) -> Vec<DetectedKeybo
         }
     }
 
-    out.sort_by_key(|k| (k.model.id.clone(), k.connection as u8));
+    out.sort_by_key(|k| (k.model.id.clone(), k.connection as u8, k.protocol()));
     out
 }
 
@@ -219,25 +284,40 @@ impl UnknownKeyboard {
 /// standard keyboard collection count, so a SONiX webcam's buttons don't.
 pub fn unknown_keyboards(interfaces: &[HidInterface]) -> Vec<UnknownKeyboard> {
     let Ok(models) = catalogue() else { return Vec::new() };
-    unknown_among(interfaces, models, &[])
+    let status: Vec<Status> = interfaces
+        .iter()
+        .map(|i| match match_interface(models, &probe(i)) {
+            Some(_) => Status::Driven,
+            None => Status::Unmatched,
+        })
+        .collect();
+    unknown_among(interfaces, &status)
 }
 
-/// [`unknown_keyboards`], with the keyboards in `rejected` (model id and
-/// connection) counted as unknown although their IDs and name match.
-fn unknown_among(
-    interfaces: &[HidInterface],
-    models: &'static [Model],
-    rejected: &[(&str, ConnectionKind)],
-) -> Vec<UnknownKeyboard> {
+/// How one HID collection relates to the model catalogue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Status {
+    /// Part of a keyboard the app drives.
+    Driven,
+    /// Its IDs and name match a model, but every family that could own it
+    /// was rejected by a report layout.
+    Rejected,
+    /// No model matches it.
+    Unmatched,
+}
+
+/// The keyboards among `interfaces` the app does not drive; `status` says
+/// how each collection (same order) matched the catalogue.
+fn unknown_among(interfaces: &[HidInterface], status: &[Status]) -> Vec<UnknownKeyboard> {
     let named = |s: &Option<String>| s.as_deref().is_some_and(|s| s.to_ascii_lowercase().contains("ajazz"));
     // Each keyboard, and whether it matched a model whose shape it lacks:
     // that one is a keyboard for sure, keyboard collection or not.
     let mut out: Vec<(UnknownKeyboard, bool)> = Vec::new();
-    for iface in interfaces {
-        let rejected_model = match match_interface(models, &probe(iface)) {
-            Some(m) if rejected.contains(&(m.model.id.as_str(), m.mode.kind)) => true,
-            Some(_) => continue,
-            None => false,
+    for (iface, status) in interfaces.iter().zip(status) {
+        let rejected_model = match status {
+            Status::Rejected => true,
+            Status::Driven => continue,
+            Status::Unmatched => false,
         };
         if !rejected_model && iface.vid != SONIX_VID && !named(&iface.product) && !named(&iface.manufacturer) {
             continue;
@@ -286,56 +366,144 @@ pub struct Found {
 }
 
 /// [`detect`] and [`unknown_keyboards`] in one go, with the vendor channels
-/// of every keyboard on the cable checked against the protocol's report
-/// layout ([`crate::shape`]).
+/// of every keyboard on the cable checked against its command family's
+/// report layout ([`crate::shape`]).
 ///
 /// Other boards share the AK980 PRO's IDs, and some could share its name
 /// too (another firmware, another command family). One whose command or
-/// screen channel has another layout is not the model: nothing may be sent
-/// to it, so it is listed with the unknown keyboards, where the user can
-/// ask for support, instead of as a keyboard every action fails on.
+/// screen channel has another layout is not that mode of the model: nothing
+/// may be sent to it. When the model lists a mode of another family behind
+/// the same IDs and name, and the channels have that family's layout, it is
+/// that mode; otherwise it is listed with the unknown keyboards, where the
+/// user can ask for support, instead of as a keyboard every action fails on.
+///
+/// Families are judged one by one (model, connection, command family, USB
+/// IDs): a channel whose layout does not fit, or a channel of another of
+/// the model's families with that family's layout, rejects that family
+/// behind those IDs only, never another family of the same model. Each
+/// collection then goes to a family that could own it: a cable family when
+/// its IDs and name match one (never a receiver mode with the same IDs),
+/// not rejected, with the most channels whose layout fits, the first in
+/// the model files on a tie.
 ///
 /// `descriptor` gives a collection's report descriptor, as the OS keeps it
 /// (reading it sends nothing to the keyboard). `None` (it could not be
-/// read) leaves the keyboard as found: opening the channel checks the
-/// layout again before anything is sent.
+/// read) leaves the keyboard as found, in the first family that matches:
+/// opening the channel checks the layout again before anything is sent.
 pub fn classify(
     interfaces: &[HidInterface],
     ble: &[BlePeer],
-    mut descriptor: impl FnMut(&HidInterface) -> Option<Vec<u8>>,
+    descriptor: impl FnMut(&HidInterface) -> Option<Vec<u8>>,
 ) -> Found {
     let Ok(models) = catalogue() else {
         tracing::error!("embedded model catalogue failed to parse");
         return Found::default();
     };
-    let mut rejected: Vec<(&str, ConnectionKind)> = Vec::new();
-    for iface in interfaces {
-        let Some(m) = match_interface(models, &probe(iface)) else { continue };
-        let fits: fn(&[u8]) -> bool = match (m.mode.kind, m.role) {
-            (ConnectionKind::Usb, InterfaceRole::Command) => crate::shape::is_command_shape,
-            (ConnectionKind::Usb, InterfaceRole::Display) => crate::shape::is_display_shape,
-            _ => continue,
-        };
-        let key = (m.model.id.as_str(), m.mode.kind);
-        if rejected.contains(&key) {
+    classify_among(interfaces, ble, models, descriptor)
+}
+
+fn classify_among(
+    interfaces: &[HidInterface],
+    ble: &[BlePeer],
+    models: &'static [Model],
+    mut descriptor: impl FnMut(&HidInterface) -> Option<Vec<u8>>,
+) -> Found {
+    /// What the cable's vendor channels say about one family.
+    #[derive(Default)]
+    struct Verdict {
+        rejected: bool,
+        /// Channels whose layout was read and fits.
+        fitting: usize,
+    }
+    // A family is judged per USB ID: boards with other IDs never share a
+    // collection with it.
+    type Judged = (Family<'static>, u16, u16);
+    let judged = |m: &InterfaceMatch<'static>| -> Judged { (family(m), m.mode.vid, m.mode.pid) };
+    let candidates: Vec<Vec<InterfaceMatch<'static>>> =
+        interfaces.iter().map(|i| match_interfaces(models, &probe(i))).collect();
+    let mut verdicts: Vec<(Judged, Verdict)> = Vec::new();
+    for m in candidates.iter().flatten() {
+        if !verdicts.iter().any(|(k, _)| *k == judged(m)) {
+            verdicts.push((judged(m), Verdict::default()));
+        }
+    }
+    let at = |verdicts: &[(Judged, Verdict)], m: &InterfaceMatch<'static>| {
+        verdicts.iter().position(|(k, _)| *k == judged(m)).expect("every candidate has a verdict")
+    };
+
+    // Collections whose layout was read: a vendor channel of some family.
+    let mut judged_channel = vec![false; interfaces.len()];
+    for (i, (iface, candidates)) in interfaces.iter().zip(&candidates).enumerate() {
+        // Only the cable's vendor channels have a layout to check: nothing
+        // is sent to the receiver or over Bluetooth yet.
+        let usb: Vec<&InterfaceMatch<'static>> =
+            candidates.iter().filter(|m| m.mode.kind == ConnectionKind::Usb).collect();
+        let is_channel = usb.iter().any(|m| m.role != InterfaceRole::Standard);
+        if !is_channel || usb.iter().all(|m| verdicts[at(&verdicts, m)].1.rejected) {
             continue;
         }
-        if let Some(desc) = descriptor(iface) {
-            if !fits(&desc) {
+        let Some(desc) = descriptor(iface) else { continue };
+        judged_channel[i] = true;
+        for m in &usb {
+            let fits = if m.role == InterfaceRole::Standard {
+                // Not a channel of this family, but maybe one of another
+                // family of the same model: a board that carries it, with
+                // that family's layout, is not purely this family.
+                !usb.iter().any(|o| {
+                    o.model.id == m.model.id
+                        && o.protocol != m.protocol
+                        && o.role != InterfaceRole::Standard
+                        && crate::shape::fits(o.protocol, o.role, &desc)
+                })
+            } else {
+                crate::shape::fits(m.protocol, m.role, &desc)
+            };
+            let i = at(&verdicts, m);
+            let v = &mut verdicts[i].1;
+            if fits {
+                v.fitting += usize::from(m.role != InterfaceRole::Standard);
+            } else if !v.rejected {
                 // Every enumeration finds it again; the app logs the change.
                 tracing::debug!(
                     model = %m.model.id,
+                    protocol = %m.protocol,
                     usage_page = format_args!("{:04X}", iface.usage_page),
                     shape = ?crate::shape::report_shape(&desc),
-                    "name matches, report layout does not: listed as unsupported"
+                    "name matches, report layout does not: this family is ruled out"
                 );
-                rejected.push(key);
+                v.rejected = true;
             }
         }
     }
-    let mut keyboards = detect(interfaces, ble);
-    keyboards.retain(|k| !rejected.contains(&(k.model.id.as_str(), k.connection)));
-    Found { keyboards, unknown: unknown_among(interfaces, models, &rejected) }
+
+    let verdict = |m: &InterfaceMatch<'static>| &verdicts[at(&verdicts, m)].1;
+    let mut chosen: Vec<Option<InterfaceMatch<'static>>> = Vec::with_capacity(interfaces.len());
+    let mut status: Vec<Status> = Vec::with_capacity(interfaces.len());
+    for (c, &judged) in candidates.iter().zip(&judged_channel) {
+        // A collection whose IDs and name match a cable mode belongs to a
+        // cable mode or to none: a receiver mode behind the same IDs is
+        // never the fallback for a rejected cable family.
+        let cable = c.iter().any(|m| m.mode.kind == ConnectionKind::Usb);
+        // `min_by_key` keeps the first of equals: the model file's order.
+        let pick = c
+            .iter()
+            .filter(|m| !cable || m.mode.kind == ConnectionKind::Usb)
+            .filter(|m| !verdict(m).rejected)
+            // A vendor channel whose layout was read is not another family's
+            // plain collection unless that family has a channel that fits:
+            // a "04 xx" command channel with the wrong layout does not make
+            // an "AA" keyboard without channels appear.
+            .filter(|m| !judged || m.role != InterfaceRole::Standard || verdict(m).fitting > 0)
+            .min_by_key(|m| Reverse(verdict(m).fitting))
+            .copied();
+        status.push(match (&pick, c.is_empty()) {
+            (Some(_), _) => Status::Driven,
+            (None, false) => Status::Rejected,
+            (None, true) => Status::Unmatched,
+        });
+        chosen.push(pick);
+    }
+    Found { keyboards: group(interfaces, &chosen, ble, models), unknown: unknown_among(interfaces, &status) }
 }
 
 /// What the model catalogue needs to know about one HID collection.
@@ -556,10 +724,19 @@ mod tests {
     fn the_right_layout_is_the_model() {
         let found = classify(&ak980_pro(), &[], descriptors(FF13, FF68));
         assert_eq!(found.keyboards.len(), 1);
-        assert_eq!(found.keyboards[0].connection, ConnectionKind::Usb);
+        let k = &found.keyboards[0];
+        assert_eq!(k.connection, ConnectionKind::Usb);
+        assert_eq!(k.protocol(), Protocol::SonixFf13);
+        assert_eq!(k.mode.command_usage_page, Some(0xFF13));
+        assert_eq!(k.command.as_ref().unwrap().usage_page, 0xFF13);
+        assert_eq!(k.display.as_ref().unwrap().usage_page, 0xFF68);
+        assert_eq!(k.record_id(), "ajazz-ak980-pro");
+        assert_eq!(k.key(), "ajazz-ak980-pro:Usb", "the app's key for this keyboard is unchanged");
         assert!(found.unknown.is_empty());
     }
 
+    // Another family's layout is not the model: neither of its families
+    // fits these channels.
     #[test]
     fn a_name_match_with_another_layout_asks_for_support() {
         // Another command family behind the same ids and name: its screen
@@ -603,5 +780,416 @@ mod tests {
         let found = classify(&list, &[], |i| panic!("read {:04X}", i.usage_page));
         assert_eq!(found.keyboards.len(), 2);
         assert!(found.unknown.is_empty());
+    }
+
+    // ---- Two command families behind the same IDs and name -------------
+
+    /// The AK980 PRO with an "AA" mode next to its "04 xx" one, on its old
+    /// PID (AJAZZ's tools know "AA" firmware there too) and on firmware
+    /// 769's, with other capabilities than the shipped model file's.
+    const TWO_FAMILIES: &str = r#"
+        id = "test-ak980"
+        name = "AK980 PRO (test)"
+        vendor = "AJAZZ"
+        protocol = "sonix-ff13"
+        layout = "98"
+        key_count = 0
+        has_knob = true
+        has_side_light = false
+
+        [[modes]]
+        kind = "usb"
+        vid = 0x0C45
+        pid = 0x8009
+        product_contains = "AK980 PRO"
+        command_usage_page = 0xFF13
+        display_usage_page = 0xFF68
+        capabilities = ["lighting", "per-key-rgb", "options", "screen", "clock", "battery"]
+        verified = true
+
+        [[modes]]
+        kind = "usb"
+        protocol = "ajazz-aa"
+        vid = 0x0C45
+        pid = 0x8009
+        product_contains = "AK980 PRO"
+        command_usage_page = 0xFF68
+        display_usage_page = 0xFF67
+        capabilities = ["lighting", "keymap", "options", "screen", "battery"]
+        verified = false
+
+        [[modes]]
+        kind = "usb"
+        protocol = "ajazz-aa"
+        vid = 0x0C45
+        pid = 0x8039
+        product_contains = "AK980 PRO"
+        command_usage_page = 0xFF68
+        display_usage_page = 0xFF67
+        capabilities = ["lighting", "keymap", "options", "screen", "battery"]
+        verified = false
+    "#;
+
+    fn two_families() -> &'static [Model] {
+        static MODELS: std::sync::OnceLock<Vec<Model>> = std::sync::OnceLock::new();
+        MODELS.get_or_init(|| vec![toml::from_str(TWO_FAMILIES).expect("test model parses")])
+    }
+
+    // An AK980 PRO on firmware 769, from its "Request support" report
+    // (issue #154): the same descriptors as in shape.rs.
+    const AA_769_FF68: &str = "06 68 FF 09 61 A1 01 09 62 15 00 26 FF 00 75 08 95 40 81 02 09 63 15 00 26 FF 00 75 08 \
+                               95 40 91 02 C0";
+    const AA_769_FF67: &str = "06 67 FF 09 61 A1 01 09 64 15 00 26 FF 00 75 08 95 40 81 02 09 63 15 00 26 FF 00 75 08 \
+                               96 08 10 91 02 09 62 15 00 26 FF 00 75 08 95 40 B1 02 C0";
+
+    /// The collections of an "AA" AK980 PRO with USB product id `pid`, as
+    /// in #154 (the keyboard, consumer, system, NKRO and mouse collections
+    /// folded into two), at release 0x0301.
+    fn aa_board(pid: u16) -> Vec<HidInterface> {
+        [(0x0001, 0x0006), (0x000C, 0x0001), (0xFFFF, 0x0001), (0xFF68, 0x0061), (0xFF67, 0x0061)]
+            .into_iter()
+            .map(|(page, usage)| HidInterface { release: 0x0301, ..collection(pid, page, usage, "AK980 PRO") })
+            .collect()
+    }
+
+    /// Descriptors of both families' vendor channels, told apart by
+    /// release; a standard collection is never read.
+    fn either_family(i: &HidInterface) -> Option<Vec<u8>> {
+        let aa = i.release == 0x0301;
+        Some(hex(match (i.usage_page, aa) {
+            (0xFF13, false) => FF13,
+            (0xFF68, false) => FF68,
+            (0xFF68, true) => AA_769_FF68,
+            (0xFF67, true) => AA_769_FF67,
+            (page, _) => panic!("collection {page:04X} has no vendor layout to check"),
+        }))
+    }
+
+    #[test]
+    fn an_ff13_board_is_the_ff13_mode() {
+        let found = classify_among(&ak980_pro(), &[], two_families(), either_family);
+        assert!(found.unknown.is_empty());
+        assert_eq!(found.keyboards.len(), 1, "the \"AA\" mode of the same ids is ruled out");
+        let k = &found.keyboards[0];
+        assert_eq!(k.protocol(), Protocol::SonixFf13);
+        assert_eq!(k.command.as_ref().unwrap().usage_page, 0xFF13);
+        assert_eq!(k.display.as_ref().unwrap().usage_page, 0xFF68);
+        assert_eq!(k.standard_collections, 1);
+        assert_eq!(k.record_id(), "test-ak980");
+        // Capabilities come from the detected mode: no battery on the cable
+        // in this family, though its mode lists one.
+        let caps = k.capabilities();
+        assert!(caps.contains(&Capability::Clock) && caps.contains(&Capability::PerKeyRgb));
+        assert!(!caps.contains(&Capability::Battery) && !caps.contains(&Capability::Options));
+    }
+
+    #[test]
+    fn an_aa_board_is_the_aa_mode_when_the_model_has_one() {
+        for pid in [0x8009, 0x8039] {
+            let found = classify_among(&aa_board(pid), &[], two_families(), either_family);
+            assert!(found.unknown.is_empty(), "{pid:04X}: the \"04 xx\" family's rejection hides nothing");
+            assert_eq!(found.keyboards.len(), 1, "{pid:04X}");
+            let k = &found.keyboards[0];
+            assert_eq!(k.protocol(), Protocol::AjazzAa);
+            assert_eq!(k.mode.pid, pid);
+            assert_eq!(k.command.as_ref().unwrap().usage_page, 0xFF68);
+            assert_eq!(k.display.as_ref().unwrap().usage_page, 0xFF67);
+            assert_eq!(k.standard_collections, 3);
+            assert_eq!(k.firmware, Some(0x0301));
+            assert_eq!(k.record_id(), "test-ak980.aa");
+            assert_eq!(k.key(), "test-ak980.aa:Usb");
+            // The "AA" mode's capabilities, battery included, not the first
+            // USB mode's (no clock, no per-key table listed there).
+            let caps = k.capabilities();
+            assert!(caps.contains(&Capability::Battery) && caps.contains(&Capability::Keymap));
+            assert!(caps.contains(&Capability::Screen));
+            assert!(!caps.contains(&Capability::Clock) && !caps.contains(&Capability::PerKeyRgb));
+            assert!(!caps.contains(&Capability::Options), "options are not built");
+        }
+    }
+
+    #[test]
+    fn an_aa_battery_needs_the_command_channel() {
+        let bare: Vec<HidInterface> = aa_board(0x8039).into_iter().filter(|i| i.usage_page != 0xFF68).collect();
+        let found = classify_among(&bare, &[], two_families(), either_family);
+        let k = &found.keyboards[0];
+        assert_eq!(k.protocol(), Protocol::AjazzAa, "the screen channel alone tells the family");
+        assert_eq!(k.capabilities(), vec![Capability::Screen]);
+    }
+
+    /// The shipped AK980 PRO without its "AA" modes: the model file as it
+    /// was before the "AA" driver.
+    fn ff13_only() -> &'static [Model] {
+        let mut m = shipped_ak980();
+        let ff13: Vec<ModeSpec> =
+            m.modes.iter().filter(|mode| m.protocol_of(mode) == Protocol::SonixFf13).cloned().collect();
+        m.modes = ff13;
+        catalogue_of(vec![m])
+    }
+
+    #[test]
+    fn an_aa_board_on_the_old_pid_asks_for_support_without_an_aa_mode() {
+        // Only the "04 xx" mode behind 0x8009.
+        let found = classify_among(&aa_board(0x8009), &[], ff13_only(), either_family);
+        assert!(found.keyboards.is_empty());
+        assert_eq!(found.unknown.len(), 1);
+        let k = &found.unknown[0];
+        assert_eq!(k.key(), "0C45:8009:usb");
+        assert_eq!(k.release, 0x0301);
+        assert_eq!(k.collections.len(), 5, "every collection's details for the request");
+        // On firmware 769's own id it matches no model at all.
+        let found = classify_among(&aa_board(0x8039), &[], ff13_only(), |i| panic!("read {:04X}", i.usage_page));
+        assert!(found.keyboards.is_empty());
+        assert_eq!(found.unknown.len(), 1);
+        assert_eq!(found.unknown[0].key(), "0C45:8039:usb");
+    }
+
+    #[test]
+    fn the_shipped_model_drives_both_families_by_their_layouts() {
+        // Firmware 769 on its own id, and "AA" firmware on the old one.
+        for pid in [0x8039, 0x8009] {
+            let found = classify(&aa_board(pid), &[], either_family);
+            assert!(found.unknown.is_empty(), "{pid:04X}");
+            assert_eq!(found.keyboards.len(), 1, "{pid:04X}");
+            let k = &found.keyboards[0];
+            assert_eq!((k.protocol(), k.mode.pid), (Protocol::AjazzAa, pid));
+            assert_eq!(k.command.as_ref().unwrap().usage_page, 0xFF68);
+            assert_eq!(k.display.as_ref().unwrap().usage_page, 0xFF67);
+            assert_eq!(k.record_id(), "ajazz-ak980-pro.aa");
+            assert_eq!(k.firmware, Some(0x0301));
+            assert!(!k.mode.verified && k.mode.verified_firmware.is_empty(), "nothing tried on a keyboard");
+            let caps = k.capabilities();
+            for c in [
+                Capability::Lighting,
+                Capability::PerKeyRgb,
+                Capability::Keymap,
+                Capability::Macros,
+                Capability::Screen,
+                Capability::Clock,
+                Capability::Battery,
+            ] {
+                assert!(caps.contains(&c), "{pid:04X}: {c:?}");
+            }
+            assert!(!caps.contains(&Capability::Options));
+        }
+        // The owner's "04 xx" board on 0x8009 still wins on its layouts,
+        // with today's record id and capabilities.
+        let found = classify(&ak980_pro(), &[], either_family);
+        assert!(found.unknown.is_empty());
+        assert_eq!(found.keyboards.len(), 1);
+        let k = &found.keyboards[0];
+        assert_eq!(k.protocol(), Protocol::SonixFf13);
+        assert_eq!((k.record_id(), k.key()), ("ajazz-ak980-pro".to_string(), "ajazz-ak980-pro:Usb".to_string()));
+        assert_eq!(k.command.as_ref().unwrap().usage_page, 0xFF13);
+        assert_eq!(k.display.as_ref().unwrap().usage_page, 0xFF68);
+        assert!(!k.capabilities().contains(&Capability::Battery));
+        // Unreadable layouts: the first mode in the model file, the
+        // "04 xx" one, as before (opening checks the layout again).
+        let found = classify(&ak980_pro(), &[], |_| None);
+        assert_eq!(found.keyboards.len(), 1);
+        assert_eq!(found.keyboards[0].protocol(), Protocol::SonixFf13);
+        // Both on the cable: two keyboards, so nothing is written.
+        let both: Vec<HidInterface> = ak980_pro().into_iter().chain(aa_board(0x8039)).collect();
+        let found = classify(&both, &[], either_family);
+        assert_eq!(found.keyboards.len(), 2);
+        assert_eq!(wired_count(&found.keyboards), 2);
+    }
+
+    #[test]
+    fn an_unreadable_layout_keeps_the_first_family() {
+        // As with one family: the first mode in the model file, and opening
+        // the channel checks the layout before anything is sent.
+        for board in [ak980_pro().to_vec(), aa_board(0x8009)] {
+            let found = classify_among(&board, &[], two_families(), |_| None);
+            assert!(found.unknown.is_empty());
+            assert_eq!(found.keyboards.len(), 1);
+            assert_eq!(found.keyboards[0].protocol(), Protocol::SonixFf13);
+        }
+        // `detect` reads no layout: the same choice.
+        let found = detect_among(&aa_board(0x8009), &[], two_families());
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].protocol(), Protocol::SonixFf13);
+        // Firmware 769's id has only the "AA" mode.
+        let found = classify_among(&aa_board(0x8039), &[], two_families(), |_| None);
+        assert_eq!(found.keyboards[0].protocol(), Protocol::AjazzAa);
+    }
+
+    #[test]
+    fn rejecting_one_family_hides_no_other_board() {
+        // A "04 xx" board on 0x8009 rules out the "AA" mode behind 0x8009,
+        // not the "AA" board on 0x8039 next to it.
+        let both: Vec<HidInterface> = ak980_pro().into_iter().chain(aa_board(0x8039)).collect();
+        let found = classify_among(&both, &[], two_families(), either_family);
+        assert!(found.unknown.is_empty());
+        let families: Vec<_> = found.keyboards.iter().map(|k| (k.protocol(), k.mode.pid, k.key())).collect();
+        assert_eq!(
+            families,
+            [
+                (Protocol::SonixFf13, 0x8009, "test-ak980:Usb".to_string()),
+                (Protocol::AjazzAa, 0x8039, "test-ak980.aa:Usb".to_string())
+            ]
+        );
+        assert_eq!(wired_count(&found.keyboards), 2, "two keyboards on the cable: no writes");
+    }
+
+    #[test]
+    fn a_board_without_a_name_is_never_driven() {
+        // A bootloader (ISP mode) can keep the keyboard's PID and report no
+        // product string: neither family's mode matches, no layout is read,
+        // and nothing is offered.
+        for product in [None, Some(String::new())] {
+            let nameless = |board: Vec<HidInterface>| -> Vec<HidInterface> {
+                board.into_iter().map(|i| HidInterface { product: product.clone(), ..i }).collect()
+            };
+            let boards = [nameless(ak980_pro().to_vec()), nameless(aa_board(0x8009)), nameless(aa_board(0x8039))];
+            for board in &boards {
+                for models in [catalogue().unwrap(), two_families()] {
+                    let found = classify_among(board, &[], models, |i| panic!("read {:04X}", i.usage_page));
+                    assert!(found.keyboards.is_empty(), "{product:?}");
+                    assert!(detect_among(board, &[], models).is_empty(), "{product:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_mix_of_both_families_asks_for_support() {
+        // The "04 xx" command channel next to an "AA" command channel on
+        // FF68: the "04 xx" family lacks its screen layout, and the "AA"
+        // family would leave another family's channel on the board. Neither
+        // is driven.
+        let mixed = [
+            collection(0x8009, 0x0001, 0x0006, "AK980 PRO"),
+            collection(0x8009, 0xFF13, 0x0001, "AK980 PRO"),
+            collection(0x8009, 0xFF68, 0x0061, "AK980 PRO"),
+        ];
+        let found = classify_among(&mixed, &[], two_families(), descriptors(FF13, AA_769_FF68));
+        assert!(found.keyboards.is_empty());
+        assert_eq!(found.unknown.len(), 1);
+        assert_eq!(found.unknown[0].collections.len(), 3);
+
+        // An "AA" board on 0x8009 whose FF68 did not show up: its FF67, an
+        // "AA" screen, rules the "04 xx" family out on its own.
+        let mut aa = aa_board(0x8009);
+        aa.retain(|i| i.usage_page != 0xFF68);
+        let found = classify_among(&aa, &[], two_families(), either_family);
+        assert_eq!(found.keyboards.len(), 1);
+        assert_eq!(found.keyboards[0].protocol(), Protocol::AjazzAa);
+        assert!(found.unknown.is_empty());
+    }
+
+    // ---- Several modes or model files behind the same IDs and name -------
+
+    /// A test-only catalogue (leaked: tests only).
+    fn catalogue_of(models: Vec<Model>) -> &'static [Model] {
+        Box::leak(models.into_boxed_slice())
+    }
+
+    fn shipped_ak980() -> Model {
+        catalogue().unwrap().iter().find(|m| m.id == "ajazz-ak980-pro").unwrap().clone()
+    }
+
+    /// A model whose receiver mode reports the same IDs as its cable mode
+    /// and names no product (no model file does this yet).
+    const RECEIVER_SAME_IDS: &str = r#"
+        id = "test-same-ids"
+        name = "Same IDs (test)"
+        vendor = "AJAZZ"
+        protocol = "sonix-ff13"
+        layout = "98"
+        key_count = 0
+        has_knob = false
+        has_side_light = false
+
+        [[modes]]
+        kind = "usb"
+        vid = 0x0C45
+        pid = 0x8009
+        product_contains = "AK980 PRO"
+        command_usage_page = 0xFF13
+        display_usage_page = 0xFF68
+        capabilities = ["lighting", "screen"]
+        verified = false
+
+        [[modes]]
+        kind = "dongle"
+        vid = 0x0C45
+        pid = 0x8009
+        command_usage_page = 0xFF68
+        capabilities = ["lighting"]
+        verified = false
+    "#;
+
+    #[test]
+    fn a_rejected_cable_family_never_falls_back_to_the_receiver() {
+        let models = catalogue_of(vec![toml::from_str(RECEIVER_SAME_IDS).unwrap()]);
+        // An "AA" board on 0x8009: the cable mode's layout does not fit, and
+        // the receiver mode behind the same IDs must not take it instead.
+        let found = classify_among(&aa_board(0x8009), &[], models, either_family);
+        assert!(found.keyboards.is_empty(), "driven as {:?}", found.keyboards.first().map(|k| k.connection));
+        assert_eq!(found.unknown.len(), 1, "\"Request support\" instead");
+        assert_eq!(found.unknown[0].key(), "0C45:8009:usb");
+        assert_eq!(found.unknown[0].collections.len(), 5);
+        // The right layout is the cable mode, as before.
+        let found = classify_among(&ak980_pro(), &[], models, either_family);
+        assert_eq!(found.keyboards.len(), 1);
+        assert_eq!(found.keyboards[0].connection, ConnectionKind::Usb);
+        assert!(found.unknown.is_empty());
+    }
+
+    /// Another model file with the AK980 PRO's IDs and name, whose vendor
+    /// channel sits on another usage page: none of the board's channels is
+    /// its.
+    const OTHER_PAGES: &str = r#"
+        id = "test-other-pages"
+        name = "Other pages (test)"
+        vendor = "AJAZZ"
+        protocol = "sonix-ff13"
+        layout = "98"
+        key_count = 0
+        has_knob = false
+        has_side_light = false
+
+        [[modes]]
+        kind = "usb"
+        vid = 0x0C45
+        pid = 0x8009
+        product_contains = "AK980 PRO"
+        command_usage_page = 0xFF99
+        capabilities = ["lighting"]
+        verified = false
+    "#;
+
+    #[test]
+    fn the_model_file_whose_channels_fit_wins() {
+        // Listed first, the other model file would own every collection; the
+        // AK980 PRO's has two fitting channels on this board, it has none.
+        let models = catalogue_of(vec![toml::from_str(OTHER_PAGES).unwrap(), shipped_ak980()]);
+        let found = classify_among(&ak980_pro(), &[], models, descriptors(FF13, FF68));
+        assert_eq!(found.keyboards.len(), 1);
+        let k = &found.keyboards[0];
+        assert_eq!(k.model.id, "ajazz-ak980-pro");
+        assert!(k.command.is_some() && k.display.is_some());
+        assert_eq!(k.standard_collections, 1);
+        assert!(found.unknown.is_empty());
+        // Without layouts the first model file keeps them, like `detect`.
+        let found = classify_among(&ak980_pro(), &[], models, |_| None);
+        assert_eq!(found.keyboards.len(), 1);
+        assert_eq!(found.keyboards[0].model.id, "test-other-pages");
+        assert_eq!(detect_among(&ak980_pro(), &[], models)[0].model.id, "test-other-pages");
+    }
+
+    #[test]
+    fn identical_model_files_tie_to_the_first() {
+        let twin = Model { id: "test-twin".into(), ..shipped_ak980() };
+        for (models, first) in [
+            (catalogue_of(vec![twin.clone(), shipped_ak980()]), "test-twin"),
+            (catalogue_of(vec![shipped_ak980(), twin]), "ajazz-ak980-pro"),
+        ] {
+            let found = classify_among(&ak980_pro(), &[], models, descriptors(FF13, FF68));
+            assert_eq!(found.keyboards.len(), 1, "one keyboard, not one per model file");
+            assert_eq!(found.keyboards[0].model.id, first);
+            assert!(found.keyboards[0].command.is_some() && found.keyboards[0].display.is_some());
+        }
     }
 }

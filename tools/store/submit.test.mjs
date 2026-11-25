@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -36,11 +36,14 @@ const MSIX = { name: "Keymotion_1.2.0.0_x64.msix", bytes: Buffer.from("not reall
 
 const listing = (title) => ({ baseListing: { title, description: "d", releaseNotes: "Old notes.", images: [] }, platformOverrides: {} });
 
-/** A submission as the Store copies it from the last published one. */
+/**
+ * A submission as the Store copies it from the last published one, which
+ * waited for "Publish now" (1.2.x were submitted that way).
+ */
 const copy = (id, extra = {}) => ({
   id,
   status: "PendingCommit",
-  targetPublishMode: "Immediate",
+  targetPublishMode: "Manual",
   fileUploadUrl: UPLOAD_URL,
   listings: { "en-us": listing("Keymotion"), "tr-tr": listing("Keymotion") },
   applicationPackages: [{ fileName: "Keymotion_1.1.0.0_x64.msix", fileStatus: "Uploaded", id: "p1", version: "1.1.0.0" }],
@@ -157,7 +160,7 @@ test("matchListings: each listing gets its language's notes", () => {
   assert.deepEqual(matchListings(["en"], ["en"]).pairs, [["en", "en"]]);
 });
 
-test("prepareSubmission: new package, old one PendingDelete, What's new, Manual every time", () => {
+test("prepareSubmission: new package, old one PendingDelete, What's new, Immediate every time", () => {
   const before = copy("200");
   const s = prepareSubmission(before, { packageFile: MSIX.name, notes: NOTES });
   assert.deepEqual(s.applicationPackages, [
@@ -167,7 +170,11 @@ test("prepareSubmission: new package, old one PendingDelete, What's new, Manual 
   assert.equal(s.listings["en-us"].baseListing.releaseNotes, "Music mode.");
   assert.equal(s.listings["tr-tr"].baseListing.releaseNotes, "Müzik modu.");
   assert.equal(s.listings["tr-tr"].baseListing.title, "Keymotion");
-  assert.equal(s.targetPublishMode, "Manual");
+  // Published as soon as it passes certification, whatever the copy said.
+  assert.equal(s.targetPublishMode, "Immediate");
+  for (const mode of ["Manual", "SpecificDate", undefined]) {
+    assert.equal(prepareSubmission(copy("200", { targetPublishMode: mode }), { packageFile: MSIX.name, notes: NOTES }).targetPublishMode, "Immediate");
+  }
   // The rest is sent back as it came; the input is not changed.
   assert.equal(s.fileUploadUrl, UPLOAD_URL);
   assert.deepEqual(before, copy("200"));
@@ -184,7 +191,7 @@ test("submit: makes, fills, uploads, commits and waits while the commit runs", a
     "GET /": { id: STORE_APP_ID, lastPublishedApplicationSubmission: { id: "100" } },
     "GET /submissions/100": copy("100", { status: "Published" }),
     "POST /submissions": copy("200"),
-    "PUT /submissions/200": copy("200", { targetPublishMode: "Manual" }),
+    "PUT /submissions/200": copy("200", { targetPublishMode: "Immediate" }),
     "POST /submissions/200/commit": { status: "CommitStarted" },
     "GET /submissions/200/status": { responses: [{ status: "CommitStarted" }, { status: "PreProcessing", statusDetails: { errors: [], warnings: [{ code: "W1", details: "a warning" }] } }] },
   });
@@ -206,7 +213,7 @@ test("submit: makes, fills, uploads, commits and waits while the commit runs", a
   const put = store.calls.find((c) => c.method === "PUT" && c.url.startsWith(API));
   assert.equal(put.headers["Content-Type"], "application/json");
   const body = JSON.parse(put.body);
-  assert.equal(body.targetPublishMode, "Manual");
+  assert.equal(body.targetPublishMode, "Immediate");
   assert.equal(body.listings["en-us"].baseListing.releaseNotes, "Music mode.");
   assert.deepEqual(body.applicationPackages.map((p) => [p.fileName, p.fileStatus]), [
     ["Keymotion_1.1.0.0_x64.msix", "PendingDelete"],
@@ -225,6 +232,8 @@ test("submit: makes, fills, uploads, commits and waits while the commit runs", a
   // Nothing secret in what it says, and nothing is ever deleted.
   const said = logs.join("\n");
   assert.match(said, /Made submission 200 \(a copy of 100\)\./);
+  assert.match(said, /publishing as soon as it passes certification\./);
+  assert.doesNotMatch(said, /Publish now/);
   assert.match(said, /Warning W1: a warning/);
   assert.match(said, /Submission 200: PreProcessing\./);
   assert.doesNotMatch(said, /SAS-SECRET|TOKEN|CLIENT-SECRET/);
@@ -253,7 +262,7 @@ test("submit: a failure after the submission is made leaves it, never deleted", 
     "GET /": { id: STORE_APP_ID, lastPublishedApplicationSubmission: { id: "100" } },
     "GET /submissions/100": copy("100"),
     "POST /submissions": copy("200"),
-    "PUT /submissions/200": copy("200", { targetPublishMode: "Manual" }),
+    "PUT /submissions/200": copy("200", { targetPublishMode: "Immediate" }),
     "POST /submissions/200/commit": { status: "CommitStarted" },
     "GET /submissions/200/status": { status: "CommitFailed", statusDetails: { errors: [{ code: "InvalidPackage", details: "The package is not valid." }] } },
   });
@@ -263,15 +272,24 @@ test("submit: a failure after the submission is made leaves it, never deleted", 
   assert.match(logs.join("\n"), /Error InvalidPackage: The package is not valid\./);
   assert.equal(store.calls.filter((c) => c.method === "DELETE").length, 0);
 
-  // A Store that keeps publishing by itself is refused before the upload.
-  const immediate = fakeStore({
-    "GET /": { id: STORE_APP_ID, lastPublishedApplicationSubmission: { id: "100" } },
-    "GET /submissions/100": copy("100"),
-    "POST /submissions": copy("200"),
-    "PUT /submissions/200": copy("200", { targetPublishMode: "Immediate" }),
-  });
-  await assert.rejects(submit({ client: client(immediate), msix: MSIX, notes: NOTES, log: () => {} }), /targetPublishMode Immediate, not Manual/);
-  assert.equal(immediate.calls.some((c) => c.url === UPLOAD_URL), false);
+  // A Store that keeps the submission waiting (for "Publish now" or a date)
+  // is refused before the upload: it would not publish by itself.
+  for (const mode of ["Manual", "SpecificDate"]) {
+    const held = fakeStore({
+      "GET /": { id: STORE_APP_ID, lastPublishedApplicationSubmission: { id: "100" } },
+      "GET /submissions/100": copy("100"),
+      "POST /submissions": copy("200"),
+      "PUT /submissions/200": copy("200", { targetPublishMode: mode }),
+    });
+    await assert.rejects(
+      submit({ client: client(held), msix: MSIX, notes: NOTES, log: () => {} }),
+      new RegExp(`targetPublishMode ${mode}, not Immediate: it would not publish by itself when it passes certification\nSubmission 200 was made and is left as it is`),
+    );
+    assert.equal(JSON.parse(held.calls.find((c) => c.method === "PUT" && c.url.startsWith(API)).body).targetPublishMode, "Immediate");
+    assert.equal(held.calls.some((c) => c.url === UPLOAD_URL), false);
+    assert.equal(held.calls.some((c) => c.url.endsWith("/commit")), false);
+    assert.equal(held.calls.filter((c) => c.method === "DELETE").length, 0);
+  }
 });
 
 test("submit: a submission made without an upload address or id is reported as left behind", async () => {
@@ -299,7 +317,7 @@ test("submit: a commit that runs too long stops waiting", async () => {
     "GET /": { id: STORE_APP_ID, lastPublishedApplicationSubmission: { id: "100" } },
     "GET /submissions/100": copy("100"),
     "POST /submissions": copy("200"),
-    "PUT /submissions/200": copy("200", { targetPublishMode: "Manual" }),
+    "PUT /submissions/200": copy("200", { targetPublishMode: "Immediate" }),
     "POST /submissions/200/commit": { status: "CommitStarted" },
     "GET /submissions/200/status": { status: "CommitStarted" },
   });
@@ -364,20 +382,33 @@ test("What's new: one file per listing language, written, within the Store's lim
   assert.match(r.problems[0], /^store\/whats-new\/1\.2\.0\.tr\.txt is missing/);
 });
 
-test("CLI: without the secrets it skips the submission; with only some it fails", () => {
+test("CLI: without the secrets it skips the submission; with only some it fails", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "keymotion-submit-cli-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const env = { ...process.env, GITHUB_ACTIONS: "", GITHUB_STEP_SUMMARY: "", GITHUB_OUTPUT: "" };
   for (const k of ["STORE_TENANT_ID", "STORE_CLIENT_ID", "STORE_CLIENT_SECRET"]) delete env[k];
   const run = (args, extra = {}) => spawnSync(process.execPath, [script, ...args], { encoding: "utf8", env: { ...env, ...extra } });
 
-  const skip = run(["--tag", "v1.2.0", "--msix", "nowhere"]);
+  // The upload by hand is told to publish as soon as it passes certification.
+  const summaryFile = join(dir, "skip.md");
+  const skip = run(["--tag", "v1.2.0", "--msix", "nowhere"], { GITHUB_STEP_SUMMARY: summaryFile });
   assert.equal(skip.status, 0, skip.stdout + skip.stderr);
-  assert.match(skip.stdout, /are not set: nothing was submitted\. Upload the \.msix in Partner Center by hand\./);
+  assert.match(skip.stdout, /are not set: nothing was submitted\. Upload the \.msix in Partner Center by hand, set to publish as soon as it passes certification\./);
+  const said = readFileSync(summaryFile, "utf8");
+  assert.match(said, /^### Not submitted to the Store$/m);
+  assert.match(said, /choose to publish the submission \*\*as soon as it passes certification\*\*, not "Don't publish this submission until I select Publish now"/);
 
   const some = run(["--tag", "v1.2.0", "--msix", "nowhere"], { STORE_TENANT_ID: "t" });
   assert.equal(some.status, 1);
   assert.match(some.stdout, /STORE_CLIENT_ID, STORE_CLIENT_SECRET not set/);
 
-  // The status can't be read without them, and a pre-release is never submitted.
-  assert.equal(run(["--status", "--tag", "v1.2.0"]).status, 1);
+  // The status is only shown (nothing waits for it): without the secrets it
+  // says the Store was not asked, and passes.
+  const statusFile = join(dir, "status.md");
+  const status = run(["--status", "--tag", "v1.2.0"], { GITHUB_STEP_SUMMARY: statusFile });
+  assert.equal(status.status, 0, status.stdout + status.stderr);
+  assert.match(status.stdout, /are not set \(microsoft-store environment\): the Store was not asked\./);
+  assert.match(readFileSync(statusFile, "utf8"), /^### Keymotion 1\.2\.0 in the Microsoft Store: not asked$/m);
+  // A pre-release is never submitted.
   assert.match(run(["--tag", "v1.2.0-rc.1"]).stdout, /not a pre-release/);
 });

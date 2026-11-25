@@ -14,7 +14,7 @@ Everything on this page that changes the keyboard works only over the USB cable,
 
 ## Put the factory screen animation back
 
-The keyboard's screen has two pages. The **Clock page** never changes. The **GIF page** shows the animation the keyboard came with, until you upload something else: every upload replaces it. Press Fn+Home on the keyboard to switch between the two.
+The keyboard's screen has two pages. The **Clock page** never changes. The **GIF page** shows the animation the keyboard came with, until you upload something else: every upload replaces it. Press Fn+Home on the keyboard to switch between the two. On AJAZZ's firmware 3.01, an upload may replace the clock page too, and the steps below with AJAZZ's official driver aren't offered; see [Screen](/keymotion/guide/screen/#the-keyboards-two-pages).
 
 Keymotion doesn't come with AJAZZ's animation, but it can keep a copy of it in your library. With that copy, you can put the animation back at any time.
 
@@ -60,7 +60,7 @@ When there's no copy of the factory animation, the Screen page also offers it: c
 
 ## Reset key assignments to the factory layout
 
-The keyboard can't report its key mapping, so the **Key mapping** page shows what you last saved from Keymotion.
+The keyboard can't report its key mapping, so the **Key mapping** page shows what you last saved from Keymotion. On AJAZZ's firmware 3.01 it can: the page shows the key mapping read from the keyboard itself.
 
 <Steps>
 
@@ -100,6 +100,52 @@ With the **Off** effect saved, Fn+X on the keyboard may not turn the light back 
 
 If the keys show bars instead of your lighting, system gauges are on. The Lighting page says so. Click **Go to gauges** and turn off **Show on keys**.
 
+## The keyboard's backup on firmware 3.01
+
+On an AK980 PRO with AJAZZ's firmware 3.01, Keymotion saves a backup of the keyboard's settings the first time it connects, before it can write anything: the key mapping on both layers, the lighting effect, the per-key colors and the macros. The screen picture isn't in it.
+
+To put a backup back:
+
+<Screenshot name="aa-connection-backups" alt="The Connection page for a keyboard on firmware 3.01: the Keyboard clock card and Keyboard backups, with a backup of this keyboard and its Restore button, and one marked Another keyboard or firmware" />
+
+<Steps>
+
+1. Connect the cable and open **Connection**. **Keyboard backups** lists the backups, newest first, with the date, why each was saved (**At the first connection** or **Before a restore**) and the firmware. One marked **Another keyboard or firmware** can't be put back. While an upload to the screen runs, **Restore** is off: "An upload to the screen is running. Restore the backup when it's done."
+2. Click **Restore** next to the backup. **What comes back** lists what Keymotion writes. The picture on the screen isn't in the backup, and the Fn key and the knob stay as they are. If the backup's macros need more memory than the keyboard has, nothing is restored. Click **Restore**, or **Cancel** to stop here.
+3. If the backup doesn't say which color the lighting effect had, Keymotion asks for it under **Lighting color**.
+4. Keep the cable plugged in. Keymotion first backs up the keyboard as it is now, so you can go back again, then writes the backup. **Done** lists what was put back and the keys left as they were. Click **OK**.
+
+</Steps>
+
+<Screenshot name="aa-restore-check" alt="The What comes back step: the key mapping on both layers, the lighting effect, the per-key colors and the macros, what isn't put back, and the Cancel and Restore buttons" />
+
+You can open other pages while the backup goes back. A notice then says "Restoring the keyboard backup. Keep the cable plugged in.", and at the end "The backup is back on the keyboard" or "The backup wasn't restored." with **Show details**.
+
+Afterwards, the **Lighting**, **Key mapping** and **Macros** pages show what's on the keyboard. If Keymotion doesn't know the color of the lighting the backup put back, the Lighting page shows it as not saved yet. The keyboard reports Off and per-key colors alike, so a backup may not know which of the two the lighting was; Keymotion then brings back per-key colors if the backup has keys with a color, and Off if it doesn't.
+
+<Screenshot name="aa-restore-done" alt="The Done step: The backup is back on the keyboard, what was put back, the keys left as the keyboard has them, and the OK button" />
+
+Keymotion keeps each keyboard's first backup and its four newest, in the `keyboard-backups` folder of its data folder (**Settings**, under **About**, **Data folder**).
+
+### When Keymotion writes nothing to the keyboard
+
+On firmware 3.01, a notice at the top of the Overview, Connection, Lighting, Key mapping, Macros, Screen and Profiles pages says why Keymotion writes nothing to the keyboard, and the buttons that would write are off:
+
+- **Keymotion only reads this keyboard**, for one of two reasons:
+  - What the keyboard reports doesn't look as expected. Click **Report a problem** in the notice. It opens the report window with what Keymotion read from the keyboard, so we can find out why. Keymotion also keeps that read in the `keyboard-reads` folder of its data folder, without your macros; we may ask you for the file.
+  - Keymotion couldn't finish reading the keyboard. Close other programs that talk to the keyboard, such as AJAZZ's web page; Keymotion reads it again by itself.
+- **The keyboard's backup couldn't be saved**: check that the disk has free space, then unplug the cable and plug it back in.
+
+<Screenshot name="aa-read-only" alt="The Lighting page with the notice Keymotion only reads this keyboard and its Report a problem button; Save to keyboard is off" />
+
+### A save was cut short
+
+On firmware 3.01, if the cable comes out while Keymotion saves to the keyboard, the part of the save that hadn't arrived yet is missing. Keymotion reads the keyboard again when it's back and shows what's on it. The next save puts things right:
+
+- **Key mapping:** keys the save didn't reach may not work as before. Make any change on that layer of the **Key mapping** page (**Reset layer**, for example) and click **Save to keyboard**, or restore a backup: every such key gets its factory function back, the Fn key and the knob included.
+- **Macros:** macros the save didn't reach show as empty. Save your macros again on the **Macros** page, or restore a backup; that repairs the keyboard's list of macros.
+- **Per-key colors:** keys the save didn't reach stay dark. Save your design again on the **Lighting** page.
+
 ## An upload was cut short
 
 During an upload to the screen, keep the cable plugged in. If the cable comes out, or Keymotion closes before the upload finishes, the GIF page holds only part of the picture and may look broken. The Clock page isn't affected.
@@ -133,6 +179,8 @@ The keyboard follows one program's commands at a time. When two programs send co
 Close that program completely, then click **Save to keyboard** again. Nothing was written, and your edits are still in Keymotion.
 
 When more than one keyboard is connected by USB, Keymotion doesn't save either: "More than one keyboard is connected by USB. Leave only one connected to save."
+
+On AJAZZ's firmware 3.01, AJAZZ's keyboard tool works from your browser, where Keymotion can't see it. Close it while Keymotion runs. If the keyboard sends answers that Keymotion didn't ask for, Keymotion says that another program seems to be talking to it; nothing is blocked.
 
 ## Keymotion doesn't find the keyboard
 

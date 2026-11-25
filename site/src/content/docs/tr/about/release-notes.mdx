@@ -1,6 +1,6 @@
 ---
 title: Sürüm notları
-description: Keymotion'ın her sürümünde nelerin değiştiğini nerede okuyabileceğiniz; 1.2.1'in, 1.2.0'ın, 1.1.0'ın, 1.0.0'ın ve ilk sürüm 0.1.0'ın kısa özeti.
+description: Keymotion'ın her sürümünde nelerin değiştiğini nerede okuyabileceğiniz; 1.3.0'ın, 1.2.1'in, 1.2.0'ın, 1.1.0'ın, 1.0.0'ın ve ilk sürüm 0.1.0'ın kısa özeti.
 ---
 
 import Screenshot from "~/components/Screenshot.astro";
@@ -21,9 +21,20 @@ Keymotion'ın her sürümü, nelerin değiştiğini anlatan sürüm notlarıyla 
 
 - **Ayarlar › Hakkında** ikisinde de sürümü aynı biçimde gösterir: "Sürüm 1.0.0". Microsoft Store'dan kurulan kopyada aynı satır, onu Store'un güncellediğini de söyler.
 - **Windows'un yüklü uygulamalar listesi** Store'dan kurulan kopyayı, sonu her zaman 0 olan dördüncü bir sayıyla gösterir: 1.0.0, 1.0.0.0 olarak görünür. Aynı sürümdür.
-- **Yeni sürüm ne zaman gelir.** Yeni sürüm GitHub'da ve Microsoft Store'da aynı gün çıkar: GitHub sürümü, Microsoft Store kopyasını denetleyene kadar bekler. Yalnızca acil bir düzeltme (çökme, güvenlik sorunu) önce GitHub'da çıkabilir; notlarında bu yazar.
-- **Deneme sürümleri** (numarasında "-rc" olanlar) yalnızca GitHub'dadır.
-- **Aynı anda tek Keymotion çalışır.** İkisi de kuruluysa aynı ayarları kullanırlar. GitHub kopyasını açmak Store kopyasını açar; bilgisayar açılınca başlama da Store kopyasına geçer. Store kopyasının Ayarlar › Hakkında bölümünde bir "GitHub kopyası" satırı görünür; satırdaki düğme Windows'un Yüklü uygulamalar sayfasını açar ve GitHub kopyasını oradan kaldırabilirsiniz. Ayarlarınız kalsın diye **Ayarlarımı ve kayıtlarımı da sil** kutusunu işaretlemeyin.
+- **Yeni sürüm ne zaman gelir.** Yeni sürüm önce GitHub'da çıkar. Microsoft Store kopyası, Microsoft onu denetleyince arkasından gelir; bu genellikle bir gün içinde olur. İkisinin sürüm numarası da notları da aynıdır.
+- **Deneme sürümleri** (numarasında "-rc" ya da "-beta" olanlar) yalnızca GitHub'dadır.
+- **Aynı anda tek Keymotion çalışır.** İkisi de kuruluysa aynı ayarları kullanırlar. GitHub kopyasını açmak Store kopyasını açar; bilgisayar açılınca başlama da Store kopyasına geçer. Deneme sürümü Store kopyasına yol vermez: bir deneme sürümünü açmadan önce Store kopyasından, saatin yanındaki simgesinden de çıkın. Store kopyasının Ayarlar › Hakkında bölümünde bir "GitHub kopyası" satırı görünür; satırdaki düğme Windows'un Yüklü uygulamalar sayfasını açar ve GitHub kopyasını oradan kaldırabilirsiniz. Ayarlarınız kalsın diye **Ayarlarımı ve kayıtlarımı da sil** kutusunu işaretlemeyin.
+
+## Keymotion 1.3.0
+
+Keymotion artık AK980 PRO için AJAZZ'ın en yeni klavye yazılımıyla, 3.01 ("769") ile de USB kablosu üzerinden çalışıyor. Destek yeni olduğu için **Deneme aşamasında** olarak işaretli ve isteğe bağlı bir deneme rehberi, bu yazılımı kullananlara nasıl çalıştığını soruyor. 1.06 yazılımında hiçbir şey değişmiyor.
+
+- **AJAZZ'ın 3.01 yazılımı, deneme aşamasında.** Bu yazılım klavyeyle başka komutlarla konuşuyor; Keymotion artık bu komutları da biliyor: ışık efektleri ve tuş başına renk, canlı ışıklar, iki katmanda tuş atama, makrolar, ekrana resim, saat ve kabloyla pil düzeyi. Bir oturumdaki ilk kayıttan önce Keymotion sorar (**Denenmemiş klavye yazılımı**). Bkz. [3.01 klavye yazılımındaki AK980 PRO](/keymotion/tr/help/keyboards/#301-klavye-yazılımındaki-ak980-pro-deneme-aşamasında).
+- **Güvenli tasarım.** Keymotion böyle bir klavyeye ilk bağlandığında ayarlarının yedeğini alır, her geri yüklemeden önce bir tane daha; **Bağlantı** bunları listeler ve geri yükleyebilir. Kaydedilen her ayar klavyeden geri okunur; yarıda kalan bir kaydı bir sonraki kayıt düzeltir. Canlı ışıklar klavyenin ışığı ne olursa olsun görünür ve klavyeye hiçbir şey kaydetmez.
+- **Deneme rehberi.** 3.01 yazılımlı klavyesi olanlar Genel bakış'ta bir kez, yaklaşık on dakikalık dokuz adımlı isteğe bağlı bir denemeye davet edilir. Rehber sayfaların yanında açık kalır, Keymotion'ın kendisi kontrol edebildiklerini işaretler ve sonunda GitHub'da paylaşabileceğiniz metnin tamamını gösterir. Hiçbir şey kendiliğinden gönderilmez. Bkz. [Deneme rehberi](/keymotion/tr/help/keyboards/#deneme-rehberi).
+- **Daha kısa sorun bildirimleri.** **Sorun bildir** artık ters görünen şeyi birkaç satırda özetliyor; çoğu zaman tek bildirim yetiyor ve GitHub için yeterince kısa kalıyor.
+- **Önce GitHub.** Bu sürümden itibaren yeni bir sürüm, kurulum dosyası denemeden geçer geçmez GitHub'da çıkıyor; Microsoft Store kopyası Microsoft inceleyince, genellikle bir gün içinde geliyor.
+- **Teşekkürler:** AJAZZ'ın yeni yazılımını bize haber veren, her betayı kendi klavyesinde deneyen ve bu desteğe yön veren bildirimleri gönderen [j0p3s](https://github.com/j0p3s)'e.
 
 ## Keymotion 1.2.1
 

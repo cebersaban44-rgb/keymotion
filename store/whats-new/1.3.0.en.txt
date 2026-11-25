@@ -1,0 +1,5 @@
+• AJAZZ's newest firmware: Keymotion now also works with firmware 3.01 ("769") on the AK980 PRO, over the USB cable, in beta: lighting effects and per-key color, live lighting, key mapping, macros, pictures on the screen, the clock and the battery level. Nothing changes on firmware 1.06.
+• Safe by design: on firmware 3.01, Keymotion saves a backup of the keyboard's settings before its first write, reads back every setting it saves, and lists the backups under Connection to put one back.
+• Test guide: owners of a keyboard on firmware 3.01 are invited once to an optional test of nine steps. At the end it shows the exact text you can share with us; nothing is sent by itself.
+• Shorter problem reports: Report a problem sums up what doesn't look right in a few lines.
+• Thanks to j0p3s, who tried each beta on their keyboard and helped shape this support.

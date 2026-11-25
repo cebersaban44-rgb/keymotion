@@ -2,6 +2,7 @@
 // part by part, and the words the Profiles page and the Overview card use.
 
 import { create } from "zustand";
+import type { PartLoaded } from "../bindings/PartLoaded";
 import type { ProfileInfo } from "../bindings/ProfileInfo";
 import type { ProfilePart } from "../bindings/ProfilePart";
 import type { ProfileParts } from "../bindings/ProfileParts";
@@ -12,6 +13,7 @@ import { adoptKeymapRecord } from "./keymap";
 import { initLighting } from "./lighting";
 import { adoptMacrosRecord } from "./macros";
 import { useScreen } from "./screen";
+import { recordOf } from "./store";
 
 interface ProfilesStore {
   /** Model the list below was read for. */
@@ -153,6 +155,10 @@ export async function loadProfile(
   p: ProfileInfo,
   onStep: (part: ProfilePart, state: StepState) => void,
   stop: () => boolean,
+  /** How a part went ("kept": keys set in another program were left as
+   *  they are; "skipped": not written, it would replace macros made in
+   *  another program). */
+  onLoaded?: (part: ProfilePart, loaded: PartLoaded) => void,
 ): Promise<"done" | "stopped"> {
   const tried = new Set<ProfilePart>();
   try {
@@ -162,7 +168,7 @@ export async function loadProfile(
       tried.add(part);
       try {
         if (part === "screen") await uploadPicture(p);
-        else await loadProfilePart(modelId, p.id, part);
+        else onLoaded?.(part, await loadProfilePart(modelId, p.id, part));
       } catch (e) {
         throw new ProfileLoadError(part, e);
       }
@@ -178,9 +184,11 @@ export async function loadProfile(
  *  again; the parts written replace the editors' drafts. */
 async function readRecordsAgain(modelId: string, parts: ReadonlySet<ProfilePart>) {
   const jobs: Promise<unknown>[] = [useProfiles.getState().load(modelId)];
+  // Profiles fit by model; the records are the keyboard's (per family).
+  const record = recordOf(modelId);
   if (parts.has("lighting")) jobs.push(initLighting());
-  if (parts.has("keymap")) jobs.push(adoptKeymapRecord(modelId));
-  if (parts.has("macros")) jobs.push(adoptMacrosRecord(modelId));
+  if (parts.has("keymap")) jobs.push(adoptKeymapRecord(record));
+  if (parts.has("macros")) jobs.push(adoptMacrosRecord(record));
   await Promise.all(jobs.map((j) => j.catch(console.error)));
 }
 
@@ -193,6 +201,25 @@ export function followAutoWrites(modelId: string): () => void {
   const off = listen<null>("auto-profile-written", () => {
     void readRecordsAgain(modelId, new Set<ProfilePart>(["lighting", "keymap", "macros"]));
   });
+  return () => {
+    off.then((f) => f()).catch(console.error);
+  };
+}
+
+/** An "AA" keyboard reports its keymap and macros, and the backend keeps
+ *  the records in step with it (device.rs `sync_aa_records`, which sends
+ *  "keyboard-records-changed"): when it connects with keys or macros set
+ *  elsewhere, after a restore, after any save. The Key mapping and Macros
+ *  pages and the profile list read them again. */
+export function followKeyboardRecords(modelId: string): () => void {
+  if (import.meta.env.DEV && !inTauri) return () => {};
+  const parts = new Set<ProfilePart>(["keymap", "macros"]);
+  const off = listen<string>("keyboard-records-changed", () => {
+    void readRecordsAgain(modelId, parts);
+  });
+  // A change told before the listener was there (the keyboard read at
+  // start-up): read once it listens.
+  off.then(() => readRecordsAgain(modelId, parts)).catch(console.error);
   return () => {
     off.then((f) => f()).catch(console.error);
   };

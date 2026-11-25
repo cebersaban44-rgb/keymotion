@@ -13,13 +13,23 @@
 #
 # The release files are only ever built here, never uploaded from a computer:
 # SignPath (stage 9) asks for automated builds that can be traced to the
-# source. Nothing is published: the owner reviews the draft and publishes it.
+# source. Nothing is published here: once the install test below has passed,
+# the owner publishes the draft with publish.yml ("Publish a release", run
+# from the tag).
 #
-# A release tag (not a pre-release) also builds the Microsoft Store package
-# and submits it for certification (store.yml): the draft waits until the
-# Store submission passes, then both are published the same day (owner's
-# decision, 2026-11-16): publish.yml publishes the draft, and "Publish now"
-# in Partner Center the Store's copy (docs site: developers/microsoft-store).
+# GitHub comes first (owner's decision, 2026-11-25; until then both channels
+# came out the same day): the draft doesn't wait for the Microsoft Store. A
+# release tag (not a pre-release) also builds the Store package, once the
+# install test has passed, and submits it for certification (store.yml), set
+# to publish by itself as soon as Microsoft certifies it, usually within a
+# day. Nobody selects "Publish now" in Partner Center (docs site:
+# developers/microsoft-store).
+#
+# A pre-release tag (v1.3.0-beta.1) is made on a beta/* branch, never on
+# main (docs site: developers/contributing, "Beta (pre-release)"). Its draft
+# is marked as a pre-release, which is all that keeps the app's updater on
+# normal installs away from it: they read GitHub's latest release, and that
+# is never a pre-release. It has no Store package; publish.yml publishes it.
 #
 # Secrets: TAURI_SIGNING_PRIVATE_KEY (required, the updater key from
 # `pnpm --dir app tauri signer generate`) and TAURI_SIGNING_PRIVATE_KEY_PASSWORD
@@ -97,7 +107,8 @@ jobs:
       - name: Keep LF line endings
         run: git config --global core.autocrlf false
 
-      # The whole history, so the release check below can see main.
+      # The whole history and every branch, so the release check below can
+      # see main and the beta branches.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -108,15 +119,31 @@ jobs:
           node-version: 24
 
       # A release is built only from code that is on main: a tag on any other
-      # commit stops here. Test builds from a branch ("Run workflow") skip this.
-      - name: The tag is on main
+      # commit stops here. A pre-release (v1.3.0-beta.1) is never on main
+      # (pages.yml publishes the site from main): its commit must be on a
+      # beta/* branch on GitHub, have everything released (main is in it),
+      # change only the version and the CHANGELOGs since develop, and have
+      # passed CI's "Build and test" job (tools/release/check-beta.mjs, the
+      # rules tools/release/tag.mjs checks before it tags).
+      # Test builds from a branch ("Run workflow") skip this.
+      - name: The tag is on main (a pre-release, on a beta branch)
         if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error::Tag $GITHUB_REF_NAME points to $GITHUB_SHA, which is not on main. Tag the release merge on main."
-            exit 1
-          fi
-          echo "Tag $GITHUB_REF_NAME ($GITHUB_SHA) is on main."
+          case "$GITHUB_REF_NAME" in
+            v*-*)
+              node tools/release/check-beta.mjs "$GITHUB_SHA" --ci
+              ;;
+            *)
+              if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+                echo "::error::Tag $GITHUB_REF_NAME points to $GITHUB_SHA, which is not on main. Tag the release merge on main."
+                exit 1
+              fi
+              echo "Tag $GITHUB_REF_NAME ($GITHUB_SHA) is on main."
+              ;;
+          esac
 
       # The cheap checks run first, so a wrong tag or a missing secret fails
       # in seconds instead of after the build.
@@ -367,12 +394,14 @@ jobs:
             echo "- Pre-release: $prerelease"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # The Microsoft Store package of the same tag, after the installer built:
-  # one version, published in both channels the same day. Pre-releases
+  # The Microsoft Store package of the same tag, once the installer has
+  # passed its install test: the Store publishes what it certifies by itself,
+  # so a build that failed the test never goes there. Same version, same
+  # notes; the GitHub release doesn't wait for it. Pre-releases
   # ("v1.1.0-rc.1") stay on GitHub: the Store's version has no place for them.
   store:
     name: Microsoft Store package
-    needs: release
+    needs: [release, install-test]
     if: github.ref_type == 'tag' && !contains(github.ref_name, '-')
     permissions:
       contents: read
@@ -386,7 +415,8 @@ jobs:
   # upgrade from the last published release and keymotion://background
   # (tools/release/install-test.ps1). The runner is thrown away afterwards,
   # so the test may change its user's PATH, registry and settings; the
-  # script refuses to run anywhere else.
+  # script refuses to run anywhere else. publish.yml publishes a draft only
+  # once this job has passed, and the Store job waits for it too.
   install-test:
     name: Install test on a clean Windows
     needs: release

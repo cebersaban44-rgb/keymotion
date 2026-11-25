@@ -22,6 +22,8 @@ import { ActionBar } from "../components/ActionBar";
 import { ColorPicker, InfoBar, Row, Rows, Segmented, Steps, Tabs, Toggle } from "../components/controls";
 import { EffectThumb } from "../components/EffectThumb";
 import { KeyboardView, type KeyAction } from "../components/KeyboardView";
+import { KeyboardNotices, LiveLightsNotice } from "../components/KeyboardNotices";
+import { useWriteBlock } from "../lib/aa";
 import { getLightingCatalog, setLiveFrame } from "../lib/ipc";
 import { useT, type MessageKey } from "../lib/i18n";
 import {
@@ -58,7 +60,7 @@ export function Lighting({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
   const { tab, setTab } = useLighting();
   const usb = kb.connection === "usb" && kb.hasCommandChannel;
-  const mirror = useMirror(usb && tab === "effects");
+  const mirror = useMirror(usb && tab === "effects", kb.protocol);
   const perKey = useLighting((s) => s.perKey);
   // The gauges draw the keys while on: the saved lighting does not show.
   const gaugesOn = useGauges((s) => !!s.state?.settings.enabled);
@@ -86,6 +88,8 @@ export function Lighting({ kb }: { kb: KeyboardInfo }) {
       {!usb && (
         <InfoBar tone="warn" icon={<Usb size={20} strokeWidth={1.6} />} title={t("light.needsUsb")} data="usb" />
       )}
+      <KeyboardNotices kb={kb} />
+      <LiveLightsNotice />
       {usb && gaugesOn && (
         <InfoBar
           icon={<Gauge size={20} strokeWidth={1.6} />}
@@ -182,13 +186,10 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
 
   const current = catalog.find((e) => e.id === effect.mode);
   const effects = catalog.filter((e) => e.id !== 0);
+  const blocked = useWriteBlock(kb);
   const off = catalog.find((e) => e.id === 0);
   // Unknown until the app stores an effect once; then whatever differs.
-  const changes = !appliedEffect
-    ? t("bar.notSaved")
-    : sameEffect(effect, appliedEffect)
-      ? null
-      : t("bar.effectChanged");
+  const changes = !appliedEffect ? t("bar.notSaved") : sameEffect(effect, appliedEffect) ? null : t("bar.effectChanged");
 
   const card = (fx: EffectInfo) => {
     const selected = fx.id === effect.mode;
@@ -277,18 +278,34 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
               <div className="row row-tall">
                 <span className="flex items-baseline justify-between gap-3">
                   <span className="row-title">{t("light.brightness")}</span>
-                  <span className="num text-[13px] text-ink-2">{effect.brightness} / 5</span>
+                  <span className="num text-[13px] text-ink-2">
+                    {effect.brightness} / {kb.limits.brightness.max}
+                  </span>
                 </span>
-                <Steps label={t("light.brightness")} value={effect.brightness} onChange={(brightness) => setEffect({ brightness })} />
+                <Steps
+                  label={t("light.brightness")}
+                  value={effect.brightness}
+                  onChange={(brightness) => setEffect({ brightness })}
+                  min={kb.limits.brightness.min}
+                  max={kb.limits.brightness.max}
+                />
               </div>
             )}
             {current?.speed && (
               <div className="row row-tall">
                 <span className="flex items-baseline justify-between gap-3">
                   <span className="row-title">{t("light.speed")}</span>
-                  <span className="num text-[13px] text-ink-2">{effect.speed} / 5</span>
+                  <span className="num text-[13px] text-ink-2">
+                    {effect.speed} / {kb.limits.speed.max}
+                  </span>
                 </span>
-                <Steps label={t("light.speed")} value={effect.speed} onChange={(speed) => setEffect({ speed })} />
+                <Steps
+                  label={t("light.speed")}
+                  value={effect.speed}
+                  onChange={(speed) => setEffect({ speed })}
+                  min={kb.limits.speed.min}
+                  max={kb.limits.speed.max}
+                />
               </div>
             )}
             {current && current.directions > 0 && (
@@ -325,6 +342,7 @@ function EffectsTab({ kb, usb, mirror }: { kb: KeyboardInfo; usb: boolean; mirro
 
       <ActionBar
         changes={changes}
+        blocked={blocked}
         canSave={usb && !!current}
         onSave={applyEffectDraft}
         onRevert={appliedEffect ? revertEffect : undefined}
@@ -354,6 +372,7 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
     setTool,
   } = useLighting();
   const keys = kb.geometry?.keys ?? NO_KEYS;
+  const blocked = useWriteBlock(kb);
   // The preview covers every other light (agents, music, the focus timer,
   // reminders): only while the window is on screen, not in the tray.
   const windowShown = useApp((s) => s.windowShown);
@@ -529,9 +548,22 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
       </div>
 
       <Rows>
-        <Row title={t("light.brightness")} desc={<span className="num">{perKeyBrightness} / 5</span>}>
+        <Row
+          title={t("light.brightness")}
+          desc={
+            <span className="num">
+              {perKeyBrightness} / {kb.limits.brightness.max}
+            </span>
+          }
+        >
           <div className="w-[264px] max-w-full">
-            <Steps label={t("light.brightness")} value={perKeyBrightness} onChange={setPerKeyBrightness} />
+            <Steps
+              label={t("light.brightness")}
+              value={perKeyBrightness}
+              onChange={setPerKeyBrightness}
+              min={kb.limits.brightness.min}
+              max={kb.limits.brightness.max}
+            />
           </div>
         </Row>
         <Row title={t("light.presets")}>
@@ -555,12 +587,13 @@ function PerKeyTab({ kb, usb, perKey }: { kb: KeyboardInfo; usb: boolean; perKey
 
       <ActionBar
         left={
-          <label className="flex items-center gap-2.5 text-[14px]" title={t("light.livePreviewHint")}>
+          <label className="flex items-center gap-2.5 text-[14px]" title={t(kb.protocol === "ajazz-aa" ? "light.livePreviewHint.aa" : "light.livePreviewHint")}>
             <span className={usb ? "text-ink" : "text-ink-3"}>{t("light.livePreview")}</span>
             <Toggle label={t("light.livePreview")} checked={livePreview} onChange={setLivePreview} disabled={!usb} />
           </label>
         }
         changes={changes}
+        blocked={blocked}
         canSave={usb}
         onSave={savePerKeyDraft}
         onRevert={savedPerKey ? revertPerKey : undefined}

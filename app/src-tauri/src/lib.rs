@@ -4,6 +4,12 @@
 //! the `kb-*` crates. All keyboard logic lives in those crates, and all
 //! hardware access goes through the single device actor.
 
+// The keyboard simulator is a development tool: a release build never has
+// it (tools/sim-guard.test.mjs checks that no release script turns it on).
+#[cfg(all(feature = "sim", not(debug_assertions)))]
+compile_error!("the keyboard simulator (feature `sim`) is for debug builds only");
+
+mod aa;
 mod agent;
 mod autoprofile;
 mod backup;
@@ -11,6 +17,7 @@ mod calendar;
 mod channel;
 mod device;
 mod diagnostics;
+mod driver;
 mod dto;
 mod front;
 mod games;
@@ -33,6 +40,8 @@ mod recur;
 mod reminders;
 mod screen_lib;
 mod settings;
+#[cfg(any(test, feature = "sim"))]
+mod sim;
 mod spectrum;
 mod tray;
 mod updates;
@@ -147,10 +156,11 @@ fn lock_library(lib: &Mutex<ScreenLibrary>) -> Result<std::sync::MutexGuard<'_, 
     lib.lock().map_err(|_| "screen library unavailable".to_string())
 }
 
-/// The screen library and what this model's GIF page shows.
+/// The screen library and what the GIF page of the keyboard with this
+/// record id (`KeyboardInfo.recordId`) shows.
 #[tauri::command]
-fn screen_state(library: Library<'_>, model_id: String) -> Result<ScreenState, String> {
-    Ok(lock_library(&library)?.state(&model_id))
+fn screen_state(library: Library<'_>, record_id: String) -> Result<ScreenState, String> {
+    Ok(lock_library(&library)?.state(&record_id))
 }
 
 /// Store an animation the UI prepared. The body is the blob (header +
@@ -208,17 +218,17 @@ fn screen_data(library: Library<'_>, id: String, frames: Option<u32>) -> Result<
 }
 
 #[tauri::command]
-fn screen_rename(library: Library<'_>, model_id: String, id: String, name: String) -> Result<ScreenState, String> {
+fn screen_rename(library: Library<'_>, record_id: String, id: String, name: String) -> Result<ScreenState, String> {
     let mut lib = lock_library(&library)?;
     lib.rename(&id, &name).map_err(|e| e.to_string())?;
-    Ok(lib.state(&model_id))
+    Ok(lib.state(&record_id))
 }
 
 #[tauri::command]
-fn screen_remove(library: Library<'_>, model_id: String, id: String) -> Result<ScreenState, String> {
+fn screen_remove(library: Library<'_>, record_id: String, id: String) -> Result<ScreenState, String> {
     let mut lib = lock_library(&library)?;
     lib.remove(&id).map_err(|e| e.to_string())?;
-    Ok(lib.state(&model_id))
+    Ok(lib.state(&record_id))
 }
 
 /// Upload a library item to the USB keyboard's GIF page (flash write, up
@@ -228,19 +238,23 @@ async fn screen_upload(
     device: Device<'_>,
     library: Library<'_>,
     live: Live<'_>,
-    model_id: String,
+    record_id: String,
     id: String,
 ) -> Result<ScreenState, String> {
     tracing::debug!(%id, "ipc: screen_upload");
+    // The keyboard it goes to may lose its clock page with it (the first
+    // upload to an "AA" keyboard; never "04 xx"): the upload is refused
+    // before anything is written until the user said yes (`screen_journal`,
+    // on the path every upload takes).
     let anim = lock_library(&library)?.animation(&id)?;
     let handle = device.inner().clone();
     let (result, id) = tauri::async_runtime::spawn_blocking(move || (handle.upload_screen(id.clone(), anim), id))
         .await
         .map_err(|e| e.to_string())?;
     let mut lib = lock_library(&library)?;
-    let model = result.model_id.clone().unwrap_or(model_id.clone());
+    let record = result.record_id.clone().unwrap_or(record_id.clone());
     match &result.error {
-        None => lib.uploaded(&model, &id).map_err(|e| e.to_string())?,
+        None => lib.uploaded(&record, &id).map_err(|e| e.to_string())?,
         Some(_) if result.flash_written => {
             lib.count_upload(true);
             if let Err(e) = lib.save() {
@@ -249,7 +263,7 @@ async fn screen_upload(
         }
         Some(_) => {}
     }
-    let state = lib.state(&model_id);
+    let state = lib.state(&record_id);
     drop(lib);
     // The upload used the live budget.
     live.changed();
@@ -257,6 +271,74 @@ async fn screen_upload(
         None => Ok(state),
         Some(e) => Err(e),
     }
+}
+
+/// Refused upload: the keyboard's clock page would go, and the user was not
+/// asked (`screen_ack_clock_page`).
+const ERR_CLOCK_PAGE: &str = "screen upload would replace the keyboard's clock page; not acknowledged";
+
+/// Stop the screen upload of library item `id` (what `screen_upload` was
+/// given), and no other. Running: an "AA" keyboard stops before its next
+/// part, and its screen stays incomplete until the next upload ("04 xx"
+/// keyboards cannot stop and finish); the upload's call then fails with
+/// "screen upload cancelled after N of M parts". Still waiting its turn: it
+/// does not start, and fails with "screen upload cancelled before it
+/// started". Returns whether there was such an upload.
+#[tauri::command]
+fn screen_upload_cancel(device: Device<'_>, id: String) -> bool {
+    tracing::debug!(%id, "ipc: screen_upload_cancel");
+    device.cancel_upload(&id)
+}
+
+/// The user said yes to losing the clock page of the keyboard with this
+/// record id with the next upload (`ScreenState.clockPageAtRisk`, and the
+/// live screen's `LiveState.clockAckNeeded`).
+#[tauri::command]
+fn screen_ack_clock_page(library: Library<'_>, live: Live<'_>, record_id: String) -> Result<ScreenState, String> {
+    let state = {
+        let mut lib = lock_library(&library)?;
+        lib.ack_clock_page(&record_id).map_err(|e| e.to_string())?;
+        lib.state(&record_id)
+    };
+    // A live card that waited for the answer may go now.
+    live.changed();
+    Ok(state)
+}
+
+/// The backups of "AA" keyboards in the data folder, oldest first: one
+/// taken at the keyboard's first connection, one before every restore
+/// (`matches`: of the keyboard on the cable, so restorable). Files only,
+/// off the UI thread and without the device actor (busy for minutes during
+/// a screen upload).
+#[tauri::command]
+async fn keyboard_backups(device: Device<'_>) -> Result<Vec<dto::KeyboardBackupInfo>, String> {
+    let handle = device.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || handle.keyboard_backups()).await.map_err(|e| e.to_string())
+}
+
+/// Write a backup back to the "AA" keyboard on the cable (flash writes,
+/// behind every check a save has). Keys the keyboard does not let the app
+/// write keep the keyboard's entry (`kept`). `color` (`#rrggbb`) and
+/// `rainbow`: the effect's colour, needed when the backup does not know it
+/// and the effect differs (else the call fails with the "AA" driver's
+/// "does not report its effect colour" error).
+#[tauri::command]
+async fn keyboard_backup_restore(
+    device: Device<'_>,
+    file: String,
+    color: Option<String>,
+    rainbow: Option<bool>,
+) -> Result<dto::KeyboardRestoreResult, String> {
+    tracing::debug!(%file, has_color = color.is_some(), "ipc: keyboard_backup_restore");
+    let color = color.as_deref().map(dto::parse_hex).transpose()?.map(|c| (c, rainbow.unwrap_or(false)));
+    let handle = device.inner().clone();
+    // Behind a screen upload the restore waits its turn (minutes): it is
+    // not reported as failed while it may still run.
+    tauri::async_runtime::spawn_blocking(move || {
+        handle.call_waiting(device::RESTORE_WAIT, |reply| Request::RestoreKeyboard { file, color, reply })
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Whether AJAZZ's official driver left a copy of the factory animation on
@@ -275,7 +357,7 @@ async fn screen_backup_from_driver(
     found: State<'_, Arc<DriverGif>>,
     library: Library<'_>,
     live: Live<'_>,
-    model_id: String,
+    record_id: String,
 ) -> Result<ScreenState, String> {
     tracing::debug!("ipc: screen_backup_from_driver");
     let found = found.inner().clone();
@@ -290,7 +372,7 @@ async fn screen_backup_from_driver(
     let state = {
         let mut lib = lock_library(&library)?;
         lib.store_factory(&gif, &anim)?;
-        lib.state(&model_id)
+        lib.state(&record_id)
     };
     // The live mode no longer needs to ask about the factory animation.
     live.changed();
@@ -728,18 +810,29 @@ impl autoprofile::Host for AutoHost {
         let device = self.app.state::<Arc<DeviceHandle>>().inner().clone();
         let mut writer = DeviceWriter { device: &device, config_dir: self.app.path().app_config_dir().ok() };
         let mut written = 0;
+        let mut skipped = false;
         // Never the screen: that is a library upload, on the live budget.
         for part in [ProfilePart::Lighting, ProfilePart::Keymap, ProfilePart::Macros] {
             if !profile.has(part) {
                 continue;
             }
             let current = profile_current(&self.app, &model)?;
-            if profiles::load_part(profile, part, &current, &mut writer)? == PartLoaded::Written {
-                written += 1;
+            match profiles::load_part(profile, part, &current, &mut writer)? {
+                PartLoaded::Written | PartLoaded::Kept => written += 1,
+                PartLoaded::Same => {}
+                PartLoaded::Skipped => skipped = true,
             }
         }
         tray::refresh(&self.app);
+        // Said once (then held for this keyboard: autoprofile.rs).
+        if skipped {
+            return Err(profiles::ERR_MACROS_KEPT.into());
+        }
         Ok(written)
+    }
+
+    fn on_cable(&self) -> Option<String> {
+        usb_model(&self.app)
     }
 
     fn game(&self, front: &kb_winsys::foreground::Front) -> Option<String> {
@@ -963,12 +1056,13 @@ fn keymap_catalog() -> KeymapCatalog {
     KeymapCatalog::build()
 }
 
-/// What the app last wrote to this model's keymap. The keyboard cannot
-/// report its keymap; layers never written are the factory default.
+/// What the app last wrote to the keymap of the keyboards with this record
+/// id (`KeyboardInfo.recordId`). The keyboard cannot report its keymap;
+/// layers never written are the factory default.
 #[tauri::command]
-fn keymap_state(device: Device<'_>, model_id: String) -> KeymapState {
+fn keymap_state(device: Device<'_>, record_id: String) -> KeymapState {
     let snap = device.snapshot.lock();
-    snap.ok().and_then(|s| s.keymaps.models.get(&model_id).map(KeymapState::from)).unwrap_or_default()
+    snap.ok().and_then(|s| s.keymaps.models.get(&record_id).map(KeymapState::from)).unwrap_or_default()
 }
 
 /// Write one keymap layer of the USB keyboard (flash write) and record it.
@@ -978,23 +1072,25 @@ async fn apply_keymap(
     device: Device<'_>,
     layer: KeymapLayer,
     assignments: Vec<KeyAssignment>,
+    base: Option<String>,
 ) -> Result<KeymapState, String> {
     tracing::debug!(?layer, keys = assignments.len(), "ipc: apply_keymap");
     let entries = assignments.into_iter().map(|a| (a.led, a.action.into())).collect();
     let handle = device.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        handle.call(|reply| Request::ApplyKeymap { layer: layer.into(), entries, reply })
+        handle.call(|reply| Request::ApplyKeymap { layer: layer.into(), entries, base, reply })
     })
     .await
     .map_err(|e| e.to_string())?
     .map(|k| KeymapState::from(&k))
 }
 
-/// What the app last wrote to this model's macro memory, with the limits.
+/// What the app last wrote to the macro memory of the keyboards with this
+/// record id (`KeyboardInfo.recordId`), with the limits.
 #[tauri::command]
-fn macros_state(device: Device<'_>, model_id: String) -> MacrosState {
+fn macros_state(device: Device<'_>, record_id: String) -> MacrosState {
     let snap = device.snapshot.lock();
-    let stored = snap.ok().and_then(|s| s.macros.models.get(&model_id).cloned()).unwrap_or_default();
+    let stored = snap.ok().and_then(|s| s.macros.models.get(&record_id).cloned()).unwrap_or_default();
     MacrosState::from(&stored)
 }
 
@@ -1002,11 +1098,15 @@ fn macros_state(device: Device<'_>, model_id: String) -> MacrosState {
 /// Slot `i` is macro `i`; `null` leaves a slot unused so later slots keep
 /// their numbers.
 #[tauri::command]
-async fn apply_macros(device: Device<'_>, slots: Vec<Option<MacroInfo>>) -> Result<MacrosState, String> {
+async fn apply_macros(
+    device: Device<'_>,
+    slots: Vec<Option<MacroInfo>>,
+    base: Option<String>,
+) -> Result<MacrosState, String> {
     tracing::debug!(slots = slots.len(), "ipc: apply_macros");
     let slots = slots.into_iter().map(|m| m.map(Into::into)).collect();
     let handle = device.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || handle.call(|reply| Request::ApplyMacros { slots, reply }))
+    tauri::async_runtime::spawn_blocking(move || handle.call(|reply| Request::ApplyMacros { slots, base, reply }))
         .await
         .map_err(|e| e.to_string())?
         .map(|m| MacrosState::from(&m))
@@ -1272,11 +1372,11 @@ fn log_ui_error(message: String) {
 #[tauri::command]
 async fn diagnostics_report(app: AppHandle, language: String, context: Option<String>) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let keyboards: Vec<String> = app
+        let (keyboards, aa): (Vec<String>, Vec<String>) = app
             .state::<Arc<DeviceHandle>>()
             .snapshot
             .lock()
-            .map(|s| s.keyboards.iter().map(diagnostics::keyboard_line).collect())
+            .map(|s| (s.keyboards.iter().map(diagnostics::keyboard_line).collect(), s.aa_diagnostics.clone()))
             .unwrap_or_default();
         let facts = diagnostics::Facts {
             app_name: app.package_info().name.clone(),
@@ -1291,6 +1391,7 @@ async fn diagnostics_report(app: AppHandle, language: String, context: Option<St
             ui_language: language.chars().take(8).collect(),
             context,
             keyboards,
+            aa,
             data_files: app.path().app_config_dir().map(|d| diagnostics::data_files(&d)).unwrap_or_default(),
             log_lines: app
                 .path()
@@ -1410,16 +1511,46 @@ fn now_ms() -> f64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_millis() as f64)
 }
 
+/// The record id of the keyboard of `model_id` the app shows (the cable
+/// first, as `useActiveKeyboard`): its records are kept per command family.
+/// The model id (the "04 xx" family's) while none is connected.
+fn record_of(keyboards: &[KeyboardInfo], model_id: &str) -> String {
+    keyboards
+        .iter()
+        .filter(|k| k.model_id == model_id)
+        .min_by_key(|k| k.focus_rank())
+        .map_or_else(|| model_id.to_string(), |k| k.record_id.clone())
+}
+
 /// What the keyboard of `model_id` has, as this computer recorded it: the
 /// keymap and macro records, the Lighting page's record, the library item
-/// on the GIF page (profiles.rs). Editors' unsaved drafts are not in it.
+/// on the GIF page (profiles.rs), under the keyboard's record id
+/// ([`record_of`]). Editors' unsaved drafts are not in it. A profile still
+/// fits by model id, so it goes to either family's keyboards.
 pub(crate) fn profile_current(app: &AppHandle, model_id: &str) -> Result<profiles::Current, String> {
-    let (keymap, macros) = {
+    let (keymap, macros, kept, record) = {
         let device = app.state::<Arc<DeviceHandle>>();
         let snap = device.snapshot.lock().map_err(|_| "device state unavailable")?;
+        let record = record_of(&snap.keyboards, model_id);
+        let stored = snap.keymaps.models.get(&record);
+        let both = |l: &settings::StoredLayer| l.fixed.iter().chain(&l.builtin).copied().collect::<Vec<u8>>();
+        let kept = profiles::KeptOnKeyboard {
+            base: stored.map(|k| both(&k.base)).unwrap_or_default(),
+            fn_layer: stored.map(|k| both(&k.fn_layer)).unwrap_or_default(),
+            macros: snap
+                .macros
+                .models
+                .get(&record)
+                .map(|m| m.fixed.iter().map(|f| f.slot).collect())
+                .unwrap_or_default(),
+            base_pinned: stored.map(|k| k.base.pinned.clone()).unwrap_or_default(),
+            fn_pinned: stored.map(|k| k.fn_layer.pinned.clone()).unwrap_or_default(),
+        };
         (
-            profiles::ProfileKeymap::from_record(snap.keymaps.models.get(model_id)),
-            snap.macros.models.get(model_id).map(|m| m.slots.clone()).unwrap_or_default(),
+            profiles::ProfileKeymap::from_record(stored),
+            snap.macros.models.get(&record).map(|m| m.slots.clone()).unwrap_or_default(),
+            kept,
+            record,
         )
     };
     let lighting = app
@@ -1430,7 +1561,7 @@ pub(crate) fn profile_current(app: &AppHandle, model_id: &str) -> Result<profile
         .and_then(|state| profiles::ProfileLighting::from_record(&state));
     let screen = {
         let library = app.state::<Arc<Mutex<ScreenLibrary>>>();
-        let state = lock_library(&library)?.state(model_id);
+        let state = lock_library(&library)?.state(&record);
         let shown = state.shown.as_deref();
         state
             .items
@@ -1444,6 +1575,7 @@ pub(crate) fn profile_current(app: &AppHandle, model_id: &str) -> Result<profile
         keymap,
         macros: profiles::trimmed(macros),
         screen,
+        kept,
     })
 }
 
@@ -1636,11 +1768,11 @@ impl profiles::Writer for DeviceWriter<'_> {
         layer: kb_protocol::sonix::keymap::Layer,
         entries: Vec<(u8, kb_protocol::sonix::keymap::KeyAction)>,
     ) -> Result<(), String> {
-        self.device.call(|reply| Request::ApplyKeymap { layer, entries, reply }).map(|_| ())
+        self.device.call(|reply| Request::ApplyKeymap { layer, entries, base: None, reply }).map(|_| ())
     }
 
     fn macros(&mut self, slots: Vec<Option<settings::StoredMacro>>) -> Result<(), String> {
-        self.device.call(|reply| Request::ApplyMacros { slots, reply }).map(|_| ())
+        self.device.call(|reply| Request::ApplyMacros { slots, base: None, reply }).map(|_| ())
     }
 
     fn lighting_stored(&mut self, l: &profiles::ProfileLighting) -> Result<(), String> {
@@ -1728,20 +1860,27 @@ fn apply_backdrop(window: &WebviewWindow, build: u32) -> bool {
 }
 
 /// Keeps the library's "incomplete" mark in step with the device actor's
-/// screen uploads. The item to offer again: the one uploaded, or for a
-/// live card the user's own picture.
+/// screen uploads, and refuses an upload that would cost the keyboard its
+/// clock page before the user said yes (plan K-13): every upload passes
+/// here, a library item (`screen_upload`), a live card and the live screen
+/// going back to the own picture alike. The item to offer again: the one
+/// uploaded, or for a live card the user's own picture.
 fn screen_journal(library: &Arc<Mutex<ScreenLibrary>>) -> device::ScreenWriteHook {
     let library = library.clone();
     Box::new(move |step: ScreenWriteStep<'_>| {
-        let Ok(mut lib) = library.lock() else { return };
+        let Ok(mut lib) = library.lock() else { return Err("screen library unavailable".into()) };
         match step {
-            ScreenWriteStep::Starting { label, model_id } => {
+            ScreenWriteStep::Starting { label, record_id } => {
+                if record_id.is_some_and(|r| lib.clock_page_at_risk(r)) {
+                    return Err(ERR_CLOCK_PAGE.into());
+                }
                 let retry =
                     if label.starts_with("live:") { lib.live_own().map(|o| o.id) } else { Some(label.to_string()) };
-                lib.write_starting(model_id, retry);
+                lib.write_starting(record_id, retry);
             }
             ScreenWriteStep::Ended { flash_written, ok } => lib.write_ended(flash_written, ok),
         }
+        Ok(())
     })
 }
 
@@ -1777,11 +1916,62 @@ fn take_startup(app: &AppHandle) {
     std::thread::spawn(move || background.take_startup());
 }
 
+/// The app runs with the simulated keyboard (`KEYMOTION_SIM`).
+static SIMULATED: AtomicBool = AtomicBool::new(false);
+
+/// The app runs with the simulated keyboard (sim.rs): nothing of an
+/// installed copy may be reached (the agents' pipe gets its own name).
+pub(crate) fn simulated() -> bool {
+    SIMULATED.load(Ordering::Relaxed)
+}
+
+type PortsMaker = Box<dyn FnOnce() -> driver::Ports + Send>;
+
+/// Where the device actor finds keyboards: the HID subsystem, or in a
+/// debug build with the simulator the keyboard `KEYMOTION_SIM` names
+/// (then `true`). `Err`: the variable asks for a simulator this build does
+/// not have, and the app does not start, so no real keyboard is reached by
+/// mistake.
+fn keyboard_source() -> Result<(PortsMaker, bool), String> {
+    #[cfg(feature = "sim")]
+    if let Some(board) = sim::SimBoard::from_env() {
+        let board = board?;
+        return Ok((Box::new(move || driver::Ports::Sim(board)), true));
+    }
+    #[cfg(not(feature = "sim"))]
+    if cfg!(debug_assertions) && std::env::var("KEYMOTION_SIM").is_ok_and(|v| !v.trim().is_empty()) {
+        return Err("KEYMOTION_SIM is set, but this build has no keyboard simulator (build with `--features sim`); \
+                    not starting, so no real keyboard is reached"
+            .into());
+    }
+    Ok((Box::new(driver::Ports::hid), false))
+}
+
 pub fn run() {
     logging::init();
+    let (ports, simulated) = match keyboard_source() {
+        Ok(source) => source,
+        Err(e) => {
+            tracing::error!("{e}");
+            eprintln!("{e}");
+            return;
+        }
+    };
+    SIMULATED.store(simulated, Ordering::Relaxed);
+    #[cfg_attr(not(feature = "sim"), allow(unused_mut))]
+    let mut context = tauri::generate_context!();
+    if simulated {
+        // Its own data and log folders and single-instance lock, beside an
+        // installed copy.
+        #[cfg(feature = "sim")]
+        {
+            context.config_mut().identifier = sim::IDENTIFIER.to_string();
+        }
+        tracing::warn!(identifier = %context.config().identifier, "keyboard simulator: no real keyboard is reached");
+    }
     // The GitHub copy steps aside for an installed Store copy; a second
-    // start with Windows ends here.
-    if handoff::before_start() {
+    // start with Windows ends here. Not with the simulator.
+    if !simulated && handoff::before_start() {
         return;
     }
 
@@ -1862,7 +2052,7 @@ pub fn run() {
                 }
             });
         })
-        .setup(|app| {
+        .setup(move |app| {
             let version = app.package_info().version.to_string();
             match app.path().app_log_dir() {
                 Ok(dir) => logging::set_dir(&dir, &version),
@@ -1890,7 +2080,11 @@ pub fn run() {
                 calibration,
                 config_dir.clone(),
                 screen_journal(&library),
+                ports,
             ));
+            if simulated {
+                let _ = window.set_title("Keymotion (keyboard simulator)");
+            }
             let live = LiveHandle::spawn(app.handle().clone(), library.clone(), device.clone());
             app.manage(now_playing::spawn(app.handle().clone(), live.clone()));
             app.manage(PomodoroHandle::spawn(app.handle().clone(), live.clone(), device.clone(), config_dir.clone()));
@@ -1995,6 +2189,10 @@ pub fn run() {
             screen_rename,
             screen_remove,
             screen_upload,
+            screen_upload_cancel,
+            screen_ack_clock_page,
+            keyboard_backups,
+            keyboard_backup_restore,
             screen_find_driver_backup,
             screen_backup_from_driver,
             flash_write_state,
@@ -2074,13 +2272,51 @@ pub fn run() {
             profiles_import,
             profiles_load
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Keymotion");
+        .build(context)
+        .expect("error while building Keymotion")
+        .run(|_, _| {});
 }
 
 #[cfg(test)]
 mod tests {
-    use super::percent_decode;
+    use super::{percent_decode, record_of};
+    use crate::dto::KeyboardInfo;
+    use kb_core::detect::BlePeer;
+    use kb_transport::hid::{Bus, HidInterface};
+
+    #[test]
+    fn records_go_with_the_keyboard_the_app_shows() {
+        let collection = |pid, usage_page, bus, product: Option<&str>| HidInterface {
+            vid: 0x0C45,
+            pid,
+            release: 0x0106,
+            usage_page,
+            usage: 1,
+            interface_number: -1,
+            bus,
+            manufacturer: None,
+            product: product.map(str::to_string),
+            serial: None,
+            path: format!("p-{pid:x}-{usage_page:x}"),
+        };
+        let peer = BlePeer { name: "AK980 PRO-1".into(), address: 1, address_text: "1".into(), connected: true };
+        let cable = collection(0x8009, 0xFF13, Bus::Usb, Some("AK980 PRO"));
+        let bluetooth = collection(0xFEFE, 0x0001, Bus::Bluetooth, None);
+        let keyboards: Vec<KeyboardInfo> = kb_core::detect(&[cable, bluetooth], &[peer])
+            .iter()
+            .map(|k| KeyboardInfo::from_detected(k, None, None))
+            .collect();
+        assert_eq!(keyboards.len(), 2);
+        // A "04 xx" keyboard's records are its model's, as before families.
+        assert_eq!(record_of(&keyboards, "ajazz-ak980-pro"), "ajazz-ak980-pro");
+        // Nothing connected: the model id.
+        assert_eq!(record_of(&[], "ajazz-ak980-pro"), "ajazz-ak980-pro");
+        // The cable comes first.
+        let mut aa = keyboards.clone();
+        let usb = aa.iter_mut().find(|k| k.connection == crate::dto::Connection::Usb).unwrap();
+        usb.record_id = "ajazz-ak980-pro.aa".into();
+        assert_eq!(record_of(&aa, "ajazz-ak980-pro"), "ajazz-ak980-pro.aa");
+    }
 
     #[test]
     fn decodes_names_from_the_ui() {

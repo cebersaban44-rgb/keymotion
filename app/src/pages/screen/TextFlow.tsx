@@ -5,7 +5,8 @@ import { AlignCenter, AlignLeft, AlignRight, Type } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Field, Segmented, Slider, Toggle } from "../../components/controls";
 import { useT, type MessageKey } from "../../lib/i18n";
-import { H, PROVEN_FRAMES, W, toRgba, type Prepared } from "../../lib/screenImport";
+import { useScreenLimits } from "../../lib/screen";
+import { H, W, toRgba, type Prepared } from "../../lib/screenImport";
 import {
   EMOJI_PICKS,
   PALETTES,
@@ -28,7 +29,7 @@ import {
   type TemplateId,
 } from "../../lib/screenText";
 import { useApp } from "../../lib/store";
-import { EditFooter, Hint, PreviewPanel, StudioFrame, type Done, type Step } from "./common";
+import { EditFooter, Hint, PreviewPanel, StudioFrame, UnprovenHint, type Done, type Step } from "./common";
 import { friendlyError } from "../../lib/errors";
 
 type T = (k: MessageKey) => string;
@@ -88,6 +89,7 @@ function CardCanvas({
   onLayout?: (l: CardLayout) => void;
 }) {
   const locale = useApp((s) => s.locale);
+  const { maxFrames } = useScreenLimits();
   const ref = useRef<HTMLCanvasElement>(null);
   const layers = useRef<CardLayers | null>(null);
   const report = useRef(onLayout);
@@ -101,7 +103,7 @@ function CardCanvas({
       const ctx = ref.current?.getContext("2d");
       if (!live || !ctx) return;
       const ls = (layers.current ??= makeLayers());
-      const layout = layoutCard(spec, ls.fg, locale);
+      const layout = layoutCard(spec, ls.fg, locale, maxFrames);
       report.current?.(layout);
       const img = new ImageData(W, H);
       let i = 0;
@@ -119,7 +121,7 @@ function CardCanvas({
       live = false;
       window.clearTimeout(timer);
     };
-  }, [spec, locale, animate]);
+  }, [spec, locale, animate, maxFrames]);
 
   return <canvas ref={ref} width={W} height={H} className={`pixelated bg-black ${className}`} />;
 }
@@ -173,6 +175,7 @@ export function TextFlow({
   const t = useT();
   const localeT = useLocaleT();
   const locale = useApp((s) => s.locale);
+  const screen = useScreenLimits();
   const [spec, setSpec] = useState<CardSpec>(() => remembered?.spec ?? withTemplate(defaultSpec(), "name", false, t));
   const [edited, setEdited] = useState(remembered?.edited ?? false);
   const [layout, setLayout] = useState<CardLayout | null>(null);
@@ -208,7 +211,14 @@ export function TextFlow({
     setError(null);
     setPreparing({ done: 0, total: layout?.frames ?? 1 });
     try {
-      const r = await prepareCard(spec, locale, fallbackName, (done, total) => setPreparing({ done, total }), ctrl.signal);
+      const r = await prepareCard(
+        spec,
+        locale,
+        fallbackName,
+        (done, total) => setPreparing({ done, total }),
+        ctrl.signal,
+        screen.maxFrames,
+      );
       if (!ctrl.signal.aborted) {
         // Follow the title until the user names it themselves.
         if (!name.trim() || name === autoName.current) setName(fallbackName);
@@ -332,7 +342,7 @@ export function TextFlow({
             {t("sc.tx.speedRaised", { speed: t("sc.tx.pxs", { speed: layout!.speed! }) })}
           </Hint>
         )}
-        {frames > PROVEN_FRAMES && <Hint tone="note">{t("sc.warn.unproven")}</Hint>}
+        <UnprovenHint frames={frames} />
         {error && <Hint tone="error">{error}</Hint>}
       </div>
 

@@ -14,7 +14,7 @@ Bu sayfada klavyeyi değiştiren her adım yalnızca USB kablosuyla çalışır.
 
 ## Fabrika ekran animasyonunu geri getirme
 
-Klavyenin ekranında iki sayfa vardır. **Saat sayfası** hiç değişmez. **GIF sayfası** ise siz başka bir şey yükleyene kadar klavyeyle gelen animasyonu gösterir; her yükleme onun yerini alır. İki sayfa arasında klavyede Fn+Home ile geçersiniz.
+Klavyenin ekranında iki sayfa vardır. **Saat sayfası** hiç değişmez. **GIF sayfası** ise siz başka bir şey yükleyene kadar klavyeyle gelen animasyonu gösterir; her yükleme onun yerini alır. İki sayfa arasında klavyede Fn+Home ile geçersiniz. AJAZZ'ın 3.01 klavye yazılımında yükleme saat sayfasının da yerini alabilir ve aşağıdaki AJAZZ resmi sürücüsüyle yapılan adımlar sunulmaz; bkz. [Ekran](/keymotion/tr/guide/screen/#klavyenin-iki-sayfası).
 
 AJAZZ'ın animasyonu Keymotion'la birlikte gelmez, ama Keymotion onun bir kopyasını kütüphanenizde saklayabilir. Bu kopya varsa animasyonu istediğiniz zaman geri yükleyebilirsiniz.
 
@@ -60,7 +60,7 @@ Fabrika animasyonunun kopyası yoksa Ekran sayfası da bunu önerir: **Kütüpha
 
 ## Tuş atamalarını fabrika düzenine döndürme
 
-Klavye tuş atamasını geri okutmadığı için **Tuş atama** sayfasında Keymotion'dan son kaydettiğiniz düzen görünür.
+Klavye tuş atamasını geri okutmadığı için **Tuş atama** sayfasında Keymotion'dan son kaydettiğiniz düzen görünür. AJAZZ'ın 3.01 klavye yazılımında ise okutur: sayfa klavyenin kendisinden okunan tuş atamasını gösterir.
 
 <Steps>
 
@@ -100,6 +100,52 @@ Bir efekti kaydetmek, klavyedeki tuş başına renk tasarımının yerini alır.
 
 Tuşlarda ışık tasarımınız yerine çubuklar görünüyorsa sistem göstergeleri açıktır. Işıklar sayfası da bunu söyler. **Göstergelere git**'e tıklayıp **Tuşlarda göster**'i kapatın.
 
+## 3.01 klavye yazılımında klavyenin yedeği
+
+AJAZZ'ın 3.01 klavye yazılımındaki bir AK980 PRO'ya ilk bağlandığında Keymotion, bir şey yazabilmeden önce klavyenin ayarlarının yedeğini alır: iki katmandaki tuş atamaları, ışık efekti, tuş başına renkler ve makrolar. Ekrandaki görsel yedekte yoktur.
+
+Bir yedeği geri yüklemek için:
+
+<Screenshot name="aa-connection-backups" alt="3.01 klavye yazılımındaki bir klavyenin Bağlantı sayfası: Klavye saati kartı ve Klavye yedekleri; bu klavyenin bir yedeği Geri yükle düğmesiyle, bir yedek de Başka bir klavye ya da klavye yazılımı işaretiyle" />
+
+<Steps>
+
+1. Kabloyu takın ve **Bağlantı** sayfasını açın. **Klavye yedekleri** yedekleri en yenisi başta olmak üzere tarihi, neden alındığı (**İlk bağlantıda** ya da **Bir geri yüklemeden önce**) ve klavye yazılımıyla listeler. **Başka bir klavye ya da klavye yazılımı** diye işaretli bir yedek geri yüklenemez. Ekrana bir yükleme sürerken **Geri yükle** kapalıdır: "Ekrana bir yükleme sürüyor. Yedeği, yükleme bittikten sonra geri yükleyin."
+2. Yedeğin yanındaki **Geri yükle**'ye tıklayın. **Neler geri gelir** adımı Keymotion'ın neleri yazacağını listeler. Ekrandaki görsel yedekte yoktur; Fn tuşu ve döner düğme olduğu gibi kalır. Yedeğin makroları klavyenin belleğine sığmazsa hiçbir şey geri yüklenmez. **Geri yükle**'ye ya da burada durmak için **Vazgeç**'e tıklayın.
+3. Yedek ışık efektinin hangi renkte olduğunu söylemiyorsa Keymotion rengi **Işık rengi** adımında sorar.
+4. Kabloyu takılı tutun. Keymotion önce klavyenin o anki hâlinin yedeğini alır, böylece yeniden geri dönebilirsiniz; sonra yedeği yazar. **Bitti** adımı neyin geri yüklendiğini ve olduğu gibi bırakılan tuşları listeler. **Tamam**'a tıklayın.
+
+</Steps>
+
+<Screenshot name="aa-restore-check" alt="Neler geri gelir adımı: iki katmandaki tuş atamaları, ışık efekti, tuş başına renkler ve makrolar, geri yüklenmeyenler, Vazgeç ve Geri yükle düğmeleri" />
+
+Yedek geri yüklenirken başka sayfaları açabilirsiniz. O zaman bir bildirim "Klavye yedeği geri yükleniyor. Kabloyu çıkarmayın." der; sonunda da "Yedek klavyeye geri yüklendi" ya da **Ayrıntılar** düğmesiyle "Yedek geri yüklenmedi." der.
+
+Bundan sonra **Işıklar**, **Tuş atama** ve **Makrolar** sayfaları klavyede olanı gösterir. Keymotion yedeğin geri yüklediği ışığın rengini bilmiyorsa Işıklar sayfası onu henüz kaydedilmemiş olarak gösterir. Klavye ışığın kapalı olmasını ve tuş başına renkleri aynı biçimde bildirdiği için bir yedek ışığın bu ikisinden hangisi olduğunu bilmeyebilir; Keymotion o zaman yedekte renkli tuşlar varsa tuş başına renkleri, yoksa **Kapalı**'yı geri getirir.
+
+<Screenshot name="aa-restore-done" alt="Bitti adımı: Yedek klavyeye geri yüklendi, neyin geri yüklendiği, klavyede olduğu gibi bırakılan tuşlar ve Tamam düğmesi" />
+
+Keymotion her klavyenin ilk yedeğini ve en yeni dört yedeğini, veri klasöründeki `keyboard-backups` klasöründe saklar (**Ayarlar**'da, **Hakkında** bölümünde **Veri klasörü**).
+
+### Keymotion klavyeye hiçbir şey yazmadığında
+
+3.01 klavye yazılımında **Genel bakış**, **Bağlantı**, **Işıklar**, **Tuş atama**, **Makrolar**, **Ekran** ve **Profiller** sayfalarının üstündeki bir uyarı, Keymotion'ın klavyeye neden hiçbir şey yazmadığını söyler; yazacak düğmeler de kapalıdır:
+
+- **Keymotion bu klavyeyi yalnızca okuyor**, iki nedenden biriyle:
+  - Klavyenin bildirdikleri beklendiği gibi görünmüyor. Uyarıdaki **Sorun bildir**'e tıklayın. Bildirim penceresi Keymotion'ın klavyeden okuduklarıyla açılır; böylece nedenini bulabiliriz. Keymotion bu okumayı veri klasöründeki `keyboard-reads` klasöründe de makrolarınız olmadan tutar; dosyayı sizden isteyebiliriz.
+  - Keymotion klavyeyi okumayı bitiremedi. Klavyeyle konuşan diğer programları (örneğin AJAZZ'ın web sayfasını) kapatın; Keymotion klavyeyi kendiliğinden yeniden okur.
+- **Klavyenin yedeği alınamadı**: diskte boş yer olduğundan emin olun, sonra kabloyu çıkarıp yeniden takın.
+
+<Screenshot name="aa-read-only" alt="Keymotion bu klavyeyi yalnızca okuyor uyarısı ve Sorun bildir düğmesiyle Işıklar sayfası; Klavyeye kaydet kapalı" />
+
+### Kaydetme yarıda kaldıysa
+
+3.01 klavye yazılımında Keymotion klavyeye kaydederken kablo çıkarsa kaydedilenin henüz ulaşmamış kısmı eksik kalır. Keymotion klavye geri gelince onu yeniden okur ve üzerinde olanı gösterir. Bir sonraki kaydetme her şeyi düzeltir:
+
+- **Tuş atama:** kaydetmenin ulaşmadığı tuşlar eskisi gibi çalışmayabilir. **Tuş atama** sayfasında o katmanda herhangi bir değişiklik yapıp (örneğin **Katmanı sıfırla** ile) **Klavyeye kaydet**'e tıklayın ya da bir yedeği geri yükleyin: böyle her tuş, Fn tuşu ve topuz da dahil, fabrika işlevine döner.
+- **Makrolar:** kaydetmenin ulaşmadığı makrolar boş görünür. Makrolarınızı **Makrolar** sayfasında yeniden kaydedin ya da bir yedeği geri yükleyin; bu, klavyenin makro listesini onarır.
+- **Tuş başına renkler:** kaydetmenin ulaşmadığı tuşlar sönük kalır. Tasarımınızı **Işıklar** sayfasında yeniden kaydedin.
+
 ## Yükleme yarıda kaldıysa
 
 Ekrana yükleme sürerken kabloyu çıkarmayın. Kablo çıkarsa ya da Keymotion yükleme bitmeden kapanırsa GIF sayfasında görselin yalnızca bir kısmı kalır ve bozuk görünebilir. Saat sayfası bundan etkilenmez.
@@ -133,6 +179,8 @@ Klavye aynı anda tek bir programın komutlarını izler. İki program birlikte 
 O programı tamamen kapatın, sonra yeniden **Klavyeye kaydet**'e tıklayın. Klavyeye hiçbir şey yazılmamıştır; düzenlemeleriniz Keymotion'da durur.
 
 USB'ye birden fazla klavye bağlıyken de Keymotion kaydetmez: "Birden fazla klavye USB'ye bağlı. Kaydetmek için yalnızca birini bağlı bırakın."
+
+AJAZZ'ın 3.01 klavye yazılımında AJAZZ'ın klavye aracı tarayıcınızda çalışır; Keymotion onu orada göremez. Keymotion çalışırken onu kapatın. Klavye, Keymotion'ın sormadığı cevaplar gönderirse Keymotion başka bir programın klavyeyle konuşuyor gibi göründüğünü söyler; hiçbir şey engellenmez.
 
 ## Keymotion klavyeyi bulamıyorsa
 

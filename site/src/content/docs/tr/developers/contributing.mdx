@@ -67,6 +67,7 @@ Klavyenin kalıcı belleğine yazan komutlar `--yes` olmadan çalışmaz. `kb` k
 |---|---|
 | `main` | Yayımlanmış kod; GitHub'daki varsayılan dal. `main`'e yapılan her birleştirme bir sürümdür ve `vX.Y.Z` etiketi alır. |
 | `develop` | İşlerin toplandığı yer. Her zaman derlenir ve testlerini geçer. |
+| `beta/X.Y.Z-beta.N` | Bir beta: `develop`'tan açılan, `vX.Y.Z-beta.N` etiketi alan ve hiçbir yere birleştirilmeyen bir ön sürüm ([aşağıda](#beta-ön-sürüm)). |
 
 - `develop`'tan kısa ömürlü bir dal açın. Dal adları küçük harfli, İngilizce ve tireyle yazılır: `feature/keymap-editor`, `fix/mirror-gamma`, `docs/…`, `chore/…`.
 - PR'ı **`develop`** dalına açın: GitHub varsayılan dal olan `main`'i önerir, hedef dalı değiştirin. PR'ı tek bir değişiklikle sınırlı tutun. CI yeşil olunca PR tek commit'e indirilerek (squash) birleştirilir.
@@ -76,11 +77,44 @@ Klavyenin kalıcı belleğine yazan komutlar `--yes` olmadan çalışmaz. `kb` k
 - Commit mesajları İngilizce yazılır. İlk satır emir kipinde ve en çok 72 karakterdir; gövde nedenini anlatır.
 - Kişisel veri commit'lemeyin: Bluetooth adresleri, kullanıcı adınızı içeren yerel yollar, takvim adresleri, anahtarlar.
 
-Sürümleri proje sahibi, `tools/release/` altındaki betiklerle çıkarır (adımlar [Sürüm yayımlama](/keymotion/tr/developers/microsoft-store/#sürüm-yayımlama) bölümünde). Sürüm numarası `Cargo.toml`, `app/package.json` ve `app/src-tauri/tauri.conf.json` dosyalarında durur; `tools/check-version.mjs` üçünün aynı olduğunu denetler. `tools/release/prepare.mjs` numarayı yükseltir ve değişiklik listelerindeki **Unreleased** bölümlerini yeni sürüme çevirir. Bir sürüm PR'ı `develop`'u `main`'e birleştirir; ardından `tools/release/tag.mjs` `main`'i etiketler ve bu etiket sürüm iş akışını (`.github/workflows/release.yml`) başlatır. İş akışı kurulum dosyasını derler, taslak bir GitHub sürümü açar ve aynı sürümü Microsoft Store'a gönderir; Store sertifikasyonu geçince proje sahibi ikisini birlikte yayımlar. Sürüm dosyaları yalnızca bu iş akışında, `main`'deki bir etiketten ve derleme önbelleği kullanılmadan üretilir. Sürümden sonra `main`, bir birleştirme commit'iyle `develop`'a geri birleştirilir (bu PR'ı `tag.mjs` açar); böylece `develop` hiçbir zaman `main`'in gerisinde kalmaz.
+Sürümleri proje sahibi, `tools/release/` altındaki betiklerle çıkarır (adımlar [Sürüm yayımlama](/keymotion/tr/developers/microsoft-store/#sürüm-yayımlama) bölümünde). Sürüm numarası `Cargo.toml`, `app/package.json` ve `app/src-tauri/tauri.conf.json` dosyalarında durur; `tools/check-version.mjs` üçünün aynı olduğunu denetler. `tools/release/prepare.mjs` numarayı yükseltir ve değişiklik listelerindeki **Unreleased** bölümlerini yeni sürüme çevirir. Bir sürüm PR'ı `develop`'u `main`'e birleştirir; ardından `tools/release/tag.mjs` `main`'i etiketler ve bu etiket sürüm iş akışını (`.github/workflows/release.yml`) başlatır. İş akışı kurulum dosyasını derler, taslak bir GitHub sürümü açar ve aynı sürümü Microsoft Store'a gönderir; Store sertifikasyonu geçince proje sahibi ikisini birlikte yayımlar. Sürüm dosyaları yalnızca bu iş akışında, `main`'deki bir etiketten (betada, kendi `beta/*` dalındaki etiketten) ve derleme önbelleği kullanılmadan üretilir. Sürümden sonra `main`, bir birleştirme commit'iyle `develop`'a geri birleştirilir (bu PR'ı `tag.mjs` açar); böylece `develop` hiçbir zaman `main`'in gerisinde kalmaz.
+
+### Beta (ön sürüm)
+
+Beta, bir sonraki sürümü erkenden denemek içindir. Yalnızca GitHub'dadır ve ön sürüm (pre-release) olarak işaretlenir: normal bir kurulumun güncelleyicisi GitHub'ın en son sürümünü (latest) okur, bu da hiçbir zaman bir ön sürüm olmaz; bu yüzden betayı yalnızca onu elle kuranlar alır. Microsoft Store'a beta gitmez; `main`'den yayımlanan site de değişmez.
+
+<Steps>
+
+1. Dalı `develop`'tan açın ve sürümü hazırlayın:
+
+   ```bash
+   git switch -c beta/1.3.0-beta.1 develop
+   node tools/release/prepare.mjs 1.3.0-beta.1 --dry-run
+   node tools/release/prepare.mjs 1.3.0-beta.1
+   ```
+
+   Betik sürümü yükseltir ve her değişiklik listesine **Unreleased** bölümünün bir kopyası olarak `## [1.3.0-beta.1] - <tarih>` ekler. **Unreleased** olduğu gibi kalır: betadan sonraki sürüm her şeyi yeniden listeler. Betanın sürüm notları sayfasında bölümü ve "Yenilikler" metni olmaz.
+
+2. Commit'leyin ve dalı gönderin. CI, `beta/*` dallarına yapılan her gönderimde çalışır; PR açılmaz.
+
+3. CI yeşil olunca dalda etiketleyin:
+
+   ```bash
+   node tools/release/tag.mjs --dry-run
+   node tools/release/tag.mjs
+   ```
+
+   Betik dalın GitHub'a gönderildiğini, yayımlanmış her şeyi içerdiğini (`origin/main` içinde), `develop`'tan bu yana yalnızca `prepare.mjs`'in değiştirdiklerini (sürüm numarası ve değişiklik listeleri) değiştirdiğini ve CI'ın **Build and test** işinin dalda geçtiğini denetler. Sonra `v1.3.0-beta.1` etiketini gönderir. Geri birleştirme PR'ı açmaz.
+
+4. `release.yml` etiketin commit'ini aynı biçimde denetler (`tools/release/check-beta.mjs`), kurulum dosyasını derler, GitHub'da taslak bir ön sürüm hazırlar ve kurulum dosyasını temiz bir Windows'ta dener; Store paketi yapılmaz. Deneme geçince taslağı GitHub › Actions › **Publish a release** ile yayımlayın (iş akışı denemenin geçtiğini denetler): etiketten çalıştırın (Tags › `v1.3.0-beta.1`) ve **Only check** işaretini kaldırın. İş akışı taslağı ön sürüm olarak yayımlar, hiçbir zaman en son sürüm (latest) olarak değil; ardından GitHub'ın en son sürümü normal bir sürüm değilse hata verir.
+
+</Steps>
+
+Beta dalı hiçbir yere birleştirilmez; ondan `main`'e açılan bir PR'da CI başarısız olur. Düzeltmeler her zamanki gibi `develop`'a gelir; bir sonraki beta yeniden ondan açılır (`beta/1.3.0-beta.2`). Sürümün kendisi (`1.3.0`) her zamanki yoldan, **Unreleased** bölümü hâlâ her şeyi listeleyen `develop`'tan çıkar. Beta kurulumu bir sonraki betayı ve sürümü kendiliğinden bulur. Beta, Store kopyasına hiçbir zaman yol vermez: Store kopyası kurulu olsa da kendisi açılır. Ancak iki kopya aynı tek örnek kilidini (single-instance lock) paylaşır. Bu yüzden önce Store kopyasından çıkın, saatin yanındaki simgesinden de; yoksa betayı başlatmak yalnızca Store kopyasının penceresini öne getirir, Windows'ta oturum açılırken de hangisi önce başlarsa o kazanır.
 
 ## Denetimler
 
-CI (`.github/workflows/ci.yml`), `develop` ya da `main`'e açılan her PR'da ve bu dallara yapılan her birleştirmede çalışır. İki işi vardır.
+CI (`.github/workflows/ci.yml`), `develop` ya da `main`'e açılan her PR'da, bu dallara yapılan her birleştirmede ve `beta/*` dallarına yapılan her gönderimde çalışır. İki işi vardır.
 
 **Build and test** Windows'ta çalışır. Bir PR'ın birleştirilebilmesi için bu işin geçmesi gerekir.
 
@@ -90,7 +124,7 @@ CI (`.github/workflows/ci.yml`), `develop` ya da `main`'e açılan her PR'da ve 
 | Üretici dosyası yok (aşağıda) | `node tools/check-vendor-files.mjs` |
 | Sürüm numarası üç dosyada da aynı | `node tools/check-version.mjs` |
 | Sürüm betiklerinin testleri | `node --test "tools/release/*.test.mjs"` |
-| `main`'e açılan ve henüz etiketi olmayan bir sürüm getiren PR'ın sürüm metinleri yazılmış: değişiklik listeleri, sürüm notları, Store'un "Yenilikler" metni | `node tools/release/check-release.mjs` |
+| `main`'e açılan ve henüz etiketi olmayan bir sürüm getiren PR'ın sürüm metinleri yazılmış: değişiklik listeleri, sürüm notları, Store'un "Yenilikler" metni (`beta/*` dalında: betanın değişiklik listesi bölümleri) | `node tools/release/check-release.mjs` |
 | TypeScript tip denetimi ve arayüzün derlenmesi | `pnpm --dir app build` |
 | Tek bir uyarının bile kırmızı yaptığı ESLint | `pnpm --dir app lint` |
 | rustfmt | `cargo fmt --all -- --check` |

@@ -3,6 +3,7 @@ import type { KeyActionInfo } from "../bindings/KeyActionInfo";
 import type { KeyAssignment } from "../bindings/KeyAssignment";
 import type { KeymapLayer } from "../bindings/KeymapLayer";
 import type { KeymapState } from "../bindings/KeymapState";
+import { draftFits, IMPORTED, withoutFixed } from "./aaText";
 import { applyKeymap, getKeymapState } from "./ipc";
 
 /** led → action; keys not listed use the firmware default. */
@@ -16,20 +17,38 @@ export const FN_USAGE = 0xaf;
 const EMPTY: Layers = { base: {}, fn: {} };
 
 export interface KeymapStore {
-  /** Model the state below belongs to. */
-  modelId: string | null;
+  /** Record id (`KeyboardInfo.recordId`) of the keyboards the state below
+   *  belongs to. */
+  recordId: string | null;
   /**
-   * What the app last wrote to the keyboard (its own record: the keyboard
-   * cannot report its keymap). `null` until loaded.
+   * What the keyboard has: what the app last wrote ("04 xx", which cannot
+   * report its keymap), or what the keyboard itself holds ("AA", `readMs`).
+   * `null` until loaded.
    */
   saved: Layers | null;
   writtenMs: Record<KeymapLayer, number | null>;
+  /** LEDs of keys Keymotion neither shows nor changes ("AA" family): set
+   *  in another program, or one of the keyboard's own functions
+   *  (`builtin`). Not editable, kept by a save. */
+  fixed: Record<KeymapLayer, number[]>;
+  /** The part of `fixed` that is the keyboard's own function in the layer
+   *  (a factory reset, a mode switch). */
+  builtin: Record<KeymapLayer, number[]>;
+  /** Keys with an action whose default never comes back (their factory
+   *  function is one of the keyboard's own): no reset. */
+  pinned: Record<KeymapLayer, number[]>;
+  /** When `saved` was read from the keyboard itself; `null`: the app's own
+   *  record. */
+  readMs: number | null;
+  /** The keyboard's tables `saved` was read from ("AA"): sent with a save,
+   *  which the keyboard refuses when they changed since. */
+  source: string | null;
   /** Edits being made; equals `saved` when nothing is pending. */
   draft: Layers;
   layer: KeymapLayer;
   selected: number | null;
-  /** Load the record for `modelId`, keeping an unsaved draft for the same model. */
-  load: (modelId: string) => Promise<void>;
+  /** Load the record for `recordId`, keeping an unsaved draft for the same keyboards. */
+  load: (recordId: string) => Promise<void>;
   setLayer: (layer: KeymapLayer) => void;
   select: (led: number | null) => void;
   /** Assign `action` in `layer` (default: the current one); `default` removes the entry. */
@@ -45,9 +64,14 @@ export interface KeymapStore {
 const KEY = "ks.keymap.v1";
 
 interface Persisted {
+  /** The record id. Named after the model id it was until 1.2.x: the same
+   *  value for a keyboard of the "04 xx" family, so drafts saved then still
+   *  match. */
   modelId: string;
   draft: Layers;
   layer: KeymapLayer;
+  /** The record's `source` the draft was made against ("AA"). */
+  source?: string | null;
 }
 
 function loadPersisted(): Partial<Persisted> {
@@ -84,8 +108,8 @@ function layersOf(state: KeymapState): Layers {
 export const useKeymap = create<KeymapStore>((set, get) => {
   const stored = loadPersisted();
   const save = () => {
-    const { modelId, draft, layer } = get();
-    if (modelId) persist({ modelId, draft, layer });
+    const { recordId, draft, layer, source } = get();
+    if (recordId) persist({ modelId: recordId, draft, layer, source });
   };
   const update = (patch: Partial<KeymapStore>) => {
     set(patch);
@@ -94,39 +118,75 @@ export const useKeymap = create<KeymapStore>((set, get) => {
   const record = (state: KeymapState) => ({
     saved: layersOf(state),
     writtenMs: { base: state.base.writtenMs, fn: state.fn.writtenMs },
+    fixed: fixedOf(state),
+    builtin: { base: [...state.base.builtin], fn: [...state.fn.builtin] },
+    pinned: { base: [...state.base.pinned], fn: [...state.fn.pinned] },
+    readMs: state.readMs,
+    source: state.source,
   });
   return {
-    modelId: null,
+    recordId: null,
     saved: null,
     writtenMs: { base: null, fn: null },
+    fixed: { base: [], fn: [] },
+    builtin: { base: [], fn: [] },
+    pinned: { base: [], fn: [] },
+    readMs: null,
+    source: null,
     draft: EMPTY,
     layer: stored.layer === "fn" ? "fn" : "base",
     selected: null,
-    load: async (modelId) => {
-      const state = await getKeymapState(modelId);
-      const { saved, writtenMs } = record(state);
+    load: async (recordId) => {
+      const state = await getKeymapState(recordId);
+      const r = record(state);
       const kept = loadPersisted();
-      const draft = kept.modelId === modelId && kept.draft ? sanitize(kept.draft) : clone(saved);
-      update({ modelId, saved, writtenMs, draft });
+      // A draft made against what the keyboard no longer holds ("AA": its
+      // keys changed in another program since) goes.
+      const fits = kept.modelId === recordId && draftFits(kept.source, r.source);
+      const draft = fits && kept.draft ? sanitize(kept.draft, r.fixed) : clone(r.saved);
+      update({ recordId, ...r, draft });
     },
     setLayer: (layer) => update({ layer }),
     select: (selected) => set({ selected }),
     assign: (led, action, target) => {
       const { draft } = get();
       const layer = target ?? get().layer;
+      // Set in another program: kept as the keyboard has it. A key whose
+      // default never comes back takes other actions only.
+      if (get().fixed[layer].includes(led)) return;
+      if (action.kind === "default" && get().pinned[layer].includes(led)) return;
       const next = { ...draft[layer] };
       if (action.kind === "default") delete next[led];
       else next[led] = action;
       update({ draft: { ...draft, [layer]: next } });
     },
-    resetLayer: (layer) => update({ draft: { ...get().draft, [layer]: {} } }),
+    resetLayer: (layer) => {
+      // Keys whose default never comes back keep what they have.
+      const { draft, pinned } = get();
+      const kept: LayerMap = {};
+      for (const led of pinned[layer]) if (draft[layer][led]) kept[led] = draft[layer][led];
+      update({ draft: { ...draft, [layer]: kept } });
+    },
     save: async () => {
-      for (const layer of dirtyLayers(get())) {
-        const state = await applyKeymap(layer, toAssignments(get().draft[layer]));
-        const { saved, writtenMs } = record(state);
-        // The backend stores keys in canonical form; keep the draft in step.
-        const draft = { ...get().draft, [layer]: clone(saved)[layer] };
-        update({ saved, writtenMs, draft });
+      saving += 1;
+      try {
+        for (const layer of dirtyLayers(get())) {
+          // "AA": refused when the keys changed on the keyboard since `source`.
+          const state = await applyKeymap(layer, toAssignments(get().draft[layer]), get().source);
+          const r = record(state);
+          // The backend stores keys in canonical form; keep the draft in step.
+          const draft = { ...get().draft, [layer]: clone(r.saved)[layer] };
+          update({ ...r, draft });
+        }
+      } finally {
+        saving -= 1;
+        // The keyboard's records changed meanwhile (a refused save, another
+        // program): read them now that no layer is being written.
+        if (saving === 0 && adoptAfterSave) {
+          const id = adoptAfterSave;
+          adoptAfterSave = null;
+          void adoptKeymapRecord(id).catch(console.error);
+        }
       }
     },
     discard: () => {
@@ -137,42 +197,86 @@ export const useKeymap = create<KeymapStore>((set, get) => {
 });
 
 /**
- * A keymap from a backup, opened as unsaved edits for `modelId`: nothing is
- * written to the keyboard until the user saves it on the Key mapping page.
+ * A keymap from a backup, opened as unsaved edits for the keyboards of
+ * `recordId`: nothing is written to the keyboard until the user saves it on
+ * the Key mapping page.
  */
-export function stageKeymapImport(modelId: string, state: KeymapState) {
-  const draft = layersOf(state);
+export function stageKeymapImport(recordId: string, state: KeymapState) {
   const store = useKeymap.getState();
-  if (store.modelId === modelId) useKeymap.setState({ draft });
-  persist({ modelId, draft, layer: store.layer });
+  const draft = sanitize(layersOf(state), store.recordId === recordId ? store.fixed : { base: [], fn: [] });
+  if (store.recordId === recordId) useKeymap.setState({ draft });
+  persist({ modelId: recordId, draft, layer: store.layer, source: store.recordId === recordId ? store.source : IMPORTED });
 }
 
+/** A save of the page runs: the record is read again after it, not in the
+ *  middle (that would replace the draft of a layer still to be written). */
+let saving = 0;
+let adoptAfterSave: string | null = null;
+
 /**
- * The record may have changed outside the editor (a profile was loaded):
- * read it again. When it did, the draft (made against the old one) goes.
+ * The record may have changed outside the editor (a profile was loaded,
+ * the keyboard reported other keys): read it again. When it did, the draft
+ * (made against the old one) goes.
  */
-export async function adoptKeymapRecord(modelId: string) {
-  const state = await getKeymapState(modelId);
+export async function adoptKeymapRecord(recordId: string) {
+  if (saving > 0) {
+    adoptAfterSave = recordId;
+    return;
+  }
+  const state = await getKeymapState(recordId);
+  if (saving > 0) {
+    adoptAfterSave = recordId;
+    return;
+  }
   const saved = layersOf(state);
+  const fixed = fixedOf(state);
+  const builtin = { base: [...state.base.builtin], fn: [...state.fn.builtin] };
   const store = useKeymap.getState();
-  const old = store.modelId === modelId ? store.saved : null;
-  if (old && LAYERS.every((l) => sameLayer(old[l], saved[l]))) return;
-  if (store.modelId === modelId) {
+  const loaded = store.recordId === recordId;
+  const old = loaded ? store.saved : null;
+  const sameFixed = LAYERS.every((l) => store.fixed[l].join(",") === fixed[l].join(","));
+  if (old && sameFixed && LAYERS.every((l) => sameLayer(old[l], saved[l]))) {
+    // Read again, the same keys: the draft still fits.
+    useKeymap.setState({ readMs: state.readMs, source: state.source });
+    persist({ modelId: recordId, draft: store.draft, layer: store.layer, source: state.source });
+    return;
+  }
+  if (loaded) {
     useKeymap.setState({
       saved,
       writtenMs: { base: state.base.writtenMs, fn: state.fn.writtenMs },
+      fixed,
+      builtin,
+      pinned: { base: [...state.base.pinned], fn: [...state.fn.pinned] },
+      readMs: state.readMs,
+      source: state.source,
       draft: clone(saved),
     });
+  } else if (state.source !== null && draftFits(loadPersisted().source, state.source)) {
+    // Not loaded yet, and a kept draft still fits the keyboard: `load`
+    // takes it.
+    return;
   }
-  persist({ modelId, draft: clone(saved), layer: store.layer });
+  persist({ modelId: recordId, draft: clone(saved), layer: store.layer, source: state.source });
 }
 
 function clone(l: Layers): Layers {
   return { base: { ...l.base }, fn: { ...l.fn } };
 }
 
-function sanitize(l: Partial<Layers>): Layers {
-  return { base: { ...(l.base ?? {}) }, fn: { ...(l.fn ?? {}) } };
+/** Keys Keymotion neither shows nor changes, per layer: set in another
+ *  program, or the keyboard's own functions. */
+function fixedOf(state: KeymapState): Record<KeymapLayer, number[]> {
+  return {
+    base: [...state.base.fixed, ...state.base.builtin],
+    fn: [...state.fn.fixed, ...state.fn.builtin],
+  };
+}
+
+/** A draft as kept or imported: whole layers, without the keys set in
+ *  another program (never changed from here). */
+function sanitize(l: Partial<Layers>, fixed: Record<KeymapLayer, readonly number[]>): Layers {
+  return { base: withoutFixed(l.base ?? {}, fixed.base), fn: withoutFixed(l.fn ?? {}, fixed.fn) };
 }
 
 export function sameAction(a: KeyActionInfo | undefined, b: KeyActionInfo | undefined): boolean {

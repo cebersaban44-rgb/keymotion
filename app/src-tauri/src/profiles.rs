@@ -317,11 +317,6 @@ impl ProfileKeymap {
         }
     }
 
-    /// The actions of `layer`, for a write.
-    pub fn actions(&self, layer: Layer) -> Vec<(u8, KeyAction)> {
-        StoredLayer { entries: self.layer(layer).clone(), written_ms: None }.actions().into_iter().collect()
-    }
-
     /// Keys that differ from the factory layout, both layers.
     pub fn changes(&self) -> usize {
         self.base.len() + self.fn_layer.len()
@@ -333,7 +328,7 @@ impl ProfileKeymap {
         let mut out = Self::default();
         for layer in [Layer::Base, Layer::Fn] {
             let src = self.layer(layer);
-            let actions = StoredLayer { entries: src.clone(), written_ms: None }.actions();
+            let actions = StoredLayer { entries: src.clone(), ..Default::default() }.actions();
             if actions.len() != src.len() {
                 return None;
             }
@@ -358,7 +353,7 @@ fn macros_checked(slots: Vec<Option<StoredMacro>>) -> Option<Vec<Option<StoredMa
         .into_iter()
         .map(|m| m.map(|m| StoredMacro { name: m.name.trim().chars().take(MACRO_NAME_MAX).collect(), steps: m.steps }))
         .collect();
-    let image = StoredMacros { slots: slots.clone(), written_ms: None }.image_slots();
+    let image = StoredMacros { slots: slots.clone(), ..Default::default() }.image_slots();
     kb_protocol::sonix::macros::macro_image(&image).ok()?;
     Some(slots)
 }
@@ -412,6 +407,76 @@ pub struct Current {
     pub macros: Vec<Option<StoredMacro>>,
     /// The library item the GIF page shows.
     pub screen: Option<ProfileScreen>,
+    /// What the keyboard keeps whatever a profile says ("AA" family).
+    pub kept: KeptOnKeyboard,
+}
+
+/// Keys and macros of an "AA" keyboard that no write changes: set in
+/// another program, or (keys) one of the keyboard's own functions. A
+/// profile that names one leaves it as it is.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct KeptOnKeyboard {
+    pub base: Vec<u8>,
+    pub fn_layer: Vec<u8>,
+    /// Macro slots.
+    pub macros: Vec<u8>,
+    /// Keys with an action whose default never comes back (their factory
+    /// function is one of the keyboard's own), per layer: a profile that
+    /// doesn't name them leaves them as they are.
+    pub base_pinned: Vec<u8>,
+    pub fn_pinned: Vec<u8>,
+}
+
+impl KeptOnKeyboard {
+    fn layer(&self, layer: Layer) -> &[u8] {
+        match layer {
+            Layer::Base => &self.base,
+            Layer::Fn => &self.fn_layer,
+        }
+    }
+
+    fn pinned(&self, layer: Layer) -> &[u8] {
+        match layer {
+            Layer::Base => &self.base_pinned,
+            Layer::Fn => &self.fn_pinned,
+        }
+    }
+
+    /// What `current` would be compared with for a profile layer `keys`:
+    /// pinned keys the profile doesn't name stay as they are, whatever the
+    /// profile says, so they don't count; and how many there are.
+    fn comparable(
+        &self,
+        current: &BTreeMap<String, String>,
+        keys: &BTreeMap<String, String>,
+        layer: Layer,
+    ) -> (BTreeMap<String, String>, usize) {
+        let pinned = self.pinned(layer);
+        let mut out = current.clone();
+        out.retain(|led, _| keys.contains_key(led) || !led.parse::<u8>().is_ok_and(|l| pinned.contains(&l)));
+        let left = current.len() - out.len();
+        (out, left)
+    }
+
+    /// `layer` of `k` without the keys the keyboard keeps, and how many
+    /// were left out.
+    fn keys(&self, k: &ProfileKeymap, layer: Layer) -> (BTreeMap<String, String>, usize) {
+        let all = k.layer(layer);
+        let kept = self.layer(layer);
+        let out: BTreeMap<String, String> = all
+            .iter()
+            .filter(|(led, _)| !led.parse::<u8>().is_ok_and(|l| kept.contains(&l)))
+            .map(|(a, b)| (a.clone(), b.clone()))
+            .collect();
+        let left = all.len() - out.len();
+        (out, left)
+    }
+
+    /// The first macro slot `macros` fills that holds a macro made in
+    /// another program.
+    fn macro_clash(&self, macros: &[Option<StoredMacro>]) -> Option<usize> {
+        macros.iter().enumerate().find(|(i, m)| m.is_some() && self.macros.contains(&(*i as u8))).map(|(i, _)| i)
+    }
 }
 
 /// The built-in profile (see the module docs).
@@ -455,7 +520,12 @@ impl Profile {
             ProfilePart::Lighting => {
                 self.lighting.as_ref().is_none_or(|l| current.lighting.as_ref().is_some_and(|c| l.same(c)))
             }
-            ProfilePart::Keymap => self.keymap.as_ref().is_none_or(|k| *k == current.keymap),
+            ProfilePart::Keymap => self.keymap.as_ref().is_none_or(|k| {
+                [Layer::Base, Layer::Fn].into_iter().all(|l| {
+                    let (keys, _) = current.kept.keys(k, l);
+                    current.kept.comparable(current.keymap.layer(l), &keys, l).0 == keys
+                })
+            }),
             ProfilePart::Macros => self.macros.as_ref().is_none_or(|m| *m == current.macros),
             ProfilePart::Screen => {
                 self.screen.as_ref().is_none_or(|s| current.screen.as_ref().is_some_and(|c| c.id == s.id))
@@ -611,6 +681,12 @@ pub enum PartLoaded {
     Written,
     /// The keyboard had it already; nothing was written.
     Same,
+    /// Written, except keys the keyboard keeps (set in another program, or
+    /// one of its own functions: "AA" family).
+    Kept,
+    /// Not written: it would replace a macro made in another program
+    /// ("AA" family).
+    Skipped,
 }
 
 /// A library item, as far as a profile needs it: its name and upload pages.
@@ -906,6 +982,10 @@ pub trait Writer {
     fn lighting_stored(&mut self, lighting: &ProfileLighting) -> Result<(), String>;
 }
 
+/// A per-app profile whose macros were left out ([`PartLoaded::Skipped`]).
+pub const ERR_MACROS_KEPT: &str =
+    "the profile's macros were not loaded: they would replace a macro made in another program";
+
 /// The error of a part that failed: `profile part failed (keymap): …`. The
 /// UI names the part and words the cause (the backend's own error).
 fn part_failed(part: ProfilePart, e: String) -> String {
@@ -941,14 +1021,30 @@ pub fn load_part(
         }
         ProfilePart::Keymap => {
             let Some(k) = &profile.keymap else { return Ok(PartLoaded::Same) };
+            // Keys the keyboard keeps ("AA") are left out: never written over.
+            let mut left = 0;
             for layer in [Layer::Base, Layer::Fn] {
-                if k.layer(layer) != current.keymap.layer(layer) {
-                    w.keymap(layer, k.actions(layer)).map_err(|e| part_failed(part, e))?;
+                let (keys, out) = current.kept.keys(k, layer);
+                let (now, pinned) = current.kept.comparable(current.keymap.layer(layer), &keys, layer);
+                left += out + pinned;
+                if keys != now {
+                    let actions = StoredLayer { entries: keys, ..Default::default() }.actions().into_iter().collect();
+                    w.keymap(layer, actions).map_err(|e| part_failed(part, e))?;
                 }
+            }
+            if left > 0 {
+                tracing::info!(left, "profile keys the keyboard keeps were left out");
+                return Ok(PartLoaded::Kept);
             }
         }
         ProfilePart::Macros => {
             let Some(m) = &profile.macros else { return Ok(PartLoaded::Same) };
+            // A macro made in another program is never replaced ("AA"): the
+            // part waits rather than moving the profile's macros around.
+            if let Some(slot) = current.kept.macro_clash(m) {
+                tracing::info!(slot, "profile macros not loaded: a macro made in another program is in their slot");
+                return Ok(PartLoaded::Skipped);
+            }
             w.macros(m.clone()).map_err(|e| part_failed(part, e))?;
         }
         ProfilePart::Screen => return Err(ERR_SCREEN_PART.into()),
@@ -1128,6 +1224,7 @@ mod tests {
             keymap: keymap_with_a_on_fn(),
             macros: vec![Some(a_macro("imza")), None, Some(a_macro("ok"))],
             screen: Some(ProfileScreen { id: "00112233aabbccdd".into(), name: "Kedi".into() }),
+            kept: KeptOnKeyboard::default(),
         }
     }
 
@@ -1402,6 +1499,77 @@ mod tests {
         assert_eq!(run(&mut again, &after).unwrap(), vec![PartLoaded::Same; 3]);
         assert!(again.writes.is_empty());
         assert_eq!(load_part(&d, ProfilePart::Screen, &after, &mut again), Ok(PartLoaded::Same), "not in it");
+    }
+
+    #[test]
+    fn keys_and_macros_the_keyboard_keeps_are_left_alone() {
+        // "AA": key 33 on the Fn layer and macro slot 1 were set in another
+        // program (or 33 is one of the keyboard's own functions).
+        let kept = KeptOnKeyboard { base: vec![], fn_layer: vec![33], macros: vec![1], ..Default::default() };
+        let cur = Current { model_id: MODEL.into(), kept: kept.clone(), ..Current::default() };
+        let both = LayerMap::from([(33, KeyAction::key(0x04)), (34, KeyAction::key(0x05))]);
+        let profile = Profile {
+            keymap: Some(ProfileKeymap { base: BTreeMap::new(), fn_layer: StoredLayer::new(&both, 1).entries }),
+            macros: Some(vec![None, Some(a_macro("imza"))]),
+            ..default_profile()
+        };
+        let mut kb = FakeKeyboard::default();
+        // Only key 34 is written; the part says some were kept.
+        assert_eq!(load_part(&profile, ProfilePart::Keymap, &cur, &mut kb), Ok(PartLoaded::Kept));
+        assert_eq!(kb.writes, ["keymap Fn 1"]);
+        // Then the records hold 34 and the part counts as on the keyboard.
+        let only = LayerMap::from([(34, KeyAction::key(0x05))]);
+        let after = Current {
+            keymap: ProfileKeymap { base: BTreeMap::new(), fn_layer: StoredLayer::new(&only, 1).entries },
+            ..cur.clone()
+        };
+        assert!(profile.part_matches(ProfilePart::Keymap, &after));
+        // The macro would replace the one made elsewhere: nothing written.
+        assert_eq!(load_part(&profile, ProfilePart::Macros, &cur, &mut kb), Ok(PartLoaded::Skipped));
+        assert_eq!(kb.writes.len(), 1);
+        // In a free slot it goes.
+        let elsewhere = Profile { macros: Some(vec![Some(a_macro("imza"))]), ..profile.clone() };
+        assert_eq!(load_part(&elsewhere, ProfilePart::Macros, &cur, &mut kb), Ok(PartLoaded::Written));
+        // The Default profile never names them.
+        let d = default_profile();
+        assert_eq!(load_part(&d, ProfilePart::Keymap, &cur, &mut kb), Ok(PartLoaded::Same));
+    }
+
+    #[test]
+    fn a_key_whose_default_never_comes_back_does_not_keep_a_profile_off_the_keyboard() {
+        // "AA": key 40 on the Fn layer has a firmware function as its
+        // factory function and holds "a" now (set in AJAZZ's tool).
+        let a_on_40 = LayerMap::from([(40, KeyAction::key(0x04))]);
+        let cur = Current {
+            model_id: MODEL.into(),
+            keymap: ProfileKeymap { base: BTreeMap::new(), fn_layer: StoredLayer::new(&a_on_40, 1).entries },
+            kept: KeptOnKeyboard { fn_pinned: vec![40], ..Default::default() },
+            ..Current::default()
+        };
+        // The Default profile (factory layout) can't give it back: it is on
+        // the keyboard as far as it goes, nothing is written or counted.
+        let d = default_profile();
+        assert!(d.part_matches(ProfilePart::Keymap, &cur));
+        let mut kb = FakeKeyboard::default();
+        assert_eq!(load_part(&d, ProfilePart::Keymap, &cur, &mut kb), Ok(PartLoaded::Same));
+        assert!(kb.writes.is_empty());
+        // A profile with another key writes that one and says 40 was kept.
+        let b_on_41 = LayerMap::from([(41, KeyAction::key(0x05))]);
+        let other = Profile {
+            keymap: Some(ProfileKeymap { base: BTreeMap::new(), fn_layer: StoredLayer::new(&b_on_41, 1).entries }),
+            ..default_profile()
+        };
+        assert!(!other.part_matches(ProfilePart::Keymap, &cur));
+        assert_eq!(load_part(&other, ProfilePart::Keymap, &cur, &mut kb), Ok(PartLoaded::Kept));
+        assert_eq!(kb.writes, ["keymap Fn 1"]);
+        // A profile that names it gives it another action.
+        let b_on_40 = LayerMap::from([(40, KeyAction::key(0x05))]);
+        let named = Profile {
+            keymap: Some(ProfileKeymap { base: BTreeMap::new(), fn_layer: StoredLayer::new(&b_on_40, 1).entries }),
+            ..default_profile()
+        };
+        assert!(!named.part_matches(ProfilePart::Keymap, &cur));
+        assert_eq!(load_part(&named, ProfilePart::Keymap, &cur, &mut kb), Ok(PartLoaded::Written));
     }
 
     #[test]

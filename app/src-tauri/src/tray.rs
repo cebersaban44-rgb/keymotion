@@ -8,7 +8,8 @@
 //! * while a new version waits, "Update available: Keymotion 1.1.0" (or,
 //!   downloaded by "update by itself", "Install now: …"), which opens the
 //!   update dialog; the icon then carries a dot (updates.rs);
-//! * the keyboard and its connection (and battery, without the cable);
+//! * the keyboard and its connection (and battery, without the cable unless
+//!   the keyboard reports it there);
 //! * Open Keymotion;
 //! * Focus timer ▸ the phase and the minutes left, start / pause / resume,
 //!   skip to the next phase, stop;
@@ -110,10 +111,21 @@ pub struct Background {
     /// The window was minimized when last looked at.
     minimized: AtomicBool,
     refresh: Mutex<Option<Sender<()>>>,
+    /// The keyboard simulator runs: starting with Windows belongs to the
+    /// installed copy, whose `Run` value is neither read nor written.
+    simulated: bool,
 }
+
+/// The keyboard simulator does not touch starting with Windows.
+pub const ERR_START_SIMULATED: &str =
+    "not with the keyboard simulator: starting with Windows belongs to the installed copy";
 
 impl Background {
     pub fn open(dir: Option<PathBuf>) -> Arc<Self> {
+        Self::open_as(dir, crate::simulated())
+    }
+
+    fn open_as(dir: Option<PathBuf>, simulated: bool) -> Arc<Self> {
         let stored = dir.as_deref().and_then(|d| settings::load::<Stored>(d, FILE, VERSION)).unwrap_or_default();
         Arc::new(Self {
             stored: Mutex::new(stored),
@@ -124,6 +136,7 @@ impl Background {
             texts_received: AtomicBool::new(false),
             minimized: AtomicBool::new(false),
             refresh: Mutex::new(None),
+            simulated,
         })
     }
 
@@ -143,6 +156,14 @@ impl Background {
 
     pub fn settings(&self) -> BackgroundSettings {
         let close_to_tray = self.stored().close_to_tray;
+        if self.simulated {
+            return BackgroundSettings {
+                close_to_tray,
+                start_with_windows: false,
+                start_turned_off: false,
+                start_locked: true,
+            };
+        }
         if crate::channel::store() {
             use kb_winsys::startup::TaskState;
             let state = kb_winsys::startup::task_state(crate::channel::STARTUP_TASK)
@@ -206,6 +227,12 @@ impl Background {
         if wanted.close_to_tray != now.close_to_tray {
             self.save(Stored { close_to_tray: wanted.close_to_tray })?;
             tracing::info!(close_to_tray = wanted.close_to_tray, "background setting");
+        }
+        if self.simulated {
+            if wanted.start_with_windows {
+                return Err(ERR_START_SIMULATED.into());
+            }
+            return Ok(self.settings());
         }
         if crate::channel::store() {
             self.configure_task(now, wanted.start_with_windows)?;
@@ -374,6 +401,10 @@ struct KeyboardLine {
     name: String,
     connection: Connection,
     battery: Option<u8>,
+    /// The keyboard reports its battery on the cable too
+    /// (`KeyboardInfo::battery_over_usb`); else a reading there is the last
+    /// Bluetooth one, and the menu leaves it out.
+    battery_over_usb: bool,
 }
 
 /// What the menu is made from.
@@ -495,7 +526,7 @@ fn view_of(t: &TrayTexts, f: &Facts, now_ms: f64, tz: &TimeZone) -> View {
             // The name the UI gives the model in its language, if any.
             let name = t.model_names.get(&k.model_id).unwrap_or(&k.name).clone();
             let mut parts = vec![name, connection_word(t, k.connection).to_string()];
-            if let Some(n) = k.battery.filter(|_| k.connection != Connection::Usb) {
+            if let Some(n) = k.battery.filter(|_| k.connection != Connection::Usb || k.battery_over_usb) {
                 parts.push(fill(t, &t.battery, &[("n", &n.to_string())]));
             }
             parts.join(" · ")
@@ -591,6 +622,7 @@ fn keyboard_line(app: &AppHandle) -> Option<KeyboardLine> {
         name,
         connection: k.connection,
         battery: k.battery.as_ref().map(|b| b.percent),
+        battery_over_usb: k.battery_over_usb,
     })
 }
 
@@ -1070,6 +1102,22 @@ mod tests {
     use jiff::civil::date;
 
     #[test]
+    fn the_simulator_leaves_starting_with_windows_alone() {
+        let dir = std::env::temp_dir().join(format!("keymotion-tray-sim-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let b = Background::open_as(Some(dir.clone()), true);
+        let s = b.settings();
+        assert!(!s.start_with_windows && s.start_locked && !s.start_turned_off, "{s:?}");
+        let wanted = BackgroundSettings { start_with_windows: true, ..s };
+        assert_eq!(b.configure(wanted).unwrap_err(), ERR_START_SIMULATED);
+        // Closing to the tray is the simulator's own setting.
+        let wanted = BackgroundSettings { close_to_tray: !s.close_to_tray, ..s };
+        assert_eq!(b.configure(wanted).unwrap().close_to_tray, !s.close_to_tray);
+        assert_eq!(Background::open_as(Some(dir.clone()), true).settings().close_to_tray, !s.close_to_tray);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_start_for_an_agent_is_hidden_but_not_a_start_with_windows() {
         assert!(background_start(&["C:\\x\\keymotion.exe", "--background"]));
         assert!(background_start(&["C:\\x\\keymotion.exe", "keymotion://background"]));
@@ -1143,6 +1191,7 @@ mod tests {
                 name: "AJAZZ AK980 PRO".into(),
                 connection: Connection::Bluetooth,
                 battery: Some(80),
+                battery_over_usb: false,
             }),
             pomodoro: Some(pomodoro(PomodoroStatus::Running, PomodoroPhase::Focus, 1, 5.0 * 60_000.0)),
             reminders: Some((true, Some((at(12, 14, 30), "Su iç".into())))),
@@ -1177,10 +1226,19 @@ mod tests {
             name: "AJAZZ AK980 PRO".into(),
             connection: Connection::Usb,
             battery: Some(80),
+            battery_over_usb: false,
         });
         f.pomodoro = Some(pomodoro(PomodoroStatus::Idle, PomodoroPhase::Focus, 1, 0.0));
         let v = view_of(&t, &f, now, &tz);
         assert_eq!(v.keyboard, "AJAZZ AK980 PRO · USB cable");
+        // A keyboard that reports its battery on the cable: shown there too.
+        if let Some(k) = f.keyboard.as_mut() {
+            k.battery_over_usb = true;
+        }
+        assert_eq!(view_of(&t, &f, now, &tz).keyboard, "AJAZZ AK980 PRO · USB cable · battery 80%");
+        if let Some(k) = f.keyboard.as_mut() {
+            k.battery_over_usb = false;
+        }
         // The UI's name for the model, in Chinese the name it is sold under.
         let mut zh = t.clone();
         zh.model_names.insert("ajazz-ak980-pro".into(), "黑爵 AK980 V2（带屏版）".into());

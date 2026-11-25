@@ -4,11 +4,15 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import type { ScreenItem } from "../bindings/ScreenItem";
 import { percent, useT, type MessageKey } from "../lib/i18n";
-import { builtIn, useScreen } from "../lib/screen";
+import { builtIn, useScreen, useScreenLimits } from "../lib/screen";
 import { openSource, uploadSeconds, type Source } from "../lib/screenImport";
 import { InfoBar, Tabs } from "../components/controls";
+import { KeyboardNotices } from "../components/KeyboardNotices";
+import { useAaKeyboard, useWriteBlock } from "../lib/aa";
+import { useCornerRight } from "../lib/aaGuide";
 import { useApp, type ScreenTab } from "../lib/store";
 import {
+  CancelUpload,
   DriverBackup,
   FramePlayer,
   GifPicture,
@@ -46,14 +50,14 @@ export function Screen({ kb }: { kb: KeyboardInfo }) {
   const t = useT();
   const usb = kb.connection === "usb" && kb.hasCommandChannel && kb.features.includes("screen");
   const state = useScreen((s) => s.state);
-  const modelId = useScreen((s) => s.modelId);
-  const loaded = state !== null && modelId === kb.modelId;
+  const recordId = useScreen((s) => s.recordId);
+  const loaded = state !== null && recordId === kb.recordId;
   const tab = useApp((s) => s.screenTab);
   const setTab = useApp((s) => s.setScreenTab);
 
   useEffect(() => {
-    if (!loaded) useScreen.getState().load(kb.modelId).catch(console.error);
-  }, [kb.modelId, loaded]);
+    if (!loaded) useScreen.getState().load(kb.recordId).catch(console.error);
+  }, [kb.recordId, loaded]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -74,8 +78,9 @@ export function Screen({ kb }: { kb: KeyboardInfo }) {
       </header>
 
       {!usb && <InfoBar tone="warn" icon={<Usb size={20} strokeWidth={1.6} />} title={t("sc.needsUsb")} data="usb" />}
+      <KeyboardNotices kb={kb} />
 
-      <KeyboardScreens usb={usb} />
+      <KeyboardScreens usb={usb} aa={usb && kb.protocol === "ajazz-aa"} />
 
       {/* Kept mounted on other tabs, so a visual being made is not lost. */}
       <div className={tab === "visuals" ? "flex flex-col gap-5" : "hidden"}>
@@ -190,7 +195,10 @@ function Panel({
   );
 }
 
-function KeyboardScreens({ usb }: { usb: boolean }) {
+/** The keyboard's two pages. On a keyboard of AJAZZ's "AA" family an
+ *  upload may replace the clock page too (plan K-13): its lines say so
+ *  instead of "the clock page always stays". */
+function KeyboardScreens({ usb, aa }: { usb: boolean; aa: boolean }) {
   const t = useT();
   const state = useScreen((s) => s.state);
   const gif = useGifPage();
@@ -202,7 +210,7 @@ function KeyboardScreens({ usb }: { usb: boolean }) {
         <GifPicture gif={gif} />
       </Panel>
       <div className="flex min-w-0 flex-col gap-4">
-        <Panel label={t("sc.page.home")} sub={t("sc.page.home.sub")} className="max-w-[256px]">
+        <Panel label={t("sc.page.home")} sub={t(aa ? "sc.page.home.sub.aa" : "sc.page.home.sub")} className="max-w-[256px]">
           <ClockPage />
         </Panel>
         <div className="flex flex-col gap-2.5 text-[13px] text-ink-2">
@@ -220,12 +228,19 @@ function KeyboardScreens({ usb }: { usb: boolean }) {
           )}
           <p className="flex gap-2">
             <Info size={14} className="mt-0.5 shrink-0 text-signal" />
-            <span>{t("sc.pages.note")}</span>
+            <span>{t(aa ? "sc.pages.note.aa" : "sc.pages.note")}</span>
           </p>
-          <p className="flex gap-2">
-            <Check size={14} className="mt-0.5 shrink-0 text-ok" />
-            <span>{t("sc.pages.safe")}</span>
-          </p>
+          {aa ? (
+            <p className="flex gap-2" data-clock-page-note>
+              <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" />
+              <span>{t("sc.pages.aa")}</span>
+            </p>
+          ) : (
+            <p className="flex gap-2">
+              <Check size={14} className="mt-0.5 shrink-0 text-ok" />
+              <span>{t("sc.pages.safe")}</span>
+            </p>
+          )}
           <FactoryLine />
         </div>
       </div>
@@ -267,6 +282,8 @@ function FactoryLine() {
   const t = useT();
   const hasFactory = useHasFactory();
   const driver = useScreen((s) => s.driver);
+  // AJAZZ's old official driver doesn't know an "AA" keyboard's firmware.
+  const aa = useAaKeyboard();
   const keymotion = useScreen((s) => s.state?.items.find((i) => i.kind === "keymotion") ?? null);
   /** Bring Keymotion's animation into view in the library, its upload
    *  button focused (uploading still asks first). */
@@ -278,8 +295,8 @@ function FactoryLine() {
   };
   const [backedUp, setBackedUp] = useState(false);
   useEffect(() => {
-    if (!hasFactory) useScreen.getState().findDriver();
-  }, [hasFactory]);
+    if (!hasFactory && !aa) useScreen.getState().findDriver();
+  }, [hasFactory, aa]);
   if (hasFactory) {
     return backedUp ? (
       <p className="flex gap-2" role="status">
@@ -293,12 +310,15 @@ function FactoryLine() {
       <p className="flex gap-2">
         <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" />
         <span>
-          {t("sc.factory.missing")} {t(driver === "found" ? "sc.factory.driverFound" : "sc.factory.driverRestores")}
+          {t("sc.factory.missing")}
+          {!aa && <> {t(driver === "found" ? "sc.factory.driverFound" : "sc.factory.driverRestores")}</>}
         </span>
       </p>
-      <div className="pl-[22px]">
-        <DriverBackup onDone={() => setBackedUp(true)} />
-      </div>
+      {!aa && (
+        <div className="pl-[22px]">
+          <DriverBackup onDone={() => setBackedUp(true)} />
+        </div>
+      )}
       {keymotion && (
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-[22px]" data-keymotion-offer>
           <span>{t("sc.keymotion.offer")}</span>
@@ -352,8 +372,10 @@ function LibraryThumb({ item }: { item: ScreenItem }) {
 function Library({ kb, usb, loaded }: { kb: KeyboardInfo; usb: boolean; loaded: boolean }) {
   const t = useT();
   const name = useItemName();
+  const screen = useScreenLimits();
   const state = useScreen((s) => s.state);
   const upload = useScreen((s) => s.upload);
+  const blocked = useWriteBlock(kb);
   const [flow, setFlow] = useState<Flow | null>(null);
   const [done, setDone] = useState<Done | null>(null);
   const [matching, setMatching] = useState<ScreenItem | null>(null);
@@ -361,7 +383,8 @@ function Library({ kb, usb, loaded }: { kb: KeyboardInfo; usb: boolean; loaded: 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  // `warn`: the user stopped the upload (an "AA" keyboard's Cancel).
+  const [notice, setNotice] = useState<{ ok: boolean; warn?: boolean; text: string } | null>(null);
   const [kind, setKind] = useState<LibraryFilter>("all");
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(LIBRARY_PAGE);
@@ -420,7 +443,9 @@ function Library({ kb, usb, loaded }: { kb: KeyboardInfo; usb: boolean; loaded: 
       await useScreen.getState().uploadToKeyboard(it, "library");
       setNotice({ ok: true, text: `${t("sc.done.uploaded", { name: name(it) })}. ${t("sc.done.fnHome")}` });
     } catch (e) {
-      setNotice({ ok: false, text: friendlyError(e, t) });
+      // Stopped by the user, or the short wait after that: not a failure.
+      const stopped = /screen upload cancelled|upload stopped part-way/i.test(e instanceof Error ? e.message : String(e));
+      setNotice({ ok: false, warn: stopped, text: friendlyError(e, t) });
     }
   };
   const common = { usb, loaded, onCancel: () => setFlow(null), onFinished: finish };
@@ -519,8 +544,10 @@ function Library({ kb, usb, loaded }: { kb: KeyboardInfo; usb: boolean; loaded: 
         <button
           type="button"
           className="cb acc"
-          disabled={!selected || !usb || !!upload}
-          title={!usb ? t("sc.needsUsbShort") : selected?.kind === "factory" ? t("sc.factory.restoreHint") : undefined}
+          disabled={!selected || !usb || !!upload || !!blocked}
+          title={
+            !usb ? t("sc.needsUsbShort") : (blocked ?? (selected?.kind === "factory" ? t("sc.factory.restoreHint") : undefined))
+          }
           onClick={() => selected && setConfirmItem(selected)}
           data-library-upload
         >
@@ -606,7 +633,7 @@ function Library({ kb, usb, loaded }: { kb: KeyboardInfo; usb: boolean; loaded: 
       </AnimatePresence>
       {notice && (
         <div className="mb-3">
-          <InfoBar tone={notice.ok ? "ok" : "error"} live title={notice.text} />
+          <InfoBar tone={notice.ok ? "ok" : notice.warn ? "warn" : "error"} live title={notice.text} />
         </div>
       )}
 
@@ -660,7 +687,7 @@ function Library({ kb, usb, loaded }: { kb: KeyboardInfo; usb: boolean; loaded: 
               <span className="num text-[12px] text-ink-2">
                 {t("sc.frames", { count: it.frames })}
                 {it.frames > 1 ? ` · ${t("sc.loop")} ${fmtSeconds(it.loopMs / 1000)}` : ""} · {t("sc.uploadTime")} ~
-                {fmtSeconds(uploadSeconds(it.frames))}
+                {fmtSeconds(uploadSeconds(it.frames, screen.pageMs))}
               </span>
               <span className="flex flex-wrap gap-1.5">
                 {onKeyboard && (
@@ -727,6 +754,8 @@ export function ScreenUploadToast() {
   }, [running]);
   const visible = !!upload && !(page === "screen" && upload.origin === "editor");
   const left = upload ? remaining(upload, now) : null;
+  // Left of the test guide while it is open, never over its buttons.
+  const right = useCornerRight();
   return (
     <AnimatePresence>
       {visible && upload && (
@@ -734,7 +763,7 @@ export function ScreenUploadToast() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 12 }}
-          className="flyout fixed right-6 bottom-6 z-40 flex w-[340px] flex-col gap-2 p-4"
+          className={`flyout fixed bottom-6 z-40 flex w-[340px] flex-col gap-2 p-4 ${right}`}
           role="status"
         >
           <div className="flex items-center gap-2 text-[13px] font-semibold">
@@ -754,6 +783,7 @@ export function ScreenUploadToast() {
             </span>
           </div>
           <p className="text-[12px] text-ink-2">{t("sc.uploading.note")}</p>
+          <CancelUpload small />
         </motion.div>
       )}
     </AnimatePresence>

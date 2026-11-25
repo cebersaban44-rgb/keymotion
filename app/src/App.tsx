@@ -3,10 +3,12 @@ import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Row } from "./components/controls";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { RestoreToast } from "./components/KeyboardBackups";
 import { Reporting } from "./components/Reporting";
 import { Sidebar } from "./components/Sidebar";
 import { UnsavedDialog } from "./components/UnsavedDialog";
 import { SafetyDialogs, useSafetyDialogOpen } from "./components/SafetyDialogs";
+import { GuidePanel } from "./components/TestGuide";
 import {
   cancelQuit,
   closeWindow,
@@ -22,6 +24,7 @@ import {
   setWindowTheme,
 } from "./lib/ipc";
 import { follow } from "./lib/follow";
+import { useGuideFollow } from "./lib/aaGuide";
 import { useUnsupported } from "./lib/report";
 import { useUnsaved } from "./lib/unsaved";
 import { connectionKey, modelNames, tNow, useT, type MessageKey } from "./lib/i18n";
@@ -53,7 +56,7 @@ import { startReminders } from "./lib/reminders";
 import { startUpdates, useUpdates } from "./lib/updates";
 import { UpdateDialog, UpdateStrip } from "./components/Updates";
 import { useMacros } from "./lib/macros";
-import { followAutoWrites } from "./lib/profiles";
+import { followAutoWrites, followKeyboardRecords } from "./lib/profiles";
 import { useScreen } from "./lib/screen";
 import { followSelectWidths } from "./lib/selectWidth";
 import { OFFLINE_KEYBOARD } from "./lib/offline";
@@ -122,19 +125,24 @@ function useThemeSync() {
 }
 
 /**
- * Load the app's keymap, macro and screen records for the connected model,
- * so unsaved edits are known (and guarded) before their pages are opened.
+ * Load the app's keymap, macro and screen records for the connected
+ * keyboard (kept per record id: model and command family), so unsaved edits
+ * are known (and guarded) before their pages are opened.
  */
 function useKeyboardRecords() {
-  const modelId = useActiveKeyboard()?.modelId;
+  const kb = useActiveKeyboard();
+  const modelId = kb?.modelId;
+  const recordId = kb?.recordId;
   useEffect(() => {
-    if (!modelId) return;
-    useKeymap.getState().load(modelId).catch(console.error);
-    useMacros.getState().load(modelId).catch(console.error);
-    useScreen.getState().load(modelId).catch(console.error);
-  }, [modelId]);
+    if (!recordId) return;
+    useKeymap.getState().load(recordId).catch(console.error);
+    useMacros.getState().load(recordId).catch(console.error);
+    useScreen.getState().load(recordId).catch(console.error);
+  }, [recordId]);
   // A profile written by the per-app profiles: those records are read again.
   useEffect(() => (modelId ? followAutoWrites(modelId) : undefined), [modelId]);
+  // An "AA" keyboard's keys and macros, as the keyboard holds them.
+  useEffect(() => (modelId ? followKeyboardRecords(modelId) : undefined), [modelId]);
 }
 
 /** Words of the Pomodoro cards in the current language. */
@@ -193,8 +201,8 @@ function useTray() {
   const locale = useApp((s) => s.locale);
   const setWindowShown = useApp((s) => s.setWindowShown);
   const requestProfile = useApp((s) => s.requestProfile);
-  // A keyboard Keymotion can't drive yet (an AK980 PRO on AJAZZ's firmware
-  // 769, or another model): the menu says why no keyboard shows.
+  // A keyboard Keymotion can't drive yet (an AK980 PRO on an AJAZZ firmware
+  // it doesn't know, or another model): the menu says why no keyboard shows.
   const unsupported = useUnsupported();
   const newFirmware = unsupported.newFirmware.length > 0;
   const otherKeyboard = unsupported.list.length > 0;
@@ -203,7 +211,7 @@ function useTray() {
     setTrayTexts({
       locale,
       open: tNow("tray.open"),
-      noKeyboard: tNow(newFirmware ? "fw769.tray" : otherKeyboard ? "unsupported.tray" : "tray.noKeyboard"),
+      noKeyboard: tNow(newFirmware ? "newfw.tray" : otherKeyboard ? "unsupported.tray" : "tray.noKeyboard"),
       battery: tNow("tray.battery"),
       connUsb: tNow(connectionKey("usb")),
       connDongle: tNow(connectionKey("dongle")),
@@ -340,6 +348,7 @@ export default function App() {
   useKeyboardRecords();
   useLiveScreen();
   useTray();
+  useGuideFollow();
   const guard = useCloseGuard();
   const safetyOpen = useSafetyDialogOpen();
   const updateOpen = useUpdates((s) => s.dialog);
@@ -419,8 +428,11 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
         </main>
+        {/* The 3.01 test guide, beside every page while it is open. */}
+        <GuidePanel />
       </div>
       <ScreenUploadToast />
+      <RestoreToast />
       <SafetyDialogs />
       <ScreenNotices />
       <Reporting />

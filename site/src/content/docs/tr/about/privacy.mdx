@@ -37,7 +37,7 @@ Keymotion internete yalnızca iki iş için bağlanır: eklediğiniz takvimler v
 
 Keymotion sizin hakkınızda hiçbir şey göndermez. Aşağıdaki hizmetleri kullandığınızda onlar sıradan bir istek görür ve kendi gizlilik politikaları geçerlidir:
 
-- **GitHub**: güncelleme denetimi, indirmeler, sorun bildirme ve destek isteme. Bkz. [GitHub Genel Gizlilik Bildirimi](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
+- **GitHub**: güncelleme denetimi, indirmeler, sorun bildirme, destek isteme ve deneme rehberinin sonuçlarını paylaşma. Bkz. [GitHub Genel Gizlilik Bildirimi](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
 - **Microsoft**: bilgisayarda WebView2 (uygulamanın penceresini çizen Windows parçası) yoksa kurulum onu Microsoft'tan indirip kurar. Windows 11'de zaten vardır. Bkz. [Microsoft Gizlilik Bildirimi](https://www.microsoft.com/tr-tr/privacy/privacystatement).
 - **Eklediğiniz her takvimin hizmeti**, örneğin [Google](https://policies.google.com/privacy?hl=tr), [Microsoft Outlook](https://www.microsoft.com/tr-tr/privacy/privacystatement) ya da [Apple iCloud](https://www.apple.com/tr/legal/privacy/).
 
@@ -84,17 +84,19 @@ Her şey Windows kullanıcı klasörünüzdedir. **Ayarlar**'da, **Hakkında** b
   - `calibration.json`, `clock.json`, `lighting.json`, `pomodoro.json`, `gauges.json`, `music.json`, `reminders.json`, `battery.json`, `profiles.json`, `background.json`, `updates.json`, `games.json`, `agents.json`;
   - `auto-profiles.json`: **Uygulamaya göre** profilleriniz ve bir program için klavyeye profil kaydedildikten sonra, geri dönmek için klavyenin önceki ışığının, tuş atamasının ve makrolarının bir kopyası;
   - `game-history.json`: oyun oturumlarınız (oyun, başlangıç ve bitiş, okunan değerler, League of Legends sonucu). **Oyun oturumu** sayfasındaki **Geçmişi sil** onu boşaltır;
-  - `keymap.json` ve `macros.json`: Keymotion'ın klavyeye ne yazdığının tek kaydı (klavye bunları geri okutmaz);
+  - `keymap.json` ve `macros.json`: Keymotion'ın klavyeye ne yazdığının tek kaydı (klavye bunları geri okutmaz; AJAZZ'ın 3.01 klavye yazılımındaki bir klavyede ise Keymotion'ın ondan en son okudukları);
+  - `keyboard-backups\`: AJAZZ'ın 3.01 klavye yazılımındaki bir klavyenin tuş atamasının, ışığının ve makrolarının yedekleri; klavye ilk kez bağlandığında ve her geri yüklemeden önce alınır;
+  - `keyboard-reads\`: AJAZZ'ın 3.01 klavye yazılımındaki bir klavyenin bildirdikleri beklendiği gibi görünmediğinde, Keymotion'ın ondan okudukları ve neyin beklendiği gibi görünmediği: cihaz bilgisi, seçenekler ve ışık efekti; tuş ataması (iki katman ve fabrika Fn katmanı) ve tuş başına renkler olduğu gibi; makro tablosundaki adresler ve her makronun uzunluğu, ama makrolarınızın içeriği değil. Toplamda en fazla beş dosya tutulur, en eskisi önce silinir. Bir bildirim yetmezse geliştirici için tutulur; Keymotion bunları hiçbir zaman geri yüklemez;
   - `calendar.json`: takvimleriniz. Takvim adresleri parola gibidir; bu yüzden Windows kullanıcı hesabınıza özel olarak şifrelenir (Windows Veri Koruma). Başka bir kullanıcı ya da başka bir bilgisayar bunları okuyamaz;
   - `screen\`: görsel kütüphaneniz, aldıysanız fabrika animasyonunun kopyası ve son canlı kart.
 - **Günlük dosyaları**, `%LOCALAPPDATA%\dev.keymotion\logs\` klasöründe: her gün için bir dosya, son 7 gün, her biri en çok 4 MB; ayrıca kısa çökme notları. Yazılmadan önce web adresleri yalnızca sunucu adına indirilir ve Windows kullanıcı adınız klasör yollarından çıkarılır. Hatırlatma başlıkları ve toplantı adları hiç yazılmaz.
-- **Arayüz tercihleri**, `%LOCALAPPDATA%\dev.keymotion\EBWebView\` klasöründe: tema, dil ve henüz kaydetmediğiniz düzenlemeler. Bunları uygulamanın penceresi tutar.
+- **Arayüz tercihleri**, `%LOCALAPPDATA%\dev.keymotion\EBWebView\` klasöründe: tema, dil ve henüz kaydetmediğiniz düzenlemeler. Bunları uygulamanın penceresi tutar. AJAZZ'ın 3.01 klavye yazılımındaki bir klavye için deneme rehberindeki ilerlemeniz de burada durur: cevaplarınız ve notlarınız, Keymotion'ın kendi denetimlerinden hangilerini gördüğü ve davete verdiğiniz cevap. Siz kendiniz paylaşmadıkça buradan çıkmaz.
 
 Microsoft Store'dan kurulan Keymotion aynı klasörleri kullanır. Bu klasörler önceden yoksa (GitHub'daki Keymotion hiç kurulmadıysa) Windows onları uygulamanın kendi klasöründe tutar (`%LOCALAPPDATA%\Packages\<uygulamanın paket adı>\LocalCache\`) ve uygulamayı kaldırdığınızda siler; **Ayarlar**'daki düğmeler o zaman bu klasörü açar.
 
 ## Tanılama bilgisi
 
-**Ayarlar**'da, **Hakkında** bölümünde **Tanılama bilgisi** satırındaki **Kopyala** panoya bir metin koyar: uygulama, Windows ve WebView2 sürümleri; klavye modeli, klavye yazılımı ve bağlantısı; ayar dosyalarının adları ve boyutları; günlüğün son 150 satırı (yukarıdaki gibi temizlenmiş). Bu metin hiçbir yere gönderilmez. Bir iletiye yapıştırıp yapıştırmamaya siz karar verirsiniz.
+**Ayarlar**'da, **Hakkında** bölümünde **Tanılama bilgisi** satırındaki **Kopyala** panoya bir metin koyar: uygulama, Windows ve WebView2 sürümleri; klavye modeli, klavye yazılımı ve bağlantısı; ayar dosyalarının adları ve boyutları; günlüğün en fazla son 150 satırı (yukarıdaki gibi temizlenmiş; tekrarlanan bir satır bir kez, sayısıyla gösterilir, çok uzun bir satır kısaltılır, metin fazla uzayacaksa bu satırların en eskileri çıkarılır; metin bunu belirtir). AJAZZ'ın 3.01 klavye yazılımındaki bir klavyede, Keymotion'ın klavyeden bölüm bölüm okudukları ve onunla ilgili son hataları da metinde yer alır: cihaz bilgisi, seçenekler ve ışık efekti olduğu gibi; tuş ataması, tuş başına renkler ve makro tablosu için yalnızca sayılar (kaç girdinin boş olduğu ve ne türden oldukları); beklendiği gibi görünmeyen bir bölümün ise ilk ve son baytları (bunlar tuş ataması, tuş başına renkler ya da makro tablosundaki adresler olabilir). Makrolarınızın içeriği hiçbir zaman yer almaz. Bu metin hiçbir yere gönderilmez. Bir iletiye yapıştırıp yapıştırmamaya siz karar verirsiniz.
 
 ## Sorun bildirme ve destek isteme
 
@@ -102,6 +104,7 @@ Sorunları GitHub'da siz bildirirsiniz. Keymotion kendiliğinden hiçbir şey g�
 
 - **Sorun bildir** (**Ayarlar**'da **Hakkında** › **Geri bildirim**; beklenmeyen bir hatadan sonraki bildirim; çökmeden sonraki bildirim) bir pencere açar ve gönderilecek metni önce gösterir: yukarıdaki tanılama bilgisi, en üstte ne olduğu. **GitHub'da bildir** metni panoya koyar ve projenin GitHub'daki formunu tarayıcınızda açar. Metni oraya siz yapıştırır, göndermeye siz karar verirsiniz.
 - **Destek iste**, henüz desteklenmeyen bir SONiX ya da AJAZZ klavye takılınca görünür. Aynı şekilde çalışır; metinde klavyenin bilgileri vardır: USB kimlikleri, adı ve Windows'un tuttuğu HID tanımları. Klavyeye hiçbir şey yazılmaz. Seri numarası ve aygıt yolları eklenmez.
+- **Deneme rehberi** (AJAZZ'ın 3.01 klavye yazılımındaki bir klavye için) de metni önce gösterir: cevaplarınız ve notlarınız, Keymotion'ın kendisinin denetlediği adımlar, uygulama ve Windows sürümü ve Keymotion'ın klavye hakkında okudukları (yukarıdaki tanılama bilgisinin klavyeyle ilgili bölümü; makrolarınızın içeriği hiçbir zaman yok). **Kopyala ve GitHub'da aç** metni panoya koyar ve projenin formunu başlığı ve klavye modeli yazılı olarak açar; formdaki sorunun cevabını siz seçer, metni panodan siz yapıştırırsınız. **Yalnız kopyala** yalnızca kopyalar. Rehber hiçbir şey göndermez ve klavyeye hiçbir şey yazmaz.
 - **Bir çökmeden sonra** Keymotion bir sonraki açılışta son 7 günün en yeni çökme notunu bir kez önerir.
 
 ## Dışa aktarma, içe aktarma ve silme

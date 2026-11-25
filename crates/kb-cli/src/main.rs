@@ -17,7 +17,10 @@ mod png;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use kb_devices::{catalogue, match_ble_name, match_interface, Bus, InterfaceProbe, InterfaceRole};
+use kb_devices::{
+    catalogue, match_ble_name, match_interface, match_interfaces, Bus, InterfaceMatch, InterfaceProbe, InterfaceRole,
+    Protocol,
+};
 use kb_transport::hid::{self, Hid, HidInterface};
 
 #[derive(Parser)]
@@ -538,23 +541,50 @@ fn ensure_alone() -> Result<()> {
     Ok(())
 }
 
+/// The wired "04 xx" channel of `role` among the modes `iface` matches: kb
+/// drives no other command family.
+fn ff13_channel(
+    models: &'static [kb_devices::Model],
+    iface: &HidInterface,
+    role: InterfaceRole,
+) -> Option<InterfaceMatch<'static>> {
+    match_interfaces(models, &probe(iface))
+        .into_iter()
+        .find(|m| m.protocol == Protocol::SonixFf13 && m.role == role && m.mode.kind == kb_devices::ConnectionKind::Usb)
+}
+
+/// Why kb refuses a keyboard of AJAZZ's "AA" command family.
+const AA_REFUSED: &str = "Bu klavye AJAZZ'ın yeni \"AA\" komut ailesini konuşuyor (ör. AK980 PRO, firmware 769). \
+                          kb yalnızca \"04 xx\" ailesini sürer; hiçbir şey gönderilmedi.";
+
+/// A keyboard of the "AA" command family on the cable: a SONiX collection
+/// on FF68 with 64-byte output and input reports (its command channel).
+/// Only the descriptors the OS keeps are read; nothing is sent.
+fn aa_keyboard_on_cable(hid: &Hid) -> bool {
+    hid.interfaces().iter().any(|i| {
+        i.vid == kb_core::detect::SONIX_VID
+            && i.bus == hid::Bus::Usb
+            && i.usage_page == hid::DISPLAY_USAGE_PAGE
+            && hid.report_descriptor_at(&i.path).is_ok_and(|d| kb_core::shape::is_aa_command_shape(&d))
+    })
+}
+
 /// Open the wired command channel of the first supported keyboard.
 fn open_command() -> Result<(kb_core::sonix::SonixFf13<kb_transport::hid::HidChannel>, &'static kb_devices::Model)> {
     ensure_alone()?;
     let models = catalogue().map_err(|e| anyhow::anyhow!("{e}"))?;
     let hid = Hid::new()?;
     for iface in hid.interfaces() {
-        let Some(m) = match_interface(models, &probe(&iface)) else { continue };
-        if m.role == InterfaceRole::Command && m.mode.kind == kb_devices::ConnectionKind::Usb {
-            let ch = hid.open(&iface).context("komut kanalı açılamadı")?;
-            let desc = ch.report_descriptor().context("komut kanalının tanımlayıcısı okunamadı")?;
-            anyhow::ensure!(
-                kb_core::shape::is_command_shape(&desc),
-                "komut kanalının rapor düzeni beklenen \"04 xx\" ailesinin değil; hiçbir şey gönderilmedi"
-            );
-            return Ok((kb_core::sonix::SonixFf13::new(ch), m.model));
-        }
+        let Some(m) = ff13_channel(models, &iface, InterfaceRole::Command) else { continue };
+        let ch = hid.open(&iface).context("komut kanalı açılamadı")?;
+        let desc = ch.report_descriptor().context("komut kanalının tanımlayıcısı okunamadı")?;
+        anyhow::ensure!(
+            kb_core::shape::is_command_shape(&desc),
+            "komut kanalının rapor düzeni beklenen \"04 xx\" ailesinin değil; hiçbir şey gönderilmedi"
+        );
+        return Ok((kb_core::sonix::SonixFf13::new(ch), m.model));
     }
+    anyhow::ensure!(!aa_keyboard_on_cable(&hid), AA_REFUSED);
     anyhow::bail!("USB modunda klavye yok. Kablo takılı ve arkadaki anahtar ortada (USB) olmalı.")
 }
 
@@ -564,18 +594,21 @@ fn open_display() -> Result<kb_transport::hid::HidChannel> {
     let models = catalogue().map_err(|e| anyhow::anyhow!("{e}"))?;
     let hid = Hid::new()?;
     for iface in hid.interfaces() {
-        let Some(m) = match_interface(models, &probe(&iface)) else { continue };
-        if m.role == InterfaceRole::Display && m.mode.kind == kb_devices::ConnectionKind::Usb {
-            anyhow::ensure!(iface.usage_page == hid::DISPLAY_USAGE_PAGE, "ekran kanalı beklenmeyen usage page");
-            let ch = hid.open(&iface).context("ekran kanalı açılamadı")?;
-            let desc = ch.report_descriptor().context("ekran kanalının tanımlayıcısı okunamadı")?;
-            anyhow::ensure!(
-                kb_core::shape::is_display_shape(&desc),
-                "ekran kanalının rapor düzeni beklenen gibi değil; hiçbir şey gönderilmedi"
-            );
-            return Ok(ch);
+        if ff13_channel(models, &iface, InterfaceRole::Display).is_none() {
+            continue;
         }
+        anyhow::ensure!(iface.usage_page == hid::DISPLAY_USAGE_PAGE, "ekran kanalı beklenmeyen usage page");
+        let ch = hid.open(&iface).context("ekran kanalı açılamadı")?;
+        let desc = ch.report_descriptor().context("ekran kanalının tanımlayıcısı okunamadı")?;
+        // On an "AA" board FF68 is the command channel.
+        anyhow::ensure!(!kb_core::shape::is_aa_command_shape(&desc), AA_REFUSED);
+        anyhow::ensure!(
+            kb_core::shape::is_display_shape(&desc),
+            "ekran kanalının rapor düzeni beklenen gibi değil; hiçbir şey gönderilmedi"
+        );
+        return Ok(ch);
     }
+    anyhow::ensure!(!aa_keyboard_on_cable(&hid), AA_REFUSED);
     anyhow::bail!("USB modunda ekran kanalı yok. Kablo takılı ve arkadaki anahtar ortada (USB) olmalı.")
 }
 

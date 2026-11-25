@@ -17,8 +17,11 @@ import { NOW_PLAYING_SOURCE, fmtWait, useLive } from "../../lib/live";
 import { POMODORO_SOURCE, usePomodoro } from "../../lib/pomodoro";
 import { REMINDER_SOURCE, useReminders } from "../../lib/reminders";
 import { useApp } from "../../lib/store";
+import { useScreenLimits } from "../../lib/screen";
 import { uploadSeconds } from "../../lib/screenImport";
+import { useWriteBlock } from "../../lib/aa";
 import { calendarStatus } from "./CalendarPanel";
+import { useClockAsk } from "./Safety";
 import { FramePlayer, Hint, fmtSeconds, loadFrames, pickThumb, useItemName, useNow } from "./common";
 import { friendlyError } from "../../lib/errors";
 
@@ -35,6 +38,7 @@ export function LivePanel({ usb }: { usb: boolean }) {
   const drawError = useLive((x) => x.drawError);
   const configure = useLive((x) => x.configure);
   const [closing, setClosing] = useState(false);
+  const readOnly = useWriteBlock();
   useNow(); // refresh the waiting times
   if (!s) return null;
   const plan = PLANS.find((p) => p.id === s.plan) ?? PLANS[1]!;
@@ -84,6 +88,24 @@ export function LivePanel({ usb }: { usb: boolean }) {
       </div>
 
       <StatusLine s={s} usb={usb} />
+      {s.enabled && s.clockAckNeeded && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warn/40 bg-warn/10 px-4 py-3" data-live-clock-waiting>
+          <span className="flex gap-2 text-[13px] text-ink">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" aria-hidden />
+            {t("sc.live.clock.waiting")}
+          </span>
+          {readOnly ? (
+            // No upload could follow a yes: why not, instead of the question.
+            <span className="text-[12px] text-ink-2" data-live-clock-read-only>
+              {readOnly}
+            </span>
+          ) : (
+            <button type="button" onClick={() => useClockAsk.setState({ later: false, open: true })} className="btn-secondary" data-live-clock-answer>
+              {t("sc.live.clock.answer")}
+            </button>
+          )}
+        </div>
+      )}
       {!s.enabled && s.restore && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line px-4 py-3" data-live-leftover>
           <span className="text-[13px] text-ink-2">
@@ -147,6 +169,7 @@ function fmtSoon(ms: number, units: { s: string; h: string; m: string }) {
 function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) {
   const t = useT();
   const name = useItemName();
+  const screen = useScreenLimits();
   const p = usePomodoro((x) => x.state);
   const cal = useCalendar((x) => x.state);
   const configureCal = useCalendar((x) => x.configure);
@@ -305,7 +328,7 @@ function ScreenOrder({ s, set }: { s: LiveState; set: (patch: Patch) => void }) 
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="truncate text-[13px] font-semibold">{name(s.own)}</span>
                 <span className="num text-[12px] text-ink-3">
-                  {t("sc.frames", { count: s.own.frames })} · {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(s.own.frames))}
+                  {t("sc.frames", { count: s.own.frames })} · {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(s.own.frames, screen.pageMs))}
                 </span>
                 {goingBack != null && (
                   <span className="flex items-center gap-1.5 text-[12px] text-signal" data-going-back>
@@ -422,6 +445,7 @@ function TurnOff({
 }) {
   const t = useT();
   const name = useItemName();
+  const screen = useScreenLimits();
   const [thumb, setThumb] = useState<Uint16Array | null>(null);
   useEffect(() => {
     let live = true;
@@ -469,7 +493,7 @@ function TurnOff({
           <div className="flex min-w-0 flex-col gap-0.5">
             <span className="truncate text-[13px] font-semibold">{name(restore)}</span>
             <span className="num text-[12px] text-ink-3">
-              {t("sc.frames", { count: restore.frames })} · {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(restore.frames))}
+              {t("sc.frames", { count: restore.frames })} · {t("sc.uploadTime")} ~{fmtSeconds(uploadSeconds(restore.frames, screen.pageMs))}
             </span>
           </div>
         </div>

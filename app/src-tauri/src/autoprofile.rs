@@ -81,6 +81,9 @@ pub trait Host: Send + Sync {
     /// Write `profile`'s lighting, key mapping and macros (not the screen);
     /// the number of parts written (0: the keyboard had them).
     fn write(&self, profile: &Profile) -> Result<u32, String>;
+    /// The model of the keyboard on the cable; `None` while there is none
+    /// (a profile refused on it is tried again after it comes back).
+    fn on_cable(&self) -> Option<String>;
     /// The game this program is, as the game session sees it.
     fn game(&self, front: &Front) -> Option<String>;
     /// The game whose session runs now.
@@ -310,6 +313,46 @@ struct Inner {
     last_error: Option<String>,
     recent: Vec<AutoProgram>,
     dirty: bool,
+    /// Profiles refused on the keyboard on the cable.
+    held: Held,
+}
+
+/// A failed write that no retry on this keyboard changes (the profile's
+/// macros would replace macros made in another program): held. Any other
+/// failure (another program open, the firmware question, a busy keyboard,
+/// two keyboards on the cable) is tried again on the next switch.
+fn holds(error: &str) -> bool {
+    error == crate::profiles::ERR_MACROS_KEPT
+}
+
+/// Profiles whose write was refused for good while one keyboard is on the
+/// cable ([`holds`]): not tried again on every switch, only after the
+/// keyboard was unplugged (or another one came).
+#[derive(Debug, Default)]
+struct Held {
+    /// The keyboard the list is about ([`Host::on_cable`]).
+    on: Option<String>,
+    ids: Vec<String>,
+}
+
+impl Held {
+    /// The keyboard on the cable now: another one (or none) clears the list.
+    fn see(&mut self, on_cable: Option<String>) {
+        if self.on != on_cable {
+            self.on = on_cable;
+            self.ids.clear();
+        }
+    }
+
+    fn blocks(&self, id: &str) -> bool {
+        self.ids.iter().any(|h| h == id)
+    }
+
+    fn refused(&mut self, id: &str) {
+        if !self.blocks(id) {
+            self.ids.push(id.to_string());
+        }
+    }
 }
 
 enum Msg {
@@ -353,6 +396,7 @@ impl AutoProfiles {
             last_error: None,
             recent: Vec::new(),
             dirty: true,
+            held: Held::default(),
         }));
         let (tx, rx) = mpsc::channel();
         let handle =
@@ -475,9 +519,13 @@ impl AutoProfiles {
         let in_front = self.hub.last();
         let session = host.session();
         let quiet = on && host.quiet();
+        let on_cable = host.on_cable();
 
         let Ok(mut guard) = self.inner.lock() else { return IDLE };
         let inner = &mut *guard;
+        // Another keyboard, or the same one plugged in again: refused
+        // profiles get another try.
+        inner.held.see(on_cable);
         let s = inner.stored.settings.clone();
         // The game's session ended (or another game's began).
         let ended = inner.session.is_some() && inner.session != session;
@@ -561,6 +609,12 @@ impl AutoProfiles {
     fn write(&self, host: &dyn Host, what: Write, target: Target) {
         let (stored_back, mode, base) = {
             let Ok(mut inner) = self.inner.lock() else { return };
+            if let Write::Profile(id) = &what {
+                if inner.held.blocks(id) {
+                    tracing::debug!(profile = %id, "per-app profile was refused on this keyboard; not tried again");
+                    return;
+                }
+            }
             if inner.stored.writes_day != today() {
                 inner.stored.writes_day = today();
                 inner.stored.writes = 0;
@@ -629,6 +683,11 @@ impl AutoProfiles {
             Some(Err(e)) => {
                 tracing::warn!("per-app profile not written: {e}");
                 inner.last_error = Some(e.clone());
+                if let Write::Profile(id) = &what {
+                    if holds(e) {
+                        inner.held.refused(id);
+                    }
+                }
             }
             None => {}
         }
@@ -682,6 +741,39 @@ mod tests {
 
     fn rule(path: &str, profile: &str) -> AutoRule {
         AutoRule { path: path.into(), name: path.into(), profile: profile.into(), writes: false }
+    }
+
+    #[test]
+    fn only_a_refusal_for_good_holds_a_profile() {
+        assert!(holds(crate::profiles::ERR_MACROS_KEPT));
+        // Conditions the user clears: tried again on the next switch
+        // ("04 xx" keyboards too).
+        for passing in [
+            "another program is using the keyboard (ajazz-driver)",
+            "untested keyboard firmware 1.07",
+            "more than one keyboard on the USB cable",
+            "keyboard did not answer in time",
+            "profile part failed (keymap): no valid echo",
+        ] {
+            assert!(!holds(passing), "{passing}");
+        }
+    }
+
+    #[test]
+    fn a_refused_profile_is_tried_once_per_connection() {
+        let mut held = Held::default();
+        held.see(Some("ajazz-ak980-pro".into()));
+        assert!(!held.blocks("work"));
+        held.refused("work");
+        held.refused("work");
+        assert!(held.blocks("work") && !held.blocks("games"));
+        // The same keyboard, still on the cable: not again.
+        held.see(Some("ajazz-ak980-pro".into()));
+        assert!(held.blocks("work"));
+        // Unplugged (and plugged in again): another try.
+        held.see(None);
+        held.see(Some("ajazz-ak980-pro".into()));
+        assert!(!held.blocks("work"));
     }
 
     #[test]

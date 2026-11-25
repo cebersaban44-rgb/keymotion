@@ -70,4 +70,11 @@ goingBack: LiveBack | null,
  * the GIF page probably still shows the factory animation, which the
  * first card erases for good. Asked once.
  */
-factoryAckNeeded: boolean, };
+factoryAckNeeded: boolean, 
+/**
+ * The keyboard on the cable would lose its clock page with the next
+ * upload (an "AA" keyboard whose screen the app never wrote, and the
+ * user has not said yes: `screen_ack_clock_page`). No card goes and
+ * the screen does not go back to the own picture until then.
+ */
+clockAckNeeded: boolean, };

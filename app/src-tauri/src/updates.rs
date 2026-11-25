@@ -315,6 +315,14 @@ impl Updates {
             tracing::info!(version = %current, by_itself = note.as_ref().is_some_and(|n| n.by_itself), "updated");
             me.tell_installed(&current, note.is_some_and(|n| n.by_itself));
         }
+        // The keyboard simulator is a development run beside the installed
+        // copy: it neither takes over the `keymotion:` link (the installed
+        // copy's, or a later start of this debug program would drive a real
+        // keyboard) nor looks for, downloads or installs an update.
+        if crate::simulated() {
+            tracing::info!("keyboard simulator: no update look, the keymotion: link left alone");
+            return me;
+        }
         if crate::channel::store() {
             tracing::info!("updates come from the Microsoft Store");
             // Windows closes the app to install a Store update: come back
@@ -458,6 +466,9 @@ impl Updates {
     /// Ask GitHub. `by_hand`: the user pressed the button, so the window is
     /// in front and needs no notification.
     async fn look(self: &Arc<Self>, by_hand: bool) {
+        if crate::simulated() {
+            return;
+        }
         // A downloaded update waits to be installed: nothing to ask.
         if self.busy() || crate::channel::store() || matches!(self.status(), UpdateStatus::Ready { .. }) {
             return;

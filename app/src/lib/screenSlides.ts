@@ -34,11 +34,13 @@ export function framesFor(seconds: number) {
   return Math.max(1, Math.ceil((seconds * 1000) / MAX_DELAY_MS));
 }
 
-export function budget(seconds: number[], transition: Transition) {
+/** Frames and loop time of a slideshow, and whether it fits a keyboard
+ *  that takes `maxFrames` (`KeyboardInfo.limits.screen`). */
+export function budget(seconds: number[], transition: Transition, maxFrames = MAX_FRAMES) {
   const fades = transition === "fade" && seconds.length > 1 ? FADE_FRAMES * seconds.length : 0;
   const frames = seconds.reduce((a, s) => a + framesFor(s), 0) + fades;
   const loopMs = seconds.reduce((a, s) => a + s * 1000, 0) + fades * FADE_MS;
-  return { frames, loopMs, fits: frames <= MAX_FRAMES };
+  return { frames, loopMs, fits: frames <= maxFrames };
 }
 
 function evenDelay(ms: number) {

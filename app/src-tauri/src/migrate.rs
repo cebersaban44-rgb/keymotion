@@ -13,6 +13,11 @@ pub const IDENTIFIER: &str = "dev.keymotion";
 /// printed: logging is not set up yet, and the app still starts (with empty
 /// settings) if a folder cannot be moved.
 pub fn move_old_data() {
+    // The keyboard simulator (a debug build with `KEYMOTION_SIM`) has
+    // folders of its own and moves nobody else's.
+    if cfg!(debug_assertions) && std::env::var_os("KEYMOTION_SIM").is_some_and(|v| !v.is_empty()) {
+        return;
+    }
     #[cfg(windows)]
     for var in ["APPDATA", "LOCALAPPDATA"] {
         let Some(base) = std::env::var_os(var).map(std::path::PathBuf::from) else { continue };

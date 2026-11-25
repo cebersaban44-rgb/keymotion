@@ -18,5 +18,16 @@ serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
+[features]
+# `aa::sim`: a simulated "AA" keyboard (AK980 PRO, firmware 769) for
+# developing without one. Always on in this crate's own tests.
+sim = []
+
+[dev-dependencies]
+# Backups as the app stores them (JSON).
+serde_json.workspace = true
+# Test catalogues with model files that are not shipped.
+toml.workspace = true
+
 [lints]
 workspace = true

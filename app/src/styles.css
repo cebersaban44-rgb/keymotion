@@ -945,6 +945,14 @@ select option {
   min-width: 120px;
 }
 
+/* The 3.01 test guide beside the page (components/TestGuide.tsx): the
+   page's layer, with an edge of its own. */
+.guide-pane {
+  background: var(--layer);
+  border-top: 1px solid var(--layer-edge);
+  border-left: 1px solid var(--layer-edge);
+}
+
 /* A menu or tooltip floating over the page. */
 .flyout {
   border-radius: 8px;

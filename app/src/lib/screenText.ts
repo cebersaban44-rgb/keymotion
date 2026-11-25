@@ -263,8 +263,14 @@ function rng(seed: number) {
   };
 }
 
-/** Lay a card out once (measuring its text); `draw` then paints any frame. */
-export function layoutCard(spec: CardSpec, ctx: CanvasRenderingContext2D, locale: string): CardLayout {
+/** Lay a card out once (measuring its text); `draw` then paints any frame.
+ *  A moving title loops within `maxFrames` (`KeyboardInfo.limits.screen`). */
+export function layoutCard(
+  spec: CardSpec,
+  ctx: CanvasRenderingContext2D,
+  locale: string,
+  maxFrames = MAX_FRAMES,
+): CardLayout {
   const title = (spec.upper ? spec.title.toLocaleUpperCase(locale) : spec.title).trim();
   const subtitle = spec.subtitle.trim();
   const still = (shrunkTo: number | null, paint: (fg: CanvasRenderingContext2D) => void): CardLayout => ({
@@ -371,7 +377,7 @@ export function layoutCard(spec: CardSpec, ctx: CanvasRenderingContext2D, locale
       // Whole-pixel steps keep glyphs sharp; the gap absorbs the rounding so
       // the loop closes exactly.
       let step = Math.max(1, Math.round(spec.speed / fps));
-      step = Math.max(step, Math.ceil((textW + minGap) / MAX_FRAMES));
+      step = Math.max(step, Math.ceil((textW + minGap) / maxFrames));
       const frames = Math.max(2, Math.ceil((textW + minGap) / step));
       const dist = frames * step;
       const gap = dist - textW;
@@ -576,10 +582,11 @@ export async function prepareCard(
   name: string,
   onProgress?: (done: number, total: number) => void,
   signal?: AbortSignal,
+  maxFrames = MAX_FRAMES,
 ): Promise<Prepared> {
   await ensureFonts(spec);
   const layers = makeLayers();
-  const layout = layoutCard(spec, layers.fg, locale);
+  const layout = layoutCard(spec, layers.fg, locale, maxFrames);
   const frames: Uint16Array[] = [];
   for (let i = 0; i < layout.frames; i++) {
     if (signal?.aborted) throw new DOMException("aborted", "AbortError");

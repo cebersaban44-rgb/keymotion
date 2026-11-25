@@ -99,6 +99,20 @@ async function saveEffect(page, effect = "fx.8") {
   await page.waitForTimeout(400);
 }
 
+/** In the open test guide (firmware 3.01), answer the next `n` steps:
+ *  "Worked", or what `answers` gives for a step (by its id in
+ *  app/src/lib/aaGuideRules.ts), with an optional note. */
+async function answerGuide(page, n, answers = {}) {
+  for (let i = 0; i < n; i++) {
+    const step = await page.locator("[data-guide-panel]").getAttribute("data-guide-panel");
+    const [result, note] = answers[step] ?? ["worked"];
+    await page.locator(`[data-guide-result="${result}"]`).click();
+    if (note) await page.locator("[data-guide-note]").fill(note);
+    await page.locator("[data-guide-next]").click();
+    await page.waitForTimeout(250);
+  }
+}
+
 /** Reminders › Add reminder › `template`, an optional new title, Next, Save. */
 export async function addReminder(page, template, title) {
   await go(page, "reminders");
@@ -152,8 +166,105 @@ async function busyOverview(page, { lang }) {
 export const SHOTS = [
   // Getting started and basics
   { name: "welcome", mock: "none", page: "overview" },
-  // An AK980 PRO on AJAZZ's firmware 769.
-  { name: "welcome-new-firmware", mock: "fw769", page: "overview" },
+  // An AK980 PRO on an AJAZZ firmware Keymotion doesn't know yet (firmware
+  // 769 is supported in beta: the "aa-" shots below).
+  { name: "welcome-new-firmware", mock: "newfw", page: "overview" },
+  // An AK980 PRO on AJAZZ's firmware 3.01 ("769", the "AA" family), in beta.
+  // The Overview: firmware 3.01, "In beta", the battery over the cable.
+  { name: "aa-overview", mock: "aa769", page: "overview" },
+  // Connection: the details with "In beta", and the keyboard's backups.
+  {
+    name: "aa-connection-backups",
+    mock: "aa769",
+    page: "connection",
+    steps: async (page) => {
+      await scrollTo(page, page.locator("[data-keyboard-backups]"), 360);
+    },
+  },
+  // Restoring a backup: what comes back, the colour when the backup doesn't
+  // know it, then what was put back.
+  ...[
+    { name: "aa-restore-check", aa: "", clicks: 0 },
+    { name: "aa-restore-color", aa: "nocolor", clicks: 1 },
+    { name: "aa-restore-done", aa: "nocolor", clicks: 2 },
+  ].map(({ name, aa, clicks }) => ({
+    name,
+    mock: "aa769",
+    query: aa ? { aa } : {},
+    page: "connection",
+    steps: async (page) => {
+      await page.locator("[data-backup-restore]").first().click();
+      await page.waitForTimeout(500);
+      for (let i = 0; i < clicks; i++) {
+        await page.locator("[data-restore-go]").click();
+        await page.waitForTimeout(i === 0 ? 1200 : 2800);
+      }
+      await scrollTo(page, page.locator("[data-restore-flow]"), 120);
+    },
+  })),
+  // Nothing is written: what the keyboard reports doesn't look as expected.
+  { name: "aa-read-only", mock: "aa769", query: { aa: "insane" }, page: "lighting" },
+  // The upload question before the first upload: the clock page may go.
+  {
+    name: "aa-clock-page",
+    mock: "aa769",
+    query: { aa: "clock" },
+    page: "screen",
+    screenTab: "visuals",
+    settle: 1500,
+    steps: async (page) => {
+      await page.locator("[data-library-item] button").first().click();
+      await page.waitForTimeout(300);
+      await page.locator("[data-library-upload]").click();
+      await page.waitForTimeout(1000);
+    },
+  },
+  // The 3.01 test guide: the invitation on the Overview, a step beside the
+  // page it opened, with Keymotion's own check after a save, and the
+  // summary with the text to share.
+  {
+    name: "aa-guide-invite",
+    mock: "aa769",
+    page: "overview",
+    steps: async (page) => {
+      await scrollTo(page, page.locator('[data-infobar="aa-guide-invite"]'), 420);
+    },
+  },
+  {
+    name: "aa-guide-step",
+    mock: "aa769",
+    page: "connection",
+    steps: async (page) => {
+      await page.locator("[data-guide-open]").click();
+      await page.waitForTimeout(500);
+      await answerGuide(page, 2);
+      await page.locator("[data-guide-go]").click();
+      await page.waitForTimeout(900);
+      // A single-colour effect, as the step asks.
+      await click(page, "fx.1", { start: true });
+      await click(page, "bar.save", { wait: 300 });
+      await waitText(page, "bar.saved");
+      await page.locator("[data-guide-check]").waitFor();
+      await page.locator('[data-guide-result="worked"]').click();
+      await page.evaluate(() => document.querySelector("main").scrollTo({ top: 0, behavior: "instant" }));
+      await page.waitForTimeout(300);
+    },
+  },
+  {
+    name: "aa-guide-summary",
+    mock: "aa769",
+    page: "connection",
+    steps: async (page, { lang }) => {
+      await page.locator("[data-guide-open]").click();
+      await page.waitForTimeout(500);
+      await answerGuide(page, 9, {
+        effect: ["worked", L(lang, "The lowest brightness is dim, but on.", "En düşük parlaklık sönük ama açık.")],
+        screen: ["skipped"],
+      });
+      await page.locator("[data-guide-text]").waitFor();
+      await page.waitForTimeout(300);
+    },
+  },
   // Every tile: the window as tall as the page.
   {
     name: "overview",

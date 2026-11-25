@@ -7,13 +7,109 @@ Türkçe: [CHANGELOG.tr.md](CHANGELOG.tr.md).
 
 From 1.0.0 on, each version is the same on GitHub and in the Microsoft Store,
 with one list of changes for both. Windows shows the Store's copy with a
-fourth number, always 0 (1.0.0 is 1.0.0.0). A version comes out in both the
-same day: the GitHub release waits until Microsoft has reviewed the Store's
-copy. Only an urgent fix may come out on GitHub first, and says so. Test
-versions ("-rc") are only on GitHub. A change that concerns only one of them
-says so.
+fourth number, always 0 (1.0.0 is 1.0.0.0). A version comes out on GitHub
+first; the Store's copy follows when Microsoft has reviewed it, usually
+within a day, with the same number and the same notes. Test versions ("-rc")
+are only on GitHub. A change that concerns only one of them says so.
 
 ## [Unreleased]
+
+## [1.3.0] - 2026-11-25
+
+The AK980 PRO on AJAZZ's firmware 3.01, in beta, with an optional test guide. Thanks to [@j0p3s](https://github.com/j0p3s) for bringing the new firmware to our attention, trying each beta on their keyboard and sending the reports that shaped this support.
+
+### Added
+
+- **AK980 PRO on AJAZZ's firmware 3.01 ("769"), in beta:** over the USB cable,
+  Keymotion now speaks this firmware's different set of commands: lighting
+  effects and per-key color, live lighting, key mapping on both layers,
+  macros, pictures on the screen, the clock, and the battery level, which the
+  keyboard reports over the cable too. The support is new and still being
+  tested, so **Connection** and the Overview mark it **In beta**, and the test
+  guide below asks how it works. Before the first write of a session,
+  Keymotion asks (**Untested firmware**), as on any firmware it wasn't tested
+  with. **Disabled**, **Double-click** and the macro mode **While held**
+  aren't offered there.
+- **Test guide (firmware 3.01):** an optional test of nine steps, about ten
+  minutes, for owners of a keyboard on firmware 3.01 who'd like to help:
+  getting ready, the connection, a lighting effect, live lighting, per-key
+  color, key mapping, macros, the screen (optional) and restoring the first
+  backup. The Overview invites you once, without covering the page (**Start
+  the test**; **Not now**, which asks once more at the next connection;
+  **Don't show again**), and **Connection** always has it, with how far you
+  got. The guide stays open beside the pages: **Go there** opens the page a
+  step needs, and you answer **Worked**, **Didn't work** or **Skipped**, with
+  a note if you like. Where Keymotion can tell by itself (the backup, a save
+  it read back from the keyboard while the guide was open), it ticks the step,
+  and never otherwise. Your answers stay on this computer and belong to that
+  firmware: on another one, the guide starts afresh. On a keyboard Keymotion
+  only reads, the guide says that the steps that save can't work and offers
+  **Report a problem**. At the end, the guide shows the exact text to send
+  (your answers and notes, the app and Windows versions, and what Keymotion
+  read about the keyboard, never your macros' contents); **Copy and open
+  GitHub** puts it on the clipboard and opens the form with its title and
+  model filled in, and the guide says which answer to pick there. Nothing is
+  sent by itself, and the guide writes nothing to the keyboard: you save on
+  the pages, as usual. It never shows on firmware 1.06.
+- **Keyboard backups (firmware 3.01):** the first time Keymotion connects to
+  the keyboard, before it can write anything, it saves a backup of the
+  keyboard's settings (key mapping on both layers, lighting effect, per-key
+  colors, macros), and another before every restore. **Connection** lists
+  them. **Restore** puts a backup of the keyboard on the cable back, step by
+  step: what comes back, the lighting's color when the backup doesn't know
+  it, then what it put back and which keys it left as they were. A restore
+  doesn't start while an upload to the screen runs; it goes on when you
+  open another page, and a notice says how it ended. When the backup can't
+  be saved, or when what the keyboard reports doesn't look as expected,
+  Keymotion writes nothing to the keyboard and every page that would says
+  why.
+- **Checked writes (firmware 3.01):** Keymotion reads back every setting it
+  saves (key mapping, lighting, macros). The keyboard ignores writes for a
+  moment after it starts up or is reset, so Keymotion waits before its first
+  write. A keyboard without per-key colors, as after a firmware update (or a
+  reset from AJAZZ's web tool), is normal and doesn't keep Keymotion from
+  writing. A save cut short, when the cable comes out for example, is put
+  right by the next save of the same thing.
+- **Key mapping and macros on firmware 3.01:** this firmware reports its key
+  mapping and macros, so the **Key mapping** and **Macros** pages show
+  what's on the keyboard, also after a restore. Keys and macros set in
+  another program (AJAZZ's, say) that Keymotion can't show, and the
+  keyboard's own functions on the Fn layer, are marked as such; saving and
+  loading a profile leave them as they are. When the keys or macros changed
+  in another program after Keymotion read them, a save writes nothing and
+  the page shows the keyboard again. A repeating macro stops whenever
+  Keymotion sends the keyboard something other than live lighting, a save
+  for example; press its key again.
+- **Live lighting on firmware 3.01:** live lighting (music mode, system
+  gauges, the focus timer, reminders, the calendar, the game session, AI
+  agents, profiles by app, **Preview on keyboard** and the calibration test
+  patterns) shows on the keys whatever the keyboard's lighting is, as on the
+  older firmware. Nothing of it is saved on the keyboard: when it stops, the
+  keyboard's own lighting comes back by itself about 5 seconds later. Just
+  after Keymotion connects to the keyboard, or after the keyboard was reset,
+  live lighting waits a few seconds, and the pages say so.
+- **The clock page (firmware 3.01):** an upload may replace the keyboard's
+  own clock page, which then comes back only after a full reset of the
+  keyboard (Fn+Space). Keymotion asks before the first upload, the live
+  screen's first card included. On this firmware a running upload can be
+  stopped (**Stop upload**); Keymotion then waits a few seconds before it
+  sends the keyboard anything else.
+- **Another program (firmware 3.01):** when the keyboard sends answers
+  Keymotion didn't ask for, Keymotion says that another program seems to be
+  talking to it (AJAZZ's keyboard tool in the browser?). Nothing is blocked.
+- **Problem reports (firmware 3.01):** when what the keyboard reports
+  doesn't look as expected, the report says why in a few lines and shows
+  the part that doesn't look right, so one report is usually enough.
+  Keymotion also keeps that read in its data folder (`keyboard-reads`, the
+  last five, without your macros) in case we ask for it; it's never offered
+  for a restore. Reports stay short enough for GitHub, and anything cut
+  short says so.
+
+### Changed
+
+- An AK980 PRO on an AJAZZ firmware Keymotion doesn't know yet still gets
+  its own card on the welcome page, now worded for any such firmware, with
+  **Request support**.
 
 ## [1.2.1] - 2026-11-23
 
@@ -392,7 +488,8 @@ The first release. It supports the AJAZZ AK980 PRO on Windows.
   something goes wrong, the supported keyboards and the ones that could come
   next, and pages for developers. Settings › About opens it.
 
-[Unreleased]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.1...develop
+[Unreleased]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.3.0...develop
+[1.3.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.3.0
 [1.2.1]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.1
 [1.2.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.0
 [1.1.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.1.0

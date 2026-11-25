@@ -32,23 +32,27 @@
 //! the user said so in this session. The clock waits for that go-ahead too;
 //! live frames never wait ([`write_gate`]).
 
-use crate::dto::{Battery, FlashWrite, KeyboardInfo, LedColor, UnsupportedKeyboard};
-use crate::settings::{
-    self, ClockSettings, Keymaps, MacroRecord, StoredKeymap, StoredLayer, StoredMacro, StoredMacros,
+use crate::aa::{backups, ReadOnly};
+use crate::driver::{self, Driver, OpenTarget, Ports};
+use crate::dto::{
+    Battery, DeviceReport, FlashWrite, KeyboardBackupInfo, KeyboardBackupReason, KeyboardInfo, KeyboardRestoreResult,
+    LedColor, UnsupportedKeyboard,
 };
+use crate::settings::{
+    self, ClockSettings, FixedMacro, Keymaps, MacroRecord, StoredKeymap, StoredLayer, StoredMacro, StoredMacros,
+    StoredStep,
+};
+use kb_core::aa::{AaEffect, EffectColor};
 use kb_core::color::LedCalibration;
 use kb_core::conflicts::Conflict;
 use kb_core::detect::BlePeer;
-use kb_core::readback;
-use kb_core::sonix::SonixFf13;
-use kb_devices::{ConnectionKind, Model};
+use kb_devices::{ConnectionKind, ModeSpec, Model, Protocol};
 use kb_protocol::sonix::keymap::{KeyAction, Layer};
 use kb_protocol::sonix::screen::ScreenAnimation;
-use kb_protocol::sonix::{scale_to_level, EffectSettings, Rgb, MAX_LEVEL};
-use kb_transport::hid::{Hid, HidChannel};
+use kb_protocol::sonix::{EffectSettings, Rgb};
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -60,6 +64,10 @@ pub const EVENT_KEYBOARDS_CHANGED: &str = "keyboards-changed";
 pub const EVENT_UNSUPPORTED_CHANGED: &str = "unsupported-keyboards-changed";
 pub const EVENT_MIRROR: &str = "lighting-mirror";
 pub const EVENT_CLOCK: &str = "clock-changed";
+/// An "AA" keyboard's keymap or macros, as the app's records hold them,
+/// changed to follow the keyboard (device.rs `sync_aa_records`): the UI
+/// reads the records again.
+pub const EVENT_RECORDS_CHANGED: &str = "keyboard-records-changed";
 pub const EVENT_SCREEN_PROGRESS: &str = "screen-upload-progress";
 /// A write was refused because the keyboard's firmware was not tested; the
 /// payload is its version ("1.07"). The UI asks the user (also for writes
@@ -78,6 +86,11 @@ const SCREEN_PROGRESS_EVERY: Duration = Duration::from_millis(150);
 /// Error when a request needs the cable. English, like every backend error;
 /// the UI shows its own text for it (lib/errors.ts).
 const NO_USB: &str = "no keyboard on the USB cable";
+/// A keyboard backup that is not of the keyboard on the cable (another
+/// keyboard, another firmware, or none there).
+pub const ERR_BACKUP_OTHER_KEYBOARD: &str = "the backup is not of the keyboard on the USB cable";
+/// [`DeviceHandle::call`] gave up waiting: the request may still run.
+pub const ERR_NO_ANSWER_IN_TIME: &str = "keyboard did not answer in time";
 
 /// Why a write to the keyboard's memory may not go now. The texts are the
 /// backend's English errors; lib/errors.ts maps each to a message.
@@ -90,6 +103,11 @@ pub enum WriteBlock {
     Program(Conflict),
     /// Firmware not in the model's tested list, not confirmed this session.
     UnverifiedFirmware(String),
+    /// An "AA" keyboard whose answers do not look as expected (the sanity
+    /// check, or a full read that did not finish): read-only.
+    NotSane(Vec<String>),
+    /// The backup of an "AA" keyboard could not be saved: read-only.
+    NoBackup(String),
 }
 
 impl std::fmt::Display for WriteBlock {
@@ -98,6 +116,18 @@ impl std::fmt::Display for WriteBlock {
             Self::SeveralKeyboards => write!(f, "more than one keyboard on the USB cable"),
             Self::Program(c) => write!(f, "another program is using the keyboard ({})", c.id()),
             Self::UnverifiedFirmware(v) => write!(f, "untested keyboard firmware {v}"),
+            // The same texts the "AA" arm refuses with (aa.rs `ReadOnly`).
+            Self::NotSane(why) => ReadOnly::NotSane(why.clone()).fmt(f),
+            Self::NoBackup(e) => ReadOnly::NoBackup(e.clone()).fmt(f),
+        }
+    }
+}
+
+impl From<ReadOnly> for WriteBlock {
+    fn from(r: ReadOnly) -> Self {
+        match r {
+            ReadOnly::NotSane(why) => Self::NotSane(why),
+            ReadOnly::NoBackup(e) => Self::NoBackup(e),
         }
     }
 }
@@ -172,6 +202,90 @@ pub fn write_gate(
     }
 }
 
+/// [`write_gate`] for a keyboard that may be read-only (an "AA" keyboard,
+/// aa.rs `ReadOnly`): such a keyboard takes no memory write and no clock,
+/// whatever else holds. Several keyboards on the cable are still reported
+/// first; live frames are the "AA" arm's own business (RAM only, they go to
+/// a read-only keyboard too).
+pub fn write_gate_for(
+    kind: WriteKind,
+    wired: usize,
+    read_only: Option<ReadOnly>,
+    firmware: Option<FirmwareCheck>,
+    running: impl FnOnce() -> Option<Conflict>,
+) -> Option<WriteBlock> {
+    if kind == WriteKind::Memory && wired > 1 {
+        return Some(WriteBlock::SeveralKeyboards);
+    }
+    match read_only {
+        Some(r) if kind != WriteKind::Live => Some(r.into()),
+        _ => write_gate(kind, wired, firmware, running),
+    }
+}
+
+/// Log a refused write, and for an untested firmware tell the UI, so it can
+/// ask the user even when the write came from the background (the live
+/// mode, the clock sync on connect, live lights on an "AA" keyboard).
+fn note_block(app: &Ui, kind: WriteKind, block: &WriteBlock, wired: usize) {
+    match block {
+        WriteBlock::UnverifiedFirmware(v) => {
+            tracing::warn!(firmware = %v, ?kind, "write waits for the user: firmware not tested");
+            let _ = app.emit(EVENT_FIRMWARE_UNVERIFIED, v);
+        }
+        WriteBlock::SeveralKeyboards => tracing::warn!(keyboards = wired, "write refused: several keyboards"),
+        WriteBlock::Program(_) => {}
+        // The reasons went to the log once, with the read (aa.rs `connect`).
+        WriteBlock::NotSane(why) => {
+            tracing::info!(?kind, reasons = why.len(), "write refused: the keyboard does not look as expected");
+        }
+        WriteBlock::NoBackup(_) => {
+            tracing::info!(?kind, "write refused: {}", crate::diagnostics::cut(&block.to_string(), 300));
+        }
+    }
+}
+
+/// An "AA" keyboard's macros as the app's record keeps them: its steps,
+/// with the name the record had for the same steps in the same slot (the
+/// keyboard stores no names); the macros the steps cannot express as kept.
+fn macros_from_keyboard(slots: &[crate::aa::MacroContents], old: &StoredMacros, now: u64) -> StoredMacros {
+    use crate::aa::MacroContents;
+    use kb_protocol::aa::macros::from_steps;
+    let mut out = StoredMacros { written_ms: old.written_ms, read_ms: Some(now), ..Default::default() };
+    for (i, slot) in slots.iter().enumerate() {
+        let m = match slot {
+            MacroContents::Steps(steps) => {
+                let before = old.slots.get(i).and_then(Option::as_ref);
+                let same = before.is_some_and(|b| {
+                    let steps_before: Vec<_> = b.steps.iter().map(|s| s.0).collect();
+                    from_steps(&steps_before).ok() == from_steps(steps).ok()
+                });
+                Some(StoredMacro {
+                    name: if same { before.map(|b| b.name.clone()).unwrap_or_default() } else { String::new() },
+                    steps: steps.iter().map(|s| StoredStep(*s)).collect(),
+                })
+            }
+            MacroContents::Fixed(entries) => {
+                out.fixed.push(FixedMacro { slot: i as u8, entries: (*entries).min(u16::MAX as usize) as u16 });
+                None
+            }
+            MacroContents::Empty => None,
+        };
+        out.slots.push(m);
+    }
+    while out.slots.last().is_some_and(Option::is_none) {
+        out.slots.pop();
+    }
+    out
+}
+
+fn app_effect_in(dir: &std::path::Path, calibration: LedCalibration) -> Option<AaEffect> {
+    let state = crate::lighting::load(dir)?;
+    let request: crate::dto::EffectRequest = serde_json::from_value(state.get("appliedEffect")?.clone()).ok()?;
+    let mut settings = request.to_settings().ok()?;
+    settings.color = calibration.apply(settings.color);
+    AaEffect::from_settings(&settings).ok()
+}
+
 /// A known program talking to the keyboard, among those running now.
 fn running_conflict() -> Option<Conflict> {
     let programs = kb_winsys::running_programs();
@@ -185,28 +299,13 @@ fn running_conflict() -> Option<Conflict> {
     found
 }
 
-/// Open a vendor channel only if its report layout is the "04 xx" family's
-/// (kb_core::shape): the same IDs also belong to boards that speak another
-/// protocol, and nothing may be sent to those.
-fn open_checked(hid: &Hid, path: &str, display: bool) -> Result<HidChannel, String> {
-    let iface = hid.interfaces().into_iter().find(|i| i.path == path).ok_or("keyboard disconnected")?;
-    let channel = hid.open(&iface).map_err(|e| e.to_string())?;
-    let desc = channel.report_descriptor().map_err(|e| e.to_string())?;
-    let ok = if display { kb_core::shape::is_display_shape(&desc) } else { kb_core::shape::is_command_shape(&desc) };
-    if !ok {
-        tracing::warn!(
-            usage_page = format_args!("{:04X}", iface.usage_page),
-            shape = ?kb_core::shape::report_shape(&desc),
-            "unexpected report layout; channel not used"
-        );
-        return Err("unsupported keyboard firmware: unexpected report layout".into());
-    }
-    Ok(channel)
-}
-
 const ENUMERATE_EVERY: Duration = Duration::from_secs(2);
 const BLE_RESCAN: Duration = Duration::from_secs(10);
 const BATTERY_REFRESH: Duration = Duration::from_secs(60);
+/// How often an "AA" keyboard's device information (its battery) is asked
+/// again while the window shows the keyboard: every such request stops a
+/// macro that is playing on it (firmware 769).
+const AA_DEVICE_REFRESH: Duration = Duration::from_secs(5 * 60);
 /// Live frames are re-sent continuously; the keyboard reverts to its saved
 /// effect when the stream stops (verified 2026-11-10).
 const LIVE_EVERY: Duration = Duration::from_millis(50);
@@ -265,16 +364,21 @@ pub enum Request {
     /// Turn automatic clock sync on or off (persisted).
     SetClockAuto(bool, Reply<ClockSettings>),
     /// Write one keymap layer of the USB keyboard (flash) and record it.
-    /// Replies with the model's updated record.
+    /// Replies with the model's updated record. `base`: the record's
+    /// `source` the change was made against ("AA": refused when the keys
+    /// changed on the keyboard since; `None`: not checked).
     ApplyKeymap {
         layer: Layer,
         entries: Vec<(u8, KeyAction)>,
+        base: Option<String>,
         reply: Reply<StoredKeymap>,
     },
     /// Write every macro of the USB keyboard (flash) and record them with
-    /// their names. Replies with the model's updated record.
+    /// their names. Replies with the model's updated record. `base`: as
+    /// for [`Request::ApplyKeymap`].
     ApplyMacros {
         slots: Vec<Option<StoredMacro>>,
+        base: Option<String>,
         reply: Reply<StoredMacros>,
     },
     /// Describe an unsupported keyboard for a support request: its ids,
@@ -295,6 +399,14 @@ pub enum Request {
     /// why ([`write_gate`]), for a caller that answers with the reason (an
     /// agent's `profile apply`). Reads only what the actor holds.
     WriteBlocked(Reply<Option<WriteBlock>>),
+    /// Write a keyboard backup back to the "AA" keyboard on the cable
+    /// (flash). `color`: the effect's colour when the backup does not know
+    /// it (UI colour and rainbow flag).
+    RestoreKeyboard {
+        file: String,
+        color: Option<(Rgb, bool)>,
+        reply: Reply<KeyboardRestoreResult>,
+    },
 }
 
 /// What a frame request sets: the preview or one background layer.
@@ -328,7 +440,8 @@ impl Request {
             | Self::ApplyKeymap { .. }
             | Self::ApplyMacros { .. }
             | Self::DescribeUnsupported { .. }
-            | Self::UploadScreen { .. } => true,
+            | Self::UploadScreen { .. }
+            | Self::RestoreKeyboard { .. } => true,
             Self::Refresh
             | Self::SetLive(_)
             | Self::SetLayer(..)
@@ -384,8 +497,8 @@ fn next_batch(waiting: &mut VecDeque<Request>) -> Vec<Request> {
 /// How a screen upload ended.
 #[derive(Debug, Clone)]
 pub struct ScreenUploadResult {
-    /// Model of the keyboard written to.
-    pub model_id: Option<String>,
+    /// Record id of the keyboard written to (`DetectedKeyboard::record_id`).
+    pub record_id: Option<String>,
     /// Whether the keyboard's flash was touched (the session was opened),
     /// even if the upload then failed: it counts towards wear.
     pub flash_written: bool,
@@ -604,22 +717,53 @@ pub struct Snapshot {
     pub clock_waits_for: Option<String>,
     /// Whether a game wants the keyboard left alone now.
     pub quiet: Quiet,
+    /// The diagnostics report's section about the last "AA" keyboard on
+    /// the cable (aa.rs `AaDriver::diagnostics`); empty when none was.
+    pub aa_diagnostics: Vec<String>,
+    /// The USB ids of the "AA" keyboard on the cable: which backups match
+    /// it ([`list_keyboard_backups`], read without asking the actor).
+    pub aa_usb: Option<kb_core::aa::UsbIdentity>,
+}
+
+/// The "AA" keyboard backups in `dir`, oldest first; those of the keyboard
+/// with `usb` marked as restorable. Only the files are read.
+pub fn list_keyboard_backups(dir: &std::path::Path, usb: Option<kb_core::aa::UsbIdentity>) -> Vec<KeyboardBackupInfo> {
+    backups::list(dir)
+        .into_iter()
+        .map(|(file, b)| KeyboardBackupInfo {
+            file,
+            saved_at_ms: b.saved_at_ms,
+            reason: match b.reason {
+                backups::Reason::FirstConnect => KeyboardBackupReason::FirstConnect,
+                backups::Reason::BeforeRestore => KeyboardBackupReason::BeforeRestore,
+            },
+            record_id: b.record_id.clone(),
+            firmware: kb_devices::firmware_text(b.release),
+            matches: usb == Some(b.usb()),
+            color_known: b.snapshot.effect_color.is_some(),
+        })
+        .collect()
 }
 
 /// One step of a screen upload, in order (uploads run one at a time). The
 /// screen library uses it to keep an "incomplete" mark on disk while the
 /// GIF page is being written, so a crash or a quit midway shows up on the
-/// next start.
+/// next start, and to refuse an upload that would cost the keyboard its
+/// clock page unasked (plan K-13): every upload passes here, whoever asked
+/// for it (a library item, a live card, the screen going back to the own
+/// picture).
 pub enum ScreenWriteStep<'a> {
-    /// The upload session is about to open; nothing is written yet.
-    /// `label` is the request's id (a library item, or `live:<source>`).
-    Starting { label: &'a str, model_id: Option<&'a str> },
+    /// The upload session is about to open; nothing is written yet, and an
+    /// `Err` refuses it (nothing is written, no [`Self::Ended`] follows).
+    /// `label` is the request's id (a library item, or `live:<source>`);
+    /// `record_id` the keyboard's record id.
+    Starting { label: &'a str, record_id: Option<&'a str> },
     /// It ended: `ok` finished, else failed after (`flash_written`) or
     /// before touching the flash.
     Ended { flash_written: bool, ok: bool },
 }
 
-pub type ScreenWriteHook = Box<dyn Fn(ScreenWriteStep<'_>) + Send>;
+pub type ScreenWriteHook = Box<dyn Fn(ScreenWriteStep<'_>) -> Result<(), String> + Send>;
 
 /// The flash write in progress, shared by the actor and the close guard.
 /// While one runs the UI is told (`flash-write`) and Windows is asked to
@@ -629,11 +773,70 @@ pub struct FlashState {
     /// 0: none, else a [`FlashWrite`] code.
     kind: Arc<AtomicU8>,
     reason: Arc<Mutex<String>>,
-    app: AppHandle,
+    app: Ui,
+}
+
+/// Where the actor's events go: the app's windows, or nowhere (the tests
+/// run the actor without a window). Behind a trait object, so the tests'
+/// binary does not link Tauri's window code (which would need the app's
+/// Windows manifest to start).
+#[derive(Clone)]
+struct Ui(Option<Arc<dyn UiSink>>);
+
+/// What the actor does with the app's windows.
+trait UiSink: Send + Sync {
+    fn emit(&self, event: &str, payload: serde_json::Value) -> Result<(), String>;
+    /// `ShutdownBlockReasonCreate` (with a reason) or `…Destroy` on the
+    /// main window.
+    fn hold_shutdown(&self, reason: Option<String>);
+}
+
+impl UiSink for AppHandle {
+    fn emit(&self, event: &str, payload: serde_json::Value) -> Result<(), String> {
+        Emitter::emit(self, event, payload).map_err(|e| e.to_string())
+    }
+
+    /// Windows takes these only from the window's own thread.
+    fn hold_shutdown(&self, reason: Option<String>) {
+        #[cfg(windows)]
+        {
+            use tauri::Manager;
+            let app = self.clone();
+            let r = self.run_on_main_thread(move || {
+                let Some(hwnd) = app.get_webview_window("main").and_then(|w| w.hwnd().ok()) else { return };
+                let hwnd = hwnd.0 as isize;
+                let ok = match &reason {
+                    Some(text) => kb_winsys::block_shutdown(hwnd, text),
+                    None => kb_winsys::unblock_shutdown(hwnd),
+                };
+                if !ok {
+                    tracing::debug!(hold = reason.is_some(), "shutdown hold not changed");
+                }
+            });
+            if let Err(e) = r {
+                tracing::warn!("shutdown hold not set: {e}");
+            }
+        }
+        #[cfg(not(windows))]
+        let _ = reason;
+    }
+}
+
+impl Ui {
+    fn app(app: AppHandle) -> Self {
+        Self(Some(Arc::new(app)))
+    }
+
+    fn emit<S: serde::Serialize>(&self, event: &str, payload: S) -> Result<(), String> {
+        match &self.0 {
+            Some(sink) => sink.emit(event, serde_json::to_value(payload).map_err(|e| e.to_string())?),
+            None => Ok(()),
+        }
+    }
 }
 
 impl FlashState {
-    fn new(app: AppHandle) -> Self {
+    fn new(app: Ui) -> Self {
         Self { kind: Arc::new(AtomicU8::new(0)), reason: Arc::new(Mutex::new(WRITE_REASON.into())), app }
     }
 
@@ -670,30 +873,10 @@ impl FlashState {
         self.hold_shutdown(None);
     }
 
-    /// `ShutdownBlockReasonCreate` (with a reason) or `…Destroy` on the
-    /// main window. Windows takes these only from the window's own thread.
     fn hold_shutdown(&self, reason: Option<String>) {
-        #[cfg(windows)]
-        {
-            use tauri::Manager;
-            let app = self.app.clone();
-            let r = self.app.run_on_main_thread(move || {
-                let Some(hwnd) = app.get_webview_window("main").and_then(|w| w.hwnd().ok()) else { return };
-                let hwnd = hwnd.0 as isize;
-                let ok = match &reason {
-                    Some(text) => kb_winsys::block_shutdown(hwnd, text),
-                    None => kb_winsys::unblock_shutdown(hwnd),
-                };
-                if !ok {
-                    tracing::debug!(hold = reason.is_some(), "shutdown hold not changed");
-                }
-            });
-            if let Err(e) = r {
-                tracing::warn!("shutdown hold not set: {e}");
-            }
+        if let Some(sink) = &self.app.0 {
+            sink.hold_shutdown(reason);
         }
-        #[cfg(not(windows))]
-        let _ = reason;
     }
 }
 
@@ -706,33 +889,162 @@ impl Drop for FlashWriteGuard {
     }
 }
 
+/// Cancelling screen uploads, each by its id: the one that runs stops
+/// before its next part ("AA"; "04 xx" cannot stop and finishes), one still
+/// waiting its turn does not start. A cancel never reaches another upload.
+#[derive(Default)]
+pub struct UploadCancels(Mutex<UploadQueue>);
+
+#[derive(Default)]
+struct UploadQueue {
+    /// The upload that runs, and its stop flag.
+    running: Option<(String, Arc<AtomicBool>)>,
+    /// Uploads sent to the actor and not started yet; `true`: cancelled.
+    waiting: Vec<(String, bool)>,
+}
+
+impl UploadCancels {
+    fn lock(&self) -> std::sync::MutexGuard<'_, UploadQueue> {
+        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// An upload with this id was sent to the actor.
+    fn queued(&self, id: &str) {
+        self.lock().waiting.push((id.to_string(), false));
+    }
+
+    /// It will not start after all (the actor did not take it).
+    fn unqueued(&self, id: &str) {
+        let mut q = self.lock();
+        if let Some(i) = q.waiting.iter().position(|(w, _)| w == id) {
+            q.waiting.remove(i);
+        }
+    }
+
+    /// Stop the upload with this id: the one that runs, else the first one
+    /// waiting. Nothing else.
+    pub fn cancel(&self, id: &str) -> bool {
+        let mut q = self.lock();
+        if let Some((running, stop)) = &q.running {
+            if running == id {
+                stop.store(true, Ordering::SeqCst);
+                return true;
+            }
+        }
+        match q.waiting.iter_mut().find(|(w, cancelled)| w == id && !*cancelled) {
+            Some((_, cancelled)) => {
+                *cancelled = true;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The actor starts the upload with this id: its stop flag, or `None`
+    /// when it was cancelled while it waited.
+    fn start(&self, id: &str) -> Option<Arc<AtomicBool>> {
+        let mut q = self.lock();
+        let cancelled = match q.waiting.iter().position(|(w, _)| w == id) {
+            Some(i) => q.waiting.remove(i).1,
+            None => false,
+        };
+        if cancelled {
+            return None;
+        }
+        let stop = Arc::new(AtomicBool::new(false));
+        q.running = Some((id.to_string(), stop.clone()));
+        Some(stop)
+    }
+
+    fn ended(&self) {
+        self.lock().running = None;
+    }
+}
+
+/// A screen upload stopped before it began.
+pub const ERR_UPLOAD_CANCELLED: &str = "screen upload cancelled before it started";
+
+/// How often background work (live frames, the mirror, device reads) opens
+/// an "AA" keyboard again after its channel failed: every open reads the
+/// whole keyboard, and a stalling one would keep the actor busy.
+const AA_REOPEN_BACKOFF: Duration = Duration::from_secs(30);
+
+/// Background work waits before opening a failed "AA" channel again.
+const ERR_AA_REOPEN_LATER: &str = "the keyboard did not answer when it was opened; it is tried again later";
+
+/// A restore found no keyboard it could read on the cable.
+pub const ERR_KEYBOARD_NOT_READ: &str = "the keyboard on the USB cable could not be read";
+
 pub struct DeviceHandle {
     pub snapshot: Arc<Mutex<Snapshot>>,
     /// The flash write in progress (close guard, shutdown hold).
     pub flash: FlashState,
     tx: Sender<Request>,
+    uploads: Arc<UploadCancels>,
+    /// The data folder (keyboard backups).
+    config_dir: Option<std::path::PathBuf>,
 }
 
+/// How long a keyboard restore may wait for its turn and run: behind a
+/// screen upload it waits minutes, and it is not reported as failed while
+/// it still may run.
+pub const RESTORE_WAIT: Duration = Duration::from_secs(15 * 60);
+
 impl DeviceHandle {
+    /// The "AA" keyboard backups in the data folder, oldest first, read
+    /// without the actor (which may be busy with an upload for minutes):
+    /// `matches` from the keyboard the last look found on the cable.
+    pub fn keyboard_backups(&self) -> Vec<KeyboardBackupInfo> {
+        let Some(dir) = self.config_dir.as_deref().map(backups::dir) else { return Vec::new() };
+        let usb = self.snapshot.lock().ok().and_then(|s| s.aa_usb);
+        list_keyboard_backups(&dir, usb)
+    }
+
     pub fn send(&self, r: Request) -> Result<(), String> {
         self.tx.send(r).map_err(|_| "device actor stopped".to_string())
     }
 
+    /// Stop the screen upload with this id, running or waiting; whether
+    /// there was one.
+    pub fn cancel_upload(&self, id: &str) -> bool {
+        self.uploads.cancel(id)
+    }
+
+    /// The record id of the keyboard on the cable that takes writes: the
+    /// one a screen upload goes to.
+    pub fn usb_record(&self) -> Option<String> {
+        let snap = self.snapshot.lock().ok()?;
+        snap.keyboards
+            .iter()
+            .find(|k| k.connection == crate::dto::Connection::Usb && k.has_command_channel)
+            .map(|k| k.record_id.clone())
+    }
+
     /// Send a request carrying a reply channel and wait for the answer.
     pub fn call<T>(&self, make: impl FnOnce(Reply<T>) -> Request) -> Result<T, String> {
+        self.call_waiting(Duration::from_secs(20), make)
+    }
+
+    /// [`Self::call`], waiting up to `wait`: for a request that may queue
+    /// behind a screen upload (minutes) and must not be reported as failed
+    /// while it still waits its turn (a keyboard restore).
+    pub fn call_waiting<T>(&self, wait: Duration, make: impl FnOnce(Reply<T>) -> Request) -> Result<T, String> {
         let (tx, rx) = mpsc::channel();
         self.send(make(tx))?;
-        rx.recv_timeout(Duration::from_secs(20)).map_err(|_| "keyboard did not answer in time".to_string())?
+        rx.recv_timeout(wait).map_err(|_| ERR_NO_ANSWER_IN_TIME.to_string())?
     }
 
     /// Upload to the screen and wait (long) for the outcome.
     pub fn upload_screen(&self, id: String, anim: ScreenAnimation) -> ScreenUploadResult {
         let (tx, rx) = mpsc::channel();
+        self.uploads.queued(&id);
+        let label = id.clone();
         if let Err(e) = self.send(Request::UploadScreen { id, anim: Box::new(anim), reply: tx }) {
-            return ScreenUploadResult { model_id: None, flash_written: false, error: Some(e) };
+            self.uploads.unqueued(&label);
+            return ScreenUploadResult { record_id: None, flash_written: false, error: Some(e) };
         }
         rx.recv_timeout(SCREEN_UPLOAD_TIMEOUT).unwrap_or_else(|_| ScreenUploadResult {
-            model_id: None,
+            record_id: None,
             flash_written: true,
             error: Some("keyboard did not finish the upload in time".into()),
         })
@@ -741,14 +1053,17 @@ impl DeviceHandle {
 
 /// Start the actor. `config_dir` is where clock sync history and the keymap
 /// record are saved; without it they last only for this run. `screen_hook`
-/// hears each screen upload start and end.
+/// hears each screen upload start and end. `ports` makes, on the actor's
+/// thread, where keyboards come from (the HID subsystem, or the simulator
+/// in a debug build).
 pub fn spawn(
     app: AppHandle,
     calibration: LedCalibration,
     config_dir: Option<PathBuf>,
     screen_hook: ScreenWriteHook,
+    ports: Box<dyn FnOnce() -> Ports + Send>,
 ) -> DeviceHandle {
-    let flash = FlashState::new(app.clone());
+    let flash = FlashState::new(Ui::app(app.clone()));
     let clock = config_dir.as_deref().map(settings::load_clock).unwrap_or_default();
     let keymaps = config_dir.as_deref().map(settings::load_keymaps).unwrap_or_default();
     let macros = config_dir.as_deref().map(settings::load_macros).unwrap_or_default();
@@ -761,31 +1076,75 @@ pub fn spawn(
         macros: macros.clone(),
         clock_waits_for: None,
         quiet: Quiet::Off,
+        aa_diagnostics: Vec::new(),
+        aa_usb: None,
     }));
     let (tx, rx) = mpsc::channel();
     let shared = snapshot.clone();
     let actor_flash = flash.clone();
+    let uploads = Arc::new(UploadCancels::default());
+    let (actor_uploads, actor_dir) = (uploads.clone(), config_dir.clone());
     std::thread::Builder::new()
         .name("device-actor".into())
         .spawn(move || {
-            let mut actor = Actor::new(app, shared, calibration, clock, keymaps, macros, config_dir);
+            if let Some(dir) = actor_dir.as_deref() {
+                crate::aa::remove_beta1_live_note(dir);
+            }
+            let mut actor = Actor::new(Ui::app(app), shared, calibration, clock, keymaps, macros, actor_dir);
+            actor.ports = ports();
+            if actor.ports.simulated() {
+                tracing::warn!("simulator mode: no HID device is listed or opened, no radio is scanned");
+            }
             actor.flash = actor_flash;
             actor.screen_hook = screen_hook;
+            actor.uploads = actor_uploads;
             actor.run(rx)
         })
         .expect("spawn device actor");
-    DeviceHandle { snapshot, flash, tx }
+    DeviceHandle { snapshot, flash, tx, uploads, config_dir }
 }
 
+/// The open command channel of the keyboard on the cable.
 struct Command {
     path: String,
-    driver: SonixFf13<HidChannel>,
+    driver: Driver,
+    /// A live stream runs on this handle: `Driver::live_starting` went out
+    /// and `Driver::live_stopped` has not yet.
+    live: bool,
+}
+
+/// The keyboard on the cable that takes writes, as detected: its model, the
+/// model file's mode it matched (which names its command family) and the
+/// id its records are kept under.
+#[derive(Debug, Clone)]
+struct UsbKeyboard {
+    model: &'static Model,
+    mode: &'static ModeSpec,
+    record_id: String,
+}
+
+impl UsbKeyboard {
+    fn protocol(&self) -> Protocol {
+        self.model.protocol_of(self.mode)
+    }
 }
 
 struct Actor {
-    app: AppHandle,
+    app: Ui,
     shared: Arc<Mutex<Snapshot>>,
-    hid: Option<Hid>,
+    /// Where keyboards come from: the HID subsystem, or the simulator.
+    ports: Ports,
+    /// Cancels of screen uploads (DeviceHandle::cancel_upload).
+    uploads: Arc<UploadCancels>,
+    /// An "AA" channel on this path failed: background work opens it again
+    /// only after this ([`AA_REOPEN_BACKOFF`]).
+    aa_reopen_after: Option<(String, Instant)>,
+    /// The driver's own work ([`Driver::next_due`]) is not looked at again
+    /// before this (it had nothing it could do).
+    driver_rest_until: Option<Instant>,
+    /// Looks for a program that talks to the keyboard ([`running_conflict`];
+    /// the tests' own).
+    programs: fn() -> Option<Conflict>,
     peers: Vec<BlePeer>,
     /// Keyboards seen that no model matches, or whose vendor channels don't
     /// have the model's report layout (for support requests).
@@ -802,8 +1161,13 @@ struct Actor {
     command_path: Option<String>,
     /// Path of its display channel (screen pages), if any.
     display_path: Option<String>,
-    /// Model of the keyboard behind `command_path`.
-    usb_model: Option<&'static Model>,
+    /// The keyboard behind `command_path`.
+    usb: Option<UsbKeyboard>,
+    /// What it last reported about itself, and when (Unix ms; families that
+    /// report, driver.rs `family::reports_device`).
+    device_report: Option<(DeviceReport, u64)>,
+    /// When it was last asked.
+    device_read: Option<Instant>,
     /// Its firmware version (USB `bcdDevice`).
     usb_firmware: Option<u16>,
     /// Keyboards on the cable, identical ones counted separately.
@@ -816,6 +1180,9 @@ struct Actor {
     layers: Layers,
     /// Live frames that failed in a row.
     live_failures: u32,
+    /// The "AA" keyboard contents the records were last taken from (record
+    /// id and [`crate::aa::AaContents::fingerprint`]).
+    aa_synced: Option<(String, String)>,
     /// `Some` while the UI shows the mirror.
     mirror: Option<MirrorExpect>,
     /// Firmware status lights of the USB keyboard: (LED, colour when lit).
@@ -855,7 +1222,7 @@ struct Actor {
 
 impl Actor {
     fn new(
-        app: AppHandle,
+        app: Ui,
         shared: Arc<Mutex<Snapshot>>,
         calibration: LedCalibration,
         clock: ClockSettings,
@@ -863,14 +1230,18 @@ impl Actor {
         macros: MacroRecord,
         config_dir: Option<PathBuf>,
     ) -> Self {
-        let hid = Hid::new().map_err(|e| tracing::error!("HID init failed: {e}")).ok();
         let now = Instant::now();
         Self {
             flash: FlashState::new(app.clone()),
-            screen_hook: Box::new(|_: ScreenWriteStep<'_>| {}),
+            screen_hook: Box::new(|_: ScreenWriteStep<'_>| Ok(())),
             app,
             shared,
-            hid,
+            // Set by `spawn`.
+            ports: Ports::Hid(None),
+            uploads: Arc::new(UploadCancels::default()),
+            aa_reopen_after: None,
+            driver_rest_until: None,
+            programs: running_conflict,
             peers: Vec::new(),
             unknown: Vec::new(),
             layouts: HashMap::new(),
@@ -879,7 +1250,9 @@ impl Actor {
             last_battery: config_dir.as_deref().map(settings::load_batteries).unwrap_or_default(),
             command_path: None,
             display_path: None,
-            usb_model: None,
+            usb: None,
+            device_report: None,
+            device_read: None,
             usb_firmware: None,
             wired: 0,
             firmware_confirmed: None,
@@ -887,6 +1260,7 @@ impl Actor {
             live: None,
             layers: Layers::default(),
             live_failures: 0,
+            aa_synced: None,
             mirror: None,
             indicators: Vec::new(),
             calibration,
@@ -919,27 +1293,17 @@ impl Actor {
                 self.send_live();
                 self.last_live = Some(Instant::now());
                 self.next_live = Instant::now() + LIVE_EVERY;
-            } else if self.mirror.is_some() && !self.streaming() && now >= self.next_mirror {
+            } else if !self.streaming() {
+                self.end_live();
+            }
+            if self.mirror.is_some() && !self.streaming() && now >= self.next_mirror {
                 self.send_mirror();
                 self.next_mirror = Instant::now() + MIRROR_EVERY;
             }
-            if let Some((due, attempts)) = self.clock_due {
-                // Not during a game that wants the keyboard left alone.
-                if now >= due && self.quiet == Quiet::Off {
-                    self.clock_due = None;
-                    match self.sync_clock() {
-                        Ok(()) => {}
-                        // The user was asked; a yes starts it (ConfirmFirmware).
-                        Err(_) if firmware_block(self.firmware_check()).is_some() => self.wait_clock(true),
-                        Err(e) => {
-                            tracing::warn!(attempts_left = attempts - 1, "automatic clock sync failed: {e}");
-                            if attempts > 1 && self.command_path.is_some() {
-                                self.clock_due = Some((Instant::now() + CLOCK_RETRY, attempts - 1));
-                            }
-                        }
-                    }
-                }
+            if self.driver_due().is_some_and(|due| now >= due) {
+                self.run_driver_due();
             }
+            self.run_clock_due(now);
 
             if waiting.is_empty() {
                 let frames = if self.streaming() {
@@ -948,6 +1312,7 @@ impl Actor {
                     self.mirror.as_ref().map(|_| self.next_mirror)
                 };
                 let wake = wake_at(self.next_enumerate, frames, self.clock_due.map(|(due, _)| due), self.quiet);
+                let wake = self.driver_due().map_or(wake, |due| wake.min(due));
                 let timeout = wake.saturating_duration_since(Instant::now());
                 match rx.recv_timeout(timeout) {
                     Ok(req) => waiting.push_back(req),
@@ -1087,6 +1452,7 @@ impl Actor {
                     Some(release) => {
                         tracing::info!(firmware = %version, "writes on untested firmware confirmed for this session");
                         self.firmware_confirmed = Some(release);
+                        self.driver_rest_until = None;
                         if self.clock_waits {
                             tracing::debug!("automatic clock sync goes ahead");
                             self.wait_clock(false);
@@ -1105,13 +1471,13 @@ impl Actor {
                 }
                 let _ = reply.send(self.store_clock().map(|_| self.clock));
             }
-            Request::ApplyKeymap { layer, entries, reply } => {
+            Request::ApplyKeymap { layer, entries, base, reply } => {
                 let _write = self.flash.begin(FlashWrite::Settings);
-                let _ = reply.send(self.apply_keymap(layer, entries));
+                let _ = reply.send(self.apply_keymap(layer, entries, base));
             }
-            Request::ApplyMacros { slots, reply } => {
+            Request::ApplyMacros { slots, base, reply } => {
                 let _write = self.flash.begin(FlashWrite::Settings);
-                let _ = reply.send(self.apply_macros(slots));
+                let _ = reply.send(self.apply_macros(slots, base));
             }
             Request::DescribeUnsupported { id, reply } => {
                 let _ = reply.send(self.describe_unsupported(&id));
@@ -1123,49 +1489,301 @@ impl Actor {
                 let _write = self.flash.begin(FlashWrite::Screen);
                 let _ = reply.send(self.upload_screen(&id, &anim));
             }
+            Request::RestoreKeyboard { file, color, reply } => {
+                let _write = self.flash.begin(FlashWrite::Settings);
+                let _ = reply.send(self.restore_keyboard(&file, color));
+            }
         }
+    }
+
+    /// The automatic clock sync, when it is due: not during a game that
+    /// wants the keyboard left alone, and not while an "AA" keyboard just
+    /// opened or reset takes no write yet (it is put off until then, rather
+    /// than the actor sleeping through the wait).
+    fn run_clock_due(&mut self, now: Instant) {
+        let Some((due, attempts)) = self.clock_due else { return };
+        if now < due || self.quiet != Quiet::Off {
+            return;
+        }
+        if let Some(left) = self.aa_driver().and_then(crate::aa::AaDriver::settling) {
+            self.clock_due = Some((Instant::now() + left, attempts));
+            return;
+        }
+        self.clock_due = None;
+        match self.sync_clock() {
+            Ok(()) => {}
+            // The user was asked; a yes starts it (ConfirmFirmware).
+            Err(_) if firmware_block(self.firmware_check()).is_some() => self.wait_clock(true),
+            Err(e) => {
+                tracing::warn!(attempts_left = attempts - 1, "automatic clock sync failed: {e}");
+                if attempts > 1 && self.command_path.is_some() {
+                    self.clock_due = Some((Instant::now() + CLOCK_RETRY, attempts - 1));
+                }
+            }
+        }
+    }
+
+    /// The "AA" driver of the keyboard on the cable, when its channel is
+    /// open: a handle left from another keyboard (another path, another
+    /// family) is not this keyboard's, and its state says nothing about it.
+    fn aa_driver(&self) -> Option<&crate::aa::AaDriver> {
+        let c = self.command.as_ref()?;
+        let current = Some(&c.path) == self.command_path.as_ref()
+            && self.usb.as_ref().is_some_and(|u| u.protocol() == c.driver.protocol());
+        current.then(|| c.driver.aa()).flatten()
+    }
+
+    /// Why the keyboard on the cable is read-only, if it is ("AA").
+    fn read_only(&self) -> Option<ReadOnly> {
+        self.aa_driver().and_then(crate::aa::AaDriver::read_only)
+    }
+
+    /// The effect the app last stored (the Lighting page's record),
+    /// calibrated, in an "AA" keyboard's values: where the colour (and the
+    /// mode behind a read-back of 0) of the keyboard's effect comes from
+    /// when the keyboard does not report it.
+    fn app_effect(&self) -> Option<AaEffect> {
+        app_effect_in(self.config_dir.as_deref()?, self.calibration)
+    }
+
+    /// [`Self::app_effect`] as a closure that borrows nothing of the actor,
+    /// for the "AA" arm to read only when it needs it (a read again takes a
+    /// backup).
+    fn app_effect_source(&self) -> impl Fn() -> Option<AaEffect> + 'static {
+        let (dir, calibration) = (self.config_dir.clone(), self.calibration);
+        move || app_effect_in(dir.as_deref()?, calibration)
+    }
+
+    /// When the open driver has work of its own ("AA": a read again).
+    fn driver_due(&self) -> Option<Instant> {
+        let due = self.command.as_ref()?.driver.next_due()?;
+        Some(self.driver_rest_until.map_or(due, |rest| due.max(rest)))
+    }
+
+    fn run_driver_due(&mut self) {
+        let app_effect = self.app_effect_source();
+        let before = self.aa_driver().map(crate::aa::AaDriver::status);
+        if let Err(e) = self.with_open_background(|c| c.driver.run_due(&app_effect)) {
+            tracing::debug!("driver work not done: {e}");
+        }
+        // Nothing it could do now: look again in a second at the soonest.
+        let still = self.command.as_ref().and_then(|c| c.driver.next_due()).is_some_and(|d| d <= Instant::now());
+        self.driver_rest_until = still.then(|| Instant::now() + Duration::from_secs(1));
+        if self.aa_driver().map(crate::aa::AaDriver::status) != before {
+            self.next_enumerate = Instant::now();
+        }
+    }
+
+    /// The "AA" keyboard backups in the data folder, the ones of the
+    /// keyboard on the cable marked.
+    /// What [`DeviceHandle::keyboard_backups`] lists: from the snapshot,
+    /// not the actor.
+    #[cfg(test)]
+    fn keyboard_backups(&self) -> Vec<KeyboardBackupInfo> {
+        let Some(dir) = self.config_dir.as_deref().map(backups::dir) else { return Vec::new() };
+        list_keyboard_backups(&dir, self.shared.lock().unwrap().aa_usb)
+    }
+
+    /// The USB ids of the "AA" keyboard on the cable: the open driver's, or
+    /// the detected mode's and firmware.
+    fn aa_usb(&self) -> Option<kb_core::aa::UsbIdentity> {
+        self.aa_driver().map(crate::aa::AaDriver::usb).or_else(|| {
+            let k = self.usb.as_ref().filter(|k| k.protocol() == Protocol::AjazzAa)?;
+            Some(kb_core::aa::UsbIdentity { pid: k.mode.pid, release: self.usb_firmware? })
+        })
+    }
+
+    /// On an "AA" keyboard the keyboard, not the app, holds the truth about
+    /// keys and macros: the records follow its last read (writes update
+    /// it), macro names kept where the steps are the same, so the Key
+    /// mapping and Macros pages and the profiles compare against what the
+    /// keyboard has. The UI hears when they changed. Nothing happens while
+    /// the read is the one the records came from, or before a read passed
+    /// the sanity check. `wrote`: Keymotion just wrote to the keyboard (a
+    /// save, a restore), so the records go to disk even when only their
+    /// names or write times changed.
+    fn sync_aa_records(&mut self, wrote: bool) {
+        let Some((record, contents)) = self.aa_driver().and_then(|d| Some((d.record_id().to_string(), d.contents()?)))
+        else {
+            return;
+        };
+        let key = (record.clone(), contents.fingerprint.clone());
+        if self.aa_synced.as_ref() == Some(&key) {
+            return;
+        }
+        self.aa_synced = Some(key);
+        let now = now_ms();
+        let old_keymap = self.keymaps.models.get(&record).cloned().unwrap_or_default();
+        let layer = |c: &crate::aa::LayerContents, old: &StoredLayer| {
+            let mut l = StoredLayer::new(&c.actions, 0);
+            l.written_ms = old.written_ms;
+            l.fixed = c.fixed.clone();
+            l.builtin = c.builtin.clone();
+            l.pinned = c.pinned.clone();
+            l
+        };
+        let keymap = StoredKeymap {
+            base: layer(&contents.base, &old_keymap.base),
+            fn_layer: layer(&contents.fn_layer, &old_keymap.fn_layer),
+            read_ms: Some(now),
+            source: Some(contents.keys_source.clone()),
+        };
+        let old_macros = self.macros.models.get(&record).cloned().unwrap_or_default();
+        let mut macros = macros_from_keyboard(&contents.macros, &old_macros, now);
+        macros.source = Some(contents.macros_source.clone());
+        let same_keymap = StoredKeymap { read_ms: old_keymap.read_ms, ..keymap.clone() } == old_keymap;
+        let same_macros = StoredMacros { read_ms: old_macros.read_ms, ..macros.clone() } == old_macros;
+        self.keymaps.models.insert(record.clone(), keymap);
+        self.macros.models.insert(record.clone(), macros);
+        if let Ok(mut s) = self.shared.lock() {
+            s.keymaps = self.keymaps.clone();
+            s.macros = self.macros.clone();
+        }
+        if !wrote && same_keymap && same_macros && old_keymap.read_ms.is_some() {
+            return;
+        }
+        tracing::info!(record = %record, "keymap and macro records follow the \"AA\" keyboard");
+        if let Some(dir) = &self.config_dir {
+            if let Err(e) = settings::save_keymaps(dir, &self.keymaps) {
+                tracing::warn!("keymap record not saved: {e}");
+            }
+            if let Err(e) = settings::save_macros(dir, &self.macros) {
+                tracing::warn!("macro record not saved: {e}");
+            }
+        }
+        let _ = self.app.emit(EVENT_RECORDS_CHANGED, &record);
+    }
+
+    /// Write a keyboard backup back. The effect's colour: the backup's,
+    /// else `color` (a UI colour, calibrated here), else the app's record
+    /// when its effect is the backup's.
+    fn restore_keyboard(&mut self, file: &str, color: Option<(Rgb, bool)>) -> Result<KeyboardRestoreResult, String> {
+        let dir = self.config_dir.as_deref().map(backups::dir).ok_or("the app has no data folder")?;
+        let backup = backups::load(&dir, file)?;
+        if self.command_path.is_none() {
+            return Err(NO_USB.into());
+        }
+        if self.aa_driver().is_none() {
+            // Opens (and reads) the keyboard on the cable; one that cannot
+            // be read says so, not that the backup is another keyboard's.
+            self.with_open(|_| Ok(())).map_err(|e| format!("{ERR_KEYBOARD_NOT_READ}: {e}"))?;
+        }
+        let usb = self.aa_driver().map(crate::aa::AaDriver::usb);
+        if usb != Some(backup.usb()) {
+            return Err(ERR_BACKUP_OTHER_KEYBOARD.into());
+        }
+        self.may_write()?;
+        let color = color
+            .map(|(c, rainbow)| EffectColor { color: self.calibration.apply(c), color_mode: u8::from(rainbow) })
+            .or_else(|| {
+                let saved = backup.snapshot.effect()?;
+                self.app_effect().filter(|a| a.matches_readback(&saved)).map(|a| a.color_part())
+            });
+        let app_effect = self.app_effect();
+        let report = self.with_command(|d| d.restore(&backup.snapshot, color, app_effect, Some(file)))?;
+        tracing::info!(written = ?report.written, kept = report.kept.len(), %file, "keyboard backup restored");
+        self.next_enumerate = Instant::now();
+        // The records follow what was put back; so does the Lighting
+        // page's, through the UI (`effect`).
+        self.sync_aa_records(true);
+        let mut result = KeyboardRestoreResult::from(report);
+        result.effect = self.aa_driver().and_then(|d| d.effect_now()).and_then(|e| self.effect_request(&e));
+        Ok(result)
+    }
+
+    /// An effect the keyboard holds, as the Lighting page's record keeps
+    /// one (monitor colour), when its mode and colour are known and it is
+    /// not a per-key mode.
+    fn effect_request(&self, read: &kb_core::aa::EffectRead) -> Option<crate::dto::EffectRequest> {
+        if !read.mode_known || read.effect.shows_per_key() || !read.color_known {
+            return None;
+        }
+        let s = read.settings();
+        let [r, g, b] = self.calibration.inverse(s.color);
+        Some(crate::dto::EffectRequest {
+            mode: s.mode,
+            color: format!("#{r:02x}{g:02x}{b:02x}"),
+            rainbow: s.rainbow,
+            brightness: s.brightness,
+            speed: s.speed,
+            direction: s.direction,
+        })
     }
 
     /// Upload to the GIF page: command channel for the session, display
     /// channel (opened just for this) for the pages. Progress is emitted as
     /// `screen-upload-progress`.
+    ///
+    /// Nothing else reaches the keyboard meanwhile: the actor handles one
+    /// request at a time ([`next_batch`] gives an upload a turn of its own),
+    /// so live frames, the mirror, the clock sync and device reads wait for
+    /// it, and the progress callback gets only numbers.
     fn upload_screen(&mut self, id: &str, anim: &ScreenAnimation) -> ScreenUploadResult {
-        let model_id = self.usb_model.map(|m| m.id.clone());
-        let fail = |model_id: Option<String>, flash_written: bool, e: String| ScreenUploadResult {
-            model_id,
+        let record_id = self.usb.as_ref().map(|k| k.record_id.clone());
+        // Cancelled while it waited its turn: it does not start.
+        let Some(cancel) = self.uploads.start(id) else {
+            tracing::info!(label = id, "screen upload cancelled before it started");
+            return ScreenUploadResult { record_id, flash_written: false, error: Some(ERR_UPLOAD_CANCELLED.into()) };
+        };
+        let r = self.upload_screen_now(id, anim, record_id, &cancel);
+        self.uploads.ended();
+        r
+    }
+
+    fn upload_screen_now(
+        &mut self,
+        id: &str,
+        anim: &ScreenAnimation,
+        record_id: Option<String>,
+        cancel: &AtomicBool,
+    ) -> ScreenUploadResult {
+        let fail = |record_id: Option<String>, flash_written: bool, e: String| ScreenUploadResult {
+            record_id,
             flash_written,
             error: Some(e),
         };
-        let Some(path) = self.display_path.clone() else { return fail(model_id, false, NO_USB.into()) };
+        let (Some(path), Some(protocol)) = (self.display_path.clone(), self.usb.as_ref().map(UsbKeyboard::protocol))
+        else {
+            return fail(record_id, false, NO_USB.into());
+        };
         if let Err(e) = self.may_write() {
-            return fail(model_id, false, e);
+            return fail(record_id, false, e);
         }
-        let display = self
-            .hid
-            .as_ref()
-            .ok_or_else(|| "HID unavailable".to_string())
-            .and_then(|hid| open_checked(hid, &path, true));
-        let mut display = match display {
+        // The clock page guard and the "incomplete" mark (lib.rs
+        // `screen_journal`): every upload passes here, and may stop here.
+        if let Err(e) = (self.screen_hook)(ScreenWriteStep::Starting { label: id, record_id: record_id.as_deref() }) {
+            tracing::info!(label = id, "screen upload refused: {e}");
+            return fail(record_id, false, e);
+        }
+        let mut display = match self.ports.open_display(&path, protocol) {
             Ok(d) => d,
-            Err(e) => return fail(model_id, false, e),
+            Err(e) => {
+                let _ = (self.screen_hook)(ScreenWriteStep::Ended { flash_written: false, ok: false });
+                return fail(record_id, false, e);
+            }
         };
         let app = self.app.clone();
         let label = id.to_string();
         let mut last = Instant::now() - SCREEN_PROGRESS_EVERY;
         let mut started = false;
         let started_at = Instant::now();
-        (self.screen_hook)(ScreenWriteStep::Starting { label: id, model_id: model_id.as_deref() });
         let r = self.with_command(|d| {
-            d.upload_screen(&mut display, anim, |done, total| {
-                started = true;
-                if done == 1 || done == total || last.elapsed() >= SCREEN_PROGRESS_EVERY {
-                    last = Instant::now();
-                    let p = crate::dto::ScreenProgress { id: label.clone(), done: done as u32, total: total as u32 };
-                    let _ = app.emit(EVENT_SCREEN_PROGRESS, p);
-                }
-            })
+            d.upload_screen(
+                &mut display,
+                anim,
+                |done, total| {
+                    started = true;
+                    if done == 1 || done == total || last.elapsed() >= SCREEN_PROGRESS_EVERY {
+                        last = Instant::now();
+                        let p =
+                            crate::dto::ScreenProgress { id: label.clone(), done: done as u32, total: total as u32 };
+                        let _ = app.emit(EVENT_SCREEN_PROGRESS, p);
+                    }
+                },
+                cancel,
+            )
         });
-        (self.screen_hook)(ScreenWriteStep::Ended { flash_written: r.is_ok() || started, ok: r.is_ok() });
+        let _ = (self.screen_hook)(ScreenWriteStep::Ended { flash_written: r.is_ok() || started, ok: r.is_ok() });
         match r {
             Ok(report) => {
                 tracing::info!(
@@ -1174,27 +1792,49 @@ impl Actor {
                     commit = ?report.commit_echo,
                     "screen upload done"
                 );
-                ScreenUploadResult { model_id, flash_written: true, error: None }
+                ScreenUploadResult { record_id, flash_written: true, error: None }
             }
             // A failure after the first page left the GIF page half written.
-            Err(e) => fail(model_id, started, e),
+            Err(e) => fail(record_id, started, e),
         }
     }
 
     /// Write every macro, then record them (names included). Like the
     /// keymap, the record changes only after the keyboard confirmed the data.
-    fn apply_macros(&mut self, mut slots: Vec<Option<StoredMacro>>) -> Result<StoredMacros, String> {
-        let model = self.usb_model.ok_or_else(|| NO_USB.to_string())?;
+    fn apply_macros(
+        &mut self,
+        mut slots: Vec<Option<StoredMacro>>,
+        base: Option<String>,
+    ) -> Result<StoredMacros, String> {
+        let record = self.usb.as_ref().map(|k| k.record_id.clone()).ok_or_else(|| NO_USB.to_string())?;
         self.may_write()?;
         while slots.last().is_some_and(Option::is_none) {
             slots.pop();
         }
-        let mut stored = StoredMacros { slots, written_ms: None };
+        let mut stored = StoredMacros { slots, ..Default::default() };
         let image = stored.image_slots();
-        self.with_command(|d| d.write_macros(&image))?;
-        tracing::info!(slots = image.len(), model = %model.id, "macros written");
+        let written = self.with_command(|d| match d.aa_mut() {
+            Some(aa) => aa.write_macros_from(&image, base.as_deref()),
+            None => d.write_macros(&image),
+        });
+        if self.aa_driver().is_some() {
+            // The keyboard is the record ("AA"): what it holds now, with the
+            // names the user just gave. A refused save still brings the
+            // record up to the fresh read (and the UI hears it).
+            if written.is_ok() {
+                tracing::info!(slots = image.len(), record = %record, "macros written");
+                stored.written_ms = Some(now_ms());
+                self.macros.models.insert(record.clone(), stored.clone());
+            }
+            self.aa_synced = None;
+            self.sync_aa_records(true);
+            written?;
+            return Ok(self.macros.models.get(&record).cloned().unwrap_or(stored));
+        }
+        written?;
+        tracing::info!(slots = image.len(), record = %record, "macros written");
         stored.written_ms = Some(now_ms());
-        self.macros.models.insert(model.id.clone(), stored.clone());
+        self.macros.models.insert(record, stored.clone());
         if let Ok(mut s) = self.shared.lock() {
             s.macros = self.macros.clone();
         }
@@ -1210,13 +1850,41 @@ impl Actor {
     /// Write a keymap layer, then record it. The record changes only after
     /// the keyboard confirmed the data (checksum), so it never claims a
     /// layout the keyboard did not get.
-    fn apply_keymap(&mut self, layer: Layer, entries: Vec<(u8, KeyAction)>) -> Result<StoredKeymap, String> {
-        let model = self.usb_model.ok_or_else(|| NO_USB.to_string())?;
-        let map = kb_core::keymap::canonical(model, layer, entries).map_err(|e| e.to_string())?;
+    fn apply_keymap(
+        &mut self,
+        layer: Layer,
+        entries: Vec<(u8, KeyAction)>,
+        base: Option<String>,
+    ) -> Result<StoredKeymap, String> {
+        let usb = self.usb.clone().ok_or_else(|| NO_USB.to_string())?;
+        let map = kb_core::keymap::canonical(usb.model, layer, entries).map_err(|e| e.to_string())?;
         self.may_write()?;
-        self.with_command(|d| d.apply_keymap(layer, map.iter().map(|(&l, &a)| (l, a))))?;
-        tracing::info!(?layer, keys = map.len(), model = %model.id, "keymap layer written");
-        let stored = self.keymaps.models.entry(model.id.clone()).or_default();
+        let written = self.with_command(|d| match d.aa_mut() {
+            Some(aa) => aa.apply_keymap_from(layer, &map, base.as_deref()),
+            None => d.apply_keymap(layer, &map).map(|()| 0),
+        });
+        if self.aa_driver().is_some() {
+            // The keyboard is the record ("AA"): what it holds now. A refused
+            // save still brings the record up to the fresh read (and the UI
+            // hears it).
+            if let Ok(kept) = &written {
+                tracing::info!(?layer, keys = map.len(), kept, record = %usb.record_id, "keymap layer written");
+                if let Some(l) = self.keymaps.models.get_mut(&usb.record_id) {
+                    l.layer_mut(layer).written_ms = Some(now_ms());
+                }
+            }
+            self.aa_synced = None;
+            self.sync_aa_records(true);
+            let kept = written?;
+            if let Some(k) = self.keymaps.models.get(&usb.record_id) {
+                return Ok(k.clone());
+            }
+            tracing::debug!(kept, "no keymap record to answer with");
+        } else {
+            written?;
+        }
+        tracing::info!(?layer, keys = map.len(), record = %usb.record_id, "keymap layer written");
+        let stored = self.keymaps.models.entry(usb.record_id).or_default();
         *stored.layer_mut(layer) = StoredLayer::new(&map, now_ms());
         let result = stored.clone();
         if let Ok(mut s) = self.shared.lock() {
@@ -1289,11 +1957,12 @@ impl Actor {
         self.gate(WriteKind::Memory)
     }
 
-    /// The wired keyboard's firmware: tested, or said yes to this session.
+    /// The wired keyboard's firmware: tested in the detected mode, or said
+    /// yes to this session.
     fn firmware_check(&self) -> Option<FirmwareCheck> {
-        self.usb_model.zip(self.usb_firmware).map(|(model, release)| FirmwareCheck {
+        self.usb.as_ref().zip(self.usb_firmware).map(|(k, release)| FirmwareCheck {
             release,
-            verified: model.mode(ConnectionKind::Usb).is_some_and(|mode| mode.firmware_verified(release)),
+            verified: k.mode.firmware_verified(release),
             confirmed: self.firmware_confirmed == Some(release),
         })
     }
@@ -1313,44 +1982,97 @@ impl Actor {
     fn gate_block(&self, kind: WriteKind) -> Option<WriteBlock> {
         // Without a keyboard on the cable the write fails on its own.
         self.command_path.as_ref()?;
-        let block = write_gate(kind, self.wired, self.firmware_check(), running_conflict)?;
-        match &block {
-            WriteBlock::UnverifiedFirmware(v) => {
-                tracing::warn!(firmware = %v, ?kind, "write waits for the user: firmware not tested");
-                let _ = self.app.emit(EVENT_FIRMWARE_UNVERIFIED, v);
-            }
-            WriteBlock::SeveralKeyboards => tracing::warn!(keyboards = self.wired, "write refused: several keyboards"),
-            WriteBlock::Program(_) => {}
-        }
+        let block = write_gate_for(kind, self.wired, self.read_only(), self.firmware_check(), self.programs)?;
+        note_block(&self.app, kind, &block, self.wired);
         Some(block)
     }
 
-    /// Run `f` against the wired command channel, opening it on demand.
-    /// Any transport error drops the handle so the next call reopens it.
-    fn with_command<T>(
+    /// Run `f` against the wired command channel's driver, opening it on
+    /// demand ([`Self::with_open`]).
+    fn with_command<T>(&mut self, f: impl FnOnce(&mut Driver) -> driver::Result<T>) -> Result<T, String> {
+        self.with_open(|c| f(&mut c.driver))
+    }
+
+    /// Run `f` against the wired command channel, opening it on demand in
+    /// the detected keyboard's family (an "AA" keyboard is read whole when
+    /// it opens). Any transport error drops the handle so the next call
+    /// reopens it. For the user's own requests: an "AA" keyboard whose
+    /// channel failed is tried again at once.
+    fn with_open<T>(&mut self, f: impl FnOnce(&mut Command) -> driver::Result<T>) -> Result<T, String> {
+        self.with_open_as(false, f)
+    }
+
+    /// [`Self::with_open`] for the actor's own work (live frames, the
+    /// mirror, device reads, the driver's due work): an "AA" keyboard whose
+    /// channel failed is opened again at most every [`AA_REOPEN_BACKOFF`].
+    fn with_open_background<T>(&mut self, f: impl FnOnce(&mut Command) -> driver::Result<T>) -> Result<T, String> {
+        self.with_open_as(true, f)
+    }
+
+    fn with_command_background<T>(&mut self, f: impl FnOnce(&mut Driver) -> driver::Result<T>) -> Result<T, String> {
+        self.with_open_background(|c| f(&mut c.driver))
+    }
+
+    fn with_open_as<T>(
         &mut self,
-        f: impl FnOnce(&mut SonixFf13<HidChannel>) -> kb_core::sonix::Result<T>,
+        background: bool,
+        f: impl FnOnce(&mut Command) -> driver::Result<T>,
     ) -> Result<T, String> {
         let path = self.command_path.clone().ok_or_else(|| NO_USB.to_string())?;
-        if self.command.as_ref().is_none_or(|c| c.path != path) {
-            let hid = self.hid.as_ref().ok_or("HID unavailable")?;
-            let channel = open_checked(hid, &path, false)?;
-            self.command = Some(Command { path, driver: SonixFf13::new(channel) });
+        let usb = self.usb.clone().ok_or_else(|| NO_USB.to_string())?;
+        let protocol = usb.protocol();
+        let aa = protocol == Protocol::AjazzAa;
+        if self.command.as_ref().is_none_or(|c| c.path != path || c.driver.protocol() != protocol) {
+            let waiting = self.aa_reopen_after.as_ref().is_some_and(|(p, until)| *p == path && Instant::now() < *until);
+            if background && aa && waiting {
+                return Err(ERR_AA_REOPEN_LATER.into());
+            }
+            let target = OpenTarget {
+                protocol,
+                model: usb.model,
+                record_id: usb.record_id.clone(),
+                data_dir: self.config_dir.clone(),
+                app_effect: if protocol == Protocol::AjazzAa { self.app_effect() } else { None },
+            };
+            // A handle being replaced takes its stream with it.
+            self.command = None;
+            let driver = match self.ports.open_command(&path, &target) {
+                Ok(driver) => driver,
+                Err(e) => {
+                    if aa {
+                        self.aa_reopen_after = Some((path, Instant::now() + AA_REOPEN_BACKOFF));
+                    }
+                    return Err(e);
+                }
+            };
+            self.aa_reopen_after = None;
+            if let Some(d) = driver.aa() {
+                let read_only = d.read_only();
+                let read_only = read_only.as_ref().map_or("no", crate::aa::ReadOnly::kind);
+                tracing::info!(record = %usb.record_id, read_only, "\"AA\" keyboard opened");
+                // Show what the read found at once.
+                self.next_enumerate = Instant::now();
+            }
+            self.driver_rest_until = None;
+            self.command = Some(Command { path: path.clone(), driver, live: false });
         }
         let cmd = self.command.as_mut().expect("opened above");
-        match f(&mut cmd.driver) {
+        match f(cmd) {
             Ok(v) => Ok(v),
             Err(e) => {
                 // The keyboard now and then refuses one real-time frame
                 // (`FF`, about 1 in 100); the next one goes 50 ms later.
                 // `send_live` warns when they keep failing.
-                if matches!(e, kb_core::sonix::DriverError::Refused { op: 0x20, .. }) {
+                if e.is_noise() {
                     tracing::debug!("command failed: {e}");
                 } else {
                     tracing::warn!("command failed: {e}");
                 }
-                if matches!(e, kb_core::sonix::DriverError::Transport(_)) {
+                if e.is_transport() {
                     self.command = None;
+                    if aa {
+                        self.aa_reopen_after = Some((path, Instant::now() + AA_REOPEN_BACKOFF));
+                    }
                 }
                 Err(e.to_string())
             }
@@ -1388,8 +2110,27 @@ impl Actor {
         };
         let cal = self.calibration;
         let frame: Vec<(u8, Rgb)> = keys.into_iter().map(|(l, c, level)| (l, cal.apply_dimmed(c, level))).collect();
-        match self.with_command(|d| d.realtime_frame(frame)) {
+        let before = self.aa_driver().map(crate::aa::AaDriver::status);
+        // The first frame on this handle starts the stream in the family's
+        // driver (nothing to switch in either family).
+        let sent = self.with_open_background(|c| {
+            if !c.live {
+                c.driver.live_starting()?;
+                c.live = true;
+            }
+            c.driver.live_frame(frame)
+        });
+        if self.aa_driver().map(crate::aa::AaDriver::status) != before {
+            // Held back while the keyboard settles, or no more: the UI
+            // hears it at once.
+            self.next_enumerate = Instant::now();
+        }
+        match sent {
             Ok(()) => self.live_failures = 0,
+            // Refused on purpose during the quiet time after a cut upload.
+            Err(e) if self.aa_driver().is_some_and(crate::aa::AaDriver::in_quiet_time) => {
+                tracing::debug!("live frame waits for the quiet time: {e}");
+            }
             Err(e) => {
                 self.live_failures += 1;
                 if self.live_failures == LIVE_FAILURES_WARN {
@@ -1401,29 +2142,35 @@ impl Actor {
         }
     }
 
+    /// The live stream ended: tell the family's driver, once, on the handle
+    /// the stream ran on ("04 xx": nothing to do). A handle dropped
+    /// meanwhile took the stream with it.
+    fn end_live(&mut self) {
+        let Some(cmd) = self.command.as_mut().filter(|c| c.live) else { return };
+        cmd.live = false;
+        if let Err(e) = cmd.driver.live_stopped() {
+            tracing::warn!("live stream end failed: {e}");
+            if e.is_transport() {
+                self.command = None;
+            }
+        }
+    }
+
     fn send_mirror(&mut self) {
         if self.command_path.is_none() {
             return;
         }
-        match self.with_command(|d| d.read_colors()) {
-            Ok(raw) => {
-                let cal = self.calibration;
-                let expect = self.mirror.clone().unwrap_or_default();
-                let level = expect.level.min(MAX_LEVEL);
-                // The LED value a UI colour is driven with at this level.
-                let driven = |c: Rgb| cal.apply(c).map(|v| scale_to_level(v, level));
-                let expected = |led: u8| {
-                    if let Some((_, c)) = self.indicators.iter().find(|(l, _)| *l == led) {
-                        return Some(*c);
-                    }
-                    match &expect.colors {
-                        Expected::Unknown => None,
-                        Expected::Uniform(c) => Some(driven(*c)),
-                        Expected::PerKey(keys) => Some(keys.get(&led).map_or([0, 0, 0], |c| driven(*c))),
-                    }
-                };
-                let peak = scale_to_level(255, if level == 0 { MAX_LEVEL } else { level });
-                let colors = readback::decode_frame(&raw, expected, peak);
+        // An "AA" keyboard that left its device information unanswered, or
+        // in its quiet time after a cut upload, is not asked four times a
+        // second; its background read asks at its own pace.
+        if self.aa_driver().is_some_and(|d| !d.mirror_ready()) {
+            return;
+        }
+        let cal = self.calibration;
+        let expect = self.mirror.clone().unwrap_or_default();
+        let indicators = self.indicators.clone();
+        match self.with_command_background(|d| d.mirror_colors(&expect, cal, &indicators)) {
+            Ok(colors) => {
                 // Show what the keys look like, in monitor colours.
                 let payload: Vec<LedColor> = colors
                     .into_iter()
@@ -1438,34 +2185,55 @@ impl Actor {
         }
     }
 
+    /// What the keyboard on the cable reports about itself, and when it was
+    /// read (Unix ms), in a family that reports
+    /// ([`driver::family::reports_device`]: only "AA"; nothing is sent to an
+    /// "04 xx" keyboard). Runs on the actor like every other request, never
+    /// during a screen upload.
+    ///
+    /// An "AA" keyboard stops a macro that is playing on every command but
+    /// the live frames and the colour read-back (firmware 769), so after
+    /// the read on connecting it is asked again only while the window shows
+    /// its colours (the mirror runs: the Overview, the Lighting page), and
+    /// then at most every [`AA_DEVICE_REFRESH`]; never while hidden.
+    fn refresh_device_report(&mut self) -> Option<(DeviceReport, u64)> {
+        let protocol = self.usb.as_ref().map(UsbKeyboard::protocol)?;
+        if !driver::family::reports_device(protocol) {
+            return None;
+        }
+        let due = self.device_read.is_none_or(|at| self.mirror.is_some() && at.elapsed() >= AA_DEVICE_REFRESH);
+        if due {
+            self.device_read = Some(Instant::now());
+            match self.with_command_background(|d| d.device_info()) {
+                Ok(report) => self.device_report = report.map(|r| (r, now_ms())),
+                Err(e) => tracing::debug!("device report not read: {e}"),
+            }
+        }
+        self.device_report.clone()
+    }
+
     fn enumerate(&mut self) {
         // BLE enumeration is slow; skip it while streaming so frames stay smooth.
         let busy = self.streaming() || self.mirror.is_some();
-        if !busy && self.last_ble_scan.is_none_or(|t| t.elapsed() >= BLE_RESCAN) {
+        // The simulator stands for every device: no radio is scanned.
+        let radio = !self.ports.simulated();
+        if radio && !busy && self.last_ble_scan.is_none_or(|t| t.elapsed() >= BLE_RESCAN) {
             self.peers = scan_ble();
             self.last_ble_scan = Some(Instant::now());
         }
 
-        let interfaces = match self.hid.as_mut() {
-            Some(h) => {
-                if let Err(e) = h.refresh() {
-                    tracing::warn!("HID refresh failed: {e}");
-                }
-                h.interfaces()
-            }
-            None => Vec::new(),
-        };
+        let interfaces = self.ports.interfaces();
         // The report layouts of the vendor channels on the cable, read once
         // per collection and firmware version (from Windows; nothing is sent
         // to the keyboard). A failed read is tried again next time.
         self.layouts.retain(|(path, _), _| interfaces.iter().any(|i| &i.path == path));
-        let (hid, layouts) = (self.hid.as_ref(), &mut self.layouts);
+        let (ports, layouts) = (&self.ports, &mut self.layouts);
         let found = kb_core::classify(&interfaces, &self.peers, |iface| {
             let key = (iface.path.clone(), iface.release);
             if let Some(desc) = layouts.get(&key) {
                 return Some(desc.clone());
             }
-            match hid?.report_descriptor_at(&iface.path) {
+            match ports.report_descriptor_at(&iface.path) {
                 Ok(desc) => {
                     layouts.insert(key, desc.clone());
                     Some(desc)
@@ -1498,7 +2266,16 @@ impl Actor {
                 self.wait_clock(false);
             }
         }
-        self.usb_model = usb.filter(|k| k.command.is_some()).map(|k| k.model);
+        let usb_keyboard = usb.filter(|k| k.command.is_some()).map(|k| UsbKeyboard {
+            model: k.model,
+            mode: k.mode,
+            record_id: k.record_id(),
+        });
+        if usb_keyboard.as_ref().map(|k| &k.record_id) != self.usb.as_ref().map(|k| &k.record_id) {
+            self.device_report = None;
+            self.device_read = None;
+        }
+        self.usb = usb_keyboard;
         self.usb_firmware = usb.and_then(|k| k.firmware);
         let wired = kb_core::wired_count(&detected);
         if wired != self.wired && wired > 1 {
@@ -1507,14 +2284,20 @@ impl Actor {
         self.wired = wired;
         self.indicators =
             usb.map(|k| k.model.indicators.iter().map(|i| (i.led, i.color)).collect()).unwrap_or_default();
-        if self.command_path.is_none() {
+        // A handle on a path that is gone (another keyboard took the cable,
+        // or this one came back on another path) goes with it.
+        if self.command.as_ref().is_some_and(|c| Some(&c.path) != self.command_path.as_ref()) {
             self.command = None;
         }
+        let device = self.refresh_device_report();
 
         let mut infos = Vec::with_capacity(detected.len());
         for k in &detected {
+            // A keyboard that reports its battery on the cable shows only
+            // that there: an older Bluetooth reading is not a cable reading.
+            let own_report = k.connection == ConnectionKind::Usb && driver::family::battery_over_usb(k.protocol());
             let battery = match (&k.ble, k.connection) {
-                (Some(peer), ConnectionKind::Bluetooth) if peer.connected && !busy => {
+                (Some(peer), ConnectionKind::Bluetooth) if radio && peer.connected && !busy => {
                     let stale = self.batteries.get(&peer.address).is_none_or(|(_, at)| at.elapsed() >= BATTERY_REFRESH);
                     if stale {
                         if let Some(b) = read_battery(peer.address) {
@@ -1526,10 +2309,33 @@ impl Actor {
                 }
                 (Some(peer), _) => self.batteries.get(&peer.address).map(|(b, _)| b.clone()),
                 _ => None,
+            };
+            let battery =
+                if own_report { None } else { battery.or_else(|| self.last_battery.get(&k.model.id).cloned()) };
+            // The keyboard on the cable may report about itself (not "04 xx").
+            let device = device
+                .as_ref()
+                .filter(|_| k.connection == ConnectionKind::Usb)
+                .filter(|_| self.usb.as_ref().is_some_and(|u| u.record_id == k.record_id()));
+            let battery = device.and_then(|(d, at)| Some(Battery { percent: d.battery?, read_at_ms: *at })).or(battery);
+            let mut info = KeyboardInfo::from_detected(k, battery, device.map(|(d, _)| d.clone()));
+            if k.connection == ConnectionKind::Usb {
+                info.aa_status =
+                    self.aa_driver().filter(|d| d.record_id() == k.record_id()).map(crate::aa::AaDriver::status);
             }
-            .or_else(|| self.last_battery.get(&k.model.id).cloned());
-            infos.push(KeyboardInfo::from_detected(k, battery));
+            infos.push(info);
         }
+        if let Some(d) = self.aa_driver() {
+            let lines = d.diagnostics();
+            if let Ok(mut s) = self.shared.lock() {
+                s.aa_diagnostics = lines;
+            }
+        }
+        let aa_usb = self.aa_usb();
+        if let Ok(mut s) = self.shared.lock() {
+            s.aa_usb = aa_usb;
+        }
+        self.sync_aa_records(false);
 
         let (changed, unsupported_changed) = {
             let mut snap = self.shared.lock().expect("snapshot lock");
@@ -1563,9 +2369,8 @@ impl Actor {
     /// The support request text for the unsupported keyboard `id`.
     fn describe_unsupported(&self, id: &str) -> Result<String, String> {
         let k = self.unknown.iter().find(|k| k.key() == id).ok_or("unsupported keyboard not found")?;
-        let hid = self.hid.as_ref().ok_or("no HID access")?;
         let descriptors: Vec<Result<Vec<u8>, String>> =
-            k.paths.iter().map(|p| hid.report_descriptor_at(p).map_err(|e| e.to_string())).collect();
+            k.paths.iter().map(|p| self.ports.report_descriptor_at(p)).collect();
         Ok(crate::diagnostics::keyboard_details(k, &descriptors))
     }
 
@@ -2170,6 +2975,637 @@ mod tests {
             batched.push(held.shown());
             assert_eq!(one_at_a_time, batched, "seed {seed}");
             assert!(handled < 350, "seed {seed}: {handled} of 400 handled");
+        }
+    }
+
+    #[test]
+    fn a_read_only_keyboard_takes_no_memory_write_and_no_clock() {
+        let insane = || Some(ReadOnly::NotSane(vec!["unknown effect mode 99".into()]));
+        let tested = Some(FirmwareCheck { release: 0x0301, verified: true, confirmed: false });
+        for kind in [WriteKind::Memory, WriteKind::Clock] {
+            let block = write_gate_for(kind, 1, insane(), tested, || panic!("programs listed"));
+            assert_eq!(block, Some(WriteBlock::NotSane(vec!["unknown effect mode 99".into()])), "{kind:?}");
+        }
+        assert_eq!(
+            WriteBlock::NotSane(vec!["a".into(), "b".into()]).to_string(),
+            "the keyboard does not look as expected, so nothing is written: a; b"
+        );
+        assert_eq!(
+            write_gate_for(WriteKind::Clock, 1, Some(ReadOnly::NoBackup("disk full".into())), tested, || None),
+            Some(WriteBlock::NoBackup("disk full".into()))
+        );
+        assert_eq!(
+            WriteBlock::NoBackup("disk full".into()).to_string(),
+            "no backup of the keyboard could be saved, so nothing is written: disk full"
+        );
+        // Live frames are the "AA" arm's business (RAM only, a read-only
+        // keyboard shows them too); several keyboards still come first.
+        assert_eq!(write_gate_for(WriteKind::Live, 1, insane(), tested, || None), None);
+        assert_eq!(write_gate_for(WriteKind::Memory, 2, insane(), tested, || None), Some(WriteBlock::SeveralKeyboards));
+        // A keyboard that is not read-only: the gate as before.
+        let untested = Some(FirmwareCheck { release: 0x0301, verified: false, confirmed: false });
+        for kind in [WriteKind::Memory, WriteKind::Clock, WriteKind::Live] {
+            assert_eq!(
+                write_gate_for(kind, 1, None, untested, || None),
+                write_gate(kind, 1, untested, || None),
+                "{kind:?}"
+            );
+        }
+    }
+
+    /// The actor with the simulated keyboard: everything but the windows.
+    mod with_the_simulator {
+        use super::*;
+        use crate::aa::tests::TempDir;
+        use crate::sim::SimBoard;
+        use kb_core::aa::sim::Sim;
+        use kb_protocol::aa::cmd;
+        use std::path::Path;
+
+        const RECORD: &str = "ajazz-ak980-pro.aa";
+
+        fn actor(dir: &Path, faults: &str) -> (Actor, Sim) {
+            actor_with(dir, faults, |_| {})
+        }
+
+        /// [`actor`], the simulated keyboard set up by `prepare` first (as
+        /// another program left it).
+        fn actor_with(dir: &Path, faults: &str, prepare: impl FnOnce(&Sim)) -> (Actor, Sim) {
+            let board = SimBoard::new("aa769", faults).unwrap();
+            let sim = board.sim().clone();
+            prepare(&sim);
+            let shared = Arc::new(Mutex::new(Snapshot::default()));
+            let mut a = Actor::new(
+                Ui(None),
+                shared,
+                LedCalibration::RAW,
+                ClockSettings::default(),
+                Keymaps::default(),
+                MacroRecord::default(),
+                Some(dir.to_path_buf()),
+            );
+            a.ports = Ports::Sim(board);
+            a.programs = || None;
+            a.enumerate();
+            (a, sim)
+        }
+
+        fn call<T>(a: &mut Actor, make: impl FnOnce(Reply<T>) -> Request) -> Result<T, String> {
+            let (tx, rx) = mpsc::channel();
+            a.handle(make(tx));
+            rx.try_recv().expect("answered")
+        }
+
+        fn upload(a: &mut Actor, id: &str) -> ScreenUploadResult {
+            let (tx, rx) = mpsc::channel();
+            let anim = ScreenAnimation::still(kb_protocol::sonix::screen::test_pattern());
+            a.handle(Request::UploadScreen { id: id.into(), anim: Box::new(anim), reply: tx });
+            rx.try_recv().expect("answered")
+        }
+
+        fn info(a: &Actor) -> KeyboardInfo {
+            let snap = a.shared.lock().unwrap();
+            assert_eq!(snap.keyboards.len(), 1, "the simulated keyboard alone");
+            snap.keyboards[0].clone()
+        }
+
+        fn writes(sim: &Sim) -> usize {
+            let changes = [cmd::SET_KEYMAP, cmd::SET_EFFECT, cmd::SET_PER_KEY, cmd::SET_MACROS, cmd::SET_FN_KEYMAP];
+            sim.state().packets.iter().filter(|p| changes.contains(&p[2]) || p[2] == cmd::CLOCK).count()
+        }
+
+        fn settings() -> EffectSettings {
+            EffectSettings { mode: 2, color: [255, 0, 0], rainbow: false, brightness: 4, speed: 2, direction: 0 }
+        }
+
+        #[test]
+        fn the_keyboard_is_listed_read_and_backed_up_with_its_own_battery() {
+            let dir = TempDir::new("actor-listed");
+            let (mut a, sim) = actor(&dir.0, "");
+            let k = info(&a);
+            assert_eq!((k.record_id.as_str(), k.firmware.as_deref()), (RECORD, Some("3.01")));
+            let status = k.aa_status.clone().expect("read when it appeared");
+            assert_eq!(status.read_only, None);
+            assert!(status.backup.as_deref().is_some_and(|f| f.starts_with("aa-8039-0301-")));
+            assert_eq!(k.device.as_ref().and_then(|d| d.battery), Some(100));
+            assert_eq!(k.battery.as_ref().map(|b| b.percent), Some(100), "the keyboard's own report");
+            assert_eq!(writes(&sim), 0, "nothing written by connecting");
+            assert!(a.shared.lock().unwrap().aa_diagnostics.iter().any(|l| l == "writes: allowed"));
+            let json = serde_json::to_value(&k).unwrap();
+            assert_eq!(json["aaStatus"]["readOnly"], serde_json::Value::Null);
+            assert!(json["aaStatus"].get("liveArmed").is_none() && json["device"].get("updatePending").is_none());
+            assert_eq!(json["aaStatus"]["otherProgramSuspected"], false);
+
+            // An older Bluetooth reading never stands in on the cable.
+            a.last_battery.insert("ajazz-ak980-pro".into(), Battery { percent: 12, read_at_ms: 1 });
+            a.enumerate();
+            assert_eq!(info(&a).battery.map(|b| b.percent), Some(100));
+            let dir = TempDir::new("actor-silent");
+            let (mut a, _) = actor(&dir.0, "silent");
+            a.last_battery.insert("ajazz-ak980-pro".into(), Battery { percent: 12, read_at_ms: 1 });
+            a.enumerate();
+            let k = info(&a);
+            assert_eq!(k.battery, None, "no report: no battery, not the old reading");
+            assert!(matches!(k.aa_status.unwrap().read_only, Some(crate::dto::ReadOnlyReason::NotSane { .. })));
+        }
+
+        #[test]
+        fn every_write_asks_the_firmware_question_then_goes() {
+            let dir = TempDir::new("actor-writes");
+            let (mut a, sim) = actor(&dir.0, "");
+            let e = call(&mut a, |r| Request::ApplyEffect(settings(), r)).unwrap_err();
+            assert_eq!(e, "untested keyboard firmware 3.01");
+            assert_eq!(writes(&sim), 0);
+            a.handle(Request::ConfirmFirmware("3.01".into()));
+
+            call(&mut a, |r| Request::ApplyEffect(settings(), r)).unwrap();
+            assert_eq!(sim.state().effect[0], 2);
+            let esc = Sim::model().geometry.as_ref().unwrap().keys[0].led;
+            call(&mut a, |reply| Request::ApplyPerKey { colors: vec![(esc, [7, 8, 9])], brightness: 5, reply })
+                .unwrap();
+            assert_eq!(sim.state().effect[0], kb_protocol::aa::effect::MODE_PER_KEY);
+            let a_key = Sim::model().geometry.as_ref().unwrap().keys.iter().find(|k| k.id == "a").unwrap().led;
+            let stored = call(&mut a, |reply| Request::ApplyKeymap {
+                layer: Layer::Base,
+                entries: vec![(a_key, KeyAction::key(0x05))],
+                base: None,
+                reply,
+            })
+            .unwrap();
+            assert_eq!(stored.base.entries.len(), 1, "the record of the {RECORD} keyboard");
+            assert!(a.keymaps.models.contains_key(RECORD));
+            use kb_protocol::sonix::macros::{MacroStep, StepKind};
+            let steps = vec![
+                crate::settings::StoredStep(MacroStep::new(StepKind::KeyDown, 4, 20)),
+                crate::settings::StoredStep(MacroStep::new(StepKind::KeyUp, 4, 20)),
+            ];
+            let slots = vec![Some(StoredMacro { name: "x".into(), steps })];
+            call(&mut a, |reply| Request::ApplyMacros { slots, base: None, reply }).unwrap();
+            assert!(!sim.state().sent(cmd::SET_MACROS).is_empty());
+            call(&mut a, Request::SyncClock).unwrap();
+            assert!(sim.state().clock.is_some());
+            assert!(call(&mut a, Request::WriteBlocked).unwrap().is_none());
+        }
+
+        #[test]
+        fn a_read_only_keyboard_refuses_every_write_path() {
+            for (faults, text) in [("insane", "the keyboard does not look as expected, so nothing is written")] {
+                let dir = TempDir::new(&format!("actor-{faults}"));
+                let (mut a, sim) = actor(&dir.0, faults);
+                a.handle(Request::ConfirmFirmware("3.01".into()));
+                assert!(info(&a).aa_status.unwrap().read_only.is_some(), "{faults}");
+                let refused = [
+                    call(&mut a, |r| Request::ApplyEffect(settings(), r)).unwrap_err(),
+                    call(&mut a, |reply| Request::ApplyPerKey { colors: vec![], brightness: 5, reply }).unwrap_err(),
+                    call(&mut a, |reply| Request::ApplyKeymap { layer: Layer::Fn, entries: vec![], base: None, reply })
+                        .unwrap_err(),
+                    call(&mut a, |reply| Request::ApplyMacros { slots: vec![], base: None, reply }).unwrap_err(),
+                    call(&mut a, Request::SyncClock).unwrap_err(),
+                    upload(&mut a, "0123456789abcdef").error.unwrap(),
+                ];
+                for e in refused {
+                    assert!(e.starts_with(text), "{faults}: {e}");
+                }
+                let block = call(&mut a, Request::WriteBlocked).unwrap().unwrap();
+                assert!(block.to_string().starts_with(text), "{faults}");
+                // Live lights store nothing: they show all the same.
+                a.handle(Request::SetLayer(LightLayer::Gauges, Some(frame(&[(1, 9)], 1.0))));
+                a.send_live();
+                a.enumerate();
+                assert_eq!(info(&a).aa_status.unwrap().live_lights_off, None, "{faults}");
+                assert_eq!(writes(&sim), 0, "{faults}: nothing written");
+                assert!(!sim.state().sent(cmd::REALTIME).is_empty(), "{faults}: frames shown");
+                assert!(sim.state().screen.is_empty());
+            }
+        }
+
+        #[test]
+        fn every_upload_path_stops_at_the_clock_page_until_the_user_says_yes() {
+            let dir = TempDir::new("actor-clock-page");
+            let (mut a, sim) = actor(&dir.0, "");
+            let library = Arc::new(Mutex::new(crate::screen_lib::ScreenLibrary::open(Some(&dir.0))));
+            a.screen_hook = crate::screen_journal(&library);
+            a.handle(Request::ConfirmFirmware("3.01".into()));
+            assert!(library.lock().unwrap().clock_page_at_risk(RECORD));
+            // A library item (`screen_upload`), a live card, the live
+            // screen going back to the own picture: one path, one guard.
+            for id in ["0123456789abcdef", "live:music", "fedcba9876543210"] {
+                let r = upload(&mut a, id);
+                assert_eq!(r.error.as_deref(), Some(crate::ERR_CLOCK_PAGE), "{id}");
+                assert!(!r.flash_written, "{id}");
+                assert_eq!(r.record_id.as_deref(), Some(RECORD));
+            }
+            assert!(sim.state().screen.is_empty(), "nothing reached the screen channel");
+            assert!(library.lock().unwrap().state(RECORD).incomplete.is_none(), "no upload began");
+            // The user said yes.
+            library.lock().unwrap().ack_clock_page(RECORD).unwrap();
+            let r = upload(&mut a, "live:music");
+            assert_eq!(r.error, None);
+            assert!(r.flash_written && !sim.state().screen.is_empty());
+            // A "04 xx" keyboard's record is never at risk.
+            assert!(!library.lock().unwrap().clock_page_at_risk("ajazz-ak980-pro"));
+        }
+
+        #[test]
+        fn the_clock_on_connect_waits_until_the_keyboard_takes_writes() {
+            let dir = TempDir::new("actor-clock-settle");
+            let (mut a, sim) = actor(&dir.0, "");
+            // Untested firmware: the user said yes this session.
+            a.firmware_confirmed = a.usb_firmware;
+            fn settle(a: &mut Actor, d: Duration) {
+                a.command.as_mut().unwrap().driver.aa_mut().unwrap().keyboard_mut().set_settle(d);
+            }
+            settle(&mut a, Duration::from_secs(5));
+            let now = Instant::now();
+            a.clock_due = Some((now, CLOCK_ATTEMPTS));
+            a.run_clock_due(now);
+            assert!(sim.state().clock.is_none(), "not sent, and the actor did not sleep");
+            assert!(now.elapsed() < Duration::from_secs(1));
+            let (due, attempts) = a.clock_due.expect("still due");
+            assert!(due > now + Duration::from_secs(4) && attempts == CLOCK_ATTEMPTS);
+            // Once the keyboard takes writes, it goes.
+            settle(&mut a, Duration::ZERO);
+            a.run_clock_due(due);
+            assert!(sim.state().clock.is_some());
+            assert_eq!(a.clock_due, None);
+        }
+
+        #[test]
+        fn live_lights_go_through_the_actor_and_switch_nothing() {
+            let dir = TempDir::new("actor-live");
+            let (mut a, sim) = actor(&dir.0, "");
+            // Untested firmware, not confirmed: frames store nothing, so
+            // nobody is asked; the effect stays as it is.
+            a.handle(Request::SetLayer(LightLayer::Gauges, Some(frame(&[(1, 9)], 1.0))));
+            a.send_live();
+            a.enumerate();
+            let status = info(&a).aa_status.unwrap();
+            assert_eq!(status.live_lights_off, None);
+            assert!(sim.state().frames.last().is_some_and(|f| f.1), "shown");
+            assert_eq!(sim.state().effect[0], 1);
+            assert!(sim.state().sent(cmd::SET_EFFECT).is_empty());
+            // The layer goes: nothing is due afterwards.
+            a.handle(Request::SetLayer(LightLayer::Gauges, None));
+            a.end_live();
+            assert_eq!(a.driver_due(), None);
+            assert!(sim.state().sent(cmd::SET_EFFECT).is_empty());
+        }
+
+        #[test]
+        fn an_aa_keyboard_is_asked_its_battery_only_while_the_window_shows_it() {
+            // Every command but frames and the colour read-back stops a macro
+            // that plays on firmware 769: no device information every minute
+            // in the background.
+            let dir = TempDir::new("actor-battery");
+            let (mut a, sim) = actor(&dir.0, "");
+            let asked = || sim.state().sent(cmd::DEVICE_INFO).len();
+            let n = asked();
+            a.device_read = Some(Instant::now() - Duration::from_secs(3600));
+            for _ in 0..3 {
+                a.enumerate();
+            }
+            assert_eq!(asked(), n, "hidden or on another page: not asked");
+            // The window shows the keyboard's colours (Overview): asked once,
+            // then not again for five minutes.
+            a.handle(Request::SetMirror(Some(MirrorExpect::default())));
+            a.enumerate();
+            assert_eq!(asked(), n + 1);
+            a.device_read = Some(Instant::now() - Duration::from_secs(120));
+            a.enumerate();
+            assert_eq!(asked(), n + 1, "not every minute");
+            a.device_read = Some(Instant::now() - AA_DEVICE_REFRESH);
+            a.enumerate();
+            assert_eq!(asked(), n + 2);
+            assert_eq!(info(&a).device.and_then(|d| d.battery), Some(100));
+        }
+
+        #[test]
+        fn backups_are_listed_and_restored_through_the_actor() {
+            let dir = TempDir::new("actor-restore");
+            let (mut a, sim) = actor(&dir.0, "");
+            a.handle(Request::ConfirmFirmware("3.01".into()));
+            let list = a.keyboard_backups();
+            assert_eq!(list.len(), 1);
+            let first = &list[0];
+            assert!(first.matches && first.color_known);
+            assert_eq!(first.reason, KeyboardBackupReason::FirstConnect);
+            assert_eq!((first.record_id.as_str(), first.firmware.as_str()), (RECORD, "3.01"));
+            call(&mut a, |r| Request::ApplyEffect(settings(), r)).unwrap();
+            let file = first.file.clone();
+            let result =
+                call(&mut a, |reply| Request::RestoreKeyboard { file: file.clone(), color: None, reply }).unwrap();
+            assert_eq!(result.written, ["effect"]);
+            assert!(result.kept.is_empty());
+            // The Lighting page's record follows: the effect that went back,
+            // its colour known.
+            let e = result.effect.as_ref().expect("its colour is known");
+            assert_eq!((e.mode, e.color.as_str(), e.rainbow), (1, "#0080ff", false));
+            assert_eq!(sim.state().effect[0], 1);
+            let list = a.keyboard_backups();
+            assert_eq!(list.len(), 2);
+            assert_eq!(list[1].reason, KeyboardBackupReason::BeforeRestore);
+            // Only a backup of the keyboard on the cable, and only a backup.
+            for bad in ["../keymap.json", "aa-8009-0301-1.json"] {
+                assert!(
+                    call(&mut a, |reply| Request::RestoreKeyboard { file: bad.into(), color: None, reply }).is_err()
+                );
+            }
+            let other = crate::aa::backups::KeyboardBackup {
+                pid: 0x8009,
+                ..crate::aa::backups::load(&crate::aa::backups::dir(&dir.0), &file).unwrap()
+            };
+            let name = crate::aa::backups::save(&crate::aa::backups::dir(&dir.0), &other).unwrap();
+            let e = call(&mut a, |reply| Request::RestoreKeyboard { file: name, color: None, reply }).unwrap_err();
+            assert_eq!(e, ERR_BACKUP_OTHER_KEYBOARD);
+        }
+
+        // ------------------------------------------------------------ review of #195
+
+        fn errors_noted(a: &Actor) -> usize {
+            a.aa_driver().map_or(0, |d| d.diagnostics().iter().filter(|l| l.starts_with("error at")).count())
+        }
+
+        #[test]
+        fn a_handle_left_from_another_keyboard_says_nothing_about_the_one_on_the_cable() {
+            let dir = TempDir::new("actor-stale-handle");
+            let (mut a, _) = actor(&dir.0, "insane");
+            assert!(matches!(a.read_only(), Some(ReadOnly::NotSane(_))));
+            // The "04 xx" AK980 PRO takes the cable before a listing in
+            // between drops the "AA" handle.
+            let model = Sim::model();
+            let ff13 = model.modes.iter().find(|m| model.protocol_of(m) == Protocol::SonixFf13).unwrap();
+            a.usb = Some(UsbKeyboard { model, mode: ff13, record_id: "ajazz-ak980-pro".into() });
+            a.command_path = Some("ff13-command".into());
+            assert_eq!(a.read_only(), None);
+            a.firmware_confirmed = a.usb_firmware;
+            let block = a.gate_block(WriteKind::Memory);
+            assert!(!matches!(block, Some(WriteBlock::NotSane(_) | WriteBlock::NoBackup(_))), "{block:?}");
+
+            // A listing drops a handle whose path is gone.
+            let dir = TempDir::new("actor-gone-path");
+            let (mut a, _) = actor(&dir.0, "");
+            a.command.as_mut().expect("opened when listed").path = "gone".into();
+            a.enumerate();
+            assert!(a.command.as_ref().is_none_or(|c| c.path != "gone"));
+        }
+
+        #[test]
+        fn the_key_and_macro_records_follow_the_keyboard() {
+            use kb_core::keymap::LayerMap;
+            use kb_protocol::aa::keymap as aa_keymap;
+            use kb_protocol::sonix::macros::{MacroStep, StepKind};
+            let dir = TempDir::new("actor-records");
+            let key = |id: &str| {
+                let k = Sim::model().geometry.as_ref().unwrap().keys.iter().find(|k| k.id == id).unwrap();
+                (k.led, k.aa.unwrap())
+            };
+            let ((b_led, b_aa), (d_led, d_aa), (a_led, _)) = (key("b"), key("d"), key("a"));
+            let func = [aa_keymap::page::FUNC, 0, 0, 2];
+            // Set in AJAZZ's tool: B runs a firmware function, D types "b".
+            let (mut a, sim) = actor_with(&dir.0, "", |sim| {
+                let mut st = sim.state();
+                aa_keymap::set_entry(&mut st.keymap, b_aa, func);
+                aa_keymap::set_entry(&mut st.keymap, d_aa, [aa_keymap::page::KEYBOARD, 0, 0x05, 0]);
+            });
+            // Taken when it connected: what the Key mapping page starts
+            // from, on disk and in what the UI reads.
+            let k = a.keymaps.models[RECORD].clone();
+            assert!(k.read_ms.is_some());
+            assert_eq!(k.base.actions(), LayerMap::from([(d_led, KeyAction::key(0x05))]));
+            assert_eq!(k.base.fixed, [b_led]);
+            assert_eq!(settings::load_keymaps(&dir.0).models[RECORD], k);
+            assert_eq!(a.shared.lock().unwrap().keymaps.models[RECORD], k);
+            let m = &a.macros.models[RECORD];
+            assert!(m.read_ms.is_some() && m.slots.is_empty() && m.fixed.is_empty());
+
+            // A save of the page as shown (D kept, A added): B stays, and
+            // the record is what the keyboard holds.
+            a.handle(Request::ConfirmFirmware("3.01".into()));
+            let stored = call(&mut a, |reply| Request::ApplyKeymap {
+                layer: Layer::Base,
+                entries: vec![(d_led, KeyAction::key(0x05)), (a_led, KeyAction::key(0x06))],
+                base: None,
+                reply,
+            })
+            .unwrap();
+            assert_eq!(aa_keymap::entry(&sim.state().keymap, b_aa), func);
+            assert_eq!(stored.base.actions().len(), 2);
+            assert_eq!(stored.base.fixed, [b_led]);
+            assert!(stored.base.written_ms.is_some());
+            assert_eq!(a.keymaps.models[RECORD], stored);
+
+            // Macros keep the names given, against the keyboard's steps.
+            let steps = vec![
+                crate::settings::StoredStep(MacroStep::new(StepKind::KeyDown, 4, 20)),
+                crate::settings::StoredStep(MacroStep::new(StepKind::KeyUp, 4, 20)),
+            ];
+            let slots = vec![Some(StoredMacro { name: "x".into(), steps: steps.clone() })];
+            let stored = call(&mut a, |reply| Request::ApplyMacros { slots, base: None, reply }).unwrap();
+            assert_eq!(stored.slots[0].as_ref().map(|m| (m.name.as_str(), m.steps.clone())), Some(("x", steps)));
+            assert!(stored.written_ms.is_some() && stored.read_ms.is_some());
+            assert_eq!(
+                settings::load_macros(&dir.0).models[RECORD],
+                stored,
+                "the names and the write time on disk too"
+            );
+            assert_eq!(settings::load_keymaps(&dir.0).models[RECORD], a.keymaps.models[RECORD]);
+
+            // A restore of the backup from the first connection: the records
+            // follow what went back (A and the macro gone, B and D there).
+            let file = a.keyboard_backups()[0].file.clone();
+            call(&mut a, |reply| Request::RestoreKeyboard { file, color: None, reply }).unwrap();
+            let k = &a.keymaps.models[RECORD];
+            assert_eq!(k.base.actions(), LayerMap::from([(d_led, KeyAction::key(0x05))]));
+            assert_eq!(k.base.fixed, [b_led]);
+            assert!(a.macros.models[RECORD].slots.iter().all(Option::is_none));
+            assert_eq!(settings::load_macros(&dir.0).models[RECORD], a.macros.models[RECORD]);
+        }
+
+        #[test]
+        fn a_stale_save_is_refused_and_the_records_catch_up() {
+            use kb_core::keymap::LayerMap;
+            use kb_protocol::aa::keymap as aa_keymap;
+            let dir = TempDir::new("actor-stale");
+            let (mut a, sim) = actor(&dir.0, "");
+            a.handle(Request::ConfirmFirmware("3.01".into()));
+            let key = |id: &str| {
+                let k = Sim::model().geometry.as_ref().unwrap().keys.iter().find(|k| k.id == id).unwrap();
+                (k.led, k.aa.unwrap())
+            };
+            let ((a_led, _), (d_led, d_aa)) = (key("a"), key("d"));
+            let source = a.keymaps.models[RECORD].source.clone();
+            assert!(source.is_some(), "the page gets it with the record");
+            // AJAZZ's tool sets D while the page shows the old keys.
+            aa_keymap::set_entry(&mut sim.state().keymap, d_aa, [aa_keymap::page::KEYBOARD, 0, 0x05, 0]);
+            let before = sim.state().keymap.clone();
+            let e = call(&mut a, |reply| Request::ApplyKeymap {
+                layer: Layer::Base,
+                entries: vec![(a_led, KeyAction::key(0x06))],
+                base: source.clone(),
+                reply,
+            })
+            .unwrap_err();
+            assert_eq!(e, crate::aa::ERR_KEYS_CHANGED);
+            assert_eq!(sim.state().keymap, before, "nothing written");
+            // The records (and the file) show D now, with a new source.
+            let k = a.keymaps.models[RECORD].clone();
+            assert_eq!(k.base.actions(), LayerMap::from([(d_led, KeyAction::key(0x05))]));
+            assert_ne!(k.source, source);
+            assert_eq!(settings::load_keymaps(&dir.0).models[RECORD], k);
+            // Against it, the save goes.
+            call(&mut a, |reply| Request::ApplyKeymap {
+                layer: Layer::Base,
+                entries: vec![(a_led, KeyAction::key(0x06)), (d_led, KeyAction::key(0x05))],
+                base: k.source.clone(),
+                reply,
+            })
+            .unwrap();
+            // Macros: one made meanwhile is not deleted by a stale save.
+            let m = a.macros.models[RECORD].source.clone();
+            let steps = vec![
+                crate::settings::StoredStep(kb_protocol::sonix::macros::MacroStep::new(
+                    kb_protocol::sonix::macros::StepKind::KeyDown,
+                    4,
+                    20,
+                )),
+                crate::settings::StoredStep(kb_protocol::sonix::macros::MacroStep::new(
+                    kb_protocol::sonix::macros::StepKind::KeyUp,
+                    4,
+                    20,
+                )),
+            ];
+            let slots = vec![Some(StoredMacro { name: "x".into(), steps })];
+            call(&mut a, |reply| Request::ApplyMacros { slots: slots.clone(), base: m.clone(), reply }).unwrap();
+            let m = a.macros.models[RECORD].source.clone();
+            let e = call(&mut a, |reply| Request::ApplyMacros { slots: vec![], base: Some("0".into()), reply });
+            assert_eq!(e.unwrap_err(), crate::aa::ERR_MACROS_CHANGED);
+            assert_eq!(a.macros.models[RECORD].slots.len(), 1, "still there");
+            assert_eq!(a.macros.models[RECORD].source, m);
+        }
+
+        #[test]
+        fn live_frames_refused_in_the_quiet_time_are_no_failures() {
+            let dir = TempDir::new("actor-quiet-live");
+            let (mut a, _sim) = actor(&dir.0, "");
+            a.handle(Request::ConfirmFirmware("3.01".into()));
+            a.handle(Request::SetLayer(LightLayer::Gauges, Some(frame(&[(1, 9)], 1.0))));
+            a.send_live();
+            assert_eq!(a.live_failures, 0);
+            // An upload cut part-way (after its first part): the keyboard
+            // takes nothing for a while.
+            struct CutAfterFirstPart(Arc<UploadCancels>);
+            impl UiSink for CutAfterFirstPart {
+                fn emit(&self, event: &str, payload: serde_json::Value) -> Result<(), String> {
+                    if event == EVENT_SCREEN_PROGRESS && payload["done"] == 1 {
+                        self.0.cancel(payload["id"].as_str().unwrap_or_default());
+                    }
+                    Ok(())
+                }
+                fn hold_shutdown(&self, _: Option<String>) {}
+            }
+            a.app = Ui(Some(Arc::new(CutAfterFirstPart(a.uploads.clone()))));
+            let r = upload(&mut a, "cut");
+            assert!(r.error.as_deref().is_some_and(|e| e.starts_with("screen upload cancelled")), "{r:?}");
+            for _ in 0..=LIVE_FAILURES_WARN {
+                a.send_live();
+            }
+            assert!(a.aa_driver().is_some_and(crate::aa::AaDriver::in_quiet_time));
+            assert_eq!(a.live_failures, 0, "refused on purpose: no failure, no warning");
+        }
+
+        #[test]
+        fn a_cancel_reaches_only_its_own_upload() {
+            let dir = TempDir::new("actor-cancel");
+            let (mut a, sim) = actor(&dir.0, "");
+            a.handle(Request::ConfirmFirmware("3.01".into()));
+            // Two uploads wait their turn; the second is cancelled.
+            a.uploads.queued("first");
+            a.uploads.queued("second");
+            assert!(a.uploads.cancel("second"));
+            assert!(!a.uploads.cancel("never-sent"));
+            let r = upload(&mut a, "first");
+            assert_eq!(r.error, None, "the one not cancelled runs to its end");
+            let parts = sim.state().screen.len();
+            let r = upload(&mut a, "second");
+            assert_eq!(r.error.as_deref(), Some(ERR_UPLOAD_CANCELLED));
+            assert!(!r.flash_written);
+            assert_eq!(sim.state().screen.len(), parts, "it did not start");
+            // The one that runs stops before its next part.
+            let uploads = a.uploads.clone();
+            a.screen_hook = Box::new(move |step: ScreenWriteStep<'_>| {
+                if let ScreenWriteStep::Starting { label, .. } = step {
+                    uploads.cancel(label);
+                }
+                Ok(())
+            });
+            let r = upload(&mut a, "third");
+            assert!(r.error.as_deref().is_some_and(|e| e.starts_with("screen upload cancelled after 0 of")), "{r:?}");
+            // Nothing left waiting or running.
+            assert!(!a.uploads.cancel("first") && !a.uploads.cancel("third"));
+        }
+
+        #[test]
+        fn the_mirror_leaves_a_silent_or_waiting_keyboard_alone() {
+            for faults in ["silent"] {
+                let dir = TempDir::new(&format!("actor-mirror-{faults}"));
+                let (mut a, sim) = actor(&dir.0, faults);
+                a.handle(Request::SetMirror(Some(MirrorExpect::default())));
+                let sent = sim.state().packets.len();
+                let errors = errors_noted(&a);
+                for _ in 0..3 {
+                    a.send_mirror();
+                }
+                assert_eq!(sim.state().packets.len(), sent, "{faults}: nothing asked");
+                assert_eq!(errors_noted(&a), errors, "{faults}: nothing noted");
+            }
+            // A keyboard that answers is mirrored.
+            let dir = TempDir::new("actor-mirror-ok");
+            let (mut a, sim) = actor(&dir.0, "");
+            a.handle(Request::SetMirror(Some(MirrorExpect::default())));
+            let sent = sim.state().packets.len();
+            a.send_mirror();
+            assert!(sim.state().packets.len() > sent);
+        }
+
+        #[test]
+        fn a_failing_aa_channel_is_not_opened_again_with_every_frame() {
+            let dir = TempDir::new("actor-reopen");
+            let (mut a, sim) = actor(&dir.0, "");
+            a.handle(Request::ConfirmFirmware("3.01".into()));
+            let first = a.keyboard_backups()[0].file.clone();
+            a.handle(Request::SetLayer(LightLayer::Gauges, Some(frame(&[(1, 9)], 1.0))));
+            a.send_live();
+            let Ports::Sim(board) = &a.ports else { unreachable!() };
+            let (dead, opened) = (board.dead.clone(), board.opened.clone());
+            // The keyboard stays listed, but its channel dies: the next frame
+            // fails, and every open after it fails in the full read.
+            dead.store(true, Ordering::SeqCst);
+            let next = sim.state().packets.len() + 1;
+            sim.state().faults.fail_write = Some(next);
+            a.send_live();
+            assert!(a.command.is_none(), "the failed handle went");
+            let opens = opened.load(Ordering::SeqCst);
+            a.handle(Request::SetMirror(Some(MirrorExpect::default())));
+            for _ in 0..10 {
+                a.send_live();
+                a.send_mirror();
+            }
+            assert_eq!(opened.load(Ordering::SeqCst), opens, "frames and the mirror wait");
+            // The user's own write tries once, and says why it failed.
+            let e = call(&mut a, |r| Request::ApplyEffect(settings(), r)).unwrap_err();
+            assert!(e.contains("the handle died"), "{e}");
+            assert_eq!(opened.load(Ordering::SeqCst), opens + 1);
+            a.send_live();
+            assert_eq!(opened.load(Ordering::SeqCst), opens + 1, "and frames wait again");
+            // A restore says no keyboard could be read, not that the backup
+            // is another keyboard's.
+            let e = call(&mut a, |reply| Request::RestoreKeyboard { file: first, color: None, reply }).unwrap_err();
+            assert!(e.starts_with(ERR_KEYBOARD_NOT_READ), "{e}");
+            // Once the wait is over, a frame opens it again.
+            let path = a.command_path.clone().unwrap();
+            a.aa_reopen_after = Some((path, Instant::now()));
+            a.send_live();
+            assert_eq!(opened.load(Ordering::SeqCst), opens + 3);
         }
     }
 }

@@ -19,7 +19,7 @@ Açık kaynak projeleri ücretsiz imzalayan SignPath Foundation, proje henüz ye
 
 ## Microsoft Store'daki sürüm GitHub'dakinden farklı mı?
 
-Hayır. Aynı uygulama; sürüm numaraları ve sürüm notları da aynı. Farklar şunlar: Store'dan kurulan kopyayı Store günceller (uygulamanın kendi güncelleme denetimi kapalı kalır); Windows onun sürümünü sonu her zaman 0 olan dördüncü bir sayıyla gösterir (1.0.0.0). Yeni sürüm, Microsoft Store kopyasını denetledikten sonra ikisinde aynı gün çıkar. Deneme sürümleri yalnızca GitHub'dadır. Tek kopya yeter: ikisi de kuruluysa GitHub kopyası açılınca Store kopyasını açar; bkz. [GitHub ve Microsoft Store](/keymotion/tr/about/release-notes/#github-ve-microsoft-store).
+Hayır. Aynı uygulama; sürüm numaraları ve sürüm notları da aynı. Farklar şunlar: Store'dan kurulan kopyayı Store günceller (uygulamanın kendi güncelleme denetimi kapalı kalır); Windows onun sürümünü sonu her zaman 0 olan dördüncü bir sayıyla gösterir (1.0.0.0). Yeni sürüm önce GitHub'da çıkar; Store kopyası, Microsoft onu denetleyince, genellikle bir gün içinde gelir. Deneme sürümleri yalnızca GitHub'dadır. Tek kopya yeter: ikisi de kuruluysa GitHub kopyası açılınca Store kopyasını açar; bkz. [GitHub ve Microsoft Store](/keymotion/tr/about/release-notes/#github-ve-microsoft-store). Deneme sürümü bunu yapmaz, ama aynı anda yalnızca bir kopya çalışabilir: bir deneme sürümünü açmadan önce Store kopyasından, saatin yanındaki simgesinden de çıkın.
 
 ## Virüs programım ya da VirusTotal Keymotion'ı işaretliyor. Güvenli mi?
 
@@ -62,7 +62,7 @@ Hayır. Keymotion 64 bit Windows 10 ve 11'de çalışır.
 
 Klavye Bluetooth'ta yazmayı ve pil düzeyini sunar, ama ayarlarını değiştirmenin bir yolunu sunmaz. Bu yüzden Keymotion orada yalnızca pil düzeyini okur. Ayarları değiştirmek için USB kablosunu takın ve arkadaki anahtarı ortaya alın.
 
-USB kablosunda ise tersi geçerlidir: klavye pil düzeyini bildirmez. Keymotion son Bluetooth okumasını ve ne kadar önce okunduğunu gösterir.
+USB kablosunda ise tersi geçerlidir: klavye pil düzeyini bildirmez. Keymotion son Bluetooth okumasını ve ne kadar önce okunduğunu gösterir. AJAZZ'ın 3.01 klavye yazılımında klavye pil düzeyini kabloda da bildirir; Keymotion da onu gösterir.
 
 ## 2.4 GHz alıcıyla ne olur?
 
@@ -75,6 +75,7 @@ Keymotion klavyeye özenle davranacak biçimde yapıldı:
 - Yalnızca bu klavyede denenmiş komutları gönderir. Başka her komut bilgisayarınızdan çıkmadan engellenir; klavye yazılımını güncellemeye başlatacak komutlar da bunlara dahildir. Keymotion klavyenin yazılımını hiçbir zaman güncellemez, Bluetooth'ta ise klavyeye hiçbir şey yazmaz.
 - Ayarlarınız klavyenin kalıcı belleğine yalnızca siz kaydettiğinizde ya da yüklediğinizde gider, örneğin **Klavyeye kaydet** ile. Önizlemeler kaydedilmez.
 - Kaydetmeden önce denetler. Klavyenizin yazılım sürümü Keymotion'la denenmemişse önce size sorar; siz onay verene kadar klavyenin saatini de eşitlemez. Klavyenin saklamadığı canlı ışıklar ise sormadan çalışır. Klavye yazılımını tanımazsa hiçbir şey göndermez. Klavyeyi başka bir program kullanıyorsa ya da USB'ye birden fazla klavye bağlıysa kaydetmez.
+- Keymotion'ın deneme aşamasında desteklediği AJAZZ 3.01 klavye yazılımında önce klavyenin ayarlarının yedeğini alır. Yedek alınamazsa ya da klavyenin bildirdikleri beklendiği gibi görünmüyorsa hiçbir şey yazmaz. Kaydettiği her ayarı (tuş atama, ışık, makrolar) geri okuyarak denetler; klavye açıldıktan ya da sıfırlandıktan sonra yazmadan önce biraz bekler, çünkü klavye o sırada yazılanları yok sayar. [AJAZZ'ın en yeni klavye yazılımını kurmalı mıyım?](#ajazzın-en-yeni-klavye-yazılımını-kurmalı-mıyım) sorusuna bakın.
 - Kayıt sürerken Keymotion'ı kapatırsanız kaydın bitmesini bekler, sonra kapanır. Windows'u kapatırsanız Windows, Keymotion'ın klavyeye kayıt yaptığını gösterir.
 
 Ekranın belleği her yüklemeyle biraz yıpranır. Ömrü kesin bilinmiyor; bu tür belleklerin bilinen ömrüne göre günde birkaç yükleme yıllarca sorun çıkarmaz. Canlı ekranın günlük yükleme sınırı bu yüzden vardır.
@@ -112,7 +113,7 @@ Bilgisayarınızda, Windows kullanıcı klasörünüzde:
 - ayarlar ve kayıtlar `%APPDATA%\dev.keymotion\` klasöründe;
 - günlük dosyaları `%LOCALAPPDATA%\dev.keymotion\logs\` klasöründe.
 
-**Ayarlar**'da, **Hakkında** bölümündeki **Veri klasörü** ve **Günlük dosyaları** bu klasörleri açar. Klavye tuş atamasını ve makroları geri okutmadığı için Keymotion'daki kayıtları tek kopyadır. Bir kopyasını almak için **Ayarlar**'ı açıp **Yedekleme** bölümünde **Dışa aktar**'a tıklayın: her şey tek bir dosyaya kaydedilir. Tam liste [Gizlilik politikası](/keymotion/tr/about/privacy/#verileriniz-nerede-durur) sayfasında.
+**Ayarlar**'da, **Hakkında** bölümündeki **Veri klasörü** ve **Günlük dosyaları** bu klasörleri açar. Klavye tuş atamasını ve makroları geri okutmadığı için Keymotion'daki kayıtları tek kopyadır; AJAZZ'ın 3.01 klavye yazılımında ise klavye bunları kendisi bildirir. Bir kopyasını almak için **Ayarlar**'ı açıp **Yedekleme** bölümünde **Dışa aktar**'a tıklayın: her şey tek bir dosyaya kaydedilir. Tam liste [Gizlilik politikası](/keymotion/tr/about/privacy/#verileriniz-nerede-durur) sayfasında.
 
 ## Keymotion bir yere bilgi gönderiyor mu?
 
@@ -140,9 +141,18 @@ Evet. Keymotion'ın denendiği klavye AK980 V2 olarak satıldı: AJAZZ'ın mağa
 
 ## AJAZZ'ın en yeni klavye yazılımını kurmalı mıyım?
 
-AJAZZ'ın AK980 PRO için en yeni klavye yazılımı "AK980 Led v2 Firmware 769" (sürüm 3.01), klavyeyi farklı bir komut takımına geçirir; klavye bundan sonra genellikle yeni bir USB kimliğiyle, 0C45:8039 olarak görünür. AJAZZ'ın web sitesindeki klavye aracı bunu eski AK980 PRO klavyelere de önerir. Keymotion bu klavye yazılımını henüz desteklemiyor ve onu çalıştıran bir klavyeye hiçbir şey göndermez; desteğin sonraki bir güncellemede gelmesi planlanıyor. AJAZZ eski klavye yazılımına dönmenin bir yolunu sunmuyor.
+AJAZZ'ın AK980 PRO için en yeni klavye yazılımı "AK980 Led v2 Firmware 769" (sürüm 3.01), klavyeyi farklı bir komut takımına geçirir; klavye bundan sonra genellikle yeni bir USB kimliğiyle, 0C45:8039 olarak görünür. AJAZZ'ın web sitesindeki klavye aracı bunu eski AK980 PRO klavyelere de önerir. AJAZZ eski klavye yazılımına dönmenin bir yolunu sunmuyor; bu yüzden onu yalnızca Keymotion için kurmayın: eski klavye yazılımındaki klavyeler eskisi gibi çalışır ve Keymotion onlarda denendi.
 
-Karar sizin: Keymotion'ı şimdi kullanmaya devam etmek istiyorsanız güncellemeden önce bekleyin. Eski klavye yazılımındaki klavyeler eskisi gibi çalışır.
+Keymotion 3.01 klavye yazılımını USB kablosunda, deneme aşamasında destekliyor. Destek yeni ve hâlâ deneniyor; uygulamadaki isteğe bağlı [deneme rehberi](/keymotion/tr/help/keyboards/#deneme-rehberi) bunu denetlememize yardım ediyor. Klavyenizde hangi yazılımın olduğunu görmek için kabloyu takıp **Bağlantı** sayfasını açın: klavyenin bilgilerinde, **Klavye yazılımı** satırında 3.01 ya da başka bir sürüm yazar; 3.01 **Deneme aşamasında** diye işaretlidir. Nelerin çalıştığı [Desteklenen klavyeler](/keymotion/tr/help/keyboards/#301-klavye-yazılımındaki-ak980-pro-deneme-aşamasında) sayfasında.
+
+3.01 klavye yazılımında bilmeniz gerekenler:
+
+- **Keymotion önce klavyenin yedeğini alır.** Klavyeye ilk bağlandığında, bir şey yazabilmeden önce klavyenin ayarlarının yedeğini kaydeder: iki katmandaki tuş atamaları, ışıklar ve makrolar. Yedek yoksa hiçbir şey yazmaz. Yedeği nasıl geri yükleyeceğiniz [Bir şey ters giderse](/keymotion/tr/help/recovery/#301-klavye-yazılımında-klavyenin-yedeği) sayfasında.
+- **Yükleme, klavyenin saat sayfasının yerini alabilir.** Ekrana bir resim yüklendikten sonra klavyenin kendi saat sayfası ancak klavyenin tam sıfırlamasıyla (Fn+Boşluk) geri gelebilir; tam sıfırlama tuş atamanızı da fabrika düzenine döndürür. Keymotion ilk yüklemeden önce size sorar.
+- **Canlı ışıklar eski klavye yazılımındaki gibi çalışır.** Müzik modu, sistem göstergeleri ve öteki canlı ışıklar, ışığınız ne olursa olsun tuşlarda görünür ve hiçbiri klavyeye kaydedilmez. Kendi ışığınız, onlar bittikten yaklaşık 5 saniye sonra kendiliğinden geri gelir. Bkz. [Işıklar](/keymotion/tr/guide/lighting/#301-klavye-yazılımında-deneme-aşamasında).
+- **Tuş atama ve makrolar klavyenin kendisinden gelir.** Tuş atama ve Makrolar sayfaları klavyede olanı gösterir; AJAZZ'ınki gibi başka programlarda ayarlanan tuşlar ve makrolar da buna dahildir. Kaydettiğinizde Keymotion'ın gösteremediği ya da değiştiremediği tuşlar ve makrolar olduğu gibi kalır.
+- **Pil düzeyi kabloda da görünür**, çünkü klavye onu orada da bildirir.
+- **Keymotion çalışırken AJAZZ'ın klavye aracını kapatın.** Bu araç klavyeyle tarayıcınızdan konuşur; Keymotion onu orada göremez ve iki programın komutları karışabilir. Klavye, Keymotion'ın sormadığı cevaplar gönderirse Keymotion başka bir programın klavyeyle konuşuyor gibi göründüğünü söyler.
 
 ## Klavyem artık tanınmıyor
 

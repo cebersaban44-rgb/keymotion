@@ -1,15 +1,21 @@
 // Bağlantı: how the keyboard is connected, where its mode switch sits, what
 // the app can do over each connection, and the keyboard clock. The mode is
 // chosen only with the switch on the back of the keyboard; the app cannot
-// change it.
+// change it. A keyboard of AJAZZ's "AA" family (the AK980 PRO on firmware
+// 3.01) also shows its battery, that its support is new, and the backups
+// Keymotion saved of its settings.
 
 import { Bluetooth, Check, Radio, Usb, type LucideIcon } from "lucide-react";
 import type { Connection as Conn } from "../bindings/Connection";
 import type { Feature } from "../bindings/Feature";
 import type { KeyboardInfo } from "../bindings/KeyboardInfo";
 import { ClockCard } from "../components/ClockCard";
+import { KeyboardBackups } from "../components/KeyboardBackups";
+import { BetaNote, KeyboardNotices } from "../components/KeyboardNotices";
 import { ModeSwitch } from "../components/ModeSwitch";
-import { connectionKey, modelTitle, useT, type MessageKey } from "../lib/i18n";
+import { GuideEntry } from "../components/TestGuide";
+import { writeBlock } from "../lib/aa";
+import { connectionKey, modelTitle, percent, useT, type MessageKey } from "../lib/i18n";
 
 const COLUMNS: Conn[] = ["usb", "dongle", "bluetooth"];
 
@@ -41,7 +47,9 @@ const ROWS: Row[] = [
   { label: "conn.row.live", cell: (m, f) => (m === "usb" && f.includes("lighting") ? "yes" : "no") },
   {
     label: "conn.row.battery",
-    // No battery reading over USB; the last Bluetooth one is shown instead.
+    // Over USB a keyboard of the "04 xx" family reports no battery (its
+    // mode offers none): the last Bluetooth reading is shown instead. One
+    // that reports it there (KeyboardInfo.batteryOverUsb) offers it.
     cell: (m, f) => (f.includes("battery") ? "yes" : m === "usb" ? "last" : "no"),
   },
 ];
@@ -56,6 +64,8 @@ export function Connection({ kb }: { kb: KeyboardInfo }) {
   // The model name, not the USB product string (which names the chip maker).
   const details: [MessageKey, string, string?][] = [["overview.mode.device", modelTitle(t, kb.modelId, kb.modelName)]];
   if (kb.firmware) details.push(["conn.firmware", kb.firmware, "num"]);
+  // A keyboard that reports its battery on the cable ("AA"): its own reading.
+  if (kb.connection === "usb" && kb.batteryOverUsb && kb.battery) details.push(["conn.battery", percent(kb.battery.percent), "num"]);
   if (kb.bleName) details.push(["overview.mode.btName", kb.bleName]);
   if (channel) details.push(["overview.mode.channel", `${channel} / 3`, "num"]);
   if (kb.bleAddress) details.push(["overview.mode.btAddress", kb.bleAddress, "mono text-[12px]"]);
@@ -66,6 +76,8 @@ export function Connection({ kb }: { kb: KeyboardInfo }) {
         <h1 className="page-title">{t("nav.connection")}</h1>
         <p className="page-desc">{t("conn.desc")}</p>
       </header>
+
+      <KeyboardNotices kb={kb} />
 
       <section className="card flex flex-wrap items-start justify-between gap-x-8 gap-y-5 p-5">
         <div className="flex min-w-[280px] flex-1 flex-col gap-1">
@@ -85,12 +97,23 @@ export function Connection({ kb }: { kb: KeyboardInfo }) {
               ))}
             </dl>
           )}
+          {kb.protocol === "ajazz-aa" && (
+            <div className="mt-3">
+              {/* On the cable the test guide below is the way to tell us. */}
+              <BetaNote kb={kb} tell={kb.connection !== "usb"} />
+            </div>
+          )}
         </div>
         <div className="flex w-[260px] flex-col gap-2">
           <span className="text-[12px] text-ink-3">{t("conn.switch")}</span>
           <ModeSwitch value={kb.connection} />
           <span className="text-[12px] text-ink-3">{t("conn.switch.hint")}</span>
         </div>
+        {kb.protocol === "ajazz-aa" && kb.connection === "usb" && (
+          <div className="basis-full border-t border-line pt-4">
+            <GuideEntry kb={kb} />
+          </div>
+        )}
       </section>
 
       <section className="card flex flex-col gap-3 p-5" data-connection-map>
@@ -147,7 +170,11 @@ export function Connection({ kb }: { kb: KeyboardInfo }) {
         </div>
       </section>
 
-      {(kb.features.includes("clock") || featuresOf("usb").includes("clock")) && <ClockCard usb={kb.features.includes("clock")} />}
+      {(kb.features.includes("clock") || featuresOf("usb").includes("clock")) && (
+        <ClockCard usb={kb.features.includes("clock")} blocked={writeBlock(kb, t)} aa={kb.protocol === "ajazz-aa"} />
+      )}
+
+      {kb.protocol === "ajazz-aa" && kb.connection === "usb" && <KeyboardBackups kb={kb} />}
     </div>
   );
 }

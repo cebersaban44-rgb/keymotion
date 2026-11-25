@@ -1,4 +1,6 @@
-# Checks every pull request and every merge into develop and main.
+# Checks every pull request and every merge into develop and main, and
+# every push to a beta/* branch (a pre-release, which is never merged:
+# tools/release/tag.mjs tags it only once this has passed on it).
 # The same checks are listed in CONTRIBUTING.md; branch protection
 # requires the "Build and test" job before a PR can be merged.
 #
@@ -10,7 +12,7 @@ on:
   pull_request:
     branches: [develop, main]
   push:
-    branches: [develop, main]
+    branches: [develop, main, "beta/**"]
   workflow_dispatch:
 
 permissions:
@@ -66,14 +68,40 @@ jobs:
       - name: Versions agree
         run: node tools/check-version.mjs
 
+      # A beta is never merged into main (pages.yml publishes the site from
+      # main, and a pre-release must not reach it): a pull request into main
+      # whose version is a pre-release, or that comes from a beta/* branch,
+      # fails. GitHub's "Compare & pull request" banner offers main for a
+      # freshly pushed beta branch, so this is easy to start by mistake.
+      - name: No beta into main (pull requests into main)
+        if: github.base_ref == 'main'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          version="$(node -p "require('./app/src-tauri/tauri.conf.json').version")"
+          case "$version" in
+            *-*)
+              echo "::error::This pull request brings $version, a pre-release, into main. A beta stays on its beta/* branch and is never merged; the release comes from develop."
+              exit 1
+              ;;
+          esac
+          case "$HEAD_REF" in
+            beta/*)
+              echo "::error::$HEAD_REF is a beta branch: it is never merged into main. Close this pull request; the release comes from develop."
+              exit 1
+              ;;
+          esac
+          echo "Version $version from $HEAD_REF: not a beta."
+
       # A pull request into main with a new version is a release: its
       # CHANGELOG sections, release notes pages and Store What's new must be
       # written, not the skeletons tools/release/prepare.mjs made (pages.yml
       # publishes the site from main, and the tag build checks the same). A
       # version whose tag is already on GitHub was released before (a fix to
-      # the guide, say): there is nothing new to check.
-      - name: Release text is written (pull requests into main)
-        if: github.base_ref == 'main'
+      # the guide, say): there is nothing new to check. On a beta/* branch
+      # the version is a pre-release, which needs its CHANGELOG sections only.
+      - name: Release text is written (pull requests into main, beta branches)
+        if: github.base_ref == 'main' || startsWith(github.ref, 'refs/heads/beta/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -140,7 +168,8 @@ jobs:
 
       # The Microsoft Store package (store.yml) is made only for a release;
       # packing a test one here catches a manifest or logo Windows' tools
-      # would refuse, on every change.
+      # would refuse, on every change. On a beta branch the test package
+      # takes the pre-release's three numbers (1.3.0-beta.1 → 1.3.0.0).
       - name: Microsoft Store package packs
         run: |
           cargo build -p keymotion -p keymotion-cli

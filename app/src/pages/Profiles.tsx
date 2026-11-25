@@ -11,6 +11,8 @@ import type { ProfileInfo } from "../bindings/ProfileInfo";
 import type { ProfilePart } from "../bindings/ProfilePart";
 import type { ProfileParts } from "../bindings/ProfileParts";
 import type { ProfilesState } from "../bindings/ProfilesState";
+import { KeyboardNotices, LiveLightsNotice } from "../components/KeyboardNotices";
+import { writeBlock } from "../lib/aa";
 import { friendlyError } from "../lib/errors";
 import { percent, useT, type Locale, type Translate } from "../lib/i18n";
 import {
@@ -43,7 +45,7 @@ import {
   useProfiles,
   type StepState,
 } from "../lib/profiles";
-import { useScreen } from "../lib/screen";
+import { useScreen, useScreenLimits } from "../lib/screen";
 import { useApp } from "../lib/store";
 import { AutoProfiles } from "./ProfilesAuto";
 
@@ -87,7 +89,11 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
   const canWrite = kb.connection === "usb" && kb.hasCommandChannel;
   const state = useProfiles((s) => (s.modelId === modelId ? s.state : null));
   const uploading = useScreen((s) => s.upload !== null);
-  const pageMs = useScreen((s) => s.state?.limits.pageMs ?? 145);
+  // An "AA" keyboard whose clock page the picture may replace: loading a
+  // profile with a picture asks first (lib/screen.ts `ackClockPage`).
+  const clockAtRisk = useScreen((s) => s.recordId === kb.recordId && !!s.state?.clockPageAtRisk);
+  const readOnly = writeBlock(kb, t);
+  const { pageMs } = useScreenLimits();
   const hasDrafts = useDrafts();
   const [flow, setFlow] = useState<Flow | null>(null);
   const [flowError, setFlowError] = useState<string | null>(null);
@@ -193,6 +199,8 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
     stopRef.current = false;
     setRun({ id: p.id, steps: Object.fromEntries(p.toWrite.map((part) => [part, "waiting"])) });
     const done: ProfilePart[] = [];
+    // Parts that left keys or macros set in another program as they are.
+    const notes = new Set<"kept" | "skipped">();
     let n: Notice;
     try {
       const result = await loadProfile(
@@ -203,11 +211,18 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
           setRun((r) => (r ? { ...r, steps: { ...r.steps, [part]: s } } : r));
         },
         () => stopRef.current,
+        (_, loaded) => {
+          if (loaded === "kept" || loaded === "skipped") notes.add(loaded);
+        },
       );
-      if (result === "stopped") n = { ok: true, text: t("prof.load.stopped") };
+      const kept = [
+        notes.has("kept") ? ` ${t("prof.load.kept")}` : "",
+        notes.has("skipped") ? ` ${t("err.aa.profileMacros")}` : "",
+      ].join("");
+      if (result === "stopped") n = { ok: true, text: `${t("prof.load.stopped")}${kept}` };
       else {
         const fnHome = done.includes("screen") ? ` ${t("sc.done.fnHome")}` : "";
-        n = { ok: true, text: `${t("prof.load.done", { name: profileName(p, t) })}${fnHome}` };
+        n = { ok: true, text: `${t("prof.load.done", { name: profileName(p, t) })}${kept}${fnHome}` };
       }
     } catch (e) {
       const cause = e instanceof ProfileLoadError ? e.cause : e;
@@ -237,7 +252,7 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
     await act(async () => {
       const saved = await importProfile(await file.arrayBuffer());
       // The profile's picture went into the library.
-      useScreen.getState().load(modelId).catch(console.error);
+      useScreen.getState().load(kb.recordId).catch(console.error);
       return { ok: true, text: t("prof.import.done", { name: saved.name }) };
     });
   };
@@ -268,7 +283,7 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
 
   // ---------------------------------------------------------------- view
 
-  const usbReason = !canWrite ? t("sc.needsUsbShort") : uploading ? t("prof.load.uploadBusy") : null;
+  const usbReason = !canWrite ? t("sc.needsUsbShort") : (readOnly ?? (uploading ? t("prof.load.uploadBusy") : null));
 
   const rowProps = (p: ProfileInfo) => ({
     p,
@@ -304,9 +319,11 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
             />
           );
         }
+        const clock = clockAtRisk && p.toWrite.includes("screen");
         const sentences = [
           t("prof.load.confirm", { list: listOf(p.toWrite.map((w) => t(PART_NOUN[w])), locale) }),
           !p.screen ? t("prof.load.noScreen") : !p.screen.inLibrary ? t("prof.load.missingScreen") : null,
+          clock ? t("prof.load.clock") : null,
           hasDrafts(p.toWrite) ? t("prof.load.drafts") : null,
           t("prof.load.time", { time: fmtDuration(loadSeconds(p, pageMs), t) }),
         ];
@@ -318,7 +335,13 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
             action={t("prof.load")}
             disabled={!!usbReason}
             onCancel={cancel}
-            onConfirm={() => void doLoad(p)}
+            onConfirm={() =>
+              void (async () => {
+                // Saying yes here is the clock page question's answer.
+                if (clock) await useScreen.getState().ackClockPage();
+                await doLoad(p);
+              })().catch((e) => finish({ ok: false, text: friendlyError(e, t) }))
+            }
           />
         );
       }
@@ -417,6 +440,9 @@ export function Profiles({ kb }: { kb: KeyboardInfo }) {
           </button>
         </div>
       </header>
+
+      <KeyboardNotices kb={kb} />
+      <LiveLightsNotice />
 
       {notice && (
         <div

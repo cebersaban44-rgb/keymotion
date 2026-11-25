@@ -111,8 +111,8 @@ const mock = {
 function mockDrawn(card: Prepared) {
   (window as unknown as { __keymotionAgentCardLast?: Prepared }).__keymotionAgentCardLast = card;
   mockLiveUploaded(toBlob(card));
-  const modelId = useScreen.getState().modelId;
-  if (modelId) useScreen.getState().load(modelId).catch(console.error);
+  const recordId = useScreen.getState().recordId;
+  if (recordId) useScreen.getState().load(recordId).catch(console.error);
 }
 
 /** A small picture drawn here, as an agent might send one (PNG, base64). */

@@ -6,6 +6,7 @@ import { copyText } from "../lib/diagnostics";
 import { useT } from "../lib/i18n";
 import { crashPending, crashSeen, getDiagnostics, openIssue, unsupportedReport } from "../lib/ipc";
 import { crashTitle, problemTitle, useReport, type ReportRequest } from "../lib/report";
+import { useCornerRight } from "../lib/aaGuide";
 import { useApp } from "../lib/store";
 
 /** The report dialog and the notices that offer it: an unexpected error,
@@ -14,9 +15,11 @@ import { useApp } from "../lib/store";
 export function Reporting() {
   const request = useReport((s) => s.request);
   const closeReport = useReport((s) => s.closeReport);
+  // Left of the test guide while it is open, never over it.
+  const right = useCornerRight();
   return (
     <>
-      <div className="pointer-events-none fixed top-5 right-6 z-40 flex w-[360px] flex-col gap-3">
+      <div className={`pointer-events-none fixed top-5 z-40 flex w-[360px] flex-col gap-3 ${right}`}>
         <LastRunNotice />
         <ProblemNotice />
       </div>

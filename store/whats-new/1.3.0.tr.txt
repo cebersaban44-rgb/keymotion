@@ -1,0 +1,5 @@
+• AJAZZ'ın en yeni yazılımı: Keymotion artık AK980 PRO'da 3.01 ("769") yazılımıyla da USB kablosu üzerinden, deneme aşamasında çalışıyor: ışık efektleri ve tuş başına renk, canlı ışıklar, tuş atama, makrolar, ekrana resim, saat ve pil düzeyi. 1.06 yazılımında hiçbir şey değişmiyor.
+• Güvenli tasarım: 3.01 yazılımında Keymotion ilk kayıttan önce klavyenin ayarlarını yedekler, kaydettiği her ayarı klavyeden geri okur ve yedekleri Bağlantı'da listeleyip geri yükleyebilir.
+• Deneme rehberi: 3.01 yazılımlı klavyesi olanlar bir kez, dokuz adımlı isteğe bağlı bir denemeye davet edilir. Sonunda bizimle paylaşabileceğiniz metnin tamamını gösterir; hiçbir şey kendiliğinden gönderilmez.
+• Daha kısa sorun bildirimleri: Sorun bildir, ters görünen şeyi birkaç satırda özetler.
+• Her betayı kendi klavyesinde deneyip bu desteğe yön veren j0p3s'e teşekkürler.

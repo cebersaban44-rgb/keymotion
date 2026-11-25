@@ -6,8 +6,8 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import type { ScreenItem } from "../../bindings/ScreenItem";
 import { Field, Segmented, Toggle } from "../../components/controls";
 import { useT } from "../../lib/i18n";
-import { useScreen } from "../../lib/screen";
-import { MAX_FRAMES, PROVEN_FRAMES, openSource, type Prepared, type Source } from "../../lib/screenImport";
+import { useScreen, useScreenLimits } from "../../lib/screen";
+import { openSource, type Prepared, type Source } from "../../lib/screenImport";
 import {
   MAX_SLIDES,
   SLIDE_DEFAULT_S,
@@ -27,6 +27,7 @@ import {
   PreviewPanel,
   StudioFrame,
   Thumb,
+  UnprovenHint,
   loadFrames,
   pickThumb,
   useItemName,
@@ -113,6 +114,7 @@ export function SlideFlow({
 }) {
   const t = useT();
   const itemName = useItemName();
+  const screen = useScreenLimits();
   const [slides, setSlides] = useState<Slide[]>([]);
   const [transition, setTransition] = useState<Transition>("fade");
   const [dither, setDither] = useState(true);
@@ -165,7 +167,7 @@ export function SlideFlow({
   }, [slides, dither]);
 
   const seconds = useMemo(() => slides.map((s) => s.seconds), [slides]);
-  const plan = budget(seconds, transition);
+  const plan = budget(seconds, transition, screen.maxFrames);
   const ready = slides.length > 0 && slides.every((s) => stills.current.has(stillKey(s, dither)));
   // Stills are only ever added, so once `ready` is true for these slides and
   // this dither, the frames are fixed: `ready` turning true is the signal.
@@ -380,7 +382,7 @@ export function SlideFlow({
 
         {slides.length === 1 && <Hint tone="note">{t("sc.sl.needTwo")}</Hint>}
         {!plan.fits && <Hint tone="warn">{t("sc.sl.over")}</Hint>}
-        {plan.fits && plan.frames > PROVEN_FRAMES && <Hint tone="note">{t("sc.warn.unproven")}</Hint>}
+        {plan.fits && <UnprovenHint frames={plan.frames} />}
         {full && <Hint tone="note">{t("sc.sl.full")}</Hint>}
         {failed.length > 0 && (
           <Hint tone="error">
@@ -408,14 +410,15 @@ export function SlideFlow({
 
 function BudgetMeter({ frames }: { frames: number }) {
   const t = useT();
-  const pct = Math.min(100, (frames / MAX_FRAMES) * 100);
-  const over = frames > MAX_FRAMES;
+  const { maxFrames } = useScreenLimits();
+  const pct = Math.min(100, (frames / maxFrames) * 100);
+  const over = frames > maxFrames;
   return (
     <div className="mt-2 flex flex-col gap-1.5" aria-label={t("sc.sl.budget")}>
       <div className="flex items-baseline justify-between text-[12px]">
         <span className="font-medium">{t("sc.sl.budget")}</span>
         <span className={`num ${over ? "text-danger" : "text-ink-2"}`}>
-          {t("sc.framesOfMax", { frames, max: MAX_FRAMES })}
+          {t("sc.framesOfMax", { frames, max: maxFrames })}
         </span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">

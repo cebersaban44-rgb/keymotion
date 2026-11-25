@@ -7,9 +7,11 @@ import type { ScreenItem } from "../bindings/ScreenItem";
 import type { ScreenItemKind } from "../bindings/ScreenItemKind";
 import type { ScreenProgress } from "../bindings/ScreenProgress";
 import type { ScreenState } from "../bindings/ScreenState";
+import type { ScreenFrameLimits } from "../bindings/ScreenFrameLimits";
 import { keymotionAnimation } from "./bootAnimation";
 import { flashWrite, inTauri, invoke, listen } from "./ipc";
-import { FRAME_PIXELS, HEADER_LEN, pagesFor, toBlob, type Prepared } from "./screenImport";
+import { FRAME_PIXELS, HEADER_LEN, MAX_FRAMES, PAGE_MS, PROVEN_FRAMES, pagesFor, toBlob, type Prepared } from "./screenImport";
+import { useActiveKeyboard } from "./store";
 
 // ------------------------------------------------------------------- ipc
 
@@ -35,7 +37,28 @@ const mock = {
   today: 0,
   total: 0,
   incomplete: null as ScreenIncomplete | null,
+  /** `?mock=aa769&aa=clock`: the stand-in "AA" keyboard's clock page is at
+   *  risk until the user says yes. */
+  clockAck: false,
+  /** The upload being cancelled (`screen_upload_cancel`). */
+  cancel: null as string | null,
+  /** `&aa=cut`: the next upload meets the quiet time after a stopped one. */
+  cut: import.meta.env.DEV && typeof location !== "undefined" && /[?&]aa=[^&]*\bcut\b/.test(location.search),
 };
+
+/** Browser preview: the stand-in keyboard is an "AA" one whose clock page
+ *  an upload may replace (`?mock=aa769&aa=clock`). */
+export function mockClockAtRisk(): boolean {
+  if (!import.meta.env.DEV || typeof location === "undefined") return false;
+  const q = new URLSearchParams(location.search);
+  const aa = (q.get("aa") ?? "").split(",");
+  return q.get("mock") === "aa769" && aa.includes("clock") && !mock.clockAck && mock.shown === null;
+}
+
+/** Browser preview: the user said yes to losing the clock page. */
+export function mockAckClock() {
+  mock.clockAck = true;
+}
 
 /** Browser preview: `?mock=usb&driver` pretends AJAZZ's official driver is
  *  installed, so its factory animation can be backed up. */
@@ -62,6 +85,8 @@ function mockState(): ScreenState {
       ...mock.incomplete,
       id: mock.items.some((i) => i.id === mock.incomplete?.id) ? mock.incomplete.id : null,
     },
+    // A "04 xx" stand-in keyboard's clock page is never at risk.
+    clockPageAtRisk: mockClockAtRisk(),
   };
 }
 
@@ -70,8 +95,8 @@ function mockState(): ScreenState {
 function mockCutUpload(id?: string) {
   const item = id ? mock.items.find((i) => i.id === id) : [...mock.items].sort((a, b) => b.createdMs - a.createdMs)[0];
   mock.incomplete = { id: item?.id ?? null, atMs: Date.now() - 3_600_000 };
-  const modelId = useScreen.getState().modelId;
-  if (modelId) void useScreen.getState().load(modelId);
+  const recordId = useScreen.getState().recordId;
+  if (recordId) void useScreen.getState().load(recordId);
 }
 if (import.meta.env.DEV && !inTauri && typeof window !== "undefined") {
   (window as unknown as { __ksMockIncomplete: (id?: string) => void }).__ksMockIncomplete = mockCutUpload;
@@ -120,13 +145,13 @@ export function mockRestored(id: string) {
   mock.incomplete = null;
   mock.today++;
   mock.total++;
-  const modelId = useScreen.getState().modelId;
-  if (modelId) void useScreen.getState().load(modelId);
+  const recordId = useScreen.getState().recordId;
+  if (recordId) void useScreen.getState().load(recordId);
 }
 
-export function getScreenState(modelId: string): Promise<ScreenState> {
+export function getScreenState(recordId: string): Promise<ScreenState> {
   if (import.meta.env.DEV && !inTauri) return Promise.resolve(mockState());
-  return invoke<ScreenState>("screen_state", { modelId });
+  return invoke<ScreenState>("screen_state", { recordId });
 }
 
 /** Store a prepared animation in the library (validated again in Rust).
@@ -165,34 +190,46 @@ export async function itemData(id: string, frames?: number): Promise<ArrayBuffer
   return invoke<ArrayBuffer>("screen_data", { id, frames: frames ?? null });
 }
 
-export async function renameItem(modelId: string, id: string, name: string): Promise<ScreenState> {
+export async function renameItem(recordId: string, id: string, name: string): Promise<ScreenState> {
   if (import.meta.env.DEV && !inTauri) {
     const it = mock.items.find((i) => i.id === id);
     if (it) it.name = name;
     return mockState();
   }
-  return invoke<ScreenState>("screen_rename", { modelId, id, name });
+  return invoke<ScreenState>("screen_rename", { recordId, id, name });
 }
 
-export async function removeItem(modelId: string, id: string): Promise<ScreenState> {
+export async function removeItem(recordId: string, id: string): Promise<ScreenState> {
   if (import.meta.env.DEV && !inTauri) {
     mock.items = mock.items.filter((i) => i.id !== id);
     return mockState();
   }
-  return invoke<ScreenState>("screen_remove", { modelId, id });
+  return invoke<ScreenState>("screen_remove", { recordId, id });
 }
 
 /** Upload to the GIF page (a write to the keyboard's memory). */
-function uploadItem(modelId: string, id: string, onProgress: (p: ScreenProgress) => void): Promise<ScreenState> {
-  return flashWrite(() => uploadOnce(modelId, id, onProgress));
+function uploadItem(recordId: string, id: string, onProgress: (p: ScreenProgress) => void): Promise<ScreenState> {
+  return flashWrite(() => uploadOnce(recordId, id, onProgress));
 }
 
-async function uploadOnce(modelId: string, id: string, onProgress: (p: ScreenProgress) => void): Promise<ScreenState> {
+async function uploadOnce(recordId: string, id: string, onProgress: (p: ScreenProgress) => void): Promise<ScreenState> {
   if (import.meta.env.DEV && !inTauri) {
+    if (mockClockAtRisk()) throw new Error("screen upload would replace the keyboard's clock page; not acknowledged");
+    if (mock.cut) {
+      mock.cut = false;
+      throw new Error("a screen upload stopped part-way; no commands for another 3400 ms");
+    }
     const item = mock.items.find((i) => i.id === id);
     const total = item?.pages ?? 16;
+    // Slower for an "AA" stand-in, so its Cancel can be tried.
+    const step = /[?&]mock=aa769/.test(location.search) ? 120 : 40;
     for (let done = 1; done <= total; done += Math.max(1, Math.floor(total / 40))) {
-      await new Promise((r) => setTimeout(r, 40));
+      await new Promise((r) => setTimeout(r, step));
+      if (mock.cancel === id) {
+        mock.cancel = null;
+        mock.incomplete = { id, atMs: Date.now() };
+        throw new Error(`screen upload cancelled after ${done} of ${total} parts`);
+      }
       onProgress({ id, done, total });
     }
     onProgress({ id, done: total, total });
@@ -207,10 +244,44 @@ async function uploadOnce(modelId: string, id: string, onProgress: (p: ScreenPro
     if (e.payload.id === id) onProgress(e.payload);
   });
   try {
-    return await invoke<ScreenState>("screen_upload", { modelId, id });
+    return await invoke<ScreenState>("screen_upload", { recordId, id });
   } finally {
     off();
   }
+}
+
+/** The user said yes to losing the keyboard's clock page with its next
+ *  upload (`ScreenState.clockPageAtRisk`: the first upload to a keyboard of
+ *  AJAZZ's "AA" family; never a "04 xx" one). It also lets a live card that
+ *  waited for the answer go (`LiveState.clockAckNeeded`). */
+export async function ackClockPage(recordId: string): Promise<ScreenState> {
+  if (import.meta.env.DEV && !inTauri) {
+    mockAckClock();
+    return mockState();
+  }
+  return invoke<ScreenState>("screen_ack_clock_page", { recordId });
+}
+
+/** Stop the upload of library item `id` (an "AA" keyboard's; a "04 xx"
+ *  upload can't be stopped). Its `uploadToKeyboard` then fails with "screen
+ *  upload cancelled after N of M parts" ("… before it started" when it was
+ *  still waiting its turn). False when no such upload runs. */
+export async function cancelUpload(id: string): Promise<boolean> {
+  if (import.meta.env.DEV && !inTauri) {
+    mock.cancel = id;
+    return true;
+  }
+  return invoke<boolean>("screen_upload_cancel", { id });
+}
+
+/** The "04 xx" family's screen limits, while no keyboard says otherwise. */
+const FF13_SCREEN: ScreenFrameLimits = { maxFrames: MAX_FRAMES, provenFrames: PROVEN_FRAMES, pageMs: PAGE_MS };
+
+/** What an upload may hold on the keyboard the UI shows
+ *  (`KeyboardInfo.limits.screen`): frames it takes, frames proven, time
+ *  per page. */
+export function useScreenLimits(): ScreenFrameLimits {
+  return useActiveKeyboard()?.limits.screen ?? FF13_SCREEN;
 }
 
 /** Whether AJAZZ's official driver left its copy of the factory animation
@@ -221,13 +292,13 @@ async function findDriverBackup(): Promise<boolean> {
 }
 
 /** Keep the official driver's copy as the factory backup. */
-async function backupFromDriver(modelId: string): Promise<ScreenState> {
+async function backupFromDriver(recordId: string): Promise<ScreenState> {
   if (import.meta.env.DEV && !inTauri) {
     await new Promise((r) => setTimeout(r, 600));
     if (!mock.items.some((i) => i.kind === "factory")) mock.items.push(mockFactoryItem());
     return mockState();
   }
-  return invoke<ScreenState>("screen_backup_from_driver", { modelId });
+  return invoke<ScreenState>("screen_backup_from_driver", { recordId });
 }
 
 // ----------------------------------------------------------------- store
@@ -246,7 +317,7 @@ export interface Upload {
 export type DriverBackup = "unknown" | "searching" | "found" | "none";
 
 interface ScreenStore {
-  modelId: string | null;
+  recordId: string | null;
   state: ScreenState | null;
   upload: Upload | null;
   /** Resolves when the running upload ends (for the close guard). */
@@ -256,7 +327,9 @@ interface ScreenStore {
   findDriver: () => void;
   /** Keep the official driver's copy as the factory backup. */
   backupFromDriver: () => Promise<void>;
-  load: (modelId: string) => Promise<void>;
+  load: (recordId: string) => Promise<void>;
+  /** The user said yes to losing the clock page (`clockPageAtRisk`). */
+  ackClockPage: () => Promise<void>;
   add: (p: Prepared) => Promise<ScreenItem>;
   uploadToKeyboard: (item: ScreenItem, origin: Upload["origin"]) => Promise<void>;
   rename: (id: string, name: string) => Promise<void>;
@@ -272,8 +345,8 @@ async function addKeymotion() {
   keymotionAdding = true;
   try {
     await addToLibrary(await keymotionAnimation(), "keymotion");
-    const modelId = useScreen.getState().modelId;
-    if (modelId) useScreen.setState({ state: await getScreenState(modelId) });
+    const recordId = useScreen.getState().recordId;
+    if (recordId) useScreen.setState({ state: await getScreenState(recordId) });
   } catch (e) {
     console.error(e);
     // Tried again on the next load.
@@ -282,7 +355,7 @@ async function addKeymotion() {
 }
 
 export const useScreen = create<ScreenStore>((set, get) => ({
-  modelId: null,
+  recordId: null,
   state: null,
   upload: null,
   running: null,
@@ -299,35 +372,39 @@ export const useScreen = create<ScreenStore>((set, get) => ({
     );
   },
   backupFromDriver: async () => {
-    const modelId = get().modelId;
-    if (!modelId) return;
-    set({ state: await backupFromDriver(modelId) });
+    const recordId = get().recordId;
+    if (!recordId) return;
+    set({ state: await backupFromDriver(recordId) });
   },
-  load: async (modelId) => {
-    const state = await getScreenState(modelId);
-    set({ modelId, state });
+  load: async (recordId) => {
+    const state = await getScreenState(recordId);
+    set({ recordId, state });
     if (!state.items.some((i) => i.kind === "keymotion")) void addKeymotion();
+  },
+  ackClockPage: async () => {
+    const recordId = get().recordId;
+    if (recordId) set({ state: await ackClockPage(recordId) });
   },
   add: async (p) => {
     const item = await addToLibrary(p);
-    const modelId = get().modelId;
-    if (modelId) set({ state: await getScreenState(modelId) });
+    const recordId = get().recordId;
+    if (recordId) set({ state: await getScreenState(recordId) });
     return item;
   },
   uploadToKeyboard: async (item, origin) => {
-    const modelId = get().modelId;
-    if (!modelId || get().upload) return;
+    const recordId = get().recordId;
+    if (!recordId || get().upload) return;
     let finish!: () => void;
     const running = new Promise<void>((r) => (finish = r));
     set({ upload: { id: item.id, origin, name: item.name, done: 0, total: item.pages, startedMs: Date.now() }, running });
     try {
-      const state = await uploadItem(modelId, item.id, (p) =>
+      const state = await uploadItem(recordId, item.id, (p) =>
         set((s) => (s.upload ? { upload: { ...s.upload, done: p.done, total: p.total } } : {})),
       );
       set({ state });
     } catch (e) {
       // The count of uploads may have changed even when it failed.
-      getScreenState(modelId).then((state) => set({ state }), console.error);
+      getScreenState(recordId).then((state) => set({ state }), console.error);
       throw e;
     } finally {
       set({ upload: null, running: null });
@@ -335,11 +412,11 @@ export const useScreen = create<ScreenStore>((set, get) => ({
     }
   },
   rename: async (id, name) => {
-    const modelId = get().modelId;
-    if (modelId) set({ state: await renameItem(modelId, id, name) });
+    const recordId = get().recordId;
+    if (recordId) set({ state: await renameItem(recordId, id, name) });
   },
   remove: async (id) => {
-    const modelId = get().modelId;
-    if (modelId) set({ state: await removeItem(modelId, id) });
+    const recordId = get().recordId;
+    if (recordId) set({ state: await removeItem(recordId, id) });
   },
 }));
