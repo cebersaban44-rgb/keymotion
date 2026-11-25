@@ -13,6 +13,7 @@ import { ClockCard } from "../components/ClockCard";
 import { KeyboardBackups } from "../components/KeyboardBackups";
 import { BetaNote, KeyboardNotices } from "../components/KeyboardNotices";
 import { ModeSwitch } from "../components/ModeSwitch";
+import { GuideEntry } from "../components/TestGuide";
 import { writeBlock } from "../lib/aa";
 import { connectionKey, modelTitle, percent, useT, type MessageKey } from "../lib/i18n";
 
@@ -98,7 +99,8 @@ export function Connection({ kb }: { kb: KeyboardInfo }) {
           )}
           {kb.protocol === "ajazz-aa" && (
             <div className="mt-3">
-              <BetaNote kb={kb} />
+              {/* On the cable the test guide below is the way to tell us. */}
+              <BetaNote kb={kb} tell={kb.connection !== "usb"} />
             </div>
           )}
         </div>
@@ -107,6 +109,11 @@ export function Connection({ kb }: { kb: KeyboardInfo }) {
           <ModeSwitch value={kb.connection} />
           <span className="text-[12px] text-ink-3">{t("conn.switch.hint")}</span>
         </div>
+        {kb.protocol === "ajazz-aa" && kb.connection === "usb" && (
+          <div className="basis-full border-t border-line pt-4">
+            <GuideEntry kb={kb} />
+          </div>
+        )}
       </section>
 
       <section className="card flex flex-col gap-3 p-5" data-connection-map>

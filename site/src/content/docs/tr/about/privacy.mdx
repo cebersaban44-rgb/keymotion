@@ -37,7 +37,7 @@ Keymotion internete yalnızca iki iş için bağlanır: eklediğiniz takvimler v
 
 Keymotion sizin hakkınızda hiçbir şey göndermez. Aşağıdaki hizmetleri kullandığınızda onlar sıradan bir istek görür ve kendi gizlilik politikaları geçerlidir:
 
-- **GitHub**: güncelleme denetimi, indirmeler, sorun bildirme ve destek isteme. Bkz. [GitHub Genel Gizlilik Bildirimi](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
+- **GitHub**: güncelleme denetimi, indirmeler, sorun bildirme, destek isteme ve deneme rehberinin sonuçlarını paylaşma. Bkz. [GitHub Genel Gizlilik Bildirimi](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
 - **Microsoft**: bilgisayarda WebView2 (uygulamanın penceresini çizen Windows parçası) yoksa kurulum onu Microsoft'tan indirip kurar. Windows 11'de zaten vardır. Bkz. [Microsoft Gizlilik Bildirimi](https://www.microsoft.com/tr-tr/privacy/privacystatement).
 - **Eklediğiniz her takvimin hizmeti**, örneğin [Google](https://policies.google.com/privacy?hl=tr), [Microsoft Outlook](https://www.microsoft.com/tr-tr/privacy/privacystatement) ya da [Apple iCloud](https://www.apple.com/tr/legal/privacy/).
 
@@ -90,7 +90,7 @@ Her şey Windows kullanıcı klasörünüzdedir. **Ayarlar**'da, **Hakkında** b
   - `calendar.json`: takvimleriniz. Takvim adresleri parola gibidir; bu yüzden Windows kullanıcı hesabınıza özel olarak şifrelenir (Windows Veri Koruma). Başka bir kullanıcı ya da başka bir bilgisayar bunları okuyamaz;
   - `screen\`: görsel kütüphaneniz, aldıysanız fabrika animasyonunun kopyası ve son canlı kart.
 - **Günlük dosyaları**, `%LOCALAPPDATA%\dev.keymotion\logs\` klasöründe: her gün için bir dosya, son 7 gün, her biri en çok 4 MB; ayrıca kısa çökme notları. Yazılmadan önce web adresleri yalnızca sunucu adına indirilir ve Windows kullanıcı adınız klasör yollarından çıkarılır. Hatırlatma başlıkları ve toplantı adları hiç yazılmaz.
-- **Arayüz tercihleri**, `%LOCALAPPDATA%\dev.keymotion\EBWebView\` klasöründe: tema, dil ve henüz kaydetmediğiniz düzenlemeler. Bunları uygulamanın penceresi tutar.
+- **Arayüz tercihleri**, `%LOCALAPPDATA%\dev.keymotion\EBWebView\` klasöründe: tema, dil ve henüz kaydetmediğiniz düzenlemeler. Bunları uygulamanın penceresi tutar. AJAZZ'ın 3.01 klavye yazılımındaki bir klavye için deneme rehberindeki ilerlemeniz de burada durur: cevaplarınız ve notlarınız, Keymotion'ın kendi denetimlerinden hangilerini gördüğü ve davete verdiğiniz cevap. Siz kendiniz paylaşmadıkça buradan çıkmaz.
 
 Microsoft Store'dan kurulan Keymotion aynı klasörleri kullanır. Bu klasörler önceden yoksa (GitHub'daki Keymotion hiç kurulmadıysa) Windows onları uygulamanın kendi klasöründe tutar (`%LOCALAPPDATA%\Packages\<uygulamanın paket adı>\LocalCache\`) ve uygulamayı kaldırdığınızda siler; **Ayarlar**'daki düğmeler o zaman bu klasörü açar.
 
@@ -104,6 +104,7 @@ Sorunları GitHub'da siz bildirirsiniz. Keymotion kendiliğinden hiçbir şey g�
 
 - **Sorun bildir** (**Ayarlar**'da **Hakkında** › **Geri bildirim**; beklenmeyen bir hatadan sonraki bildirim; çökmeden sonraki bildirim) bir pencere açar ve gönderilecek metni önce gösterir: yukarıdaki tanılama bilgisi, en üstte ne olduğu. **GitHub'da bildir** metni panoya koyar ve projenin GitHub'daki formunu tarayıcınızda açar. Metni oraya siz yapıştırır, göndermeye siz karar verirsiniz.
 - **Destek iste**, henüz desteklenmeyen bir SONiX ya da AJAZZ klavye takılınca görünür. Aynı şekilde çalışır; metinde klavyenin bilgileri vardır: USB kimlikleri, adı ve Windows'un tuttuğu HID tanımları. Klavyeye hiçbir şey yazılmaz. Seri numarası ve aygıt yolları eklenmez.
+- **Deneme rehberi** (AJAZZ'ın 3.01 klavye yazılımındaki bir klavye için) de metni önce gösterir: cevaplarınız ve notlarınız, Keymotion'ın kendisinin denetlediği adımlar, uygulama ve Windows sürümü ve Keymotion'ın klavye hakkında okudukları (yukarıdaki tanılama bilgisinin klavyeyle ilgili bölümü; makrolarınızın içeriği hiçbir zaman yok). **Kopyala ve GitHub'da aç** metni panoya koyar ve projenin formunu başlığı ve klavye modeli yazılı olarak açar; formdaki sorunun cevabını siz seçer, metni panodan siz yapıştırırsınız. **Yalnız kopyala** yalnızca kopyalar. Rehber hiçbir şey göndermez ve klavyeye hiçbir şey yazmaz.
 - **Bir çökmeden sonra** Keymotion bir sonraki açılışta son 7 günün en yeni çökme notunu bir kez önerir.
 
 ## Dışa aktarma, içe aktarma ve silme

@@ -14,17 +14,39 @@ Yalnızca birini ilgilendiren bir değişiklik bunu belirtir.
 
 ### Eklenenler
 
-- **AJAZZ'ın 3.01 ("769") klavye yazılımındaki AK980 PRO, deneme
-  aşamasında:** Keymotion artık USB kablosunda bu yazılımın farklı komut
-  takımını kullanıyor: ışık efektleri ve tuş başına renk, canlı ışıklar, iki
-  katmanda tuş atama, makrolar, ekrana görsel yükleme, saat ve klavyenin
-  kabloda da bildirdiği pil düzeyi. Destek yeni: sanal bir klavyede denendi,
-  henüz gerçek bir klavyede denenmedi. Bu yüzden **Bağlantı** sayfası ve
-  Genel bakış onu **Deneme aşamasında** diye işaretliyor ve nasıl
-  çalıştığını bize anlatmanız için bir bağlantı veriyor. Keymotion her
+- **AJAZZ'ın 3.01 ("769") klavye yazılımındaki AK980 PRO, deneme aşamasında:**
+  Keymotion artık USB kablosunda bu yazılımın farklı komut takımını
+  kullanıyor: ışık efektleri ve tuş başına renk, canlı ışıklar, iki katmanda
+  tuş atama, makrolar, ekrana görsel yükleme, saat ve klavyenin kabloda da
+  bildirdiği pil düzeyi. Destek yeni ve hâlâ deneniyor. Bu yüzden **Bağlantı**
+  sayfası ve Genel bakış onu **Deneme aşamasında** diye işaretliyor; nasıl
+  çalıştığını aşağıdaki deneme rehberiyle bize anlatabilirsiniz. Keymotion her
   oturumda ilk yazmadan önce, denenmediği her klavye yazılımında olduğu gibi
   sorar (**Klavye yazılımı denenmedi**). **Devre dışı**, **Çift tıklama** ve
   **Basılı tuttukça** makro kipi bu yazılımda sunulmaz.
+- **Deneme rehberi (3.01 klavye yazılımı):** 3.01 klavye yazılımı kullanan ve
+  yardım etmek isteyenler için dokuz adımlık, yaklaşık on dakikalık, isteğe
+  bağlı bir deneme: hazırlık, bağlantı, ışık efekti, canlı ışık, tuş başına
+  renk, tuş atama, makrolar, ekran (isteğe bağlı) ve ilk yedeği geri yükleme.
+  Genel bakış sizi sayfayı kapatmadan bir kez davet eder (**Denemeye başla**;
+  bir sonraki bağlanışta bir kez daha soran **Şimdi değil**; **Bir daha
+  gösterme**); **Bağlantı** sayfasında rehber, ne kadar ilerlediğinizle
+  birlikte her zaman durur. Rehber sayfaların yanında açık kalır: **Oraya
+  git** adımın gerektirdiği sayfayı açar, siz de **Çalıştı**, **Çalışmadı** ya
+  da **Atladım** diye cevaplar, isterseniz bir not yazarsınız. Keymotion'ın
+  kendisinin bilebildiği yerlerde (yedek, rehber açıkken kaydedilip klavyeden
+  geri okunan bir ayar) adım işaretlenir; başka hiçbir zaman. Cevaplarınız bu
+  bilgisayarda kalır ve o klavye yazılımına aittir: başka bir klavye
+  yazılımında rehber baştan başlar. Keymotion'ın yalnızca okuduğu bir klavyede
+  rehber, kaydetme isteyen adımların çalışamayacağını söyler ve **Sorun
+  bildir**'i sunar. Sonunda rehber gönderilecek metni olduğu gibi gösterir
+  (cevaplarınız ve notlarınız, uygulama ve Windows sürümü, Keymotion'ın klavye
+  hakkında okudukları; makrolarınızın içeriği hiçbir zaman yok); **Kopyala ve
+  GitHub'da aç** metni panoya koyar ve formu başlığı ve modeli yazılı olarak
+  açar; rehber orada hangi cevabı seçeceğinizi söyler. Hiçbir şey
+  kendiliğinden gönderilmez ve rehber klavyeye hiçbir şey yazmaz: kaydetmeyi
+  her zamanki gibi sayfalarda siz yaparsınız. 1.06 klavye yazılımında hiç
+  görünmez.
 - **Klavye yedekleri (3.01 klavye yazılımı):** Keymotion klavyeye ilk
   bağlandığında, bir şey yazabilmeden önce klavyenin ayarlarının yedeğini
   alır (iki katmandaki tuş atamaları, ışık efekti, tuş başına renkler,

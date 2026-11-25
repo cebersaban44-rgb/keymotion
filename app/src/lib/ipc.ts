@@ -47,6 +47,7 @@ import type { TrayTexts } from "../bindings/TrayTexts";
 import type { CrashNote } from "../bindings/CrashNote";
 import type { IssueKind } from "../bindings/IssueKind";
 import type { UnsupportedKeyboard } from "../bindings/UnsupportedKeyboard";
+import type { AaReadBack } from "../bindings/AaReadBack";
 import type { AaStatus } from "../bindings/AaStatus";
 // Generated from Rust by `cargo test` (dto.rs export_mock_geometry).
 import ak980Geometry from "../bindings/geometry-ajazz-ak980-pro.json";
@@ -215,7 +216,12 @@ export async function onTrayProfile(cb: (id: string) => void): Promise<UnlistenF
 }
 
 export async function onKeyboardsChanged(cb: (k: KeyboardInfo[]) => void): Promise<UnlistenFn> {
-  if (import.meta.env.DEV && !inTauri) return () => {};
+  if (import.meta.env.DEV && !inTauri) {
+    mockKeyboardListeners.add(cb);
+    return () => {
+      mockKeyboardListeners.delete(cb);
+    };
+  }
   return listen<KeyboardInfo[]>(EVENT_KEYBOARDS_CHANGED, (e) => cb(e.payload));
 }
 
@@ -229,14 +235,18 @@ export async function getLightingCatalog(): Promise<EffectInfo[]> {
 /** Store a firmware effect on the keyboard (flash write). */
 export function applyEffect(request: EffectRequest): Promise<void> {
   return flashWrite(() =>
-    import.meta.env.DEV && !inTauri ? mockDelay(300) : serial(() => invoke<void>("apply_effect", { request })),
+    import.meta.env.DEV && !inTauri
+      ? mockDelay(300).then(() => mockSaved("effect"))
+      : serial(() => invoke<void>("apply_effect", { request })),
   );
 }
 
 /** Store per-key colours on the keyboard (flash write). */
 export function applyPerKey(colors: LedColor[], brightness: number): Promise<void> {
   return flashWrite(() =>
-    import.meta.env.DEV && !inTauri ? mockDelay(900) : serial(() => invoke<void>("apply_per_key", { colors, brightness })),
+    import.meta.env.DEV && !inTauri
+      ? mockDelay(900).then(() => mockSaved("perKey"))
+      : serial(() => invoke<void>("apply_per_key", { colors, brightness })),
   );
 }
 
@@ -514,6 +524,7 @@ export function applyKeymap(layer: KeymapLayer, assignments: KeyAssignment[], ba
         throw new Error("the keyboard's keys changed in another program since Keymotion read them; nothing was written");
       }
       mockKeymap = { ...mockKeymap, [layer]: { assignments, writtenMs: Date.now(), fixed: [], builtin: [], pinned: [] } };
+      mockSaved("keymap");
       return getKeymapState("");
     }
     return serial(() => invoke<KeymapState>("apply_keymap", { layer, assignments, base }));
@@ -559,6 +570,7 @@ export function applyMacros(slots: (MacroInfo | null)[], base: string | null): P
       }
       while (slots.length && slots[slots.length - 1] === null) slots = slots.slice(0, -1);
       mockMacros = { ...mockMacros, slots, writtenMs: Date.now() };
+      mockSaved("macros");
       return getMacrosState("");
     }
     return serial(() => invoke<MacrosState>("apply_macros", { slots, base }));
@@ -649,6 +661,32 @@ export async function getDiagnostics(language: string, context?: string): Promis
     // made-up values, so previews and screenshots look right.
     await mockDelay(150);
     const what = context ? `\n\nWhat happened:\n  ${context.split("\n").join("\n  ")}` : "";
+    // `?mock=aa769`: the "AA" keyboard's section, as the simulator gives it
+    // (app/src-tauri/src/aa.rs `AaDriver::diagnostics`).
+    const aa = new URLSearchParams(location.search).get("mock") === "aa769";
+    const saved = (Object.keys(mockReadBack) as (keyof AaReadBack)[]).filter((k) => mockReadBack[k] !== null);
+    const names: Record<keyof AaReadBack, string> = {
+      effect: "effect",
+      perKey: "per-key colours",
+      keymap: "keymap",
+      macros: "macros",
+      restore: "restore",
+    };
+    const aaSection = aa
+      ? [
+          "",
+          '"AA" keyboard:',
+          "  ajazz-ak980-pro.aa on USB 8039, firmware 3.01",
+          "  parsed: vid 0C45 pid 8039 version 0301 product 0033 work mode 0 battery 100 charge 2 macro space 3072 tft frames 146",
+          "  effect (0x13, 16 bytes, full, 10 non-zero): 01 FF FF FF FF 00 00 00 01 05 03 00 00 00 AA 55 = mode 1, colour FF FF FF, colour mode 1, brightness 5, speed 3, direction 0",
+          "  per-key table (0x14, 512 bytes, full, 129 non-zero): 128 entries, 1 all zero; byte 0 = its index in 128 of 128 entries",
+          "  full read: done, passed the sanity check",
+          "  writes: allowed",
+          `  saves read back as written since connected: ${saved.map((k) => names[k]).join(", ") || "none yet"}`,
+          "  unexpected replies: 0, resets reported: 0, another program suspected: false",
+          "  backup: aa-8039-0301-1763500000000.json",
+        ]
+      : [];
     return [
       "Keymotion diagnostics",
       `Created: ${new Date().toISOString().replace(/\.\d{3}Z$/, "Z")}`,
@@ -658,7 +696,8 @@ export async function getDiagnostics(language: string, context?: string): Promis
       `UI language: ${language}${what}`,
       "",
       "Keyboards:",
-      '  AJAZZ AK980 PRO (ajazz-ak980-pro), usb, firmware 1.06, product "AK980 PRO"',
+      `  AJAZZ AK980 PRO (ajazz-ak980-pro), usb, firmware ${aa ? "3.01" : "1.06"}, product "AK980 PRO"`,
+      ...aaSection,
       "",
       "Data files:",
       "  lighting.json (2.1 KB)",
@@ -1236,6 +1275,21 @@ async function mockLoadProfilePart(modelId: string, id: string, part: ProfilePar
 
 const mockDelay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/** `?mock=aa769`: when a save of each kind last read back on the stand-in
+ *  keyboard (`AaStatus.readBack`), and who follows its list. */
+const mockReadBack: AaReadBack = { effect: null, perKey: null, keymap: null, macros: null, restore: null };
+const mockKeyboardListeners = new Set<(k: KeyboardInfo[]) => void>();
+
+/** Browser preview only: a save of `kind` went well on the stand-in
+ *  keyboard; the pages get its list again, as from the backend after a
+ *  save that read back. */
+export function mockSaved(kind: keyof AaReadBack) {
+  if (!import.meta.env.DEV || inTauri) return;
+  mockReadBack[kind] = Date.now();
+  const list = mockKeyboards();
+  mockKeyboardListeners.forEach((cb) => cb(list));
+}
+
 /** Browser-only stand-in mirroring what the hardware reported on 2026-11-10. */
 function mockKeyboards(): KeyboardInfo[] {
   const mode = new URLSearchParams(location.search).get("mock") ?? "bluetooth";
@@ -1334,6 +1388,7 @@ function mockAaKeyboard(): KeyboardInfo {
       otherProgramSuspected: flags.has("other"),
       backup: readOnly?.kind === "no-backup" ? null : "aa-8039-0301-1763500000000.json",
       effectColorKnown: true,
+      readBack: { ...mockReadBack },
     },
     modelName: "AJAZZ AK980 PRO",
     vendor: "AJAZZ",

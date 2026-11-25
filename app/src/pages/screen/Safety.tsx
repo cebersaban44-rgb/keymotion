@@ -14,6 +14,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { useAaKeyboard, useWriteBlock } from "../../lib/aa";
+import { useCornerRight } from "../../lib/aaGuide";
 import { useT } from "../../lib/i18n";
 import { useLive } from "../../lib/live";
 import { useScreen } from "../../lib/screen";
@@ -137,6 +138,8 @@ function IncompleteNotice() {
   const fromEarlier = !!incomplete && incomplete.atMs < SESSION_START;
   const visible = fromEarlier && !closed && !upload && page !== "screen";
   const item = items?.find((i) => i.id === incomplete?.id) ?? null;
+  // Left of the test guide while it is open, never over its buttons.
+  const right = useCornerRight();
   return (
     <AnimatePresence>
       {visible && (
@@ -144,7 +147,7 @@ function IncompleteNotice() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="card fixed right-6 bottom-6 z-40 flex w-[360px] flex-col gap-2.5 p-4 shadow-xl"
+          className={`card fixed bottom-6 z-40 flex w-[360px] flex-col gap-2.5 p-4 shadow-xl ${right}`}
           role="status"
           data-incomplete-notice
         >

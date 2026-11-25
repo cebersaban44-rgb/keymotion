@@ -22,7 +22,7 @@ import type { KeyboardRestoreResult } from "../bindings/KeyboardRestoreResult";
 import type { ReadOnlyReason } from "../bindings/ReadOnlyReason";
 import { friendlyError } from "./errors";
 import { useT, type MessageKey, type Translate } from "./i18n";
-import { flashWrite, inTauri, invoke } from "./ipc";
+import { flashWrite, inTauri, invoke, mockSaved } from "./ipc";
 import { adoptKeymapRecord } from "./keymap";
 import { useLighting } from "./lighting";
 import { useLive } from "./live";
@@ -243,6 +243,7 @@ async function mockRestore(file: string, color?: { color: string; rainbow: boole
       colorKnown: false,
     },
   ];
+  mockSaved("restore");
   // The Fn key and a slot past the keys stay as the keyboard has them; the
   // effect's colour is known when the backup knew it or one was given.
   return {

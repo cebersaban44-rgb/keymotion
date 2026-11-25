@@ -8,6 +8,7 @@ import { Reporting } from "./components/Reporting";
 import { Sidebar } from "./components/Sidebar";
 import { UnsavedDialog } from "./components/UnsavedDialog";
 import { SafetyDialogs, useSafetyDialogOpen } from "./components/SafetyDialogs";
+import { GuidePanel } from "./components/TestGuide";
 import {
   cancelQuit,
   closeWindow,
@@ -23,6 +24,7 @@ import {
   setWindowTheme,
 } from "./lib/ipc";
 import { follow } from "./lib/follow";
+import { useGuideFollow } from "./lib/aaGuide";
 import { useUnsupported } from "./lib/report";
 import { useUnsaved } from "./lib/unsaved";
 import { connectionKey, modelNames, tNow, useT, type MessageKey } from "./lib/i18n";
@@ -346,6 +348,7 @@ export default function App() {
   useKeyboardRecords();
   useLiveScreen();
   useTray();
+  useGuideFollow();
   const guard = useCloseGuard();
   const safetyOpen = useSafetyDialogOpen();
   const updateOpen = useUpdates((s) => s.dialog);
@@ -425,6 +428,8 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
         </main>
+        {/* The 3.01 test guide, beside every page while it is open. */}
+        <GuidePanel />
       </div>
       <ScreenUploadToast />
       <RestoreToast />

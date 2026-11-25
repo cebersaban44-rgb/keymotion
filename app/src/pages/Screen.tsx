@@ -9,6 +9,7 @@ import { openSource, uploadSeconds, type Source } from "../lib/screenImport";
 import { InfoBar, Tabs } from "../components/controls";
 import { KeyboardNotices } from "../components/KeyboardNotices";
 import { useAaKeyboard, useWriteBlock } from "../lib/aa";
+import { useCornerRight } from "../lib/aaGuide";
 import { useApp, type ScreenTab } from "../lib/store";
 import {
   CancelUpload,
@@ -753,6 +754,8 @@ export function ScreenUploadToast() {
   }, [running]);
   const visible = !!upload && !(page === "screen" && upload.origin === "editor");
   const left = upload ? remaining(upload, now) : null;
+  // Left of the test guide while it is open, never over its buttons.
+  const right = useCornerRight();
   return (
     <AnimatePresence>
       {visible && upload && (
@@ -760,7 +763,7 @@ export function ScreenUploadToast() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 12 }}
-          className="flyout fixed right-6 bottom-6 z-40 flex w-[340px] flex-col gap-2 p-4"
+          className={`flyout fixed bottom-6 z-40 flex w-[340px] flex-col gap-2 p-4 ${right}`}
           role="status"
         >
           <div className="flex items-center gap-2 text-[13px] font-semibold">

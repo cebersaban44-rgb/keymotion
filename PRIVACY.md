@@ -34,7 +34,7 @@ Keymotion connects to the internet for two things only: the calendars you add, a
 
 Keymotion itself sends nothing about you. When you use the services below, they see an ordinary request, and their own privacy policies apply:
 
-- **GitHub**: the update check, downloads, and reporting a problem or asking for support. See the [GitHub General Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
+- **GitHub**: the update check, downloads, and reporting a problem, asking for support or sharing the test guide's results. See the [GitHub General Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
 - **Microsoft**: on a computer without WebView2, the part of Windows that draws the app's window, the installer downloads it from Microsoft and installs it. Windows 11 already has it. See the [Microsoft Privacy Statement](https://www.microsoft.com/privacy/privacystatement).
 - **The service of each calendar you add**, for example [Google](https://policies.google.com/privacy), [Microsoft Outlook](https://www.microsoft.com/privacy/privacystatement) or [Apple iCloud](https://www.apple.com/legal/privacy/).
 
@@ -87,7 +87,7 @@ Everything is in your Windows user folder. In **Settings**, under **About**, **D
   - `calendar.json`: your calendars. Their addresses work like passwords, so they're encrypted for your Windows user account (Windows Data Protection). Another user or another computer can't read them;
   - `screen\`: your picture library, the copy of the factory animation if you made one, and the last live card.
 - **Log files**, in `%LOCALAPPDATA%\dev.keymotion\logs\`: one file per day for the last 7 days, at most 4 MB each, and short crash notes. Before anything is written, web addresses are cut to their server name and your Windows user name is removed from folder paths. Reminder titles and meeting names are never written.
-- **Interface preferences**, in `%LOCALAPPDATA%\dev.keymotion\EBWebView\`: theme, language and edits you haven't saved yet, kept by the app's window.
+- **Interface preferences**, in `%LOCALAPPDATA%\dev.keymotion\EBWebView\`: theme, language and edits you haven't saved yet, kept by the app's window. For a keyboard on AJAZZ's firmware 3.01, also the test guide's progress: your answers and notes, which of Keymotion's own checks it saw, and how you answered its invitation. It stays there unless you share it yourself.
 
 Keymotion installed from the Microsoft Store uses the same folders. If they weren't there before (Keymotion from GitHub was never installed), Windows keeps them in the app's own folder, `%LOCALAPPDATA%\Packages\<the app's package name>\LocalCache\`, and deletes them when you uninstall the app; the buttons in **Settings** then open that folder.
 
@@ -101,6 +101,7 @@ You report problems on GitHub yourself. Keymotion sends nothing by itself.
 
 - **Report a problem** (in **Settings**, under **About** › **Feedback**; in the notice after an unexpected error; in the notice after a crash) opens a window that shows the text first: the diagnostics above, with what happened at the top. **Report on GitHub** puts the text on your clipboard and opens the project's form on GitHub in your browser. You paste it there and decide whether to send it.
 - **Request support** appears when a SONiX or AJAZZ keyboard isn't supported yet. It works the same way, with the keyboard's details: its USB identifiers, its name and the HID descriptions Windows keeps of it. Nothing is written to the keyboard. Its serial number and device paths are left out.
+- **The test guide** (for a keyboard on AJAZZ's firmware 3.01) shows its text first too: your answers and notes, which steps Keymotion checked itself, the app and Windows versions, and what Keymotion read about the keyboard (the part of the diagnostics above about it, never your macros' contents). **Copy and open GitHub** puts it on your clipboard and opens the project's form with its title and the keyboard model filled in; you pick the answer to its question and paste the text from the clipboard yourself. **Copy only** just copies it. The guide sends nothing, and writes nothing to the keyboard.
 - **After a crash**, the next start offers the newest crash note from the last 7 days, once.
 
 ## Export, import and deletion

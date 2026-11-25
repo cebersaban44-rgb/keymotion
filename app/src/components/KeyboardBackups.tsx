@@ -28,6 +28,7 @@ import {
 import { keptKeys, keptWhy, restoredParts, restoreHeldBy, type KeptWhy, type RestoredPart } from "../lib/aaText";
 import { friendlyError } from "../lib/errors";
 import { intlTag, useT, type MessageKey } from "../lib/i18n";
+import { useCornerRight } from "../lib/aaGuide";
 import { useApp } from "../lib/store";
 import { ColorPicker, InfoBar, Toggle } from "./controls";
 
@@ -194,6 +195,8 @@ export function RestoreToast() {
   const failed = error !== null;
   const done = flow?.step === "done";
   const visible = !listShown && (busy || failed || done);
+  // Left of the test guide while it is open, never over its buttons.
+  const right = useCornerRight();
   return (
     <AnimatePresence>
       {visible && flow && (
@@ -201,7 +204,7 @@ export function RestoreToast() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 12 }}
-          className={`flyout fixed right-6 z-40 flex w-[340px] flex-col gap-2 p-4 ${uploading ? "bottom-[200px]" : "bottom-6"}`}
+          className={`flyout fixed z-40 flex w-[340px] flex-col gap-2 p-4 ${right} ${uploading ? "bottom-[200px]" : "bottom-6"}`}
           role="status"
           data-restore-toast={busy ? "busy" : failed ? "failed" : "done"}
         >

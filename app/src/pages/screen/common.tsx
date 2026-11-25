@@ -312,8 +312,8 @@ export function Hint({ tone, children }: { tone: "warn" | "note" | "usb" | "erro
   );
 }
 
-/** Frames not proven on this kind of keyboard: past 135 on a "04 xx" one,
- *  any on an "AA" one (nothing was uploaded to a real one yet). */
+/** Frames not proven on this kind of keyboard: past 135 on a "04 xx" one;
+ *  on an "AA" one, the limit the keyboard reports. */
 export function UnprovenHint({ frames }: { frames: number }) {
   const t = useT();
   const screen = useScreenLimits();

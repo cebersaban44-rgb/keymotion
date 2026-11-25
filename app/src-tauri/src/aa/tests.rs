@@ -1097,3 +1097,79 @@ fn a_backup_keeps_the_effect_mode_the_app_knows() {
     let before = backups_in(&dir.0).into_iter().find(|(_, b)| b.reason == backups::Reason::BeforeRestore);
     assert_eq!(before.map(|(_, b)| b.snapshot.effect_mode), Some(Some(128)));
 }
+
+/// The test guide's own checks (app/src/lib/aaGuideRules.ts): a save of
+/// each kind is timed only once the keyboard read it back as written, and
+/// a restore counts as a restore, not as a save of what it put back.
+#[test]
+fn only_saves_that_read_back_are_timed() {
+    let dir = TempDir::new("read-back");
+    let sim = Sim::ak980();
+    let mut d = driver(&sim, Some(&dir.0));
+    let (_, first) = backups_in(&dir.0).remove(0);
+    assert_eq!(d.status().read_back, AaReadBack::default());
+    assert!(d.diagnostics().iter().any(|l| l == "saves read back as written since connected: none yet"));
+
+    // Echoed but not kept: the read-back fails, nothing is timed.
+    sim.state().faults.ignore_writes = Some(cmd::SET_EFFECT);
+    d.apply_effect(&effect(2, [255, 0, 0])).unwrap_err();
+    assert_eq!(d.status().read_back.effect, None);
+    sim.state().faults.ignore_writes = None;
+
+    let before = now_ms();
+    d.apply_per_key(vec![(led("esc"), [1, 2, 3])], 4).unwrap();
+    d.apply_effect(&effect(2, [255, 0, 0])).unwrap();
+    d.apply_keymap(Layer::Base, &LayerMap::from([(led("a"), KeyAction::key(0x05))])).unwrap();
+    d.write_macros(&[vec![MacroStep::new(StepKind::KeyDown, 4, 20), MacroStep::new(StepKind::KeyUp, 4, 20)]]).unwrap();
+    let saved = d.status().read_back;
+    for (kind, at) in
+        [("effect", saved.effect), ("per-key", saved.per_key), ("keymap", saved.keymap), ("macros", saved.macros)]
+    {
+        assert!(at.is_some_and(|t| t >= before), "{kind}: {saved:?}");
+    }
+    assert_eq!(saved.restore, None);
+    let line = "saves read back as written since connected: effect, per-key colours, keymap, macros";
+    assert!(d.diagnostics().iter().any(|l| l == line), "{:?}", d.diagnostics());
+
+    // A restore on a fresh connection (nothing saved since): only the
+    // restore is timed, though it wrote the keymap, the effect, the per-key
+    // table and the macros back.
+    let mut fresh = driver(&sim, Some(&dir.0));
+    assert_eq!(fresh.status().read_back, AaReadBack::default());
+    let report = fresh.restore(&first.snapshot, None, None, None).unwrap();
+    assert!(report.written.len() >= 4, "{:?}", report.written);
+    let after = fresh.status().read_back;
+    assert!(after.restore.is_some_and(|t| t >= before), "{after:?}");
+    assert_eq!(AaReadBack { restore: None, ..after }, AaReadBack::default(), "{after:?}");
+    assert!(fresh.diagnostics().iter().any(|l| l == "saves read back as written since connected: restore"));
+}
+
+/// A restore that stops part-way is no restore that read back: not timed.
+#[test]
+fn a_restore_that_stops_part_way_is_not_timed() {
+    let dir = TempDir::new("read-back-cut");
+    let sim = Sim::ak980();
+    let mut d = driver(&sim, Some(&dir.0));
+    let (_, first) = backups_in(&dir.0).remove(0);
+    d.apply_keymap(Layer::Base, &LayerMap::from([(led("a"), KeyAction::key(0x05))])).unwrap();
+    let mut d = driver(&sim, Some(&dir.0));
+    sim.state().faults.ignore_writes = Some(cmd::SET_KEYMAP);
+    let e = d.restore(&first.snapshot, None, None, None).unwrap_err();
+    assert!(e.to_string().starts_with("the restore stopped while writing the base layer"), "{e}");
+    assert_eq!(d.status().read_back, AaReadBack::default());
+}
+
+/// A keymap save that asks for what the keyboard holds writes nothing; the
+/// fresh read that showed it counts as read back.
+#[test]
+fn a_keymap_save_with_nothing_to_write_counts_as_read_back() {
+    let dir = TempDir::new("read-back-keymap");
+    let sim = Sim::ak980();
+    let mut d = driver(&sim, Some(&dir.0));
+    let before = now_ms();
+    d.apply_keymap(Layer::Base, &LayerMap::new()).unwrap();
+    assert!(sim.state().sent(cmd::SET_KEYMAP).is_empty(), "nothing written");
+    let r = d.status().read_back;
+    assert!(r.keymap.is_some_and(|t| t >= before), "{r:?}");
+    assert_eq!(AaReadBack { keymap: None, ..r }, AaReadBack::default());
+}
