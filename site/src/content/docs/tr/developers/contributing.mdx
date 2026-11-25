@@ -106,7 +106,7 @@ Beta, bir sonraki sürümü erkenden denemek içindir. Yalnızca GitHub'dadır v
 
    Betik dalın GitHub'a gönderildiğini, yayımlanmış her şeyi içerdiğini (`origin/main` içinde), `develop`'tan bu yana yalnızca `prepare.mjs`'in değiştirdiklerini (sürüm numarası ve değişiklik listeleri) değiştirdiğini ve CI'ın **Build and test** işinin dalda geçtiğini denetler. Sonra `v1.3.0-beta.1` etiketini gönderir. Geri birleştirme PR'ı açmaz.
 
-4. `release.yml` etiketin commit'ini aynı biçimde denetler (`tools/release/check-beta.mjs`), kurulum dosyasını derler ve GitHub'da taslak bir ön sürüm hazırlar; Store paketi yapılmaz. Taslağı GitHub › Actions › **Publish a release** ile yayımlayın: etiketten çalıştırın (Tags › `v1.3.0-beta.1`) ve **Only check** işaretini kaldırın. İş akışı taslağı ön sürüm olarak yayımlar, hiçbir zaman en son sürüm (latest) olarak değil; ardından GitHub'ın en son sürümü normal bir sürüm değilse hata verir.
+4. `release.yml` etiketin commit'ini aynı biçimde denetler (`tools/release/check-beta.mjs`), kurulum dosyasını derler, GitHub'da taslak bir ön sürüm hazırlar ve kurulum dosyasını temiz bir Windows'ta dener; Store paketi yapılmaz. Deneme geçince taslağı GitHub › Actions › **Publish a release** ile yayımlayın (iş akışı denemenin geçtiğini denetler): etiketten çalıştırın (Tags › `v1.3.0-beta.1`) ve **Only check** işaretini kaldırın. İş akışı taslağı ön sürüm olarak yayımlar, hiçbir zaman en son sürüm (latest) olarak değil; ardından GitHub'ın en son sürümü normal bir sürüm değilse hata verir.
 
 </Steps>
 

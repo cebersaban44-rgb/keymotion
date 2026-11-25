@@ -21,7 +21,7 @@ import Screenshot from "~/components/Screenshot.astro";
 
 - **设置 › 关于**在两个版本中以相同的方式显示版本：“版本 1.0.0”。在 Microsoft Store 版中，同一行还会说明由 Microsoft Store 负责更新。
 - **Windows 的已安装应用列表**显示 Microsoft Store 版时，会多出第四位数字，始终为 0：1.0.0 显示为 1.0.0.0。它们是同一个版本。
-- **新版本何时推出**。新版本会在同一天在 GitHub 和 Microsoft Store 上推出：GitHub 上的发布会等到 Microsoft 审核完 Microsoft Store 版之后。只有紧急修复（崩溃、安全问题）可能会先在 GitHub 上推出；它的发行说明会注明这一点。
+- **新版本何时推出**。新版本先在 GitHub 上推出。Microsoft 审核完 Microsoft Store 版后，它会随后推出，通常在一天之内。两者的版本号和发行说明都相同。
 - **测试版**（版本号中带“-rc”或“-beta”）只在 GitHub 上提供。
 - **同一时间只运行一个 Keymotion**。如果两个版本都已安装，它们使用相同的设置。打开 GitHub 版会改为打开 Microsoft Store 版，随 Windows 启动也会改由 Microsoft Store 版完成。测试版不会这样做：打开测试版之前，请先退出 Microsoft Store 版，包括时钟旁的图标。此时，Microsoft Store 版的“设置 › 关于”中会显示“GitHub 版”一行，其中的按钮可以打开 Windows 的“已安装的应用”，你可以在那里卸载 GitHub 版；要保留设置，不要勾选 **Also delete my settings and saved data**（同时删除我的设置和已保存的数据）。
 

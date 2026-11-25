@@ -106,7 +106,7 @@ A beta lets people try the next version early. It is only on GitHub, marked as a
 
    It checks that the branch is pushed, that it has everything already released (`origin/main` is in it), that since `develop` it changes only what `prepare.mjs` changed (the version and the changelogs), and that CI's **Build and test** job passed on it. Then it pushes the tag `v1.3.0-beta.1`. It opens no back-merge pull request.
 
-4. `release.yml` checks the tag's commit the same way (`tools/release/check-beta.mjs`), builds the installer and drafts a GitHub pre-release, without a Store package. Publish the draft with GitHub › Actions › **Publish a release**, run from the tag (Tags › `v1.3.0-beta.1`) with **Only check** unticked: it publishes it as a pre-release, never as the latest release, and fails if GitHub's latest release is not a normal one afterwards.
+4. `release.yml` checks the tag's commit the same way (`tools/release/check-beta.mjs`), builds the installer, drafts a GitHub pre-release and tries the installer on a clean Windows, without a Store package. Once that install test has passed, publish the draft with GitHub › Actions › **Publish a release** (it checks that the test passed), run from the tag (Tags › `v1.3.0-beta.1`) with **Only check** unticked: it publishes it as a pre-release, never as the latest release, and fails if GitHub's latest release is not a normal one afterwards.
 
 </Steps>
 
