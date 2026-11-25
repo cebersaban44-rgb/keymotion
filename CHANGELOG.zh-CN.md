@@ -8,6 +8,10 @@
 
 ## [未发布]
 
+## [1.3.0] - 2026-11-25
+
+AJAZZ 固件 3.01 上的 AK980 PRO（测试版），以及可选的测试向导。感谢 [@j0p3s](https://github.com/j0p3s) 让我们注意到新固件、在自己的键盘上试用每个测试版，并发来报告，帮助完成了这项支持。
+
 ### 新增
 
 - **装有黑爵 3.01 固件（“769”）的黑爵 AK980 V2（带屏版），测试版**：Keymotion 现在可以通过 USB 数据线使用这个固件的另一套命令：灯效和逐键颜色、实时灯光、两层的自定义按键、宏、屏幕图片、时钟，以及键盘通过数据线也会报告的电量。这项支持是新的，仍在测试中，所以**连接**页面和“概览”会把它标为**测试版**；你可以通过下面的测试向导告诉我们效果如何。每次运行中第一次写入之前，Keymotion 会像对待所有未经测试的固件一样先询问你（**未经测试的固件**）。在这个固件上不提供**禁用**、**双击**和宏播放方式**按住时**。
@@ -69,6 +73,7 @@ Keymotion 换上了 Windows 11 风格的新外观，还带来了新工具：音�
 - **屏幕**：以“…”结尾的歌曲、会议或提醒标题，不再以最小字号绘制。
 - **安装程序**：从 GitHub 在已安装的副本上再次安装 Keymotion 时，不会再关闭**开机时启动 Keymotion**。
 
-[未发布]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.2.1...develop
+[未发布]: https://github.com/cebersaban44-rgb/keymotion/compare/v1.3.0...develop
+[1.3.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.3.0
 [1.2.1]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.1
 [1.2.0]: https://github.com/cebersaban44-rgb/keymotion/releases/tag/v1.2.0
