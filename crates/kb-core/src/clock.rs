@@ -11,7 +11,7 @@ use kb_winsys::time::WallClock;
 pub fn now() -> ClockTime {
     match kb_winsys::time::local_clock() {
         Some(w) => from_wall_clock(w),
-        None => from_datetime(jiff::Zoned::now().datetime()),
+        None => from_datetime(jiff::ZonedDateTime::now().datetime()),
     }
 }
 
@@ -50,7 +50,7 @@ mod tests {
     #[test]
     fn converts_wall_clock_fields() {
         // 15:07:32 at UTC+3: the wall clock, whatever the zone.
-        let t = date(2026, 10, 29).at(15, 7, 32, 0).to_zoned(TimeZone::fixed(offset(3))).unwrap();
+        let t = date(2026, 10, 29).at(15, 7, 32, 0).to_zoned_datetime(TimeZone::fixed(offset(3))).unwrap();
         let want = ClockTime { year: 2026, month: 10, day: 29, hour: 15, minute: 7, second: 32, weekday: 4 };
         assert_eq!(from_datetime(t.datetime()), want);
         let w = WallClock { year: 2026, month: 10, day: 29, hour: 15, minute: 7, second: 32, weekday: 4 };
@@ -59,7 +59,7 @@ mod tests {
 
     #[test]
     fn sunday_is_zero() {
-        let t = date(2026, 11, 15).at(8, 0, 0, 0).to_zoned(TimeZone::UTC).unwrap();
+        let t = date(2026, 11, 15).at(8, 0, 0, 0).to_zoned_datetime(TimeZone::UTC).unwrap();
         assert_eq!(from_datetime(t.datetime()).weekday, 0);
     }
 

@@ -7,7 +7,7 @@
 //! afresh each time ([`pc_zone`]).
 
 use jiff::tz::{Offset, TimeZone};
-use jiff::{Timestamp, Zoned};
+use jiff::{Timestamp, ZonedDateTime};
 use kb_winsys::time::ZoneSetting;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -29,8 +29,8 @@ pub(crate) fn pc_zone() -> TimeZone {
 }
 
 /// Now, in the PC's zone.
-pub(crate) fn now() -> Zoned {
-    Timestamp::now().to_zoned(pc_zone())
+pub(crate) fn now() -> ZonedDateTime {
+    Timestamp::now().to_zoned_datetime(pc_zone())
 }
 
 fn fixed(minutes: i32) -> TimeZone {
@@ -223,7 +223,7 @@ mod tests {
     #[test]
     fn the_pc_zone_follows_windows() {
         // 1 July 2026: summer time in Warsaw (+02:00), standard +01:00.
-        let july = jiff::civil::date(2026, 7, 1).at(12, 0, 0, 0).to_zoned(TimeZone::UTC).unwrap().timestamp();
+        let july = jiff::civil::date(2026, 7, 1).at(12, 0, 0, 0).to_zoned_datetime(TimeZone::UTC).unwrap().timestamp();
         let name = |tz: TimeZone| tz.iana_name().map(str::to_string);
         let offset = |tz: TimeZone| tz.to_offset(july).seconds() / 60;
         let warsaw = setting("Central European Standard Time", false, 120, 60);
@@ -252,12 +252,13 @@ mod tests {
         // -07:00 (Chihuahua went to -06:00 in 2022), Bishkek at +06:00
         // (Almaty went to +05:00 in 2024). An Outlook meeting at 10:00 there
         // is at 17:00 and 04:00 UTC.
-        let january = jiff::civil::date(2027, 1, 15).at(12, 0, 0, 0).to_zoned(TimeZone::UTC).unwrap().timestamp();
+        let january =
+            jiff::civil::date(2027, 1, 15).at(12, 0, 0, 0).to_zoned_datetime(TimeZone::UTC).unwrap().timestamp();
         let hours = |w: &str| windows_zone(w).unwrap().to_offset(january).seconds() / 3600;
         assert_eq!(hours("Mountain Standard Time (Mexico)"), -7);
         assert_eq!(hours("Central Asia Standard Time"), 6);
         // Zones with summer time that used to fall back to a fixed offset.
-        let july = jiff::civil::date(2026, 7, 1).at(12, 0, 0, 0).to_zoned(TimeZone::UTC).unwrap().timestamp();
+        let july = jiff::civil::date(2026, 7, 1).at(12, 0, 0, 0).to_zoned_datetime(TimeZone::UTC).unwrap().timestamp();
         let summer = |w: &str| windows_zone(w).unwrap().to_offset(july).seconds() / 60;
         assert_eq!(summer("US Eastern Standard Time"), -4 * 60);
         assert_eq!(summer("Cuba Standard Time"), -4 * 60);

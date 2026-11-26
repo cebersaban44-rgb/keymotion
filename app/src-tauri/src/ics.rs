@@ -17,7 +17,7 @@ use crate::recur::Rule;
 use icalendar::parser::{read_calendar, unfold, Component, Property};
 use jiff::civil::{Date, DateTime, Time};
 use jiff::tz::TimeZone;
-use jiff::{SignedDuration, Timestamp, Zoned};
+use jiff::{SignedDuration, Timestamp, ZonedDateTime};
 use std::collections::{HashMap, HashSet};
 
 /// One event (or one instance of a repeating event) in the asked span.
@@ -268,7 +268,7 @@ fn param<'a>(p: &'a Property, key: &str) -> Option<&'a str> {
 /// A date-time value of the feed.
 #[derive(Debug, Clone)]
 struct When {
-    at: Zoned,
+    at: ZonedDateTime,
     /// A whole day, not a time.
     all_day: bool,
     /// In the PC's zone: a floating time, a whole day or a zone nobody
@@ -278,8 +278,8 @@ struct When {
 
 /// A wall time in `tz` (RFC 5545): one a clock change skips is read with
 /// the offset before the change, of one it repeats the first counts.
-fn wall(tz: &TimeZone, t: DateTime) -> Option<Zoned> {
-    tz.to_ambiguous_zoned(t).compatible().ok()
+fn wall(tz: &TimeZone, t: DateTime) -> Option<ZonedDateTime> {
+    tz.to_ambiguous_zoned_datetime(t).compatible().ok()
 }
 
 /// `YYYYMMDD`.
@@ -355,7 +355,7 @@ impl Zones {
             return Some(When { at, all_day: true, floating: true });
         }
         if let Some(utc) = v.strip_suffix('Z').or_else(|| v.strip_suffix('z')) {
-            let at = parse_date_time(utc)?.to_zoned(TimeZone::UTC).ok()?;
+            let at = parse_date_time(utc)?.to_zoned_datetime(TimeZone::UTC).ok()?;
             return Some(When { at, all_day: false, floating: false });
         }
         let n = parse_date_time(v)?;
@@ -406,7 +406,8 @@ mod tests {
 
     /// Milliseconds of a wall time in Istanbul (UTC+3).
     fn at(y: i16, mo: i8, d: i8, h: i8, mi: i8) -> f64 {
-        jiff::civil::date(y, mo, d).at(h, mi, 0, 0).to_zoned(ist()).unwrap().timestamp().as_millisecond() as f64
+        jiff::civil::date(y, mo, d).at(h, mi, 0, 0).to_zoned_datetime(ist()).unwrap().timestamp().as_millisecond()
+            as f64
     }
 
     fn day(y: i16, mo: i8, d: i8) -> (f64, f64) {
@@ -566,7 +567,7 @@ BEGIN:VEVENT\r\nUID:f1\r\nDTSTART:20260306T023000\r\nRRULE:FREQ=DAILY;COUNT=4\r\
 BEGIN:VEVENT\r\nUID:f2\r\nDTSTART:20260308T023000\r\nSUMMARY:y\r\nEND:VEVENT\r\n\
 END:VCALENDAR\r\n";
         let wall = |ms: f64| {
-            let t = Timestamp::from_millisecond(ms as i64).unwrap().to_zoned(ny.clone());
+            let t = Timestamp::from_millisecond(ms as i64).unwrap().to_zoned_datetime(ny.clone());
             t.strftime("%m-%d %H:%M").to_string()
         };
         let o = occurrences(feed, 0.0, 4e12, &ny).unwrap();

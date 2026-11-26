@@ -14,6 +14,12 @@ are only on GitHub. A change that concerns only one of them says so.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Time zones:** the time zone data built into Keymotion is current again
+  (IANA 2026f). In Cuba, where the clocks didn't go back on 1 November 2026,
+  calendar events and reminders now show the right time.
+
 ## [1.3.0] - 2026-11-25
 
 The AK980 PRO on AJAZZ's firmware 3.01, in beta, with an optional test guide. Thanks to [@j0p3s](https://github.com/j0p3s) for bringing the new firmware to our attention, trying each beta on their keyboard and sending the reports that shaped this support.

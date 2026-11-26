@@ -42,7 +42,7 @@ use crate::reminders::{RemindersHandle, EVENT_REMINDERS};
 use crate::updates::{Updates, EVENT_UPDATE};
 use crate::{notify, settings};
 use jiff::tz::TimeZone;
-use jiff::{Timestamp, Zoned};
+use jiff::{Timestamp, ZonedDateTime};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -496,7 +496,9 @@ fn focus_status(t: &TrayTexts, p: &PomodoroState, now_ms: f64) -> String {
 /// "14:30" today, "tomorrow 09:00", then the date: "14.11 09:00" (Turkish,
 /// Russian), "11月14日 09:00" (Chinese) or "Nov 14 09:00" (English).
 fn when(t: &TrayTexts, at_ms: f64, now_ms: f64, tz: &TimeZone) -> String {
-    let zoned = |ms: f64| -> Option<Zoned> { Some(Timestamp::from_millisecond(ms as i64).ok()?.to_zoned(tz.clone())) };
+    let zoned = |ms: f64| -> Option<ZonedDateTime> {
+        Some(Timestamp::from_millisecond(ms as i64).ok()?.to_zoned_datetime(tz.clone()))
+    };
     let (Some(at), Some(now)) = (zoned(at_ms), zoned(now_ms)) else { return String::new() };
     let time = at.strftime("%H:%M").to_string();
     let days = at.date().since(now.date()).map_or(0, |s| s.get_days());
@@ -1180,7 +1182,7 @@ mod tests {
         let t = tr();
         let tz = TimeZone::fixed(jiff::tz::offset(UTC3));
         let ms = |d: i8, h: i8, m: i8| {
-            date(2026, 11, d).at(h, m, 0, 0).to_zoned(tz.clone()).unwrap().timestamp().as_millisecond() as f64
+            date(2026, 11, d).at(h, m, 0, 0).to_zoned_datetime(tz.clone()).unwrap().timestamp().as_millisecond() as f64
         };
         // 2026-11-12 10:00 local.
         let now = ms(12, 10, 0);
@@ -1274,7 +1276,7 @@ mod tests {
     fn dates_and_counts_in_each_language() {
         let tz = TimeZone::fixed(jiff::tz::offset(UTC3));
         let ms = |d: i8, h: i8| {
-            date(2026, 11, d).at(h, 0, 0, 0).to_zoned(tz.clone()).unwrap().timestamp().as_millisecond() as f64
+            date(2026, 11, d).at(h, 0, 0, 0).to_zoned_datetime(tz.clone()).unwrap().timestamp().as_millisecond() as f64
         };
         let (now, later) = (ms(12, 10), ms(14, 9));
         let s = |t: &str| t.to_string();
