@@ -12,6 +12,12 @@ ilgilendiren bir değişiklik bunu belirtir.
 
 ## [Yayımlanmamış]
 
+### Düzeltilenler
+
+- **Saat dilimleri:** Keymotion'ın içindeki saat dilimi bilgileri yeniden
+  güncel (IANA 2026f). Saatlerin 1 Kasım 2026'da geri alınmadığı Küba'da
+  takvim etkinlikleri ve hatırlatıcılar artık doğru saatte görünür.
+
 ## [1.3.0] - 2026-11-25
 
 AJAZZ'ın 3.01 yazılımındaki AK980 PRO, deneme aşamasında ve isteğe bağlı bir deneme rehberiyle. Yeni yazılımı bize haber veren, her betayı kendi klavyesinde deneyen ve bu desteğe yön veren bildirimleri gönderen [@j0p3s](https://github.com/j0p3s)'e teşekkürler.

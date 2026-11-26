@@ -704,7 +704,7 @@ mod tests {
 
     /// November 2026, Istanbul time. The 11th is a Wednesday.
     fn at(day: i8, h: i8, m: i8) -> f64 {
-        date(2026, 11, day).at(h, m, 0, 0).to_zoned(ist()).unwrap().timestamp().as_millisecond() as f64
+        date(2026, 11, day).at(h, m, 0, 0).to_zoned_datetime(ist()).unwrap().timestamp().as_millisecond() as f64
     }
 
     const WEEKDAYS: u8 = 0b001_1111;
@@ -743,7 +743,7 @@ mod tests {
     fn a_daily_reminder_across_clock_changes() {
         let tz = TimeZone::get("Europe/Warsaw").unwrap();
         let utc = |t: Option<f64>| t.map(|ms| Timestamp::from_millisecond(ms as i64).unwrap().to_string());
-        let noon = |m: i8, d: i8| date(2026, m, d).at(12, 0, 0, 0).to_zoned(tz.clone()).unwrap().timestamp();
+        let noon = |m: i8, d: i8| date(2026, m, d).at(12, 0, 0, 0).to_zoned_datetime(tz.clone()).unwrap().timestamp();
         let after = |m: i8, d: i8| noon(m, d).as_millisecond() as f64;
         let daily = |h: u16, mi: u16| ReminderWhen::Daily { minute: h * 60 + mi, days: 0b111_1111 };
         // 02:30 does not happen on 29 March (02:00 → 03:00): that day is skipped.

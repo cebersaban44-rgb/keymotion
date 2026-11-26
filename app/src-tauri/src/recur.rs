@@ -32,7 +32,7 @@
 
 use jiff::civil::{Date, DateTime, Time};
 use jiff::tz::TimeZone;
-use jiff::{Timestamp, Zoned};
+use jiff::{Timestamp, ZonedDateTime};
 use std::collections::{HashSet, VecDeque};
 use std::str::FromStr;
 
@@ -242,7 +242,7 @@ impl Rule {
     /// to the start and checks the parts against each other. `floating`:
     /// the start is a floating time or a whole day (the PC's zone), so
     /// UNTIL may be a wall time there.
-    pub fn validate(mut self, start: &Zoned, floating: bool) -> Result<Series, String> {
+    pub fn validate(mut self, start: &ZonedDateTime, floating: bool) -> Result<Series, String> {
         let wall = start.datetime();
         // A numbered weekday means the n-th only in a month or a year.
         if !matches!(self.freq, Freq::Monthly | Freq::Yearly) {
@@ -295,7 +295,7 @@ impl Rule {
 
         let until = match self.until {
             None => None,
-            Some(Until::Utc(dt)) => Some(dt.to_zoned(TimeZone::UTC).map_err(|e| e.to_string())?.timestamp()),
+            Some(Until::Utc(dt)) => Some(dt.to_zoned_datetime(TimeZone::UTC).map_err(|e| e.to_string())?.timestamp()),
             Some(Until::Wall(_)) if !floating => return Err("UNTIL must be in UTC".into()),
             Some(Until::Wall(dt)) => Some(
                 start.time_zone().to_ambiguous_timestamp(dt).unambiguous().map_err(|_| "UNTIL not a single time")?,
@@ -351,7 +351,7 @@ impl Rule {
 #[derive(Debug, Clone)]
 pub struct Series {
     rule: Rule,
-    start: Zoned,
+    start: ZonedDateTime,
     until: Option<Timestamp>,
 }
 
@@ -1080,20 +1080,20 @@ mod tests {
     use super::*;
     use jiff::civil::date;
 
-    fn start(zone: &str, y: i16, mo: i8, d: i8, h: i8, mi: i8) -> Zoned {
-        date(y, mo, d).at(h, mi, 0, 0).to_zoned(TimeZone::get(zone).unwrap()).unwrap()
+    fn start(zone: &str, y: i16, mo: i8, d: i8, h: i8, mi: i8) -> ZonedDateTime {
+        date(y, mo, d).at(h, mi, 0, 0).to_zoned_datetime(TimeZone::get(zone).unwrap()).unwrap()
     }
 
-    fn series(rule: &str, start: &Zoned) -> Series {
+    fn series(rule: &str, start: &ZonedDateTime) -> Series {
         rule.parse::<Rule>().unwrap().validate(start, false).unwrap()
     }
 
     fn wall(t: Timestamp, zone: &TimeZone) -> String {
-        t.to_zoned(zone.clone()).strftime("%Y-%m-%d %H:%M").to_string()
+        t.to_zoned_datetime(zone.clone()).strftime("%Y-%m-%d %H:%M").to_string()
     }
 
     /// The first `n` starts, as wall times in the start's zone.
-    fn walls(rule: &str, start: &Zoned, n: usize) -> Vec<String> {
+    fn walls(rule: &str, start: &ZonedDateTime, n: usize) -> Vec<String> {
         series(rule, start).starts().take(n).map(|t| wall(t, start.time_zone())).collect()
     }
 
@@ -1275,8 +1275,11 @@ mod tests {
         let s = start("America/Santiago", 2026, 9, 4, 0, 0);
         let got = walls("FREQ=DAILY;COUNT=4", &s, 9);
         assert_eq!(got, ["2026-09-04 00:00", "2026-09-05 00:00", "2026-09-06 01:00", "2026-09-07 00:00"]);
-        // Havana goes back from 01:00 to 00:00 on 1 November: the first 00:30 counts.
-        let s = start("America/Havana", 2026, 10, 30, 0, 30);
+        // A clock that goes back from 01:00 to 00:00 on 1 November: the first
+        // 00:30 counts. Havana's usual rule, written out, because tzdata 2026f
+        // cancelled Cuba's 2026 change and later releases may move it again.
+        let tz = TimeZone::posix("CST5CDT,M3.2.0/0,M11.1.0/1").unwrap();
+        let s = date(2026, 10, 30).at(0, 30, 0, 0).to_zoned_datetime(tz).unwrap();
         let t: Vec<Timestamp> = series("FREQ=DAILY;COUNT=4", &s).starts().collect();
         let want = ["2026-10-30T04:30:00Z", "2026-10-31T04:30:00Z", "2026-11-01T04:30:00Z", "2026-11-02T05:30:00Z"];
         assert_eq!(utc(&t), want);
